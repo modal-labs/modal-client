@@ -6,6 +6,7 @@ config = {
     'server.url': os.environ.get('POLYESTER_SERVER_URL', 'https://api.polyester.cloud'),
     'token.id': os.environ.get('POLYESTER_TOKEN_ID'),
     'token.secret': os.environ.get('POLYESTER_TOKEN_SECRET'),
+    'task.secret': os.environ.get('POLYESTER_TASK_SECRET'),
 }
 
 logging.basicConfig(

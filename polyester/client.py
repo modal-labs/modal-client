@@ -1,5 +1,6 @@
 import asyncio
 import grpc.aio
+import os
 import uuid
 
 from .async_utils import infinite_loop, synchronizer, retry
@@ -104,12 +105,11 @@ class Client:
 
 @synchronizer
 class ContainerClient:
-    def __init__(self, task_id, server_url=None):
+    def __init__(self, task_id, server_url=None, task_secret=None):
         # TODO: use tokens here
         self.task_id = task_id
-        if server_url is None:
-            server_url = config['server.url']
-        self.server_url = server_url
+        self.server_url = server_url if server_url is not None else config['server.url']
+        self.task_secret = task_secret if task_secret is not None else config['task.secret']
 
     async def start(self):
         # TODO: rewrite this to be an async context manager?
@@ -117,7 +117,11 @@ class ContainerClient:
         self._channel_pool = ChannelPool(self.connection_factory)
         await self._channel_pool.start()
         self.stub = api_pb2_grpc.PolyesterClientStub(self._channel_pool)
-        req = api_pb2.HelloRequest(client_type=api_pb2.ClientType.CONTAINER, task_id=self.task_id)
+        req = api_pb2.HelloRequest(
+            client_type=api_pb2.ClientType.CONTAINER,
+            task_id=self.task_id,
+            task_secret=self.task_secret,
+        )
         self.client_id = await _handshake(self.stub, req)
         self._heartbeats_task = infinite_loop(lambda: _heartbeats(self.stub, self.client_id), timeout=None)
 

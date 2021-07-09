@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 /*
-  Compile by running (in the "main" directory of the repo):
+  Compile by running (in the "client" directory of the repo):
 
   python -m grpc_tools.protoc -I . --python_out=. --grpc_python_out=. polyester/proto/api.proto
 */
@@ -35,6 +35,7 @@ message HelloRequest {
   string task_id = 2;  // Only used for containers
   string token_id = 3;
   string token_secret = 4;
+  string task_secret = 5;  // Only used for containers
 }
 
 message HelloResponse {
