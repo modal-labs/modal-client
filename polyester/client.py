@@ -53,7 +53,7 @@ class Client:
         self.token_secret = _default_from_config(token_secret, 'token.secret')
         assert self.token_id and self.token_secret
 
-    async def start(self):
+    async def start(self, loops=True):
         # TODO: rewrite this to be an async context manager?
         logger.debug('Client: Starting')
         self.connection_factory = GRPCConnectionFactory(self.server_url)
@@ -73,8 +73,9 @@ class Client:
         # Start heartbeats and logs tracking, which are long-running client-wide things
         # TODO: would be nice to have some proper ownership of these tasks so they are garbage collected
         # TODO: we should have some more graceful termination of these
-        self._logs_task = infinite_loop(self._track_logs, timeout=None)
-        self._heartbeats_task = infinite_loop(lambda: _heartbeats(self.stub, self.client_id), timeout=None)
+        if loops:
+            self._logs_task = infinite_loop(self._track_logs, timeout=None)
+            self._heartbeats_task = infinite_loop(lambda: _heartbeats(self.stub, self.client_id), timeout=None)
 
         logger.debug('Client: Done starting')
 
@@ -82,11 +83,12 @@ class Client:
         await self.start()
         return self
 
-    async def close(self):
+    async def close(self, loops=True):
         logger.debug('Client: Shutting down')
         await self._channel_pool.close()
-        self._logs_task.cancel()
-        self._heartbeats_task.cancel()
+        if loops:
+            self._logs_task.cancel()
+            self._heartbeats_task.cancel()
         logger.debug('Client: Done shutting down')
 
     async def __aexit__(self, type, value, tb):
