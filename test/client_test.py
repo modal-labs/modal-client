@@ -43,7 +43,7 @@ async def test_client():
     port = random.randint(8000, 8999)
 
     async with servicer.run(port):
-        async with Client('http://localhost:%d' % port):
+        async with Client('http://localhost:%d' % port, 'foo-id', 'foo-secret'):
             await asyncio.sleep(0.1)  # enough for a handshake to go through
 
     assert len(servicer.requests) == 2
