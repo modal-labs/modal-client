@@ -1,5 +1,4 @@
 import asyncio
-import contextlib
 import grpc
 import pytest
 import random
@@ -27,24 +26,24 @@ class GRPCClientServicer(api_pb2_grpc.PolyesterClient):
         if False:
             yield
 
-    @contextlib.asynccontextmanager
-    async def run(self, port):
-        server = grpc.aio.server()
-        api_pb2_grpc.add_PolyesterClientServicer_to_server(self, server)
-        server.add_insecure_port('[::]:%d' % port)
-        await server.start()
-        yield
-        await server.stop(0)        
+
+@pytest.fixture(scope='function')
+async def servicer():
+    servicer = GRPCClientServicer()
+    port = random.randint(8000, 8999)
+    servicer.remote_addr = 'http://localhost:%d' % port
+    server = grpc.aio.server()
+    api_pb2_grpc.add_PolyesterClientServicer_to_server(servicer, server)
+    server.add_insecure_port('[::]:%d' % port)
+    await server.start()
+    yield servicer
+    await server.stop(0)
 
 
 @pytest.mark.asyncio
-async def test_client():
-    servicer = GRPCClientServicer()
-    port = random.randint(8000, 8999)
-
-    async with servicer.run(port):
-        async with Client('http://localhost:%d' % port, 'foo-id', 'foo-secret'):
-            await asyncio.sleep(0.1)  # enough for a handshake to go through
+async def test_client(servicer):
+    async with Client(servicer.remote_addr, 'foo-id', 'foo-secret'):
+        await asyncio.sleep(0.1)  # enough for a handshake to go through
 
     assert len(servicer.requests) == 2
     assert isinstance(servicer.requests[0], api_pb2.HelloRequest)
@@ -53,13 +52,9 @@ async def test_client():
 
 
 @pytest.mark.asyncio
-async def test_container_client():
-    servicer = GRPCClientServicer()
-    port = random.randint(8000, 8999)
-
-    async with servicer.run(port):
-        async with ContainerClient('ta-123', 'http://localhost:%d' % port, 'task-secret'):
-            await asyncio.sleep(0.1)  # enough for a handshake to go through
+async def test_container_client(servicer):
+    async with ContainerClient('ta-123', servicer.remote_addr, 'task-secret'):
+        await asyncio.sleep(0.1)  # enough for a handshake to go through
 
     assert len(servicer.requests) == 2
     assert isinstance(servicer.requests[0], api_pb2.HelloRequest)
