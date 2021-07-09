@@ -1,0 +1,254 @@
+syntax = "proto3";
+
+/*
+  Compile by running (in the "main" directory of the repo):
+
+  python -m grpc_tools.protoc -I . --python_out=. --grpc_python_out=. polyester/proto/api.proto
+*/
+
+package polyester.client;
+
+message Empty {
+
+}
+
+message GenericResult {  // Used for both tasks and function outputs
+  enum Status {UNKNOWN = 0; SUCCESS = 1; FAILURE = 2;}
+  Status status = 1;
+  string exception = 2;
+  int32 exitcode = 3;
+  string traceback = 4;
+  bytes data = 5;
+  bool incomplete = 6;  // Only used for generators right now, tells client not to count this result yet
+}
+
+enum ClientType {
+  UNKNOWN = 0;
+  CLIENT = 1;
+  WORKER = 2;
+  CONTAINER = 3;
+  SERVER = 4;
+}
+
+message HelloRequest {
+  ClientType client_type = 1;
+  string task_id = 2;  // Only used for containers
+  string token_id = 3;
+  string token_secret = 4;
+}
+
+message HelloResponse {
+  string client_id = 1;
+  string error = 2;
+}
+
+message HeartbeatRequest {
+  string client_id = 1;
+}
+
+message TaskLogsGetRequest {
+  string client_id = 1;
+  float timeout = 2;
+}
+
+message TaskLogs {
+  bytes data = 1;
+  string fd = 2;
+  string task_id = 3;
+}
+
+message QueueCreateResponse {
+  string queue_id = 1;
+}
+
+message QueueGetRequest {
+  string queue_id = 1;
+  bool block = 2;
+  float timeout = 3;
+  int32 n_values = 4;
+  string idempotency_key = 5;
+}
+
+message QueueGetResponse {
+  repeated bytes values = 2;
+}
+
+message QueuePutRequest {
+  string queue_id = 1;
+  string idempotency_key = 3;
+  repeated bytes values = 4;
+}
+
+message Layer {
+  // TODO: in theory this should probably be language-agnostic
+  string python_version = 1;
+  repeated string python_packages = 2;
+  repeated string extra_commands = 3;
+  string processor = 4;
+}
+
+message LayerCreateRequest {
+  string client_id = 1;
+  Layer layer = 2;
+}
+
+message LayerCreateResponse {
+  string layer_id = 1;
+}
+
+message Image {
+  string layer_id = 1;
+  repeated string mount_ids = 2;
+}
+
+message ImageCreateRequest {
+  Image image = 1;
+  string client_id = 2;
+}
+
+message ImageCreateResponse {
+  string image_id = 2;
+}
+
+message ImageJoinRequest {
+  string image_id = 1;
+  float timeout = 2;
+}
+
+message ImageJoinResponse {
+  GenericResult result = 2;
+}
+
+message FunctionCreateRequest {
+  string client_id = 1;
+  string image_id = 2;
+  bytes data = 3;
+  string name = 4;
+}
+
+message FunctionCreateResponse {
+  string function_id = 1;
+}
+
+message FunctionCallRequest {
+  string function_id = 1;
+  repeated bytes inputs = 2;
+  string call_id = 3;  // Optional, will create a new call_id if not set
+  string idempotency_key = 4;
+}
+
+message FunctionCallResponse {
+  string call_id = 1;  // Internally on the server it identifies a result queue
+}
+
+message FunctionGetNextOutputRequest {
+  string function_id = 1;
+  string call_id = 2;
+  float timeout = 3;
+  int32 n_outputs = 4;
+  string idempotency_key = 5;
+}
+
+message FunctionGetNextOutputResponse {
+  repeated GenericResult outputs = 2;
+}
+
+message FunctionGetNextCallRequest {
+  string function_id = 1;
+}
+
+message FunctionGetNextCallResponse {
+  string call_id = 1;
+  bytes input = 2;
+}
+
+message FunctionGetRequest {
+  string function_id = 1;
+}
+
+message FunctionGetResponse {
+  bytes data = 1;
+}
+
+message FunctionGetNextInputRequest {
+  string function_id = 1;
+  string idempotency_key = 2;
+  float timeout = 3;
+  string task_id = 4;
+}
+
+message FunctionGetNextInputResponse {
+  bool stop = 2;
+  bytes data = 3;
+  string input_id = 5;
+}
+
+message FunctionOutputRequest {
+  GenericResult output = 3;
+  string idempotency_key = 4;
+  bool done = 6;  // TODO: use later for generators
+  string input_id = 7;
+}
+
+message MountCreateRequest {
+  string client_id = 1;
+}
+
+message MountCreateResponse {
+  string mount_id = 1;
+}
+
+message MountRegisterFileRequest {
+  string filename = 1;
+  string sha256_hex = 2;
+  string mount_id = 3;
+}
+
+message MountRegisterFileResponse {
+  string filename = 1;
+  bool exists = 2;
+}
+
+message MountUploadFileRequest {
+  string sha256_hex = 1;
+  int32 size = 2;
+  bytes data = 3;
+  string mount_id = 4;
+}
+
+message MountDoneRequest {
+  string mount_id = 1;
+}
+
+service PolyesterClient {
+  // Generic client-level calls
+  rpc Hello(HelloRequest) returns (HelloResponse);
+  rpc Heartbeats(stream HeartbeatRequest) returns (Empty);
+  rpc TaskLogsGet(TaskLogsGetRequest) returns (stream TaskLogs);
+
+  // Queues
+  rpc QueueCreate(Empty) returns (QueueCreateResponse);
+  rpc QueueGet(QueueGetRequest) returns (QueueGetResponse);
+  rpc QueuePut(QueuePutRequest) returns (Empty);
+
+  // Mounts
+  rpc MountCreate(MountCreateRequest) returns (MountCreateResponse);
+  rpc MountRegisterFile(stream MountRegisterFileRequest) returns (stream MountRegisterFileResponse);
+  rpc MountUploadFile(stream MountUploadFileRequest) returns (Empty);  // TODO: return something?
+  rpc MountDone(MountDoneRequest) returns (Empty);
+
+  // Layers
+  rpc LayerCreate(LayerCreateRequest) returns (LayerCreateResponse);
+
+  // Images
+  rpc ImageCreate(ImageCreateRequest) returns (ImageCreateResponse);
+  rpc ImageJoin(ImageJoinRequest) returns (ImageJoinResponse);
+
+  // Functions
+  rpc FunctionCreate(FunctionCreateRequest) returns (FunctionCreateResponse);
+  rpc FunctionCall(FunctionCallRequest) returns (FunctionCallResponse);
+  rpc FunctionGetNextOutput(FunctionGetNextOutputRequest) returns (FunctionGetNextOutputResponse);  // Returns the next result
+  rpc FunctionGet(FunctionGetRequest) returns (FunctionGetResponse);  // For containers to pull serialized function
+  rpc FunctionGetNextInput(FunctionGetNextInputRequest) returns (FunctionGetNextInputResponse);  // For containers to request next call
+  rpc FunctionOutput(FunctionOutputRequest) returns (Empty);  // For containers to return result
+}
