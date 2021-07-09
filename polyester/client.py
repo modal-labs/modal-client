@@ -37,6 +37,10 @@ async def _heartbeats(stub, client_id, sleep=3):
     await stub.Heartbeats(loop())
 
 
+def _default_from_config(z, config_key):
+    return z if z is not None else config[config_key]
+
+
 @synchronizer
 class Client:
     ''' This class does two things:
@@ -44,12 +48,10 @@ class Client:
     2. Code to track the logs loop + maybe future RPC calls on a client level
     '''
     def __init__(self, server_url=None, token_id=None, token_secret=None):
-        def default_from_config(z, config_key):
-            return z if z is not None else config[config_key]
-
-        self.server_url = default_from_config(server_url, 'server.url')
-        self.token_id = default_from_config(token_id, 'token.id')
-        self.token_secret = default_from_config(token_secret, 'token.secret')
+        self.server_url = _default_from_config(server_url, 'server.url')
+        self.token_id = _default_from_config(token_id, 'token.id')
+        self.token_secret = _default_from_config(token_secret, 'token.secret')
+        assert self.token_id and self.token_secret
 
     async def start(self):
         # TODO: rewrite this to be an async context manager?
@@ -106,10 +108,10 @@ class Client:
 @synchronizer
 class ContainerClient:
     def __init__(self, task_id, server_url=None, task_secret=None):
-        # TODO: use tokens here
         self.task_id = task_id
-        self.server_url = server_url if server_url is not None else config['server.url']
-        self.task_secret = task_secret if task_secret is not None else config['task.secret']
+        self.server_url = _default_from_config(server_url, 'server.url')
+        self.task_secret = _default_from_config(task_secret, 'task.secret')
+        assert self.task_secret
 
     async def start(self):
         # TODO: rewrite this to be an async context manager?

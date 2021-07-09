@@ -58,7 +58,7 @@ async def test_container_client():
     port = random.randint(8000, 8999)
 
     async with servicer.run(port):
-        async with ContainerClient('ta-123', 'http://localhost:%d' % port):
+        async with ContainerClient('ta-123', 'http://localhost:%d' % port, 'task-secret'):
             await asyncio.sleep(0.1)  # enough for a handshake to go through
 
     assert len(servicer.requests) == 2
