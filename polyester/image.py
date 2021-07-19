@@ -102,49 +102,39 @@ mount_py_in_workdir_into_root = Mount(
 
 @synchronizer
 class Layer:
-    # TODO: I think we should move a lot of the logic for this to the client side,
-    # and offer different pre-baked default images. It would be amazing if there's already
-    # definitions for the most common distros, and you can just extend them easy if you
-    # want to. Extending the images by installing Python packages or whatever could just be
-    # methods on those objects, rather than on a generic base class.
-    def __init__(self, python_version=None, python_packages=[], extra_commands=[]):
-        self.python_version = python_version or '%d.%d.%d' % sys.version_info[:3]
-        self.python_packages = python_packages
-        self.extra_commands = extra_commands
+    def __init__(self, tag=None, layer_definition=None):
         self.layer_id = None
-
-    def extend(self, python_packages=[], extra_commands=[]):
-        return Layer(self.python_version,
-                     self.python_packages + python_packages,
-                     self.extra_commands + extra_commands)
+        self.tag = tag
+        self.layer_definition = layer_definition
 
     async def start(self, client):  # Note that we join on an image level
         # TODO: there's some risk of a race condition here
         if self.layer_id is not None:
             return self.layer_id
 
-        layer = api_pb2.Layer(
-            python_version=self.python_version,
-            python_packages=self.python_packages,
-            extra_commands=self.extra_commands,
-        )
+        if self.tag:
+            raise Exception('Tag lookup not implemented yet')
+        else:
+            request = api_pb2.LayerCreateRequest(
+                client_id=client.client_id,
+                layer=self.layer_definition
+            )
+            response = await client.stub.LayerCreate(request)
+            self.layer_id = response.layer_id
 
-        request = api_pb2.LayerCreateRequest(client_id=client.client_id, layer=layer)
-        response = await client.stub.LayerCreate(request)
-        self.layer_id = response.layer_id
         return self.layer_id
 
 
 @synchronizer
-class Image:
+class Image:  # TODO: should inherit from base class with label
     def __init__(self, layer, mounts=[]):
         self.layer = layer
         self.mounts = mounts
         self.image_id = None
 
-    def extend(self, python_packages=[], extra_commands=[]):
-        return Image(self.layer.extend(python_packages, extra_commands),
-                     self.mounts)
+#    def extend(self, python_packages=[], extra_commands=[]):
+#        return Image(self.layer.extend(python_packages, extra_commands),
+#                     self.mounts)
 
     async def start(self, client):
         # TODO: there's some risk of a race condition here
@@ -179,10 +169,3 @@ class Image:
     def function(self, raw_f):
         ''' Primarily to be used as a decorator.'''
         return decorate_function(raw_f, self)
-
-
-# TODO: remove the base image, and be explicit about what it is: ubuntu-slim or whatever
-# This will make more obvious where the mount goes etc
-base_image = Image(layer=Layer(),
-                   mounts=[mount_py_in_workdir_into_root])
-function = base_image.function
