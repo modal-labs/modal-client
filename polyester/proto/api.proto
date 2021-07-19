@@ -91,13 +91,7 @@ message LayerContextFile {
 }
 
 message Layer {
-  // TODO: these are all deprecated fields!
-  string python_version = 1;
-  repeated string python_packages = 2;
-  repeated string extra_commands = 3;
   string processor = 4;
-
-  // These are the new ones
   repeated BaseLayer base_layers = 5;
   repeated string dockerfile_commands = 6;
   repeated LayerContextFile context_files = 7;
