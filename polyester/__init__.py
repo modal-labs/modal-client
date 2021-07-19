@@ -1,4 +1,3 @@
 from .client import Client
-# from .image import base_image, function
-from .image import Layer, Image
+from .image import Layer, Image, base_image
 from .queue import Queue

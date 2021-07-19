@@ -99,42 +99,56 @@ mount_py_in_workdir_into_root = Mount(
     lambda filename: os.path.splitext(filename)[-1] == '.py'
 )
 
-
 @synchronizer
 class Layer:
-    def __init__(self, tag=None, layer_definition=None):
+    def __init__(self, tag=None, base_layers={}, dockerfile_commands=[], context_files={}):
         self.layer_id = None
         self.tag = tag
-        self.layer_definition = layer_definition
+        self.base_layers = base_layers
+        self.dockerfile_commands = dockerfile_commands
+        self.context_files = context_files
 
     async def start(self, client):  # Note that we join on an image level
         # TODO: there's some risk of a race condition here
         if self.layer_id is not None:
             return self.layer_id
 
-        if self.tag:
-            raise Exception('Tag lookup not implemented yet')
-        else:
-            request = api_pb2.LayerCreateRequest(
-                client_id=client.client_id,
-                layer=self.layer_definition
-            )
-            response = await client.stub.LayerCreate(request)
-            self.layer_id = response.layer_id
+        base_layers = []
+        for docker_tag, layer in self.base_layers.items():
+            layer_id = await layer.start(client)
+            # TODO: we should make sure this layer actually gets built
+            base_layers.append(api_pb2.BaseLayer(
+                docker_tag=docker_tag,
+                layer_id=layer_id
+            ))
 
+        context_files = [
+            api_pb2.LayerContextFile(filename=filename, data=data)
+            for filename, data in self.context_files.items()
+        ]
+
+        layer_definition = api_pb2.Layer(
+            tag=self.tag,
+            base_layers=base_layers,
+            dockerfile_commands=self.dockerfile_commands,
+            context_files=context_files,
+        )
+
+        request = api_pb2.LayerCreateRequest(
+            client_id=client.client_id,
+            layer=layer_definition
+        )
+        response = await client.stub.LayerCreate(request)
+        self.layer_id = response.layer_id
         return self.layer_id
 
 
 @synchronizer
-class Image:  # TODO: should inherit from base class with label
+class Image:
     def __init__(self, layer, mounts=[]):
         self.layer = layer
         self.mounts = mounts
         self.image_id = None
-
-#    def extend(self, python_packages=[], extra_commands=[]):
-#        return Image(self.layer.extend(python_packages, extra_commands),
-#                     self.mounts)
 
     async def start(self, client):
         # TODO: there's some risk of a race condition here
@@ -169,3 +183,41 @@ class Image:  # TODO: should inherit from base class with label
     def function(self, raw_f):
         ''' Primarily to be used as a decorator.'''
         return decorate_function(raw_f, self)
+
+
+class DebianSlim(Image):
+    def __init__(self, layer=None, python_version=None):
+        if python_version is None:
+            python_version = '%d.%d.%d' % sys.version_info[:3]
+        self.python_version=python_version
+        if layer is None:
+            layer = Layer(tag='python-%s-slim-buster-base' % self.python_version)
+        super().__init__(layer=layer, mounts=[mount_py_in_workdir_into_root])
+
+    def add_python_packages(self, python_packages):
+        layer = Layer(
+            base_layers={
+                'base': self.layer,
+                'builder': Layer(tag='python-%s-slim-buster-builder' % self.python_version)
+            },
+            dockerfile_commands=[
+                'FROM builder as builder-vehicle',
+                'RUN pip wheel %s -w /tmp/wheels' % ' '.join(python_packages),
+                'FROM base',
+                'COPY --from=builder-vehicle /tmp/wheels /tmp/wheels',
+                'RUN pip install /tmp/wheels/*',
+                'RUN rm -rf /tmp/wheels',
+            ]
+        )
+        return DebianSlim(layer=layer)
+
+    def run_commands(self, commands):
+        layer = Layer(
+            base_layers={'base': self.layer},
+            dockerfile_commands=['FROM base'] + ['RUN ' + command for command in commands]
+        )
+        return DebianSlim(layer=layer)
+
+
+debian_slim = DebianSlim()
+base_image = debian_slim
