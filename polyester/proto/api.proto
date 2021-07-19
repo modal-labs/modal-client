@@ -101,6 +101,7 @@ message Layer {
   repeated BaseLayer base_layers = 5;
   repeated string dockerfile_commands = 6;
   repeated LayerContextFile context_files = 7;
+  string tag = 8;
 }
 
 message LayerCreateRequest {
