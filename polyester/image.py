@@ -189,7 +189,7 @@ class DebianSlim(Image):
     def __init__(self, layer=None, python_version=None):
         if python_version is None:
             python_version = '%d.%d.%d' % sys.version_info[:3]
-        self.python_version=python_version
+        self.python_version = python_version
         if layer is None:
             layer = Layer(tag='python-%s-slim-buster-base' % self.python_version)
         super().__init__(layer=layer, mounts=[mount_py_in_workdir_into_root])
