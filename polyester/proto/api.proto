@@ -38,6 +38,10 @@ message HelloRequest {
   string task_secret = 5;  // Only used for containers
 }
 
+message ByeRequest {
+  string client_id = 1;
+}
+
 message HelloResponse {
   string client_id = 1;
   string error = 2;
@@ -235,6 +239,7 @@ message MountDoneRequest {
 service PolyesterClient {
   // Generic client-level calls
   rpc Hello(HelloRequest) returns (HelloResponse);
+  rpc Bye(ByeRequest) returns (Empty);
   rpc Heartbeats(stream HeartbeatRequest) returns (Empty);
   rpc TaskLogsGet(TaskLogsGetRequest) returns (stream TaskLogs);
 
