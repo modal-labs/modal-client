@@ -105,7 +105,11 @@ class Client:
     async def _track_logs(self):
         request = api_pb2.TaskLogsGetRequest(client_id=self.client_id, timeout=BLOCKING_REQUEST_TIMEOUT)
         async for log_entry in self.stub.TaskLogsGet(request, timeout=GRPC_REQUEST_TIMEOUT):
-            print_logs(log_entry.data, log_entry.fd)
+            if log_entry.done:
+                # TODO: we can't break here, we should only break if we're in closing mode
+                logger.info('No more logs!!!')
+            else:
+                print_logs(log_entry.data, log_entry.fd)
 
 
 @synchronizer

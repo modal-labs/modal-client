@@ -56,6 +56,7 @@ message TaskLogs {
   bytes data = 1;
   string fd = 2;
   string task_id = 3;
+  bool done = 4;
 }
 
 message QueueCreateResponse {
