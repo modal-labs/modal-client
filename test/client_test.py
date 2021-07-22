@@ -35,7 +35,7 @@ class GRPCClientServicer(api_pb2_grpc.PolyesterClient):
             yield api_pb2.TaskLogs(done=True)
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope='package')
 def event_loop():
     loop = asyncio.get_event_loop_policy().new_event_loop()
     synchronizer._loop = loop  # TODO: SUPER HACKY
