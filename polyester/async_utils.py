@@ -20,6 +20,7 @@ def retry(direct_fn=None, n_attempts=3, base_delay=0, delay_factor=2, timeout=90
                     t0 = time.time()
                     return await asyncio.wait_for(fn(*args, **kwargs), timeout=timeout)
                 except asyncio.CancelledError:
+                    logger.warning('Function %s was cancelled' % fn)
                     raise
                 except Exception as e:
                     if i >= n_attempts - 1:
