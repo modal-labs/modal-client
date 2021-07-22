@@ -105,6 +105,7 @@ message Layer {
 message LayerGetOrCreateRequest {
   string client_id = 1;
   Layer layer = 2;
+  bool must_create = 3;
 }
 
 message LayerGetOrCreateResponse {

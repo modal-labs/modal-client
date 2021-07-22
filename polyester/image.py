@@ -99,19 +99,22 @@ mount_py_in_workdir_into_root = Mount(
     lambda filename: os.path.splitext(filename)[-1] == '.py'
 )
 
+
 @synchronizer
 class Layer:
-    def __init__(self, tag=None, base_layers={}, dockerfile_commands=[], context_files={}):
+    def __init__(self, tag=None, base_layers={}, dockerfile_commands=[], context_files={}, must_create=False):
         self.layer_id = None
         self.tag = tag
         self.base_layers = base_layers
         self.dockerfile_commands = dockerfile_commands
         self.context_files = context_files
+        self.must_create = must_create
 
     async def start(self, client):  # Note that we join on an image level
         # TODO: there's some risk of a race condition here
         if self.layer_id is not None:
             return self.layer_id
+
 
         if self.tag:
             req = api_pb2.LayerGetByTagRequest(tag=self.tag)
@@ -142,6 +145,7 @@ class Layer:
             req = api_pb2.LayerGetOrCreateRequest(
                 client_id=client.client_id,
                 layer=layer_definition,
+                must_create=self.must_create,
             )
             resp = await client.stub.LayerGetOrCreate(req)
             self.layer_id = resp.layer_id

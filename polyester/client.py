@@ -102,7 +102,11 @@ class Client:
         req = api_pb2.ByeRequest(client_id=self.client_id)
         await self.stub.Bye(req)
         if self.loops:
-            await self._logs_task
+            logger.debug('Waiting for logs to flush')
+            try:
+                await asyncio.wait_for(self._logs_task, timeout=10.0)
+            except asyncio.TimeoutError:
+                logger.exception('Timed out waiting for logs')
             self._heartbeats_task.cancel()
         await self._channel_pool.close()
         logger.debug('Client: Done shutting down')
