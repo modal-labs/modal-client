@@ -147,6 +147,12 @@ class ChannelPool:
             # Scalar input, nothing to do
             yield req
         else:
+            # TODO: there's a bit of a problem if we need to rely on say the first message to send some
+            # valuable context to the server. For instance let's we want to stream logs from the server,
+            # but we also want to be able to provide with some updates such as "client is closing now",
+            # then we need a stream-stream method, but with a special "first" message to start off the
+            # interchange. However if the stream gets chopped up, then we lose the ability to send those
+            # first messages.
             async for sub_req in chunk_generator(req, BLOCKING_REQUEST_TIMEOUT):
                 yield sub_req
 
