@@ -100,16 +100,28 @@ message Layer {
   repeated BaseLayer base_layers = 5;
   repeated string dockerfile_commands = 6;
   repeated LayerContextFile context_files = 7;
-  string tag = 8;
 }
 
-message LayerCreateRequest {
+message LayerGetOrCreateRequest {
   string client_id = 1;
   Layer layer = 2;
 }
 
-message LayerCreateResponse {
+message LayerGetOrCreateResponse {
   string layer_id = 1;
+}
+
+message LayerGetByTagRequest {
+  string tag = 1;
+}
+
+message LayerGetByTagResponse {
+  string layer_id = 1;
+}
+
+message LayerSetTagRequest {
+  string layer_id = 1;
+  string tag = 2;
 }
 
 message Image {
@@ -255,7 +267,9 @@ service PolyesterClient {
   rpc MountDone(MountDoneRequest) returns (Empty);
 
   // Layers
-  rpc LayerCreate(LayerCreateRequest) returns (LayerCreateResponse);
+  rpc LayerGetOrCreate(LayerGetOrCreateRequest) returns (LayerGetOrCreateResponse);
+  rpc LayerGetByTag(LayerGetByTagRequest) returns (LayerGetByTagResponse);
+  rpc LayerSetTag(LayerSetTagRequest) returns (Empty);
 
   // Images
   rpc ImageCreate(ImageCreateRequest) returns (ImageCreateResponse);

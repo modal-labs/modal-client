@@ -113,34 +113,45 @@ class Layer:
         if self.layer_id is not None:
             return self.layer_id
 
-        base_layers = []
-        for docker_tag, layer in self.base_layers.items():
-            layer_id = await layer.start(client)
-            # TODO: we should make sure this layer actually gets built
-            base_layers.append(api_pb2.BaseLayer(
-                docker_tag=docker_tag,
-                layer_id=layer_id
-            ))
+        if self.tag:
+            req = api_pb2.LayerGetByTagRequest(tag=self.tag)
+            resp = await client.stub.LayerGetByTag(req)
+            self.layer_id = resp.layer_id
 
-        context_files = [
-            api_pb2.LayerContextFile(filename=filename, data=data)
-            for filename, data in self.context_files.items()
-        ]
+        else:
+            base_layers = []
+            for docker_tag, layer in self.base_layers.items():
+                layer_id = await layer.start(client)
+                # TODO: we should make sure this layer actually gets built
+                base_layers.append(api_pb2.BaseLayer(
+                    docker_tag=docker_tag,
+                    layer_id=layer_id
+                ))
 
-        layer_definition = api_pb2.Layer(
-            tag=self.tag,
-            base_layers=base_layers,
-            dockerfile_commands=self.dockerfile_commands,
-            context_files=context_files,
-        )
+            context_files = [
+                api_pb2.LayerContextFile(filename=filename, data=data)
+                for filename, data in self.context_files.items()
+            ]
 
-        request = api_pb2.LayerCreateRequest(
-            client_id=client.client_id,
-            layer=layer_definition
-        )
-        response = await client.stub.LayerCreate(request)
-        self.layer_id = response.layer_id
+            layer_definition = api_pb2.Layer(
+                base_layers=base_layers,
+                dockerfile_commands=self.dockerfile_commands,
+                context_files=context_files,
+            )
+
+            req = api_pb2.LayerGetOrCreateRequest(
+                client_id=client.client_id,
+                layer=layer_definition,
+            )
+            resp = await client.stub.LayerGetOrCreate(req)
+            self.layer_id = resp.layer_id
+
         return self.layer_id
+
+    async def set_tag(self, tag, client):
+        assert self.layer_id
+        req = api_pb2.LayerSetTagRequest(layer_id=self.layer_id, tag=tag)
+        await client.stub.LayerSetTag(req)
 
 
 @synchronizer
