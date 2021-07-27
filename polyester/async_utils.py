@@ -207,3 +207,16 @@ class TaskContext:
         task = create_task(coro)
         self._tasks.append(task)
         return task
+
+    async def wait(self, *tasks):
+        # Waits until all of tasks have finished
+        # If any of the task context's task raises, throw that exception
+        # This is probably O(n^2) sadly but I guess it's fine
+        unfinished_tasks = set(tasks)
+        all_tasks = set(self._tasks)
+        while unfinished_tasks:
+            done, pending = await asyncio.wait(all_tasks, return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                task.result()  # Raise exception if needed
+                if task in unfinished_tasks:
+                    unfinished_tasks.remove(task)

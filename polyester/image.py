@@ -207,7 +207,7 @@ class DebianSlim(Image):
         self.python_version = python_version
         if layer is None:
             layer = Layer(tag='python-%s-slim-buster-base' % self.python_version)
-        super().__init__(layer=layer, mounts=[mount_py_in_workdir_into_root])
+        super().__init__(layer=layer)  # , mounts=[mount_py_in_workdir_into_root])
 
     def add_python_packages(self, python_packages):
         layer = Layer(

@@ -124,3 +124,31 @@ async def test_task_context_grace():
     await asyncio.sleep(0.0)
     assert u.done()
     assert v.cancelled()
+
+
+class MyException(Exception):
+    pass
+
+
+async def raise_my_exception():
+    raise MyException()
+
+
+@pytest.mark.asyncio
+async def test_task_context_wait():
+    async with TaskContext(grace=0.1) as task_context:
+        u = task_context.create_task(asyncio.sleep(1.1))
+        v = task_context.create_task(asyncio.sleep(1.3))
+        await task_context.wait(u)
+
+    assert u.done()
+    assert v.cancelled()
+
+    with pytest.raises(MyException):
+        async with TaskContext(grace=0.2) as task_context:
+            u = task_context.create_task(asyncio.sleep(1.1))
+            v = task_context.create_task(raise_my_exception())
+            await task_context.wait(u)
+
+    assert u.cancelled()
+    assert v.done()
