@@ -89,8 +89,7 @@ class Function:
                 #request = api_pb2.FunctionExistsRequest(client_id=client.id, client_side_key=self.client_side_key)
                 #response = await client.stub.FunctionExists(request)
 
-                image_id = await self.image.start(client)
-                await self.image.join(client)
+                image_id = await self.image.join(client)
                 data = client.serialize(self.raw_f)
                 request = api_pb2.FunctionCreateRequest(client_id=client.client_id, data=data,
                                                         image_id=image_id, name=self.name)

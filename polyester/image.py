@@ -69,26 +69,38 @@ class Mount:
 
         logger.info(f'Uploaded {n_missing_files}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s')
 
-    async def start(self, client):
+    async def join(self, client):
         # TODO: I think in theory we could split the get_files iterator and launch multiple concurrent
         # calls to MountRegisterFileRequest and MountUploadFileRequest. This would speed up a lot of the
         # serial operations on the server side (like hitting Redis for every file serially).
         # Another option is to parallelize more on the server side.
 
-        if self.mount_id:
-            return self.mount_id
+        if not self.mount_id:
+            req = api_pb2.MountCreateRequest(client_id=client.client_id)
+            resp = await client.stub.MountCreate(req)
+            mount_id = resp.mount_id
 
-        req = api_pb2.MountCreateRequest(client_id=client.client_id)
-        resp = await client.stub.MountCreate(req)
-        mount_id = resp.mount_id
+            logger.debug(f'Uploading mount {mount_id}')
+            await client.stub.MountUploadFile(self._upload_file_requests(client, mount_id))
 
-        logger.debug(f'Uploading mount {mount_id}')
-        await client.stub.MountUploadFile(self._upload_file_requests(client, mount_id))
+            req = api_pb2.MountDoneRequest(mount_id=mount_id)
+            await client.stub.MountDone(req)
 
-        req = api_pb2.MountDoneRequest(mount_id=mount_id)
-        await client.stub.MountDone(req)
+            self.mount_id = mount_id
 
-        self.mount_id = mount_id
+        logger.debug('Waiting for mount %s' % self.mount_id)
+        while True:
+            request = api_pb2.MountJoinRequest(mount_id=self.mount_id, timeout=BLOCKING_REQUEST_TIMEOUT)
+            response = await retry(client.stub.MountJoin)(request, timeout=GRPC_REQUEST_TIMEOUT)
+            if not response.result.status:
+                continue
+            elif response.result.status == api_pb2.GenericResult.Status.FAILURE:
+                raise Exception(response.result.exception)
+            elif response.result.status == api_pb2.GenericResult.Status.SUCCESS:
+                break
+            else:
+                raise Exception('Unknown status %s!' % response.result.status)
+
         return self.mount_id
 
 
@@ -110,45 +122,59 @@ class Layer:
         self.context_files = context_files
         self.must_create = must_create
 
-    async def start(self, client):  # Note that we join on an image level
+    async def join(self, client):
         # TODO: there's some risk of a race condition here
-        if self.layer_id is not None:
-            return self.layer_id
+        if self.layer_id is None:
+            if self.tag:
+                req = api_pb2.LayerGetByTagRequest(tag=self.tag)
+                resp = await client.stub.LayerGetByTag(req)
+                self.layer_id = resp.layer_id
 
+            else:
+                # Recursively build base layers
+                base_layer_ids = await asyncio.gather(
+                    *(layer.join(client) for layer in self.base_layers.values())
+                )
+                base_layers = [
+                    api_pb2.BaseLayer(
+                        docker_tag=docker_tag,
+                        layer_id=layer_id
+                    )
+                    for docker_tag, layer_id
+                    in zip(self.base_layers.keys(), base_layer_ids)
+                ]
 
-        if self.tag:
-            req = api_pb2.LayerGetByTagRequest(tag=self.tag)
-            resp = await client.stub.LayerGetByTag(req)
-            self.layer_id = resp.layer_id
+                context_files = [
+                    api_pb2.LayerContextFile(filename=filename, data=data)
+                    for filename, data in self.context_files.items()
+                ]
 
-        else:
-            base_layers = []
-            for docker_tag, layer in self.base_layers.items():
-                layer_id = await layer.start(client)
-                # TODO: we should make sure this layer actually gets built
-                base_layers.append(api_pb2.BaseLayer(
-                    docker_tag=docker_tag,
-                    layer_id=layer_id
-                ))
+                layer_definition = api_pb2.Layer(
+                    base_layers=base_layers,
+                    dockerfile_commands=self.dockerfile_commands,
+                    context_files=context_files,
+                )
 
-            context_files = [
-                api_pb2.LayerContextFile(filename=filename, data=data)
-                for filename, data in self.context_files.items()
-            ]
+                req = api_pb2.LayerGetOrCreateRequest(
+                    client_id=client.client_id,
+                    layer=layer_definition,
+                    must_create=self.must_create,
+                )
+                resp = await client.stub.LayerGetOrCreate(req)
+                self.layer_id = resp.layer_id
 
-            layer_definition = api_pb2.Layer(
-                base_layers=base_layers,
-                dockerfile_commands=self.dockerfile_commands,
-                context_files=context_files,
-            )
-
-            req = api_pb2.LayerGetOrCreateRequest(
-                client_id=client.client_id,
-                layer=layer_definition,
-                must_create=self.must_create,
-            )
-            resp = await client.stub.LayerGetOrCreate(req)
-            self.layer_id = resp.layer_id
+        logger.debug('Waiting for layer %s' % self.layer_id)
+        while True:
+            request = api_pb2.LayerJoinRequest(layer_id=self.layer_id, timeout=BLOCKING_REQUEST_TIMEOUT)
+            response = await retry(client.stub.LayerJoin)(request, timeout=GRPC_REQUEST_TIMEOUT)
+            if not response.result.status:
+                continue
+            elif response.result.status == api_pb2.GenericResult.Status.FAILURE:
+                raise Exception(response.result.exception)
+            elif response.result.status == api_pb2.GenericResult.Status.SUCCESS:
+                break
+            else:
+                raise Exception('Unknown status %s!' % response.result.status)
 
         return self.layer_id
 
@@ -165,35 +191,23 @@ class Image:
         self.mounts = mounts
         self.image_id = None
 
-    async def start(self, client):
-        # TODO: there's some risk of a race condition here
-        if self.image_id is not None:
-            return self.image_id
-
-        layer_id = await self.layer.start(client)
-        mount_ids = []
-        for mount in self.mounts:
-            mount_ids.append(await mount.start(client))
-
-        image = api_pb2.Image(layer_id=self.layer.layer_id, mount_ids=mount_ids)
-
-        response = await client.stub.ImageCreate(api_pb2.ImageCreateRequest(client_id=client.client_id, image=image))
-        self.image_id = response.image_id
-        return self.image_id
-
     async def join(self, client):
-        logger.debug('Waiting for image %s' % self.image_id)
-        while True:
-            request = api_pb2.ImageJoinRequest(image_id=self.image_id, timeout=BLOCKING_REQUEST_TIMEOUT)
-            response = await retry(client.stub.ImageJoin)(request, timeout=GRPC_REQUEST_TIMEOUT)
-            if not response.result.status:
-                continue
-            elif response.result.status == api_pb2.GenericResult.Status.FAILURE:
-                raise Exception(response.result.exception)
-            elif response.result.status == api_pb2.GenericResult.Status.SUCCESS:
-                return response
-            else:
-                raise Exception('Unknown status %s!' % response.result.status)
+        # TODO: there's some risk of a race condition here
+        if self.image_id is None:
+            coros = [self.layer.join(client)]
+            for mount in self.mounts:
+                coros.append(mount.join(client))
+            results = await asyncio.gather(*coros)
+
+            layer_id = results[0]
+            mount_ids = results[1:]
+
+            image = api_pb2.Image(layer_id=self.layer.layer_id, mount_ids=mount_ids)
+
+            response = await client.stub.ImageCreate(api_pb2.ImageCreateRequest(client_id=client.client_id, image=image))
+            self.image_id = response.image_id
+
+        return self.image_id
 
     def function(self, raw_f):
         ''' Primarily to be used as a decorator.'''

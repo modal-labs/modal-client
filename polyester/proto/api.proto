@@ -112,6 +112,15 @@ message LayerGetOrCreateResponse {
   string layer_id = 1;
 }
 
+message LayerJoinRequest {
+  string layer_id = 1;
+  float timeout = 2;
+}
+
+message LayerJoinResponse {
+  GenericResult result = 1;
+}
+
 message LayerGetByTagRequest {
   string tag = 1;
 }
@@ -137,15 +146,6 @@ message ImageCreateRequest {
 
 message ImageCreateResponse {
   string image_id = 2;
-}
-
-message ImageJoinRequest {
-  string image_id = 1;
-  float timeout = 2;
-}
-
-message ImageJoinResponse {
-  GenericResult result = 2;
 }
 
 message FunctionCreateRequest {
@@ -249,6 +249,15 @@ message MountDoneRequest {
   string mount_id = 1;
 }
 
+message MountJoinRequest {
+  string mount_id = 1;
+  float timeout = 2;
+}
+
+message MountJoinResponse {
+  GenericResult result = 1;
+}
+
 service PolyesterClient {
   // Generic client-level calls
   rpc Hello(HelloRequest) returns (HelloResponse);
@@ -266,15 +275,16 @@ service PolyesterClient {
   rpc MountRegisterFile(stream MountRegisterFileRequest) returns (stream MountRegisterFileResponse);
   rpc MountUploadFile(stream MountUploadFileRequest) returns (Empty);  // TODO: return something?
   rpc MountDone(MountDoneRequest) returns (Empty);
+  rpc MountJoin(MountJoinRequest) returns (MountJoinResponse);
 
   // Layers
   rpc LayerGetOrCreate(LayerGetOrCreateRequest) returns (LayerGetOrCreateResponse);
+  rpc LayerJoin(LayerJoinRequest) returns (LayerJoinResponse);
   rpc LayerGetByTag(LayerGetByTagRequest) returns (LayerGetByTagResponse);
   rpc LayerSetTag(LayerSetTagRequest) returns (Empty);
 
   // Images
   rpc ImageCreate(ImageCreateRequest) returns (ImageCreateResponse);
-  rpc ImageJoin(ImageJoinRequest) returns (ImageJoinResponse);
 
   // Functions
   rpc FunctionCreate(FunctionCreateRequest) returns (FunctionCreateResponse);
