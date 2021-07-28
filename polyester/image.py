@@ -12,11 +12,16 @@ from .grpc_utils import GRPC_REQUEST_TIMEOUT, BLOCKING_REQUEST_TIMEOUT
 from .proto import api_pb2
 
 
-def get_sha256_hex(filename, rel_filename):
-    # Somewhat CPU intensive, so we run it in a thread/process
+def get_sha256_hex_from_content(content):
     m = hashlib.sha256()
-    m.update(open(filename, 'rb').read())
-    return filename, rel_filename, m.hexdigest()
+    m.update(content)
+    return m.hexdigest()
+
+
+def get_sha256_hex_from_filename(filename, rel_filename):
+    # Somewhat CPU intensive, so we run it in a thread/process
+    content = open(filename, 'rb').read()
+    return filename, rel_filename, get_sha256_hex_from_content(content)
 
 
 async def get_files(local_dir, condition):
@@ -28,7 +33,7 @@ async def get_files(local_dir, condition):
                 filename = os.path.join(root, name)
                 rel_filename = os.path.relpath(filename, local_dir)
                 if condition(filename):
-                    futs.append(loop.run_in_executor(exe, get_sha256_hex, filename, rel_filename))
+                    futs.append(loop.run_in_executor(exe, get_sha256_hex_from_filename, filename, rel_filename))
         logger.debug(f'Computing checksums for {len(futs)} files using {exe._max_workers} workers')
         for fut in asyncio.as_completed(futs):
             filename, rel_filename, sha256_hex = await fut
@@ -112,15 +117,29 @@ mount_py_in_workdir_into_root = Mount(
 )
 
 
+def _make_bytes(s):
+    assert type(s) in (str, bytes)
+    return s.encode('ascii') if type(s) is str else s
+
+
 @synchronizer
 class Layer:
     def __init__(self, tag=None, base_layers={}, dockerfile_commands=[], context_files={}, must_create=False):
         self.layer_id = None
         self.tag = tag
         self.base_layers = base_layers
-        self.dockerfile_commands = dockerfile_commands
+        self.dockerfile_commands = [_make_bytes(s) for s in dockerfile_commands]
         self.context_files = context_files
         self.must_create = must_create
+
+        # Construct the local id
+        local_id_args = []
+        for docker_tag, layer in base_layers.items():
+            local_id_args.append('b:%s:(%s)' % (docker_tag, layer.local_id))
+        local_id_args.append('c:%s' % get_sha256_hex_from_content(b'\n'.join(self.dockerfile_commands)))
+        for filename, content in context_files.items():
+            local_id_args.append('f:%s:%s' % (filename, get_sha256_hex_from_content(content)))
+        self.local_id = ','.join(local_id_args)
 
     async def join(self, client):
         # TODO: there's some risk of a race condition here
@@ -190,6 +209,7 @@ class Image:
         self.layer = layer
         self.mounts = mounts
         self.image_id = None
+        self.local_id = 'i:(%s)' % layer.local_id  # TODO: include the mounts in the local id too!!!
 
     async def join(self, client):
         # TODO: there's some risk of a race condition here
@@ -202,7 +222,11 @@ class Image:
             layer_id = results[0]
             mount_ids = results[1:]
 
-            image = api_pb2.Image(layer_id=self.layer.layer_id, mount_ids=mount_ids)
+            image = api_pb2.Image(
+                layer_id=self.layer.layer_id,
+                mount_ids=mount_ids,
+                local_id=self.local_id,
+            )
 
             response = await client.stub.ImageCreate(api_pb2.ImageCreateRequest(client_id=client.client_id, image=image))
             self.image_id = response.image_id
@@ -212,6 +236,10 @@ class Image:
     def function(self, raw_f):
         ''' Primarily to be used as a decorator.'''
         return decorate_function(raw_f, self)
+
+    def is_inside(self):
+        # This is used from inside of containers to know whether this container is active or not
+        return os.getenv('POLYESTER_IMAGE_LOCAL_ID') == self.local_id
 
 
 class DebianSlim(Image):

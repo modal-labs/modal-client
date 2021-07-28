@@ -137,6 +137,7 @@ message LayerSetTagRequest {
 message Image {
   string layer_id = 1;
   repeated string mount_ids = 2;
+  string local_id = 3;
 }
 
 message ImageCreateRequest {
