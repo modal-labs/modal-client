@@ -17,8 +17,14 @@ from .serialization import serializable
 def _function_to_path(f):
     module = inspect.getmodule(f)
     if module.__spec__:
+        # TODO: even if the module has a spec, we should probably check the file of it
+        # Either we can infer that it's a system module, or if it's something in the
+        # cwd then let's make sure it can be imported?
         module_name = module.__spec__.name
     else:
+        # Note that this case covers both these cases:
+        # python -m foo.bar
+        # python foo/bar.py
         fn = os.path.splitext(module.__file__)[0]
         path = os.path.relpath(fn, os.getcwd())  # TODO: might want to do it relative to other paths in sys.path?
         parts = os.path.split(path)
@@ -91,9 +97,6 @@ class Function:
         async with self._get_client() as client:
             if not self.function_id:
                 # Create function remotely
-                # First let's verify we got the path right (just make sure it doesn't raise)
-                _path_to_function(self.module_name, self.function_name)
-
                 image_id = await self.image.join(client)
                 data = client.serialize(self.raw_f)
                 request = api_pb2.FunctionGetOrCreateRequest(
