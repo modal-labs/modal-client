@@ -149,14 +149,17 @@ message ImageCreateResponse {
   string image_id = 2;
 }
 
-message FunctionCreateRequest {
+message FunctionGetOrCreateRequest {
   string client_id = 1;
   string image_id = 2;
-  bytes data = 3;
-  string name = 4;
+  bytes data = 3;  // TODO: remove
+  string name = 4;  // TODO: remove
+  string image_local_id = 5;
+  string module_name = 6;
+  string function_name = 7;
 }
 
-message FunctionCreateResponse {
+message FunctionGetOrCreateResponse {
   string function_id = 1;
 }
 
@@ -288,7 +291,7 @@ service PolyesterClient {
   rpc ImageCreate(ImageCreateRequest) returns (ImageCreateResponse);
 
   // Functions
-  rpc FunctionCreate(FunctionCreateRequest) returns (FunctionCreateResponse);
+  rpc FunctionGetOrCreate(FunctionGetOrCreateRequest) returns (FunctionGetOrCreateResponse);
   rpc FunctionCall(FunctionCallRequest) returns (FunctionCallResponse);
   rpc FunctionGetNextOutput(FunctionGetNextOutputRequest) returns (FunctionGetNextOutputResponse);  // Returns the next result
   rpc FunctionGet(FunctionGetRequest) returns (FunctionGetResponse);  // For containers to pull serialized function

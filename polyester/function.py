@@ -1,4 +1,6 @@
 import asyncio
+import cloudpickle
+import importlib
 import inspect
 import os
 import uuid
@@ -12,33 +14,36 @@ from .queue import Queue
 from .serialization import serializable
 
 
-def _get_function_name(obj):
-    # This isn't used for anything other than a human-readable label,
-    # so we can be pretty opportunistic
-    module = inspect.getmodule(obj)
+def _function_to_path(f):
+    module = inspect.getmodule(f)
     if module.__spec__:
         module_name = module.__spec__.name
     else:
         fn = os.path.splitext(module.__file__)[0]
-        path = os.path.relpath(fn, os.getcwd())
+        path = os.path.relpath(fn, os.getcwd())  # TODO: might want to do it relative to other paths in sys.path?
         parts = os.path.split(path)
         module_name = '.'.join(p for p in parts if p and not p.startswith('.'))
-    function_name = obj.__name__
-    return '%s.%s' % (module_name, function_name)
-    
+    function_name = f.__name__
+    return (module_name, function_name)
 
-@serializable
+
+def _path_to_function(module_name, function_name):
+    # Opposite of _function_to_path
+    module = importlib.import_module(module_name)
+    return getattr(module, function_name)
+
+
+# @serializable
 @synchronizer
 class Function:
-    def __init__(self, raw_f=None, image=None, client=None, local_id=None, remote_id=None):
-        if raw_f is not None:
-            assert callable(raw_f)
-            self.raw_f = raw_f
-            self.name = _get_function_name(raw_f)
+    def __init__(self, raw_f, image=None, client=None):
+        assert callable(raw_f)
+        self.raw_f = raw_f
+        self.module_name, self.function_name = _function_to_path(raw_f)
+        self.name = '%s.%s' % (self.module_name, self.function_name)
         self.image = image
-        # TODO: do we really need to pass the client to the base class here?
-        # in most cases, client is None and is determined in runtime
-        super().__init__(client=client, local_id=local_id, remote_id=remote_id)
+        self.client = client  # TODO: is this ever used?
+        self.function_id = None
 
     def _get_client(self):
         # Maybe this needs to go on the serializable base class, not sure
@@ -52,7 +57,7 @@ class Function:
             # Everything will just be passed as the first input
             args = [(arg,) for arg in args]
         request = api_pb2.FunctionCallRequest(
-            function_id=self.remote_id,
+            function_id=self.function_id,
             inputs=[client.serialize((arg, kwargs)) for arg in args],
             idempotency_key=str(uuid.uuid4()),
             call_id=call_id
@@ -63,7 +68,7 @@ class Function:
     async def _dequeue(self, client, call_id, n_outputs):
         while True:
             request = api_pb2.FunctionGetNextOutputRequest(
-                function_id=self.remote_id,
+                function_id=self.function_id,
                 call_id=call_id,
                 timeout=BLOCKING_REQUEST_TIMEOUT,
                 idempotency_key=str(uuid.uuid4()),
@@ -84,17 +89,24 @@ class Function:
         # It probably makes a lot of sense to move the input throttling to the server instead.
 
         async with self._get_client() as client:
-            if not self.remote_id:
-                # TODO: implement function disambiguation later
-                #request = api_pb2.FunctionExistsRequest(client_id=client.id, client_side_key=self.client_side_key)
-                #response = await client.stub.FunctionExists(request)
+            if not self.function_id:
+                # Create function remotely
+                # First let's verify we got the path right (just make sure it doesn't raise)
+                _path_to_function(self.module_name, self.function_name)
 
                 image_id = await self.image.join(client)
                 data = client.serialize(self.raw_f)
-                request = api_pb2.FunctionCreateRequest(client_id=client.client_id, data=data,
-                                                        image_id=image_id, name=self.name)
-                response = await client.stub.FunctionCreate(request)
-                self.remote_id = response.function_id
+                request = api_pb2.FunctionGetOrCreateRequest(
+                    client_id=client.client_id,
+                    data=data,  # TODO: remove
+                    image_id=image_id,
+                    name=self.name,  # TODO: remove
+                    image_local_id=self.image.local_id,
+                    module_name=self.module_name,
+                    function_name=self.function_name,
+                )
+                response = await client.stub.FunctionGetOrCreate(request)
+                self.function_id = response.function_id
 
             # TODO: we should support asynchronous generators as well
             inputs = iter(inputs)  # Handle non-generator inputs
