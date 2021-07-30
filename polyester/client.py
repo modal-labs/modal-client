@@ -195,11 +195,6 @@ class ContainerClient:
     def deserialize(self, s: bytes):
         return serializable.deserialize(self, s)
 
-    async def function_get(self, function_id):
-        request = api_pb2.FunctionGetRequest(function_id=function_id)
-        response = await self.stub.FunctionGet(request)
-        return self.deserialize(response.data)
-
     async def function_get_next_input(self, task_id, function_id):
         while True:
             idempotency_key = str(uuid.uuid4())
