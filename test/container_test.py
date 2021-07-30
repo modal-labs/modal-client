@@ -2,6 +2,7 @@ import pytest
 
 from polyester.container_entrypoint import function
 from polyester.proto import api_pb2
+from polyester.function import Function
 
 
 def square(x):
@@ -13,19 +14,12 @@ def raises(x):
 
 
 class FakeContainerClient:
-    def __init__(self, fail=False):
-        self.fail = fail
+    def __init__(self):
         self.inputs = [
             (((42,), {}), 'in-123', False),
             (None, None, True),
         ]
         self.outputs = []
-
-    async def function_get(self, function_id):
-        if self.fail:
-            return raises
-        else:
-            return square
 
     async def function_get_next_input(self, task_id, function_id):
         return self.inputs.pop(0)
@@ -37,7 +31,7 @@ class FakeContainerClient:
 @pytest.mark.asyncio
 async def test_container_entrypoint_success():
     client = FakeContainerClient()
-    await function(client, 'ta-123', 'fu-123')
+    await function(client, 'ta-123', 'fu-123', square)
     assert client.outputs == [
         (api_pb2.GenericResult.Status.SUCCESS, 1764, None, None)
     ]
@@ -45,10 +39,15 @@ async def test_container_entrypoint_success():
 
 @pytest.mark.asyncio
 async def test_container_entrypoint_failure():
-    client = FakeContainerClient(fail=True)
-    await function(client, 'ta-123', 'fu-123')
+    client = FakeContainerClient()
+    await function(client, 'ta-123', 'fu-123', raises)
     assert len(client.outputs) == 1
     assert client.outputs[0][0] == api_pb2.GenericResult.Status.FAILURE
     assert client.outputs[0][1] is None
     assert client.outputs[0][2] == 'Exception(\'Failure!\')'
     assert 'Traceback' in client.outputs[0][3]
+
+
+def test_import_function_dynamically():
+    f = Function.get_function('polyester.test_support', 'square')
+    assert f(42) == 42*42
