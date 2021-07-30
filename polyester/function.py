@@ -54,7 +54,6 @@ class Function:
         assert callable(raw_f)
         self.raw_f = raw_f
         self.module_name, self.function_name = _function_to_path(raw_f)
-        self.name = '%s.%s' % (self.module_name, self.function_name)
         self.image = image
         self.client = client  # TODO: is this ever used?
         self.function_id = None
@@ -107,14 +106,14 @@ class Function:
                 # Create function remotely
                 image_id = await self.image.join(client)
                 data = client.serialize(self.raw_f)
-                request = api_pb2.FunctionGetOrCreateRequest(
-                    client_id=client.client_id,
-                    data=data,  # TODO: remove
-                    image_id=image_id,
-                    name=self.name,  # TODO: remove
-                    image_local_id=self.image.local_id,
+                function_definition = api_pb2.Function(
                     module_name=self.module_name,
                     function_name=self.function_name,
+                )
+                request = api_pb2.FunctionGetOrCreateRequest(
+                    client_id=client.client_id,
+                    image_id=image_id,
+                    function=function_definition,
                 )
                 response = await client.stub.FunctionGetOrCreate(request)
                 self.function_id = response.function_id
