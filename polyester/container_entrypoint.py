@@ -6,13 +6,11 @@ import traceback
 from .async_utils import retry
 from .client import ContainerClient
 from .config import logger
+from .function import Function
 from .proto import api_pb2
 
 
-async def function(client, task_id, function_id):
-    logger.debug('Getting function %s' % function_id)
-    target = await client.function_get(function_id)
-
+async def function(client, task_id, function_id, target):
     # Note that there's actually 4 types of functions in Python: (is generator) * (is async)
     # TODO: the function could be a vanilla function returning a generator or a coroutine, so
     # we should really just call it and see what we get back (the only caveat is that it has
@@ -49,11 +47,15 @@ async def function(client, task_id, function_id):
 
 
 async def main(args):
-    tag, task_id, function_id = args
+    tag, task_id, function_id, module_name, function_name = args
     assert tag == 'function'
     logger.debug('Container: starting')
+
+    logger.debug('Getting function %s.%s' % (module_name, function_name))
+    target = Function.get_function(module_name, function_name)
+
     async with ContainerClient(task_id) as client:
-        await function(client, task_id, function_id)
+        await function(client, task_id, function_id, target)
 
     logger.debug('Container: done')
 

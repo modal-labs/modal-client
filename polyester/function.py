@@ -3,6 +3,7 @@ import cloudpickle
 import importlib
 import inspect
 import os
+import sys
 import uuid
 
 from .async_utils import retry, synchronizer
@@ -35,8 +36,15 @@ def _function_to_path(f):
 
 def _path_to_function(module_name, function_name):
     # Opposite of _function_to_path
-    module = importlib.import_module(module_name)
-    return getattr(module, function_name)
+    try:
+        module = importlib.import_module(module_name)
+        return getattr(module, function_name)
+    except ModuleNotFoundError:
+        # Just print some debug stuff, then re-raise
+        logger.info(f'{os.getcwd()=}')
+        logger.info(f'{sys.path=}')
+        logger.info(f'{os.listdir()=}')
+        raise
 
 
 # @serializable
@@ -138,6 +146,12 @@ class Function:
         outputs = [output async for output in self.map([args], kwargs=kwargs, star=True)]
         assert len(outputs) == 1
         return outputs[0]
+
+    @staticmethod
+    def get_function(module_name, function_name):
+        f = _path_to_function(module_name, function_name)
+        assert isinstance(f, Function)
+        return f.raw_f
 
 
 def decorate_function(raw_f, image):

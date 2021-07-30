@@ -149,12 +149,12 @@ message ImageCreateResponse {
   string image_id = 2;
 }
 
-message FunctionGetOrCreateRequest {
+message FunctionGetOrCreateRequest {  // Maybe we should just have a Function object?
   string client_id = 1;
   string image_id = 2;
   bytes data = 3;  // TODO: remove
   string name = 4;  // TODO: remove
-  string image_local_id = 5;
+  string image_local_id = 5;  // Maybe superfluous: I guess this can be inferred from the image?
   string module_name = 6;
   string function_name = 7;
 }
@@ -193,14 +193,6 @@ message FunctionGetNextCallRequest {
 message FunctionGetNextCallResponse {
   string call_id = 1;
   bytes input = 2;
-}
-
-message FunctionGetRequest {
-  string function_id = 1;
-}
-
-message FunctionGetResponse {
-  bytes data = 1;
 }
 
 message FunctionGetNextInputRequest {
@@ -294,7 +286,6 @@ service PolyesterClient {
   rpc FunctionGetOrCreate(FunctionGetOrCreateRequest) returns (FunctionGetOrCreateResponse);
   rpc FunctionCall(FunctionCallRequest) returns (FunctionCallResponse);
   rpc FunctionGetNextOutput(FunctionGetNextOutputRequest) returns (FunctionGetNextOutputResponse);  // Returns the next result
-  rpc FunctionGet(FunctionGetRequest) returns (FunctionGetResponse);  // For containers to pull serialized function
   rpc FunctionGetNextInput(FunctionGetNextInputRequest) returns (FunctionGetNextInputResponse);  // For containers to request next call
   rpc FunctionOutput(FunctionOutputRequest) returns (Empty);  // For containers to return result
 }
