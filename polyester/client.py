@@ -70,7 +70,7 @@ class Client:
         assert self.state == ClientState.CREATED
 
         logger.debug('Client: Starting')
-        self.connection_factory = GRPCConnectionFactory(self.server_url)
+        self.connection_factory = GRPCConnectionFactory(self.server_url, self.token_id, self.token_secret)
         self._channel_pool = ChannelPool(self.connection_factory)
         await self._channel_pool.start()
         self.stub = api_pb2_grpc.PolyesterClientStub(self._channel_pool)

@@ -1,6 +1,8 @@
+import abc
 import asyncio
 import contextlib
 import enum
+import grpc.aio
 import re
 import time
 import traceback
@@ -188,3 +190,50 @@ class ChannelPool:
 
     def stream_stream(self, method, request_serializer, response_deserializer):
         return self._wrap_generator(RPCType.STREAM_STREAM, method, request_serializer, response_deserializer)
+
+
+class BasicInterceptor:
+    @abc.abstractmethod
+    async def intercept(self, client_call_details):
+        pass
+
+
+class BasicInterceptorHolder:
+    def __init__(self, basic_interceptor):
+        self._basic_interceptor = basic_interceptor
+
+
+# The code below is some ridiculous boiler plate to transform the basic interceptor into
+# 4 different interceptors that each handle different call types (but in the same way)
+
+
+class BasicUnaryUnaryInterceptor(grpc.aio.UnaryUnaryClientInterceptor, BasicInterceptorHolder):
+    async def intercept_unary_unary(self, continuation, client_call_details, request):
+        await self._basic_interceptor.intercept(client_call_details)
+        return await continuation(client_call_details, request)
+
+
+class BasicUnaryStreamInterceptor(grpc.aio.UnaryStreamClientInterceptor, BasicInterceptorHolder):
+    async def intercept_unary_stream(self, continuation, client_call_details, request):
+        await self._basic_interceptor.intercept(client_call_details)
+        return await continuation(client_call_details, request)
+
+
+class BasicStreamUnaryInterceptor(grpc.aio.StreamUnaryClientInterceptor, BasicInterceptorHolder):
+    async def intercept_stream_unary(self, continuation, client_call_details, request_iterator):
+        await self._basic_interceptor.intercept(client_call_details)
+        return await continuation(client_call_details, request_iterator)
+
+
+class BasicStreamStreamInterceptor(grpc.aio.StreamStreamClientInterceptor, BasicInterceptorHolder):
+    async def intercept_stream_stream(self, continuation, client_call_details, request_iterator):
+        await self._basic_interceptor.intercept(client_call_details)
+        return await continuation(client_call_details, request_iterator)
+
+
+def make_interceptors(basic_interceptor):
+    assert isinstance(basic_interceptor, BasicInterceptor)
+    return (BasicUnaryUnaryInterceptor(basic_interceptor),
+            BasicUnaryStreamInterceptor(basic_interceptor),
+            BasicStreamUnaryInterceptor(basic_interceptor),
+            BasicStreamStreamInterceptor(basic_interceptor))
