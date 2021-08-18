@@ -76,5 +76,4 @@ async def test_container_client(servicer):
     assert len(servicer.requests) == 2
     assert isinstance(servicer.requests[0], api_pb2.HelloRequest)
     assert servicer.requests[0].client_type == api_pb2.ClientType.CONTAINER
-    assert servicer.requests[0].task_id == 'ta-123'
     assert isinstance(servicer.requests[1], api_pb2.HeartbeatRequest)

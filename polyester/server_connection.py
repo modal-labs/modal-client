@@ -29,10 +29,12 @@ class GRPCConnectionFactory:
 
     TODO: move this elsewhere
     '''
-    def __init__(self, server_url, token_id=None, token_secret=None):
+    def __init__(self, server_url, token_id=None, token_secret=None, task_id=None, task_secret=None):
         self._server_url = server_url
         self._token_id = token_id
         self._token_secret = token_secret
+        self._task_id = task_id
+        self._task_secret = task_secret
 
     async def create(self):
         protocol, hostname = self._server_url.split('://')
@@ -41,7 +43,8 @@ class GRPCConnectionFactory:
             ('grpc.max_send_message_length', 1<<26),
             ('grpc.max_receive_message_length', 1<<26),
         ]
-        interceptors = make_interceptors(BasicAuthInterceptor(self._token_id, self._token_secret))
+        basic_auth_interceptor = BasicAuthInterceptor(self._token_id, self._token_secret, self._task_id, self._task_secret)
+        interceptors = make_interceptors(basic_auth_interceptor)
         if protocol.endswith('s'):
             logger.debug('Connecting to %s using secure channel' % hostname)
             return grpc.aio.secure_channel(hostname, grpc.ssl_channel_credentials(), options=options, interceptors=interceptors)
