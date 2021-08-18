@@ -32,10 +32,6 @@ enum ClientType {
 
 message HelloRequest {
   ClientType client_type = 1;
-  string task_id = 2;  // Only used for containers
-  string token_id = 3;
-  string token_secret = 4;
-  string task_secret = 5;  // Only used for containers
 }
 
 message ByeRequest {

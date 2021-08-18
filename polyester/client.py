@@ -70,18 +70,14 @@ class Client:
         assert self.state == ClientState.CREATED
 
         logger.debug('Client: Starting')
-        self.connection_factory = GRPCConnectionFactory(self.server_url, self.token_id, self.token_secret)
+        self.connection_factory = GRPCConnectionFactory(self.server_url, token_id=self.token_id, token_secret=self.token_secret)
         self._channel_pool = ChannelPool(self.connection_factory)
         await self._channel_pool.start()
         self.stub = api_pb2_grpc.PolyesterClientStub(self._channel_pool)
 
         # TODO: we probably should use the API keys on every single request, not just the handshake
         # TODO: should we encrypt the API key so it's not sent over the wire?
-        req = api_pb2.HelloRequest(
-            client_type=api_pb2.ClientType.CLIENT,
-            token_id=self.token_id,
-            token_secret=self.token_secret,
-        )
+        req = api_pb2.HelloRequest(client_type=api_pb2.ClientType.CLIENT)
         self.client_id = await _handshake(self.stub, req)
 
         # Start heartbeats and logs tracking, which are long-running client-wide things
@@ -158,6 +154,8 @@ class Client:
 
 @synchronizer
 class ContainerClient:
+    # TODO: we should remove this as a separate client type, it's just going to lead to wasteful
+    # double server connections since the client code typically will want to connect to the server anyway
     def __init__(self, task_id, server_url=None, task_secret=None):
         self.task_id = task_id
         self.server_url = _default_from_config(server_url, 'server.url')
@@ -166,15 +164,11 @@ class ContainerClient:
 
     async def start(self):
         # TODO: rewrite this to be an async context manager?
-        self.connection_factory = GRPCConnectionFactory(self.server_url)
+        self.connection_factory = GRPCConnectionFactory(self.server_url, task_id=self.task_id, task_secret=self.task_secret)
         self._channel_pool = ChannelPool(self.connection_factory)
         await self._channel_pool.start()
         self.stub = api_pb2_grpc.PolyesterClientStub(self._channel_pool)
-        req = api_pb2.HelloRequest(
-            client_type=api_pb2.ClientType.CONTAINER,
-            task_id=self.task_id,
-            task_secret=self.task_secret,
-        )
+        req = api_pb2.HelloRequest(client_type=api_pb2.ClientType.CONTAINER)
         self.client_id = await _handshake(self.stub, req)
         self._heartbeats_task = infinite_loop(lambda: _heartbeats(self.stub, self.client_id), timeout=None)
 

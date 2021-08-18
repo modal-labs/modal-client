@@ -9,16 +9,19 @@ from .config import config, logger
 
 
 class BasicAuthInterceptor(BasicInterceptor):
-    def __init__(self, token_id, token_secret):
-        self._token_id = token_id
-        self._token_secret = token_secret
+    def __init__(self, token_id=None, token_secret=None, task_id=None, task_secret=None):
+        self._metadata = {
+            'x-polyester-token-id': token_id,
+            'x-polyester-token-secret': token_secret,
+            'x-polyester-task-id': task_id,
+            'x-polyester-task-secret': task_secret
+        }
 
     async def intercept(self, client_call_details):
-        # TODO: we really shouldn't send the secret here, but instead sign the requests
-        if self._token_id is not None:
-            client_call_details.metadata['x-polyester-token-id'] = self._token_id
-        if self._token_secret is not None:
-            client_call_details.metadata['x-polyester-token-secret'] = self._token_secret
+        # TODO: we really shouldn't send the id/secret here, but instead sign the requests
+        for k, v in self._metadata.items():
+            if v is not None:
+                client_call_details.metadata[k] = v
 
 
 class GRPCConnectionFactory:
