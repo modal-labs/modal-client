@@ -15,8 +15,10 @@ class BasicAuthInterceptor(BasicInterceptor):
 
     async def intercept(self, client_call_details):
         # TODO: we really shouldn't send the secret here, but instead sign the requests
-        client_call_details.metadata['x-polyester-token-id'] = self._token_id
-        client_call_details.metadata['x-polyester-token-secret'] = self._token_secret
+        if self._token_id is not None:
+            client_call_details.metadata['x-polyester-token-id'] = self._token_id
+        if self._token_secret is not None:
+            client_call_details.metadata['x-polyester-token-secret'] = self._token_secret
 
 
 class GRPCConnectionFactory:
@@ -24,7 +26,7 @@ class GRPCConnectionFactory:
 
     TODO: move this elsewhere
     '''
-    def __init__(self, server_url, token_id, token_secret):
+    def __init__(self, server_url, token_id=None, token_secret=None):
         self._server_url = server_url
         self._token_id = token_id
         self._token_secret = token_secret
@@ -39,7 +41,7 @@ class GRPCConnectionFactory:
         interceptors = make_interceptors(BasicAuthInterceptor(self._token_id, self._token_secret))
         if protocol.endswith('s'):
             logger.debug('Connecting to %s using secure channel' % hostname)
-            return grpc.aio.secure_channel(hostname, grpc.ssl_channel_credentials(), options=options, intereptors=interceptors)
+            return grpc.aio.secure_channel(hostname, grpc.ssl_channel_credentials(), options=options, interceptors=interceptors)
         else:
             logger.debug('Connecting to %s using insecure channel' % hostname)
             return grpc.aio.insecure_channel(hostname, options=options, interceptors=interceptors)
