@@ -54,7 +54,7 @@ async def main(args):
     logger.debug('Getting function %s.%s' % (module_name, function_name))
     target = Function.get_function(module_name, function_name)
 
-    async with Client(task_id, client_type=api_pb2.ClientType.CONTAINER, task_logs_loop=False) as client:
+    async with Client(task_id=task_id, client_type=api_pb2.ClientType.CONTAINER, task_logs_loop=False) as client:
         await function(client, task_id, function_id, target)
 
     logger.debug('Container: done')
