@@ -16,6 +16,7 @@ from .utils import print_logs
 
 async def _handshake(stub, req):
     # Handshake with server
+    # TODO: move into class
     try:
         # Verify that we are connected
         response = await retry(stub.Hello)(req, timeout=5.0)
@@ -31,6 +32,7 @@ async def _handshake(stub, req):
 
 
 async def _heartbeats(stub, client_id, sleep=3):
+    # TODO: move into class
     async def loop():
         while True:
             yield api_pb2.HeartbeatRequest(client_id=client_id)
@@ -53,14 +55,25 @@ class ClientState(enum.Enum):
 class Client:
     _default_client = None
 
-    def __init__(self, server_url=None, token_id=None, token_secret=None, loops=True):
-        # TODO: should we make the kwargs here non-optional?
-        # If you want to use the config stuff then really you should just use .get_default()
+    def __init__(
+            self,
+            server_url=None,
+            token_id=None,
+            token_secret=None,
+            task_id=None,
+            task_secret=None,
+            client_type=api_pb2.ClientType.CLIENT,
+            heartbeat_loop=True,  # TODO: rethink
+            task_logs_loop=True,  # TODO: rethink
+    ):
         self.server_url = _default_from_config(server_url, 'server.url')
         self.token_id = _default_from_config(token_id, 'token.id')
         self.token_secret = _default_from_config(token_secret, 'token.secret')
-        assert self.token_id and self.token_secret
-        self.loops = loops
+        self.task_id = task_id
+        self.task_secret = task_secret
+        self.client_type = client_type
+        self.heartbeat_loop = heartbeat_loop
+        self.task_logs_loop = task_logs_loop
 
         # TODO: maybe factor out the lease count stuff to async_utils?
         self.lease_count = 0
@@ -70,21 +83,28 @@ class Client:
         assert self.state == ClientState.CREATED
 
         logger.debug('Client: Starting')
-        self.connection_factory = GRPCConnectionFactory(self.server_url, token_id=self.token_id, token_secret=self.token_secret)
+        self.connection_factory = GRPCConnectionFactory(
+            self.server_url,
+            token_id=self.token_id,
+            token_secret=self.token_secret,
+            task_id=self.task_id,
+            task_secret=self.task_secret
+        )
         self._channel_pool = ChannelPool(self.connection_factory)
         await self._channel_pool.start()
         self.stub = api_pb2_grpc.PolyesterClientStub(self._channel_pool)
 
         # TODO: we probably should use the API keys on every single request, not just the handshake
         # TODO: should we encrypt the API key so it's not sent over the wire?
-        req = api_pb2.HelloRequest(client_type=api_pb2.ClientType.CLIENT)
+        req = api_pb2.HelloRequest(client_type=self.client_type)
         self.client_id = await _handshake(self.stub, req)
 
         # Start heartbeats and logs tracking, which are long-running client-wide things
         # TODO: would be nice to have some proper ownership of these tasks so they are garbage collected
         # TODO: we should have some more graceful termination of these
-        if self.loops:
+        if self.task_logs_loop:
             self._logs_task = asyncio.create_task(self._track_logs())
+        if self.heartbeat_loop:
             self._heartbeats_task = infinite_loop(lambda: _heartbeats(self.stub, self.client_id), timeout=None)
 
         logger.debug('Client: Done starting')
@@ -97,12 +117,13 @@ class Client:
         logger.debug('Client: Shutting down')
         req = api_pb2.ByeRequest(client_id=self.client_id)
         await self.stub.Bye(req)
-        if self.loops:
+        if self.task_logs_loop:
             logger.debug('Waiting for logs to flush')
             try:
                 await asyncio.wait_for(self._logs_task, timeout=10.0)
             except asyncio.TimeoutError:
                 logger.exception('Timed out waiting for logs')
+        if self.heartbeat_loop:
             self._heartbeats_task.cancel()
         await self._channel_pool.close()
         logger.debug('Client: Done shutting down')
@@ -151,43 +172,7 @@ class Client:
             raise Exception('Default client in some wacky state')
         return cls._default_client
 
-
-@synchronizer
-class ContainerClient:
-    # TODO: we should remove this as a separate client type, it's just going to lead to wasteful
-    # double server connections since the client code typically will want to connect to the server anyway
-    def __init__(self, task_id, server_url=None, task_secret=None):
-        self.task_id = task_id
-        self.server_url = _default_from_config(server_url, 'server.url')
-        self.task_secret = _default_from_config(task_secret, 'task.secret')
-        assert self.task_secret
-
-    async def start(self):
-        # TODO: rewrite this to be an async context manager?
-        self.connection_factory = GRPCConnectionFactory(self.server_url, task_id=self.task_id, task_secret=self.task_secret)
-        self._channel_pool = ChannelPool(self.connection_factory)
-        await self._channel_pool.start()
-        self.stub = api_pb2_grpc.PolyesterClientStub(self._channel_pool)
-        req = api_pb2.HelloRequest(client_type=api_pb2.ClientType.CONTAINER)
-        self.client_id = await _handshake(self.stub, req)
-        self._heartbeats_task = infinite_loop(lambda: _heartbeats(self.stub, self.client_id), timeout=None)
-
-    async def __aenter__(self):
-        await self.start()
-        return self
-
-    async def close(self):
-        await self._channel_pool.close()
-        self._heartbeats_task.cancel()
-
-    async def __aexit__(self, type, value, tb):
-        await self.close()
-
-    def serialize(self, obj):
-        return serializable.serialize(self, obj)
-
-    def deserialize(self, s: bytes):
-        return serializable.deserialize(self, s)
+    # TODO: code below is container-specific
 
     async def function_get_next_input(self, task_id, function_id):
         while True:

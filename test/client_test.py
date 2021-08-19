@@ -5,7 +5,7 @@ import random
 import typing
 
 from polyester.async_utils import synchronizer
-from polyester.client import Client, ContainerClient
+from polyester.client import Client
 from polyester.proto import api_pb2, api_pb2_grpc
 
 
@@ -70,10 +70,11 @@ async def test_client(servicer):
 
 @pytest.mark.asyncio
 async def test_container_client(servicer):
-    async with ContainerClient('ta-123', servicer.remote_addr, 'task-secret'):
+    async with Client(servicer.remote_addr, task_id='ta-123', task_secret='task-secret', client_type=api_pb2.ClientType.CONTAINER, task_logs_loop=False):
         await asyncio.sleep(0.1)  # enough for a handshake to go through
 
-    assert len(servicer.requests) == 2
+    assert len(servicer.requests) == 3
     assert isinstance(servicer.requests[0], api_pb2.HelloRequest)
     assert servicer.requests[0].client_type == api_pb2.ClientType.CONTAINER
     assert isinstance(servicer.requests[1], api_pb2.HeartbeatRequest)
+    assert isinstance(servicer.requests[2], api_pb2.ByeRequest)
