@@ -3,6 +3,7 @@ import grpc
 from grpc.aio._channel import Channel
 import json
 import uuid
+import urllib.parse
 
 from .async_utils import retry
 from .config import config, logger
@@ -37,32 +38,35 @@ class GRPCConnectionFactory:
         self._task_secret = task_secret
 
     async def create(self):
-        protocol, hostname = self._server_url.split('://')
+        try:
+            o = urllib.parse.urlparse(self._server_url)
+        except:
+            logger.info(f'server url: {self._server_url}')
+            raise
+
         # TODO: this is a bit janky, we should fix this elsewhere (maybe pass large items by handle instead)
         options = [
             ('grpc.max_send_message_length', 1<<26),
             ('grpc.max_receive_message_length', 1<<26),
         ]
         basic_auth = BasicAuth(self._token_id, self._token_secret, self._task_id, self._task_secret)
-        if protocol.endswith('s'):
-            logger.debug('Connecting to %s using secure channel' % hostname)
-            channel_credentials = grpc.ssl_channel_credentials()
+        if o.scheme.endswith('s'):
+            logger.debug('Connecting to %s using secure channel' % o.netloc)
+            credentials = grpc.composite_channel_credentials(
+                grpc.ssl_channel_credentials(),
+                grpc.metadata_call_credentials(basic_auth),
+            )._credentials
         else:
-            logger.debug('Connecting to %s using insecure channel' % hostname)
-            channel_credentials = grpc.local_channel_credentials()
-
-        credentials = grpc.composite_channel_credentials(
-            channel_credentials,
-            grpc.metadata_call_credentials(basic_auth),
-        )
+            logger.debug('Connecting to %s using insecure channel' % o.netloc)
+            credentials = None
 
         # Note that the grpc.aio documentation uses secure_channel and insecure_channel, but those are just
         # thin wrappers around the underlying Channel constructor, and insecure_channel currently doesn't
         # let you provide a credentials object
         return Channel(
-            target=hostname,
+            target=o.netloc,
             options=options,
-            credentials=credentials._credentials,
+            credentials=credentials,
             compression=None,
             interceptors=None,
         )
