@@ -94,8 +94,6 @@ class Client:
         await self._channel_pool.start()
         self.stub = api_pb2_grpc.PolyesterClientStub(self._channel_pool)
 
-        # TODO: we probably should use the API keys on every single request, not just the handshake
-        # TODO: should we encrypt the API key so it's not sent over the wire?
         req = api_pb2.HelloRequest(client_type=self.client_type)
         self.client_id = await _handshake(self.stub, req)
 
