@@ -14,32 +14,6 @@ from .server_connection import GRPCConnectionFactory
 from .utils import print_logs
 
 
-async def _handshake(stub, req):
-    # Handshake with server
-    # TODO: move into class
-    try:
-        # Verify that we are connected
-        response = await retry(stub.Hello)(req, timeout=5.0)
-    except grpc.aio.AioRpcError as e:
-        # gRPC creates super cryptic error messages so we mask it this time and tell the user we couldn't connect
-        raise Exception('gRPC failed saying hello with error "%s"' % e.details()) from None
-    if response.error:
-        raise Exception('Error during handshake: %s' % response.error)
-    elif not response.client_id:
-        raise Exception('No client id returned from handshake')
-    else:
-        return response.client_id
-
-
-async def _heartbeats(stub, client_id, sleep=3):
-    # TODO: move into class
-    async def loop():
-        while True:
-            yield api_pb2.HeartbeatRequest(client_id=client_id)
-            await asyncio.sleep(sleep)
-    await stub.Heartbeats(loop())
-
-
 def _default_from_config(z, config_key):
     return z if z is not None else config[config_key]
 
@@ -95,7 +69,18 @@ class Client:
         self.stub = api_pb2_grpc.PolyesterClientStub(self._channel_pool)
 
         req = api_pb2.HelloRequest(client_type=self.client_type)
-        self.client_id = await _handshake(self.stub, req)
+        try:
+            # Verify that we are connected
+            response = await retry(self.stub.Hello)(req, timeout=5.0)
+        except grpc.aio.AioRpcError as e:
+            # gRPC creates super cryptic error messages so we mask it this time and tell the user we couldn't connect
+            raise Exception('gRPC failed saying hello with error "%s"' % e.details()) from None
+        if response.error:
+            raise Exception('Error during handshake: %s' % response.error)
+        elif not response.client_id:
+            raise Exception('No client id returned from handshake')
+
+        self.client_id = response.client_id
 
         # Start heartbeats and logs tracking, which are long-running client-wide things
         # TODO: would be nice to have some proper ownership of these tasks so they are garbage collected
@@ -103,7 +88,7 @@ class Client:
         if self.task_logs_loop:
             self._logs_task = asyncio.create_task(self._track_logs())
         if self.heartbeat_loop:
-            self._heartbeats_task = infinite_loop(lambda: _heartbeats(self.stub, self.client_id), timeout=None)
+            self._heartbeats_task = infinite_loop(self._heartbeats, timeout=None)
 
         logger.debug('Client: Done starting')
         self.state = ClientState.STARTED
@@ -137,6 +122,13 @@ class Client:
             await self._start()
         self.lease_count += 1
         return self
+
+    async def _heartbeats(self, sleep=3):
+        async def loop():
+            while True:
+                yield api_pb2.HeartbeatRequest(client_id=self.client_id)
+                await asyncio.sleep(sleep)
+        await self.stub.Heartbeats(loop())
 
     def serialize(self, obj):
         return serializable.serialize(self, obj)
