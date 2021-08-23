@@ -58,8 +58,12 @@ async def servicer():
 
 @pytest.mark.asyncio
 async def test_client(servicer):
-    async with Client(servicer.remote_addr, 'foo-id', 'foo-secret'):
-        await asyncio.sleep(0.1)  # enough for a handshake to go through
+    client = Client(servicer.remote_addr, api_pb2.ClientType.CLIENT, ('foo-id', 'foo-secret'), True, False)
+
+    # TODO: let's rethink how we're doing it, should we bring the context mgr back maybe?
+    await client._start()
+    await asyncio.sleep(0.1)  # enough for a handshake to go through
+    await client._close()
 
     assert len(servicer.requests) == 3
     assert isinstance(servicer.requests[0], api_pb2.HelloRequest)
@@ -70,8 +74,12 @@ async def test_client(servicer):
 
 @pytest.mark.asyncio
 async def test_container_client(servicer):
-    async with Client(servicer.remote_addr, task_id='ta-123', task_secret='task-secret', client_type=api_pb2.ClientType.CONTAINER, task_logs_loop=False):
-        await asyncio.sleep(0.1)  # enough for a handshake to go through
+    client = Client(servicer.remote_addr, api_pb2.ClientType.CONTAINER, ('ta-123', 'task-secret'), True, False)
+
+    # TODO: let's rethink how we're doing it, should we bring the context mgr back maybe?
+    await client._start()
+    await asyncio.sleep(0.1)  # enough for a handshake to go through
+    await client._close()
 
     assert len(servicer.requests) == 3
     assert isinstance(servicer.requests[0], api_pb2.HelloRequest)

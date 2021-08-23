@@ -6,12 +6,8 @@ from .config import logger
 
 
 class SerializableObject:
-    def __init__(self, client=None, local_id=None, remote_id=None):
-        if local_id is None:
-            local_id = str(uuid.uuid4())
+    def __init__(self, client=None):
         self.client = client
-        self.local_id = local_id
-        self.remote_id = remote_id
         self._serializable_object_initialized = True
 
 

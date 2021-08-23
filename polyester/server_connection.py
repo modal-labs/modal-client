@@ -36,7 +36,7 @@ class BasicAuth(grpc.AuthMetadataPlugin):
 class GRPCConnectionFactory:
     '''Manages gRPC connection with the server. This factory is used by the channel pool.
     '''
-    def __init__(self, server_url, client_type, credentials=None):
+    def __init__(self, server_url, client_type=None, credentials=None):
         try:
             o = urllib.parse.urlparse(server_url)
         except:
