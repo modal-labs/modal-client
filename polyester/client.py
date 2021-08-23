@@ -1,5 +1,4 @@
 import asyncio
-import enum
 import grpc.aio
 import os
 import uuid
@@ -14,55 +13,31 @@ from .server_connection import GRPCConnectionFactory
 from .utils import print_logs
 
 
-def _default_from_config(z, config_key):
-    return z if z is not None else config[config_key]
-
-
-class ClientState(enum.Enum):
-    CREATED = 0
-    STARTED = 1
-    CLOSING = 2
-    CLOSED = 3
-
-
 @synchronizer
 class Client:
     _default_client = None
+    _default_container_client = None
 
     def __init__(
             self,
-            server_url=None,
-            token_id=None,
-            token_secret=None,
-            task_id=None,
-            task_secret=None,
-            client_type=api_pb2.ClientType.CLIENT,
-            heartbeat_loop=True,  # TODO: rethink
-            task_logs_loop=True,  # TODO: rethink
+            server_url,
+            client_type,
+            credentials,
+            heartbeat_loop,  # TODO: rethink
+            task_logs_loop,  # TODO: rethink
     ):
-        self.server_url = _default_from_config(server_url, 'server.url')
-        self.token_id = _default_from_config(token_id, 'token.id')
-        self.token_secret = _default_from_config(token_secret, 'token.secret')
-        self.task_id = task_id
-        self.task_secret = task_secret
+        self.server_url = server_url
         self.client_type = client_type
+        self.credentials = credentials
         self.heartbeat_loop = heartbeat_loop
         self.task_logs_loop = task_logs_loop
 
-        # TODO: maybe factor out the lease count stuff to async_utils?
-        self.lease_count = 0
-        self.state = ClientState.CREATED
-
     async def _start(self):
-        assert self.state == ClientState.CREATED
-
         logger.debug('Client: Starting')
         self.connection_factory = GRPCConnectionFactory(
             self.server_url,
-            token_id=self.token_id,
-            token_secret=self.token_secret,
-            task_id=self.task_id,
-            task_secret=self.task_secret
+            self.client_type,
+            self.credentials,
         )
         self._channel_pool = ChannelPool(self.connection_factory)
         await self._channel_pool.start()
@@ -91,12 +66,9 @@ class Client:
             self._heartbeats_task = infinite_loop(self._heartbeats, timeout=None)
 
         logger.debug('Client: Done starting')
-        self.state = ClientState.STARTED
 
     async def _close(self):
-        assert self.state == ClientState.STARTED
-        self.state = ClientState.CLOSING
-
+        # TODO: when is this actually called?
         logger.debug('Client: Shutting down')
         req = api_pb2.ByeRequest(client_id=self.client_id)
         await self.stub.Bye(req)
@@ -110,18 +82,6 @@ class Client:
             self._heartbeats_task.cancel()
         await self._channel_pool.close()
         logger.debug('Client: Done shutting down')
-        self.state = ClientState.CLOSED
-
-    async def __aexit__(self, type, value, tb):
-        self.lease_count -= 1
-        if self.lease_count == 0:
-            await self._close()
-
-    async def __aenter__(self):
-        if self.lease_count == 0:
-            await self._start()
-        self.lease_count += 1
-        return self
 
     async def _heartbeats(self, sleep=3):
         async def loop():
@@ -137,32 +97,40 @@ class Client:
         return serializable.deserialize(self, s)
 
     async def _track_logs(self):
-        # This feels a bit hacky, I'd rather make the closing explicit in the communication wth TaskLogsGet
-        # and not rely on the Bye command to trigger a "done" event
-        # Let's revisit later.
-        done = False
-        while not done:
+        # TODO: how do we break this loop?
+        while True:
             request = api_pb2.TaskLogsGetRequest(client_id=self.client_id, timeout=BLOCKING_REQUEST_TIMEOUT)
             async for log_entry in self.stub.TaskLogsGet(request, timeout=GRPC_REQUEST_TIMEOUT):
                 if log_entry.done:
-                    if self.state == ClientState.CLOSING:
-                        done = True
+                    logger.info('No more logs')
+                    break
                 else:
                     print_logs(log_entry.data, log_entry.fd)
 
     @classmethod
-    def get_default(cls):
+    async def get_client(cls):
         if cls._default_client is None:
-            cls._default_client = Client()
-        elif cls._default_client.state in [ClientState.CLOSING, ClientState.CLOSED]:
-            cls._default_client = Client()
-        elif cls._default_client.state in [ClientState.CREATED, ClientState.STARTED]:
-            pass
-        else:
-            raise Exception('Default client in some wacky state')
+            server_url = config['server.url']
+            token_id = config['token.id']
+            token_secret = config['token.secret']
+            if token_id and token_secret:
+                credentials = (token_id, token_secret)
+            else:
+                credentials = None
+            cls._default_client = Client(server_url, api_pb2.ClientType.CLIENT, credentials, True, True)
+            await cls._default_client._start()
         return cls._default_client
 
-    # TODO: code below is container-specific
+    @classmethod
+    async def get_container_client(cls):
+        if cls._default_container_client is None:
+            server_url = config['server.url']
+            credentials = (config['task.id'], config['task.secret'])
+            cls._default_container_client = Client(server_url, api_pb2.ClientType.CONTAINER, credentials, True, False)
+            await cls._default_container_client._start()
+        return cls._default_container_client
+
+    # TODO: code below is container-specific and we should probably move it out of here
 
     async def function_get_next_input(self, task_id, function_id):
         while True:

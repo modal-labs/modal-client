@@ -58,10 +58,10 @@ class Function:
         self.client = client  # TODO: is this ever used?
         self.function_id = None
 
-    def _get_client(self):
+    async def _get_client(self):
         # Maybe this needs to go on the serializable base class, not sure
         if self.client is None:
-            return Client.get_default()
+            return await Client.get_client()
         else:
             return self.client
 
@@ -101,44 +101,45 @@ class Function:
         # and we don't enqueue more requests until we get back enough values.
         # It probably makes a lot of sense to move the input throttling to the server instead.
 
-        async with self._get_client() as client:
-            if not self.function_id:
-                # Create function remotely
-                image_id = await self.image.join(client)
-                data = client.serialize(self.raw_f)
-                function_definition = api_pb2.Function(
-                    module_name=self.module_name,
-                    function_name=self.function_name,
-                )
-                request = api_pb2.FunctionGetOrCreateRequest(
-                    client_id=client.client_id,
-                    image_id=image_id,
-                    function=function_definition,
-                )
-                response = await client.stub.FunctionGetOrCreate(request)
-                self.function_id = response.function_id
+        client = await self._get_client()
 
-            # TODO: we should support asynchronous generators as well
-            inputs = iter(inputs)  # Handle non-generator inputs
-            call_id = None
+        if not self.function_id:
+            # Create function remotely
+            image_id = await self.image.join(client)
+            data = client.serialize(self.raw_f)
+            function_definition = api_pb2.Function(
+                module_name=self.module_name,
+                function_name=self.function_name,
+            )
+            request = api_pb2.FunctionGetOrCreateRequest(
+                client_id=client.client_id,
+                image_id=image_id,
+                function=function_definition,
+            )
+            response = await client.stub.FunctionGetOrCreate(request)
+            self.function_id = response.function_id
 
-            n_enqueued, n_dequeued = 0, 0
-            input_exhausted = False
-            while not input_exhausted or n_dequeued < n_enqueued:
-                logger.debug('Map status: %d enqueued, %d dequeued' % (n_enqueued, n_dequeued))
-                batch_args = []
-                while not input_exhausted and n_enqueued < n_dequeued + window:
-                    try:
-                        batch_args.append(next(inputs))
-                        n_enqueued += 1
-                    except StopIteration:
-                        input_exhausted = True
-                if batch_args:
-                    call_id = await self._enqueue(client, call_id, batch_args, star, kwargs)
-                if n_dequeued < n_enqueued:
-                    async for output in self._dequeue(client, call_id, n_enqueued - n_dequeued):
-                        n_dequeued += 1
-                        yield output
+        # TODO: we should support asynchronous generators as well
+        inputs = iter(inputs)  # Handle non-generator inputs
+        call_id = None
+
+        n_enqueued, n_dequeued = 0, 0
+        input_exhausted = False
+        while not input_exhausted or n_dequeued < n_enqueued:
+            logger.debug('Map status: %d enqueued, %d dequeued' % (n_enqueued, n_dequeued))
+            batch_args = []
+            while not input_exhausted and n_enqueued < n_dequeued + window:
+                try:
+                    batch_args.append(next(inputs))
+                    n_enqueued += 1
+                except StopIteration:
+                    input_exhausted = True
+            if batch_args:
+                call_id = await self._enqueue(client, call_id, batch_args, star, kwargs)
+            if n_dequeued < n_enqueued:
+                async for output in self._dequeue(client, call_id, n_enqueued - n_dequeued):
+                    n_dequeued += 1
+                    yield output
 
     async def __call__(self, *args, **kwargs):
         ''' Uses map, but makes sure there's only 1 output. '''

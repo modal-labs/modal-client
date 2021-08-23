@@ -7,18 +7,26 @@ import urllib.parse
 
 from .async_utils import retry
 from .config import config, logger
+from .proto import api_pb2
 
 
 class BasicAuth(grpc.AuthMetadataPlugin):
     # See https://www.grpc.io/docs/guides/auth/
-    def __init__(self, token_id=None, token_secret=None, task_id=None, task_secret=None):
-        metadata = tuple([
-            ('x-polyester-token-id', token_id),
-            ('x-polyester-token-secret', token_secret),
-            ('x-polyester-task-id', task_id),
-            ('x-polyester-task-secret', task_secret),
-        ])
-        self._metadata = tuple((k, v) for k, v in metadata if v is not None)
+    def __init__(self, client_type, credentials):
+        if credentials and client_type == api_pb2.ClientType.CLIENT:
+            token_id, token_secret = credentials
+            self._metadata = tuple([
+                ('x-polyester-token-id', token_id),
+                ('x-polyester-token-secret', token_secret),
+            ])
+        elif credentials and client_type == api_pb2.ClientType.CONTAINER:
+            task_id, task_secret = credentials
+            self._metadata = tuple([
+                ('x-polyester-task-id', task_id),
+                ('x-polyester-task-secret', task_secret),
+            ])
+        else:
+            self._metadata = tuple()
 
     def __call__(self, context, callback):
         # TODO: we really shouldn't send the id/secret here, but instead sign the requests
@@ -26,47 +34,42 @@ class BasicAuth(grpc.AuthMetadataPlugin):
 
 
 class GRPCConnectionFactory:
-    '''Manages gRPC connection with the Server
-
-    TODO: move this elsewhere
+    '''Manages gRPC connection with the server. This factory is used by the channel pool.
     '''
-    def __init__(self, server_url, token_id=None, token_secret=None, task_id=None, task_secret=None):
-        self._server_url = server_url
-        self._token_id = token_id
-        self._token_secret = token_secret
-        self._task_id = task_id
-        self._task_secret = task_secret
-
-    async def create(self):
+    def __init__(self, server_url, client_type, credentials=None):
         try:
-            o = urllib.parse.urlparse(self._server_url)
+            o = urllib.parse.urlparse(server_url)
         except:
-            logger.info(f'server url: {self._server_url}')
+            logger.info(f'server url: {server_url}')
             raise
 
+        self.target = o.netloc
+
         # TODO: this is a bit janky, we should fix this elsewhere (maybe pass large items by handle instead)
-        options = [
-            ('grpc.max_send_message_length', 1<<26),
-            ('grpc.max_receive_message_length', 1<<26),
-        ]
-        basic_auth = BasicAuth(self._token_id, self._token_secret, self._task_id, self._task_secret)
+        basic_auth = BasicAuth(client_type, credentials)
         if o.scheme.endswith('s'):
             logger.debug('Connecting to %s using secure channel' % o.netloc)
-            credentials = grpc.composite_channel_credentials(
+            self.credentials = grpc.composite_channel_credentials(
                 grpc.ssl_channel_credentials(),
-                grpc.metadata_call_credentials(basic_auth),
+                grpc.metadata_call_credentials(self._basic_auth),
             )._credentials
         else:
             logger.debug('Connecting to %s using insecure channel' % o.netloc)
-            credentials = None
+            self.credentials = None
 
+        self.options = [
+            ('grpc.max_send_message_length', 1<<26),
+            ('grpc.max_receive_message_length', 1<<26),
+        ]
+
+    async def create(self):
         # Note that the grpc.aio documentation uses secure_channel and insecure_channel, but those are just
         # thin wrappers around the underlying Channel constructor, and insecure_channel currently doesn't
         # let you provide a credentials object
         return Channel(
-            target=o.netloc,
-            options=options,
-            credentials=credentials,
+            target=self.target,
+            options=self.options,
+            credentials=self.credentials,
             compression=None,
             interceptors=None,
         )

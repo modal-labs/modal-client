@@ -1,7 +1,6 @@
 import cloudpickle
 import io
 import pickle
-import uuid
 
 from .config import logger
 
