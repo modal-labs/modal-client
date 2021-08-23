@@ -51,7 +51,7 @@ class GRPCConnectionFactory:
             logger.debug('Connecting to %s using secure channel' % o.netloc)
             self.credentials = grpc.composite_channel_credentials(
                 grpc.ssl_channel_credentials(),
-                grpc.metadata_call_credentials(self._basic_auth),
+                grpc.metadata_call_credentials(basic_auth),
             )._credentials
         else:
             logger.debug('Connecting to %s using insecure channel' % o.netloc)
