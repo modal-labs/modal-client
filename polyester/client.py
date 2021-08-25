@@ -70,8 +70,9 @@ class Client:
     async def _close(self):
         # TODO: when is this actually called?
         logger.debug('Client: Shutting down')
-        req = api_pb2.ByeRequest(client_id=self.client_id)
-        await self.stub.Bye(req)
+        # TODO: resurrect the Bye thing as a part of StopSession
+        #req = api_pb2.ByeRequest(client_id=self.client_id)
+        #await self.stub.Bye(req)
         if self.task_logs_loop:
             logger.debug('Waiting for logs to flush')
             try:

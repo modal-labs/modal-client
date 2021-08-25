@@ -65,11 +65,11 @@ async def test_client(servicer):
     await asyncio.sleep(0.1)  # enough for a handshake to go through
     await client._close()
 
-    assert len(servicer.requests) == 3
+    assert len(servicer.requests) == 2
     assert isinstance(servicer.requests[0], api_pb2.HelloRequest)
     assert servicer.requests[0].client_type == api_pb2.ClientType.CLIENT
     assert isinstance(servicer.requests[1], api_pb2.HeartbeatRequest)
-    assert isinstance(servicer.requests[2], api_pb2.ByeRequest)
+    # assert isinstance(servicer.requests[2], api_pb2.ByeRequest)
 
 
 @pytest.mark.asyncio
@@ -81,8 +81,8 @@ async def test_container_client(servicer):
     await asyncio.sleep(0.1)  # enough for a handshake to go through
     await client._close()
 
-    assert len(servicer.requests) == 3
+    assert len(servicer.requests) == 2
     assert isinstance(servicer.requests[0], api_pb2.HelloRequest)
     assert servicer.requests[0].client_type == api_pb2.ClientType.CONTAINER
     assert isinstance(servicer.requests[1], api_pb2.HeartbeatRequest)
-    assert isinstance(servicer.requests[2], api_pb2.ByeRequest)
+    # assert isinstance(servicer.requests[2], api_pb2.ByeRequest)
