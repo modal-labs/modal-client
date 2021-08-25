@@ -14,22 +14,43 @@ class GRPCClientServicer(api_pb2_grpc.PolyesterClient):
         self.requests = []
         self.done = False
 
-    async def Hello(self, request: api_pb2.HelloRequest, context: grpc.aio.ServicerContext) -> api_pb2.HelloResponse:
+    async def ClientCreate(
+            self,
+            request: api_pb2.ClientCreateRequest,
+            context: grpc.aio.ServicerContext,
+    ) -> api_pb2.ClientCreateResponse:
         self.requests.append(request)
         client_id = 'cl-123'
-        return api_pb2.HelloResponse(client_id=client_id)
+        return api_pb2.ClientCreateResponse(client_id=client_id)
 
-    async def Bye(self, request: api_pb2.ByeRequest, context: grpc.aio.ServicerContext) -> api_pb2.Empty:
+    async def SessionCreate(
+            self,
+            request: api_pb2.SessionCreateRequest,
+            context: grpc.aio.ServicerContext,
+    ) -> api_pb2.SessionCreateResponse:
         self.requests.append(request)
-        self.done = True
-        return api_pb2.Empty()
+        session_id = 'se-123'
+        return api_pb2.SessionCreateResponse(session_id=session_id)
 
-    async def Heartbeats(self, requests: typing.AsyncIterator[api_pb2.HeartbeatRequest], context: grpc.aio.ServicerContext) -> api_pb2.Empty:
+    #async def ClientStop(self, request: api_pb2.ByeRequest, context: grpc.aio.ServicerContext) -> api_pb2.Empty:
+    #    self.requests.append(request)
+    #    self.done = True
+    #    return api_pb2.Empty()
+
+    async def ClientHeartbeats(
+            self,
+            requests: typing.AsyncIterator[api_pb2.ClientHeartbeatRequest],
+            context: grpc.aio.ServicerContext
+    ) -> api_pb2.Empty:
         async for request in requests:
             self.requests.append(request)
         return api_pb2.Empty()
 
-    async def TaskLogsGet(self, request: api_pb2.TaskLogsGetRequest, context: grpc.aio.ServicerContext) -> typing.AsyncIterator[api_pb2.TaskLogs]:
+    async def SessionGetLogs(
+            self,
+            request: api_pb2.SessionGetLogsRequest,
+            context: grpc.aio.ServicerContext
+    ) -> typing.AsyncIterator[api_pb2.TaskLogs]:
         await asyncio.sleep(1.0)
         if self.done:
             yield api_pb2.TaskLogs(done=True)
@@ -58,31 +79,38 @@ async def servicer():
 
 @pytest.mark.asyncio
 async def test_client(servicer):
-    client = Client(servicer.remote_addr, api_pb2.ClientType.CLIENT, ('foo-id', 'foo-secret'), True, False)
+    client = Client(servicer.remote_addr, api_pb2.ClientType.CLIENT, ('foo-id', 'foo-secret'))
 
     # TODO: let's rethink how we're doing it, should we bring the context mgr back maybe?
     await client._start()
-    await asyncio.sleep(0.1)  # enough for a handshake to go through
+    await client._start_client()
+    await asyncio.sleep(0.1)
+    await client._start_session()
+    await asyncio.sleep(0.1)
     await client._close()
 
-    assert len(servicer.requests) == 2
-    assert isinstance(servicer.requests[0], api_pb2.HelloRequest)
+    assert len(servicer.requests) == 3
+    for req in servicer.requests:
+        print(type(req))
+    assert isinstance(servicer.requests[0], api_pb2.ClientCreateRequest)
     assert servicer.requests[0].client_type == api_pb2.ClientType.CLIENT
-    assert isinstance(servicer.requests[1], api_pb2.HeartbeatRequest)
+    assert isinstance(servicer.requests[1], api_pb2.ClientHeartbeatRequest)
+    assert isinstance(servicer.requests[2], api_pb2.SessionCreateRequest)
     # assert isinstance(servicer.requests[2], api_pb2.ByeRequest)
 
 
 @pytest.mark.asyncio
 async def test_container_client(servicer):
-    client = Client(servicer.remote_addr, api_pb2.ClientType.CONTAINER, ('ta-123', 'task-secret'), True, False)
+    client = Client(servicer.remote_addr, api_pb2.ClientType.CONTAINER, ('ta-123', 'task-secret'))
 
     # TODO: let's rethink how we're doing it, should we bring the context mgr back maybe?
     await client._start()
+    await client._start_client()
     await asyncio.sleep(0.1)  # enough for a handshake to go through
     await client._close()
 
     assert len(servicer.requests) == 2
-    assert isinstance(servicer.requests[0], api_pb2.HelloRequest)
+    assert isinstance(servicer.requests[0], api_pb2.ClientCreateRequest)
     assert servicer.requests[0].client_type == api_pb2.ClientType.CONTAINER
-    assert isinstance(servicer.requests[1], api_pb2.HeartbeatRequest)
+    assert isinstance(servicer.requests[1], api_pb2.ClientHeartbeatRequest)
     # assert isinstance(servicer.requests[2], api_pb2.ByeRequest)

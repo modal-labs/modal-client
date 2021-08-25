@@ -27,6 +27,8 @@ class Client:
         self.server_url = server_url
         self.client_type = client_type
         self.credentials = credentials
+        self._heartbeats_task = None
+        self._task_logs_task = None
 
     async def _start(self):
         logger.debug('Client: Starting')
@@ -68,13 +70,13 @@ class Client:
         # TODO: resurrect the Bye thing as a part of StopSession
         #req = api_pb2.ByeRequest(client_id=self.client_id)
         #await self.stub.Bye(req)
-        if self.task_logs_loop:
+        if self._task_logs_task:
             logger.debug('Waiting for logs to flush')
             try:
-                await asyncio.wait_for(self._logs_task, timeout=10.0)
+                await asyncio.wait_for(self._task_logs_task, timeout=10.0)
             except asyncio.TimeoutError:
                 logger.exception('Timed out waiting for logs')
-        if self.heartbeat_loop:
+        if self._heartbeats_task:
             self._heartbeats_task.cancel()
         await self._channel_pool.close()
         logger.debug('Client: Done shutting down')
