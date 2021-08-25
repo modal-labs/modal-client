@@ -23,14 +23,10 @@ class Client:
             server_url,
             client_type,
             credentials,
-            heartbeat_loop,  # TODO: rethink
-            task_logs_loop,  # TODO: rethink
     ):
         self.server_url = server_url
         self.client_type = client_type
         self.credentials = credentials
-        self.heartbeat_loop = heartbeat_loop
-        self.task_logs_loop = task_logs_loop
 
     async def _start(self):
         logger.debug('Client: Starting')
@@ -43,29 +39,28 @@ class Client:
         await self._channel_pool.start()
         self.stub = api_pb2_grpc.PolyesterClientStub(self._channel_pool)
 
-        req = api_pb2.HelloRequest(client_type=self.client_type)
-        try:
-            # Verify that we are connected
-            response = await retry(self.stub.Hello)(req, timeout=5.0)
-        except grpc.aio.AioRpcError as e:
-            # gRPC creates super cryptic error messages so we mask it this time and tell the user we couldn't connect
-            raise Exception('gRPC failed saying hello with error "%s"' % e.details()) from None
-        if response.error:
-            raise Exception('Error during handshake: %s' % response.error)
-        elif not response.client_id:
-            raise Exception('No client id returned from handshake')
+    async def _start_client(self):
+        req = api_pb2.ClientCreateRequest(client_type=self.client_type)
+        resp = await self.stub.ClientCreate(req)
+        #except grpc.aio.AioRpcError as e:
+        #    # gRPC creates super cryptic error messages so we mask it this time and tell the user we couldn't connect
+        #    raise Exception('gRPC failed saying hello with error "%s"' % e.details()) from None
+        self.client_id = resp.client_id
 
-        self.client_id = response.client_id
-
-        # Start heartbeats and logs tracking, which are long-running client-wide things
+        # Start heartbeats
         # TODO: would be nice to have some proper ownership of these tasks so they are garbage collected
         # TODO: we should have some more graceful termination of these
-        if self.task_logs_loop:
-            self._logs_task = asyncio.create_task(self._track_logs())
-        if self.heartbeat_loop:
-            self._heartbeats_task = infinite_loop(self._heartbeats, timeout=None)
+        self._heartbeats_task = infinite_loop(self._heartbeats, timeout=None)
 
         logger.debug('Client: Done starting')
+
+    async def _start_session(self):
+        req = api_pb2.SessionCreateRequest(client_id=self.client_id)
+        resp = await self.stub.SessionCreate(req)
+        self.session_id = resp.session_id
+
+        # See comment about heartbeats task, same thing applies here
+        self._logs_task = asyncio.create_task(self._track_logs())
 
     async def _close(self):
         # TODO: when is this actually called?
@@ -87,9 +82,9 @@ class Client:
     async def _heartbeats(self, sleep=3):
         async def loop():
             while True:
-                yield api_pb2.HeartbeatRequest(client_id=self.client_id)
+                yield api_pb2.ClientHeartbeatRequest(client_id=self.client_id)
                 await asyncio.sleep(sleep)
-        await self.stub.Heartbeats(loop())
+        await self.stub.ClientHeartbeats(loop())
 
     def serialize(self, obj):
         return serializable.serialize(self, obj)
@@ -98,10 +93,14 @@ class Client:
         return serializable.deserialize(self, s)
 
     async def _track_logs(self):
+        # TODO: break it out into its own class?
         # TODO: how do we break this loop?
         while True:
-            request = api_pb2.TaskLogsGetRequest(client_id=self.client_id, timeout=BLOCKING_REQUEST_TIMEOUT)
-            async for log_entry in self.stub.TaskLogsGet(request, timeout=GRPC_REQUEST_TIMEOUT):
+            request = api_pb2.SessionGetLogsRequest(
+                session_id=self.session_id,
+                timeout=BLOCKING_REQUEST_TIMEOUT
+            )
+            async for log_entry in self.stub.SessionGetLogs(request, timeout=GRPC_REQUEST_TIMEOUT):
                 if log_entry.done:
                     logger.info('No more logs')
                     break
@@ -118,8 +117,10 @@ class Client:
                 credentials = (token_id, token_secret)
             else:
                 credentials = None
-            cls._default_client = Client(server_url, api_pb2.ClientType.CLIENT, credentials, True, True)
+            cls._default_client = Client(server_url, api_pb2.ClientType.CLIENT, credentials)
             await cls._default_client._start()
+            await cls._default_client._start_client()
+            await cls._default_client._start_session()
         return cls._default_client
 
     @classmethod
@@ -127,8 +128,9 @@ class Client:
         if cls._default_container_client is None:
             server_url = config['server.url']
             credentials = (config['task.id'], config['task.secret'])
-            cls._default_container_client = Client(server_url, api_pb2.ClientType.CONTAINER, credentials, True, False)
+            cls._default_container_client = Client(server_url, api_pb2.ClientType.CONTAINER, credentials)
             await cls._default_container_client._start()
+            await cls._default_container_client._start_client()
         return cls._default_container_client
 
     # TODO: code below is container-specific and we should probably move it out of here

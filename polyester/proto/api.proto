@@ -30,25 +30,33 @@ enum ClientType {
   SERVER = 4;
 }
 
-message HelloRequest {
+message ClientCreateRequest {
   ClientType client_type = 1;
 }
 
-message ByeRequest {
-  string client_id = 1;
-}
-
-message HelloResponse {
+message ClientCreateResponse {
   string client_id = 1;
   string error = 2;
 }
 
-message HeartbeatRequest {
+message ClientHeartbeatRequest {
   string client_id = 1;
 }
 
-message TaskLogsGetRequest {
+message SessionCreateRequest {
   string client_id = 1;
+}
+
+message SessionCreateResponse {
+  string session_id = 1;
+}
+
+message SessionStopRequest {
+  string session_id = 1;
+}
+
+message SessionGetLogsRequest {  // Todo: rename to SessionGetLogsRequest?
+  string session_id = 1;
   float timeout = 2;
 }
 
@@ -254,11 +262,14 @@ message MountJoinResponse {
 }
 
 service PolyesterClient {
-  // Generic client-level calls
-  rpc Hello(HelloRequest) returns (HelloResponse);
-  rpc Bye(ByeRequest) returns (Empty);
-  rpc Heartbeats(stream HeartbeatRequest) returns (Empty);
-  rpc TaskLogsGet(TaskLogsGetRequest) returns (stream TaskLogs);
+  // Clients
+  rpc ClientCreate(ClientCreateRequest) returns (ClientCreateResponse);
+  rpc ClientHeartbeats(stream ClientHeartbeatRequest) returns (Empty);
+
+  // Sessions
+  rpc SessionCreate(SessionCreateRequest) returns (SessionCreateResponse);
+  rpc SessionStop(SessionStopRequest) returns (Empty);
+  rpc SessionGetLogs(SessionGetLogsRequest) returns (stream TaskLogs);
 
   // Queues
   rpc QueueCreate(Empty) returns (QueueCreateResponse);
