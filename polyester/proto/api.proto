@@ -119,6 +119,7 @@ message LayerGetOrCreateResponse {
 message LayerJoinRequest {
   string layer_id = 1;
   float timeout = 2;
+  string session_id = 3;
 }
 
 message LayerJoinResponse {

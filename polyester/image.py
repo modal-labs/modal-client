@@ -184,7 +184,11 @@ class Layer:
 
         logger.debug('Waiting for layer %s' % self.layer_id)
         while True:
-            request = api_pb2.LayerJoinRequest(layer_id=self.layer_id, timeout=BLOCKING_REQUEST_TIMEOUT)
+            request = api_pb2.LayerJoinRequest(
+                layer_id=self.layer_id,
+                timeout=BLOCKING_REQUEST_TIMEOUT,
+                session_id=client.session_id,
+            )
             response = await retry(client.stub.LayerJoin)(request, timeout=GRPC_REQUEST_TIMEOUT)
             if not response.result.status:
                 continue
