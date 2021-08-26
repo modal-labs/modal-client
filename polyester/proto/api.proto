@@ -107,9 +107,9 @@ message Layer {
 }
 
 message LayerGetOrCreateRequest {
-  string client_id = 1;
   Layer layer = 2;
   bool must_create = 3;
+  string session_id = 4;
 }
 
 message LayerGetOrCreateResponse {
@@ -146,7 +146,7 @@ message Image {
 
 message ImageCreateRequest {
   Image image = 1;
-  string client_id = 2;
+  string session_id = 3;
 }
 
 message ImageCreateResponse {
@@ -161,9 +161,9 @@ message Function {
 }
 
 message FunctionGetOrCreateRequest {
-  string client_id = 1;
   string image_id = 2;
   Function function = 8;
+  string session_id = 9;
 }
 
 message FunctionGetOrCreateResponse {
@@ -223,7 +223,7 @@ message FunctionOutputRequest {
 }
 
 message MountCreateRequest {
-  string client_id = 1;
+  string session_id = 2;
 }
 
 message MountCreateResponse {

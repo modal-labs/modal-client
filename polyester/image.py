@@ -81,7 +81,7 @@ class Mount:
         # Another option is to parallelize more on the server side.
 
         if not self.mount_id:
-            req = api_pb2.MountCreateRequest(client_id=client.client_id)
+            req = api_pb2.MountCreateRequest(session_id=client.session_id)
             resp = await client.stub.MountCreate(req)
             mount_id = resp.mount_id
 
@@ -175,7 +175,7 @@ class Layer:
                 )
 
                 req = api_pb2.LayerGetOrCreateRequest(
-                    client_id=client.client_id,
+                    session_id=client.session_id,
                     layer=layer_definition,
                     must_create=self.must_create,
                 )
