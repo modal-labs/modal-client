@@ -232,7 +232,11 @@ class Image:
                 local_id=self.local_id,
             )
 
-            response = await client.stub.ImageCreate(api_pb2.ImageCreateRequest(client_id=client.client_id, image=image))
+            request = api_pb2.ImageCreateRequest(
+                session_id=client.session_id,
+                image=image
+            )
+            response = await client.stub.ImageCreate(request)
             self.image_id = response.image_id
 
         return self.image_id

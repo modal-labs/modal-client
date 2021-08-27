@@ -112,7 +112,7 @@ class Function:
                 function_name=self.function_name,
             )
             request = api_pb2.FunctionGetOrCreateRequest(
-                client_id=client.client_id,
+                session_id=client.session_id,
                 image_id=image_id,
                 function=function_definition,
             )
