@@ -4,7 +4,7 @@ import sys
 import traceback
 import uuid
 
-from .async_utils import retry
+from .async_utils import retry, synchronizer
 from .client import Client
 from .config import logger
 from .grpc_utils import GRPC_REQUEST_TIMEOUT, BLOCKING_REQUEST_TIMEOUT
@@ -12,6 +12,7 @@ from .function import Function
 from .proto import api_pb2
 
 
+@synchronizer
 class FunctionRunner:
     def __init__(self, client, task_id, function_id, target):
         self.client = client
