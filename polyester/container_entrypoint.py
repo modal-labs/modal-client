@@ -54,7 +54,7 @@ async def main(args):
     logger.debug('Getting function %s.%s' % (module_name, function_name))
     target = Function.get_function(module_name, function_name)
 
-    client = await Client.get_container_client()
+    client = await Client.from_env()
     await function(client, task_id, function_id, target)
 
     logger.debug('Container: done')

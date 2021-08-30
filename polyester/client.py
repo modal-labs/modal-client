@@ -15,8 +15,7 @@ from .utils import print_logs
 
 @synchronizer
 class Client:
-    _default_client = None
-    _default_container_client = None
+    _client_from_env = None
 
     def __init__(
             self,
@@ -110,30 +109,32 @@ class Client:
                     print_logs(log_entry.data, log_entry.fd)
 
     @classmethod
-    async def get_client(cls):
-        if cls._default_client is None:
-            server_url = config['server.url']
-            token_id = config['token.id']
-            token_secret = config['token.secret']
-            if token_id and token_secret:
-                credentials = (token_id, token_secret)
-            else:
-                credentials = None
-            cls._default_client = Client(server_url, api_pb2.ClientType.CLIENT, credentials)
-            await cls._default_client._start()
-            await cls._default_client._start_client()
-            await cls._default_client._start_session()
-        return cls._default_client
+    async def from_env(cls, reuse=True):
+        if cls._client_from_env is not None and reuse:
+            return cls._client_from_env
 
-    @classmethod
-    async def get_container_client(cls):
-        if cls._default_container_client is None:
-            server_url = config['server.url']
-            credentials = (config['task.id'], config['task.secret'])
-            cls._default_container_client = Client(server_url, api_pb2.ClientType.CONTAINER, credentials)
-            await cls._default_container_client._start()
-            await cls._default_container_client._start_client()
-        return cls._default_container_client
+        server_url = config['server.url']
+        token_id = config['token.id']
+        token_secret = config['token.secret']
+        task_id = config['task.id']
+        task_secret = config['task.secret']
+
+        if task_id and task_secret:
+            client_type = api_pb2.ClientType.CONTAINER
+            credentials = (task_id, task_secret)
+        elif token_id and token_secret:
+            client_type = api_pb2.ClientType.CLIENT
+            credentials = (token_id, token_secret)
+        else:
+            client_type = api_pb2.ClientType.CLIENT
+            credentials = None
+
+        client = cls._client_from_env = Client(server_url, client_type, credentials)
+        await client._start()
+        await client._start_client()
+        if client_type == api_pb2.ClientType.CLIENT:
+            await client._start_session()
+        return client
 
     # TODO: code below is container-specific and we should probably move it out of here
 

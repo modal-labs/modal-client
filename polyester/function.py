@@ -61,7 +61,7 @@ class Function:
     async def _get_client(self):
         # Maybe this needs to go on the serializable base class, not sure
         if self.client is None:
-            return await Client.get_client()
+            return await Client.from_env()
         else:
             return self.client
 
