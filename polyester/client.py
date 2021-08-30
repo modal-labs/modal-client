@@ -1,7 +1,6 @@
 import asyncio
 import grpc.aio
 import os
-import uuid
 
 from .async_utils import infinite_loop, synchronizer, retry
 from .grpc_utils import ChannelPool, GRPC_REQUEST_TIMEOUT, BLOCKING_REQUEST_TIMEOUT
@@ -136,24 +135,3 @@ class Client:
             await client._start_session()
         return client
 
-    # TODO: code below is container-specific and we should probably move it out of here
-
-    async def function_get_next_input(self, task_id, function_id):
-        while True:
-            idempotency_key = str(uuid.uuid4())
-            request = api_pb2.FunctionGetNextInputRequest(
-                task_id=task_id, function_id=function_id, idempotency_key=idempotency_key, timeout=BLOCKING_REQUEST_TIMEOUT)
-            response = await retry(self.stub.FunctionGetNextInput)(request, timeout=GRPC_REQUEST_TIMEOUT)
-            if response.stop:
-                return (None, None, True)
-            if response.input_id:
-                break
-
-        return (self.deserialize(response.data), response.input_id, False)
-
-    async def function_output(self, input_id, status, data, exception: str, traceback: str):
-        data_serialized = self.serialize(data)
-        output = api_pb2.GenericResult(status=status, data=data_serialized, exception=exception, traceback=traceback)
-        idempotency_key = str(uuid.uuid4())
-        request = api_pb2.FunctionOutputRequest(input_id=input_id, idempotency_key=idempotency_key, output=output)
-        await retry(self.stub.FunctionOutput)(request)
