@@ -224,10 +224,10 @@ class EnvDict:
 
 @synchronizer
 class Image:
-    def __init__(self, layer, mounts=[]):
+    def __init__(self, layer, mounts=[], env_dict=None):
         self.layer = layer
         self.mounts = mounts
-        self.env_dict = None
+        self.env_dict = env_dict
         self.image_id = None
         self.local_id = 'i:(%s)' % layer.local_id  # TODO: include the mounts in the local id too!!!
 
@@ -265,7 +265,7 @@ class Image:
         return self.image_id
 
     def set_env_vars(self, env_vars: Dict[str, str]):
-        self.env_dict = EnvDict(env_vars)
+        return Image(self.layer, self.mounts, env_vars)
 
     def function(self, raw_f):
         ''' Primarily to be used as a decorator.'''
