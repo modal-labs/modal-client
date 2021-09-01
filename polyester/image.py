@@ -212,7 +212,7 @@ class Layer:
 class EnvDict:
     def __init__(self, env_dict):
         self.env_dict = env_dict
-        self.env_dict_id = env_dict
+        self.env_dict_id = None
 
     async def join(self, client):
         if not self.env_dict_id:
@@ -267,7 +267,7 @@ class Image:
         return self.image_id
 
     def set_env_vars(self, env_vars: Dict[str, str]):
-        return Image(self.layer, self.mounts, env_vars)
+        return Image(self.layer, self.mounts, EnvDict(env_vars))
 
     def function(self, raw_f):
         ''' Primarily to be used as a decorator.'''

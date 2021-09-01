@@ -300,6 +300,9 @@ service PolyesterClient {
   rpc LayerGetByTag(LayerGetByTagRequest) returns (LayerGetByTagResponse);
   rpc LayerSetTag(LayerSetTagRequest) returns (Empty);
 
+  // Env Dicts
+  rpc EnvDictCreate(EnvDictCreateRequest) returns (EnvDictCreateResponse);
+
   // Images
   rpc ImageCreate(ImageCreateRequest) returns (ImageCreateResponse);
 
