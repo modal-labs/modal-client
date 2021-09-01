@@ -139,6 +139,15 @@ message LayerSetTagRequest {
   string tag = 2;
 }
 
+message EnvDictCreateRequest {
+  map<string, string> env_dict = 1;
+  string session_id = 2;
+}
+
+message EnvDictCreateResponse {
+  string env_dict_id = 1;
+}
+
 message Image {
   string layer_id = 1;
   repeated string mount_ids = 2;

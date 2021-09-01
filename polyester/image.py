@@ -5,6 +5,8 @@ import os
 import sys
 import time
 
+from typing import Dict
+
 from .async_utils import retry, synchronizer
 from .config import logger
 from .function import decorate_function
@@ -206,12 +208,26 @@ class Layer:
         req = api_pb2.LayerSetTagRequest(layer_id=self.layer_id, tag=tag)
         await client.stub.LayerSetTag(req)
 
+@synchronizer
+class EnvDict:
+    def __init__(self, env_dict):
+        self.env_dict = env_dict
+        self.env_dict_id = env_dict
+
+    async def join(self, client):
+        if not self.env_dict_id:
+            req = api_pb2.EnvDictCreateRequest(session_id=client.session_id, env_dict=self.env_dict)
+            resp = await client.stub.EnvDictCreate(req)
+            self.env_dict_id = resp.env_dict_id
+
+        return self.env_dict_id
 
 @synchronizer
 class Image:
     def __init__(self, layer, mounts=[]):
         self.layer = layer
         self.mounts = mounts
+        self.env_dict = None
         self.image_id = None
         self.local_id = 'i:(%s)' % layer.local_id  # TODO: include the mounts in the local id too!!!
 
@@ -219,15 +235,22 @@ class Image:
         # TODO: there's some risk of a race condition here
         if self.image_id is None:
             coros = [self.layer.join(client)]
+            if self.env_dict:
+                coros.append(self.env_dict.join(client))
             for mount in self.mounts:
                 coros.append(mount.join(client))
+
             results = await asyncio.gather(*coros)
 
-            layer_id = results[0]
-            mount_ids = results[1:]
+            # mutating results for readability
+            layer_id, results = results[0], results[1:]
+            if self.env_dict:
+                env_dict_id, results = results[0], results[1:]
+            mount_ids = results[:]
 
             image = api_pb2.Image(
                 layer_id=self.layer.layer_id,
+                env_dict_id=env_dict_id,
                 mount_ids=mount_ids,
                 local_id=self.local_id,
             )
@@ -240,6 +263,9 @@ class Image:
             self.image_id = response.image_id
 
         return self.image_id
+
+    def set_env_vars(self, env_vars: Dict[str, str]):
+        self.env_dict = EnvDict(env_vars)
 
     def function(self, raw_f):
         ''' Primarily to be used as a decorator.'''
