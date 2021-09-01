@@ -41,7 +41,7 @@ class FunctionRunner:
             fv_data, fv_status, fv_exception, fv_traceback = None, None, None, None
             try:
                 if asyncio.iscoroutinefunction(self.target):
-                    res = await target(*args, **kwargs)
+                    res = await self.target(*args, **kwargs)
                 else:
                     target_bound = lambda: self.target(*args, **kwargs)
                     res = await asyncio.get_running_loop().run_in_executor(None, target_bound)
