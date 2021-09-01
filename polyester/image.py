@@ -252,9 +252,9 @@ class Image:
 
             image = api_pb2.Image(
                 layer_id=self.layer.layer_id,
-                env_dict_id=env_dict_id,
                 mount_ids=mount_ids,
                 local_id=self.local_id,
+                env_dict_id=env_dict_id,
             )
 
             request = api_pb2.ImageCreateRequest(
