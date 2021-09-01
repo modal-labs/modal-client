@@ -246,6 +246,8 @@ class Image:
             layer_id, results = results[0], results[1:]
             if self.env_dict:
                 env_dict_id, results = results[0], results[1:]
+            else:
+                env_dict_id = None
             mount_ids = results[:]
 
             image = api_pb2.Image(
