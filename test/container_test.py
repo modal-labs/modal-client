@@ -1,12 +1,14 @@
+import asyncio
 import pytest
+import time
 
 from polyester.client import Client
-from polyester.container_entrypoint import FunctionRunner
+from polyester.container_entrypoint import main
 from polyester.proto import api_pb2
 from polyester.function import Function
 
 
-def get_inputs(client):
+def _get_inputs(client):
     return [
         api_pb2.FunctionGetNextInputResponse(
             data=client.serialize(((42,), {})),
@@ -21,62 +23,66 @@ def get_inputs(client):
     ]
 
 
-def square(x):
-    return x**2
+async def _run_container(servicer, module_name, function_name):
+    client = Client(servicer.remote_addr, api_pb2.ClientType.CONTAINER, ('ta-123', 'task-secret'))
 
+    await client._start()
+    await client._start_client()
 
-def raises(x):
-    raise Exception('Failure!')
+    servicer.inputs = _get_inputs(client)
 
+    # Note that main is a synchronous function, so we need to run it in a separate thread
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, main, 'ta-123', 'fu-123', module_name, function_name, client)
 
-class FakeContainerClient:
-    def __init__(self):
-        self.inputs = [
-            (((42,), {}), 'in-123', False),
-            (None, None, True),
-        ]
-        self.outputs = []
-
-    async def function_get_next_input(self, task_id, function_id):
-        return self.inputs.pop(0)
-
-    async def function_output(self, input_id, status, data, exception, traceback):
-        self.outputs.append((status, data, exception, traceback))
+    return client, servicer.outputs
 
 
 @pytest.mark.asyncio
 async def test_container_entrypoint_success(servicer):
-    client = Client(servicer.remote_addr, api_pb2.ClientType.CONTAINER, ('ta-123', 'task-secret'))
+    t0 = time.time()
+    client, outputs = await _run_container(servicer, 'polyester.test_support', 'square')
+    assert time.time() - t0 < 0.1
 
-    await client._start()
-    await client._start_client()
+    assert len(outputs) == 1
+    assert isinstance(outputs[0], api_pb2.FunctionOutputRequest)
+    assert outputs[0].output.status == api_pb2.GenericResult.Status.SUCCESS
+    assert outputs[0].output.data == client.serialize(42**2)
 
-    servicer.inputs = get_inputs(client)
-    function_runner = FunctionRunner(client, 'ta-123', 'fu-123', square)
-    await function_runner.run()
-    output = servicer.requests[-1]
-    assert isinstance(output, api_pb2.FunctionOutputRequest)
 
-    assert output.output.status == api_pb2.GenericResult.Status.SUCCESS
-    assert output.output.data == client.serialize(42**2)
+@pytest.mark.asyncio
+async def test_container_entrypoint_async(servicer):
+    t0 = time.time()
+    client, outputs = await _run_container(servicer, 'polyester.test_support', 'square_async')
+    assert time.time() - t0 >= 0.1
+
+    assert len(outputs) == 1
+    assert isinstance(outputs[0], api_pb2.FunctionOutputRequest)
+    assert outputs[0].output.status == api_pb2.GenericResult.Status.SUCCESS
+    assert outputs[0].output.data == client.serialize(42**2)
+
+
+@pytest.mark.asyncio
+async def test_container_entrypoint_sync_returning_async(servicer):
+    t0 = time.time()
+    client, outputs = await _run_container(servicer, 'polyester.test_support', 'square_sync_returning_async')
+    assert time.time() - t0 >= 0.1
+
+    assert len(outputs) == 1
+    assert isinstance(outputs[0], api_pb2.FunctionOutputRequest)
+    assert outputs[0].output.status == api_pb2.GenericResult.Status.SUCCESS
+    assert outputs[0].output.data == client.serialize(42**2)
 
 
 @pytest.mark.asyncio
 async def test_container_entrypoint_failure(servicer):
-    client = Client(servicer.remote_addr, api_pb2.ClientType.CONTAINER, ('ta-123', 'task-secret'))
+    client, outputs = await _run_container(servicer, 'polyester.test_support', 'raises')
 
-    await client._start()
-    await client._start_client()
-
-    servicer.inputs = get_inputs(client)
-    function_runner = FunctionRunner(client, 'ta-123', 'fu-123', raises)
-    await function_runner.run()
-    output = servicer.requests[-1]
-    assert isinstance(output, api_pb2.FunctionOutputRequest)
-
-    assert output.output.status == api_pb2.GenericResult.Status.FAILURE
-    assert output.output.exception == 'Exception(\'Failure!\')'
-    assert 'Traceback' in output.output.traceback
+    assert len(outputs) == 1
+    assert isinstance(outputs[0], api_pb2.FunctionOutputRequest)
+    assert outputs[0].output.status == api_pb2.GenericResult.Status.FAILURE
+    assert outputs[0].output.exception == 'Exception(\'Failure!\')'
+    assert 'Traceback' in outputs[0].output.traceback
 
 
 def test_import_function_dynamically():
