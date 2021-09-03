@@ -14,6 +14,7 @@ class GRPCClientServicer(api_pb2_grpc.PolyesterClient):
         self.requests = []
         self.done = False
         self.inputs = []
+        self.outputs = []
 
     async def ClientCreate(
             self,
@@ -68,7 +69,7 @@ class GRPCClientServicer(api_pb2_grpc.PolyesterClient):
             request: api_pb2.FunctionOutputRequest,
             context: grpc.aio.ServicerContext
     ) -> api_pb2.Empty:
-        self.requests.append(request)
+        self.outputs.append(request)
         return api_pb2.Empty()
 
 
