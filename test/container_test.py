@@ -6,6 +6,9 @@ from polyester.client import Client
 from polyester.container_entrypoint import main
 from polyester.proto import api_pb2
 from polyester.function import Function
+from polyester.test_support import SLEEP_DELAY
+
+EXTRA_TOLERANCE_DELAY = 0.01
 
 
 def _get_inputs(client):
@@ -42,7 +45,7 @@ async def _run_container(servicer, module_name, function_name):
 async def test_container_entrypoint_success(servicer):
     t0 = time.time()
     client, outputs = await _run_container(servicer, 'polyester.test_support', 'square')
-    assert time.time() - t0 < 0.1
+    assert 0 <= time.time() - t0 < EXTRA_TOLERANCE_DELAY
 
     assert len(outputs) == 1
     assert isinstance(outputs[0], api_pb2.FunctionOutputRequest)
@@ -54,7 +57,7 @@ async def test_container_entrypoint_success(servicer):
 async def test_container_entrypoint_async(servicer):
     t0 = time.time()
     client, outputs = await _run_container(servicer, 'polyester.test_support', 'square_async')
-    assert time.time() - t0 >= 0.1
+    assert SLEEP_DELAY <= time.time() - t0 < SLEEP_DELAY + EXTRA_TOLERANCE_DELAY
 
     assert len(outputs) == 1
     assert isinstance(outputs[0], api_pb2.FunctionOutputRequest)
@@ -66,7 +69,7 @@ async def test_container_entrypoint_async(servicer):
 async def test_container_entrypoint_sync_returning_async(servicer):
     t0 = time.time()
     client, outputs = await _run_container(servicer, 'polyester.test_support', 'square_sync_returning_async')
-    assert time.time() - t0 >= 0.1
+    assert SLEEP_DELAY <= time.time() - t0 < SLEEP_DELAY + EXTRA_TOLERANCE_DELAY
 
     assert len(outputs) == 1
     assert isinstance(outputs[0], api_pb2.FunctionOutputRequest)

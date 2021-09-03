@@ -1,6 +1,8 @@
 import asyncio
 from . import base_image
 
+SLEEP_DELAY = 0.1
+
 
 @base_image.function
 def square(x):
@@ -9,14 +11,14 @@ def square(x):
 
 @base_image.function
 async def square_async(x):
-    await asyncio.sleep(0.1)
+    await asyncio.sleep(SLEEP_DELAY)
     return x*x
 
 
 @base_image.function
 def square_sync_returning_async(x):
     async def square():
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(SLEEP_DELAY)
         return x*x
     return square()
 
