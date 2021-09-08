@@ -65,6 +65,26 @@ class Function:
         else:
             return self.client
 
+    async def _get_id(self):
+        if self.function_id:
+            return self.function_id
+
+        # Create function remotely
+        image_id = await self.image.join(client)
+        data = client.serialize(self.raw_f)
+        function_definition = api_pb2.Function(
+            module_name=self.module_name,
+            function_name=self.function_name,
+        )
+        request = api_pb2.FunctionGetOrCreateRequest(
+            session_id=client.session_id,
+            image_id=image_id,
+            function=function_definition,
+        )
+        response = await client.stub.FunctionGetOrCreate(request)
+        self.function_id = response.function_id
+        return self.function_id
+
     async def _enqueue(self, client, call_id, args, star, kwargs):
         if not star:
             # Everything will just be passed as the first input
@@ -102,22 +122,7 @@ class Function:
         # It probably makes a lot of sense to move the input throttling to the server instead.
 
         client = await self._get_client()
-
-        if not self.function_id:
-            # Create function remotely
-            image_id = await self.image.join(client)
-            data = client.serialize(self.raw_f)
-            function_definition = api_pb2.Function(
-                module_name=self.module_name,
-                function_name=self.function_name,
-            )
-            request = api_pb2.FunctionGetOrCreateRequest(
-                session_id=client.session_id,
-                image_id=image_id,
-                function=function_definition,
-            )
-            response = await client.stub.FunctionGetOrCreate(request)
-            self.function_id = response.function_id
+        function_id = await self._get_id()
 
         # TODO: we should support asynchronous generators as well
         inputs = iter(inputs)  # Handle non-generator inputs
