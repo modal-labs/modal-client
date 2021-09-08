@@ -8,7 +8,7 @@ from polyester.proto import api_pb2
 from polyester.function import Function
 from polyester.test_support import SLEEP_DELAY
 
-EXTRA_TOLERANCE_DELAY = 0.01
+EXTRA_TOLERANCE_DELAY = 0.05
 
 
 def _get_inputs(client):
