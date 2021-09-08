@@ -47,6 +47,75 @@ def _path_to_function(module_name, function_name):
         raise
 
 
+@synchronizer
+class Call:
+    def __init__(self, client, function_id, inputs, star, window, kwargs):
+        self.client = client
+        self.function_id = function_id
+        self.inputs = inputs
+        self.star = star
+        self.window = window
+        self.kwargs = kwargs
+        self.call_id = None
+
+    async def _enqueue(self, client, args, star, kwargs):
+        if not star:
+            # Everything will just be passed as the first input
+            args = [(arg,) for arg in args]
+        request = api_pb2.FunctionCallRequest(
+            function_id=self.function_id,
+            inputs=[client.serialize((arg, kwargs)) for arg in args],
+            idempotency_key=str(uuid.uuid4()),
+            call_id=self.call_id
+        )
+        response = await retry(client.stub.FunctionCall)(request)
+        self.call_id = response.call_id
+
+    async def _dequeue(self, client, n_outputs):
+        while True:
+            request = api_pb2.FunctionGetNextOutputRequest(
+                function_id=self.function_id,
+                call_id=self.call_id,
+                timeout=BLOCKING_REQUEST_TIMEOUT,
+                idempotency_key=str(uuid.uuid4()),
+                n_outputs=n_outputs,
+            )
+            response = await retry(client.stub.FunctionGetNextOutput)(request, timeout=GRPC_REQUEST_TIMEOUT)
+            if response.outputs:
+                break
+        for output in response.outputs:
+            if output.status != api_pb2.GenericResult.Status.SUCCESS:
+                raise Exception('Remote exception: %s\n%s' % (output.exception, output.traceback))
+            yield client.deserialize(output.data)
+
+    async def __aiter__(self):
+        # Most of the complexity of this function comes from the input throttling.
+        # Basically the idea is that we maintain x (default 100) outstanding requests at any point in time,
+        # and we don't enqueue more requests until we get back enough values.
+        # It probably makes a lot of sense to move the input throttling to the server instead.
+
+        # TODO: we should support asynchronous generators as well
+        inputs = iter(self.inputs)  # Handle non-generator inputs
+
+        n_enqueued, n_dequeued = 0, 0
+        input_exhausted = False
+        while not input_exhausted or n_dequeued < n_enqueued:
+            logger.debug('Map status: %d enqueued, %d dequeued' % (n_enqueued, n_dequeued))
+            batch_args = []
+            while not input_exhausted and n_enqueued < n_dequeued + self.window:
+                try:
+                    batch_args.append(next(inputs))
+                    n_enqueued += 1
+                except StopIteration:
+                    input_exhausted = True
+            if batch_args:
+                await self._enqueue(self.client, batch_args, self.star, self.kwargs)
+            if n_dequeued < n_enqueued:
+                async for output in self._dequeue(self.client, n_enqueued - n_dequeued):
+                    n_dequeued += 1
+                    yield output
+
+
 # @serializable
 @synchronizer
 class Function:
@@ -69,6 +138,8 @@ class Function:
         if self.function_id:
             return self.function_id
 
+        client = await self._get_client()
+
         # Create function remotely
         image_id = await self.image.join(client)
         data = client.serialize(self.raw_f)
@@ -85,72 +156,15 @@ class Function:
         self.function_id = response.function_id
         return self.function_id
 
-    async def _enqueue(self, client, call_id, args, star, kwargs):
-        if not star:
-            # Everything will just be passed as the first input
-            args = [(arg,) for arg in args]
-        request = api_pb2.FunctionCallRequest(
-            function_id=self.function_id,
-            inputs=[client.serialize((arg, kwargs)) for arg in args],
-            idempotency_key=str(uuid.uuid4()),
-            call_id=call_id
-        )
-        response = await retry(client.stub.FunctionCall)(request)
-        return response.call_id
-
-    async def _dequeue(self, client, call_id, n_outputs):
-        while True:
-            request = api_pb2.FunctionGetNextOutputRequest(
-                function_id=self.function_id,
-                call_id=call_id,
-                timeout=BLOCKING_REQUEST_TIMEOUT,
-                idempotency_key=str(uuid.uuid4()),
-                n_outputs=n_outputs,
-            )
-            response = await retry(client.stub.FunctionGetNextOutput)(request, timeout=GRPC_REQUEST_TIMEOUT)
-            if response.outputs:
-                break
-        for output in response.outputs:
-            if output.status != api_pb2.GenericResult.Status.SUCCESS:
-                raise Exception('Remote exception: %s\n%s' % (output.exception, output.traceback))
-            yield client.deserialize(output.data)
-
-    async def map(self, inputs, unordered=False, star=False, return_exceptions=False, window=100, kwargs={}):
-        # Most of the complexity of this function comes from the input throttling.
-        # Basically the idea is that we maintain x (default 100) outstanding requests at any point in time,
-        # and we don't enqueue more requests until we get back enough values.
-        # It probably makes a lot of sense to move the input throttling to the server instead.
-
+    async def map(self, inputs, star=False, window=100, kwargs={}):
         client = await self._get_client()
         function_id = await self._get_id()
-
-        # TODO: we should support asynchronous generators as well
-        inputs = iter(inputs)  # Handle non-generator inputs
-        call_id = None
-
-        n_enqueued, n_dequeued = 0, 0
-        input_exhausted = False
-        while not input_exhausted or n_dequeued < n_enqueued:
-            logger.debug('Map status: %d enqueued, %d dequeued' % (n_enqueued, n_dequeued))
-            batch_args = []
-            while not input_exhausted and n_enqueued < n_dequeued + window:
-                try:
-                    batch_args.append(next(inputs))
-                    n_enqueued += 1
-                except StopIteration:
-                    input_exhausted = True
-            if batch_args:
-                call_id = await self._enqueue(client, call_id, batch_args, star, kwargs)
-            if n_dequeued < n_enqueued:
-                async for output in self._dequeue(client, call_id, n_enqueued - n_dequeued):
-                    n_dequeued += 1
-                    yield output
+        return Call(client, function_id, inputs, star, window, kwargs)
 
     async def __call__(self, *args, **kwargs):
         ''' Uses map, but makes sure there's only 1 output. '''
-        outputs = [output async for output in self.map([args], kwargs=kwargs, star=True)]
-        assert len(outputs) == 1
-        return outputs[0]
+        async for output in self.map([args], kwargs=kwargs, star=True):
+            return output  # return the first (and only) one
 
     @staticmethod
     def get_function(module_name, function_name):
