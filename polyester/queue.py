@@ -29,7 +29,7 @@ class Queue(Object):
             request = api_pb2.QueueGetRequest(queue_id=self.remote_id, block=block, timeout=request_timeout, n_values=n_values, idempotency_key=str(uuid.uuid4()))
             response = await retry(client.stub.QueueGet)(request, timeout=60.0)
             if response.values:
-                return [self._deserialize(client, value) for value in response.values]
+                return [client.deserialize(value) for value in response.values]
             logger.debug('Queue get for %s had empty results, trying again' % self.remote_id)
         raise queue.Empty()
 
@@ -42,7 +42,7 @@ class Queue(Object):
 
     async def put_many(self, vs: List[Any]):
         client = await self._get_client()
-        vs_encoded = [self._serialize(client, v) for v in vs]
+        vs_encoded = [client.serialize(v) for v in vs]
         request = api_pb2.QueuePutRequest(queue_id=self.remote_id, values=vs_encoded, idempotency_key=str(uuid.uuid4()))
         return await retry(client.stub.QueuePut)(request, timeout=5.0)
 

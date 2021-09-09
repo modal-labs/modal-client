@@ -92,8 +92,8 @@ def main(task_id, function_id, module_name, function_name, client=None):
     for function_input in function_context.get_inputs():
         result = call_function(
             function,
-            function_context._serialize,
-            function_context._deserialize,
+            client.serialize,
+            client.deserialize,
             function_input,
         )
         function_context.output(function_input.input_id, result)

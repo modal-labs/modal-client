@@ -63,7 +63,7 @@ class Call(Object):
             args = [(arg,) for arg in args]
         request = api_pb2.FunctionCallRequest(
             function_id=self.function_id,
-            inputs=[self._serialize(client, (arg, kwargs)) for arg in args],
+            inputs=[client.serialize((arg, kwargs)) for arg in args],
             idempotency_key=str(uuid.uuid4()),
             call_id=self.call_id
         )
@@ -85,7 +85,7 @@ class Call(Object):
         for output in response.outputs:
             if output.status != api_pb2.GenericResult.Status.SUCCESS:
                 raise Exception('Remote exception: %s\n%s' % (output.exception, output.traceback))
-            yield self._deserialize(client, output.data)
+            yield client.deserialize(output.data)
 
     async def __aiter__(self):
         # Most of the complexity of this function comes from the input throttling.

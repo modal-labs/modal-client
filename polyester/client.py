@@ -1,12 +1,15 @@
 import asyncio
 import grpc.aio
+import io
 import os
 
 from .async_utils import infinite_loop, synchronizer, retry
 from .grpc_utils import ChannelPool, GRPC_REQUEST_TIMEOUT, BLOCKING_REQUEST_TIMEOUT
 from .config import config, logger
 from .local_server import LocalServer
+from .object import ObjectMeta
 from .proto import api_pb2, api_pb2_grpc
+from .serialization import Pickler, Unpickler
 from .server_connection import GRPCConnectionFactory
 from .utils import print_logs
 
@@ -99,6 +102,18 @@ class Client:
                     break
                 else:
                     print_logs(log_entry.data, log_entry.fd)
+
+    def serialize(self, obj):
+        ''' Serializes object and replaces all references to the client class by a placeholder.'''
+        # TODO: probably should not be here
+        buf = io.BytesIO()
+        Pickler(self, ObjectMeta.type_to_name, buf).dump(obj)
+        return buf.getvalue()
+
+    def deserialize(self, s: bytes):
+        ''' Deserializes object and replaces all client placeholders by self.'''
+        # TODO: probably should not be here
+        return Unpickler(self, ObjectMeta.name_to_type, io.BytesIO(s)).load()
 
     @classmethod
     async def from_env(cls, reuse=True):

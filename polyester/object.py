@@ -1,9 +1,5 @@
-import io
-
 from .async_utils import synchronizer
-from .client import Client
 from .config import logger
-from .serialization import Pickler, Unpickler
 
 
 class ObjectMeta(type):
@@ -32,15 +28,7 @@ class Object(metaclass=ObjectMeta):
 
     async def _get_client(self):
         if self.client is None:
+            # TODO: fix this circular import later
+            from .client import Client
             self.client = await Client.from_env()
         return self.client
-
-    def _serialize(self, client, obj):
-        ''' Serializes object and replaces all references to the client class by a placeholder.'''
-        buf = io.BytesIO()
-        Pickler(client, ObjectMeta.type_to_name, buf).dump(obj)
-        return buf.getvalue()
-
-    def _deserialize(self, client, s: bytes):
-        ''' Deserializes object and replaces all client placeholders by self.'''
-        return Unpickler(client, ObjectMeta.name_to_type, io.BytesIO(s)).load()
