@@ -15,7 +15,7 @@ from .object import Object
 
 
 class FunctionContext(Object):
-    ''' This class isn't much more than a helper method for some gRPC calls. '''
+    """This class isn't much more than a helper method for some gRPC calls."""
 
     def __init__(self, client, task_id, function_id, module_name, function_name):
         super().__init__(client=client)
@@ -27,7 +27,9 @@ class FunctionContext(Object):
     def get_function(self) -> typing.Callable:
         return Function.get_function(self.module_name, self.function_name)
 
-    async def get_inputs(self) -> typing.AsyncIterator[api_pb2.FunctionGetNextInputResponse]:
+    async def get_inputs(
+        self,
+    ) -> typing.AsyncIterator[api_pb2.FunctionGetNextInputResponse]:
         client = await self._get_client()
         while True:
             idempotency_key = str(uuid.uuid4())
@@ -35,9 +37,11 @@ class FunctionContext(Object):
                 task_id=self.task_id,
                 function_id=self.function_id,
                 idempotency_key=idempotency_key,
-                timeout=BLOCKING_REQUEST_TIMEOUT
+                timeout=BLOCKING_REQUEST_TIMEOUT,
             )
-            response = await retry(client.stub.FunctionGetNextInput)(request, timeout=GRPC_REQUEST_TIMEOUT)
+            response = await retry(client.stub.FunctionGetNextInput)(
+                request, timeout=GRPC_REQUEST_TIMEOUT
+            )
             if response.stop:
                 break
             yield response
@@ -46,9 +50,7 @@ class FunctionContext(Object):
         client = await self._get_client()
         idempotency_key = str(uuid.uuid4())
         request = api_pb2.FunctionOutputRequest(
-            input_id=input_id,
-            idempotency_key=idempotency_key,
-            output=output
+            input_id=input_id, idempotency_key=idempotency_key, output=output
         )
         await retry(client.stub.FunctionOutput)(request)
 

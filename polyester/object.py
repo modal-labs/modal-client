@@ -14,7 +14,7 @@ class ObjectMeta(type):
         ObjectMeta.type_to_name[new_cls] = name
         ObjectMeta.name_to_type[name] = new_cls
 
-        logger.debug(f'Created Object class {name}')
+        logger.debug(f"Created Object class {name}")
         return new_cls
 
 
@@ -30,5 +30,6 @@ class Object(metaclass=ObjectMeta):
         if self.client is None:
             # TODO: fix this circular import later
             from .client import Client
+
             self.client = await Client.from_env()
         return self.client

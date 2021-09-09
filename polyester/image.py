@@ -122,11 +122,18 @@ mount_py_in_workdir_into_root = Mount(
 
 def _make_bytes(s):
     assert type(s) in (str, bytes)
-    return s.encode('ascii') if type(s) is str else s
+    return s.encode("ascii") if type(s) is str else s
 
 
 class Layer(Object):
-    def __init__(self, tag=None, base_layers={}, dockerfile_commands=[], context_files={}, must_create=False):
+    def __init__(
+        self,
+        tag=None,
+        base_layers={},
+        dockerfile_commands=[],
+        context_files={},
+        must_create=False,
+    ):
         super().__init__()  # TODO: ids etc
         self.layer_id = None
         self.tag = tag

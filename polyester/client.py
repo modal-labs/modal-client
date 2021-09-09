@@ -86,6 +86,7 @@ class Client:
             while True:
                 yield api_pb2.ClientHeartbeatRequest(client_id=self.client_id)
                 await asyncio.sleep(sleep)
+
         await self.stub.ClientHeartbeats(loop())
 
     async def _track_logs(self):
@@ -104,14 +105,14 @@ class Client:
                     print_logs(log_entry.data, log_entry.fd)
 
     def serialize(self, obj):
-        ''' Serializes object and replaces all references to the client class by a placeholder.'''
+        """Serializes object and replaces all references to the client class by a placeholder."""
         # TODO: probably should not be here
         buf = io.BytesIO()
         Pickler(self, ObjectMeta.type_to_name, buf).dump(obj)
         return buf.getvalue()
 
     def deserialize(self, s: bytes):
-        ''' Deserializes object and replaces all client placeholders by self.'''
+        """Deserializes object and replaces all client placeholders by self."""
         # TODO: probably should not be here
         return Unpickler(self, ObjectMeta.name_to_type, io.BytesIO(s)).load()
 
