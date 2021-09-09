@@ -5,20 +5,20 @@ import traceback
 import typing
 import uuid
 
-from .async_utils import retry, synchronizer
+from .async_utils import retry
 from .client import Client
 from .config import logger
 from .grpc_utils import GRPC_REQUEST_TIMEOUT, BLOCKING_REQUEST_TIMEOUT
 from .function import Function
 from .proto import api_pb2
+from .object import Object
 
 
-@synchronizer
-class FunctionContext:
+class FunctionContext(Object):
     ''' This class isn't much more than a helper method for some gRPC calls. '''
 
     def __init__(self, client, task_id, function_id, module_name, function_name):
-        self.client = client
+        super().__init__(client=client)
         self.task_id = task_id
         self.function_id = function_id
         self.module_name = module_name
@@ -28,6 +28,7 @@ class FunctionContext:
         return Function.get_function(self.module_name, self.function_name)
 
     async def get_inputs(self) -> typing.AsyncIterator[api_pb2.FunctionGetNextInputResponse]:
+        client = await self._get_client()
         while True:
             idempotency_key = str(uuid.uuid4())
             request = api_pb2.FunctionGetNextInputRequest(
@@ -36,19 +37,20 @@ class FunctionContext:
                 idempotency_key=idempotency_key,
                 timeout=BLOCKING_REQUEST_TIMEOUT
             )
-            response = await retry(self.client.stub.FunctionGetNextInput)(request, timeout=GRPC_REQUEST_TIMEOUT)
+            response = await retry(client.stub.FunctionGetNextInput)(request, timeout=GRPC_REQUEST_TIMEOUT)
             if response.stop:
                 break
             yield response
 
     async def output(self, input_id: str, output: api_pb2.GenericResult):
+        client = await self._get_client()
         idempotency_key = str(uuid.uuid4())
         request = api_pb2.FunctionOutputRequest(
             input_id=input_id,
             idempotency_key=idempotency_key,
             output=output
         )
-        await retry(self.client.stub.FunctionOutput)(request)
+        await retry(client.stub.FunctionOutput)(request)
 
 
 def call_function(
@@ -90,9 +92,9 @@ def main(task_id, function_id, module_name, function_name, client=None):
     for function_input in function_context.get_inputs():
         result = call_function(
             function,
-            client.serialize,
-            client.deserialize,
-            function_input
+            function_context._serialize,
+            function_context._deserialize,
+            function_input,
         )
         function_context.output(function_input.input_id, result)
 

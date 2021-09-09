@@ -11,8 +11,8 @@ from .client import Client
 from .config import logger
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .proto import api_pb2
+from .object import Object
 from .queue import Queue
-from .serialization import serializable
 
 
 def _function_to_path(f):
@@ -47,10 +47,9 @@ def _path_to_function(module_name, function_name):
         raise
 
 
-@synchronizer
-class Call:
+class Call(Object):
     def __init__(self, client, function_id, inputs, star, window, kwargs):
-        self.client = client
+        super().__init__(client=client)  # TODO: tag, id
         self.function_id = function_id
         self.inputs = inputs
         self.star = star
@@ -64,7 +63,7 @@ class Call:
             args = [(arg,) for arg in args]
         request = api_pb2.FunctionCallRequest(
             function_id=self.function_id,
-            inputs=[client.serialize((arg, kwargs)) for arg in args],
+            inputs=[self._serialize(client, (arg, kwargs)) for arg in args],
             idempotency_key=str(uuid.uuid4()),
             call_id=self.call_id
         )
@@ -86,13 +85,15 @@ class Call:
         for output in response.outputs:
             if output.status != api_pb2.GenericResult.Status.SUCCESS:
                 raise Exception('Remote exception: %s\n%s' % (output.exception, output.traceback))
-            yield client.deserialize(output.data)
+            yield self._deserialize(client, output.data)
 
     async def __aiter__(self):
         # Most of the complexity of this function comes from the input throttling.
         # Basically the idea is that we maintain x (default 100) outstanding requests at any point in time,
         # and we don't enqueue more requests until we get back enough values.
         # It probably makes a lot of sense to move the input throttling to the server instead.
+
+        client = await self._get_client()
 
         # TODO: we should support asynchronous generators as well
         inputs = iter(self.inputs)  # Handle non-generator inputs
@@ -109,30 +110,21 @@ class Call:
                 except StopIteration:
                     input_exhausted = True
             if batch_args:
-                await self._enqueue(self.client, batch_args, self.star, self.kwargs)
+                await self._enqueue(client, batch_args, self.star, self.kwargs)
             if n_dequeued < n_enqueued:
-                async for output in self._dequeue(self.client, n_enqueued - n_dequeued):
+                async for output in self._dequeue(client, n_enqueued - n_dequeued):
                     n_dequeued += 1
                     yield output
 
 
-# @serializable
-@synchronizer
-class Function:
+class Function(Object):
     def __init__(self, raw_f, image=None, client=None):
+        super().__init__(client=client)  # TODO: tag, id
         assert callable(raw_f)
         self.raw_f = raw_f
         self.module_name, self.function_name = _function_to_path(raw_f)
         self.image = image
-        self.client = client  # TODO: is this ever used?
         self.function_id = None
-
-    async def _get_client(self):
-        # Maybe this needs to go on the serializable base class, not sure
-        if self.client is None:
-            return await Client.from_env()
-        else:
-            return self.client
 
     async def _get_id(self):
         if self.function_id:
@@ -142,7 +134,6 @@ class Function:
 
         # Create function remotely
         image_id = await self.image.join(client)
-        data = client.serialize(self.raw_f)
         function_definition = api_pb2.Function(
             module_name=self.module_name,
             function_name=self.function_name,

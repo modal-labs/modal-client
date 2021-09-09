@@ -7,10 +7,11 @@ import time
 
 from typing import Dict
 
-from .async_utils import retry, synchronizer
+from .async_utils import retry
 from .config import logger
 from .function import decorate_function
 from .grpc_utils import GRPC_REQUEST_TIMEOUT, BLOCKING_REQUEST_TIMEOUT
+from .object import Object
 from .proto import api_pb2
 
 
@@ -42,9 +43,9 @@ async def get_files(local_dir, condition):
             yield filename, rel_filename, sha256_hex
 
 
-@synchronizer
-class Mount:
+class Mount(Object):
     def __init__(self, local_dir, remote_dir, condition):
+        super().__init__()
         self.local_dir = local_dir
         self.remote_dir = remote_dir
         self.mount_id = None
@@ -124,9 +125,9 @@ def _make_bytes(s):
     return s.encode('ascii') if type(s) is str else s
 
 
-@synchronizer
-class Layer:
+class Layer(Object):
     def __init__(self, tag=None, base_layers={}, dockerfile_commands=[], context_files={}, must_create=False):
+        super().__init__()  # TODO: ids etc
         self.layer_id = None
         self.tag = tag
         self.base_layers = base_layers
@@ -208,9 +209,10 @@ class Layer:
         req = api_pb2.LayerSetTagRequest(layer_id=self.layer_id, tag=tag)
         await client.stub.LayerSetTag(req)
 
-@synchronizer
-class EnvDict:
+
+class EnvDict(Object):
     def __init__(self, env_dict):
+        super().__init__()  # TODO: ids etc
         self.env_dict = env_dict
         self.env_dict_id = None
 
@@ -222,9 +224,10 @@ class EnvDict:
 
         return self.env_dict_id
 
-@synchronizer
-class Image:
+
+class Image(Object):
     def __init__(self, layer, mounts=[], env_dict=None):
+        super().__init__()  # TODO: ids etc
         self.layer = layer
         self.mounts = mounts
         self.env_dict = env_dict

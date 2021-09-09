@@ -7,7 +7,6 @@ from .grpc_utils import ChannelPool, GRPC_REQUEST_TIMEOUT, BLOCKING_REQUEST_TIME
 from .config import config, logger
 from .local_server import LocalServer
 from .proto import api_pb2, api_pb2_grpc
-from .serialization import serializable
 from .server_connection import GRPCConnectionFactory
 from .utils import print_logs
 
@@ -85,12 +84,6 @@ class Client:
                 yield api_pb2.ClientHeartbeatRequest(client_id=self.client_id)
                 await asyncio.sleep(sleep)
         await self.stub.ClientHeartbeats(loop())
-
-    def serialize(self, obj):
-        return serializable.serialize(self, obj)
-
-    def deserialize(self, s: bytes):
-        return serializable.deserialize(self, s)
 
     async def _track_logs(self):
         # TODO: break it out into its own class?

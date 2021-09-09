@@ -1,14 +1,7 @@
 import cloudpickle
-import io
 import pickle
 
 from .config import logger
-
-
-class SerializableObject:
-    def __init__(self, client=None):
-        self.client = client
-        self._serializable_object_initialized = True
 
 
 class Pickler(cloudpickle.Pickler):
@@ -44,32 +37,3 @@ class Unpickler(pickle.Unpickler):
             return cls(client=self.client, local_id=local_id, remote_id=remote_id)
         else:
             raise Exception('unknown type tag "%s" to recover' % type_tag)
-
-
-class SerializableRegistry:
-    def __init__(self):
-        self.type_to_name = {}
-        self.name_to_type = {}
-
-    def __call__(self, cls):
-        '''Class decorator which adds a mixin base class SerializableObject.'''
-        cls_name = cls.__name__
-        cls_dict = dict(cls.__dict__)
-        cls_new = type(cls_name, (cls, SerializableObject), cls_dict)
-        logger.debug('Registering class %s as serializable with name %s' % (cls, cls_name))
-        self.type_to_name[cls_new] = cls_name
-        self.name_to_type[cls_name] = cls_new
-        return cls_new
-
-    def serialize(self, client, obj):
-        ''' Serializes object and replaces all references to the client class by a placeholder.'''
-        buf = io.BytesIO()
-        Pickler(client, self.type_to_name, buf).dump(obj)
-        return buf.getvalue()
-
-    def deserialize(self, client, s: bytes):
-        ''' Deserializes object and replaces all client placeholders by self.'''
-        return Unpickler(client, self.name_to_type, io.BytesIO(s)).load()
-
-
-serializable = SerializableRegistry()
