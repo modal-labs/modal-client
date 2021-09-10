@@ -135,6 +135,8 @@ class Layer(Object):
         context_files={},
         must_create=False,
     ):
+        dockerfile_commands = [_make_bytes(s) for s in dockerfile_commands]
+
         # Construct the local id
         local_id_args = []
         for docker_tag, layer in base_layers.items():
@@ -147,7 +149,7 @@ class Layer(Object):
             local_id=','.join(local_id_args),
             tag=tag,
             base_layers=base_layers,
-            dockerfile_commands=[_make_bytes(s) for s in dockerfile_commands],
+            dockerfile_commands=dockerfile_commands,
             context_files=context_files,
             must_create=must_create,
         ))
