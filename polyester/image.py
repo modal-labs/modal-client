@@ -45,11 +45,13 @@ async def get_files(local_dir, condition):
 
 class Mount(Object):
     def __init__(self, local_dir, remote_dir, condition):
-        super().__init__(args=dict(
-            local_dir=local_dir,
-            remote_dir=remote_dir,
-            condition=condition,
-        ))
+        super().__init__(
+            args=dict(
+                local_dir=local_dir,
+                remote_dir=remote_dir,
+                condition=condition,
+            )
+        )
         self.mount_id = None
         self._hashes = {}  # TODO: get rid of
         self._remote_to_local_filename = {}  # TODO: get rid of
@@ -58,7 +60,9 @@ class Mount(Object):
         async for filename, rel_filename, sha256_hex in get_files(self.args.local_dir, self.args.condition):
             remote_filename = os.path.join(self.args.remote_dir, rel_filename)  # won't work on windows
             self._remote_to_local_filename[remote_filename] = filename
-            request = api_pb2.MountRegisterFileRequest(filename=remote_filename, sha256_hex=sha256_hex, mount_id=mount_id)
+            request = api_pb2.MountRegisterFileRequest(
+                filename=remote_filename, sha256_hex=sha256_hex, mount_id=mount_id
+            )
             self._hashes[filename] = sha256_hex
             yield request
 
@@ -140,8 +144,8 @@ class Layer(Object):
         # Construct the local id
         local_id_args = []
         for docker_tag, layer in base_layers.items():
-            local_id_args.append('b:%s:(%s)' % (docker_tag, layer.args.local_id))
-        local_id_args.append('c:%s' % get_sha256_hex_from_content(b'\n'.join(dockerfile_commands)))
+            local_id_args.append("b:%s:(%s)" % (docker_tag, layer.args.local_id))
+        local_id_args.append("c:%s" % get_sha256_hex_from_content(b"\n".join(dockerfile_commands)))
         for filename, content in context_files.items():
             local_id_args.append('f:%s:%s' % (filename, get_sha256_hex_from_content(content)))
 
@@ -223,9 +227,11 @@ class Layer(Object):
 
 class EnvDict(Object):
     def __init__(self, env_dict):
-        super().__init__(args=dict(
-            env_dict=env_dict,
-        ))
+        super().__init__(
+            args=dict(
+                env_dict=env_dict,
+            )
+        )
         self.env_dict_id = None
 
     async def join(self, client):
@@ -239,14 +245,9 @@ class EnvDict(Object):
 
 class Image(Object):
     def __init__(self, layer, mounts=[], env_dict=None, **kwargs):
-        super().__init__(args=dict(
-            layer=layer,
-            mounts=mounts,
-            env_dict=env_dict,
-            **kwargs
-        ))
+        super().__init__(args=dict(layer=layer, mounts=mounts, env_dict=env_dict, **kwargs))
         self.image_id = None
-        self.local_id = 'i:(%s)' % layer.args.local_id  # TODO: include the mounts in the local id too!!!
+        self.local_id = "i:(%s)" % layer.args.local_id  # TODO: include the mounts in the local id too!!!
 
     async def join(self, client):
         # TODO: there's some risk of a race condition here
@@ -287,20 +288,20 @@ class Image(Object):
         return Image(self.args.layer, self.args.mounts, EnvDict(env_vars))
 
     def function(self, raw_f):
-        ''' Primarily to be used as a decorator.'''
+        """Primarily to be used as a decorator."""
         return decorate_function(raw_f, self)
 
     def is_inside(self):
         # This is used from inside of containers to know whether this container is active or not
-        return os.getenv('POLYESTER_IMAGE_LOCAL_ID') == self.args.local_id
+        return os.getenv("POLYESTER_IMAGE_LOCAL_ID") == self.args.local_id
 
 
 class DebianSlim(Image):
     def __init__(self, layer=None, python_version=None):
         if python_version is None:
-            python_version = '%d.%d.%d' % sys.version_info[:3]
+            python_version = "%d.%d.%d" % sys.version_info[:3]
         if layer is None:
-            layer = Layer(tag='python-%s-slim-buster-base' % python_version)
+            layer = Layer(tag="python-%s-slim-buster-base" % python_version)
         super().__init__(
             layer=layer,
             mounts=[mount_py_in_workdir_into_root],
@@ -310,8 +311,8 @@ class DebianSlim(Image):
     def add_python_packages(self, python_packages):
         layer = Layer(
             base_layers={
-                'base': self.args.layer,
-                'builder': Layer(tag='python-%s-slim-buster-builder' % self.args.python_version)
+                "base": self.args.layer,
+                "builder": Layer(tag="python-%s-slim-buster-builder" % self.args.python_version),
             },
             dockerfile_commands=[
                 'FROM builder as builder-vehicle',
@@ -326,8 +327,8 @@ class DebianSlim(Image):
 
     def run_commands(self, commands):
         layer = Layer(
-            base_layers={'base': self.args.layer},
-            dockerfile_commands=['FROM base'] + ['RUN ' + command for command in commands]
+            base_layers={"base": self.args.layer},
+            dockerfile_commands=["FROM base"] + ["RUN " + command for command in commands],
         )
         return DebianSlim(layer=layer)
 

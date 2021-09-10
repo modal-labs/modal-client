@@ -20,13 +20,13 @@ class ObjectMeta(type):
 
 class Args:
     def __init__(self, data):
-        self.__dict__['data'] = data if data is not None else {}
+        self.__dict__["data"] = data if data is not None else {}
 
     def __getattr__(self, k):
-        return self.__dict__['data'][k]
+        return self.__dict__["data"][k]
 
     def __setattr__(self, k, v):
-        raise AttributeError('Args object is immutable')
+        raise AttributeError("Args object is immutable")
 
 
 class Object(metaclass=ObjectMeta):

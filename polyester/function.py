@@ -57,7 +57,7 @@ class Call(Object):
                 star=star,
                 window=window,
                 kwargs=kwargs,
-            )
+            ),
         )
         self.call_id = None
 
@@ -70,7 +70,7 @@ class Call(Object):
             function_id=self.args.function_id,
             inputs=[client.serialize((arg, kwargs)) for arg in args],
             idempotency_key=str(uuid.uuid4()),
-            call_id=self.call_id
+            call_id=self.call_id,
         )
         response = await retry(client.stub.FunctionCall)(request)
         self.call_id = response.call_id
@@ -106,7 +106,7 @@ class Call(Object):
         n_enqueued, n_dequeued = 0, 0
         input_exhausted = False
         while not input_exhausted or n_dequeued < n_enqueued:
-            logger.debug('Map status: %d enqueued, %d dequeued' % (n_enqueued, n_dequeued))
+            logger.debug("Map status: %d enqueued, %d dequeued" % (n_enqueued, n_dequeued))
             batch_args = []
             while not input_exhausted and n_enqueued < n_dequeued + self.args.window:
                 try:
@@ -133,7 +133,7 @@ class Function(Object):
                 module_name=module_name,
                 function_name=function_name,
                 image=image,
-            )
+            ),
         )
         self.function_id = None
 
