@@ -45,17 +45,18 @@ async def get_files(local_dir, condition):
 
 class Mount(Object):
     def __init__(self, local_dir, remote_dir, condition):
-        super().__init__()
-        self.local_dir = local_dir
-        self.remote_dir = remote_dir
+        super().__init__(args=dict(
+            local_dir=local_dir,
+            remote_dir=remote_dir,
+            condition=condition,
+        ))
         self.mount_id = None
-        self.condition = condition
-        self._hashes = {}
-        self._remote_to_local_filename = {}
+        self._hashes = {}  # TODO: get rid of
+        self._remote_to_local_filename = {}  # TODO: get rid of
 
     async def _register_file_requests(self, mount_id):
-        async for filename, rel_filename, sha256_hex in get_files(self.local_dir, self.condition):
-            remote_filename = os.path.join(self.remote_dir, rel_filename)  # won't work on windows
+        async for filename, rel_filename, sha256_hex in get_files(self.args.local_dir, self.args.condition):
+            remote_filename = os.path.join(self.args.remote_dir, rel_filename)  # won't work on windows
             self._remote_to_local_filename[remote_filename] = filename
             request = api_pb2.MountRegisterFileRequest(filename=remote_filename, sha256_hex=sha256_hex, mount_id=mount_id)
             self._hashes[filename] = sha256_hex
@@ -83,7 +84,7 @@ class Mount(Object):
         # serial operations on the server side (like hitting Redis for every file serially).
         # Another option is to parallelize more on the server side.
 
-        if not self.mount_id:
+        if not self.args.mount_id:
             req = api_pb2.MountCreateRequest(session_id=client.session_id)
             resp = await client.stub.MountCreate(req)
             mount_id = resp.mount_id
@@ -134,35 +135,36 @@ class Layer(Object):
         context_files={},
         must_create=False,
     ):
-        super().__init__()  # TODO: ids etc
-        self.layer_id = None
-        self.tag = tag
-        self.base_layers = base_layers
-        self.dockerfile_commands = [_make_bytes(s) for s in dockerfile_commands]
-        self.context_files = context_files
-        self.must_create = must_create
-
         # Construct the local id
         local_id_args = []
         for docker_tag, layer in base_layers.items():
-            local_id_args.append('b:%s:(%s)' % (docker_tag, layer.local_id))
-        local_id_args.append('c:%s' % get_sha256_hex_from_content(b'\n'.join(self.dockerfile_commands)))
+            local_id_args.append('b:%s:(%s)' % (docker_tag, layer.args.local_id))
+        local_id_args.append('c:%s' % get_sha256_hex_from_content(b'\n'.join(dockerfile_commands)))
         for filename, content in context_files.items():
             local_id_args.append('f:%s:%s' % (filename, get_sha256_hex_from_content(content)))
-        self.local_id = ','.join(local_id_args)
+
+        super().__init__(args=dict(
+            local_id=','.join(local_id_args),
+            tag=tag,
+            base_layers=base_layers,
+            dockerfile_commands=[_make_bytes(s) for s in dockerfile_commands],
+            context_files=context_files,
+            must_create=must_create,
+        ))
+        self.layer_id = None
 
     async def join(self, client):
         # TODO: there's some risk of a race condition here
         if self.layer_id is None:
-            if self.tag:
-                req = api_pb2.LayerGetByTagRequest(tag=self.tag)
+            if self.args.tag:
+                req = api_pb2.LayerGetByTagRequest(tag=self.args.tag)
                 resp = await client.stub.LayerGetByTag(req)
                 self.layer_id = resp.layer_id
 
             else:
                 # Recursively build base layers
                 base_layer_ids = await asyncio.gather(
-                    *(layer.join(client) for layer in self.base_layers.values())
+                    *(layer.join(client) for layer in self.args.base_layers.values())
                 )
                 base_layers = [
                     api_pb2.BaseLayer(
@@ -170,24 +172,24 @@ class Layer(Object):
                         layer_id=layer_id
                     )
                     for docker_tag, layer_id
-                    in zip(self.base_layers.keys(), base_layer_ids)
+                    in zip(self.args.base_layers.keys(), base_layer_ids)
                 ]
 
                 context_files = [
                     api_pb2.LayerContextFile(filename=filename, data=data)
-                    for filename, data in self.context_files.items()
+                    for filename, data in self.args.context_files.items()
                 ]
 
                 layer_definition = api_pb2.Layer(
                     base_layers=base_layers,
-                    dockerfile_commands=self.dockerfile_commands,
+                    dockerfile_commands=self.args.dockerfile_commands,
                     context_files=context_files,
                 )
 
                 req = api_pb2.LayerGetOrCreateRequest(
                     session_id=client.session_id,
                     layer=layer_definition,
-                    must_create=self.must_create,
+                    must_create=self.args.must_create,
                 )
                 resp = await client.stub.LayerGetOrCreate(req)
                 self.layer_id = resp.layer_id
@@ -219,13 +221,14 @@ class Layer(Object):
 
 class EnvDict(Object):
     def __init__(self, env_dict):
-        super().__init__()  # TODO: ids etc
-        self.env_dict = env_dict
+        super().__init__(args=dict(
+            env_dict=env_dict,
+        ))
         self.env_dict_id = None
 
     async def join(self, client):
         if not self.env_dict_id:
-            req = api_pb2.EnvDictCreateRequest(session_id=client.session_id, env_dict=self.env_dict)
+            req = api_pb2.EnvDictCreateRequest(session_id=client.session_id, env_dict=self.args.env_dict)
             resp = await client.stub.EnvDictCreate(req)
             self.env_dict_id = resp.env_dict_id
 
@@ -233,37 +236,39 @@ class EnvDict(Object):
 
 
 class Image(Object):
-    def __init__(self, layer, mounts=[], env_dict=None):
-        super().__init__()  # TODO: ids etc
-        self.layer = layer
-        self.mounts = mounts
-        self.env_dict = env_dict
+    def __init__(self, layer, mounts=[], env_dict=None, **kwargs):
+        super().__init__(args=dict(
+            layer=layer,
+            mounts=mounts,
+            env_dict=env_dict,
+            **kwargs
+        ))
         self.image_id = None
-        self.local_id = 'i:(%s)' % layer.local_id  # TODO: include the mounts in the local id too!!!
+        self.local_id = 'i:(%s)' % layer.args.local_id  # TODO: include the mounts in the local id too!!!
 
     async def join(self, client):
         # TODO: there's some risk of a race condition here
         if self.image_id is None:
             coros = [self.layer.join(client)]
-            if self.env_dict:
-                coros.append(self.env_dict.join(client))
-            for mount in self.mounts:
+            if self.args.env_dict:
+                coros.append(self.args.env_dict.join(client))
+            for mount in self.args.mounts:
                 coros.append(mount.join(client))
 
             results = await asyncio.gather(*coros)
 
             # mutating results for readability
             layer_id, results = results[0], results[1:]
-            if self.env_dict:
+            if self.args.env_dict:
                 env_dict_id, results = results[0], results[1:]
             else:
                 env_dict_id = None
             mount_ids = results[:]
 
             image = api_pb2.Image(
-                layer_id=self.layer.layer_id,
+                layer_id=self.args.layer.layer_id,
                 mount_ids=mount_ids,
-                local_id=self.local_id,
+                local_id=self.args.local_id,
                 env_dict_id=env_dict_id,
             )
 
@@ -277,7 +282,7 @@ class Image(Object):
         return self.image_id
 
     def set_env_vars(self, env_vars: Dict[str, str]):
-        return Image(self.layer, self.mounts, EnvDict(env_vars))
+        return Image(self.args.layer, self.args.mounts, EnvDict(env_vars))
 
     def function(self, raw_f):
         ''' Primarily to be used as a decorator.'''
@@ -285,23 +290,26 @@ class Image(Object):
 
     def is_inside(self):
         # This is used from inside of containers to know whether this container is active or not
-        return os.getenv('POLYESTER_IMAGE_LOCAL_ID') == self.local_id
+        return os.getenv('POLYESTER_IMAGE_LOCAL_ID') == self.args.local_id
 
 
 class DebianSlim(Image):
     def __init__(self, layer=None, python_version=None):
         if python_version is None:
             python_version = '%d.%d.%d' % sys.version_info[:3]
-        self.python_version = python_version
         if layer is None:
-            layer = Layer(tag='python-%s-slim-buster-base' % self.python_version)
-        super().__init__(layer=layer, mounts=[mount_py_in_workdir_into_root])
+            layer = Layer(tag='python-%s-slim-buster-base' % python_version)
+        super().__init__(
+            layer=layer,
+            mounts=[mount_py_in_workdir_into_root],
+            python_version=python_version,
+        )
 
     def add_python_packages(self, python_packages):
         layer = Layer(
             base_layers={
-                'base': self.layer,
-                'builder': Layer(tag='python-%s-slim-buster-builder' % self.python_version)
+                'base': self.args.layer,
+                'builder': Layer(tag='python-%s-slim-buster-builder' % self.args.python_version)
             },
             dockerfile_commands=[
                 'FROM builder as builder-vehicle',
@@ -316,7 +324,7 @@ class DebianSlim(Image):
 
     def run_commands(self, commands):
         layer = Layer(
-            base_layers={'base': self.layer},
+            base_layers={'base': self.args.layer},
             dockerfile_commands=['FROM base'] + ['RUN ' + command for command in commands]
         )
         return DebianSlim(layer=layer)
