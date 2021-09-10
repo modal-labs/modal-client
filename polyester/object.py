@@ -43,7 +43,7 @@ class Object(metaclass=ObjectMeta):
         elif args is None:
             self.args = None
         else:
-            raise Exception(f'{args} of type {type(args)} must be instance of (dict, Args, NoneType)')
+            raise Exception(f"{args} of type {type(args)} must be instance of (dict, Args, NoneType)")
 
     async def _get_client(self):
         if self.client is None:
