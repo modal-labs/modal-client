@@ -59,7 +59,6 @@ class Call(Object):
                 kwargs=kwargs,
             ),
         )
-        self.call_id = None
 
     async def _enqueue(self, client, args, star, kwargs):
         if not star:
@@ -70,16 +69,16 @@ class Call(Object):
             function_id=self.args.function_id,
             inputs=[client.serialize((arg, kwargs)) for arg in args],
             idempotency_key=str(uuid.uuid4()),
-            call_id=self.call_id,
+            call_id=self.object_id,
         )
         response = await retry(client.stub.FunctionCall)(request)
-        self.call_id = response.call_id
+        self.object_id = response.call_id
 
     async def _dequeue(self, client, n_outputs):
         while True:
             request = api_pb2.FunctionGetNextOutputRequest(
                 function_id=self.args.function_id,  # TODO: why is this needed?
-                call_id=self.call_id,
+                call_id=self.object_id,
                 timeout=BLOCKING_REQUEST_TIMEOUT,
                 idempotency_key=str(uuid.uuid4()),
                 n_outputs=n_outputs,
@@ -135,11 +134,10 @@ class Function(Object):
                 image=image,
             ),
         )
-        self.function_id = None
 
     async def _get_id(self):
-        if self.function_id:
-            return self.function_id
+        if self.object_id:
+            return self.object_id
 
         client = await self._get_client()
 
@@ -155,8 +153,8 @@ class Function(Object):
             function=function_definition,
         )
         response = await client.stub.FunctionGetOrCreate(request)
-        self.function_id = response.function_id
-        return self.function_id
+        self.object_id = response.function_id
+        return self.object_id
 
     async def map(self, inputs, star=False, window=100, kwargs={}):
         client = await self._get_client()

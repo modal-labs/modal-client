@@ -52,32 +52,29 @@ class Mount(Object):
                 condition=condition,
             )
         )
-        self.mount_id = None
-        self._hashes = {}  # TODO: get rid of
-        self._remote_to_local_filename = {}  # TODO: get rid of
 
-    async def _register_file_requests(self, mount_id):
+    async def _register_file_requests(self, mount_id, hashes):
         async for filename, rel_filename, sha256_hex in get_files(self.args.local_dir, self.args.condition):
             remote_filename = os.path.join(self.args.remote_dir, rel_filename)  # won't work on windows
             self._remote_to_local_filename[remote_filename] = filename
             request = api_pb2.MountRegisterFileRequest(
                 filename=remote_filename, sha256_hex=sha256_hex, mount_id=mount_id
             )
-            self._hashes[filename] = sha256_hex
+            hashes[filename] = sha256_hex
             yield request
 
-    async def _upload_file_requests(self, client, mount_id):
+    async def _upload_file_requests(self, client, mount_id, hashes, remote_to_local_filename):
         t0 = time.time()
         n_files, n_missing_files, total_bytes = 0, 0, 0
-        async for response in client.stub.MountRegisterFile(self._register_file_requests(mount_id)):
+        async for response in client.stub.MountRegisterFile(self._register_file_requests(mount_id, hashes)):
             n_files += 1
             if not response.exists:
-                filename = self._remote_to_local_filename[response.filename]
+                filename = remote_to_local_filename[response.filename]
                 data = open(filename, 'rb').read()
                 n_missing_files += 1
                 total_bytes += len(data)
                 logger.debug(f'Uploading file {filename} to {response.filename} ({len(data)} bytes)')
-                request = api_pb2.MountUploadFileRequest(data=data, sha256_hex=self._hashes[filename], size=len(data), mount_id=mount_id)
+                request = api_pb2.MountUploadFileRequest(data=data, sha256_hex=hashes[filename], size=len(data), mount_id=mount_id)
                 yield request
 
         logger.info(f'Uploaded {n_missing_files}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s')
@@ -88,7 +85,10 @@ class Mount(Object):
         # serial operations on the server side (like hitting Redis for every file serially).
         # Another option is to parallelize more on the server side.
 
-        if not self.args.mount_id:
+        hashes = {}  # TODO: get rid of
+        remote_to_local_filename = {}  # TODO: get rid of
+
+        if not self.object_id:
             req = api_pb2.MountCreateRequest(session_id=client.session_id)
             resp = await client.stub.MountCreate(req)
             mount_id = resp.mount_id
@@ -99,11 +99,11 @@ class Mount(Object):
             req = api_pb2.MountDoneRequest(mount_id=mount_id)
             await client.stub.MountDone(req)
 
-            self.mount_id = mount_id
+            self.object_id = object_id
 
         logger.debug('Waiting for mount %s' % self.mount_id)
         while True:
-            request = api_pb2.MountJoinRequest(mount_id=self.mount_id, timeout=BLOCKING_REQUEST_TIMEOUT)
+            request = api_pb2.MountJoinRequest(mount_id=self.object_id, timeout=BLOCKING_REQUEST_TIMEOUT)
             response = await retry(client.stub.MountJoin)(request, timeout=GRPC_REQUEST_TIMEOUT)
             if not response.result.status:
                 continue
@@ -157,15 +157,14 @@ class Layer(Object):
             context_files=context_files,
             must_create=must_create,
         ))
-        self.layer_id = None
 
     async def join(self, client):
         # TODO: there's some risk of a race condition here
-        if self.layer_id is None:
+        if self.object_id is None:
             if self.args.tag:
                 req = api_pb2.LayerGetByTagRequest(tag=self.args.tag)
                 resp = await client.stub.LayerGetByTag(req)
-                self.layer_id = resp.layer_id
+                self.object_id = resp.layer_id
 
             else:
                 # Recursively build base layers
@@ -198,12 +197,12 @@ class Layer(Object):
                     must_create=self.args.must_create,
                 )
                 resp = await client.stub.LayerGetOrCreate(req)
-                self.layer_id = resp.layer_id
+                self.object_id = resp.layer_id
 
-        logger.debug('Waiting for layer %s' % self.layer_id)
+        logger.debug('Waiting for layer %s' % self.object_id)
         while True:
             request = api_pb2.LayerJoinRequest(
-                layer_id=self.layer_id,
+                layer_id=self.object_id,
                 timeout=BLOCKING_REQUEST_TIMEOUT,
                 session_id=client.session_id,
             )
@@ -217,11 +216,11 @@ class Layer(Object):
             else:
                 raise Exception('Unknown status %s!' % response.result.status)
 
-        return self.layer_id
+        return self.object_id
 
     async def set_tag(self, tag, client):
-        assert self.layer_id
-        req = api_pb2.LayerSetTagRequest(layer_id=self.layer_id, tag=tag)
+        assert self.object_id
+        req = api_pb2.LayerSetTagRequest(layer_id=self.object_id, tag=tag)
         await client.stub.LayerSetTag(req)
 
 
@@ -232,26 +231,30 @@ class EnvDict(Object):
                 env_dict=env_dict,
             )
         )
-        self.env_dict_id = None
 
     async def join(self, client):
-        if not self.env_dict_id:
+        if not self.object_id:
             req = api_pb2.EnvDictCreateRequest(session_id=client.session_id, env_dict=self.args.env_dict)
             resp = await client.stub.EnvDictCreate(req)
-            self.env_dict_id = resp.env_dict_id
+            self.object_id = resp.env_dict_id
 
-        return self.env_dict_id
+        return self.object_id
 
 
 class Image(Object):
     def __init__(self, layer, mounts=[], env_dict=None, **kwargs):
-        super().__init__(args=dict(layer=layer, mounts=mounts, env_dict=env_dict, **kwargs))
-        self.image_id = None
-        self.local_id = "i:(%s)" % layer.args.local_id  # TODO: include the mounts in the local id too!!!
+        local_id = "i:(%s)" % layer.args.local_id  # TODO: include the mounts in the local id too!!!
+        super().__init__(args=dict(
+            layer=layer,
+            mounts=mounts,
+            env_dict=env_dict,
+            local_id=local_id,
+            **kwargs
+        ))
 
     async def join(self, client):
         # TODO: there's some risk of a race condition here
-        if self.image_id is None:
+        if self.object_id is None:
             coros = [self.layer.join(client)]
             if self.args.env_dict:
                 coros.append(self.args.env_dict.join(client))
@@ -280,9 +283,9 @@ class Image(Object):
                 image=image
             )
             response = await client.stub.ImageCreate(request)
-            self.image_id = response.image_id
+            self.object_id = response.image_id
 
-        return self.image_id
+        return self.object_id
 
     def set_env_vars(self, env_vars: Dict[str, str]):
         return Image(self.args.layer, self.args.mounts, EnvDict(env_vars))

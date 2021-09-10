@@ -10,14 +10,14 @@ from .proto import api_pb2
 
 class Queue(Object):
     def __init__(self, client):
-        super().__init__(client=client)  # TODO: tag, id
+        super().__init__(client=client)
 
     async def create(self):
         """This creates a queue on the server and returns its id."""
         client = await self._get_client()
         response = await client.stub.QueueCreate(api_pb2.Empty())
         logger.debug("Created queue with id %s" % response.queue_id)
-        self.remote_id = response.queue_id
+        self.object_id = response.queue_id
 
     async def _get(self, block, timeout, n_values):
         client = await self._get_client()
@@ -27,7 +27,7 @@ class Queue(Object):
                 request_timeout = min(request_timeout, timeout)
                 timeout -= request_timeout
             request = api_pb2.QueueGetRequest(
-                queue_id=self.remote_id,
+                queue_id=self.object_id,
                 block=block,
                 timeout=request_timeout,
                 n_values=n_values,
@@ -36,7 +36,7 @@ class Queue(Object):
             response = await retry(client.stub.QueueGet)(request, timeout=60.0)
             if response.values:
                 return [client.deserialize(value) for value in response.values]
-            logger.debug('Queue get for %s had empty results, trying again' % self.remote_id)
+            logger.debug('Queue get for %s had empty results, trying again' % self.object_id)
         raise queue.Empty()
 
     async def get(self, block=True, timeout=None):
@@ -50,7 +50,7 @@ class Queue(Object):
         client = await self._get_client()
         vs_encoded = [client.serialize(v) for v in vs]
         request = api_pb2.QueuePutRequest(
-            queue_id=self.remote_id,
+            queue_id=self.object_id,
             values=vs_encoded,
             idempotency_key=str(uuid.uuid4()),
         )

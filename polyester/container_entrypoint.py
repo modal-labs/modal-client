@@ -14,18 +14,22 @@ from .proto import api_pb2
 from .object import Object
 
 
-class FunctionContext(Object):
+class FunctionContext(Object):  # Idk, is this really a subclass of object? We don't care about de/serializability
     """This class isn't much more than a helper method for some gRPC calls."""
 
     def __init__(self, client, task_id, function_id, module_name, function_name):
-        super().__init__(client=client)
-        self.task_id = task_id
-        self.function_id = function_id
-        self.module_name = module_name
-        self.function_name = function_name
+        super().__init__(
+            client=client,
+            args=dict(
+                task_id=task_id,
+                function_id=function_id,
+                module_name=module_name,
+                function_name=function_name,
+            )
+        )
 
     def get_function(self) -> typing.Callable:
-        return Function.get_function(self.module_name, self.function_name)
+        return Function.get_function(self.args.module_name, self.args.function_name)
 
     async def get_inputs(
         self,
@@ -34,8 +38,8 @@ class FunctionContext(Object):
         while True:
             idempotency_key = str(uuid.uuid4())
             request = api_pb2.FunctionGetNextInputRequest(
-                task_id=self.task_id,
-                function_id=self.function_id,
+                task_id=self.args.task_id,
+                function_id=self.args.function_id,
                 idempotency_key=idempotency_key,
                 timeout=BLOCKING_REQUEST_TIMEOUT,
             )

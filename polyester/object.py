@@ -33,9 +33,9 @@ class Object(metaclass=ObjectMeta):
     # A bit ugly to leverage implemenation inheritance here, but I guess you could
     # roughly think of this class as a mixin
 
-    def __init__(self, client=None, id=None, args=None):
+    def __init__(self, client=None, object_id=None, args=None):
         self.client = client
-        self.id = id
+        self.object_id = object_id
         self.args = Args(args)
 
     async def _get_client(self):
@@ -45,3 +45,8 @@ class Object(metaclass=ObjectMeta):
 
             self.client = await Client.from_env()
         return self.client
+
+    def __setattr__(self, k, v):
+        if k not in ['client', 'object_id', 'args']:
+            raise AttributeError(f'Cannot set attribute {k}')
+        self.__dict__[k] = v
