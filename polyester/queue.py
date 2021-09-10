@@ -9,25 +9,26 @@ from .proto import api_pb2
 
 
 class Queue(Object):
-    def __init__(self, client):
+    def __init__(self, client=None):
         super().__init__(client=client)
 
-    async def create(self):
+    async def _join(self):
         """This creates a queue on the server and returns its id."""
         client = await self._get_client()
         response = await client.stub.QueueCreate(api_pb2.Empty())
         logger.debug("Created queue with id %s" % response.queue_id)
-        self.object_id = response.queue_id
+        return response.queue_id
 
     async def _get(self, block, timeout, n_values):
         client = await self._get_client()
+        queue_id = await self.join()
         while timeout is None or timeout > 0:
             request_timeout = 50.0  # We prevent longer ones in order to keep the connection alive
             if timeout is not None:
                 request_timeout = min(request_timeout, timeout)
                 timeout -= request_timeout
             request = api_pb2.QueueGetRequest(
-                queue_id=self.object_id,
+                queue_id=queue_id,
                 block=block,
                 timeout=request_timeout,
                 n_values=n_values,
@@ -48,9 +49,10 @@ class Queue(Object):
 
     async def put_many(self, vs: List[Any]):
         client = await self._get_client()
+        queue_id = await self.join()
         vs_encoded = [client.serialize(v) for v in vs]
         request = api_pb2.QueuePutRequest(
-            queue_id=self.object_id,
+            queue_id=queue_id,
             values=vs_encoded,
             idempotency_key=str(uuid.uuid4()),
         )

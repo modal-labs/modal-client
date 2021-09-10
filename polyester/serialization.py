@@ -4,6 +4,10 @@ import pickle
 from .config import logger
 
 
+# TODO: the code below uses the attributes "local_id" and "remote_id" which are not the correct ones
+# TODO: deserialization should be done using the Object constructor (setting the client and object_id)
+
+
 class Pickler(cloudpickle.Pickler):
     def __init__(self, client, type_to_name, buf):
         self.client = client

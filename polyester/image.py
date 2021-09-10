@@ -53,23 +53,23 @@ class Mount(Object):
             )
         )
 
-    async def _register_file_requests(self, mount_id, hashes):
+    async def _register_file_requests(self, mount_id, hashes, filenames):
         async for filename, rel_filename, sha256_hex in get_files(self.args.local_dir, self.args.condition):
             remote_filename = os.path.join(self.args.remote_dir, rel_filename)  # won't work on windows
-            self._remote_to_local_filename[remote_filename] = filename
+            filenames[remote_filename] = filename
             request = api_pb2.MountRegisterFileRequest(
                 filename=remote_filename, sha256_hex=sha256_hex, mount_id=mount_id
             )
             hashes[filename] = sha256_hex
             yield request
 
-    async def _upload_file_requests(self, client, mount_id, hashes, remote_to_local_filename):
+    async def _upload_file_requests(self, client, mount_id, hashes, filenames):
         t0 = time.time()
         n_files, n_missing_files, total_bytes = 0, 0, 0
-        async for response in client.stub.MountRegisterFile(self._register_file_requests(mount_id, hashes)):
+        async for response in client.stub.MountRegisterFile(self._register_file_requests(mount_id, hashes, filenames)):
             n_files += 1
             if not response.exists:
-                filename = remote_to_local_filename[response.filename]
+                filename = filenames[response.filename]
                 data = open(filename, "rb").read()
                 n_missing_files += 1
                 total_bytes += len(data)
@@ -79,32 +79,29 @@ class Mount(Object):
 
         logger.info(f"Uploaded {n_missing_files}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
 
-    async def join(self):
+    async def _join(self):
         # TODO: I think in theory we could split the get_files iterator and launch multiple concurrent
         # calls to MountRegisterFileRequest and MountUploadFileRequest. This would speed up a lot of the
         # serial operations on the server side (like hitting Redis for every file serially).
         # Another option is to parallelize more on the server side.
 
         hashes = {}
-        remote_to_local_filename = {}
+        filenames = {}
         client = await self._get_client()
 
-        if not self.object_id:
-            req = api_pb2.MountCreateRequest(session_id=client.session_id)
-            resp = await client.stub.MountCreate(req)
-            mount_id = resp.mount_id
+        req = api_pb2.MountCreateRequest(session_id=client.session_id)
+        resp = await client.stub.MountCreate(req)
+        mount_id = resp.mount_id
 
-            logger.debug(f'Uploading mount {mount_id}')
-            await client.stub.MountUploadFile(self._upload_file_requests(client, mount_id))
+        logger.debug(f'Uploading mount {mount_id}')
+        await client.stub.MountUploadFile(self._upload_file_requests(client, mount_id, hashes, filenames))
 
-            req = api_pb2.MountDoneRequest(mount_id=mount_id)
-            await client.stub.MountDone(req)
+        req = api_pb2.MountDoneRequest(mount_id=mount_id)
+        await client.stub.MountDone(req)
 
-            self.object_id = object_id
-
-        logger.debug("Waiting for mount %s" % self.mount_id)
+        logger.debug("Waiting for mount %s" % mount_id)
         while True:
-            request = api_pb2.MountJoinRequest(mount_id=self.object_id, timeout=BLOCKING_REQUEST_TIMEOUT)
+            request = api_pb2.MountJoinRequest(mount_id=mount_id, timeout=BLOCKING_REQUEST_TIMEOUT)
             response = await retry(client.stub.MountJoin)(request, timeout=GRPC_REQUEST_TIMEOUT)
             if not response.result.status:
                 continue
@@ -115,7 +112,7 @@ class Mount(Object):
             else:
                 raise Exception('Unknown status %s!' % response.result.status)
 
-        return self.mount_id
+        return mount_id
 
 
 # The default mount will upload all Python files in the current workdir into /root
@@ -161,53 +158,51 @@ class Layer(Object):
             )
         )
 
-    async def join(self):
+    async def _join(self):
         client = await self._get_client()
 
-        # TODO: there's some risk of a race condition here
-        if self.object_id is None:
-            if self.args.tag:
-                req = api_pb2.LayerGetByTagRequest(tag=self.args.tag)
-                resp = await client.stub.LayerGetByTag(req)
-                self.object_id = resp.layer_id
+        if self.args.tag:
+            req = api_pb2.LayerGetByTagRequest(tag=self.args.tag)
+            resp = await client.stub.LayerGetByTag(req)
+            layer_id = resp.layer_id
 
-            else:
-                # Recursively build base layers
-                base_layer_ids = await asyncio.gather(
-                    *(layer.set_client(client).join() for layer in self.args.base_layers.values())
+        else:
+            # Recursively build base layers
+            base_layer_ids = await asyncio.gather(
+                *(layer.set_client(client).join() for layer in self.args.base_layers.values())
+            )
+            base_layers = [
+                api_pb2.BaseLayer(
+                    docker_tag=docker_tag,
+                    layer_id=layer_id
                 )
-                base_layers = [
-                    api_pb2.BaseLayer(
-                        docker_tag=docker_tag,
-                        layer_id=layer_id
-                    )
-                    for docker_tag, layer_id
-                    in zip(self.args.base_layers.keys(), base_layer_ids)
-                ]
+                for docker_tag, layer_id
+                in zip(self.args.base_layers.keys(), base_layer_ids)
+            ]
 
-                context_files = [
-                    api_pb2.LayerContextFile(filename=filename, data=data)
-                    for filename, data in self.args.context_files.items()
-                ]
+            context_files = [
+                api_pb2.LayerContextFile(filename=filename, data=data)
+                for filename, data in self.args.context_files.items()
+            ]
 
-                layer_definition = api_pb2.Layer(
-                    base_layers=base_layers,
-                    dockerfile_commands=self.args.dockerfile_commands,
-                    context_files=context_files,
-                )
+            layer_definition = api_pb2.Layer(
+                base_layers=base_layers,
+                dockerfile_commands=self.args.dockerfile_commands,
+                context_files=context_files,
+            )
 
-                req = api_pb2.LayerGetOrCreateRequest(
-                    session_id=client.session_id,
-                    layer=layer_definition,
-                    must_create=self.args.must_create,
-                )
-                resp = await client.stub.LayerGetOrCreate(req)
-                self.object_id = resp.layer_id
+            req = api_pb2.LayerGetOrCreateRequest(
+                session_id=client.session_id,
+                layer=layer_definition,
+                must_create=self.args.must_create,
+            )
+            resp = await client.stub.LayerGetOrCreate(req)
+            layer_id = resp.layer_id
 
         logger.debug("Waiting for layer %s" % self.object_id)
         while True:
             request = api_pb2.LayerJoinRequest(
-                layer_id=self.object_id,
+                layer_id=layer_id,
                 timeout=BLOCKING_REQUEST_TIMEOUT,
                 session_id=client.session_id,
             )
@@ -221,12 +216,12 @@ class Layer(Object):
             else:
                 raise Exception("Unknown status %s!" % response.result.status)
 
-        return self.object_id
+        return layer_id
 
     async def set_tag(self, tag):
         client = await self._get_client()
-        assert self.object_id
-        req = api_pb2.LayerSetTagRequest(layer_id=self.object_id, tag=tag)
+        layer_id = await self.join()
+        req = api_pb2.LayerSetTagRequest(layer_id=layer_id, tag=tag)
         await client.stub.LayerSetTag(req)
 
 
@@ -238,14 +233,11 @@ class EnvDict(Object):
             )
         )
 
-    async def join(self):
+    async def _join(self):
         client = await self._get_client()
-        if not self.object_id:
-            req = api_pb2.EnvDictCreateRequest(session_id=client.session_id, env_dict=self.args.env_dict)
-            resp = await client.stub.EnvDictCreate(req)
-            self.object_id = resp.env_dict_id
-
-        return self.object_id
+        req = api_pb2.EnvDictCreateRequest(session_id=client.session_id, env_dict=self.args.env_dict)
+        resp = await client.stub.EnvDictCreate(req)
+        return resp.env_dict_id
 
 
 class Image(Object):
@@ -256,38 +248,35 @@ class Image(Object):
     async def join(self):
         client = await self._get_client()
         # TODO: there's some risk of a race condition here
-        if self.object_id is None:
-            coros = [self.layer.join(client)]
-            if self.args.env_dict:
-                coros.append(self.args.env_dict.set_client(client).join())
-            for mount in self.args.mounts:
-                coros.append(mount.set_client(client).join())
+        coros = [self.args.layer.set_client(client).join()]
+        if self.args.env_dict:
+            coros.append(self.args.env_dict.set_client(client).join())
+        for mount in self.args.mounts:
+            coros.append(mount.set_client(client).join())
 
-            results = await asyncio.gather(*coros)
+        results = await asyncio.gather(*coros)
 
-            # mutating results for readability
-            layer_id, results = results[0], results[1:]
-            if self.args.env_dict:
-                env_dict_id, results = results[0], results[1:]
-            else:
-                env_dict_id = None
-            mount_ids = results[:]
+        # mutating results for readability
+        layer_id, results = results[0], results[1:]
+        if self.args.env_dict:
+            env_dict_id, results = results[0], results[1:]
+        else:
+            env_dict_id = None
+        mount_ids = results[:]
 
-            image = api_pb2.Image(
-                layer_id=self.args.layer.layer_id,
-                mount_ids=mount_ids,
-                local_id=self.args.local_id,
-                env_dict_id=env_dict_id,
-            )
+        image = api_pb2.Image(
+            layer_id=layer_id,
+            mount_ids=mount_ids,
+            local_id=self.args.local_id,
+            env_dict_id=env_dict_id,
+        )
 
-            request = api_pb2.ImageCreateRequest(
-                session_id=client.session_id,
-                image=image
-            )
-            response = await client.stub.ImageCreate(request)
-            self.object_id = response.image_id
-
-        return self.object_id
+        request = api_pb2.ImageCreateRequest(
+            session_id=client.session_id,
+            image=image
+        )
+        response = await client.stub.ImageCreate(request)
+        return response.image_id
 
     def set_env_vars(self, env_vars: Dict[str, str]):
         return Image(self.args.layer, self.args.mounts, EnvDict(env_vars))

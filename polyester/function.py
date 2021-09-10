@@ -135,14 +135,11 @@ class Function(Object):
             ),
         )
 
-    async def _get_id(self):
-        if self.object_id:
-            return self.object_id
-
+    async def _join(self):
         client = await self._get_client()
 
         # Create function remotely
-        image_id = await self.args.image.join(client)
+        image_id = await self.args.image.set_client(client).join()
         function_definition = api_pb2.Function(
             module_name=self.args.module_name,
             function_name=self.args.function_name,
@@ -153,12 +150,11 @@ class Function(Object):
             function=function_definition,
         )
         response = await client.stub.FunctionGetOrCreate(request)
-        self.object_id = response.function_id
-        return self.object_id
+        return response.function_id
 
     async def map(self, inputs, star=False, window=100, kwargs={}):
         client = await self._get_client()
-        function_id = await self._get_id()
+        function_id = await self.join()
         return Call(client, function_id, inputs, star, window, kwargs)
 
     async def __call__(self, *args, **kwargs):

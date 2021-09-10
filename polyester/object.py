@@ -1,3 +1,5 @@
+import asyncio
+
 from .async_utils import synchronizer
 from .config import logger
 
@@ -34,6 +36,10 @@ class Object(metaclass=ObjectMeta):
     # roughly think of this class as a mixin
 
     def __init__(self, client=None, object_id=None, args=None):
+        # TODO: should we make these attributes hidden for subclasses?
+        # (i.e. "private" not even "protected" to use the C++ terminology)
+        # Feels like there could be some benefits of doing so
+        self.join_lock = None
         self.client = client
         self.object_id = object_id
         if isinstance(args, dict):
@@ -60,7 +66,21 @@ class Object(metaclass=ObjectMeta):
         Object.__init__(obj, client=client, object_id=self.object_id, args=self.args)
         return obj
 
+    async def _join(self):
+        raise NotImplementedError
+
+    async def join(self):
+        if self.object_id is None:
+            if self.join_lock is None:
+                # There's no race condition here because it's cooperative multithreading
+                self.join_lock = asyncio.Lock()
+            async with self.join_lock:
+                if self.object_id is None:
+                    self.object_id = await self._join()  # TODO: pass it self.args?
+                    assert self.object_id
+        return self.object_id
+
     def __setattr__(self, k, v):
-        if k not in ["client", "object_id", "args"]:
+        if k not in ["client", "object_id", "args", "join_lock"]:
             raise AttributeError(f"Cannot set attribute {k}")
         self.__dict__[k] = v
