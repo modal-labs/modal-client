@@ -36,7 +36,7 @@ class Queue(Object):
             response = await retry(client.stub.QueueGet)(request, timeout=60.0)
             if response.values:
                 return [client.deserialize(value) for value in response.values]
-            logger.debug('Queue get for %s had empty results, trying again' % self.object_id)
+            logger.debug("Queue get for %s had empty results, trying again" % self.object_id)
         raise queue.Empty()
 
     async def get(self, block=True, timeout=None):

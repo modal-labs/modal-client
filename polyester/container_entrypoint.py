@@ -25,7 +25,7 @@ class FunctionContext(Object):  # Idk, is this really a subclass of object? We d
                 function_id=function_id,
                 module_name=module_name,
                 function_name=function_name,
-            )
+            ),
         )
 
     def get_function(self) -> typing.Callable:

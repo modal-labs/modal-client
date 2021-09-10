@@ -70,14 +70,14 @@ class Mount(Object):
             n_files += 1
             if not response.exists:
                 filename = remote_to_local_filename[response.filename]
-                data = open(filename, 'rb').read()
+                data = open(filename, "rb").read()
                 n_missing_files += 1
                 total_bytes += len(data)
                 logger.debug(f'Uploading file {filename} to {response.filename} ({len(data)} bytes)')
                 request = api_pb2.MountUploadFileRequest(data=data, sha256_hex=hashes[filename], size=len(data), mount_id=mount_id)
                 yield request
 
-        logger.info(f'Uploaded {n_missing_files}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s')
+        logger.info(f"Uploaded {n_missing_files}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
 
     async def join(self, client):
         # TODO: I think in theory we could split the get_files iterator and launch multiple concurrent
@@ -101,7 +101,7 @@ class Mount(Object):
 
             self.object_id = object_id
 
-        logger.debug('Waiting for mount %s' % self.mount_id)
+        logger.debug("Waiting for mount %s" % self.mount_id)
         while True:
             request = api_pb2.MountJoinRequest(mount_id=self.object_id, timeout=BLOCKING_REQUEST_TIMEOUT)
             response = await retry(client.stub.MountJoin)(request, timeout=GRPC_REQUEST_TIMEOUT)
@@ -147,16 +147,18 @@ class Layer(Object):
             local_id_args.append("b:%s:(%s)" % (docker_tag, layer.args.local_id))
         local_id_args.append("c:%s" % get_sha256_hex_from_content(b"\n".join(dockerfile_commands)))
         for filename, content in context_files.items():
-            local_id_args.append('f:%s:%s' % (filename, get_sha256_hex_from_content(content)))
+            local_id_args.append("f:%s:%s" % (filename, get_sha256_hex_from_content(content)))
 
-        super().__init__(args=dict(
-            local_id=','.join(local_id_args),
-            tag=tag,
-            base_layers=base_layers,
-            dockerfile_commands=dockerfile_commands,
-            context_files=context_files,
-            must_create=must_create,
-        ))
+        super().__init__(
+            args=dict(
+                local_id=",".join(local_id_args),
+                tag=tag,
+                base_layers=base_layers,
+                dockerfile_commands=dockerfile_commands,
+                context_files=context_files,
+                must_create=must_create,
+            )
+        )
 
     async def join(self, client):
         # TODO: there's some risk of a race condition here
@@ -199,7 +201,7 @@ class Layer(Object):
                 resp = await client.stub.LayerGetOrCreate(req)
                 self.object_id = resp.layer_id
 
-        logger.debug('Waiting for layer %s' % self.object_id)
+        logger.debug("Waiting for layer %s" % self.object_id)
         while True:
             request = api_pb2.LayerJoinRequest(
                 layer_id=self.object_id,
@@ -214,7 +216,7 @@ class Layer(Object):
             elif response.result.status == api_pb2.GenericResult.Status.SUCCESS:
                 break
             else:
-                raise Exception('Unknown status %s!' % response.result.status)
+                raise Exception("Unknown status %s!" % response.result.status)
 
         return self.object_id
 
@@ -244,13 +246,7 @@ class EnvDict(Object):
 class Image(Object):
     def __init__(self, layer, mounts=[], env_dict=None, **kwargs):
         local_id = "i:(%s)" % layer.args.local_id  # TODO: include the mounts in the local id too!!!
-        super().__init__(args=dict(
-            layer=layer,
-            mounts=mounts,
-            env_dict=env_dict,
-            local_id=local_id,
-            **kwargs
-        ))
+        super().__init__(args=dict(layer=layer, mounts=mounts, env_dict=env_dict, local_id=local_id, **kwargs))
 
     async def join(self, client):
         # TODO: there's some risk of a race condition here

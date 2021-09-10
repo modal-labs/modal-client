@@ -47,6 +47,6 @@ class Object(metaclass=ObjectMeta):
         return self.client
 
     def __setattr__(self, k, v):
-        if k not in ['client', 'object_id', 'args']:
-            raise AttributeError(f'Cannot set attribute {k}')
+        if k not in ["client", "object_id", "args"]:
+            raise AttributeError(f"Cannot set attribute {k}")
         self.__dict__[k] = v
