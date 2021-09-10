@@ -36,7 +36,14 @@ class Object(metaclass=ObjectMeta):
     def __init__(self, client=None, object_id=None, args=None):
         self.client = client
         self.object_id = object_id
-        self.args = Args(args)
+        if isinstance(args, dict):
+            self.args = Args(args)
+        elif isinstance(args, Args):
+            self.args = args
+        elif args is None:
+            self.args = None
+        else:
+            raise Exception(f'{args} of type {type(args)} must be instance of (dict, Args, NoneType)')
 
     async def _get_client(self):
         if self.client is None:
@@ -45,6 +52,13 @@ class Object(metaclass=ObjectMeta):
 
             self.client = await Client.from_env()
         return self.client
+
+    def set_client(self, client):
+        # Maybe this is a bit hacky?
+        cls = type(self)
+        obj = cls.__new__(cls)
+        Object.__init__(obj, client=client, object_id=self.object_id, args=self.args)
+        return obj
 
     def __setattr__(self, k, v):
         if k not in ["client", "object_id", "args"]:
