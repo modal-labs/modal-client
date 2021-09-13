@@ -24,21 +24,6 @@ def requirement_to_module_name(package):
     return package
 
 
-def get_dependencies_recursive(module_name, visited=set()):
-    visited.add(module_name)
-    for req_name in requires(module_name) or []:
-        try:
-            req = Requirement(req_name)
-            # skip reqs with markers e.g. python_version < 3.2
-            if req.marker and not req.marker.evaluate({"extra": ""}):
-                continue
-            if req.name not in visited:
-                get_dependencies_recursive(req.name, visited)
-        except Exception as e:
-            print(f"Failed getting deps for {req}: {repr(e)}")
-    return list(visited)
-
-
 def package_mount_condition(f):
     return not any([f.endswith(".pyc"), f.startswith(".")])
 
@@ -47,20 +32,14 @@ BINARY_FORMATS = ["so", "S", "s", "asm"]  # TODO
 
 
 def get_mount_info(package_name, module_name):
-    """Returns a tuple (module_name, path, condition) in order to mount a given module."""
+    """Returns a list of tuples [(module_name, path, condition)] describing how to mount a given module."""
 
     file_formats = get_file_formats(package_name)
     logger.info(f"{package_name}: {file_formats}")
-    for bf in BINARY_FORMATS:
-        if bf in file_formats:
-            logger.info(f"Skipping {package_name} because it contains a binary .{bf} file.")
-            return []
+    if set(BINARY_FORMATS) & set(file_formats):
+        raise Exception(f"{package_name} can't be mounted because it contains a binary file.")
 
-    try:
-        m = import_module(module_name)
-    except Exception as e:
-        logger.exception(repr(e))
-        return []
+    m = import_module(module_name)
 
     if getattr(m, "__path__", None):
         return [(module_name, path, package_mount_condition) for path in m.__path__]
@@ -72,13 +51,5 @@ def get_mount_info(package_name, module_name):
 
 def get_package_deps_mount_info(package_name):
     """Get mount info for all recursive dependencies of the given package name (including self)."""
-
-    all_deps = get_dependencies_recursive(package_name)
-
-    result = []
-
-    for d in all_deps:
-        module_name = requirement_to_module_name(d)
-        result.extend(get_mount_info(d, module_name))
-
-    return result
+    module_name = requirement_to_module_name(package_name)
+    return get_mount_info(package_name, module_name)

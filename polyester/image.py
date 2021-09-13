@@ -124,6 +124,7 @@ mount_py_in_workdir_into_root = Mount(
 
 def create_package_mounts(package_name):
     from .package_utils import get_package_deps_mount_info
+
     mount_infos = get_package_deps_mount_info(package_name)
     return [Mount(path, f'/pkg/{name}', condition) for (name, path, condition) in mount_infos]
 
@@ -247,13 +248,11 @@ class EnvDict(Object):
 class Image(Object):
     def __init__(self, layer, mounts=[], env_dict=None, **kwargs):
         local_id = "i:(%s)" % layer.args.local_id  # TODO: include the mounts in the local id too!!!
+        if config['sync_entrypoint'] and os.getenv("POLYESTER_IMAGE_LOCAL_ID") != local_id:
+            mounts.extend(create_package_mounts("polyester"))
         super().__init__(args=dict(layer=layer, mounts=mounts, env_dict=env_dict, local_id=local_id, **kwargs))
 
     async def join(self):
-        # HACK: mutates self.args.mounts here
-        if config['sync_entrypoint'] and not self.is_inside():
-            self.args.mounts.extend(create_package_mounts("polyester"))
-
         client = await self._get_client()
         # TODO: there's some risk of a race condition here
         coros = [self.args.layer.set_client(client).join()]
