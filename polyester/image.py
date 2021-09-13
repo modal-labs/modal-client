@@ -8,7 +8,7 @@ import time
 from typing import Dict
 
 from .async_utils import retry
-from .config import logger
+from .config import logger, config
 from .function import decorate_function
 from .grpc_utils import GRPC_REQUEST_TIMEOUT, BLOCKING_REQUEST_TIMEOUT
 from .object import Object
@@ -122,6 +122,10 @@ mount_py_in_workdir_into_root = Mount(
     lambda filename: os.path.splitext(filename)[-1] == '.py'
 )
 
+def create_package_mounts(package_name):
+    from .package_utils import get_package_deps_mount_info
+    mount_infos = get_package_deps_mount_info(package_name)
+    return [Mount(path, f'/pkg/{name}', condition) for (name, path, condition) in mount_infos]
 
 def _make_bytes(s):
     assert type(s) in (str, bytes)
@@ -246,6 +250,10 @@ class Image(Object):
         super().__init__(args=dict(layer=layer, mounts=mounts, env_dict=env_dict, local_id=local_id, **kwargs))
 
     async def join(self):
+        # HACK: mutates self.args.mounts here
+        if config['sync_entrypoint'] and not self.is_inside():
+            self.args.mounts.extend(create_package_mounts("polyester"))
+
         client = await self._get_client()
         # TODO: there's some risk of a race condition here
         coros = [self.args.layer.set_client(client).join()]
