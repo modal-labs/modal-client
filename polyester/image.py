@@ -248,7 +248,7 @@ class EnvDict(Object):
 class Image(Object):
     def __init__(self, layer, mounts=[], env_dict=None, **kwargs):
         local_id = "i:(%s)" % layer.args.local_id  # TODO: include the mounts in the local id too!!!
-        if config['sync_entrypoint'] and os.getenv("POLYESTER_IMAGE_LOCAL_ID") != local_id:
+        if config["sync_entrypoint"] and os.getenv("POLYESTER_IMAGE_LOCAL_ID") != local_id:
             mounts.extend(create_package_mounts("polyester"))
         super().__init__(args=dict(layer=layer, mounts=mounts, env_dict=env_dict, local_id=local_id, **kwargs))
 
