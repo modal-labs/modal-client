@@ -22,8 +22,9 @@ def _function_to_path(f):
         # This is a "real" module, eg. examples.logs.f
         # Get the package path
         package_path = __import__(module.__package__).__path__
-        assert len(package_path) == 1  # TODO: we should handle the array case, https://stackoverflow.com/questions/2699287/what-is-path-useful-for
-        package_path, = package_path
+        # TODO: we should handle the array case, https://stackoverflow.com/questions/2699287/what-is-path-useful-for
+        assert len(package_path) == 1
+        (package_path,) = package_path
         module_name = module.__spec__.name
         recursive_upload = True
     else:
@@ -36,10 +37,11 @@ def _function_to_path(f):
     # Create mount
     # TODO: solve this circular import
     from .image import Mount
+
     mount = Mount(
         local_dir=package_path,
-        remote_dir='/root',  # TODO: might be image-dependent, so the image should really supply this to the function
-        condition=lambda filename: os.path.splitext(filename)[1] == '.py',
+        remote_dir="/root",  # TODO: might be image-dependent, so the image should really supply this to the function
+        condition=lambda filename: os.path.splitext(filename)[1] == ".py",
         recursive=recursive_upload,
     )
 

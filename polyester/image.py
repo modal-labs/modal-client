@@ -32,19 +32,15 @@ async def get_files(local_dir, condition, recursive):
     with concurrent.futures.ThreadPoolExecutor() as exe:
         futs = []
         if recursive:
-            gen = (os.path.join(root, name)
-                   for root, dirs, files in os.walk(local_dir)
-                   for name in files)
+            gen = (os.path.join(root, name) for root, dirs, files in os.walk(local_dir) for name in files)
         else:
-            gen = (dir_entry.path
-                   for dir_entry in os.scandir(local_dir)
-                   if dir_entry.is_file())
+            gen = (dir_entry.path for dir_entry in os.scandir(local_dir) if dir_entry.is_file())
 
         for filename in gen:
             rel_filename = os.path.relpath(filename, local_dir)
             if condition(filename):
                 futs.append(loop.run_in_executor(exe, get_sha256_hex_from_filename, filename, rel_filename))
-        logger.debug(f'Computing checksums for {len(futs)} files using {exe._max_workers} workers')
+        logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} workers")
         for fut in asyncio.as_completed(futs):
             filename, rel_filename, sha256_hex = await fut
             yield filename, rel_filename, sha256_hex
@@ -62,7 +58,9 @@ class Mount(Object):
         )
 
     async def _register_file_requests(self, mount_id, hashes, filenames):
-        async for filename, rel_filename, sha256_hex in get_files(self.args.local_dir, self.args.condition, self.args.recursive):
+        async for filename, rel_filename, sha256_hex in get_files(
+            self.args.local_dir, self.args.condition, self.args.recursive
+        ):
             remote_filename = os.path.join(self.args.remote_dir, rel_filename)  # won't work on windows
             filenames[remote_filename] = filename
             request = api_pb2.MountRegisterFileRequest(
