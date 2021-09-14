@@ -16,26 +16,37 @@ from .queue import Queue
 
 
 def _function_to_path(f):
-    module = inspect.getmodule(f)
-    if module.__spec__:
-        # TODO: even if the module has a spec, we should probably check the file of it
-        # Either we can infer that it's a system module, or if it's something in the
-        # cwd then let's make sure it can be imported?
-        module_name = module.__spec__.name
-    else:
-        # Note that this case covers both these cases:
-        # python -m foo.bar
-        # python foo/bar.py
-        fn = os.path.splitext(module.__file__)[0]
-        path = os.path.relpath(fn, os.getcwd())  # TODO: might want to do it relative to other paths in sys.path?
-        parts = os.path.split(path)
-        module_name = '.'.join(p for p in parts if p and not p.startswith('.'))
     function_name = f.__name__
-    return (module_name, function_name)
+    module = inspect.getmodule(f)
+    if module.__package__:
+        # This is a "real" module, eg. examples.logs.f
+        # Get the package path
+        package_path = __import__(module.__package__).__path__
+        assert len(package_path) == 1  # TODO: we should handle the array case, https://stackoverflow.com/questions/2699287/what-is-path-useful-for
+        package_path, = package_path
+        module_name = module.__spec__.name
+        recursive_upload = True
+    else:
+        # This generally covers the case where it's invoked with
+        # python foo/bar/baz.py
+        module_name = os.path.splitext(os.path.basename(module.__file__))[0]
+        package_path = os.path.dirname(module.__file__)
+        recursive_upload = False  # Just pick out files in the same directory
+
+    # Create mount
+    # TODO: solve this circular import
+    from .image import Mount
+    mount = Mount(
+        local_dir=package_path,
+        remote_dir='/root',  # TODO: might be image-dependent, so the image should really supply this to the function
+        condition=lambda filename: os.path.splitext(filename)[1] == '.py',
+        recursive=recursive_upload,
+    )
+
+    return (mount, module_name, function_name)
 
 
 def _path_to_function(module_name, function_name):
-    # Opposite of _function_to_path
     try:
         module = importlib.import_module(module_name)
         return getattr(module, function_name)
@@ -124,13 +135,10 @@ class Call(Object):
 class Function(Object):
     def __init__(self, raw_f, image=None, client=None):
         assert callable(raw_f)
-        module_name, function_name = _function_to_path(raw_f)
         super().__init__(
             client=client,
             args=dict(
                 raw_f=raw_f,
-                module_name=module_name,
-                function_name=function_name,
                 image=image,
             ),
         )
@@ -138,11 +146,15 @@ class Function(Object):
     async def _join(self):
         client = await self._get_client()
 
+        mount, module_name, function_name = _function_to_path(self.args.raw_f)
+
+        # await mount.join()
+
         # Create function remotely
         image_id = await self.args.image.set_client(client).join()
         function_definition = api_pb2.Function(
-            module_name=self.args.module_name,
-            function_name=self.args.function_name,
+            module_name=module_name,
+            function_name=function_name,
         )
         request = api_pb2.FunctionGetOrCreateRequest(
             session_id=client.session_id,

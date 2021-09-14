@@ -27,16 +27,23 @@ def get_sha256_hex_from_filename(filename, rel_filename):
     return filename, rel_filename, get_sha256_hex_from_content(content)
 
 
-async def get_files(local_dir, condition):
+async def get_files(local_dir, condition, recursive):
     loop = asyncio.get_running_loop()
     with concurrent.futures.ThreadPoolExecutor() as exe:
         futs = []
-        for root, dirs, files in os.walk(local_dir):
-            for name in files:
-                filename = os.path.join(root, name)
-                rel_filename = os.path.relpath(filename, local_dir)
-                if condition(filename):
-                    futs.append(loop.run_in_executor(exe, get_sha256_hex_from_filename, filename, rel_filename))
+        if recursive:
+            gen = (os.path.join(root, name)
+                   for root, dirs, files in os.walk(local_dir)
+                   for name in files)
+        else:
+            gen = (dir_entry.path
+                   for dir_entry in os.scandir(local_dir)
+                   if dir_entry.is_file())
+
+        for filename in gen:
+            rel_filename = os.path.relpath(filename, local_dir)
+            if condition(filename):
+                futs.append(loop.run_in_executor(exe, get_sha256_hex_from_filename, filename, rel_filename))
         logger.debug(f'Computing checksums for {len(futs)} files using {exe._max_workers} workers')
         for fut in asyncio.as_completed(futs):
             filename, rel_filename, sha256_hex = await fut
@@ -44,17 +51,18 @@ async def get_files(local_dir, condition):
 
 
 class Mount(Object):
-    def __init__(self, local_dir, remote_dir, condition):
+    def __init__(self, local_dir, remote_dir, condition, recursive=True):
         super().__init__(
             args=dict(
                 local_dir=local_dir,
                 remote_dir=remote_dir,
                 condition=condition,
+                recursive=recursive,
             )
         )
 
     async def _register_file_requests(self, mount_id, hashes, filenames):
-        async for filename, rel_filename, sha256_hex in get_files(self.args.local_dir, self.args.condition):
+        async for filename, rel_filename, sha256_hex in get_files(self.args.local_dir, self.args.condition, self.args.recursive):
             remote_filename = os.path.join(self.args.remote_dir, rel_filename)  # won't work on windows
             filenames[remote_filename] = filename
             request = api_pb2.MountRegisterFileRequest(
