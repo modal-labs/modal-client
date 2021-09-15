@@ -125,7 +125,7 @@ def create_package_mounts(package_name):
     from .package_utils import get_package_deps_mount_info
 
     mount_infos = get_package_deps_mount_info(package_name)
-    return [Mount(path, f'/pkg/{name}', condition) for (name, path, condition) in mount_infos]
+    return [Mount(path, f"/pkg/{name}", condition) for (name, path, condition) in mount_infos]
 
 
 def _make_bytes(s):
