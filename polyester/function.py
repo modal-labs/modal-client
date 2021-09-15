@@ -8,8 +8,9 @@ import uuid
 
 from .async_utils import retry, synchronizer
 from .client import Client
-from .config import logger
+from .config import config, logger
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
+from .mount import Mount, create_package_mounts
 from .proto import api_pb2
 from .object import Object
 from .queue import Queue
@@ -37,9 +38,6 @@ def _function_to_path(f):
         remote_dir = "/root"  # TODO: don't hardcore /root
 
     # Create mount
-    # TODO: solve this circular import
-    from .image import Mount
-
     mount = Mount(
         local_dir=package_path,
         remote_dir=remote_dir,
@@ -152,15 +150,25 @@ class Function(Object):
 
         mount, module_name, function_name = _function_to_path(self.args.raw_f)
 
-        # Wait for mount to finish
-        mount_id = await mount.set_client(client).join()
+        mounts = [mount]
+        if config["sync_entrypoint"] and os.getenv("POLYESTER_IMAGE_LOCAL_ID") != local_id:
+            # TODO(erikbern): If the first condition is true then we're running in a local
+            # client which implies the second is always true as well?
+            mounts.extend(create_package_mounts("polyester"))
+        # TODO(erikbern): couldn't we just create one single mount with all packages instead of multiple?
+
+        # Wait for mounts to finish
+        mount_ids = await asyncio.gather(*(
+            mount.set_client(client).join()
+            for mount in mounts
+        ))
 
         # Create function remotely
         image_id = await self.args.image.set_client(client).join()
         function_definition = api_pb2.Function(
             module_name=module_name,
             function_name=function_name,
-            mount_ids=[mount_id],
+            mount_ids=mount_ids,
         )
         request = api_pb2.FunctionGetOrCreateRequest(
             session_id=client.session_id,
