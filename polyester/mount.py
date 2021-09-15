@@ -19,7 +19,7 @@ def get_sha256_hex_from_content(content):
 
 def get_sha256_hex_from_filename(filename, rel_filename):
     # Somewhat CPU intensive, so we run it in a thread/process
-    content = open(filename, 'rb').read()
+    content = open(filename, "rb").read()
     return filename, rel_filename, get_sha256_hex_from_content(content)
 
 
@@ -75,8 +75,10 @@ class Mount(Object):
                 data = open(filename, "rb").read()
                 n_missing_files += 1
                 total_bytes += len(data)
-                logger.debug(f'Uploading file {filename} to {response.filename} ({len(data)} bytes)')
-                request = api_pb2.MountUploadFileRequest(data=data, sha256_hex=hashes[filename], size=len(data), mount_id=mount_id)
+                logger.debug(f"Uploading file {filename} to {response.filename} ({len(data)} bytes)")
+                request = api_pb2.MountUploadFileRequest(
+                    data=data, sha256_hex=hashes[filename], size=len(data), mount_id=mount_id
+                )
                 yield request
 
         logger.info(f"Uploaded {n_missing_files}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
@@ -95,7 +97,7 @@ class Mount(Object):
         resp = await client.stub.MountCreate(req)
         mount_id = resp.mount_id
 
-        logger.debug(f'Uploading mount {mount_id}')
+        logger.debug(f"Uploading mount {mount_id}")
         await client.stub.MountUploadFile(self._upload_file_requests(client, mount_id, hashes, filenames))
 
         req = api_pb2.MountDoneRequest(mount_id=mount_id)
@@ -112,7 +114,7 @@ class Mount(Object):
             elif response.result.status == api_pb2.GenericResult.Status.SUCCESS:
                 break
             else:
-                raise Exception('Unknown status %s!' % response.result.status)
+                raise Exception("Unknown status %s!" % response.result.status)
 
         return mount_id
 
