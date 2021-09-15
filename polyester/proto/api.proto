@@ -169,6 +169,7 @@ message Function {
   string function_name = 2;
   // TODO: should we include client id or some sort of namespace?
   // What about image_local_id? (needed to hash function to an id)
+  repeated string mount_ids = 3;
 }
 
 message FunctionGetOrCreateRequest {

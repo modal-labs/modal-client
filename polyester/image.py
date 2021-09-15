@@ -121,18 +121,12 @@ class Mount(Object):
         return mount_id
 
 
-# The default mount will upload all Python files in the current workdir into /root
-mount_py_in_workdir_into_root = Mount(
-    '.',
-    '/root',
-    lambda filename: os.path.splitext(filename)[-1] == '.py'
-)
-
 def create_package_mounts(package_name):
     from .package_utils import get_package_deps_mount_info
 
     mount_infos = get_package_deps_mount_info(package_name)
     return [Mount(path, f'/pkg/{name}', condition) for (name, path, condition) in mount_infos]
+
 
 def _make_bytes(s):
     assert type(s) in (str, bytes)
@@ -311,7 +305,7 @@ class DebianSlim(Image):
             layer = Layer(tag="python-%s-slim-buster-base" % python_version)
         super().__init__(
             layer=layer,
-            mounts=[mount_py_in_workdir_into_root],
+            mounts=[],
             python_version=python_version,
         )
 

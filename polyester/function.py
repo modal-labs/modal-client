@@ -27,12 +27,14 @@ def _function_to_path(f):
         (package_path,) = package_path
         module_name = module.__spec__.name
         recursive_upload = True
+        remote_dir = "/root/" + module.__package__  # TODO: don't hardcode /root
     else:
         # This generally covers the case where it's invoked with
         # python foo/bar/baz.py
         module_name = os.path.splitext(os.path.basename(module.__file__))[0]
         package_path = os.path.dirname(module.__file__)
         recursive_upload = False  # Just pick out files in the same directory
+        remote_dir = "/root"  # TODO: don't hardcore /root
 
     # Create mount
     # TODO: solve this circular import
@@ -40,7 +42,7 @@ def _function_to_path(f):
 
     mount = Mount(
         local_dir=package_path,
-        remote_dir="/root",  # TODO: might be image-dependent, so the image should really supply this to the function
+        remote_dir=remote_dir,
         condition=lambda filename: os.path.splitext(filename)[1] == ".py",
         recursive=recursive_upload,
     )
@@ -150,17 +152,19 @@ class Function(Object):
 
         mount, module_name, function_name = _function_to_path(self.args.raw_f)
 
-        # await mount.join()
+        # Wait for mount to finish
+        mount_id = await mount.set_client(client).join()
 
         # Create function remotely
         image_id = await self.args.image.set_client(client).join()
         function_definition = api_pb2.Function(
             module_name=module_name,
             function_name=function_name,
+            mount_ids=[mount_id],
         )
         request = api_pb2.FunctionGetOrCreateRequest(
             session_id=client.session_id,
-            image_id=image_id,
+            image_id=image_id,  # TODO: move into the function definition?
             function=function_definition,
         )
         response = await client.stub.FunctionGetOrCreate(request)
