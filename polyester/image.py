@@ -127,32 +127,18 @@ class EnvDict(Object):
 
 
 class Image(Object):
-    def __init__(self, layer, mounts=[], env_dict=None, **kwargs):
-        local_id = "i:(%s)" % layer.args.local_id  # TODO: include the mounts in the local id too!!!
-        super().__init__(args=dict(layer=layer, mounts=mounts, env_dict=env_dict, local_id=local_id, **kwargs))
+    def __init__(self, layer, env_dict=None, **kwargs):
+        local_id = "i:(%s)" % layer.args.local_id
+        super().__init__(args=dict(layer=layer, env_dict=env_dict, local_id=local_id, **kwargs))
 
     async def join(self):
         client = await self._get_client()
-        # TODO: there's some risk of a race condition here
-        coros = [self.args.layer.set_client(client).join()]
         if self.args.env_dict:
-            coros.append(self.args.env_dict.set_client(client).join())
-        for mount in self.args.mounts:
-            coros.append(mount.set_client(client).join())
-
-        results = await asyncio.gather(*coros)
-
-        # mutating results for readability
-        layer_id, results = results[0], results[1:]
-        if self.args.env_dict:
-            env_dict_id, results = results[0], results[1:]
-        else:
-            env_dict_id = None
-        mount_ids = results[:]
+            env_dict_id = await self.args.env_dict.set_client(client).join()
+        layer_id = self.args.layer.set_client(client).join()
 
         image = api_pb2.Image(
             layer_id=layer_id,
-            mount_ids=mount_ids,
             local_id=self.args.local_id,
             env_dict_id=env_dict_id,
         )
@@ -162,7 +148,7 @@ class Image(Object):
         return response.image_id
 
     def set_env_vars(self, env_vars: Dict[str, str]):
-        return Image(self.args.layer, self.args.mounts, EnvDict(env_vars))
+        return Image(self.args.layer, EnvDict(env_vars))
 
     def function(self, raw_f):
         """Primarily to be used as a decorator."""
@@ -181,7 +167,6 @@ class DebianSlim(Image):
             layer = Layer(tag="python-%s-slim-buster-base" % python_version)
         super().__init__(
             layer=layer,
-            mounts=[],
             python_version=python_version,
         )
 
