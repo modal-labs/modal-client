@@ -77,12 +77,10 @@ class ChannelPool:
             for ch in self._channels:
                 age = time.time() - ch.created_at
                 if ch.n_concurrent_requests <= 0 and age >= self._max_channel_lifetime:
-                    logger.debug("Closing old channel of age %fs" % age)
+                    logger.debug(f"Closing old channel of age {age}s")
                     to_close.append(ch)
                 elif age >= 2 * self._max_channel_lifetime:
-                    logger.warning(
-                        "Channel is age %fs but has %d concurrent requests" % (age, ch.n_concurrent_requests)
-                    )
+                    logger.warning(f"Channel is age {age}s but has {ch.n_concurrent_requests} concurrent requests")
             for ch in to_close:
                 self._channels.remove(ch)
         for ch in to_close:
@@ -111,10 +109,9 @@ class ChannelPool:
                 channel = await self._conn_factory.create()
                 ch = ChannelStruct(channel)
                 self._channels.append(ch)
-                logger.debug(
-                    "Pool: Added new channel (concurrent channel requests: %s)"
-                    % ", ".join(str(ch.n_concurrent_requests) for ch in self._channels)
-                )
+                n_conc_reqs = [ch.n_concurrent_requests for ch in self._channels]
+                n_conc_reqs_str = ", ".join(str(z) for z in n_conc_reqs)
+                logger.debug(f"Pool: Added new channel (concurrent requests: {n_conc_reqs_str}")
 
         ch.n_concurrent_requests += 1
         try:

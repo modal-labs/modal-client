@@ -20,20 +20,15 @@ def retry(direct_fn=None, n_attempts=3, base_delay=0, delay_factor=2, timeout=90
                     t0 = time.time()
                     return await asyncio.wait_for(fn(*args, **kwargs), timeout=timeout)
                 except asyncio.CancelledError:
-                    logger.warning("Function %s was cancelled" % fn)
+                    logger.warning(f"Function {fn} was cancelled")
                     raise
                 except Exception as e:
                     if i >= n_attempts - 1:
                         raise
                     logger.warning(
-                        "Failed invoking function %s: %s (took %fs, sleeping %fs and trying %d more times)"
-                        % (
-                            fn,
-                            repr(e),
-                            time.time() - t0,
-                            delay,
-                            n_attempts - i - 1,
-                        )
+                        f"Failed invoking function {fn}: {repr(e)}"
+                        f" (took {time.time() - t0}s, sleeping {delay}s"
+                        f" and trying {n_attempts - i - 1} more times)"
                     )
                 await asyncio.sleep(delay)
                 delay *= delay_factor
@@ -57,7 +52,7 @@ def add_traceback(obj, func_name=None):
             try:
                 return await obj
             except Exception:
-                logger.exception("Exception while running %s" % func_name)
+                logger.exception("Exception while running {func_name}")
                 raise
 
         return _wrap_coro()
@@ -68,12 +63,12 @@ def add_traceback(obj, func_name=None):
                 async for elm in obj:
                     yield elm
             except Exception:
-                logger.exception("Exception while running %s" % func_name)
+                logger.exception(f"Exception while running {func_name}")
                 raise
 
         return _wrap_gen()
     else:
-        raise Exception("%s is not a coro or async gen!" % obj)
+        raise Exception(f"{obj} is not a coro or async gen!")
 
 
 def create_task(coro):
@@ -82,12 +77,12 @@ def create_task(coro):
 
 def infinite_loop(async_f, timeout=90, sleep=10):
     async def loop_coro():
-        logger.debug("Starting infinite loop %s" % async_f)
+        logger.debug(f"Starting infinite loop {async_f}")
         while True:
             try:
                 await asyncio.wait_for(async_f(), timeout=timeout)
             except Exception:
-                logger.exception("Loop attempt failed for %s" % async_f)
+                logger.exception(f"Loop attempt failed for {async_f}")
             await asyncio.sleep(sleep)
 
     return create_task(loop_coro())
@@ -111,7 +106,7 @@ class GeneratorStream:
         elif inspect.isasyncgen(self._generator):
             self._pump_task = asyncio.create_task(self._pump_asyncgen(self._generator))
         else:
-            raise Exception("%s has to be a sync/async generator" % self._generator)
+            raise Exception(f"{self._generator} has to be a sync/async generator")
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
@@ -122,7 +117,7 @@ class GeneratorStream:
             for val in generator:
                 self._q.put_nowait(("val", val))
         except Exception as exc:
-            logger.exception("Exception while running %s" % generator)
+            logger.exception(f"Exception while running {generator}")
             self._q.put_nowait(("exc", exc))
         self._q.put_nowait(("fin", None))
 
@@ -131,7 +126,7 @@ class GeneratorStream:
             async for val in generator:
                 await self._q.put(("val", val))
         except Exception as exc:
-            logger.exception("Exception while running %s" % generator)
+            logger.exception(f"Exception while running {generator}")
             await self._q.put(("exc", exc))
         await self._q.put(("fin", None))
 
@@ -145,7 +140,7 @@ class GeneratorStream:
         elif tag == "fin":
             self.done = True
         else:
-            raise Exception("weird tag %s" % tag)
+            raise Exception(f"weird tag {tag}")
 
     async def all(self):
         while True:
@@ -218,7 +213,7 @@ class TaskContext:
             if self._grace is not None:
                 await asyncio.wait_for(asyncio.gather(*unfinished_tasks), timeout=self._grace)
         except BaseException:
-            logger.exception("Exception while waiting for %d unfinished tasks" % len(unfinished_tasks))
+            logger.exception(f"Exception while waiting for {len(unfinished_tasks)} unfinished tasks")
         finally:
             for task in self._tasks:
                 task.cancel()
