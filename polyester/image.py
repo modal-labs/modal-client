@@ -135,7 +135,9 @@ class Image(Object):
         client = await self._get_client()
         if self.args.env_dict:
             env_dict_id = await self.args.env_dict.set_client(client).join()
-        layer_id = self.args.layer.set_client(client).join()
+        else:
+            env_dict_id = None
+        layer_id = await self.args.layer.set_client(client).join()
 
         image = api_pb2.Image(
             layer_id=layer_id,
