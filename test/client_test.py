@@ -7,7 +7,7 @@ from polyester.proto import api_pb2
 
 @pytest.mark.asyncio
 async def test_client(servicer):
-    client = Client(servicer.remote_addr, api_pb2.ClientType.CLIENT, ('foo-id', 'foo-secret'))
+    client = Client(servicer.remote_addr, api_pb2.ClientType.CLIENT, ("foo-id", "foo-secret"))
 
     # TODO: let's rethink how we're doing it, should we bring the context mgr back maybe?
     await client._start()
@@ -27,7 +27,7 @@ async def test_client(servicer):
 
 @pytest.mark.asyncio
 async def test_container_client(servicer):
-    client = Client(servicer.remote_addr, api_pb2.ClientType.CONTAINER, ('ta-123', 'task-secret'))
+    client = Client(servicer.remote_addr, api_pb2.ClientType.CONTAINER, ("ta-123", "task-secret"))
 
     # TODO: let's rethink how we're doing it, should we bring the context mgr back maybe?
     await client._start()

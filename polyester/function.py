@@ -54,9 +54,9 @@ def _path_to_function(module_name, function_name):
         return getattr(module, function_name)
     except ModuleNotFoundError:
         # Just print some debug stuff, then re-raise
-        logger.info(f'{os.getcwd()=}')
-        logger.info(f'{sys.path=}')
-        logger.info(f'{os.listdir()=}')
+        logger.info(f"{os.getcwd()=}")
+        logger.info(f"{sys.path=}")
+        logger.info(f"{os.listdir()=}")
         raise
 
 
@@ -101,7 +101,7 @@ class Call(Object):
                 break
         for output in response.outputs:
             if output.status != api_pb2.GenericResult.Status.SUCCESS:
-                raise Exception('Remote exception: %s\n%s' % (output.exception, output.traceback))
+                raise Exception("Remote exception: %s\n%s" % (output.exception, output.traceback))
             yield client.deserialize(output.data)
 
     async def __aiter__(self):
@@ -158,10 +158,7 @@ class Function(Object):
         # TODO(erikbern): couldn't we just create one single mount with all packages instead of multiple?
 
         # Wait for mounts to finish
-        mount_ids = await asyncio.gather(*(
-            mount.set_client(client).join()
-            for mount in mounts
-        ))
+        mount_ids = await asyncio.gather(*(mount.set_client(client).join() for mount in mounts))
 
         # Create function remotely
         image_id = await self.args.image.set_client(client).join()
@@ -184,7 +181,7 @@ class Function(Object):
         return Call(client, function_id, inputs, star, window, kwargs)
 
     async def __call__(self, *args, **kwargs):
-        ''' Uses map, but makes sure there's only 1 output. '''
+        """Uses map, but makes sure there's only 1 output."""
         async for output in self.map([args], kwargs=kwargs, star=True):
             return output  # return the first (and only) one
 
@@ -199,4 +196,4 @@ def decorate_function(raw_f, image):
     if callable(raw_f):
         return Function(raw_f=raw_f, image=image)
     else:
-        raise Exception('%s is not a proper function (of type %s)' % (raw_f, type(raw_f)))
+        raise Exception("%s is not a proper function (of type %s)" % (raw_f, type(raw_f)))

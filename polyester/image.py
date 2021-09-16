@@ -62,12 +62,8 @@ class Layer(Object):
                 *(layer.set_client(client).join() for layer in self.args.base_layers.values())
             )
             base_layers = [
-                api_pb2.BaseLayer(
-                    docker_tag=docker_tag,
-                    layer_id=layer_id
-                )
-                for docker_tag, layer_id
-                in zip(self.args.base_layers.keys(), base_layer_ids)
+                api_pb2.BaseLayer(docker_tag=docker_tag, layer_id=layer_id)
+                for docker_tag, layer_id in zip(self.args.base_layers.keys(), base_layer_ids)
             ]
 
             context_files = [
@@ -161,10 +157,7 @@ class Image(Object):
             env_dict_id=env_dict_id,
         )
 
-        request = api_pb2.ImageCreateRequest(
-            session_id=client.session_id,
-            image=image
-        )
+        request = api_pb2.ImageCreateRequest(session_id=client.session_id, image=image)
         response = await client.stub.ImageCreate(request)
         return response.image_id
 
@@ -199,13 +192,13 @@ class DebianSlim(Image):
                 "builder": Layer(tag="python-%s-slim-buster-builder" % self.args.python_version),
             },
             dockerfile_commands=[
-                'FROM builder as builder-vehicle',
-                'RUN pip wheel %s -w /tmp/wheels' % ' '.join(python_packages),
-                'FROM base',
-                'COPY --from=builder-vehicle /tmp/wheels /tmp/wheels',
-                'RUN pip install /tmp/wheels/*',
-                'RUN rm -rf /tmp/wheels',
-            ]
+                "FROM builder as builder-vehicle",
+                "RUN pip wheel %s -w /tmp/wheels" % " ".join(python_packages),
+                "FROM base",
+                "COPY --from=builder-vehicle /tmp/wheels /tmp/wheels",
+                "RUN pip install /tmp/wheels/*",
+                "RUN rm -rf /tmp/wheels",
+            ],
         )
         return DebianSlim(layer=layer)
 

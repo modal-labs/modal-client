@@ -19,10 +19,10 @@ class Client:
     _client_from_env = None
 
     def __init__(
-            self,
-            server_url,
-            client_type,
-            credentials,
+        self,
+        server_url,
+        client_type,
+        credentials,
     ):
         self.server_url = server_url
         self.client_type = client_type
@@ -31,7 +31,7 @@ class Client:
         self._task_logs_task = None
 
     async def _start(self):
-        logger.debug('Client: Starting')
+        logger.debug("Client: Starting")
         self.connection_factory = GRPCConnectionFactory(
             self.server_url,
             self.client_type,
@@ -44,7 +44,7 @@ class Client:
     async def _start_client(self):
         req = api_pb2.ClientCreateRequest(client_type=self.client_type)
         resp = await self.stub.ClientCreate(req)
-        #except grpc.aio.AioRpcError as e:
+        # except grpc.aio.AioRpcError as e:
         #    # gRPC creates super cryptic error messages so we mask it this time and tell the user we couldn't connect
         #    raise Exception('gRPC failed saying hello with error "%s"' % e.details()) from None
         self.client_id = resp.client_id
@@ -54,7 +54,7 @@ class Client:
         # TODO: we should have some more graceful termination of these
         self._heartbeats_task = infinite_loop(self._heartbeats, timeout=None)
 
-        logger.debug('Client: Done starting')
+        logger.debug("Client: Done starting")
 
     async def _start_session(self):
         req = api_pb2.SessionCreateRequest(client_id=self.client_id)
@@ -66,20 +66,20 @@ class Client:
 
     async def _close(self):
         # TODO: when is this actually called?
-        logger.debug('Client: Shutting down')
+        logger.debug("Client: Shutting down")
         # TODO: resurrect the Bye thing as a part of StopSession
-        #req = api_pb2.ByeRequest(client_id=self.client_id)
-        #await self.stub.Bye(req)
+        # req = api_pb2.ByeRequest(client_id=self.client_id)
+        # await self.stub.Bye(req)
         if self._task_logs_task:
-            logger.debug('Waiting for logs to flush')
+            logger.debug("Waiting for logs to flush")
             try:
                 await asyncio.wait_for(self._task_logs_task, timeout=10.0)
             except asyncio.TimeoutError:
-                logger.exception('Timed out waiting for logs')
+                logger.exception("Timed out waiting for logs")
         if self._heartbeats_task:
             self._heartbeats_task.cancel()
         await self._channel_pool.close()
-        logger.debug('Client: Done shutting down')
+        logger.debug("Client: Done shutting down")
 
     async def _heartbeats(self, sleep=3):
         async def loop():
@@ -93,13 +93,10 @@ class Client:
         # TODO: break it out into its own class?
         # TODO: how do we break this loop?
         while True:
-            request = api_pb2.SessionGetLogsRequest(
-                session_id=self.session_id,
-                timeout=BLOCKING_REQUEST_TIMEOUT
-            )
+            request = api_pb2.SessionGetLogsRequest(session_id=self.session_id, timeout=BLOCKING_REQUEST_TIMEOUT)
             async for log_entry in self.stub.SessionGetLogs(request, timeout=GRPC_REQUEST_TIMEOUT):
                 if log_entry.done:
-                    logger.info('No more logs')
+                    logger.info("No more logs")
                     break
                 else:
                     print_logs(log_entry.data, log_entry.fd)
@@ -121,11 +118,11 @@ class Client:
         if cls._client_from_env is not None and reuse:
             return cls._client_from_env
 
-        server_url = config['server.url']
-        token_id = config['token.id']
-        token_secret = config['token.secret']
-        task_id = config['task.id']
-        task_secret = config['task.secret']
+        server_url = config["server.url"]
+        token_id = config["token.id"]
+        token_secret = config["token.secret"]
+        task_id = config["task.id"]
+        task_secret = config["task.secret"]
 
         if task_id and task_secret:
             client_type = api_pb2.ClientType.CONTAINER
@@ -143,4 +140,3 @@ class Client:
         if client_type == api_pb2.ClientType.CLIENT:
             await client._start_session()
         return client
-

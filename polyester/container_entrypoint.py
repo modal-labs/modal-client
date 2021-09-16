@@ -43,9 +43,7 @@ class FunctionContext(Object):  # Idk, is this really a subclass of object? We d
                 idempotency_key=idempotency_key,
                 timeout=BLOCKING_REQUEST_TIMEOUT,
             )
-            response = await retry(client.stub.FunctionGetNextInput)(
-                request, timeout=GRPC_REQUEST_TIMEOUT
-            )
+            response = await retry(client.stub.FunctionGetNextInput)(request, timeout=GRPC_REQUEST_TIMEOUT)
             if response.stop:
                 break
             yield response
@@ -53,17 +51,15 @@ class FunctionContext(Object):  # Idk, is this really a subclass of object? We d
     async def output(self, input_id: str, output: api_pb2.GenericResult):
         client = await self._get_client()
         idempotency_key = str(uuid.uuid4())
-        request = api_pb2.FunctionOutputRequest(
-            input_id=input_id, idempotency_key=idempotency_key, output=output
-        )
+        request = api_pb2.FunctionOutputRequest(input_id=input_id, idempotency_key=idempotency_key, output=output)
         await retry(client.stub.FunctionOutput)(request)
 
 
 def call_function(
-        function: typing.Callable,
-        serializer: typing.Callable[[typing.Any], bytes],
-        deserializer: typing.Callable[[bytes], typing.Any],
-        function_input: api_pb2.FunctionGetNextInputResponse,
+    function: typing.Callable,
+    serializer: typing.Callable[[typing.Any], bytes],
+    deserializer: typing.Callable[[bytes], typing.Any],
+    function_input: api_pb2.FunctionGetNextInputResponse,
 ) -> api_pb2.GenericResult:
     try:
         args, kwargs = deserializer(function_input.data)
@@ -105,9 +101,9 @@ def main(task_id, function_id, module_name, function_name, client=None):
         function_context.output(function_input.input_id, result)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     tag, task_id, function_id, module_name, function_name = sys.argv[1:]
-    assert tag == 'function'
-    logger.debug('Container: starting')
+    assert tag == "function"
+    logger.debug("Container: starting")
     main(task_id, function_id, module_name, function_name)
-    logger.debug('Container: done')
+    logger.debug("Container: done")

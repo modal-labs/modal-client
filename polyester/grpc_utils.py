@@ -44,12 +44,14 @@ class ChannelStruct:
 
     def get_method(self, rpc_type, method, request_serializer, response_deserializer):
         if (rpc_type, method) not in self._callables:
-            self._callables[(rpc_type, method)] = self._constructors[rpc_type](method, request_serializer, response_deserializer)
+            self._callables[(rpc_type, method)] = self._constructors[rpc_type](
+                method, request_serializer, response_deserializer
+            )
         return self._callables[(rpc_type, method)]
 
 
 class ChannelPool:
-    '''Use multiple channels under the hood. A drop-in replacement for the GRPC channel.
+    """Use multiple channels under the hood. A drop-in replacement for the GRPC channel.
 
     The ALB in AWS limits the number of streams per connection to 128.
     This is super annoying and means we can't put every request on the same channel.
@@ -60,7 +62,7 @@ class ChannelPool:
 
     TODO: we should build in something that detects if a channel is closed and then
     purges it.
-    '''
+    """
 
     def __init__(self, conn_factory, max_channel_lifetime=MAX_CHANNEL_LIFETIME):
         self._conn_factory = conn_factory
@@ -75,10 +77,12 @@ class ChannelPool:
             for ch in self._channels:
                 age = time.time() - ch.created_at
                 if ch.n_concurrent_requests <= 0 and age >= self._max_channel_lifetime:
-                    logger.debug('Closing old channel of age %fs' % age)
+                    logger.debug("Closing old channel of age %fs" % age)
                     to_close.append(ch)
                 elif age >= 2 * self._max_channel_lifetime:
-                    logger.warning('Channel is age %fs but has %d concurrent requests' % (age, ch.n_concurrent_requests))
+                    logger.warning(
+                        "Channel is age %fs but has %d concurrent requests" % (age, ch.n_concurrent_requests)
+                    )
             for ch in to_close:
                 self._channels.remove(ch)
         for ch in to_close:
@@ -89,22 +93,28 @@ class ChannelPool:
             while True:
                 await self._purge_channels()
                 await asyncio.sleep(10.0)
+
         asyncio.create_task(purge_channels_loop())
 
     @contextlib.asynccontextmanager
     async def _get_channel(self):
         async with self._lock:
-            eligible_channels = [ch for ch in self._channels
-                                 if ch.n_concurrent_requests < self._max_requests_per_channel
-                                 and ch.created_at + self._max_channel_lifetime >= time.time()]
+            eligible_channels = [
+                ch
+                for ch in self._channels
+                if ch.n_concurrent_requests < self._max_requests_per_channel
+                and ch.created_at + self._max_channel_lifetime >= time.time()
+            ]
             if eligible_channels:
                 ch = eligible_channels[0]
             else:
                 channel = await self._conn_factory.create()
                 ch = ChannelStruct(channel)
                 self._channels.append(ch)
-                logger.debug('Pool: Added new channel (concurrent channel requests: %s)' %
-                             ', '.join(str(ch.n_concurrent_requests) for ch in self._channels))
+                logger.debug(
+                    "Pool: Added new channel (concurrent channel requests: %s)"
+                    % ", ".join(str(ch.n_concurrent_requests) for ch in self._channels)
+                )
 
         ch.n_concurrent_requests += 1
         try:
@@ -113,14 +123,14 @@ class ChannelPool:
             ch.n_concurrent_requests -= 1
 
     async def close(self):
-        logger.debug('Pool: Shutting down')
+        logger.debug("Pool: Shutting down")
         for ch in self._channels:
             await ch.channel.close()
         self._channels = []
 
     def _update_kwargs(self, kwargs):
         # Override timeout (or set it if it's not set) and cap it to the channel lifetime
-        new_timeout = min(GRPC_REQUEST_TIMEOUT, kwargs.get('timeout', 1e24))
+        new_timeout = min(GRPC_REQUEST_TIMEOUT, kwargs.get("timeout", 1e24))
         return {**kwargs, **dict(timeout=new_timeout)}
 
     def _wrap_base(self, coro, method):
@@ -130,13 +140,13 @@ class ChannelPool:
             return add_traceback(ret, method)  # gRPC seems to suppress tracebacks in many cases
 
         # Put a name on the coroutine so that stack traces are a bit more readable
-        f.__name__ = '__wrapped_' + re.sub(r'\W', '', method)
-        f.__qualname__ = 'ChannelPool.' + f.__name__
+        f.__name__ = "__wrapped_" + re.sub(r"\W", "", method)
+        f.__qualname__ = "ChannelPool." + f.__name__
 
         return f
 
     async def _chunk_generator(self, req, rpc_type, method):
-        '''Chunks any stream _inputs_ into multiple requests.
+        """Chunks any stream _inputs_ into multiple requests.
 
         If the input to a gRPC call is a generator, that request can hog up
         channels. To avoid this, we break up the generators into multiple
@@ -144,7 +154,7 @@ class ChannelPool:
 
         Note that we cannot do this automatically for stream outputs since
         we don't have control of the stream (since it's generated on the server).
-        '''
+        """
         if rpc_type in [RPCType.UNARY_UNARY, RPCType.UNARY_STREAM]:
             # Scalar input, nothing to do
             yield req

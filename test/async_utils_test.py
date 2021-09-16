@@ -3,6 +3,7 @@ import pytest
 
 from polyester.async_utils import retry, chunk_generator, asyncify_generator, asyncify_function, TaskContext
 
+
 class FailNTimes:
     def __init__(self, n_failures):
         self.n_failures = n_failures
@@ -11,7 +12,7 @@ class FailNTimes:
     async def __call__(self, x):
         self.n_calls += 1
         if self.n_calls < self.n_failures:
-            raise Exception('Something bad happened')
+            raise Exception("Something bad happened")
         else:
             return x + 1
 
@@ -42,10 +43,10 @@ async def unchunk_generator(generator):
             async for value in chunk:
                 loop_ret.append(value)
         except:
-            loop_ret.append('exc')
+            loop_ret.append("exc")
             break
     return ret
-        
+
 
 @pytest.mark.asyncio
 async def test_chunk_generator():
@@ -62,10 +63,10 @@ async def test_chunk_generator():
 async def test_chunk_generator_raises():
     async def generator_raises():
         yield 42
-        raise Exception('foo')
+        raise Exception("foo")
 
     ret = await unchunk_generator(chunk_generator(generator_raises(), 0.33))
-    assert ret == [[42, 'exc']]
+    assert ret == [[42, "exc"]]
 
 
 @pytest.mark.asyncio
@@ -85,8 +86,8 @@ async def test_asyncify_generator():
 async def test_asyncify_generator_raises():
     @asyncify_generator
     def g(x):
-        yield x**2
-        raise Exception('banana')
+        yield x ** 2
+        raise Exception("banana")
 
     ret = []
     with pytest.raises(Exception) as exc:

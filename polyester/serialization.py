@@ -17,8 +17,8 @@ class Pickler(cloudpickle.Pickler):
     def persistent_id(self, obj):
         if type(obj) == type(self.client):
             if obj != self.client:
-                logger.warn('One client trying to serialize a reference to another client')
-            return ('Client', None)
+                logger.warn("One client trying to serialize a reference to another client")
+            return ("Client", None)
         elif type(obj) in self.type_to_name:
             assert obj._serializable_object_initialized
             class_name = self.type_to_name[type(obj)]
@@ -33,7 +33,7 @@ class Unpickler(pickle.Unpickler):
 
     def persistent_load(self, pid):
         type_tag, key_id = pid
-        if type_tag == 'Client':
+        if type_tag == "Client":
             return self.client
         elif type_tag in self.name_to_type:
             cls = self.name_to_type[type_tag]
