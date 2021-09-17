@@ -52,7 +52,7 @@ def add_traceback(obj, func_name=None):
             try:
                 return await obj
             except Exception:
-                logger.exception("Exception while running {func_name}")
+                logger.exception(f"Exception while running {func_name}")
                 raise
 
         return _wrap_coro()
