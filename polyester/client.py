@@ -3,9 +3,10 @@ import grpc.aio
 import io
 import os
 
-from .async_utils import infinite_loop, synchronizer, retry
-from .grpc_utils import ChannelPool, GRPC_REQUEST_TIMEOUT, BLOCKING_REQUEST_TIMEOUT
+from .async_utils import infinite_loop, retry, synchronizer
 from .config import config, logger
+from .grpc_utils import (BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT,
+                         ChannelPool)
 from .local_server import LocalServer
 from .object import ObjectMeta
 from .proto import api_pb2, api_pb2_grpc

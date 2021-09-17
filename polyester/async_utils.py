@@ -6,7 +6,6 @@ import time
 
 from .config import logger
 
-
 synchronizer = synchronicity.Synchronizer()
 
 

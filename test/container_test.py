@@ -4,8 +4,8 @@ import time
 
 from polyester.client import Client
 from polyester.container_entrypoint import main
-from polyester.proto import api_pb2
 from polyester.function import Function
+from polyester.proto import api_pb2
 from polyester.test_support import SLEEP_DELAY
 
 EXTRA_TOLERANCE_DELAY = 0.05

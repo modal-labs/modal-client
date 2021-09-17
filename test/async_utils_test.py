@@ -1,7 +1,8 @@
 import asyncio
 import pytest
 
-from polyester.async_utils import retry, chunk_generator, asyncify_generator, asyncify_function, TaskContext
+from polyester.async_utils import (TaskContext, asyncify_function,
+                                   asyncify_generator, chunk_generator, retry)
 
 
 class FailNTimes:

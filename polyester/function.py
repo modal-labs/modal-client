@@ -11,8 +11,8 @@ from .client import Client
 from .config import config, logger
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .mount import Mount, create_package_mounts
-from .proto import api_pb2
 from .object import Object
+from .proto import api_pb2
 from .queue import Queue
 
 

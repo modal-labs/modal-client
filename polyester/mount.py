@@ -5,8 +5,8 @@ import os
 import time
 
 from .async_utils import retry
-from .config import logger, config
-from .grpc_utils import GRPC_REQUEST_TIMEOUT, BLOCKING_REQUEST_TIMEOUT
+from .config import config, logger
+from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .object import Object
 from .proto import api_pb2
 

@@ -1,7 +1,7 @@
 import os
-
 from importlib import import_module
-from importlib.metadata import requires, files
+from importlib.metadata import files, requires
+
 from packaging.requirements import Requirement
 
 from .config import logger

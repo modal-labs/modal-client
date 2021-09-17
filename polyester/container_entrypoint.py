@@ -8,10 +8,10 @@ import uuid
 from .async_utils import retry
 from .client import Client
 from .config import logger
-from .grpc_utils import GRPC_REQUEST_TIMEOUT, BLOCKING_REQUEST_TIMEOUT
 from .function import Function
-from .proto import api_pb2
+from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .object import Object
+from .proto import api_pb2
 
 
 class FunctionContext(Object):  # Idk, is this really a subclass of object? We don't care about de/serializability

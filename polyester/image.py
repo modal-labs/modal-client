@@ -1,13 +1,12 @@
 import asyncio
 import os
 import sys
-
 from typing import Dict
 
 from .async_utils import retry
-from .config import logger, config
+from .config import config, logger
 from .function import decorate_function
-from .grpc_utils import GRPC_REQUEST_TIMEOUT, BLOCKING_REQUEST_TIMEOUT
+from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .mount import get_sha256_hex_from_content  # TODO: maybe not
 from .object import Object
 from .proto import api_pb2

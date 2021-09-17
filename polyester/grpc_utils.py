@@ -10,7 +10,6 @@ import traceback
 from .async_utils import add_traceback, chunk_generator
 from .config import logger
 
-
 HTTP_IDLE_TIMEOUT = 60  # EC2 ALBs don't seem trustworthy above this
 GRPC_REQUEST_TIMEOUT = 55  # Timeout enforced on all requests
 BLOCKING_REQUEST_TIMEOUT = 50  # Timeout used for blocking requests on the app layer
