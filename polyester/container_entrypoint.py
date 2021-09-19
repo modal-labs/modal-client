@@ -44,7 +44,11 @@ class FunctionContext(Object):  # Idk, is this really a subclass of object? We d
                 timeout=BLOCKING_REQUEST_TIMEOUT,
             )
             response = await retry(client.stub.FunctionGetNextInput)(request, timeout=GRPC_REQUEST_TIMEOUT)
+            if not response.data:
+                logger.info(f"Task {self.args.task_id} input request received no data.")
+                break
             if response.stop:
+                logger.info(f"Task {self.args.task_id} received stop response.")
                 break
             yield response
 
