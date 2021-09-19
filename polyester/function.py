@@ -151,7 +151,7 @@ class Function(Object):
         mount, module_name, function_name = _function_to_path(self.args.raw_f)
 
         mounts = [mount]
-        if config["sync_entrypoint"] and os.getenv("POLYESTER_IMAGE_LOCAL_ID") != local_id:
+        if config["sync_entrypoint"] and not os.getenv("POLYESTER_IMAGE_LOCAL_ID"):
             # TODO(erikbern): If the first condition is true then we're running in a local
             # client which implies the second is always true as well?
             mounts.extend(create_package_mounts("polyester"))
