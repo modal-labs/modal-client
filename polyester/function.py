@@ -176,6 +176,8 @@ class Function(Object):
         return response.function_id
 
     async def map(self, inputs, star=False, window=100, kwargs={}):
+        # TODO: this method returns a coroutine that returns an async generator
+        # not a straight up async generator like a caller might expect
         client = await self._get_client()
         function_id = await self.join()
         return Call(client, function_id, inputs, star, window, kwargs)
