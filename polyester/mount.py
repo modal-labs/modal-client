@@ -103,19 +103,6 @@ class Mount(Object):
         req = api_pb2.MountDoneRequest(mount_id=mount_id)
         await client.stub.MountDone(req)
 
-        logger.debug("Waiting for mount %s" % mount_id)
-        while True:
-            request = api_pb2.MountJoinRequest(mount_id=mount_id, timeout=BLOCKING_REQUEST_TIMEOUT)
-            response = await retry(client.stub.MountJoin)(request, timeout=GRPC_REQUEST_TIMEOUT)
-            if not response.result.status:
-                continue
-            elif response.result.status == api_pb2.GenericResult.Status.FAILURE:
-                raise Exception(response.result.exception)
-            elif response.result.status == api_pb2.GenericResult.Status.SUCCESS:
-                break
-            else:
-                raise Exception("Unknown status %s!" % response.result.status)
-
         return mount_id
 
 

@@ -263,15 +263,6 @@ message MountDoneRequest {
   string mount_id = 1;
 }
 
-message MountJoinRequest {
-  string mount_id = 1;
-  float timeout = 2;
-}
-
-message MountJoinResponse {
-  GenericResult result = 1;
-}
-
 service PolyesterClient {
   // Clients
   rpc ClientCreate(ClientCreateRequest) returns (ClientCreateResponse);
@@ -292,7 +283,6 @@ service PolyesterClient {
   rpc MountRegisterFile(stream MountRegisterFileRequest) returns (stream MountRegisterFileResponse);
   rpc MountUploadFile(stream MountUploadFileRequest) returns (Empty);  // TODO: return something?
   rpc MountDone(MountDoneRequest) returns (Empty);
-  rpc MountJoin(MountJoinRequest) returns (MountJoinResponse);
 
   // Layers
   rpc LayerGetOrCreate(LayerGetOrCreateRequest) returns (LayerGetOrCreateResponse);
