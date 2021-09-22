@@ -14,6 +14,7 @@ from .mount import Mount, create_package_mounts
 from .object import Object
 from .proto import api_pb2
 from .queue import Queue
+from .session import Session
 
 
 def _function_to_path(f):
@@ -61,9 +62,8 @@ def _path_to_function(module_name, function_name):
 
 
 class Call(Object):
-    def __init__(self, client, function_id, inputs, star, window, kwargs):
+    def __init__(self, function_id, inputs, star, window, kwargs):
         super().__init__(
-            client=client,
             args=dict(
                 function_id=function_id,
                 inputs=inputs,
@@ -110,7 +110,7 @@ class Call(Object):
         # and we don't enqueue more requests until we get back enough values.
         # It probably makes a lot of sense to move the input throttling to the server instead.
 
-        client = await self._get_client()
+        client = await Client.current()  # TODO: HACK
 
         # TODO: we should support asynchronous generators as well
         inputs = iter(self.args.inputs)  # Handle non-generator inputs
@@ -138,16 +138,13 @@ class Function(Object):
     def __init__(self, raw_f, image=None, client=None):
         assert callable(raw_f)
         super().__init__(
-            client=client,
             args=dict(
                 raw_f=raw_f,
                 image=image,
             ),
         )
 
-    async def _join(self):
-        client = await self._get_client()
-
+    async def _join(self, client, session):
         mount, module_name, function_name = _function_to_path(self.args.raw_f)
 
         mounts = [mount]
@@ -158,17 +155,17 @@ class Function(Object):
         # TODO(erikbern): couldn't we just create one single mount with all packages instead of multiple?
 
         # Wait for mounts to finish
-        mount_ids = await asyncio.gather(*(mount.set_client(client).join() for mount in mounts))
+        mount_ids = await asyncio.gather(*(mount.join(client, session) for mount in mounts))
 
         # Create function remotely
-        image_id = await self.args.image.set_client(client).join()
+        image_id = await self.args.image.join(client, session)
         function_definition = api_pb2.Function(
             module_name=module_name,
             function_name=function_name,
             mount_ids=mount_ids,
         )
         request = api_pb2.FunctionGetOrCreateRequest(
-            session_id=client.session_id,
+            session_id=session.session_id,
             image_id=image_id,  # TODO: move into the function definition?
             function=function_definition,
         )
@@ -178,9 +175,10 @@ class Function(Object):
     async def map(self, inputs, star=False, window=100, kwargs={}):
         # TODO: this method returns a coroutine that returns an async generator
         # not a straight up async generator like a caller might expect
-        client = await self._get_client()
-        function_id = await self.join()
-        return Call(client, function_id, inputs, star, window, kwargs)
+        client = await Client.current()  # TODO: HACK
+        session = await Session.current()  # TODO: HACK
+        function_id = await self.join(client, session)
+        return Call(function_id, inputs, star, window, kwargs)
 
     async def __call__(self, *args, **kwargs):
         """Uses map, but makes sure there's only 1 output."""

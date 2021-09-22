@@ -47,9 +47,7 @@ class Layer(Object):
             )
         )
 
-    async def _join(self):
-        client = await self._get_client()
-
+    async def _join(self, client, session):
         if self.args.tag:
             req = api_pb2.LayerGetByTagRequest(tag=self.args.tag)
             resp = await client.stub.LayerGetByTag(req)
@@ -58,7 +56,7 @@ class Layer(Object):
         else:
             # Recursively build base layers
             base_layer_ids = await asyncio.gather(
-                *(layer.set_client(client).join() for layer in self.args.base_layers.values())
+                *(layer.join(client, session) for layer in self.args.base_layers.values())
             )
             base_layers = [
                 api_pb2.BaseLayer(docker_tag=docker_tag, layer_id=layer_id)
@@ -77,7 +75,7 @@ class Layer(Object):
             )
 
             req = api_pb2.LayerGetOrCreateRequest(
-                session_id=client.session_id,
+                session_id=session.session_id,
                 layer=layer_definition,
                 must_create=self.args.must_create,
             )
@@ -89,7 +87,7 @@ class Layer(Object):
             request = api_pb2.LayerJoinRequest(
                 layer_id=layer_id,
                 timeout=BLOCKING_REQUEST_TIMEOUT,
-                session_id=client.session_id,
+                session_id=session.session_id,
             )
             response = await retry(client.stub.LayerJoin)(request, timeout=GRPC_REQUEST_TIMEOUT)
             if not response.result.status:
@@ -118,9 +116,8 @@ class EnvDict(Object):
             )
         )
 
-    async def _join(self):
-        client = await self._get_client()
-        req = api_pb2.EnvDictCreateRequest(session_id=client.session_id, env_dict=self.args.env_dict)
+    async def _join(self, client, session):
+        req = api_pb2.EnvDictCreateRequest(session_id=session.session_id, env_dict=self.args.env_dict)
         resp = await client.stub.EnvDictCreate(req)
         return resp.env_dict_id
 
@@ -130,13 +127,12 @@ class Image(Object):
         local_id = "i:(%s)" % layer.args.local_id
         super().__init__(args=dict(layer=layer, env_dict=env_dict, local_id=local_id, **kwargs))
 
-    async def join(self):
-        client = await self._get_client()
+    async def join(self, client, session):
         if self.args.env_dict:
-            env_dict_id = await self.args.env_dict.set_client(client).join()
+            env_dict_id = await self.args.env_dict.join(client, session)
         else:
             env_dict_id = None
-        layer_id = await self.args.layer.set_client(client).join()
+        layer_id = await self.args.layer.join(client, session)
 
         image = api_pb2.Image(
             layer_id=layer_id,
@@ -144,7 +140,7 @@ class Image(Object):
             env_dict_id=env_dict_id,
         )
 
-        request = api_pb2.ImageCreateRequest(session_id=client.session_id, image=image)
+        request = api_pb2.ImageCreateRequest(session_id=session.session_id, image=image)
         response = await client.stub.ImageCreate(request)
         return response.image_id
 

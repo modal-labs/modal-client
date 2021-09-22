@@ -274,7 +274,7 @@ service PolyesterClient {
   rpc SessionGetLogs(SessionGetLogsRequest) returns (stream TaskLogs);
 
   // Queues
-  rpc QueueCreate(Empty) returns (QueueCreateResponse);
+  rpc QueueCreate(Empty) returns (QueueCreateResponse);  // TODO: we should create it inside a session
   rpc QueueGet(QueueGetRequest) returns (QueueGetResponse);
   rpc QueuePut(QueuePutRequest) returns (Empty);
 

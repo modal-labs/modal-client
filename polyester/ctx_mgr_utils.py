@@ -1,6 +1,8 @@
 import asyncio
 import atexit
 
+from .config import logger
+
 
 class CtxMgrMeta(type):
     def __new__(metacls, name, bases, dct):
@@ -18,7 +20,7 @@ class CtxMgr(metaclass=CtxMgrMeta):
     The plan is for clients and sessions to use this."""
 
     @classmethod
-    def _create(cls):
+    async def _create(cls):
         raise NotImplementedError(f"{cls}._create() not implemented")
 
     async def _start(self):
@@ -30,18 +32,21 @@ class CtxMgr(metaclass=CtxMgrMeta):
     async def __aenter__(self):
         await self._start()
         self._running_instances.add(self)
+        logger.debug("Entered instance {instance}")
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
         await self._stop(hard=False)
         self._running_instances.remove(self)
+        logger.debug("Exited instance {instance}")
 
     @classmethod
     async def current(cls):
         if len(cls._running_instances) == 0:
-            instance = cls._create()
+            instance = await cls._create()
             await instance._start()
             cls._running_instances.add(instance)
+            logger.debug("Created and entered {instance}")
         elif len(cls._running_instances) > 1:
             raise Exception(f"Multiple instances of {cls} running: need to be explicit about which one to use")
         (instance,) = cls._running_instances
@@ -50,4 +55,6 @@ class CtxMgr(metaclass=CtxMgrMeta):
     @classmethod
     def _stop_running_instances(cls):
         for instance in cls._running_instances:
-            asyncio.run(instance._stop(hard=True))
+            logger.debug(f"Stopping {instance}")
+            # This doesn't quite work... something with atexit and asyncio seems out of wack
+            instance._stop(hard=True)
