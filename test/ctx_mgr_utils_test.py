@@ -9,7 +9,7 @@ class TestCtxMgr(CtxMgr):
         self.state = "created"
 
     @classmethod
-    def _create(cls):
+    async def _create(cls):
         return TestCtxMgr(1)
 
     async def _start(self):
