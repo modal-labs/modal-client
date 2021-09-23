@@ -32,13 +32,13 @@ class CtxMgr(metaclass=CtxMgrMeta):
     async def __aenter__(self):
         await self._start()
         self._running_instances.add(self)
-        logger.debug(f"Entered instance {instance}")
+        logger.debug(f"Entered instance {self}")
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
         await self._stop(hard=False)
         self._running_instances.remove(self)
-        logger.debug(f"Exited instance {instance}")
+        logger.debug(f"Exited instance {self}")
 
     @classmethod
     async def current(cls):

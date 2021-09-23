@@ -11,7 +11,7 @@ from .client import Client
 from .config import config, logger
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .mount import Mount, create_package_mounts
-from .object import Object, requires_join
+from .object import Object, requires_join, requires_join_generator
 from .proto import api_pb2
 from .queue import Queue
 from .session import Session
@@ -62,6 +62,7 @@ def _path_to_function(module_name, function_name):
 
 
 class Call(Object):
+    # TODO: I'm increasingly skeptical that this should in fact be its own object, but let's revisit
     def __init__(self, function_id, inputs, star, window, kwargs):
         super().__init__(
             args=dict(
@@ -72,6 +73,19 @@ class Call(Object):
                 kwargs=kwargs,
             ),
         )
+
+    async def _join(self):
+        # TODO: This is incredibly dumb. The server API lets us enqueue and create a call_id lazily
+        # To get around the current structure where joining is separate from other methods,
+        # we create a call by enqueueing zero inputs
+        request = api_pb2.FunctionCallRequest(
+            function_id=self.args.function_id,
+            inputs=[],
+            idempotency_key=str(uuid.uuid4()),
+            call_id=None,
+        )
+        response = await retry(self.client.stub.FunctionCall)(request)
+        return response.call_id
 
     async def _enqueue(self, args, star, kwargs):
         if not star:
@@ -85,7 +99,6 @@ class Call(Object):
             call_id=self.object_id,
         )
         response = await retry(self.client.stub.FunctionCall)(request)
-        self.object_id = response.call_id
 
     async def _dequeue(self, n_outputs):
         while True:
@@ -103,9 +116,6 @@ class Call(Object):
             if output.status != api_pb2.GenericResult.Status.SUCCESS:
                 raise Exception("Remote exception: %s\n%s" % (output.exception, output.traceback))
             yield self.client.deserialize(output.data)
-
-    async def _join(self):
-        return "xyz"  # TODO: this is weird
 
     async def __aiter__(self):
         # Most of the complexity of this function comes from the input throttling.
@@ -173,17 +183,18 @@ class Function(Object):
         response = await self.client.stub.FunctionGetOrCreate(request)
         return response.function_id
 
-    @requires_join
+    @requires_join_generator
     async def map(self, inputs, star=False, window=100, kwargs={}):
-        # TODO: this method returns a coroutine that returns an async generator
-        # not a straight up async generator like a caller might expect
         call = Call(self.object_id, inputs, star, window, kwargs)
-        return call.join(self.client, self.session)
+        call_joined = await call.join(self.client, self.session)
+        async for output in call_joined:
+            yield output
 
     @requires_join
     async def __call__(self, *args, **kwargs):
-        """Uses map, but makes sure there's only 1 output."""
-        async for output in self.map([args], kwargs=kwargs, star=True):
+        call = Call(self.object_id, [args], star=True, window=1, kwargs=kwargs)
+        call_joined = await call.join(self.client, self.session)
+        async for output in call_joined:
             return output  # return the first (and only) one
 
     @staticmethod

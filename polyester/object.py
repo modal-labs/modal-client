@@ -69,6 +69,7 @@ class Object(metaclass=ObjectMeta):
             return self
 
         if self.session_tag is not None and self.session_tag in session.objects_by_tag:
+            # TODO: this should also happen on the server
             return session.objects_by_tag[self.session_tag]
 
         # This is where a bit of magic happens. Since objects are fairly "thin", we can clone them
@@ -76,7 +77,7 @@ class Object(metaclass=ObjectMeta):
         # the server side. This might be a new object if the object didn't exist, or an existing
         # object: it's up the the subclass to define a _join method that takes care of this.
 
-        logger.debug(f"Joining {self} with {self.session_tag}")
+        logger.debug(f"Joining {self} with tag {self.session_tag}")
 
         # TODO 1: we should check the session locally to see if it already has resolved this object
         # TODO 2: we should use a mutex to prevent an object from being joined twice simultaneously
@@ -94,6 +95,7 @@ class Object(metaclass=ObjectMeta):
         obj.object_id = await obj._join()
         if self.session_tag is not None:
             session.objects_by_tag[self.session_tag] = obj
+        logger.debug(f"Joined {self} -> {obj.object_id}")
         return obj
 
     # def __setattr__(self, k, v):
@@ -102,9 +104,17 @@ class Object(metaclass=ObjectMeta):
     #    self.__dict__[k] = v
 
 
-def requires_join(method):
-    # TODO: doesn't work for generators
+async def _join_with_defaults(obj):
+    # TODO: get rid of these imports - rn it's circular that's why
+    from .client import Client
+    from .session import Session
 
+    client = await Client.current()
+    session = await Session.current()
+    return await obj.join(client, session)
+
+
+def requires_join(method):
     @functools.wraps(method)
     async def wrapped_method(self, *args, **kwargs):
         if self.joined:
@@ -112,17 +122,29 @@ def requires_join(method):
             return await method(self, *args, **kwargs)
         else:
             # Join the object
-
-            # TODO: get rid of these imports - rn it's circular that's why
-            from .client import Client
-            from .session import Session
-
-            client = await Client.current()
-            session = await Session.current()
-            new_self = await self.join(client, session)
+            new_self = await _join_with_defaults(self)
 
             # Call the method on the joined object instead
             new_method = getattr(new_self, method.__name__)
             return await new_method(*args, **kwargs)
+
+    return wrapped_method
+
+
+def requires_join_generator(method):
+    @functools.wraps(method)
+    async def wrapped_method(self, *args, **kwargs):
+        if self.joined:
+            # Object already has an object id, just keep going
+            async for ret in method(self, *args, **kwargs):
+                yield ret
+        else:
+            # Join the object
+            new_self = await _join_with_defaults(self)
+
+            # Call the method on the joined object instead
+            new_method = getattr(new_self, method.__name__)
+            async for ret in new_method(*args, **kwargs):
+                yield ret
 
     return wrapped_method
