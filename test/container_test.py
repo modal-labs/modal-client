@@ -27,18 +27,14 @@ def _get_inputs(client):
 
 
 async def _run_container(servicer, module_name, function_name):
-    client = Client(servicer.remote_addr, api_pb2.ClientType.CONTAINER, ("ta-123", "task-secret"))
+    async with Client(servicer.remote_addr, api_pb2.ClientType.CONTAINER, ("ta-123", "task-secret")) as client:
+        servicer.inputs = _get_inputs(client)
 
-    await client._start()
-    await client._start_client()
+        # Note that main is a synchronous function, so we need to run it in a separate thread
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, main, "ta-123", "fu-123", module_name, function_name, client)
 
-    servicer.inputs = _get_inputs(client)
-
-    # Note that main is a synchronous function, so we need to run it in a separate thread
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, main, "ta-123", "fu-123", module_name, function_name, client)
-
-    return client, servicer.outputs
+        return client, servicer.outputs
 
 
 @pytest.mark.asyncio
