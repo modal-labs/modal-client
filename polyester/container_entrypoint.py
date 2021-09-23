@@ -101,6 +101,7 @@ def main(task_id, function_id, module_name, function_name, client=None):
 
 
 if __name__ == "__main__":
+    # TODO: we need to do something here to set up the session!
     tag, task_id, function_id, module_name, function_name = sys.argv[1:]
     assert tag == "function"
     logger.debug("Container: starting")
