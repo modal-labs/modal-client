@@ -32,13 +32,13 @@ class CtxMgr(metaclass=CtxMgrMeta):
     async def __aenter__(self):
         await self._start()
         self._running_instances.add(self)
-        logger.debug("Entered instance {instance}")
+        logger.debug(f"Entered instance {instance}")
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
         await self._stop(hard=False)
         self._running_instances.remove(self)
-        logger.debug("Exited instance {instance}")
+        logger.debug(f"Exited instance {instance}")
 
     @classmethod
     async def current(cls):
@@ -46,7 +46,7 @@ class CtxMgr(metaclass=CtxMgrMeta):
             instance = await cls._create()
             await instance._start()
             cls._running_instances.add(instance)
-            logger.debug("Created and entered {instance}")
+            logger.debug(f"Created and entered {instance}")
         elif len(cls._running_instances) > 1:
             raise Exception(f"Multiple instances of {cls} running: need to be explicit about which one to use")
         (instance,) = cls._running_instances

@@ -1,4 +1,5 @@
 import asyncio
+import functools
 
 from .async_utils import synchronizer
 from .config import logger
@@ -35,12 +36,12 @@ class Object(metaclass=ObjectMeta):
     # A bit ugly to leverage implemenation inheritance here, but I guess you could
     # roughly think of this class as a mixin
 
-    def __init__(self, object_id=None, args=None):
+    def __init__(self, args=None, session_tag=None):
+        logger.debug(f"Creating object {self}")
+
         # TODO: should we make these attributes hidden for subclasses?
         # (i.e. "private" not even "protected" to use the C++ terminology)
         # Feels like there could be some benefits of doing so
-        self.join_lock = None
-        self.object_id = object_id
         if isinstance(args, dict):
             self.args = Args(args)
         elif isinstance(args, Args):
@@ -50,21 +51,78 @@ class Object(metaclass=ObjectMeta):
         else:
             raise Exception(f"{args} of type {type(args)} must be instance of (dict, Args, NoneType)")
 
+        self.session_tag = session_tag
+
+        # Default values for non-joined objects
+        self.joined = False
+        self.object_id = None
+        self.client = None
+        self.session = None
+
     async def _join(self):
         raise NotImplementedError
 
     async def join(self, client, session):
-        if self.object_id is None:
-            if self.join_lock is None:
-                # There's no race condition here because it's cooperative multithreading
-                self.join_lock = asyncio.Lock()
-            async with self.join_lock:
-                if self.object_id is None:
-                    self.object_id = await self._join(client, session)  # TODO: pass it self.args?
-                    assert self.object_id
-        return self.object_id
+        """Returns a new object that has the properties `client`, `session`, and `object_id` set."""
 
-    def __setattr__(self, k, v):
-        if k not in ["object_id", "args", "join_lock"]:
-            raise AttributeError(f"Cannot set attribute {k}")
-        self.__dict__[k] = v
+        if self.object_id is not None:
+            return self
+
+        if self.session_tag is not None and self.session_tag in session.objects_by_tag:
+            return session.objects_by_tag[self.session_tag]
+
+        # This is where a bit of magic happens. Since objects are fairly "thin", we can clone them
+        # cheaply. What we do here is we create a *new* object that is resolved to an object on
+        # the server side. This might be a new object if the object didn't exist, or an existing
+        # object: it's up the the subclass to define a _join method that takes care of this.
+
+        logger.debug(f"Joining {self} with {self.session_tag}")
+
+        # TODO 1: we should check the session locally to see if it already has resolved this object
+        # TODO 2: we should use a mutex to prevent an object from being joined twice simultaneously
+        # TODO 3: if the object has a persisted tag then we shouldn't need the session parameter
+        # TODO 4: if the object has a persisted tag then we should cache it on the Client
+
+        # Cloning magic:
+        cls = type(self)
+        obj = cls.__new__(cls)
+        obj.args = self.args
+        obj.joined = True
+        obj.client = client
+        obj.session = session
+        obj.session_tag = self.session_tag
+        obj.object_id = await obj._join()
+        if self.session_tag is not None:
+            session.objects_by_tag[self.session_tag] = obj
+        return obj
+
+    # def __setattr__(self, k, v):
+    #    if k not in ["object_id", "args", "join_lock"]:
+    #        raise AttributeError(f"Cannot set attribute {k}")
+    #    self.__dict__[k] = v
+
+
+def requires_join(method):
+    # TODO: doesn't work for generators
+
+    @functools.wraps(method)
+    async def wrapped_method(self, *args, **kwargs):
+        if self.joined:
+            # Object already has an object id, just keep going
+            return await method(self, *args, **kwargs)
+        else:
+            # Join the object
+
+            # TODO: get rid of these imports - rn it's circular that's why
+            from .client import Client
+            from .session import Session
+
+            client = await Client.current()
+            session = await Session.current()
+            new_self = await self.join(client, session)
+
+            # Call the method on the joined object instead
+            new_method = getattr(new_self, method.__name__)
+            return await new_method(*args, **kwargs)
+
+    return wrapped_method

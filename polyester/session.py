@@ -12,6 +12,7 @@ from .utils import print_logs
 class Session(CtxMgr):
     def __init__(self, client):
         self.client = client
+        self.objects_by_tag = {}
 
     @classmethod
     async def _create(cls):

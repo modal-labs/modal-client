@@ -11,7 +11,7 @@ from .client import Client
 from .config import config, logger
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .mount import Mount, create_package_mounts
-from .object import Object
+from .object import Object, requires_join
 from .proto import api_pb2
 from .queue import Queue
 from .session import Session
@@ -73,21 +73,21 @@ class Call(Object):
             ),
         )
 
-    async def _enqueue(self, client, args, star, kwargs):
+    async def _enqueue(self, args, star, kwargs):
         if not star:
             # Everything will just be passed as the first input
             args = [(arg,) for arg in args]
         # TODO: break out the creation of the call into a separate request
         request = api_pb2.FunctionCallRequest(
             function_id=self.args.function_id,
-            inputs=[client.serialize((arg, kwargs)) for arg in args],
+            inputs=[self.client.serialize((arg, kwargs)) for arg in args],
             idempotency_key=str(uuid.uuid4()),
             call_id=self.object_id,
         )
-        response = await retry(client.stub.FunctionCall)(request)
+        response = await retry(self.client.stub.FunctionCall)(request)
         self.object_id = response.call_id
 
-    async def _dequeue(self, client, n_outputs):
+    async def _dequeue(self, n_outputs):
         while True:
             request = api_pb2.FunctionGetNextOutputRequest(
                 function_id=self.args.function_id,  # TODO: why is this needed?
@@ -96,21 +96,22 @@ class Call(Object):
                 idempotency_key=str(uuid.uuid4()),
                 n_outputs=n_outputs,
             )
-            response = await retry(client.stub.FunctionGetNextOutput)(request, timeout=GRPC_REQUEST_TIMEOUT)
+            response = await retry(self.client.stub.FunctionGetNextOutput)(request, timeout=GRPC_REQUEST_TIMEOUT)
             if response.outputs:
                 break
         for output in response.outputs:
             if output.status != api_pb2.GenericResult.Status.SUCCESS:
                 raise Exception("Remote exception: %s\n%s" % (output.exception, output.traceback))
-            yield client.deserialize(output.data)
+            yield self.client.deserialize(output.data)
+
+    async def _join(self):
+        return "xyz"  # TODO: this is weird
 
     async def __aiter__(self):
         # Most of the complexity of this function comes from the input throttling.
         # Basically the idea is that we maintain x (default 100) outstanding requests at any point in time,
         # and we don't enqueue more requests until we get back enough values.
         # It probably makes a lot of sense to move the input throttling to the server instead.
-
-        client = await Client.current()  # TODO: HACK
 
         # TODO: we should support asynchronous generators as well
         inputs = iter(self.args.inputs)  # Handle non-generator inputs
@@ -127,9 +128,9 @@ class Call(Object):
                 except StopIteration:
                     input_exhausted = True
             if batch_args:
-                await self._enqueue(client, batch_args, self.args.star, self.args.kwargs)
+                await self._enqueue(batch_args, self.args.star, self.args.kwargs)
             if n_dequeued < n_enqueued:
-                async for output in self._dequeue(client, n_enqueued - n_dequeued):
+                async for output in self._dequeue(n_enqueued - n_dequeued):
                     n_dequeued += 1
                     yield output
 
@@ -144,7 +145,7 @@ class Function(Object):
             ),
         )
 
-    async def _join(self, client, session):
+    async def _join(self):
         mount, module_name, function_name = _function_to_path(self.args.raw_f)
 
         mounts = [mount]
@@ -154,32 +155,32 @@ class Function(Object):
             mounts.extend(create_package_mounts("polyester"))
         # TODO(erikbern): couldn't we just create one single mount with all packages instead of multiple?
 
-        # Wait for mounts to finish
-        mount_ids = await asyncio.gather(*(mount.join(client, session) for mount in mounts))
+        # Wait for image and mounts to finish
+        image = await self.args.image.join(self.client, self.session)
+        mounts = await asyncio.gather(*(mount.join(self.client, self.session) for mount in mounts))
 
         # Create function remotely
-        image_id = await self.args.image.join(client, session)
         function_definition = api_pb2.Function(
             module_name=module_name,
             function_name=function_name,
-            mount_ids=mount_ids,
+            mount_ids=[mount.object_id for mount in mounts],
         )
         request = api_pb2.FunctionGetOrCreateRequest(
-            session_id=session.session_id,
-            image_id=image_id,  # TODO: move into the function definition?
+            session_id=self.session.session_id,
+            image_id=image.object_id,  # TODO: move into the function definition?
             function=function_definition,
         )
-        response = await client.stub.FunctionGetOrCreate(request)
+        response = await self.client.stub.FunctionGetOrCreate(request)
         return response.function_id
 
+    @requires_join
     async def map(self, inputs, star=False, window=100, kwargs={}):
         # TODO: this method returns a coroutine that returns an async generator
         # not a straight up async generator like a caller might expect
-        client = await Client.current()  # TODO: HACK
-        session = await Session.current()  # TODO: HACK
-        function_id = await self.join(client, session)
-        return Call(function_id, inputs, star, window, kwargs)
+        call = Call(self.object_id, inputs, star, window, kwargs)
+        return call.join(self.client, self.session)
 
+    @requires_join
     async def __call__(self, *args, **kwargs):
         """Uses map, but makes sure there's only 1 output."""
         async for output in self.map([args], kwargs=kwargs, star=True):

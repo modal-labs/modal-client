@@ -8,7 +8,7 @@ from .config import config, logger
 from .function import decorate_function
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .mount import get_sha256_hex_from_content  # TODO: maybe not
-from .object import Object
+from .object import Object, requires_join
 from .proto import api_pb2
 
 
@@ -47,49 +47,49 @@ class Layer(Object):
             )
         )
 
-    async def _join(self, client, session):
+    async def _join(self):
         if self.args.tag:
             req = api_pb2.LayerGetByTagRequest(tag=self.args.tag)
-            resp = await client.stub.LayerGetByTag(req)
+            resp = await self.client.stub.LayerGetByTag(req)
             layer_id = resp.layer_id
 
         else:
             # Recursively build base layers
-            base_layer_ids = await asyncio.gather(
-                *(layer.join(client, session) for layer in self.args.base_layers.values())
+            base_layer_objs = await asyncio.gather(
+                *(layer.join(self.client, self.session) for layer in self.args.base_layers.values())
             )
-            base_layers = [
-                api_pb2.BaseLayer(docker_tag=docker_tag, layer_id=layer_id)
-                for docker_tag, layer_id in zip(self.args.base_layers.keys(), base_layer_ids)
+            base_layers_pb2s = [
+                api_pb2.BaseLayer(docker_tag=docker_tag, layer_id=layer.object_id)
+                for docker_tag, layer in zip(self.args.base_layers.keys(), base_layer_objs)
             ]
 
-            context_files = [
+            context_file_pb2s = [
                 api_pb2.LayerContextFile(filename=filename, data=data)
                 for filename, data in self.args.context_files.items()
             ]
 
             layer_definition = api_pb2.Layer(
-                base_layers=base_layers,
+                base_layers=base_layers_pb2s,
                 dockerfile_commands=self.args.dockerfile_commands,
-                context_files=context_files,
+                context_files=context_file_pb2s,
             )
 
             req = api_pb2.LayerGetOrCreateRequest(
-                session_id=session.session_id,
+                session_id=self.session.session_id,
                 layer=layer_definition,
                 must_create=self.args.must_create,
             )
-            resp = await client.stub.LayerGetOrCreate(req)
+            resp = await self.client.stub.LayerGetOrCreate(req)
             layer_id = resp.layer_id
 
-        logger.debug("Waiting for layer %s" % self.object_id)
+        logger.debug("Waiting for layer %s" % layer_id)
         while True:
             request = api_pb2.LayerJoinRequest(
                 layer_id=layer_id,
                 timeout=BLOCKING_REQUEST_TIMEOUT,
-                session_id=session.session_id,
+                session_id=self.session.session_id,
             )
-            response = await retry(client.stub.LayerJoin)(request, timeout=GRPC_REQUEST_TIMEOUT)
+            response = await retry(self.client.stub.LayerJoin)(request, timeout=GRPC_REQUEST_TIMEOUT)
             if not response.result.status:
                 continue
             elif response.result.status == api_pb2.GenericResult.Status.FAILURE:
@@ -101,11 +101,10 @@ class Layer(Object):
 
         return layer_id
 
+    @requires_join
     async def set_tag(self, tag):
-        client = await self._get_client()
-        layer_id = await self.join()
-        req = api_pb2.LayerSetTagRequest(layer_id=layer_id, tag=tag)
-        await client.stub.LayerSetTag(req)
+        req = api_pb2.LayerSetTagRequest(layer_id=self.object_id, tag=tag)
+        await self.client.stub.LayerSetTag(req)
 
 
 class EnvDict(Object):
@@ -116,9 +115,9 @@ class EnvDict(Object):
             )
         )
 
-    async def _join(self, client, session):
-        req = api_pb2.EnvDictCreateRequest(session_id=session.session_id, env_dict=self.args.env_dict)
-        resp = await client.stub.EnvDictCreate(req)
+    async def _join(self):
+        req = api_pb2.EnvDictCreateRequest(session_id=self.session.session_id, env_dict=self.args.env_dict)
+        resp = await self.client.stub.EnvDictCreate(req)
         return resp.env_dict_id
 
 
@@ -127,21 +126,21 @@ class Image(Object):
         local_id = "i:(%s)" % layer.args.local_id
         super().__init__(args=dict(layer=layer, env_dict=env_dict, local_id=local_id, **kwargs))
 
-    async def join(self, client, session):
+    async def _join(self):
         if self.args.env_dict:
-            env_dict_id = await self.args.env_dict.join(client, session)
+            env_dict_id = await self.args.env_dict.join(self.client, self.session)
         else:
             env_dict_id = None
-        layer_id = await self.args.layer.join(client, session)
+        layer = await self.args.layer.join(self.client, self.session)
 
         image = api_pb2.Image(
-            layer_id=layer_id,
+            layer_id=layer.object_id,
             local_id=self.args.local_id,
             env_dict_id=env_dict_id,
         )
 
-        request = api_pb2.ImageCreateRequest(session_id=session.session_id, image=image)
-        response = await client.stub.ImageCreate(request)
+        request = api_pb2.ImageCreateRequest(session_id=self.session.session_id, image=image)
+        response = await self.client.stub.ImageCreate(request)
         return response.image_id
 
     def set_env_vars(self, env_vars: Dict[str, str]):

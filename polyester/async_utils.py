@@ -1,4 +1,6 @@
 import asyncio
+
+# import atexit
 import functools
 import inspect
 import synchronicity
@@ -7,6 +9,7 @@ import time
 from .config import logger
 
 synchronizer = synchronicity.Synchronizer()
+# atexit.register(synchronizer.close)
 
 
 def retry(direct_fn=None, n_attempts=3, base_delay=0, delay_factor=2, timeout=90):
