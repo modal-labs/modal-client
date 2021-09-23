@@ -3,25 +3,27 @@ import uuid
 from typing import Any, List
 
 from .async_utils import retry
+from .client import Client
 from .config import logger
 from .object import Object
 from .proto import api_pb2
+from .session import Session
 
 
 class Queue(Object):
-    def __init__(self, client=None):
-        super().__init__(client=client)
+    def __init__(self):
+        super().__init__()
 
-    async def _join(self):
+    async def _join(self, client, session):
         """This creates a queue on the server and returns its id."""
-        client = await self._get_client()
         response = await client.stub.QueueCreate(api_pb2.Empty())
         logger.debug("Created queue with id %s" % response.queue_id)
         return response.queue_id
 
     async def _get(self, block, timeout, n_values):
-        client = await self._get_client()
-        queue_id = await self.join()
+        client = await Client.current()  # TODO: HACK
+        session = await Session.current()  # TODO: HACK
+        queue_id = await self.join(client, session)
         while timeout is None or timeout > 0:
             request_timeout = 50.0  # We prevent longer ones in order to keep the connection alive
             if timeout is not None:
@@ -48,8 +50,9 @@ class Queue(Object):
         return await self._get(block, timeout, n_values)
 
     async def put_many(self, vs: List[Any]):
-        client = await self._get_client()
-        queue_id = await self.join()
+        client = await Client.current()  # TODO: HACK
+        session = await Session.current()  # TODO: HACK
+        queue_id = await self.join(client, session)
         vs_encoded = [client.serialize(v) for v in vs]
         request = api_pb2.QueuePutRequest(
             queue_id=queue_id,
