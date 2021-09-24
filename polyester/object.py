@@ -77,6 +77,9 @@ class Object(metaclass=ObjectMeta):
             logger.debug(f"Acquired lock for object w/ tag {self.session_tag}")
             return obj
 
+        # Note that the lock logic rests on the assumption that the code between here and the next
+        # lock acquisition is completely await-free, or else we would introduce a race condition.
+
         # This is where a bit of magic happens. Since objects are fairly "thin", we can clone them
         # cheaply. What we do here is we create a *new* object that is resolved to an object on
         # the server side. This might be a new object if the object didn't exist, or an existing
