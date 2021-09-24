@@ -58,6 +58,7 @@ class Object(metaclass=ObjectMeta):
         self.object_id = None
         self.client = None
         self.session = None
+        self.join_lock = None
 
     async def _join(self):
         raise NotImplementedError
@@ -68,17 +69,13 @@ class Object(metaclass=ObjectMeta):
         if self.object_id is not None:
             return self
 
-        if self.session_tag is not None:
-            if self.session_tag not in session.locks_by_tag:
-                session.locks_by_tag[self.session_tag] = asyncio.Lock()
-            # TODO: use ctx mgr once every object has a session tag.
-            logger.info(f"Waiting for lock for object w/ tag {self.session_tag}")
-            await session.locks_by_tag[self.session_tag].acquire()
-            logger.info(f"Acquired lock for object w/ tag {self.session_tag}")
-            if self.session_tag in session.objects_by_tag:
-                # TODO: this should also happen on the server
-                session.locks_by_tag[self.session_tag].release()
-                return session.objects_by_tag[self.session_tag]
+        if self.session_tag is not None and self.session_tag in session.objects_by_tag:
+            obj = session.objects_by_tag[self.session_tag]
+            logger.debug(f"Waiting for lock for object w/ tag {self.session_tag}")
+            async with obj.join_lock:
+                pass
+            logger.debug(f"Acquired lock for object w/ tag {self.session_tag}")
+            return obj
 
         # This is where a bit of magic happens. Since objects are fairly "thin", we can clone them
         # cheaply. What we do here is we create a *new* object that is resolved to an object on
@@ -100,11 +97,11 @@ class Object(metaclass=ObjectMeta):
         obj.client = client
         obj.session = session
         obj.session_tag = self.session_tag
-        obj.object_id = await obj._join()
+        obj.join_lock = asyncio.Lock()
         if self.session_tag is not None:
             session.objects_by_tag[self.session_tag] = obj
-            session.locks_by_tag[self.session_tag].release()
-        logger.debug(f"Joined {self} -> {obj.object_id}")
+        async with obj.join_lock:
+            obj.object_id = await obj._join()
         return obj
 
     # def __setattr__(self, k, v):
