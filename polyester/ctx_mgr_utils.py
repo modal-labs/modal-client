@@ -2,6 +2,7 @@ import asyncio
 import atexit
 
 from .config import logger
+from .async_utils import synchronizer
 
 
 class CtxMgrMeta(type):
@@ -12,6 +13,7 @@ class CtxMgrMeta(type):
         return cls
 
 
+@synchronizer
 class CtxMgr(metaclass=CtxMgrMeta):
     """Make it possible to use an object as a context manager, but also as a Singleton
 
