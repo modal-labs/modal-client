@@ -9,12 +9,14 @@ from .proto import api_pb2
 from .utils import print_logs
 
 
+@synchronizer
 class Session(CtxMgr):
     def __init__(self, client):
         self.client = client
         self.objects_by_tag = {}
 
     @classmethod
+    @synchronizer
     async def _create(cls):
         client = await Client.current()
         return Session(client)
