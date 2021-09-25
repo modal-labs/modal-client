@@ -139,6 +139,41 @@ message LayerSetTagRequest {
   string tag = 2;
 }
 
+message DictCreateRequest {
+  map<string, string> data = 1;
+  string session_id = 2;
+}
+
+message DictCreateResponse {
+  string dict_id = 1;
+}
+
+message DictGetRequest {
+  string dict_id = 1;
+  string key = 2;
+}
+
+message DictGetResponse {
+  string value = 1;
+}
+
+message DictUpdateRequest {
+  string dict_id = 1;
+  map<string, string> updates = 2;
+}
+
+message DictUpdateResponse {
+}
+
+message DictPopRequest {
+  string dict_id = 1;
+  string key = 2;
+}
+
+message DictPopResponse {
+  string value = 1;
+}
+
 message EnvDictCreateRequest {
   map<string, string> env_dict = 1;
   string session_id = 2;
@@ -289,6 +324,12 @@ service PolyesterClient {
   rpc LayerJoin(LayerJoinRequest) returns (LayerJoinResponse);
   rpc LayerGetByTag(LayerGetByTagRequest) returns (LayerGetByTagResponse);
   rpc LayerSetTag(LayerSetTagRequest) returns (Empty);
+
+  // Dicts
+  rpc DictCreate(DictCreateRequest) returns (DictCreateResponse);
+  rpc DictUpdate(DictUpdateRequest) returns (DictUpdateResponse);
+  rpc DictGet(DictGetRequest) returns (DictGetResponse);
+  rpc DictPop(DictPopRequest) returns (DictPopResponse);
 
   // Env Dicts
   rpc EnvDictCreate(EnvDictCreateRequest) returns (EnvDictCreateResponse);
