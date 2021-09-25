@@ -154,7 +154,8 @@ message DictGetRequest {
 }
 
 message DictGetResponse {
-  string value = 1;
+  bool found = 1 ;
+  optional string value = 2;
 }
 
 message DictUpdateRequest {
@@ -171,7 +172,8 @@ message DictPopRequest {
 }
 
 message DictPopResponse {
-  string value = 1;
+  bool found = 1 ;
+  optional string value = 2;
 }
 
 message EnvDictCreateRequest {

@@ -26,6 +26,8 @@ class Dict(Object):
     async def get(self, key):
         req = api_pb2.DictGetRequest(dict_id=self.object_id, key=key)
         resp = await self.client.stub.DictGet(req)
+        if not resp.found:
+            raise KeyError(f"KeyError: {key} not in dict {self.object_id}")
         return resp.value
 
     @requires_join
@@ -47,4 +49,6 @@ class Dict(Object):
     async def pop(self, key):
         req = api_pb2.DictPopRequest(dict_id=self.object_id, key=key)
         resp = await self.client.stub.DictPop(req)
+        if not resp.found:
+            raise KeyError(f"KeyError: {key} not in dict {self.object_id}")
         return resp.value
