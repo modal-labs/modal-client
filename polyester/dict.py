@@ -16,8 +16,12 @@ class Dict(Object):
             session_tag = str(uuid.uuid4())
         super().__init__(session_tag=session_tag, args={"init_data": init_data})
 
+    def _serialize_values(self, data):
+        return {k: self.client.serialize(v) for k, v in data.items()}
+
     async def _join(self):
-        req = api_pb2.DictCreateRequest(session_id=self.session.session_id, data=self.args.init_data)
+        serialized = self._serialize_values(self.args.init_data)
+        req = api_pb2.DictCreateRequest(session_id=self.session.session_id, data=serialized)
         response = await self.client.stub.DictCreate(req)
         logger.debug("Created dict with id %s" % response.dict_id)
         return response.dict_id
@@ -28,7 +32,7 @@ class Dict(Object):
         resp = await self.client.stub.DictGet(req)
         if not resp.found:
             raise KeyError(f"KeyError: {key} not in dict {self.object_id}")
-        return resp.value
+        return self.client.deserialize(resp.value)
 
     @requires_join
     async def __getitem__(self, key):
@@ -36,13 +40,15 @@ class Dict(Object):
 
     @requires_join
     async def update(self, **kwargs):
-        req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=kwargs)
+        serialized = self._serialize_values(kwargs)
+        req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized)
         await self.client.stub.DictUpdate(req)
 
     @requires_join
     async def put(self, key, value):
         updates = {key: value}
-        req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=updates)
+        serialized = self._serialize_values(updates)
+        req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized)
         await self.client.stub.DictUpdate(req)
 
     @requires_join
@@ -51,4 +57,4 @@ class Dict(Object):
         resp = await self.client.stub.DictPop(req)
         if not resp.found:
             raise KeyError(f"KeyError: {key} not in dict {self.object_id}")
-        return resp.value
+        return self.client.deserialize(resp.value)
