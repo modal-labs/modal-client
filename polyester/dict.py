@@ -34,6 +34,7 @@ class Dict(Object):
             raise KeyError(f"KeyError: {key} not in dict {self.object_id}")
         return self.client.deserialize(resp.value)
 
+    @requires_join
     async def __getitem__(self, key):
         return await self.get(key)
 
@@ -51,6 +52,7 @@ class Dict(Object):
         await self.client.stub.DictUpdate(req)
 
     # NOTE: setitem only works in a synchronous context.
+    @requires_join
     async def __setitem__(self, key, value):
         return await self.put(key, value)
 

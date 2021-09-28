@@ -45,7 +45,6 @@ class Session(CtxMgr):
         # TODO: resurrect the Bye thing as a part of StopSession
         # req = api_pb2.ByeRequest(client_id=self.client_id)
         # await self.stub.Bye(req)
-        print("STOPPING SESSION", self.session_id)
         logger.debug("Waiting for logs to flush")
         if hard or not self.wait_for_logs:
             self._logs_task.cancel()
