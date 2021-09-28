@@ -11,12 +11,12 @@ from .utils import print_logs
 
 @synchronizer
 class Session(CtxMgr):
-    def __init__(self, client):
+    def __init__(self, client, wait_for_logs=True):
         self.client = client
         self.objects_by_tag = {}
+        self.wait_for_logs = wait_for_logs
 
     @classmethod
-    @synchronizer
     async def _create(cls):
         client = await Client.current()
         return Session(client)
@@ -45,8 +45,9 @@ class Session(CtxMgr):
         # TODO: resurrect the Bye thing as a part of StopSession
         # req = api_pb2.ByeRequest(client_id=self.client_id)
         # await self.stub.Bye(req)
+        print("STOPPING SESSION", self.session_id)
         logger.debug("Waiting for logs to flush")
-        if hard:
+        if hard or not self.wait_for_logs:
             self._logs_task.cancel()
         else:
             try:

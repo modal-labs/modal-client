@@ -2,7 +2,7 @@ import queue  # The system library
 import uuid
 from typing import Any, List
 
-from .async_utils import retry
+from .async_utils import retry, synchronizer
 from .client import Client
 from .config import logger
 from .object import Object, requires_join
@@ -10,6 +10,7 @@ from .proto import api_pb2
 from .session import Session
 
 
+@synchronizer
 class Queue(Object):
     def __init__(self, session_tag=None):
         if session_tag is None:

@@ -22,7 +22,6 @@ class CtxMgr(metaclass=CtxMgrMeta):
     The plan is for clients and sessions to use this."""
 
     @classmethod
-    @synchronizer
     async def _create(cls):
         raise NotImplementedError(f"{cls}._create() not implemented")
 
@@ -44,7 +43,6 @@ class CtxMgr(metaclass=CtxMgrMeta):
         logger.debug(f"Exited instance {self}")
 
     @classmethod
-    @synchronizer
     async def current(cls):
         if len(cls._running_instances) == 0:
             instance = await cls._create()
@@ -57,7 +55,6 @@ class CtxMgr(metaclass=CtxMgrMeta):
         return instance
 
     @classmethod
-    @synchronizer
     def _stop_running_instances(cls):
         for instance in cls._running_instances:
             logger.debug(f"Stopping {instance}")
