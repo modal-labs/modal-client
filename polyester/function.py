@@ -63,12 +63,11 @@ def _path_to_function(module_name, function_name):
 
 class Call(Object):
     # TODO: I'm increasingly skeptical that this should in fact be its own object, but let's revisit
-    def __init__(self, function_id, inputs, star, window, kwargs):
+    def __init__(self, function_id, inputs, window, kwargs):
         super().__init__(
             args=dict(
                 function_id=function_id,
                 inputs=inputs,
-                star=star,
                 window=window,
                 kwargs=kwargs,
             ),
@@ -87,10 +86,7 @@ class Call(Object):
         response = await retry(self.client.stub.FunctionCall)(request)
         return response.call_id
 
-    async def _enqueue(self, args, star, kwargs):
-        if not star:
-            # Everything will just be passed as the first input
-            args = [(arg,) for arg in args]
+    async def _enqueue(self, args, kwargs):
         # TODO: break out the creation of the call into a separate request
         request = api_pb2.FunctionCallRequest(
             function_id=self.args.function_id,
@@ -138,7 +134,7 @@ class Call(Object):
                 except StopIteration:
                     input_exhausted = True
             if batch_args:
-                await self._enqueue(batch_args, self.args.star, self.args.kwargs)
+                await self._enqueue(batch_args, self.args.kwargs)
             if n_dequeued < n_enqueued:
                 async for output in self._dequeue(n_enqueued - n_dequeued):
                     n_dequeued += 1
@@ -184,14 +180,15 @@ class Function(Object):
         return response.function_id
 
     @requires_join
-    async def map(self, inputs, star=False, window=100, kwargs={}):
-        call = Call(self.object_id, inputs, star, window, kwargs)
+    async def map(self, inputs, window=100, kwargs={}):
+        args = [(arg,) for arg in inputs]
+        call = Call(self.object_id, args, window, kwargs)
         call_joined = await call.join(self.client, self.session)
         return call_joined
 
     @requires_join
     async def __call__(self, *args, **kwargs):
-        call = Call(self.object_id, [args], star=True, window=1, kwargs=kwargs)
+        call = Call(self.object_id, [args], window=1, kwargs=kwargs)
         call_joined = await call.join(self.client, self.session)
         async for output in call_joined:
             return output  # return the first (and only) one
