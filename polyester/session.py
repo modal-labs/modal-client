@@ -4,7 +4,7 @@ from .async_utils import infinite_loop, retry, synchronizer
 from .client import Client
 from .config import logger
 from .ctx_mgr_utils import CtxMgr
-from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT, ChannelPool
+from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIME_BUFFER, ChannelPool
 from .proto import api_pb2
 from .utils import print_logs
 
@@ -22,7 +22,7 @@ class Session(CtxMgr):
 
     async def _get_logs(self, draining=False, timeout=BLOCKING_REQUEST_TIMEOUT):
         request = api_pb2.SessionGetLogsRequest(session_id=self.session_id, timeout=timeout, draining=draining)
-        async for log_entry in self.client.stub.SessionGetLogs(request, timeout=GRPC_REQUEST_TIMEOUT):
+        async for log_entry in self.client.stub.SessionGetLogs(request, timeout=timeout + GRPC_REQUEST_TIME_BUFFER):
             if log_entry.done:
                 logger.info("No more logs")
                 break
