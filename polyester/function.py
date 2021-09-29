@@ -183,12 +183,11 @@ class Function(Object):
         response = await self.client.stub.FunctionGetOrCreate(request)
         return response.function_id
 
-    @requires_join_generator
+    @requires_join
     async def map(self, inputs, star=False, window=100, kwargs={}):
         call = Call(self.object_id, inputs, star, window, kwargs)
         call_joined = await call.join(self.client, self.session)
-        async for output in call_joined:
-            yield output
+        return call_joined
 
     @requires_join
     async def __call__(self, *args, **kwargs):
