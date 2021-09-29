@@ -11,27 +11,23 @@ from .utils import print_logs
 
 @synchronizer
 class Session(CtxMgr):
-    def __init__(self, client, wait_for_logs=True):
+    def __init__(self, client):
         self.client = client
         self.objects_by_tag = {}
-        self.wait_for_logs = wait_for_logs
 
     @classmethod
     async def _create(cls):
         client = await Client.current()
         return Session(client)
 
-    async def _track_logs(self):
-        # TODO: break it out into its own class?
-        # TODO: how do we break this loop?
-        while True:
-            request = api_pb2.SessionGetLogsRequest(session_id=self.session_id, timeout=BLOCKING_REQUEST_TIMEOUT)
-            async for log_entry in self.client.stub.SessionGetLogs(request, timeout=GRPC_REQUEST_TIMEOUT):
-                if log_entry.done:
-                    logger.info("No more logs")
-                    break
-                else:
-                    print_logs(log_entry.data, log_entry.fd)
+    async def _get_logs(self, draining=False, timeout=BLOCKING_REQUEST_TIMEOUT):
+        request = api_pb2.SessionGetLogsRequest(session_id=self.session_id, timeout=timeout, draining=draining)
+        async for log_entry in self.client.stub.SessionGetLogs(request, timeout=GRPC_REQUEST_TIMEOUT):
+            if log_entry.done:
+                logger.info("No more logs")
+                break
+            else:
+                print_logs(log_entry.data, log_entry.fd)
 
     async def _start(self):
         req = api_pb2.SessionCreateRequest(client_id=self.client.client_id)
@@ -39,18 +35,18 @@ class Session(CtxMgr):
         self.session_id = resp.session_id
 
         # See comment about heartbeats task, same thing applies here
-        self._logs_task = asyncio.create_task(self._track_logs())
+        self._logs_task = infinite_loop(self._get_logs)
 
     async def _stop(self, hard):
-        # TODO: resurrect the Bye thing as a part of StopSession
-        # req = api_pb2.ByeRequest(client_id=self.client_id)
-        # await self.stub.Bye(req)
-        logger.debug("Waiting for logs to flush")
-        if hard or not self.wait_for_logs:
-            self._logs_task.cancel()
-        else:
-            try:
-                await asyncio.wait_for(self._logs_task, timeout=10.0)
-            except asyncio.TimeoutError:
-                logger.exception("Timed out waiting for logs")
-                self._logs_task.cancel()
+        # Stop session (this causes the server to kill any running task)
+        logger.debug("Stopping the session server-side")
+        req = api_pb2.SessionStopRequest(session_id=self.session_id)
+        await self.client.stub.SessionStop(req)
+
+        # Kill the existing log loop
+        self._logs_task.cancel()
+
+        # Fetch any straggling logs
+        if not hard:
+            logger.debug("Draining logs")
+            await self._get_logs(draining=True, timeout=10.0)
