@@ -179,7 +179,7 @@ class Function(Object):
         response = await self.client.stub.FunctionGetOrCreate(request)
         return response.function_id
 
-    @requires_join
+    @requires_join_generator
     async def map(self, inputs, window=100, kwargs={}):
         args = [(arg,) for arg in inputs]
         call = Call(self.object_id, args, window, kwargs)

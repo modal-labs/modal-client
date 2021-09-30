@@ -1,5 +1,6 @@
 import asyncio
 import functools
+import inspect
 
 from .async_utils import synchronizer
 from .config import logger
@@ -144,15 +145,20 @@ def requires_join_generator(method):
     @functools.wraps(method)
     async def wrapped_method(self, *args, **kwargs):
         if self.joined:
-            # Object already has an object id, just keep going
-            async for ret in method(self, *args, **kwargs):
-                yield ret
+            # Coroutine fn that returns a generator
+            if inspect.iscoroutinefunction(method):
+                async for ret in await method(self, *args, **kwargs):
+                    yield ret
+            else:
+                async for ret in method(self, *args, **kwargs):
+                    yield ret
         else:
             # Join the object
             new_self = await _join_with_defaults(self)
 
             # Call the method on the joined object instead
             new_method = getattr(new_self, method.__name__)
+
             async for ret in new_method(*args, **kwargs):
                 yield ret
 
