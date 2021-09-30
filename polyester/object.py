@@ -145,13 +145,12 @@ def requires_join_generator(method):
     @functools.wraps(method)
     async def wrapped_method(self, *args, **kwargs):
         if self.joined:
+            result = method(self, *args, **kwargs)
             # Coroutine fn that returns a generator
-            if inspect.iscoroutinefunction(method):
-                async for ret in await method(self, *args, **kwargs):
-                    yield ret
-            else:
-                async for ret in method(self, *args, **kwargs):
-                    yield ret
+            if inspect.iscoroutine(result):
+                result = await result
+            async for ret in result:
+                yield ret
         else:
             # Join the object
             new_self = await _join_with_defaults(self)
