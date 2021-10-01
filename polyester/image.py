@@ -122,21 +122,30 @@ class EnvDict(Object):
 
 
 class Image(Object):
-    def __init__(self, layer, env_dict=None, **kwargs):
-        local_id = "i:(%s)" % layer.args.local_id
-        super().__init__(args=dict(layer=layer, env_dict=env_dict, local_id=local_id, **kwargs))
+    def __init__(self, layer=None, env_dict=None, local=False, **kwargs):
+        if local:
+            local_id =  "local_image"
+        else:
+            local_id = "i:(%s)" % layer.args.local_id
+        super().__init__(args=dict(layer=layer, env_dict=env_dict, local_id=local_id, local=local, **kwargs))
 
     async def _join(self):
         if self.args.env_dict:
             env_dict_id = await self.args.env_dict.join(self.client, self.session)
         else:
             env_dict_id = None
-        layer = await self.args.layer.join(self.client, self.session)
+
+        if self.args.layer:
+            layer = await self.args.layer.join(self.client, self.session)
+            layer_id = layer.object_id
+        else:
+            layer_id = None
 
         image = api_pb2.Image(
-            layer_id=layer.object_id,
+            layer_id=layer_id,
             local_id=self.args.local_id,
             env_dict_id=env_dict_id,
+            local=self.args.local,
         )
 
         request = api_pb2.ImageCreateRequest(session_id=self.session.session_id, image=image)

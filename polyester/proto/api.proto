@@ -188,8 +188,9 @@ message EnvDictCreateResponse {
 
 message Image {
   string layer_id = 1;
-  string local_id = 3;
-  string env_dict_id = 4;
+  string local_id = 2;
+  string env_dict_id = 3;
+  bool local = 4;
 }
 
 message ImageCreateRequest {
