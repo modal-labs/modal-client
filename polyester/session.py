@@ -11,9 +11,12 @@ from .utils import print_logs
 
 @synchronizer
 class Session(CtxMgr):
-    def __init__(self, client):
+    def __init__(self, client, stdout=None, stderr=None):
         self.client = client
         self.objects_by_tag = {}
+        # log queues
+        self._stdout = stdout
+        self._stderr = stderr
 
     @classmethod
     async def _create(cls):
@@ -27,7 +30,7 @@ class Session(CtxMgr):
                 logger.info("No more logs")
                 break
             else:
-                print_logs(log_entry.data, log_entry.fd)
+                print_logs(log_entry.data, log_entry.fd, self._stdout, self._stderr)
 
     async def _start(self):
         req = api_pb2.SessionCreateRequest(client_id=self.client.client_id)

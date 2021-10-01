@@ -2,12 +2,12 @@ import colorama
 import sys
 
 
-def print_logs(output: bytes, fd: str):
+def print_logs(output: bytes, fd: str, stdout=None, stderr=None):
     if fd == "stdout":
-        buf = sys.stdout.buffer
+        buf = stdout or sys.stdout.buffer
         color = colorama.Fore.BLUE.encode()
     elif fd == "stderr":
-        buf = sys.stderr.buffer
+        buf = stderr or sys.stderr.buffer
         color = colorama.Fore.RED.encode()
     elif fd == "server":
         buf = sys.stderr.buffer
