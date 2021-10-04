@@ -28,20 +28,22 @@ class Client(CtxMgr):
 
     async def _start(self):
         logger.debug("Client: Starting")
-        self.connection_factory = GRPCConnectionFactory(
-            self.server_url,
-            self.client_type,
-            self.credentials,
-        )
-        self._channel_pool = ChannelPool(self.connection_factory)
-        await self._channel_pool.start()
-        self.stub = api_pb2_grpc.PolyesterClientStub(self._channel_pool)
-        req = api_pb2.ClientCreateRequest(client_type=self.client_type)
-        resp = await self.stub.ClientCreate(req)
-        # except grpc.aio.AioRpcError as e:
-        #    # gRPC creates super cryptic error messages so we mask it this time and tell the user we couldn't connect
-        #    raise Exception('gRPC failed saying hello with error "%s"' % e.details()) from None
-        self.client_id = resp.client_id
+        try:
+            self.connection_factory = GRPCConnectionFactory(
+                self.server_url,
+                self.client_type,
+                self.credentials,
+            )
+            self._channel_pool = ChannelPool(self.connection_factory)
+            await self._channel_pool.start()
+            self.stub = api_pb2_grpc.PolyesterClientStub(self._channel_pool)
+            req = api_pb2.ClientCreateRequest(client_type=self.client_type)
+            resp = await self.stub.ClientCreate(req)
+            self.client_id = resp.client_id
+        except:
+            # Just helpful for debugging
+            logger.info(f"{self.server_url=}")
+            raise
 
         # Start heartbeats
         # TODO: would be nice to have some proper ownership of these tasks so they are garbage collected
