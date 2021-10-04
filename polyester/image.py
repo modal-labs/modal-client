@@ -124,7 +124,7 @@ class EnvDict(Object):
 class Image(Object):
     def __init__(self, layer=None, env_dict=None, local=False, **kwargs):
         if local:
-            local_id =  "local_image"
+            local_id = "local_image"
         else:
             local_id = "i:(%s)" % layer.args.local_id
         super().__init__(args=dict(layer=layer, env_dict=env_dict, local_id=local_id, local=local, **kwargs))
