@@ -49,8 +49,8 @@ class GRPCConnectionFactory:
 
         self.target = o.netloc
 
-        # TODO: this is a bit janky, we should fix this elsewhere (maybe pass large items by handle instead)
         basic_auth = BasicAuth(client_type, credentials)
+        # TODO: we should make it possible to use tokens with http too, for testing purposes
         if o.scheme.endswith("s"):
             logger.debug("Connecting to %s using secure channel" % o.netloc)
             self.credentials = grpc.composite_channel_credentials(
