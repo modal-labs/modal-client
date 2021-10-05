@@ -7,15 +7,14 @@ from .client import Client
 from .config import logger
 from .object import Object, requires_join
 from .proto import api_pb2
-from .session import Session
 
 
 @synchronizer
 class Queue(Object):
-    def __init__(self, session_tag=None):
-        if session_tag is None:
-            session_tag = str(uuid.uuid4())
-        super().__init__(session_tag=session_tag)
+    def __init__(self, DEPRECATED_session_tag=None):
+        if DEPRECATED_session_tag is None:
+            DEPRECATED_session_tag = str(uuid.uuid4())
+        super().__init__(DEPRECATED_session_tag=DEPRECATED_session_tag)
 
     async def _join(self):
         """This creates a queue on the server and returns its id."""

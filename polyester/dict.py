@@ -7,21 +7,20 @@ from .client import Client
 from .config import logger
 from .object import Object, requires_join
 from .proto import api_pb2
-from .session import Session
 
 
 class Dict(Object):
-    def __init__(self, init_data={}, session_tag=None):
-        if session_tag is None:
-            session_tag = str(uuid.uuid4())
-        super().__init__(session_tag=session_tag, args={"init_data": init_data})
+    def __init__(self, init_data={}, DEPRECATED_session_tag=None):
+        if DEPRECATED_session_tag is None:
+            DEPRECATED_session_tag = str(uuid.uuid4())
+        super().__init__(DEPRECATED_session_tag=DEPRECATED_session_tag, args={"init_data": init_data})
 
     def _serialize_values(self, data):
         return {k: self.client.serialize(v) for k, v in data.items()}
 
     async def _join(self):
         serialized = self._serialize_values(self.args.init_data)
-        req = api_pb2.DictCreateRequest(session_id=self.session.session_id, data=serialized)
+        req = api_pb2.DictCreateRequest(session_id=self.DEPRECATED_session.session_id, data=serialized)
         response = await self.client.stub.DictCreate(req)
         logger.debug("Created dict with id %s" % response.dict_id)
         return response.dict_id

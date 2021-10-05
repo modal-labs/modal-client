@@ -10,7 +10,7 @@ from .utils import print_logs
 
 
 @synchronizer
-class Session(CtxMgr):
+class DeprecatedSession(CtxMgr):
     def __init__(self, client, stdout=None, stderr=None):
         self.client = client
         self.objects_by_tag = {}

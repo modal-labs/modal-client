@@ -56,7 +56,7 @@ class Layer(Object):
         else:
             # Recursively build base layers
             base_layer_objs = await asyncio.gather(
-                *(layer.join(self.client, self.session) for layer in self.args.base_layers.values())
+                *(layer.join(self.client, self.DEPRECATED_session) for layer in self.args.base_layers.values())
             )
             base_layers_pb2s = [
                 api_pb2.BaseLayer(docker_tag=docker_tag, layer_id=layer.object_id)
@@ -75,7 +75,7 @@ class Layer(Object):
             )
 
             req = api_pb2.LayerGetOrCreateRequest(
-                session_id=self.session.session_id,
+                session_id=self.DEPRECATED_session.session_id,
                 layer=layer_definition,
                 must_create=self.args.must_create,
             )
@@ -87,7 +87,7 @@ class Layer(Object):
             request = api_pb2.LayerJoinRequest(
                 layer_id=layer_id,
                 timeout=BLOCKING_REQUEST_TIMEOUT,
-                session_id=self.session.session_id,
+                session_id=self.DEPRECATED_session.session_id,
             )
             response = await retry(self.client.stub.LayerJoin)(request, timeout=GRPC_REQUEST_TIMEOUT)
             if not response.result.status:
@@ -116,7 +116,7 @@ class EnvDict(Object):
         )
 
     async def _join(self):
-        req = api_pb2.EnvDictCreateRequest(session_id=self.session.session_id, env_dict=self.args.env_dict)
+        req = api_pb2.EnvDictCreateRequest(session_id=self.DEPRECATED_session.session_id, env_dict=self.args.env_dict)
         resp = await self.client.stub.EnvDictCreate(req)
         return resp.env_dict_id
 
@@ -131,12 +131,12 @@ class Image(Object):
 
     async def _join(self):
         if self.args.env_dict:
-            env_dict_id = await self.args.env_dict.join(self.client, self.session)
+            env_dict_id = await self.args.env_dict.join(self.client, self.DEPRECATED_session)
         else:
             env_dict_id = None
 
         if self.args.layer:
-            layer = await self.args.layer.join(self.client, self.session)
+            layer = await self.args.layer.join(self.client, self.DEPRECATED_session)
             layer_id = layer.object_id
         else:
             layer_id = None
@@ -148,7 +148,7 @@ class Image(Object):
             local=self.args.local,
         )
 
-        request = api_pb2.ImageCreateRequest(session_id=self.session.session_id, image=image)
+        request = api_pb2.ImageCreateRequest(session_id=self.DEPRECATED_session.session_id, image=image)
         response = await self.client.stub.ImageCreate(request)
         return response.image_id
 

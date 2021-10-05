@@ -92,7 +92,7 @@ class Mount(Object):
         hashes = {}
         filenames = {}
 
-        req = api_pb2.MountCreateRequest(session_id=self.session.session_id)
+        req = api_pb2.MountCreateRequest(session_id=self.DEPRECATED_session.session_id)
         resp = await self.client.stub.MountCreate(req)
         mount_id = resp.mount_id
 

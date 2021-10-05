@@ -37,7 +37,7 @@ class Object(metaclass=ObjectMeta):
     # A bit ugly to leverage implemenation inheritance here, but I guess you could
     # roughly think of this class as a mixin
 
-    def __init__(self, args=None, session_tag=None):
+    def __init__(self, args=None, DEPRECATED_session_tag=None):
         logger.debug(f"Creating object {self}")
 
         # TODO: should we make these attributes hidden for subclasses?
@@ -52,30 +52,30 @@ class Object(metaclass=ObjectMeta):
         else:
             raise Exception(f"{args} of type {type(args)} must be instance of (dict, Args, NoneType)")
 
-        self.session_tag = session_tag
+        self.DEPRECATED_session_tag = DEPRECATED_session_tag
 
         # Default values for non-joined objects
         self.joined = False
         self.object_id = None
         self.client = None
-        self.session = None
+        self.DEPRECATED_session = None
         self.join_lock = None
 
     async def _join(self):
         raise NotImplementedError
 
-    async def join(self, client, session):
-        """Returns a new object that has the properties `client`, `session`, and `object_id` set."""
+    async def join(self, client, DEPRECATED_session):
+        """Returns a new object that has the properties `client`, `DEPRECATED_session`, and `object_id` set."""
 
         if self.object_id is not None:
             return self
 
-        if self.session_tag is not None and self.session_tag in session.objects_by_tag:
-            obj = session.objects_by_tag[self.session_tag]
-            logger.debug(f"Waiting for lock for object w/ tag {self.session_tag}")
+        if self.DEPRECATED_session_tag is not None and self.DEPRECATED_session_tag in DEPRECATED_session.objects_by_tag:
+            obj = DEPRECATED_session.objects_by_tag[self.DEPRECATED_session_tag]
+            logger.debug(f"Waiting for lock for object w/ tag {self.DEPRECATED_session_tag}")
             async with obj.join_lock:
                 pass
-            logger.debug(f"Acquired lock for object w/ tag {self.session_tag}")
+            logger.debug(f"Acquired lock for object w/ tag {self.DEPRECATED_session_tag}")
             return obj
 
         # Note that the lock logic rests on the assumption that the code between here and the next
@@ -86,7 +86,7 @@ class Object(metaclass=ObjectMeta):
         # the server side. This might be a new object if the object didn't exist, or an existing
         # object: it's up the the subclass to define a _join method that takes care of this.
 
-        logger.debug(f"Joining {self} with tag {self.session_tag}")
+        logger.debug(f"Joining {self} with tag {self.DEPRECATED_session_tag}")
 
         # TODO 1: we should check the session locally to see if it already has resolved this object
         # TODO 2: we should use a mutex to prevent an object from being joined twice simultaneously
@@ -99,11 +99,11 @@ class Object(metaclass=ObjectMeta):
         obj.args = self.args
         obj.joined = True
         obj.client = client
-        obj.session = session
-        obj.session_tag = self.session_tag
+        obj.DEPRECATED_session = DEPRECATED_session
+        obj.DEPRECATED_session_tag = self.DEPRECATED_session_tag
         obj.join_lock = asyncio.Lock()
-        if self.session_tag is not None:
-            session.objects_by_tag[self.session_tag] = obj
+        if self.DEPRECATED_session_tag is not None:
+            DEPRECATED_session.objects_by_tag[self.DEPRECATED_session_tag] = obj
         async with obj.join_lock:
             obj.object_id = await obj._join()
         return obj
@@ -117,11 +117,11 @@ class Object(metaclass=ObjectMeta):
 async def _join_with_defaults(obj):
     # TODO: get rid of these imports - rn it's circular that's why
     from .client import Client
-    from .session import Session
+    from .session import DeprecatedSession
 
     client = await Client.current()
-    session = await Session.current()
-    return await obj.join(client, session)
+    DEPRECATED_session = await DeprecatedSession.current()
+    return await obj.join(client, DEPRECATED_session)
 
 
 def requires_join(method):

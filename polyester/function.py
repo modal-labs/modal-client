@@ -17,7 +17,6 @@ from .mount import Mount, create_package_mounts
 from .object import Object, requires_join, requires_join_generator
 from .proto import api_pb2
 from .queue import Queue
-from .session import Session
 
 
 def _function_to_path(f):
@@ -158,8 +157,8 @@ class Function(Object):
         # TODO(erikbern): couldn't we just create one single mount with all packages instead of multiple?
 
         # Wait for image and mounts to finish
-        image = await self.args.image.join(self.client, self.session)
-        mounts = await asyncio.gather(*(mount.join(self.client, self.session) for mount in mounts))
+        image = await self.args.image.join(self.client, self.DEPRECATED_session)
+        mounts = await asyncio.gather(*(mount.join(self.client, self.DEPRECATED_session) for mount in mounts))
 
         # Create function remotely
         function_definition = api_pb2.Function(
@@ -168,7 +167,7 @@ class Function(Object):
             mount_ids=[mount.object_id for mount in mounts],
         )
         request = api_pb2.FunctionGetOrCreateRequest(
-            session_id=self.session.session_id,
+            session_id=self.DEPRECATED_session.session_id,
             image_id=image.object_id,  # TODO: move into the function definition?
             function=function_definition,
         )
