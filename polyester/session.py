@@ -61,6 +61,7 @@ class DeprecatedSession(CtxMgr):
 @synchronizer
 class Session(Object):
     def __init__(self):
+        self._functions = []
         super().__init__()
 
     async def create_or_get(self, obj, tag=None, return_copy=False):
@@ -80,9 +81,10 @@ class Session(Object):
 
     def function(self, raw_f, image=base_image):
         fun = image.function(raw_f)
+        self._functions.append(fun)
         return fun
 
-    async def _start(self, client):
+    async def _start(self, client=None):
         if client is None:
             client = await Client.current()
 
@@ -92,6 +94,9 @@ class Session(Object):
         objects = {tag: getattr(self, tag)
                    for tag in dir(self)
                    if isinstance(getattr(self, tag), Object)}
+
+        # Add all functions (TODO: this is super dumb)
+        objects |= {f"fun_{i}": fun for i, fun in enumerate(self._functions)}
 
         # Start session
         # TODO: pass in a list of tags that need to be pre-created

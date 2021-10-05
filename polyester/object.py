@@ -61,56 +61,6 @@ class Object(metaclass=ObjectMeta):
         raise NotImplementedError
 
 
-async def _join_with_defaults(obj):
-    # TODO: get rid of these imports - rn it's circular that's why
-    from .client import Client
-    from .session import DeprecatedSession
-
-    client = await Client.current()
-    DEPRECATED_session = await DeprecatedSession.current()
-    return await obj.join(client, DEPRECATED_session)
-
-
-def requires_join(method):
-    @functools.wraps(method)
-    async def wrapped_method(self, *args, **kwargs):
-        if self.joined:
-            # Object already has an object id, just keep going
-            return await method(self, *args, **kwargs)
-        else:
-            # Join the object
-            new_self = await _join_with_defaults(self)
-
-            # Call the method on the joined object instead
-            new_method = getattr(new_self, method.__name__)
-            return await new_method(*args, **kwargs)
-
-    return wrapped_method
-
-
-def requires_join_generator(method):
-    @functools.wraps(method)
-    async def wrapped_method(self, *args, **kwargs):
-        if self.joined:
-            result = method(self, *args, **kwargs)
-            # Coroutine fn that returns a generator
-            if inspect.iscoroutine(result):
-                result = await result
-            async for ret in result:
-                yield ret
-        else:
-            # Join the object
-            new_self = await _join_with_defaults(self)
-
-            # Call the method on the joined object instead
-            new_method = getattr(new_self, method.__name__)
-
-            async for ret in new_method(*args, **kwargs):
-                yield ret
-
-    return wrapped_method
-
-
 def requires_create(method):
     @functools.wraps(method)
     def wrapped_method(self, *args, **kwargs):

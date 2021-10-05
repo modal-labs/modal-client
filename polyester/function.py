@@ -14,7 +14,7 @@ from .client import Client
 from .config import config, logger
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .mount import Mount, create_package_mounts
-from .object import Object, requires_join, requires_join_generator
+from .object import Object, requires_create, requires_create
 from .proto import api_pb2
 from .queue import Queue
 
@@ -82,7 +82,6 @@ def unpack_input_buffer_item(buffer_item: api_pb2.BufferItem) -> api_pb2.Functio
     buffer_item.data.Unpack(input)
     return input
 
-
 def unpack_output_buffer_item(buffer_item: api_pb2.BufferItem) -> api_pb2.GenericResult:
     output = api_pb2.GenericResult()
     buffer_item.data.Unpack(output)
@@ -146,7 +145,7 @@ class Function(Object):
             ),
         )
 
-    async def _join(self):
+    async def _create_or_get(self):
         mount, module_name, function_name = _function_to_path(self.args.raw_f)
 
         mounts = [mount]
@@ -157,8 +156,9 @@ class Function(Object):
         # TODO(erikbern): couldn't we just create one single mount with all packages instead of multiple?
 
         # Wait for image and mounts to finish
-        image = await self.args.image.join(self.client, self.DEPRECATED_session)
-        mounts = await asyncio.gather(*(mount.join(self.client, self.DEPRECATED_session) for mount in mounts))
+        # TODO: should we really join recursively here? Maybe it's better to move this logic to the session class?
+        image = await self.session.create_or_get(self.args.image)
+        mounts = await asyncio.gather(*(self.session.create_or_get(mount) for mount in mounts))
 
         # Create function remotely
         function_definition = api_pb2.Function(
@@ -167,19 +167,19 @@ class Function(Object):
             mount_ids=[mount.object_id for mount in mounts],
         )
         request = api_pb2.FunctionGetOrCreateRequest(
-            session_id=self.DEPRECATED_session.session_id,
+            session_id=self.session.session_id,
             image_id=image.object_id,  # TODO: move into the function definition?
             function=function_definition,
         )
         response = await self.client.stub.FunctionGetOrCreate(request)
         return response.function_id
 
-    @requires_join_generator
+    @requires_create
     async def map(self, inputs, window=100, kwargs={}):
         args = [(arg,) for arg in inputs]
         return await MapInvocation.create(self.object_id, args, kwargs, self.client)
 
-    @requires_join
+    @requires_create
     async def __call__(self, *args, **kwargs):
         invocation = await MapInvocation.create(self.object_id, [args], kwargs, self.client)
         async for output in invocation:
