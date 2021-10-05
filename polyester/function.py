@@ -6,7 +6,8 @@ import os
 import sys
 import uuid
 
-from .async_utils import retry, synchronizer, buffered_read_all, buffered_write_all
+from .async_utils import retry, synchronizer
+from .buffer_utils import buffered_read_all, buffered_write_all
 from .client import Client
 from .config import config, logger
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
@@ -74,7 +75,7 @@ class MapInvocation():
     @staticmethod
     async def create(function_id, inputs, kwargs, client):
         request = api_pb2.FunctionMapRequest(function_id=function_id)
-        response = await retry(client.stub.FunctionCall)(request)
+        response = await retry(client.stub.FunctionMap)(request)
         input_buffer_id = response.input_buffer_id
         output_buffer_id = response.output_buffer_id
         return MapInvocation(function_id, inputs, kwargs, client, input_buffer_id, output_buffer_id)
@@ -82,18 +83,17 @@ class MapInvocation():
     async def __aiter__(self):
         async def generate_inputs():
             for arg in iter(self.inputs):
-                data = self.client.serialize((arg, kwargs, self.output_buffer_id))
-                buffer_req = api_pb2.BufferRequest(data=api_pb2.BufferData(data=data), buffer_id=self.input_buffer_id)
+                data = self.client.serialize((arg, self.kwargs, self.output_buffer_id))
+                buffer_req = api_pb2.BufferWriteRequest(item=api_pb2.BufferItem(data=data), buffer_id=self.input_buffer_id)
 
                 yield api_pb2.FunctionCallRequest(function_id=self.function_id, buffer_req=buffer_req)
 
-        coro = buffered_write_all(self.client.stub.FunctionCall, generate_inputs())
-        pump_task = asyncio.create_task(coro)
+        pump_task = asyncio.create_task(buffered_write_all(self.client.stub.FunctionCall, generate_inputs(), send_EOF=False))
 
-        read_request = api_pb2.FunctionGetNextOutputRequest(function_id=self.function_id)
+        request = api_pb2.FunctionGetNextOutputRequest(function_id=self.function_id)
 
-        async for output in buffered_read_all(self.client.stub.FunctionGetNextOutput, read_request, self.output_buffer_id):
-            raw_data = output.data.data
+        async for output in buffered_read_all(self.client.stub.FunctionGetNextOutput, request, self.output_buffer_id):
+            raw_data = output.data
 
             # TODO: maybe we can create a special Buffer class in the ORM that keeps track of the protobuf type
             # of the bytes stored, so the serialization/deserialization can happen automatically.
@@ -104,7 +104,7 @@ class MapInvocation():
                 raise Exception("Remote exception: %s\n%s" % (output.exception, output.traceback))
             yield self.client.deserialize(output.data)
 
-        await asyncio.wait_for(pump_task)
+        await asyncio.wait_for(pump_task, timeout=BLOCKING_REQUEST_TIMEOUT)
 
 
 class Function(Object):

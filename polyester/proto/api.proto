@@ -22,21 +22,21 @@ message GenericResult {  // Used for both tasks and function outputs
   bool incomplete = 6;  // Only used for generators right now, tells client not to count this result yet
 }
 
-message BufferData {
+message BufferItem {
   bytes data = 1;
   bool EOF = 2;
-  string element_id = 3; // Each element is given an ID by the server.
+  string item_id = 3; // Each element is given an ID by the server.
 }
 
 message BufferWriteRequest {
   string buffer_id = 1;
   int32 idx = 2;
-  BufferData data = 3;
+  BufferItem item = 3;
   string idempotency_key = 4;
 }
 
 message BufferWriteResponse {
-  int32 last_idx_written = 1;
+  int32 num_pushed = 1;
   int32 space_left = 2;
 }
 
@@ -47,7 +47,7 @@ message BufferReadRequest {
 }
 
 message BufferReadResponse {
-  BufferData data = 1;
+  BufferItem item = 1;
 }
 
 enum ClientType {
@@ -259,7 +259,7 @@ message FunctionMapResponse {
 
 message FunctionCallRequest {
   string function_id = 1;
-  BufferWriteRequest buffer_req = 2;
+  BufferWriteRequest buffer_req = 6;
 }
 
 message FunctionGetNextOutputRequest {
@@ -269,20 +269,13 @@ message FunctionGetNextOutputRequest {
 
 message FunctionGetNextInputRequest {
   string function_id = 1;
-  string idempotency_key = 2;
-  float timeout = 3;
   string task_id = 4;
-}
-
-message FunctionGetNextInputResponse {
-  bool stop = 2;
-  bytes data = 3;
-  string input_id = 5;
+  BufferReadRequest buffer_req = 6;
 }
 
 message FunctionOutputRequest {
-  GenericResult output = 3;
   string input_id = 7;
+  BufferWriteRequest buffer_req = 8;
 }
 
 message MountCreateRequest {
@@ -358,7 +351,7 @@ service PolyesterClient {
   rpc FunctionGetOrCreate(FunctionGetOrCreateRequest) returns (FunctionGetOrCreateResponse);
   rpc FunctionMap(FunctionMapRequest) returns (FunctionMapResponse);
   rpc FunctionCall(stream FunctionCallRequest) returns (BufferWriteResponse);
-  rpc FunctionGetNextOutput(FunctionGetNextOutputRequest) returns (FunctionGetNextOutputResponse);  // Returns the next result
+  rpc FunctionGetNextOutput(FunctionGetNextOutputRequest) returns (stream BufferReadResponse);  // Returns the next result
   rpc FunctionGetNextInput(FunctionGetNextInputRequest) returns (stream BufferReadResponse);  // For containers to request next call
-  rpc FunctionOutput(FunctionOutputRequest) returns (Empty);  // For containers to return result
+  rpc FunctionOutput(stream FunctionOutputRequest) returns (BufferWriteResponse);  // For containers to return result
 }
