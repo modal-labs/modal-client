@@ -37,7 +37,7 @@ class Object(metaclass=ObjectMeta):
     # A bit ugly to leverage implemenation inheritance here, but I guess you could
     # roughly think of this class as a mixin
 
-    def __init__(self, args=None, DEPRECATED_session_tag=None):
+    def __init__(self, args=None):
         logger.debug(f"Creating object {self}")
 
         # TODO: should we make these attributes hidden for subclasses?
@@ -52,66 +52,13 @@ class Object(metaclass=ObjectMeta):
         else:
             raise Exception(f"{args} of type {type(args)} must be instance of (dict, Args, NoneType)")
 
-        self.DEPRECATED_session_tag = DEPRECATED_session_tag
+        # Default values for non-created objects
+        self.created = False
+        self.session = None
+        self.tag = None
 
-        # Default values for non-joined objects
-        self.joined = False
-        self.object_id = None
-        self.client = None
-        self.DEPRECATED_session = None
-        self.join_lock = None
-
-    async def _join(self):
+    async def _create_or_get(self):
         raise NotImplementedError
-
-    async def join(self, client, DEPRECATED_session):
-        """Returns a new object that has the properties `client`, `DEPRECATED_session`, and `object_id` set."""
-
-        if self.object_id is not None:
-            return self
-
-        if self.DEPRECATED_session_tag is not None and self.DEPRECATED_session_tag in DEPRECATED_session.objects_by_tag:
-            obj = DEPRECATED_session.objects_by_tag[self.DEPRECATED_session_tag]
-            logger.debug(f"Waiting for lock for object w/ tag {self.DEPRECATED_session_tag}")
-            async with obj.join_lock:
-                pass
-            logger.debug(f"Acquired lock for object w/ tag {self.DEPRECATED_session_tag}")
-            return obj
-
-        # Note that the lock logic rests on the assumption that the code between here and the next
-        # lock acquisition is completely await-free, or else we would introduce a race condition.
-
-        # This is where a bit of magic happens. Since objects are fairly "thin", we can clone them
-        # cheaply. What we do here is we create a *new* object that is resolved to an object on
-        # the server side. This might be a new object if the object didn't exist, or an existing
-        # object: it's up the the subclass to define a _join method that takes care of this.
-
-        logger.debug(f"Joining {self} with tag {self.DEPRECATED_session_tag}")
-
-        # TODO 1: we should check the session locally to see if it already has resolved this object
-        # TODO 2: we should use a mutex to prevent an object from being joined twice simultaneously
-        # TODO 3: if the object has a persisted tag then we shouldn't need the session parameter
-        # TODO 4: if the object has a persisted tag then we should cache it on the Client
-
-        # Cloning magic:
-        cls = type(self)
-        obj = cls.__new__(cls)
-        obj.args = self.args
-        obj.joined = True
-        obj.client = client
-        obj.DEPRECATED_session = DEPRECATED_session
-        obj.DEPRECATED_session_tag = self.DEPRECATED_session_tag
-        obj.join_lock = asyncio.Lock()
-        if self.DEPRECATED_session_tag is not None:
-            DEPRECATED_session.objects_by_tag[self.DEPRECATED_session_tag] = obj
-        async with obj.join_lock:
-            obj.object_id = await obj._join()
-        return obj
-
-    # def __setattr__(self, k, v):
-    #    if k not in ["object_id", "args", "join_lock"]:
-    #        raise AttributeError(f"Cannot set attribute {k}")
-    #    self.__dict__[k] = v
 
 
 async def _join_with_defaults(obj):
@@ -160,5 +107,15 @@ def requires_join_generator(method):
 
             async for ret in new_method(*args, **kwargs):
                 yield ret
+
+    return wrapped_method
+
+
+def requires_create(method):
+    @functools.wraps(method)
+    def wrapped_method(self, *args, **kwargs):
+        if not self.created:
+            raise Exception(f"Error running method {method} on object {self}: object is not created yet")
+        return method(self, *args, **kwargs)
 
     return wrapped_method

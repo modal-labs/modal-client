@@ -5,18 +5,16 @@ from typing import Any, List
 from .async_utils import retry, synchronizer
 from .client import Client
 from .config import logger
-from .object import Object, requires_join
+from .object import Object, requires_create
 from .proto import api_pb2
 
 
 @synchronizer
 class Queue(Object):
-    def __init__(self, DEPRECATED_session_tag=None):
-        if DEPRECATED_session_tag is None:
-            DEPRECATED_session_tag = str(uuid.uuid4())
-        super().__init__(DEPRECATED_session_tag=DEPRECATED_session_tag)
+    def __init__(self):
+        super().__init__()
 
-    async def _join(self):
+    async def _create_or_get(self):
         """This creates a queue on the server and returns its id."""
         # TODO: we should create the queue in a session here
         response = await self.client.stub.QueueCreate(api_pb2.Empty())
@@ -42,16 +40,16 @@ class Queue(Object):
             logger.debug("Queue get for %s had empty results, trying again" % self.object_id)
         raise queue.Empty()
 
-    @requires_join
+    @requires_create
     async def get(self, block=True, timeout=None):
         values = await self._get(block, timeout, 1)
         return values[0]
 
-    @requires_join
+    @requires_create
     async def get_many(self, n_values, block=True, timeout=None):
         return await self._get(block, timeout, n_values)
 
-    @requires_join
+    @requires_create
     async def put_many(self, vs: List[Any]):
         vs_encoded = [self.client.serialize(v) for v in vs]
         request = api_pb2.QueuePutRequest(
@@ -61,6 +59,6 @@ class Queue(Object):
         )
         return await retry(self.client.stub.QueuePut)(request, timeout=5.0)
 
-    @requires_join
+    @requires_create
     async def put(self, v):
         return await self.put_many([v])
