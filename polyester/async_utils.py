@@ -3,8 +3,10 @@ import functools
 import inspect
 import synchronicity
 import time
+import uuid
 
 from .config import logger
+from .grpc_utils import BLOCKING_REQUEST_TIMEOUT
 from .proto import api_pb2
 
 synchronizer = synchronicity.Synchronizer()
@@ -44,7 +46,7 @@ def retry(direct_fn=None, n_attempts=3, base_delay=0, delay_factor=2, timeout=90
         return decorator
 
 
-INITIAL_STREAM_SIZE = 100
+INITIAL_STREAM_SIZE = 5
 
 
 async def buffered_write_all(fn, requests):
@@ -54,10 +56,14 @@ async def buffered_write_all(fn, requests):
     # `max_idx_to_send` is updated based on how much space the server says is left,
     # but starts off at a default value of 100.
     max_idx_to_send = INITIAL_STREAM_SIZE
+    idempotency_key = str(uuid.uuid4())
 
     async def write_request_generator():
         for idx in range(next_idx_to_send, min(len(requests), max_idx_to_send)):
-            yield requests[idx]
+            request = requests[idx]
+            request.buffer_req.idempotency_key = idempotency_key
+            request.buffer_req.idx = idx
+            yield request
 
     while next_idx_to_send < len(requests):
         if next_idx_to_send == max_idx_to_send:
@@ -73,8 +79,10 @@ async def buffered_write_all(fn, requests):
         max_idx_to_send = next_idx_to_send + response.space_left
 
 
-async def buffered_read_all(fn, request):
+async def buffered_read_all(fn, request, buffer_id):
     """Reads from buffered method until EOF has been reached."""
+
+    request.buffer_req = api_pb2.BufferReadRequest(buffer_id=buffer_id, timeout=BLOCKING_REQUEST_TIMEOUT)
 
     while True:
         for buffer_response in await retry(fn)(request):

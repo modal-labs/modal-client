@@ -6,7 +6,7 @@ import os
 import sys
 import uuid
 
-from .async_utils import retry, synchronizer
+from .async_utils import retry, synchronizer, buffered_read_all, buffered_write_all
 from .client import Client
 from .config import config, logger
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
@@ -61,84 +61,50 @@ def _path_to_function(module_name, function_name):
         raise
 
 
-class Call(Object):
-    # TODO: I'm increasingly skeptical that this should in fact be its own object, but let's revisit
-    def __init__(self, function_id, inputs, window, kwargs):
-        super().__init__(
-            args=dict(
-                function_id=function_id,
-                inputs=inputs,
-                window=window,
-                kwargs=kwargs,
-            ),
-        )
+class MapInvocation():
+    # TODO: should this be an object?
+    def __init__(self, function_id, inputs, kwargs, client, input_buffer_id, output_buffer_id):
+        self.function_id = function_id
+        self.inputs = inputs
+        self.kwargs = kwargs
+        self.client = client
+        self.input_buffer_id = input_buffer_id
+        self.output_buffer_id = output_buffer_id
 
-    async def _join(self):
-        # TODO: This is incredibly dumb. The server API lets us enqueue and create a call_id lazily
-        # To get around the current structure where joining is separate from other methods,
-        # we create a call by enqueueing zero inputs
-        request = api_pb2.FunctionCallRequest(
-            function_id=self.args.function_id,
-            inputs=[],
-            idempotency_key=str(uuid.uuid4()),
-            call_id=None,
-        )
-        response = await retry(self.client.stub.FunctionCall)(request)
-        return response.call_id
+    @staticmethod
+    async def create(function_id, inputs, kwargs, client):
+        request = api_pb2.FunctionMapRequest(function_id=function_id)
+        response = await retry(client.stub.FunctionCall)(request)
+        input_buffer_id = response.input_buffer_id
+        output_buffer_id = response.output_buffer_id
+        return MapInvocation(function_id, inputs, kwargs, client, input_buffer_id, output_buffer_id)
 
-    async def _enqueue(self, args, kwargs):
-        # TODO: break out the creation of the call into a separate request
-        request = api_pb2.FunctionCallRequest(
-            function_id=self.args.function_id,
-            inputs=[self.client.serialize((arg, kwargs)) for arg in args],
-            idempotency_key=str(uuid.uuid4()),
-            call_id=self.object_id,
-        )
-        response = await retry(self.client.stub.FunctionCall)(request)
+    async def __aiter__(self):
+        async def generate_inputs():
+            for arg in iter(self.inputs):
+                data = self.client.serialize((arg, kwargs, self.output_buffer_id))
+                buffer_req = api_pb2.BufferRequest(data=api_pb2.BufferData(data=data), buffer_id=self.input_buffer_id)
 
-    async def _dequeue(self, n_outputs):
-        while True:
-            request = api_pb2.FunctionGetNextOutputRequest(
-                function_id=self.args.function_id,  # TODO: why is this needed?
-                call_id=self.object_id,
-                timeout=BLOCKING_REQUEST_TIMEOUT,
-                idempotency_key=str(uuid.uuid4()),
-                n_outputs=n_outputs,
-            )
-            response = await retry(self.client.stub.FunctionGetNextOutput)(request, timeout=GRPC_REQUEST_TIMEOUT)
-            if response.outputs:
-                break
-        for output in response.outputs:
+                yield api_pb2.FunctionCallRequest(function_id=self.function_id, buffer_req=buffer_req)
+
+        coro = buffered_write_all(self.client.stub.FunctionCall, generate_inputs())
+        pump_task = asyncio.create_task(coro)
+
+        read_request = api_pb2.FunctionGetNextOutputRequest(function_id=self.function_id)
+
+        async for output in buffered_read_all(self.client.stub.FunctionGetNextOutput, read_request, self.output_buffer_id):
+            raw_data = output.data.data
+
+            # TODO: maybe we can create a special Buffer class in the ORM that keeps track of the protobuf type
+            # of the bytes stored, so the serialization/deserialization can happen automatically.
+            output = api_pb2.GenericResult()
+            output.ParseFromString(raw_data)
+
             if output.status != api_pb2.GenericResult.Status.SUCCESS:
                 raise Exception("Remote exception: %s\n%s" % (output.exception, output.traceback))
             yield self.client.deserialize(output.data)
 
-    async def __aiter__(self):
-        # Most of the complexity of this function comes from the input throttling.
-        # Basically the idea is that we maintain x (default 100) outstanding requests at any point in time,
-        # and we don't enqueue more requests until we get back enough values.
-        # It probably makes a lot of sense to move the input throttling to the server instead.
-
-        # TODO: we should support asynchronous generators as well
-        inputs = iter(self.args.inputs)  # Handle non-generator inputs
-
-        n_enqueued, n_dequeued = 0, 0
-        input_exhausted = False
-        while not input_exhausted or n_dequeued < n_enqueued:
-            logger.debug("Map status: %d enqueued, %d dequeued" % (n_enqueued, n_dequeued))
-            batch_args = []
-            while not input_exhausted and n_enqueued < n_dequeued + self.args.window:
-                try:
-                    batch_args.append(next(inputs))
-                    n_enqueued += 1
-                except StopIteration:
-                    input_exhausted = True
-            if batch_args:
-                await self._enqueue(batch_args, self.args.kwargs)
-            if n_dequeued < n_enqueued:
-                async for output in self._dequeue(n_enqueued - n_dequeued):
-                    n_dequeued += 1
-                    yield output
+        await asyncio.wait_for(pump_task)
 
 
 class Function(Object):
@@ -182,15 +148,12 @@ class Function(Object):
     @requires_join_generator
     async def map(self, inputs, window=100, kwargs={}):
         args = [(arg,) for arg in inputs]
-        call = Call(self.object_id, args, window, kwargs)
-        call_joined = await call.join(self.client, self.session)
-        return call_joined
+        return await MapInvocation.create(self.object_id, args, kwargs, self.client)
 
     @requires_join
     async def __call__(self, *args, **kwargs):
-        call = Call(self.object_id, [args], window=1, kwargs=kwargs)
-        call_joined = await call.join(self.client, self.session)
-        async for output in call_joined:
+        invocation = await MapInvocation.create(self.object_id, [args], kwargs, self.client)
+        async for output in invocation:
             return output  # return the first (and only) one
 
     @staticmethod
