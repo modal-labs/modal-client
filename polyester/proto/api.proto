@@ -22,6 +22,33 @@ message GenericResult {  // Used for both tasks and function outputs
   bool incomplete = 6;  // Only used for generators right now, tells client not to count this result yet
 }
 
+message BufferData {
+  bytes data = 1;
+  bool EOF = 2;
+}
+
+message BufferWriteRequest {
+  string buffer_id = 1;
+  int32 idx = 2;
+  BufferData data = 3;
+  string idempotency_key = 4;
+}
+
+message BufferWriteResponse {
+  int32 last_idx_written = 1;
+  int32 space_left = 2;
+}
+
+message BufferReadRequest {
+  string buffer_id = 1;
+  int32 max_values = 2;
+  float timeout = 3;
+}
+
+message BufferReadResponse {
+  BufferData data = 1;
+}
+
 enum ClientType {
   UNKNOWN = 0;
   CLIENT = 1;

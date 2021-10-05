@@ -1,12 +1,11 @@
 import asyncio
-
-# import atexit
 import functools
 import inspect
 import synchronicity
 import time
 
 from .config import logger
+from .proto import api_pb2
 
 synchronizer = synchronicity.Synchronizer()
 # atexit.register(synchronizer.close)
@@ -43,6 +42,49 @@ def retry(direct_fn=None, n_attempts=3, base_delay=0, delay_factor=2, timeout=90
     else:
         # It's invoked like @retry(n_attempts=...)\ndef f(...)
         return decorator
+
+
+INITIAL_STREAM_SIZE = 100
+
+
+async def buffered_write_all(fn, requests):
+    """Writes all requests to buffered method. """
+
+    next_idx_to_send = 0
+    # `max_idx_to_send` is updated based on how much space the server says is left,
+    # but starts off at a default value of 100.
+    max_idx_to_send = INITIAL_STREAM_SIZE
+
+    async def write_request_generator():
+        for idx in range(next_idx_to_send, min(len(requests), max_idx_to_send)):
+            yield requests[idx]
+
+    while next_idx_to_send < len(requests):
+        if next_idx_to_send == max_idx_to_send:
+            # no space left.
+            # TODO: maybe have some kind of exponential back-off.
+            await asyncio.sleep(1)
+            max_idx_to_send = next_idx_to_send + INITIAL_STREAM_SIZE
+
+        # TODO: the idempotency tokens are not currently used by the server
+        response = await retry(fn)(write_request_generator())
+
+        next_idx_to_send = response.last_idx_written + 1
+        max_idx_to_send = next_idx_to_send + response.space_left
+
+
+async def buffered_read_all(fn, request):
+    """Reads from buffered method until EOF has been reached."""
+
+    while True:
+        for buffer_response in await retry(fn)(request):
+            data = buffer_response.data
+            yield data
+            if data.EOF:
+                return
+
+        # TODO: maybe have some kind of exponential back-off.
+        await asyncio.sleep(1)
 
 
 def add_traceback(obj, func_name=None):
