@@ -48,7 +48,7 @@ INITIAL_STREAM_SIZE = 100
 
 
 async def buffered_write_all(fn, requests):
-    """Writes all requests to buffered method. """
+    """Writes all requests to buffered method."""
 
     next_idx_to_send = 0
     # `max_idx_to_send` is updated based on how much space the server says is left,
