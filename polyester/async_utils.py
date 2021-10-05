@@ -50,7 +50,7 @@ INITIAL_STREAM_SIZE = 5
 
 
 async def buffered_write_all(fn, requests):
-    """Writes all requests to buffered method."""
+    """Writes all requests to buffered method in a TCP sliding window-ish fashion."""
 
     next_idx_to_send = 0
     # `max_idx_to_send` is updated based on how much space the server says is left,
@@ -64,6 +64,11 @@ async def buffered_write_all(fn, requests):
             request.buffer_req.idempotency_key = idempotency_key
             request.buffer_req.idx = idx
             yield request
+
+        # send EOF
+        req_type = type(requests[0])
+        eof_msg = api_pb2.BufferData(EOF=True)
+        yield req_type(buffer_req=api_pb2.BufferWriteRequest(data=eof_msg))
 
     while next_idx_to_send < len(requests):
         if next_idx_to_send == max_idx_to_send:

@@ -25,6 +25,7 @@ message GenericResult {  // Used for both tasks and function outputs
 message BufferData {
   bytes data = 1;
   bool EOF = 2;
+  string element_id = 3; // Each element is given an ID by the server.
 }
 
 message BufferWriteRequest {
