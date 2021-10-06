@@ -1,7 +1,14 @@
 import asyncio
 import pytest
 
-from polyester.async_utils import TaskContext, asyncify_function, asyncify_generator, chunk_generator, retry, asynccontextmanager
+from polyester.async_utils import (
+    TaskContext,
+    asyncify_function,
+    asyncify_generator,
+    chunk_generator,
+    retry,
+    asynccontextmanager,
+)
 
 
 class FailNTimes:
@@ -158,7 +165,7 @@ async def test_task_context_wait():
 @asynccontextmanager
 async def wait_and_square(x):
     await asyncio.sleep(0.1)
-    yield x**2
+    yield x ** 2
     await asyncio.sleep(0.1)
 
 

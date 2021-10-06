@@ -284,8 +284,10 @@ class TaskContext:
 
 AsyncGeneratorContextManager = synchronizer(contextlib._AsyncGeneratorContextManager)
 
+
 def asynccontextmanager(func):
     @functools.wraps(func)
     def helper(*args, **kwargs):
         return AsyncGeneratorContextManager(func, args, kwargs)
+
     return helper
