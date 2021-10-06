@@ -5,6 +5,10 @@ import traceback
 import typing
 import uuid
 
+
+from google.protobuf.any_pb2 import Any
+
+
 from .async_utils import synchronizer
 from .buffer_utils import buffered_read_all, buffered_write_all
 from .client import Client
@@ -37,7 +41,9 @@ class FunctionContext:
             function_id=self.function_id,
             task_id=self.task_id,
         )
-        return buffered_read_all(self.client.stub.FunctionGetNextInput, request, self.input_buffer_id, read_until_EOF=False)
+        return buffered_read_all(
+            self.client.stub.FunctionGetNextInput, request, self.input_buffer_id, read_until_EOF=False
+        )
 
     async def stream_outputs(self, requests):
         await buffered_write_all(self.client.stub.FunctionOutput, requests)
@@ -85,7 +91,12 @@ def main(task_id, function_id, input_buffer_id, module_name, function_name, clie
                 break
 
             input_id = buffer_item.item_id
-            args, kwargs, output_buffer_id = client.deserialize(buffer_item.data)
+
+            input = api_pb2.FunctionInput()
+            buffer_item.data.Unpack(input)
+            args = client.deserialize(input.args)
+            kwargs = client.deserialize(input.kwargs)
+            output_buffer_id = input.output_buffer_id
 
             # function
             output = call_function(
@@ -94,9 +105,11 @@ def main(task_id, function_id, input_buffer_id, module_name, function_name, clie
                 kwargs,
                 client.serialize,
             )
-            output_bytes = output.SerializeToString()
 
-            buffer_req = api_pb2.BufferWriteRequest(item=api_pb2.BufferItem(data=output_bytes), buffer_id=output_buffer_id)
+            data = Any()
+            data.Pack(output)
+
+            buffer_req = api_pb2.BufferWriteRequest(item=api_pb2.BufferItem(data=data), buffer_id=output_buffer_id)
             request = api_pb2.FunctionOutputRequest(input_id=input_id, buffer_req=buffer_req)
             yield request
 

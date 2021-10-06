@@ -64,7 +64,9 @@ async def buffered_write_all(fn, request_gen, /, send_EOF=True):
         # TODO: the idempotency tokens are not currently used by the server
         response = await retry(fn)(write_request_generator())
 
-        logger.debug(f"{fn_name}: sent range [{next_idx_to_send}, {max_idx_to_send}). Received {response.num_pushed=} {response.space_left=}.")
+        logger.debug(
+            f"{fn_name}: sent range [{next_idx_to_send}, {max_idx_to_send}). Received {response.num_pushed=} {response.space_left=}."
+        )
 
         next_idx_to_send += response.num_pushed
         max_idx_to_send = next_idx_to_send + response.space_left

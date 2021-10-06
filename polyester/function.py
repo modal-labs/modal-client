@@ -6,6 +6,7 @@ import os
 import sys
 import uuid
 
+from google.protobuf.any_pb2 import Any
 from .async_utils import retry, synchronizer
 from .buffer_utils import buffered_read_all, buffered_write_all
 from .client import Client
@@ -62,7 +63,7 @@ def _path_to_function(module_name, function_name):
         raise
 
 
-class MapInvocation():
+class MapInvocation:
     # TODO: should this be an object?
     def __init__(self, function_id, inputs, kwargs, client, input_buffer_id, output_buffer_id):
         self.function_id = function_id
@@ -83,12 +84,24 @@ class MapInvocation():
     async def __aiter__(self):
         async def generate_inputs():
             for arg in iter(self.inputs):
-                data = self.client.serialize((arg, self.kwargs, self.output_buffer_id))
-                buffer_req = api_pb2.BufferWriteRequest(item=api_pb2.BufferItem(data=data), buffer_id=self.input_buffer_id)
+                data = Any()
+                data.Pack(
+                    api_pb2.FunctionInput(
+                        args=self.client.serialize(arg),
+                        kwargs=self.client.serialize(self.kwargs),
+                        output_buffer_id=self.output_buffer_id,
+                    )
+                )
+
+                buffer_req = api_pb2.BufferWriteRequest(
+                    item=api_pb2.BufferItem(data=data), buffer_id=self.input_buffer_id
+                )
 
                 yield api_pb2.FunctionCallRequest(function_id=self.function_id, buffer_req=buffer_req)
 
-        pump_task = asyncio.create_task(buffered_write_all(self.client.stub.FunctionCall, generate_inputs(), send_EOF=False))
+        pump_task = asyncio.create_task(
+            buffered_write_all(self.client.stub.FunctionCall, generate_inputs(), send_EOF=False)
+        )
 
         request = api_pb2.FunctionGetNextOutputRequest(function_id=self.function_id)
 
@@ -96,9 +109,9 @@ class MapInvocation():
             raw_data = output.data
 
             # TODO: maybe we can create a special Buffer class in the ORM that keeps track of the protobuf type
-            # of the bytes stored, so the serialization/deserialization can happen automatically.
+            # of the bytes stored, so the packing/unpacking can happen automatically.
             output = api_pb2.GenericResult()
-            output.ParseFromString(raw_data)
+            raw_data.Unpack(output)
 
             if output.status != api_pb2.GenericResult.Status.SUCCESS:
                 raise Exception("Remote exception: %s\n%s" % (output.exception, output.traceback))

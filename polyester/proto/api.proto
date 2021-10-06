@@ -8,6 +8,8 @@ syntax = "proto3";
 
 package polyester.client;
 
+import "google/protobuf/any.proto";
+
 message Empty {
 
 }
@@ -23,7 +25,7 @@ message GenericResult {  // Used for both tasks and function outputs
 }
 
 message BufferItem {
-  bytes data = 1;
+  google.protobuf.Any data = 1;
   bool EOF = 2;
   string item_id = 3; // Each element is given an ID by the server.
 }
@@ -265,6 +267,12 @@ message FunctionCallRequest {
 message FunctionGetNextOutputRequest {
   string function_id = 1;
   BufferReadRequest buffer_req = 2;
+}
+
+message FunctionInput {
+  bytes args = 1;
+  bytes kwargs = 2;
+  string output_buffer_id = 3;
 }
 
 message FunctionGetNextInputRequest {
