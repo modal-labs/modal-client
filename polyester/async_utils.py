@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import functools
 import inspect
 import synchronicity
@@ -279,3 +280,12 @@ class TaskContext:
                 task.result()  # Raise exception if needed
                 if task in unfinished_tasks:
                     unfinished_tasks.remove(task)
+
+
+AsyncGeneratorContextManager = synchronizer(contextlib._AsyncGeneratorContextManager)
+
+def asynccontextmanager(func):
+    @functools.wraps(func)
+    def helper(*args, **kwargs):
+        return AsyncGeneratorContextManager(func, args, kwargs)
+    return helper
