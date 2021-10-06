@@ -6,14 +6,11 @@ import typing
 import uuid
 
 
-from google.protobuf.any_pb2 import Any
-
-
 from .async_utils import synchronizer
 from .buffer_utils import buffered_read_all, buffered_write_all
 from .client import Client
 from .config import logger
-from .function import Function
+from .function import Function, pack_output_buffer_item, unpack_input_buffer_item
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .object import Object
 from .proto import api_pb2
@@ -92,8 +89,7 @@ def main(task_id, function_id, input_buffer_id, module_name, function_name, clie
 
             input_id = buffer_item.item_id
 
-            input = api_pb2.FunctionInput()
-            buffer_item.data.Unpack(input)
+            input = unpack_input_buffer_item(buffer_item)
             args = client.deserialize(input.args)
             kwargs = client.deserialize(input.kwargs)
             output_buffer_id = input.output_buffer_id
@@ -106,10 +102,8 @@ def main(task_id, function_id, input_buffer_id, module_name, function_name, clie
                 client.serialize,
             )
 
-            data = Any()
-            data.Pack(output)
-
-            buffer_req = api_pb2.BufferWriteRequest(item=api_pb2.BufferItem(data=data), buffer_id=output_buffer_id)
+            item = pack_output_buffer_item(output)
+            buffer_req = api_pb2.BufferWriteRequest(item=item, buffer_id=output_buffer_id)
             request = api_pb2.FunctionOutputRequest(input_id=input_id, buffer_req=buffer_req)
             yield request
 

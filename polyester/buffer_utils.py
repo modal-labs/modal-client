@@ -88,9 +88,9 @@ async def buffered_read_all(fn, request, buffer_id, /, read_until_EOF=True):
     while True:
         async for buffer_response in fn(request, timeout=GRPC_REQUEST_TIMEOUT):
             item = buffer_response.item
-            yield item
             if item.EOF:
                 return
+            yield item
 
         if not read_until_EOF:
             break

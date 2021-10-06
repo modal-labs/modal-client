@@ -5,7 +5,7 @@ import time
 from google.protobuf.any_pb2 import Any
 from polyester.client import Client
 from polyester.container_entrypoint import main
-from polyester.function import Function
+from polyester.function import Function, pack_input_buffer_item
 from polyester.proto import api_pb2
 from polyester.test_support import SLEEP_DELAY
 
@@ -15,15 +15,10 @@ INPUT_BUFFER = "input_buffer_id"
 
 
 def _get_inputs(client):
-    data = Any()
-    data.Pack(api_pb2.FunctionInput(
-        args=client.serialize((42,)),
-        kwargs=client.serialize({}),
-        output_buffer_id=OUTPUT_BUFFER,
-    ))
+    item = pack_input_buffer_item(client.serialize((42,)), client.serialize({}), OUTPUT_BUFFER)
 
     return [
-        api_pb2.BufferReadResponse(item=api_pb2.BufferItem(data=data)),
+        api_pb2.BufferReadResponse(item=item),
         api_pb2.BufferReadResponse(item=api_pb2.BufferItem(EOF=True)),
     ]
 

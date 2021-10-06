@@ -62,6 +62,31 @@ def _path_to_function(module_name, function_name):
         logger.info(f"{os.listdir()=}")
         raise
 
+# TODO: maybe we can create a special Buffer class in the ORM that keeps track of the protobuf type
+# of the bytes stored, so the packing/unpacking can happen automatically.
+def pack_input_buffer_item(args: bytes, kwargs: bytes, output_buffer_id: str) -> api_pb2.BufferItem:
+    data = Any()
+    data.Pack(api_pb2.FunctionInput(args=args, kwargs=kwargs, output_buffer_id=output_buffer_id))
+    return api_pb2.BufferItem(data=data)
+
+
+def pack_output_buffer_item(result: api_pb2.GenericResult) -> api_pb2.BufferItem:
+    data = Any()
+    data.Pack(result)
+    return api_pb2.BufferItem(data=data)
+
+
+def unpack_input_buffer_item(buffer_item: api_pb2.BufferItem) -> api_pb2.FunctionInput:
+    input = api_pb2.FunctionInput()
+    buffer_item.data.Unpack(input)
+    return input
+
+
+def unpack_output_buffer_item(buffer_item: api_pb2.BufferItem) -> api_pb2.GenericResult:
+    output = api_pb2.GenericResult()
+    buffer_item.data.Unpack(output)
+    return output
+
 
 class MapInvocation:
     # TODO: should this be an object?
@@ -84,18 +109,9 @@ class MapInvocation:
     async def __aiter__(self):
         async def generate_inputs():
             for arg in iter(self.inputs):
-                data = Any()
-                data.Pack(
-                    api_pb2.FunctionInput(
-                        args=self.client.serialize(arg),
-                        kwargs=self.client.serialize(self.kwargs),
-                        output_buffer_id=self.output_buffer_id,
-                    )
-                )
+                item = pack_input_buffer_item(self.client.serialize(arg), self.client.serialize(self.kwargs), self.output_buffer_id)
 
-                buffer_req = api_pb2.BufferWriteRequest(
-                    item=api_pb2.BufferItem(data=data), buffer_id=self.input_buffer_id
-                )
+                buffer_req = api_pb2.BufferWriteRequest(item=item, buffer_id=self.input_buffer_id)
 
                 yield api_pb2.FunctionCallRequest(function_id=self.function_id, buffer_req=buffer_req)
 
@@ -108,16 +124,11 @@ class MapInvocation:
         request = api_pb2.FunctionGetNextOutputRequest(function_id=self.function_id)
 
         async for output in buffered_read_all(self.client.stub.FunctionGetNextOutput, request, self.output_buffer_id):
-            raw_data = output.data
+            result = unpack_output_buffer_item(output)
 
-            # TODO: maybe we can create a special Buffer class in the ORM that keeps track of the protobuf type
-            # of the bytes stored, so the packing/unpacking can happen automatically.
-            output = api_pb2.GenericResult()
-            raw_data.Unpack(output)
-
-            if output.status != api_pb2.GenericResult.Status.SUCCESS:
-                raise Exception("Remote exception: %s\n%s" % (output.exception, output.traceback))
-            yield self.client.deserialize(output.data)
+            if result.status != api_pb2.GenericResult.Status.SUCCESS:
+                raise Exception("Remote exception: %s\n%s" % (result.exception, result.traceback))
+            yield self.client.deserialize(result.data)
 
         await asyncio.wait_for(pump_task, timeout=BLOCKING_REQUEST_TIMEOUT)
 
