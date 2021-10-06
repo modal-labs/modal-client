@@ -220,8 +220,13 @@ class TaskContext:
             for task in self._tasks:
                 task.cancel()
 
-    def create_task(self, coro):
-        task = create_task(coro)
+    def create_task(self, coro_or_task):
+        if isinstance(coro_or_task, asyncio.Task):
+            task = coro_or_task
+        elif inspect.iscoroutine(coro_or_task):
+            task = create_task(coro_or_task)
+        else:
+            raise Exception(f"{coro_or_task} is not a coroutine or Task")
         self._tasks.append(task)
         return task
 
@@ -243,6 +248,8 @@ AsyncGeneratorContextManager = synchronizer(contextlib._AsyncGeneratorContextMan
 
 
 def asynccontextmanager(func):
+    func = synchronizer(func)
+
     @functools.wraps(func)
     def helper(*args, **kwargs):
         return AsyncGeneratorContextManager(func, args, kwargs)
