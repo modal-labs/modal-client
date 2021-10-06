@@ -6,18 +6,21 @@ from .config import logger
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .proto import api_pb2
 
+
 INITIAL_STREAM_SIZE = 5
 
 
 async def buffered_write_all(fn, request_gen, /, send_EOF=True):
     """Writes all requests to buffered method in a TCP sliding window-ish fashion. Adds an EOF token at the end."""
 
+    drain_event = asyncio.Event()
     requests = []
     # We want to asynchronously pull from the generator, while still allowing requests
     # to be streamed back.
     async def drain_generator():
         async for r in request_gen:
             requests.append(r)
+            drain_event.set()
 
     drain_task = asyncio.create_task(drain_generator())
 
@@ -47,9 +50,10 @@ async def buffered_write_all(fn, request_gen, /, send_EOF=True):
 
     while next_idx_to_send < len(requests) or not drain_task.done():
         if next_idx_to_send == len(requests):
-            logger.debug(f"{fn_name}: no more requests to send, but generator is not done. Spinning.")
-            # still waiting for more requests
-            await asyncio.sleep(1)
+            logger.debug(f"{fn_name}: no more requests to send, but generator is not done. Waiting.")
+            drain_event.clear()
+            # wait for more requests
+            await drain_event.wait()
             continue
 
         max_idx_to_send = min(len(requests), max_idx_to_send)

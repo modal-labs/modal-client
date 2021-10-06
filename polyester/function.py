@@ -99,8 +99,10 @@ class MapInvocation:
 
                 yield api_pb2.FunctionCallRequest(function_id=self.function_id, buffer_req=buffer_req)
 
+        # send_EOF is True for now, for easier testing and iteration. Sending this signal also terminates
+        # the function container, so we might want to not do that in the future and rely on the timeout instead.
         pump_task = asyncio.create_task(
-            buffered_write_all(self.client.stub.FunctionCall, generate_inputs(), send_EOF=False)
+            buffered_write_all(self.client.stub.FunctionCall, generate_inputs(), send_EOF=True)
         )
 
         request = api_pb2.FunctionGetNextOutputRequest(function_id=self.function_id)

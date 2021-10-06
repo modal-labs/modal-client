@@ -49,7 +49,7 @@ class FunctionContext:
         await buffered_write_all(self.client.stub.FunctionOutput, requests)
 
 
-def call_function(
+async def call_function(
     function: typing.Callable,
     args: any,
     kwargs: any,
@@ -59,7 +59,7 @@ def call_function(
         res = function(*args, **kwargs)
         # TODO: handle generators etc
         if inspect.iscoroutine(res):
-            res = asyncio.run(res)
+            res = await res
 
         return api_pb2.GenericResult(
             status=api_pb2.GenericResult.Status.SUCCESS,
@@ -99,7 +99,7 @@ def main(task_id, function_id, input_buffer_id, module_name, function_name, clie
             output_buffer_id = input.output_buffer_id
 
             # function
-            output = call_function(
+            output = await call_function(
                 function,
                 args,
                 kwargs,
