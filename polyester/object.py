@@ -62,6 +62,9 @@ class Object(metaclass=ObjectMeta):
 
 
 def requires_create(method):
+    # TODO: this does not work for generators (need to do `async for z in await f()` )
+    # See the old requires_join_generator function for how to make this work
+
     @functools.wraps(method)
     def wrapped_method(self, *args, **kwargs):
         if not self.created:
