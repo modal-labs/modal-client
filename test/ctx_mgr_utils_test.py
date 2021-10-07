@@ -4,6 +4,8 @@ from polyester.ctx_mgr_utils import CtxMgr
 
 
 class TestCtxMgr(CtxMgr):
+    __test__ = False # so pytest doesn't try to collect this as a test
+
     def __init__(self, x):
         self.x = x
         self.state = "created"

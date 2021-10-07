@@ -96,7 +96,7 @@ class ChannelPool:
                 await self._purge_channels()
                 await asyncio.sleep(10.0)
 
-        asyncio.create_task(purge_channels_loop())
+        self.purge_task = asyncio.create_task(purge_channels_loop())
 
     @contextlib.asynccontextmanager
     async def _get_channel(self):
@@ -128,6 +128,8 @@ class ChannelPool:
         for ch in self._channels:
             await ch.channel.close()
         self._channels = []
+        if self.purge_task:
+            self.purge_task.cancel()
 
     def _update_kwargs(self, kwargs):
         # Override timeout (or set it if it's not set) and cap it to the channel lifetime
