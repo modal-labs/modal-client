@@ -88,6 +88,7 @@ def unpack_output_buffer_item(buffer_item: api_pb2.BufferItem) -> api_pb2.Generi
     return output
 
 
+@synchronizer
 class MapInvocation:
     # TODO: should this be an object?
     def __init__(self, function_id, inputs, kwargs, client, input_buffer_id, output_buffer_id):
