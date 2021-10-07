@@ -2,7 +2,6 @@ import asyncio
 import time
 
 import pytest
-from google.protobuf.any_pb2 import Any
 
 from polyester.client import Client
 from polyester.container_entrypoint import main
