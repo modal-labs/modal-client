@@ -5,10 +5,12 @@ import traceback
 import typing
 import uuid
 
-from .async_utils import retry, synchronizer
+
+from .async_utils import synchronizer
+from .buffer_utils import buffered_read_all, buffered_write_all
 from .client import Client
 from .config import logger
-from .function import Function
+from .function import Function, pack_output_buffer_item, unpack_input_buffer_item
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .object import Object
 from .proto import api_pb2
@@ -18,54 +20,43 @@ from .proto import api_pb2
 class FunctionContext:
     """This class isn't much more than a helper method for some gRPC calls."""
 
-    def __init__(self, client, task_id, function_id, module_name, function_name):
+    def __init__(self, client, task_id, function_id, input_buffer_id, module_name, function_name):
         self.client = client
         self.task_id = task_id
         self.function_id = function_id
+        self.input_buffer_id = input_buffer_id
         self.module_name = module_name
         self.function_name = function_name
 
     def get_function(self) -> typing.Callable:
         return Function.get_function(self.module_name, self.function_name)
 
-    async def get_inputs(
+    def get_inputs(
         self,
-    ) -> typing.AsyncIterator[api_pb2.FunctionGetNextInputResponse]:
-        while True:
-            idempotency_key = str(uuid.uuid4())
-            request = api_pb2.FunctionGetNextInputRequest(
-                task_id=self.task_id,
-                function_id=self.function_id,
-                idempotency_key=idempotency_key,
-                timeout=BLOCKING_REQUEST_TIMEOUT,
-            )
-            response = await retry(self.client.stub.FunctionGetNextInput)(request, timeout=GRPC_REQUEST_TIMEOUT)
-            if not response.data:
-                logger.info(f"Task {self.task_id} input request received no data.")
-                break
-            if response.stop:
-                logger.info(f"Task {self.task_id} received stop response.")
-                break
-            yield response
+    ) -> typing.AsyncIterator[api_pb2.BufferReadResponse]:
+        request = api_pb2.FunctionGetNextInputRequest(
+            function_id=self.function_id,
+            task_id=self.task_id,
+        )
+        return buffered_read_all(
+            self.client.stub.FunctionGetNextInput, request, self.input_buffer_id, read_until_EOF=False
+        )
 
-    async def output(self, input_id: str, output: api_pb2.GenericResult):
-        idempotency_key = str(uuid.uuid4())
-        request = api_pb2.FunctionOutputRequest(input_id=input_id, idempotency_key=idempotency_key, output=output)
-        await retry(self.client.stub.FunctionOutput)(request)
+    async def stream_outputs(self, requests):
+        await buffered_write_all(self.client.stub.FunctionOutput, requests)
 
 
-def call_function(
+async def call_function(
     function: typing.Callable,
+    args: any,
+    kwargs: any,
     serializer: typing.Callable[[typing.Any], bytes],
-    deserializer: typing.Callable[[bytes], typing.Any],
-    function_input: api_pb2.FunctionGetNextInputResponse,
 ) -> api_pb2.GenericResult:
     try:
-        args, kwargs = deserializer(function_input.data)
         res = function(*args, **kwargs)
         # TODO: handle generators etc
         if inspect.iscoroutine(res):
-            res = asyncio.run(res)
+            res = await res
 
         return api_pb2.GenericResult(
             status=api_pb2.GenericResult.Status.SUCCESS,
@@ -82,28 +73,47 @@ def call_function(
         )
 
 
-def main(task_id, function_id, module_name, function_name, client=None):
+def main(task_id, function_id, input_buffer_id, module_name, function_name, client=None):
     # Note that we're creating the client in a synchronous context, but it will be running in a separate thread.
     # This is good because if the function is long running then we the client can still send heartbeats
     # The only caveat is a bunch of calls will now cross threads, which adds a bit of overhead?
     if client is None:
         client = Client.current()
-    function_context = FunctionContext(client, task_id, function_id, module_name, function_name)
+    function_context = FunctionContext(client, task_id, function_id, input_buffer_id, module_name, function_name)
     function = function_context.get_function()
-    for function_input in function_context.get_inputs():
-        result = call_function(
-            function,
-            client.serialize,
-            client.deserialize,
-            function_input,
-        )
-        function_context.output(function_input.input_id, result)
+
+    async def generate_output_requests():
+        async for buffer_item in function_context.get_inputs():
+            if buffer_item.EOF:
+                break
+
+            input_id = buffer_item.item_id
+
+            input = unpack_input_buffer_item(buffer_item)
+            args = client.deserialize(input.args)
+            kwargs = client.deserialize(input.kwargs)
+            output_buffer_id = input.output_buffer_id
+
+            # function
+            output = await call_function(
+                function,
+                args,
+                kwargs,
+                client.serialize,
+            )
+
+            item = pack_output_buffer_item(output)
+            buffer_req = api_pb2.BufferWriteRequest(item=item, buffer_id=output_buffer_id)
+            request = api_pb2.FunctionOutputRequest(input_id=input_id, buffer_req=buffer_req)
+            yield request
+
+    function_context.stream_outputs(generate_output_requests())
 
 
 if __name__ == "__main__":
     # TODO: we need to do something here to set up the session!
-    tag, task_id, function_id, module_name, function_name = sys.argv[1:]
+    tag, task_id, function_id, input_buffer_id, module_name, function_name = sys.argv[1:]
     assert tag == "function"
     logger.debug("Container: starting")
-    main(task_id, function_id, module_name, function_name)
+    main(task_id, function_id, input_buffer_id, module_name, function_name)
     logger.debug("Container: done")

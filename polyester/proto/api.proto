@@ -8,6 +8,8 @@ syntax = "proto3";
 
 package polyester.client;
 
+import "google/protobuf/any.proto";
+
 message Empty {
 
 }
@@ -22,20 +24,21 @@ message GenericResult {  // Used for both tasks and function outputs
   bool incomplete = 6;  // Only used for generators right now, tells client not to count this result yet
 }
 
-message BufferData {
-  bytes data = 1;
+message BufferItem {
+  google.protobuf.Any data = 1;
   bool EOF = 2;
+  string item_id = 3; // Each element is given an ID by the server.
 }
 
 message BufferWriteRequest {
   string buffer_id = 1;
   int32 idx = 2;
-  BufferData data = 3;
+  BufferItem item = 3;
   string idempotency_key = 4;
 }
 
 message BufferWriteResponse {
-  int32 last_idx_written = 1;
+  int32 num_pushed = 1;
   int32 space_left = 2;
 }
 
@@ -46,7 +49,7 @@ message BufferReadRequest {
 }
 
 message BufferReadResponse {
-  BufferData data = 1;
+  BufferItem item = 1;
 }
 
 enum ClientType {
@@ -247,56 +250,40 @@ message FunctionGetOrCreateResponse {
   string function_id = 1;
 }
 
-message FunctionCallRequest {
+message FunctionMapRequest {
   string function_id = 1;
-  repeated bytes inputs = 2;
-  string call_id = 3;  // Optional, will create a new call_id if not set
-  string idempotency_key = 4;
 }
 
-message FunctionCallResponse {
-  string call_id = 1;  // Internally on the server it identifies a result queue
+message FunctionMapResponse {
+  string input_buffer_id = 1;
+  string output_buffer_id = 2;
+}
+
+message FunctionCallRequest {
+  string function_id = 1;
+  BufferWriteRequest buffer_req = 6;
 }
 
 message FunctionGetNextOutputRequest {
   string function_id = 1;
-  string call_id = 2;
-  float timeout = 3;
-  int32 n_outputs = 4;
-  string idempotency_key = 5;
+  BufferReadRequest buffer_req = 2;
 }
 
-message FunctionGetNextOutputResponse {
-  repeated GenericResult outputs = 2;
-}
-
-message FunctionGetNextCallRequest {
-  string function_id = 1;
-}
-
-message FunctionGetNextCallResponse {
-  string call_id = 1;
-  bytes input = 2;
+message FunctionInput {
+  bytes args = 1;
+  bytes kwargs = 2;
+  string output_buffer_id = 3;
 }
 
 message FunctionGetNextInputRequest {
   string function_id = 1;
-  string idempotency_key = 2;
-  float timeout = 3;
   string task_id = 4;
-}
-
-message FunctionGetNextInputResponse {
-  bool stop = 2;
-  bytes data = 3;
-  string input_id = 5;
+  BufferReadRequest buffer_req = 6;
 }
 
 message FunctionOutputRequest {
-  GenericResult output = 3;
-  string idempotency_key = 4;
-  bool done = 6;  // TODO: use later for generators
   string input_id = 7;
+  BufferWriteRequest buffer_req = 8;
 }
 
 message MountCreateRequest {
@@ -370,8 +357,9 @@ service PolyesterClient {
 
   // Functions
   rpc FunctionGetOrCreate(FunctionGetOrCreateRequest) returns (FunctionGetOrCreateResponse);
-  rpc FunctionCall(FunctionCallRequest) returns (FunctionCallResponse);
-  rpc FunctionGetNextOutput(FunctionGetNextOutputRequest) returns (FunctionGetNextOutputResponse);  // Returns the next result
-  rpc FunctionGetNextInput(FunctionGetNextInputRequest) returns (FunctionGetNextInputResponse);  // For containers to request next call
-  rpc FunctionOutput(FunctionOutputRequest) returns (Empty);  // For containers to return result
+  rpc FunctionMap(FunctionMapRequest) returns (FunctionMapResponse);
+  rpc FunctionCall(stream FunctionCallRequest) returns (BufferWriteResponse);
+  rpc FunctionGetNextOutput(FunctionGetNextOutputRequest) returns (stream BufferReadResponse);  // Returns the next result
+  rpc FunctionGetNextInput(FunctionGetNextInputRequest) returns (stream BufferReadResponse);  // For containers to request next call
+  rpc FunctionOutput(stream FunctionOutputRequest) returns (BufferWriteResponse);  // For containers to return result
 }
