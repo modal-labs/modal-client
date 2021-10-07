@@ -1,5 +1,4 @@
 import asyncio
-import contextlib
 import sys
 
 from .async_utils import infinite_loop, retry, synchronizer, asynccontextmanager, TaskContext
