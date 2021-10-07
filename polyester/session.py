@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import sys
 
 from .async_utils import infinite_loop, retry, synchronizer, asynccontextmanager, TaskContext
@@ -14,10 +15,8 @@ from .utils import print_logs
 
 @synchronizer
 class Session(Object):
-    def __init__(self, stdout=None, stderr=None):
+    def __init__(self):
         self._functions = []
-        self._stdout = stdout or sys.stdout.buffer
-        self._stderr = stderr or sys.stderr.buffer
         super().__init__()
 
     async def create_or_get(self, obj, tag=None, return_copy=False):
@@ -35,24 +34,37 @@ class Session(Object):
         obj.created  = True
         return obj
 
-    def function(self, raw_f, image=base_image):
-        fun = image.function(raw_f)
-        self._functions.append(fun)
-        return fun
+    def function(self, raw_f=None, /, image=base_image):
+        def decorate(raw_f):
+            fun = image.function(raw_f)
+            self._functions.append(fun)
+            return fun
 
-    async def _get_logs(self, draining=False, timeout=BLOCKING_REQUEST_TIMEOUT):
+        if raw_f is None:
+            # called like @session.function(x=y)
+            return decorate
+        else:
+            # called like @session.function
+            return decorate(raw_f)
+
+    async def _get_logs(self, stdout, stderr, draining=False, timeout=BLOCKING_REQUEST_TIMEOUT):
         request = api_pb2.SessionGetLogsRequest(session_id=self.session_id, timeout=timeout, draining=draining)
         async for log_entry in self.client.stub.SessionGetLogs(request, timeout=timeout + GRPC_REQUEST_TIME_BUFFER):
             if log_entry.done:
                 logger.info("No more logs")
                 break
             else:
-                print_logs(log_entry.data, log_entry.fd, self._stdout, self._stderr)
+                print_logs(log_entry.data, log_entry.fd, stdout, stderr)
 
     @asynccontextmanager
-    async def run(self, client=None):
+    async def run(self, client=None, /, stdout=None, stderr=None):
         if client is None:
             client = await Client.current()
+        if stdout is None:
+            stdout = sys.stdout.buffer
+        if stderr is None:
+            stderr = sys.stderr.buffer
+
 
         self.client = client
 
@@ -77,8 +89,8 @@ class Session(Object):
 
         # Start tracking logs and yield context
         async with TaskContext() as tc:
-            tc.create_task(infinite_loop(self._get_logs))
-            yield
+            tc.create_task(infinite_loop(functools.partial(self._get_logs, stdout, stderr)))
+            yield self
 
         # Stop session (this causes the server to kill any running task)
         logger.debug("Stopping the session server-side")
@@ -87,4 +99,4 @@ class Session(Object):
 
         # Fetch any straggling logs
         logger.debug("Draining logs")
-        await self._get_logs(draining=True, timeout=10.0)
+        await self._get_logs(stdout, stderr, draining=True, timeout=10.0)

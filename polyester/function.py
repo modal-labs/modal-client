@@ -178,7 +178,8 @@ class Function(Object):
     @requires_create
     async def map(self, inputs, window=100, kwargs={}):
         args = [(arg,) for arg in inputs]
-        return await MapInvocation.create(self.object_id, args, kwargs, self.client)
+        async for item in await MapInvocation.create(self.object_id, args, kwargs, self.client):
+            yield item
 
     @requires_create
     async def __call__(self, *args, **kwargs):
