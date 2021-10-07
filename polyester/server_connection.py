@@ -1,8 +1,9 @@
 import asyncio
-import grpc
 import json
 import urllib.parse
 import uuid
+
+import grpc
 from grpc.aio._channel import Channel
 
 from .async_utils import retry

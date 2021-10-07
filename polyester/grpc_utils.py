@@ -2,10 +2,11 @@ import abc
 import asyncio
 import contextlib
 import enum
-import grpc.aio
 import re
 import time
 import traceback
+
+import grpc.aio
 
 from .async_utils import add_traceback, chunk_generator
 from .config import logger

@@ -1,5 +1,6 @@
-import colorama
 import sys
+
+import colorama
 
 
 def print_logs(output: bytes, fd: str, stdout=None, stderr=None):

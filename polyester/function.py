@@ -1,12 +1,13 @@
 import asyncio
-import cloudpickle
 import importlib
 import inspect
 import os
 import sys
 import uuid
 
+import cloudpickle
 from google.protobuf.any_pb2 import Any
+
 from .async_utils import retry, synchronizer
 from .buffer_utils import buffered_read_all, buffered_write_all
 from .client import Client
@@ -62,6 +63,7 @@ def _path_to_function(module_name, function_name):
         logger.info(f"{os.listdir()=}")
         raise
 
+
 # TODO: maybe we can create a special Buffer class in the ORM that keeps track of the protobuf type
 # of the bytes stored, so the packing/unpacking can happen automatically.
 def pack_input_buffer_item(args: bytes, kwargs: bytes, output_buffer_id: str) -> api_pb2.BufferItem:
@@ -109,7 +111,9 @@ class MapInvocation:
     async def __aiter__(self):
         async def generate_inputs():
             for arg in iter(self.inputs):
-                item = pack_input_buffer_item(self.client.serialize(arg), self.client.serialize(self.kwargs), self.output_buffer_id)
+                item = pack_input_buffer_item(
+                    self.client.serialize(arg), self.client.serialize(self.kwargs), self.output_buffer_id
+                )
 
                 buffer_req = api_pb2.BufferWriteRequest(item=item, buffer_id=self.input_buffer_id)
 

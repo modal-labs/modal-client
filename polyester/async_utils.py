@@ -2,8 +2,9 @@ import asyncio
 import contextlib
 import functools
 import inspect
-import synchronicity
 import time
+
+import synchronicity
 
 from .config import logger
 

@@ -1,11 +1,12 @@
 import asyncio
-import grpc.aio
 import io
 import os
 
+import grpc.aio
+
 from .async_utils import infinite_loop, retry, synchronizer
-from .ctx_mgr_utils import CtxMgr
 from .config import config, logger
+from .ctx_mgr_utils import CtxMgr
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT, ChannelPool
 from .local_server import LocalServer
 from .object import ObjectMeta

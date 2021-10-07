@@ -5,7 +5,6 @@ import traceback
 import typing
 import uuid
 
-
 from .async_utils import synchronizer
 from .buffer_utils import buffered_read_all, buffered_write_all
 from .client import Client

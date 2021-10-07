@@ -1,8 +1,8 @@
 import asyncio
 import atexit
 
-from .config import logger
 from .async_utils import synchronizer
+from .config import logger
 
 
 class CtxMgrMeta(type):

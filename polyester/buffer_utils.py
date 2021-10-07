@@ -6,7 +6,6 @@ from .config import logger
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .proto import api_pb2
 
-
 INITIAL_STREAM_SIZE = 5
 
 

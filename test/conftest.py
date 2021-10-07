@@ -1,8 +1,9 @@
 import asyncio
-import grpc
-import pytest
 import random
 import typing
+
+import grpc
+import pytest
 
 from polyester.async_utils import synchronizer
 from polyester.client import Client

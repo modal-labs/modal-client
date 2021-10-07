@@ -1,8 +1,9 @@
 import asyncio
-import pytest
 import time
 
+import pytest
 from google.protobuf.any_pb2 import Any
+
 from polyester.client import Client
 from polyester.container_entrypoint import main
 from polyester.function import Function, pack_input_buffer_item
@@ -21,6 +22,7 @@ def _get_inputs(client):
         api_pb2.BufferReadResponse(item=item),
         api_pb2.BufferReadResponse(item=api_pb2.BufferItem(EOF=True)),
     ]
+
 
 def _get_output(function_output_req: api_pb2.FunctionOutputRequest) -> api_pb2.GenericResult:
     output = api_pb2.GenericResult()
