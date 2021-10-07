@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import sys
 
 from .async_utils import infinite_loop, retry, synchronizer, asynccontextmanager, TaskContext
 from .client import Client
@@ -14,8 +15,10 @@ from .utils import print_logs
 
 @synchronizer
 class Session(Object):
-    def __init__(self):
+    def __init__(self, stdout=None, stderr=None):
         self._functions = []
+        self._stdout = stdout or sys.stdout.buffer
+        self._stderr = stderr or sys.stderr.buffer
         super().__init__()
 
     async def create_or_get(self, obj, tag=None, return_copy=False):
