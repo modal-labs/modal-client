@@ -82,6 +82,7 @@ def unpack_input_buffer_item(buffer_item: api_pb2.BufferItem) -> api_pb2.Functio
     buffer_item.data.Unpack(input)
     return input
 
+
 def unpack_output_buffer_item(buffer_item: api_pb2.BufferItem) -> api_pb2.GenericResult:
     output = api_pb2.GenericResult()
     buffer_item.data.Unpack(output)

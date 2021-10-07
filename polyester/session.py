@@ -31,7 +31,7 @@ class Session(Object):
         obj.tag = tag
         obj.client = self.client
         obj.object_id = await obj._create_or_get()
-        obj.created  = True
+        obj.created = True
         return obj
 
     def function(self, raw_f=None, /, image=base_image):
@@ -65,13 +65,10 @@ class Session(Object):
         if stderr is None:
             stderr = sys.stderr.buffer
 
-
         self.client = client
 
         # Get all objects on this session right now
-        objects = {tag: getattr(self, tag)
-                   for tag in dir(self)
-                   if isinstance(getattr(self, tag), Object)}
+        objects = {tag: getattr(self, tag) for tag in dir(self) if isinstance(getattr(self, tag), Object)}
 
         # Add all functions (TODO: this is super dumb)
         objects |= {f"fun_{i}": fun for i, fun in enumerate(self._functions)}
