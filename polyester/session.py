@@ -31,11 +31,12 @@ class Session(Object):
             new_obj.args = obj.args
             obj = new_obj
 
+        # TODO: move this to the Object class
         obj.session = self
-        obj.tag = tag
         obj.client = self.client
         obj.object_id = await obj._create_or_get()
         obj.created = True
+
         return obj
 
     def __setitem__(self, tag, obj):
@@ -50,6 +51,11 @@ class Session(Object):
     def function(self, raw_f=None, /, image=base_image):
         def decorate(raw_f):
             fun = Function(raw_f, image=image)
+            # TODO: we need the containers to locate the session somehow. Right now it happens in a bit of an indirect way
+            # because they import the module and locate the function first, then look up the session through the function.
+            # It might make more sense to find the session first and then find the function, in which case we don't have to
+            # mutate the function here to add this reference.
+            fun.session = self
             tag = f"{fun.info.module_name}.{fun.info.function_name}"
             self._objects[tag] = fun
             return fun
@@ -69,6 +75,22 @@ class Session(Object):
                 break
             else:
                 print_logs(log_entry.data, log_entry.fd, stdout, stderr)
+
+    async def initialize(self, session_id, client):
+        """Used by the container to bootstrap the session and all its objects."""
+        self.session_id = session_id
+        self.client = client
+
+        req = api_pb2.SessionGetObjectsRequest(session_id=session_id)
+        resp = await self.client.stub.SessionGetObjects(req)
+        for tag, object_id in resp.object_ids.items():
+            obj = self._objects[tag]
+
+            # TODO: move this to the Object class
+            obj.session = self
+            obj.client = self.client
+            obj.object_id = object_id
+            obj.created = True
 
     @asynccontextmanager
     async def run(self, client=None, /, stdout=None, stderr=None):
@@ -93,13 +115,12 @@ class Session(Object):
             logger.debug(f"Creating object {obj} with tag {tag}")
             await self.create_or_get(obj, tag)
     
-            # TODO: the below is a temporary thing until we unify object creation
-            req = api_pb2.SessionAddObjectRequest(
-                session_id=self.session_id,
-                tag=tag,
-                object_id=obj.object_id,
-            )
-            await self.client.stub.SessionAddObject(req)
+        # TODO: the below is a temporary thing until we unify object creation
+        req = api_pb2.SessionSetObjectsRequest(
+            session_id=self.session_id,
+            object_ids={tag: obj.object_id for tag, obj in self._objects.items()},
+        )
+        await self.client.stub.SessionSetObjects(req)
 
         # Start tracking logs and yield context
         async with TaskContext() as tc:

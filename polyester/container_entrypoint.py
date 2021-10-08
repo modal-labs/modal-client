@@ -20,16 +20,21 @@ from .proto import api_pb2
 class FunctionContext:
     """This class isn't much more than a helper method for some gRPC calls."""
 
-    def __init__(self, client, task_id, function_id, input_buffer_id, module_name, function_name):
+    def __init__(self, client, task_id, function_id, input_buffer_id, session_id, module_name, function_name):
         self.client = client
         self.task_id = task_id
         self.function_id = function_id
         self.input_buffer_id = input_buffer_id
+        self.session_id = session_id
         self.module_name = module_name
         self.function_name = function_name
 
-    def get_function(self) -> typing.Callable:
-        return Function.get_function(self.module_name, self.function_name)
+    async def get_function(self) -> typing.Callable:
+        """Note that this also initializes the session."""
+        fun = Function.get_function(self.module_name, self.function_name)
+        session = fun.session
+        await session.initialize(self.session_id, self.client)
+        return fun.get_raw_f()
 
     def get_inputs(
         self,
@@ -118,14 +123,13 @@ async def call_function(
         )
 
 
-def main(task_id, function_id, input_buffer_id, module_name, function_name, client=None):
+def main(task_id, function_id, input_buffer_id, session_id, module_name, function_name, client=None):
     # Note that we're creating the client in a synchronous context, but it will be running in a separate thread.
     # This is good because if the function is long running then we the client can still send heartbeats
     # The only caveat is a bunch of calls will now cross threads, which adds a bit of overhead?
     if client is None:
         client = Client.current()
-
-    function_context = FunctionContext(client, task_id, function_id, input_buffer_id, module_name, function_name)
+    function_context = FunctionContext(client, task_id, function_id, input_buffer_id, session_id, module_name, function_name)
     function = function_context.get_function()
 
     async def generate_outputs():
@@ -137,9 +141,8 @@ def main(task_id, function_id, input_buffer_id, module_name, function_name, clie
 
 
 if __name__ == "__main__":
-    # TODO: we need to do something here to set up the session!
-    tag, task_id, function_id, input_buffer_id, module_name, function_name = sys.argv[1:]
+    tag, task_id, function_id, input_buffer_id, session_id, module_name, function_name = sys.argv[1:]
     assert tag == "function"
     logger.debug("Container: starting")
-    main(task_id, function_id, input_buffer_id, module_name, function_name)
+    main(task_id, function_id, input_buffer_id, session_id, module_name, function_name)
     logger.debug("Container: done")

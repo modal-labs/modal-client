@@ -211,8 +211,11 @@ class Function(Object):
         else:
             return first_result
 
+    def get_raw_f(self):
+        return self.args.raw_f
+
     @staticmethod
     def get_function(module_name, function_name):
         f = _path_to_function(module_name, function_name)
         assert isinstance(f, Function)
-        return f.args.raw_f
+        return f
