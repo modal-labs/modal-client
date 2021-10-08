@@ -95,7 +95,6 @@ class Invocation:
         self.client = client
         self.pump_task = pump_task
         self.output_generator = output_generator
-        self.is_generator = False
 
     @staticmethod
     async def create(function_id, inputs, kwargs, client):
@@ -126,15 +125,14 @@ class Invocation:
         if result.status != api_pb2.GenericResult.Status.SUCCESS:
             raise Exception("Remote exception: %s\n%s" % (result.exception, result.traceback))
 
-        if result.gen_status == api_pb2.GenericResult.GeneratorStatus.INCOMPLETE:
-            self.is_generator = True
-
         return self.client.deserialize(result.data)
 
-    async def __anext__(self):
+    async def peek(self):
+        """Get the next output from the iterator. Not named __anext__ because it returns the raw output,
+        and not the deserialized data that the main iterator returns."""
+
         output = await self.output_generator.__anext__()
-        result = unpack_output_buffer_item(output)
-        return self.process_result(result)
+        return unpack_output_buffer_item(output)
 
     async def __aiter__(self):
         async for output in self.output_generator:
@@ -143,8 +141,7 @@ class Invocation:
             if result.gen_status == api_pb2.GenericResult.GeneratorStatus.COMPLETE:
                 continue
 
-            data = self.process_result(result)
-            yield data
+            yield self.process_result(result)
 
         await asyncio.wait_for(self.pump_task, timeout=BLOCKING_REQUEST_TIMEOUT)
 
@@ -199,13 +196,14 @@ class Function(Object):
         invocation = await Invocation.create(self.object_id, [args], kwargs, self.client)
 
         # dumb but we need to pop a value from the iterator to see if it's incomplete.
-        first_result = await invocation.__anext__()
+        first_result = await invocation.peek()
 
-        if invocation.is_generator:
+        if first_result.gen_status != api_pb2.GenericResult.GeneratorStatus.NOT_GENERATOR:
 
             @synchronizer
             async def gen():
-                yield first_result
+                if first_result.gen_status != api_pb2.GenericResult.GeneratorStatus.COMPLETE:
+                    yield invocation.process_result(first_result)
                 async for result in invocation:
                     yield result
 
