@@ -1,7 +1,7 @@
 import asyncio
 import uuid
 
-from .async_utils import retry, synchronizer
+from .async_utils import retry
 from .config import logger
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .proto import api_pb2
@@ -9,7 +9,6 @@ from .proto import api_pb2
 INITIAL_STREAM_SIZE = 5
 
 
-@synchronizer
 async def buffered_write_all(fn, request_gen, /, send_EOF=True):
     """Writes all requests to buffered method in a TCP sliding window-ish fashion. Adds an EOF token at the end."""
 
@@ -79,7 +78,6 @@ async def buffered_write_all(fn, request_gen, /, send_EOF=True):
         await retry(fn)(eof_request_generator())
 
 
-@synchronizer
 async def buffered_read_all(fn, request, buffer_id, /, read_until_EOF=True):
     """Reads from buffered method until EOF has been reached or timeout."""
 

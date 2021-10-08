@@ -6,8 +6,6 @@ import traceback
 import typing
 import uuid
 
-from aiostream import stream
-
 from .async_utils import synchronizer
 from .buffer_utils import buffered_read_all, buffered_write_all
 from .client import Client
@@ -44,8 +42,8 @@ class FunctionContext:
             self.client.stub.FunctionGetNextInput, request, self.input_buffer_id, read_until_EOF=False
         )
 
-    async def stream_outputs(self, requests):
-        await buffered_write_all(self.client.stub.FunctionOutput, requests)
+    async def output(self, request):
+        return await self.client.stub.FunctionOutput(request)
 
 
 def make_output_request(input_id, output_buffer_id, **kwargs):
@@ -54,6 +52,11 @@ def make_output_request(input_id, output_buffer_id, **kwargs):
     buffer_req = api_pb2.BufferWriteRequest(item=item, buffer_id=output_buffer_id)
 
     return api_pb2.FunctionOutputRequest(input_id=input_id, buffer_req=buffer_req)
+
+
+async def asyncify_generator(gen):
+    for g in gen:
+        yield g
 
 
 async def call_function(
@@ -76,32 +79,24 @@ async def call_function(
             res = await res
 
         if inspect.isgenerator(res):
-            for value in res:
-                yield make_output_request(
-                    input_id,
-                    output_buffer_id,
-                    status=api_pb2.GenericResult.Status.SUCCESS,
-                    data=serializer(value),
-                    incomplete=True,
-                )
+            res = asyncify_generator(res)
 
-            # send EOF
-            yield make_output_request(
-                input_id, output_buffer_id, status=api_pb2.GenericResult.Status.SUCCESS, incomplete=False
-            )
-        elif inspect.isasyncgen(res):
+        if inspect.isasyncgen(res):
             async for value in res:
                 yield make_output_request(
                     input_id,
                     output_buffer_id,
                     status=api_pb2.GenericResult.Status.SUCCESS,
                     data=serializer(value),
-                    incomplete=True,
+                    gen_status=api_pb2.GenericResult.GeneratorStatus.INCOMPLETE,
                 )
 
             # send EOF
             yield make_output_request(
-                input_id, output_buffer_id, status=api_pb2.GenericResult.Status.SUCCESS, incomplete=False
+                input_id,
+                output_buffer_id,
+                status=api_pb2.GenericResult.Status.SUCCESS,
+                gen_status=api_pb2.GenericResult.GeneratorStatus.COMPLETE,
             )
         else:
             yield make_output_request(
@@ -129,29 +124,16 @@ def main(task_id, function_id, input_buffer_id, module_name, function_name, clie
     # The only caveat is a bunch of calls will now cross threads, which adds a bit of overhead?
     if client is None:
         client = Client.current()
+
     function_context = FunctionContext(client, task_id, function_id, input_buffer_id, module_name, function_name)
     function = function_context.get_function()
 
     async def generate_outputs():
-        try:
-            # Create a stream for each call_function; needed so we can multiplex generator outputs.
-            generators = []
+        async for buffer_item in function_context.get_inputs():
+            async for output in call_function(function, buffer_item, client.serialize, client.deserialize):
+                yield output
 
-            async for buffer_item in function_context.get_inputs():
-                gen = call_function(function, buffer_item, client.serialize, client.deserialize)
-                generators.append(gen)
-
-            # TODO: draining the input iterator should also happen async.
-            interleaved = stream.merge(*generators)
-
-            async with interleaved.stream() as streamer:
-                async for output in streamer:
-                    yield output
-
-        except Exception as exc:
-            logger.exception(f"Failed generating outputs: {repr(exc)}")
-
-    function_context.stream_outputs(generate_outputs())
+    asyncio.run(buffered_write_all(function_context.output, generate_outputs()))
 
 
 if __name__ == "__main__":

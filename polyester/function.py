@@ -123,26 +123,29 @@ class Invocation:
 
         return Invocation(client, pump_task, output_generator)
 
-    def get_output_data(self, output):
-        result = unpack_output_buffer_item(output)
-
+    def process_result(self, result):
         if result.status != api_pb2.GenericResult.Status.SUCCESS:
             raise Exception("Remote exception: %s\n%s" % (result.exception, result.traceback))
 
-        if result.incomplete:
+        if result.gen_status == api_pb2.GenericResult.GeneratorStatus.INCOMPLETE:
             self.is_generator = True
 
-        return result.data and self.client.deserialize(result.data)
+        return self.client.deserialize(result.data)
 
     async def __anext__(self):
         output = await self.output_generator.__anext__()
-        return self.get_output_data(output)
+        result = unpack_output_buffer_item(output)
+        return self.process_result(result)
 
     async def __aiter__(self):
         async for output in self.output_generator:
-            data = self.get_output_data(output)
-            if data is not b"":
-                yield data
+            result = unpack_output_buffer_item(output)
+
+            if result.gen_status == api_pb2.GenericResult.GeneratorStatus.COMPLETE:
+                continue
+
+            data = self.process_result(result)
+            yield data
 
         await asyncio.wait_for(self.pump_task, timeout=BLOCKING_REQUEST_TIMEOUT)
 
