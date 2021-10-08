@@ -9,7 +9,7 @@ from polyester.function import Function, pack_input_buffer_item
 from polyester.proto import api_pb2
 from polyester.test_support import SLEEP_DELAY
 
-EXTRA_TOLERANCE_DELAY = 0.05
+EXTRA_TOLERANCE_DELAY = 0.07
 OUTPUT_BUFFER = "output_buffer_id"
 INPUT_BUFFER = "input_buffer_id"
 
