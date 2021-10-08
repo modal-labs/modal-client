@@ -16,7 +16,7 @@ from .utils import print_logs
 @synchronizer
 class Session(Object):
     def __init__(self):
-        self._functions = []
+        self._objects = {}
         super().__init__()
 
     async def create_or_get(self, obj, tag=None, return_copy=False):
@@ -34,10 +34,17 @@ class Session(Object):
         obj.created = True
         return obj
 
+    def __setitem__(self, tag, obj):
+        self._objects[tag] = obj
+
+    def __getitem__(self, tag):
+        return self._objects[tag]
+
     def function(self, raw_f=None, /, image=base_image):
         def decorate(raw_f):
             fun = Function(raw_f, image=image)
-            self._functions.append(fun)
+            tag = f"{fun.info.module_name}.{fun.info.function_name}"
+            self._objects[tag] = fun
             return fun
 
         if raw_f is None:
@@ -67,12 +74,6 @@ class Session(Object):
 
         self.client = client
 
-        # Get all objects on this session right now
-        objects = {tag: getattr(self, tag) for tag in dir(self) if isinstance(getattr(self, tag), Object)}
-
-        # Add all functions (TODO: this is super dumb)
-        objects |= {f"fun_{i}": fun for i, fun in enumerate(self._functions)}
-
         # Start session
         # TODO: pass in a list of tags that need to be pre-created
         req = api_pb2.SessionCreateRequest(client_id=client.client_id)
@@ -81,7 +82,8 @@ class Session(Object):
 
         # Create all members
         # TODO: do this in parallel
-        for tag, obj in objects.items():
+        for tag, obj in self._objects.items():
+            logger.debug(f"Creating object {obj} with tag {tag}")
             await self.create_or_get(obj, tag)
 
         # Start tracking logs and yield context
