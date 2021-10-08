@@ -20,6 +20,10 @@ class Session(Object):
         super().__init__()
 
     async def create_or_get(self, obj, tag=None, return_copy=False):
+        """Used to create objects dynamically on a running session.
+
+        if return_copy is True then a copy of the object is returned.
+        """
         if return_copy:
             # Don't modify the underlying object, just return a joined object
             cls = type(obj)
@@ -35,6 +39,9 @@ class Session(Object):
         return obj
 
     def __setitem__(self, tag, obj):
+        """Register any object that will auto-created.by the session and synced to all containers."""
+        if tag in self._objects:
+            raise KeyError(tag)
         self._objects[tag] = obj
 
     def __getitem__(self, tag):
