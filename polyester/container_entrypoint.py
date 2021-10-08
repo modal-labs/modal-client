@@ -1,6 +1,7 @@
 import asyncio
 import inspect
 import sys
+import threading
 import traceback
 import typing
 import uuid
@@ -41,31 +42,76 @@ class FunctionContext:
             self.client.stub.FunctionGetNextInput, request, self.input_buffer_id, read_until_EOF=False
         )
 
-    async def stream_outputs(self, requests):
-        await buffered_write_all(self.client.stub.FunctionOutput, requests)
+    async def output(self, request):
+        return await self.client.stub.FunctionOutput(request)
+
+
+def make_output_request(input_id, output_buffer_id, **kwargs):
+    result = api_pb2.GenericResult(**kwargs)
+    item = pack_output_buffer_item(result)
+    buffer_req = api_pb2.BufferWriteRequest(item=item, buffer_id=output_buffer_id)
+
+    return api_pb2.FunctionOutputRequest(input_id=input_id, buffer_req=buffer_req)
+
+
+async def asyncify_generator(gen):
+    for g in gen:
+        yield g
 
 
 async def call_function(
     function: typing.Callable,
-    args: any,
-    kwargs: any,
+    buffer_item: api_pb2.BufferItem,
     serializer: typing.Callable[[typing.Any], bytes],
-) -> api_pb2.GenericResult:
+    deserializer: typing.Callable[[bytes], typing.Any],
+) -> (str, api_pb2.GenericResult):
+    input_id = buffer_item.item_id
+
+    input = unpack_input_buffer_item(buffer_item)
+    args = deserializer(input.args)
+    kwargs = deserializer(input.kwargs)
+    output_buffer_id = input.output_buffer_id
+
     try:
         res = function(*args, **kwargs)
-        # TODO: handle generators etc
+
         if inspect.iscoroutine(res):
             res = await res
 
-        return api_pb2.GenericResult(
-            status=api_pb2.GenericResult.Status.SUCCESS,
-            data=serializer(res),
-        )
+        if inspect.isgenerator(res):
+            res = asyncify_generator(res)
+
+        if inspect.isasyncgen(res):
+            async for value in res:
+                yield make_output_request(
+                    input_id,
+                    output_buffer_id,
+                    status=api_pb2.GenericResult.Status.SUCCESS,
+                    data=serializer(value),
+                    gen_status=api_pb2.GenericResult.GeneratorStatus.INCOMPLETE,
+                )
+
+            # send EOF
+            yield make_output_request(
+                input_id,
+                output_buffer_id,
+                status=api_pb2.GenericResult.Status.SUCCESS,
+                gen_status=api_pb2.GenericResult.GeneratorStatus.COMPLETE,
+            )
+        else:
+            yield make_output_request(
+                input_id,
+                output_buffer_id,
+                status=api_pb2.GenericResult.Status.SUCCESS,
+                data=serializer(res),
+            )
 
     except Exception as exc:
         # Note that we have to stringify the exception/traceback since
         # it isn't always possible to unpickle on the client side
-        return api_pb2.GenericResult(
+        yield make_output_request(
+            input_id,
+            output_buffer_id,
             status=api_pb2.GenericResult.Status.FAILURE,
             exception=repr(exc),
             traceback=traceback.format_exc(),
@@ -78,35 +124,16 @@ def main(task_id, function_id, input_buffer_id, module_name, function_name, clie
     # The only caveat is a bunch of calls will now cross threads, which adds a bit of overhead?
     if client is None:
         client = Client.current()
+
     function_context = FunctionContext(client, task_id, function_id, input_buffer_id, module_name, function_name)
     function = function_context.get_function()
 
-    async def generate_output_requests():
+    async def generate_outputs():
         async for buffer_item in function_context.get_inputs():
-            if buffer_item.EOF:
-                break
+            async for output in call_function(function, buffer_item, client.serialize, client.deserialize):
+                yield output
 
-            input_id = buffer_item.item_id
-
-            input = unpack_input_buffer_item(buffer_item)
-            args = client.deserialize(input.args)
-            kwargs = client.deserialize(input.kwargs)
-            output_buffer_id = input.output_buffer_id
-
-            # function
-            output = await call_function(
-                function,
-                args,
-                kwargs,
-                client.serialize,
-            )
-
-            item = pack_output_buffer_item(output)
-            buffer_req = api_pb2.BufferWriteRequest(item=item, buffer_id=output_buffer_id)
-            request = api_pb2.FunctionOutputRequest(input_id=input_id, buffer_req=buffer_req)
-            yield request
-
-    function_context.stream_outputs(generate_output_requests())
+    asyncio.run(buffered_write_all(function_context.output, generate_outputs()))
 
 
 if __name__ == "__main__":

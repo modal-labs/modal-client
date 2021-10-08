@@ -14,7 +14,7 @@ from .client import Client
 from .config import config, logger
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .mount import Mount, create_package_mounts
-from .object import Object, requires_create, requires_create
+from .object import Object, requires_create
 from .proto import api_pb2
 from .queue import Queue
 
@@ -89,15 +89,13 @@ def unpack_output_buffer_item(buffer_item: api_pb2.BufferItem) -> api_pb2.Generi
 
 
 @synchronizer
-class MapInvocation:
+class Invocation:
     # TODO: should this be an object?
-    def __init__(self, function_id, inputs, kwargs, client, input_buffer_id, output_buffer_id):
-        self.function_id = function_id
-        self.inputs = inputs
-        self.kwargs = kwargs
+    def __init__(self, client, pump_task, output_generator):
         self.client = client
-        self.input_buffer_id = input_buffer_id
-        self.output_buffer_id = output_buffer_id
+        self.pump_task = pump_task
+        self.output_generator = output_generator
+        self.is_generator = False
 
     @staticmethod
     async def create(function_id, inputs, kwargs, client):
@@ -105,37 +103,53 @@ class MapInvocation:
         response = await retry(client.stub.FunctionMap)(request)
         input_buffer_id = response.input_buffer_id
         output_buffer_id = response.output_buffer_id
-        return MapInvocation(function_id, inputs, kwargs, client, input_buffer_id, output_buffer_id)
 
-    async def __aiter__(self):
         async def generate_inputs():
-            for arg in iter(self.inputs):
-                item = pack_input_buffer_item(
-                    self.client.serialize(arg), self.client.serialize(self.kwargs), self.output_buffer_id
-                )
+            for arg in iter(inputs):
+                item = pack_input_buffer_item(client.serialize(arg), client.serialize(kwargs), output_buffer_id)
 
-                buffer_req = api_pb2.BufferWriteRequest(item=item, buffer_id=self.input_buffer_id)
+                buffer_req = api_pb2.BufferWriteRequest(item=item, buffer_id=input_buffer_id)
 
-                yield api_pb2.FunctionCallRequest(function_id=self.function_id, buffer_req=buffer_req)
+                yield api_pb2.FunctionCallRequest(function_id=function_id, buffer_req=buffer_req)
 
         # send_EOF is True for now, for easier testing and iteration. Sending this signal also terminates
         # the function container, so we might want to not do that in the future and rely on the timeout instead.
-        pump_task = asyncio.create_task(
-            buffered_write_all(self.client.stub.FunctionCall, generate_inputs(), send_EOF=True)
-        )
+        pump_task = asyncio.create_task(buffered_write_all(client.stub.FunctionCall, generate_inputs(), send_EOF=True))
 
-        request = api_pb2.FunctionGetNextOutputRequest(function_id=self.function_id)
+        request = api_pb2.FunctionGetNextOutputRequest(function_id=function_id)
 
-        async for output in buffered_read_all(self.client.stub.FunctionGetNextOutput, request, self.output_buffer_id):
+        output_generator = buffered_read_all(client.stub.FunctionGetNextOutput, request, output_buffer_id)
+
+        return Invocation(client, pump_task, output_generator)
+
+    def process_result(self, result):
+        if result.status != api_pb2.GenericResult.Status.SUCCESS:
+            raise Exception("Remote exception: %s\n%s" % (result.exception, result.traceback))
+
+        if result.gen_status == api_pb2.GenericResult.GeneratorStatus.INCOMPLETE:
+            self.is_generator = True
+
+        return self.client.deserialize(result.data)
+
+    async def __anext__(self):
+        output = await self.output_generator.__anext__()
+        result = unpack_output_buffer_item(output)
+        return self.process_result(result)
+
+    async def __aiter__(self):
+        async for output in self.output_generator:
             result = unpack_output_buffer_item(output)
 
-            if result.status != api_pb2.GenericResult.Status.SUCCESS:
-                raise Exception("Remote exception: %s\n%s" % (result.exception, result.traceback))
-            yield self.client.deserialize(result.data)
+            if result.gen_status == api_pb2.GenericResult.GeneratorStatus.COMPLETE:
+                continue
 
-        await asyncio.wait_for(pump_task, timeout=BLOCKING_REQUEST_TIMEOUT)
+            data = self.process_result(result)
+            yield data
+
+        await asyncio.wait_for(self.pump_task, timeout=BLOCKING_REQUEST_TIMEOUT)
 
 
+@synchronizer
 class Function(Object):
     def __init__(self, raw_f, image=None, client=None):
         assert callable(raw_f)
@@ -177,14 +191,27 @@ class Function(Object):
     @requires_create
     async def map(self, inputs, window=100, kwargs={}):
         args = [(arg,) for arg in inputs]
-        async for item in await MapInvocation.create(self.object_id, args, kwargs, self.client):
+        async for item in await Invocation.create(self.object_id, args, kwargs, self.client):
             yield item
 
     @requires_create
     async def __call__(self, *args, **kwargs):
-        invocation = await MapInvocation.create(self.object_id, [args], kwargs, self.client)
-        async for output in invocation:
-            return output  # return the first (and only) one
+        invocation = await Invocation.create(self.object_id, [args], kwargs, self.client)
+
+        # dumb but we need to pop a value from the iterator to see if it's incomplete.
+        first_result = await invocation.__anext__()
+
+        if invocation.is_generator:
+
+            @synchronizer
+            async def gen():
+                yield first_result
+                async for result in invocation:
+                    yield result
+
+            return gen()
+        else:
+            return first_result
 
     @staticmethod
     def get_function(module_name, function_name):
