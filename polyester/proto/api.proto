@@ -93,6 +93,15 @@ message SessionGetLogsRequest {
   bool draining = 3;
 }
 
+message SessionAddObjectRequest {
+  // TODO: this is a bit of a hacky request meant to be somewhat temporary
+  // At some point, every object should be assigned to a session/namespace when created,
+  // so this method won't be necessary.
+  string session_id = 1;
+  string tag = 2;
+  string object_id = 3;
+}
+
 message TaskLogs {
   bytes data = 1;
   string fd = 2;
@@ -327,6 +336,7 @@ service PolyesterClient {
   rpc SessionCreate(SessionCreateRequest) returns (SessionCreateResponse);
   rpc SessionStop(SessionStopRequest) returns (Empty);
   rpc SessionGetLogs(SessionGetLogsRequest) returns (stream TaskLogs);
+  rpc SessionAddObject(SessionAddObjectRequest) returns (Empty);
 
   // Queues
   rpc QueueCreate(Empty) returns (QueueCreateResponse);  // TODO: we should create it inside a session

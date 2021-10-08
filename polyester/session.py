@@ -92,6 +92,14 @@ class Session(Object):
         for tag, obj in self._objects.items():
             logger.debug(f"Creating object {obj} with tag {tag}")
             await self.create_or_get(obj, tag)
+    
+            # TODO: the below is a temporary thing until we unify object creation
+            req = api_pb2.SessionAddObjectRequest(
+                session_id=self.session_id,
+                tag=tag,
+                object_id=obj.object_id,
+            )
+            await self.client.stub.SessionAddObject(req)
 
         # Start tracking logs and yield context
         async with TaskContext() as tc:
