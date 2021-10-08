@@ -1,22 +1,23 @@
 import asyncio
 
-from . import base_image
+from . import Session
 
 SLEEP_DELAY = 0.1
 
+session = Session()
 
-@base_image.function
+@session.function
 def square(x):
     return x * x
 
 
-@base_image.function
+@session.function
 async def square_async(x):
     await asyncio.sleep(SLEEP_DELAY)
     return x * x
 
 
-@base_image.function
+@session.function
 def square_sync_returning_async(x):
     async def square():
         await asyncio.sleep(SLEEP_DELAY)
@@ -25,7 +26,7 @@ def square_sync_returning_async(x):
     return square()
 
 
-@base_image.function
+@session.function
 def raises(x):
     raise Exception("Failure!")
 

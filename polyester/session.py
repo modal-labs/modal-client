@@ -5,7 +5,7 @@ import sys
 from .async_utils import infinite_loop, retry, synchronizer, asynccontextmanager, TaskContext
 from .client import Client
 from .config import logger
-from .ctx_mgr_utils import CtxMgr
+from .function import Function
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIME_BUFFER, ChannelPool
 from .image import base_image
 from .object import Object
@@ -36,7 +36,7 @@ class Session(Object):
 
     def function(self, raw_f=None, /, image=base_image):
         def decorate(raw_f):
-            fun = image.function(raw_f)
+            fun = Function(raw_f, image=image)
             self._functions.append(fun)
             return fun
 

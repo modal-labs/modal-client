@@ -5,7 +5,6 @@ from typing import Dict
 
 from .async_utils import retry
 from .config import config, logger
-from .function import decorate_function
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .mount import get_sha256_hex_from_content  # TODO: maybe not
 from .object import Object, requires_create
@@ -154,10 +153,6 @@ class Image(Object):
 
     def set_env_vars(self, env_vars: Dict[str, str]):
         return Image(self.args.layer, EnvDict(env_vars))
-
-    def function(self, raw_f):
-        """Primarily to be used as a decorator."""
-        return decorate_function(raw_f, self)
 
     def is_inside(self):
         # This is used from inside of containers to know whether this container is active or not

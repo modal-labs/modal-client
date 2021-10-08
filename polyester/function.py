@@ -193,10 +193,3 @@ class Function(Object):
         f = _path_to_function(module_name, function_name)
         assert isinstance(f, Function)
         return f.args.raw_f
-
-
-def decorate_function(raw_f, image):
-    if callable(raw_f):
-        return Function(raw_f=raw_f, image=image)
-    else:
-        raise Exception("%s is not a proper function (of type %s)" % (raw_f, type(raw_f)))
