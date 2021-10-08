@@ -141,7 +141,7 @@ class Invocation:
     async def __aiter__(self):
         async for output in self.output_generator:
             data = self.get_output_data(output)
-            if data:
+            if data is not b"":
                 yield data
 
         await asyncio.wait_for(self.pump_task, timeout=BLOCKING_REQUEST_TIMEOUT)

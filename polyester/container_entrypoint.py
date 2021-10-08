@@ -89,14 +89,27 @@ async def call_function(
             yield make_output_request(
                 input_id, output_buffer_id, status=api_pb2.GenericResult.Status.SUCCESS, incomplete=False
             )
-            return
+        elif inspect.isasyncgen(res):
+            async for value in res:
+                yield make_output_request(
+                    input_id,
+                    output_buffer_id,
+                    status=api_pb2.GenericResult.Status.SUCCESS,
+                    data=serializer(value),
+                    incomplete=True,
+                )
 
-        yield make_output_request(
-            input_id,
-            output_buffer_id,
-            status=api_pb2.GenericResult.Status.SUCCESS,
-            data=serializer(res),
-        )
+            # send EOF
+            yield make_output_request(
+                input_id, output_buffer_id, status=api_pb2.GenericResult.Status.SUCCESS, incomplete=False
+            )
+        else:
+            yield make_output_request(
+                input_id,
+                output_buffer_id,
+                status=api_pb2.GenericResult.Status.SUCCESS,
+                data=serializer(res),
+            )
 
     except Exception as exc:
         # Note that we have to stringify the exception/traceback since
