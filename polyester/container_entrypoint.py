@@ -84,6 +84,11 @@ async def call_function(
                     data=serializer(value),
                     incomplete=True,
                 )
+
+            # send EOF
+            yield make_output_request(
+                input_id, output_buffer_id, status=api_pb2.GenericResult.Status.SUCCESS, incomplete=False
+            )
             return
 
         yield make_output_request(

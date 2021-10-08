@@ -132,7 +132,7 @@ class Invocation:
         if result.incomplete:
             self.is_generator = True
 
-        return self.client.deserialize(result.data)
+        return result.data and self.client.deserialize(result.data)
 
     async def __anext__(self):
         output = await self.output_generator.__anext__()
@@ -140,7 +140,9 @@ class Invocation:
 
     async def __aiter__(self):
         async for output in self.output_generator:
-            yield self.get_output_data(output)
+            data = self.get_output_data(output)
+            if data:
+                yield data
 
         await asyncio.wait_for(self.pump_task, timeout=BLOCKING_REQUEST_TIMEOUT)
 
