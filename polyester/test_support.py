@@ -6,6 +6,7 @@ SLEEP_DELAY = 0.1
 
 session = Session()
 
+
 @session.function
 def square(x):
     return x * x
