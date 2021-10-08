@@ -19,36 +19,35 @@ from .proto import api_pb2
 from .queue import Queue
 
 
-def _function_to_path(f):
-    function_name = f.__name__
-    module = inspect.getmodule(f)
-    if module.__package__:
-        # This is a "real" module, eg. examples.logs.f
-        # Get the package path
-        package_path = __import__(module.__package__).__path__
-        # TODO: we should handle the array case, https://stackoverflow.com/questions/2699287/what-is-path-useful-for
-        assert len(package_path) == 1
-        (package_path,) = package_path
-        module_name = module.__spec__.name
-        recursive_upload = True
-        remote_dir = "/root/" + module.__package__  # TODO: don't hardcode /root
-    else:
-        # This generally covers the case where it's invoked with
-        # python foo/bar/baz.py
-        module_name = os.path.splitext(os.path.basename(module.__file__))[0]
-        package_path = os.path.dirname(module.__file__)
-        recursive_upload = False  # Just pick out files in the same directory
-        remote_dir = "/root"  # TODO: don't hardcore /root
+class FunctionInfo:
+    def __init__(self, f):
+        self.function_name = f.__name__
+        module = inspect.getmodule(f)
+        if module.__package__:
+            # This is a "real" module, eg. examples.logs.f
+            # Get the package path
+            package_path = __import__(module.__package__).__path__
+            # TODO: we should handle the array case, https://stackoverflow.com/questions/2699287/what-is-path-useful-for
+            assert len(package_path) == 1
+            (self.package_path,) = package_path
+            self.module_name = module.__spec__.name
+            self.recursive_upload = True
+            self.remote_dir = "/root/" + module.__package__  # TODO: don't hardcode /root
+        else:
+            # This generally covers the case where it's invoked with
+            # python foo/bar/baz.py
+            self.module_name = os.path.splitext(os.path.basename(module.__file__))[0]
+            self.package_path = os.path.dirname(module.__file__)
+            self.recursive_upload = False  # Just pick out files in the same directory
+            self.remote_dir = "/root"  # TODO: don't hardcore /root
 
-    # Create mount
-    mount = Mount(
-        local_dir=package_path,
-        remote_dir=remote_dir,
-        condition=lambda filename: os.path.splitext(filename)[1] == ".py",
-        recursive=recursive_upload,
-    )
-
-    return (mount, module_name, function_name)
+    def get_mount(self):
+        return Mount(
+            local_dir=self.package_path,
+            remote_dir=self.remote_dir,
+            condition=lambda filename: os.path.splitext(filename)[1] == ".py",
+            recursive=self.recursive_upload,
+        )
 
 
 def _path_to_function(module_name, function_name):
@@ -140,6 +139,7 @@ class MapInvocation:
 class Function(Object):
     def __init__(self, raw_f, image=None, client=None):
         assert callable(raw_f)
+        self.info = FunctionInfo(raw_f)
         super().__init__(
             args=dict(
                 raw_f=raw_f,
@@ -148,9 +148,7 @@ class Function(Object):
         )
 
     async def _create_or_get(self):
-        mount, module_name, function_name = _function_to_path(self.args.raw_f)
-
-        mounts = [mount]
+        mounts = [self.info.get_mount()]
         if config["sync_entrypoint"] and not os.getenv("POLYESTER_IMAGE_LOCAL_ID"):
             # TODO(erikbern): If the first condition is true then we're running in a local
             # client which implies the second is always true as well?
@@ -164,8 +162,8 @@ class Function(Object):
 
         # Create function remotely
         function_definition = api_pb2.Function(
-            module_name=module_name,
-            function_name=function_name,
+            module_name=self.info.module_name,
+            function_name=self.info.function_name,
             mount_ids=[mount.object_id for mount in mounts],
         )
         request = api_pb2.FunctionGetOrCreateRequest(
