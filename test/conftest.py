@@ -69,6 +69,11 @@ class GRPCClientServicer(api_pb2_grpc.PolyesterClient):
             num_pushed += 1
         return api_pb2.BufferWriteResponse(num_pushed=num_pushed, space_left=10000)
 
+    async def SessionGetObjects(
+            self, request: api_pb2.SessionGetObjectsRequest, context: grpc.aio.ServicerContext
+    ) -> api_pb2.SessionGetObjectsResponse:
+        return api_pb2.SessionGetObjectsResponse(object_ids={})
+
 
 @pytest.fixture(scope="package")
 def event_loop():
