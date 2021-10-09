@@ -60,6 +60,9 @@ class Client(CtxMgr):
         self._heartbeats_task.cancel()
         await self._channel_pool.close()
         logger.debug("Client: Done shutting down")
+        # Needed to catch straggling CancelledErrors and GeneratorExits that propagate
+        # through our chains of async generators.
+        await asyncio.sleep(0.01)
 
     async def _heartbeats(self, sleep=3):
         async def loop():
