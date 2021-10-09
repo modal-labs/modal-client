@@ -73,8 +73,8 @@ def add_traceback(obj, func_name=None):
         raise Exception(f"{obj} is not a coro or async gen!")
 
 
-def create_task(coro):
-    return asyncio.create_task(add_traceback(coro))
+def create_task(coro, /, name=None):
+    return asyncio.create_task(add_traceback(coro), name=name)
 
 
 def infinite_loop(async_f, timeout=90, sleep=10):
@@ -85,9 +85,12 @@ def infinite_loop(async_f, timeout=90, sleep=10):
                 await asyncio.wait_for(async_f(), timeout=timeout)
             except Exception:
                 logger.exception(f"Loop attempt failed for {async_f}")
+            except asyncio.CancelledError:
+                return
             await asyncio.sleep(sleep)
 
-    return create_task(loop_coro())
+    # functools.partial objects have no __name__ attribute :(
+    return create_task(loop_coro(), name=f"infinite_loop_{async_f}")
 
 
 class GeneratorStream:
@@ -106,7 +109,9 @@ class GeneratorStream:
             loop = asyncio.get_event_loop()
             self._pump_task = loop.run_in_executor(None, self._pump_syncgen, self._generator)
         elif inspect.isasyncgen(self._generator):
-            self._pump_task = asyncio.create_task(self._pump_asyncgen(self._generator))
+            self._pump_task = asyncio.create_task(
+                self._pump_asyncgen(self._generator), name=f"pump_task_{self._generator}"
+            )
         else:
             raise Exception(f"{self._generator} has to be a sync/async generator")
         return self
@@ -159,6 +164,8 @@ class GeneratorStream:
             try:
                 value = await self._get(timeout=attempt_timeout)
             except asyncio.TimeoutError:
+                break
+            except asyncio.CancelledError:
                 break
             if self.done:
                 return

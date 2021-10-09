@@ -1,6 +1,6 @@
 import os
 from importlib import import_module
-from importlib.metadata import files, requires
+from importlib.metadata import PackageNotFoundError, files, requires
 
 from packaging.requirements import Requirement
 
@@ -8,20 +8,25 @@ from .config import logger
 
 
 def get_file_formats(package):
-    endings = [str(p).split(".")[-1] for p in files(package) if "." in str(p)]
-    return list(set(endings))
+    try:
+        endings = [str(p).split(".")[-1] for p in files(package) if "." in str(p)]
+        return list(set(endings))
+    except PackageNotFoundError:
+        return []
 
 
 # HACK to find mapping b/w requirement name and actual module
 # e.g. 'grpcio' to 'grpc'
 def requirement_to_module_name(package):
-    for path_obj in files(package):
-        filename = str(path_obj)
-        if filename.endswith((".py")):
-            parts = os.path.splitext(filename)[0].split(os.sep)
-            if filename.endswith(".py") and parts[-1] == "__init__":
-                return parts[-2]
-    return package
+    try:
+        for path_obj in files(package):
+            filename = str(path_obj)
+            if filename.endswith((".py")):
+                parts = os.path.splitext(filename)[0].split(os.sep)
+                if filename.endswith(".py") and parts[-1] == "__init__":
+                    return parts[-2]
+    except PackageNotFoundError:
+        return package
 
 
 def package_mount_condition(f):

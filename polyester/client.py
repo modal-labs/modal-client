@@ -29,6 +29,7 @@ class Client(CtxMgr):
 
     async def _start(self):
         logger.debug("Client: Starting")
+        self.stopped = asyncio.Event()
         try:
             self.connection_factory = GRPCConnectionFactory(
                 self.server_url,
@@ -54,6 +55,7 @@ class Client(CtxMgr):
         logger.debug("Client: Done starting")
 
     async def _stop(self, hard):
+        self.stopped.set()  # notify heartbeat loop to quit.
         logger.debug("Client: Shutting down")
         self._heartbeats_task.cancel()
         await self._channel_pool.close()
@@ -61,9 +63,13 @@ class Client(CtxMgr):
 
     async def _heartbeats(self, sleep=3):
         async def loop():
-            while True:
+            while not self.stopped.is_set():
                 yield api_pb2.ClientHeartbeatRequest(client_id=self.client_id)
-                await asyncio.sleep(sleep)
+                # Wait for event, or until sleep seconds have passed.
+                try:
+                    await asyncio.wait_for(self.stopped.wait(), sleep)
+                except asyncio.TimeoutError:
+                    continue
 
         await self.stub.ClientHeartbeats(loop())
 
