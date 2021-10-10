@@ -25,18 +25,10 @@ class Session(Object):
         if return_copy is True then a copy of the object is returned.
         """
         if return_copy:
-            # Don't modify the underlying object, just return a joined object
-            cls = type(obj)
-            new_obj = cls.__new__(cls)
-            new_obj.args = obj.args
-            obj = new_obj
+            # Don't modify the underlying object, just return a new
+            obj = obj.clone()
 
-        # TODO: move this to the Object class
-        obj.session = self
-        obj.client = self.client
-        obj.object_id = await obj._create_or_get()
-        obj.created = True
-
+        await obj.create_or_get(self, self.client)
         return obj
 
     def __setitem__(self, tag, obj):
@@ -85,12 +77,7 @@ class Session(Object):
         resp = await self.client.stub.SessionGetObjects(req)
         for tag, object_id in resp.object_ids.items():
             obj = self._objects[tag]
-
-            # TODO: move this to the Object class
-            obj.session = self
-            obj.client = self.client
-            obj.object_id = object_id
-            obj.created = True
+            await obj.create_or_get(self, self.client, existing_object_id=object_id)
 
     @asynccontextmanager
     async def run(self, client=None, /, stdout=None, stderr=None):
@@ -104,7 +91,6 @@ class Session(Object):
         self.client = client
 
         # Start session
-        # TODO: pass in a list of tags that need to be pre-created
         req = api_pb2.SessionCreateRequest(client_id=client.client_id)
         resp = await client.stub.SessionCreate(req)
         self.session_id = resp.session_id

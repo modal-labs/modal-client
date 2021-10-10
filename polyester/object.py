@@ -60,6 +60,22 @@ class Object(metaclass=ObjectMeta):
     async def _create_or_get(self):
         raise NotImplementedError
 
+    def clone(self):
+        cls = type(self)
+        new_self = cls.__new__(cls)
+        new_self.args = self.args
+        return new_self
+
+    async def create_or_get(self, session, client, existing_object_id=None):
+        self.session = session
+        self.client = client
+        if existing_object_id:
+            self.object_id = existing_object_id
+        else:
+            self.object_id = await self._create_or_get()
+        self.created = True
+        return self.object_id
+
 
 def requires_create(method):
     # TODO: this does not work for generators (need to do `async for z in await f()` )
