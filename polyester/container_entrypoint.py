@@ -129,7 +129,9 @@ def main(task_id, function_id, input_buffer_id, session_id, module_name, functio
     # The only caveat is a bunch of calls will now cross threads, which adds a bit of overhead?
     if client is None:
         client = Client.current()
-    function_context = FunctionContext(client, task_id, function_id, input_buffer_id, session_id, module_name, function_name)
+    function_context = FunctionContext(
+        client, task_id, function_id, input_buffer_id, session_id, module_name, function_name
+    )
     function = function_context.get_function()
 
     async def generate_outputs():

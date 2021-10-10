@@ -70,7 +70,7 @@ class GRPCClientServicer(api_pb2_grpc.PolyesterClient):
         return api_pb2.BufferWriteResponse(num_pushed=num_pushed, space_left=10000)
 
     async def SessionGetObjects(
-            self, request: api_pb2.SessionGetObjectsRequest, context: grpc.aio.ServicerContext
+        self, request: api_pb2.SessionGetObjectsRequest, context: grpc.aio.ServicerContext
     ) -> api_pb2.SessionGetObjectsResponse:
         return api_pb2.SessionGetObjectsResponse(object_ids={})
 
