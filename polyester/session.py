@@ -2,7 +2,13 @@ import asyncio
 import functools
 import sys
 
-from .async_utils import infinite_loop, retry, synchronizer, asynccontextmanager, TaskContext
+from .async_utils import (
+    TaskContext,
+    asynccontextmanager,
+    infinite_loop,
+    retry,
+    synchronizer,
+)
 from .client import Client
 from .config import logger
 from .function import Function
@@ -97,22 +103,23 @@ class Session(Object):
         resp = await client.stub.SessionCreate(req)
         self.session_id = resp.session_id
 
-        # Create all members
-        # TODO: do this in parallel
-        for tag, obj in self._objects.items():
-            logger.debug(f"Creating object {obj} with tag {tag}")
-            await self.create_or_get_object(obj, tag)
-
-        # TODO: the below is a temporary thing until we unify object creation
-        req = api_pb2.SessionSetObjectsRequest(
-            session_id=self.session_id,
-            object_ids={tag: obj.object_id for tag, obj in self._objects.items()},
-        )
-        await self.client.stub.SessionSetObjects(req)
-
         # Start tracking logs and yield context
         async with TaskContext() as tc:
             tc.create_task(infinite_loop(functools.partial(self._get_logs, stdout, stderr)))
+
+            # Create all members
+            # TODO: do this in parallel
+            for tag, obj in self._objects.items():
+                logger.debug(f"Creating object {obj} with tag {tag}")
+                await self.create_or_get_object(obj, tag)
+
+            # TODO: the below is a temporary thing until we unify object creation
+            req = api_pb2.SessionSetObjectsRequest(
+                session_id=self.session_id,
+                object_ids={tag: obj.object_id for tag, obj in self._objects.items()},
+            )
+            await self.client.stub.SessionSetObjects(req)
+
             yield self
 
         # Stop session (this causes the server to kill any running task)
