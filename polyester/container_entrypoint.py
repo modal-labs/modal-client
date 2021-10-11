@@ -129,7 +129,7 @@ def main(container_args, client=None):
     # This is good because if the function is long running then we the client can still send heartbeats
     # The only caveat is a bunch of calls will now cross threads, which adds a bit of overhead?
     if client is None:
-        client = Client.current()
+        client = Client.from_env()
     function_context = FunctionContext(container_args, client)
     function = function_context.get_function()
 

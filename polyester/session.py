@@ -84,7 +84,7 @@ class Session(Object):
     @asynccontextmanager
     async def run(self, client=None, /, stdout=None, stderr=None):
         if client is None:
-            client = await Client.current()
+            client = await Client.from_env()
         if stdout is None:
             stdout = sys.stdout.buffer
         if stderr is None:

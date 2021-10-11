@@ -6,9 +6,7 @@ import grpc.aio
 
 from .async_utils import infinite_loop, retry, synchronizer
 from .config import config, logger
-from .ctx_mgr_utils import CtxMgr
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT, ChannelPool
-from .local_server import LocalServer
 from .object import ObjectMeta
 from .proto import api_pb2, api_pb2_grpc
 from .serialization import Pickler, Unpickler
@@ -16,7 +14,9 @@ from .server_connection import GRPCConnectionFactory
 
 
 @synchronizer
-class Client(CtxMgr):
+class Client:
+    current_from_env = None
+
     def __init__(
         self,
         server_url,
@@ -54,7 +54,8 @@ class Client(CtxMgr):
 
         logger.debug("Client: Done starting")
 
-    async def _stop(self, hard):
+    async def _stop(self):
+        # TODO: we should trigger this using an exit handler
         self.stopped.set()  # notify heartbeat loop to quit.
         logger.debug("Client: Shutting down")
         self._heartbeats_task.cancel()
@@ -88,8 +89,18 @@ class Client(CtxMgr):
         # TODO: probably should not be here
         return Unpickler(self, ObjectMeta.name_to_type, io.BytesIO(s)).load()
 
+    async def __aenter__(self):
+        await self._start()
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        await self._stop()
+
     @classmethod
-    async def _create(cls):
+    async def from_env(cls):
+        if cls.current_from_env is not None:
+            return cls.current_from_env
+
         server_url = config["server.url"]
         token_id = config["token.id"]
         token_secret = config["token.secret"]
@@ -106,4 +117,7 @@ class Client(CtxMgr):
             client_type = api_pb2.ClientType.CLIENT
             credentials = None
 
-        return Client(server_url, client_type, credentials)
+        client = Client(server_url, client_type, credentials)
+        await client._start()
+        cls.current_from_env = client  # TODO: minor risk of overwriting one
+        return client
