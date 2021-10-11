@@ -54,10 +54,10 @@ class Object(metaclass=ObjectMeta):
 
         # Default values for non-created objects
         self.created = False
+        self.client = None
         self.session = None
-        self.tag = None
 
-    async def _create_or_get(self):
+    async def create_or_get(self):
         raise NotImplementedError
 
     def clone(self):
@@ -66,15 +66,18 @@ class Object(metaclass=ObjectMeta):
         new_self.args = self.args
         return new_self
 
-    async def create_or_get(self, session, client, existing_object_id=None):
+    async def set_context(self, session, client):
         self.session = session
         self.client = client
-        if existing_object_id:
-            self.object_id = existing_object_id
-        else:
-            self.object_id = await self._create_or_get()
+
+    async def create_from_scratch(self):
+        self.object_id = await self.create_or_get()
         self.created = True
         return self.object_id
+
+    async def create_from_id(self, object_id):
+        self.object_id = object_id
+        self.created = True
 
 
 def requires_create(method):

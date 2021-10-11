@@ -14,7 +14,7 @@ class Queue(Object):
     def __init__(self):
         super().__init__()
 
-    async def _create_or_get(self):
+    async def create_or_get(self):
         """This creates a queue on the server and returns its id."""
         # TODO: we should create the queue in a session here
         response = await self.client.stub.QueueCreate(api_pb2.Empty())

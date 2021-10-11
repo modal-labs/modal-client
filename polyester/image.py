@@ -46,7 +46,7 @@ class Layer(Object):
             )
         )
 
-    async def _create_or_get(self):
+    async def create_or_get(self):
         if self.args.tag:
             req = api_pb2.LayerGetByTagRequest(tag=self.args.tag)
             resp = await self.client.stub.LayerGetByTag(req)
@@ -55,7 +55,7 @@ class Layer(Object):
         else:
             # Recursively build base layers
             base_layer_objs = await asyncio.gather(
-                *(self.session.create_or_get(layer) for layer in self.args.base_layers.values())
+                *(self.session.create_or_get_object(layer) for layer in self.args.base_layers.values())
             )
             base_layers_pb2s = [
                 api_pb2.BaseLayer(docker_tag=docker_tag, layer_id=layer.object_id)
@@ -114,7 +114,7 @@ class EnvDict(Object):
             )
         )
 
-    async def _create_or_get(self):
+    async def create_or_get(self):
         req = api_pb2.EnvDictCreateRequest(session_id=self.session.session_id, env_dict=self.args.env_dict)
         resp = await self.client.stub.EnvDictCreate(req)
         return resp.env_dict_id
@@ -128,14 +128,14 @@ class Image(Object):
             local_id = "i:(%s)" % layer.args.local_id
         super().__init__(args=dict(layer=layer, env_dict=env_dict, local_id=local_id, local=local, **kwargs))
 
-    async def _create_or_get(self):
+    async def create_or_get(self):
         if self.args.env_dict:
-            env_dict_id = await self.session.create_or_get(args.env_dict)
+            env_dict_id = await self.session.create_or_get_object(args.env_dict)
         else:
             env_dict_id = None
 
         if self.args.layer:
-            layer = await self.session.create_or_get(self.args.layer)
+            layer = await self.session.create_or_get_object(self.args.layer)
             layer_id = layer.object_id
         else:
             layer_id = None

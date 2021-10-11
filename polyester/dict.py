@@ -16,7 +16,7 @@ class Dict(Object):
     def _serialize_values(self, data):
         return {k: self.client.serialize(v) for k, v in data.items()}
 
-    async def _create_or_get(self):
+    async def create_or_get(self):
         serialized = self._serialize_values(self.args.init_data)
         req = api_pb2.DictCreateRequest(session_id=self.session.session_id, data=serialized)
         response = await self.client.stub.DictCreate(req)

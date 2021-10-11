@@ -19,7 +19,7 @@ class Session(Object):
         self._objects = {}
         super().__init__()
 
-    async def create_or_get(self, obj, tag=None, return_copy=False):
+    async def create_or_get_object(self, obj, tag=None, return_copy=False):
         """Used to create objects dynamically on a running session.
 
         if return_copy is True then a copy of the object is returned.
@@ -28,7 +28,8 @@ class Session(Object):
             # Don't modify the underlying object, just return a new
             obj = obj.clone()
 
-        await obj.create_or_get(self, self.client)
+        await obj.set_context(self, self.client)
+        await obj.create_from_scratch()
         return obj
 
     def __setitem__(self, tag, obj):
@@ -77,7 +78,8 @@ class Session(Object):
         resp = await self.client.stub.SessionGetObjects(req)
         for tag, object_id in resp.object_ids.items():
             obj = self._objects[tag]
-            await obj.create_or_get(self, self.client, existing_object_id=object_id)
+            await obj.set_context(self, self.client)
+            await obj.create_from_id(object_id)
 
     @asynccontextmanager
     async def run(self, client=None, /, stdout=None, stderr=None):
@@ -99,7 +101,7 @@ class Session(Object):
         # TODO: do this in parallel
         for tag, obj in self._objects.items():
             logger.debug(f"Creating object {obj} with tag {tag}")
-            await self.create_or_get(obj, tag)
+            await self.create_or_get_object(obj, tag)
 
         # TODO: the below is a temporary thing until we unify object creation
         req = api_pb2.SessionSetObjectsRequest(
