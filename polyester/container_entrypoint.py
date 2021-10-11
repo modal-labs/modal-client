@@ -1,6 +1,6 @@
 import asyncio
+import google.protobuf.json_format
 import inspect
-import json
 import sys
 import threading
 import traceback
@@ -21,13 +21,13 @@ from .proto import api_pb2
 class FunctionContext:
     """This class isn't much more than a helper method for some gRPC calls."""
 
-    def __init__(self, args_from_worker, client):
-        self.task_id = args_from_worker["task_id"]
-        self.function_id = args_from_worker["function_id"]
-        self.input_buffer_id = args_from_worker["input_buffer_id"]
-        self.session_id = args_from_worker["session_id"]
-        self.module_name = args_from_worker["module_name"]
-        self.function_name = args_from_worker["function_name"]
+    def __init__(self, container_args, client):
+        self.task_id = container_args.task_id
+        self.function_id = container_args.function_id
+        self.input_buffer_id = container_args.input_buffer_id
+        self.session_id = container_args.session_id
+        self.module_name = container_args.module_name
+        self.function_name = container_args.function_name
         self.client = client
 
     async def get_function(self) -> typing.Callable:
@@ -124,13 +124,13 @@ async def call_function(
         )
 
 
-def main(args_from_worker, client=None):
+def main(container_args, client=None):
     # Note that we're creating the client in a synchronous context, but it will be running in a separate thread.
     # This is good because if the function is long running then we the client can still send heartbeats
     # The only caveat is a bunch of calls will now cross threads, which adds a bit of overhead?
     if client is None:
         client = Client.current()
-    function_context = FunctionContext(args_from_worker, client)
+    function_context = FunctionContext(container_args, client)
     function = function_context.get_function()
 
     async def generate_outputs():
@@ -143,6 +143,9 @@ def main(args_from_worker, client=None):
 
 if __name__ == "__main__":
     logger.debug("Container: starting")
-    args = json.loads(sys.argv[1])
-    main(args)
+    container_args = google.protobuf.json_format.Parse(
+        sys.argv[1],
+        api_pb2.ContainerArguments(),
+    )
+    main(container_args)
     logger.debug("Container: done")

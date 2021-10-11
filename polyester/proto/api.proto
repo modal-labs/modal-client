@@ -14,6 +14,15 @@ message Empty {
 
 }
 
+message ContainerArguments{  // This is used to pass data from the worker to the container
+  string task_id = 1;
+  string function_id = 2;
+  string input_buffer_id = 3;
+  string session_id = 4;
+  string module_name = 5;
+  string function_name = 6;
+}
+
 message GenericResult {  // Used for both tasks and function outputs
   enum Status {UNKNOWN = 0; SUCCESS = 1; FAILURE = 2;}
   Status status = 1;
