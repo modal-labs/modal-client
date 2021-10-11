@@ -34,9 +34,17 @@ async def _run_container(servicer, module_name, function_name):
         servicer.inputs = _get_inputs(client)
 
         # Note that main is a synchronous function, so we need to run it in a separate thread
+        args_from_worker = dict(
+            task_id="ta-123",
+            function_id="fu-123",
+            input_buffer_id=INPUT_BUFFER,
+            session_id="se-123",
+            module_name=module_name,
+            function_name=function_name
+        )
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(
-            None, main, "ta-123", "fu-123", INPUT_BUFFER, "se-123", module_name, function_name, client
+            None, main, args_from_worker, client
         )
 
         return client, servicer.outputs
