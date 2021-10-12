@@ -8,7 +8,7 @@ import uuid
 import cloudpickle
 from google.protobuf.any_pb2 import Any
 
-from .async_utils import retry, synchronizer
+from .async_utils import retry, synchronizer, create_task
 from .buffer_utils import buffered_read_all, buffered_write_all
 from .client import Client
 from .config import config, logger
@@ -113,7 +113,7 @@ class Invocation:
 
         # send_EOF is True for now, for easier testing and iteration. Sending this signal also terminates
         # the function container, so we might want to not do that in the future and rely on the timeout instead.
-        pump_task = asyncio.create_task(buffered_write_all(client.stub.FunctionCall, generate_inputs(), send_EOF=True))
+        pump_task = create_task(buffered_write_all(client.stub.FunctionCall, generate_inputs(), send_EOF=True))
 
         request = api_pb2.FunctionGetNextOutputRequest(function_id=function_id)
 

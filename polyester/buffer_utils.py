@@ -1,7 +1,7 @@
 import asyncio
 import uuid
 
-from .async_utils import retry
+from .async_utils import retry, create_task
 from .config import logger
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .proto import api_pb2
@@ -21,7 +21,7 @@ async def buffered_write_all(fn, request_gen, /, send_EOF=True):
             requests.append(r)
             drain_event.set()
 
-    drain_task = asyncio.create_task(drain_generator())
+    drain_task = create_task(drain_generator())
 
     next_idx_to_send = 0
     # `max_idx_to_send` is updated based on how much space the server says is left,
