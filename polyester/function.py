@@ -209,7 +209,7 @@ class Function(Object):
 
             return gen()
         else:
-            return first_result
+            return invocation.process_result(first_result)
 
     def get_raw_f(self):
         return self.args.raw_f
