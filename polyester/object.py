@@ -75,7 +75,7 @@ class Object(metaclass=ObjectMeta):
         self.created = True
         return self.object_id
 
-    async def create_from_id(self, object_id):
+    def create_from_id(self, object_id):
         self.object_id = object_id
         self.created = True
 

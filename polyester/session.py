@@ -85,7 +85,7 @@ class Session(Object):
         for tag, object_id in resp.object_ids.items():
             obj = self._objects[tag]
             await obj.set_context(self, self.client)
-            await obj.create_from_id(object_id)
+            obj.create_from_id(object_id)
 
     @asynccontextmanager
     async def run(self, client=None, /, stdout=None, stderr=None):
