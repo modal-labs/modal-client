@@ -104,7 +104,7 @@ class Invocation:
         output_buffer_id = response.output_buffer_id
 
         async def generate_inputs():
-            for arg in iter(inputs):
+            async for arg in inputs:
                 item = pack_input_buffer_item(client.serialize(arg), client.serialize(kwargs), output_buffer_id)
 
                 buffer_req = api_pb2.BufferWriteRequest(item=item, buffer_id=input_buffer_id)
@@ -187,13 +187,17 @@ class Function(Object):
 
     @requires_create
     async def map(self, inputs, window=100, kwargs={}):
-        args = [(arg,) for arg in inputs]
-        async for item in await Invocation.create(self.object_id, args, kwargs, self.client):
+        async def get_inputs():
+            for arg in inputs:
+                yield (arg,)
+        async for item in await Invocation.create(self.object_id, get_inputs(), kwargs, self.client):
             yield item
 
     @requires_create
     async def __call__(self, *args, **kwargs):
-        invocation = await Invocation.create(self.object_id, [args], kwargs, self.client)
+        async def get_inputs():
+            yield args
+        invocation = await Invocation.create(self.object_id, get_inputs(), kwargs, self.client)
 
         # dumb but we need to pop a value from the iterator to see if it's incomplete.
         first_result = await invocation.peek()
