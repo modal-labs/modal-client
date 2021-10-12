@@ -1,3 +1,4 @@
+import aiostream
 import asyncio
 import importlib
 import inspect
@@ -187,17 +188,15 @@ class Function(Object):
 
     @requires_create
     async def map(self, inputs, window=100, kwargs={}):
-        async def get_inputs():
-            for arg in inputs:
-                yield (arg,)
-        async for item in await Invocation.create(self.object_id, get_inputs(), kwargs, self.client):
+        inputs = aiostream.stream.iterate(inputs)
+        inputs = aiostream.stream.map(inputs, lambda arg: (arg,))
+        async for item in await Invocation.create(self.object_id, inputs, kwargs, self.client):
             yield item
 
     @requires_create
     async def __call__(self, *args, **kwargs):
-        async def get_inputs():
-            yield args
-        invocation = await Invocation.create(self.object_id, get_inputs(), kwargs, self.client)
+        inputs = aiostream.stream.iterate([args])
+        invocation = await Invocation.create(self.object_id, inputs, kwargs, self.client)
 
         # dumb but we need to pop a value from the iterator to see if it's incomplete.
         first_result = await invocation.peek()
