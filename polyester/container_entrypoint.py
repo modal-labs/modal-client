@@ -1,5 +1,4 @@
 import asyncio
-import google.protobuf.json_format
 import inspect
 import sys
 import threading
@@ -7,8 +6,11 @@ import traceback
 import typing
 import uuid
 
+import aiostream
+import google.protobuf.json_format
+
 from .async_utils import synchronizer
-from .buffer_utils import buffered_read_all, buffered_write_all
+from .buffer_utils import buffered_rpc_read, buffered_rpc_write
 from .client import Client
 from .config import logger
 from .function import Function, pack_output_buffer_item, unpack_input_buffer_item
@@ -37,19 +39,31 @@ class FunctionContext:
         await session.initialize(self.session_id, self.client)
         return fun.get_raw_f()
 
-    def get_inputs(
+    async def generate_inputs(
         self,
     ) -> typing.AsyncIterator[api_pb2.BufferReadResponse]:
         request = api_pb2.FunctionGetNextInputRequest(
             function_id=self.function_id,
             task_id=self.task_id,
         )
-        return buffered_read_all(
-            self.client.stub.FunctionGetNextInput, request, self.input_buffer_id, read_until_EOF=False
-        )
+        while True:
+            response = await buffered_rpc_read(
+                self.client.stub.FunctionGetNextInput, request, self.input_buffer_id, timeout=GRPC_REQUEST_TIMEOUT
+            )
+
+            if response.status == api_pb2.BufferReadResponse.BufferReadStatus.TIMEOUT:
+                logger.info(f"Task {self.task_id} input request timed out.")
+                break
+
+            yield response.item
+
+            if response.item.EOF:
+                logger.info(f"Task {self.task_id} input got EOF.")
+                break
 
     async def output(self, request):
-        return await self.client.stub.FunctionOutput(request)
+        # No timeout so this can block forever.
+        await buffered_rpc_write(self.client.stub.FunctionOutput, request)
 
 
 def make_output_request(input_id, output_buffer_id, **kwargs):
@@ -60,35 +74,43 @@ def make_output_request(input_id, output_buffer_id, **kwargs):
     return api_pb2.FunctionOutputRequest(input_id=input_id, buffer_req=buffer_req)
 
 
-async def asyncify_generator(gen):
-    for g in gen:
-        yield g
+def make_eof_request(output_buffer_id):
+    item = api_pb2.BufferItem(EOF=True)
+    buffer_req = api_pb2.BufferWriteRequest(item=item, buffer_id=output_buffer_id)
+    return api_pb2.FunctionOutputRequest(buffer_req=buffer_req)
 
 
-async def call_function(
+def call_function(
     function: typing.Callable,
     buffer_item: api_pb2.BufferItem,
     serializer: typing.Callable[[typing.Any], bytes],
     deserializer: typing.Callable[[bytes], typing.Any],
 ) -> (str, api_pb2.GenericResult):
-    input_id = buffer_item.item_id
 
     input = unpack_input_buffer_item(buffer_item)
+    output_buffer_id = input.output_buffer_id
+
+    if buffer_item.EOF:
+        # Let the caller know that all inputs have been processed.
+        # TODO: This isn't exactly part of the function call, so could be separated out.
+        yield make_eof_request(output_buffer_id)
+        return
+
+    input_id = buffer_item.item_id
     args = deserializer(input.args)
     kwargs = deserializer(input.kwargs)
-    output_buffer_id = input.output_buffer_id
 
     try:
         res = function(*args, **kwargs)
 
         if inspect.iscoroutine(res):
-            res = await res
-
-        if inspect.isgenerator(res):
-            res = asyncify_generator(res)
+            res = asyncio.run(res)
 
         if inspect.isasyncgen(res):
-            async for value in res:
+            res = synchronizer._run_generator_sync(res)
+
+        if inspect.isgenerator(res):
+            for value in res:
                 yield make_output_request(
                     input_id,
                     output_buffer_id,
@@ -134,15 +156,15 @@ def main(container_args, client=None):
     # The only caveat is a bunch of calls will now cross threads, which adds a bit of overhead?
     if client is None:
         client = Client.from_env()
+
     function_context = FunctionContext(container_args, client)
     function = function_context.get_function()
 
-    async def generate_outputs():
-        async for buffer_item in function_context.get_inputs():
-            async for output in call_function(function, buffer_item, client.serialize, client.deserialize):
-                yield output
-
-    asyncio.run(buffered_write_all(function_context.output, generate_outputs()))
+    for buffer_item in function_context.generate_inputs():
+        for output in call_function(function, buffer_item, client.serialize, client.deserialize):
+            # Note: this blocks the call_function as well. In the future we might want to stream outputs
+            # back asynchronously, but then block the call_function if there is back-pressure.
+            function_context.output(output)
 
 
 if __name__ == "__main__":
