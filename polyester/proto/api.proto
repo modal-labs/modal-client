@@ -26,7 +26,7 @@ message ContainerArguments{  // This is used to pass data from the worker to the
 message GenericResult {  // Used for both tasks and function outputs
   enum Status {UNKNOWN = 0; SUCCESS = 1; FAILURE = 2;}
   Status status = 1;
-  string exception = 2;
+  bytes exception = 2;
   int32 exitcode = 3;
   string traceback = 4;
   bytes data = 5;

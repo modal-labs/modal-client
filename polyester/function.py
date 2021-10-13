@@ -123,7 +123,8 @@ class Invocation:
 
     def process_result(self, result):
         if result.status != api_pb2.GenericResult.Status.SUCCESS:
-            raise Exception("Remote exception: %s\n%s" % (result.exception, result.traceback))
+            exc = self.client.deserialize(result.exception)
+            raise exc
 
         return self.client.deserialize(result.data)
 
