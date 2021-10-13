@@ -122,7 +122,8 @@ async def call_function(
             input_id,
             output_buffer_id,
             status=api_pb2.GenericResult.Status.FAILURE,
-            exception=serializer(exc),
+            data=serializer(exc),
+            exception=repr(exc),
             traceback=traceback.format_exc(),
         )
 
