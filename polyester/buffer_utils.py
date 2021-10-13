@@ -1,7 +1,7 @@
 import asyncio
 import uuid
 
-from .async_utils import retry, create_task
+from .async_utils import create_task, retry
 from .config import logger
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .proto import api_pb2
@@ -14,12 +14,33 @@ async def buffered_write_all(fn, request_gen, /, send_EOF=True):
 
     drain_event = asyncio.Event()
     requests = []
+    # container_entrypoint map can use this in theory to write to multiple output buffers at once.
+    buffer_ids = set()
+
     # We want to asynchronously pull from the generator, while still allowing requests
     # to be streamed back.
     async def drain_generator():
-        async for r in request_gen:
-            requests.append(r)
+        idx = 0
+
+        async for req in request_gen:
+            buffer_ids.add(req.buffer_req.buffer_id)
+            req.buffer_req.idempotency_key = idempotency_key
+            req.buffer_req.idx = idx
+            idx += 1
+
+            requests.append(req)
             drain_event.set()
+
+        if buffer_ids and send_EOF:
+            for buffer_id in buffer_ids:
+                # send EOF
+                req_type = type(requests[0])
+                eof_item = api_pb2.BufferItem(EOF=True)
+                req = req_type(buffer_req=api_pb2.BufferWriteRequest(item=eof_item, buffer_id=buffer_id))
+                requests.append(req)
+                drain_event.set()
+
+        drain_event.set()
 
     drain_task = create_task(drain_generator())
 
@@ -28,24 +49,11 @@ async def buffered_write_all(fn, request_gen, /, send_EOF=True):
     # but starts off at a default value of 100.
     max_idx_to_send = INITIAL_STREAM_SIZE
     idempotency_key = str(uuid.uuid4())
-    # container_entrypoint map can use this in theory to write to multiple output buffers at once.
-    buffer_ids = set()
     fn_name = fn.__name__  # for logging
 
     async def write_request_generator():
         for idx in range(next_idx_to_send, max_idx_to_send):
-            request = requests[idx]
-            buffer_ids.add(request.buffer_req.buffer_id)
-            request.buffer_req.idempotency_key = idempotency_key
-            request.buffer_req.idx = idx
-            yield request
-
-    async def eof_request_generator():
-        for buffer_id in buffer_ids:
-            # send EOF
-            req_type = type(requests[0])
-            eof_item = api_pb2.BufferItem(EOF=True)
-            yield req_type(buffer_req=api_pb2.BufferWriteRequest(item=eof_item, buffer_id=buffer_id))
+            yield requests[idx]
 
     while next_idx_to_send < len(requests) or not drain_task.done():
         if next_idx_to_send == len(requests):
@@ -73,9 +81,6 @@ async def buffered_write_all(fn, request_gen, /, send_EOF=True):
 
         next_idx_to_send += response.num_pushed
         max_idx_to_send = next_idx_to_send + response.space_left
-
-    if buffer_ids and send_EOF:
-        await retry(fn)(eof_request_generator())
 
 
 async def buffered_read_all(fn, request, buffer_id, /, read_until_EOF=True):
