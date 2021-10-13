@@ -176,7 +176,7 @@ class Invocation:
             result = unpack_output_buffer_item(output)
 
             if result.gen_status == api_pb2.GenericResult.GeneratorStatus.COMPLETE:
-                # TODO: I think this is not needed anymore.
+                # Empty generators must at least produce a stop token.
                 continue
 
             yield self.process_result(result)
