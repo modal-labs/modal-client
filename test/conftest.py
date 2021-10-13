@@ -56,18 +56,14 @@ class GRPCClientServicer(api_pb2_grpc.PolyesterClient):
 
     async def FunctionGetNextInput(
         self, request: api_pb2.FunctionGetNextInputRequest, context: grpc.aio.ServicerContext
-    ) -> typing.AsyncIterator[api_pb2.BufferReadResponse]:
-        for input in self.inputs:
-            yield input
+    ) -> api_pb2.BufferReadResponse:
+        return self.inputs.pop(0)
 
     async def FunctionOutput(
-        self, requests: typing.AsyncIterator[api_pb2.FunctionOutputRequest], context: grpc.aio.ServicerContext
-    ) -> api_pb2.Empty:
-        num_pushed = 0
-        async for request in requests:
-            self.outputs.append(request)
-            num_pushed += 1
-        return api_pb2.BufferWriteResponse(num_pushed=num_pushed, space_left=10000)
+        self, request: api_pb2.FunctionOutputRequest, context: grpc.aio.ServicerContext
+    ) -> api_pb2.BufferWriteResponse:
+        self.outputs.append(request)
+        return api_pb2.BufferWriteResponse(status=api_pb2.BufferWriteResponse.BufferWriteStatus.SUCCESS)
 
     async def SessionGetObjects(
         self, request: api_pb2.SessionGetObjectsRequest, context: grpc.aio.ServicerContext

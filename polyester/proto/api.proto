@@ -51,7 +51,6 @@ message BufferWriteRequest {
 message BufferWriteResponse {
   enum BufferWriteStatus {UNKNOWN = 0; SUCCESS = 1; BUFFER_FULL = 2;}
   BufferWriteStatus status = 1;
-  int32 space_left = 2;
 }
 
 message BufferReadRequest {

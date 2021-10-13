@@ -18,8 +18,10 @@ def _get_inputs(client):
     item = pack_input_buffer_item(client.serialize((42,)), client.serialize({}), OUTPUT_BUFFER)
 
     return [
-        api_pb2.BufferReadResponse(item=item),
-        api_pb2.BufferReadResponse(item=api_pb2.BufferItem(EOF=True)),
+        api_pb2.BufferReadResponse(item=item, status=api_pb2.BufferReadResponse.BufferReadStatus.SUCCESS),
+        api_pb2.BufferReadResponse(
+            item=api_pb2.BufferItem(EOF=True), status=api_pb2.BufferReadResponse.BufferReadStatus.SUCCESS
+        ),
     ]
 
 
