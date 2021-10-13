@@ -170,7 +170,9 @@ class DebianSlim(Image):
             python_version=python_version,
         )
 
-    def add_python_packages(self, python_packages):
+    def add_python_packages(self, python_packages, find_links=None):
+        find_links_arg = f"-f {find_links}" if find_links else ""
+
         layer = Layer(
             base_layers={
                 "base": self.args.layer,
@@ -178,7 +180,7 @@ class DebianSlim(Image):
             },
             dockerfile_commands=[
                 "FROM builder as builder-vehicle",
-                "RUN pip wheel %s -w /tmp/wheels" % " ".join(python_packages),
+                f"RUN pip wheel {' '.join(python_packages)} -w /tmp/wheels {find_links_arg}",
                 "FROM base",
                 "COPY --from=builder-vehicle /tmp/wheels /tmp/wheels",
                 "RUN pip install /tmp/wheels/*",
