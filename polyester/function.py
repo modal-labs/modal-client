@@ -104,17 +104,16 @@ class Invocation:
         input_buffer_id = response.input_buffer_id
         output_buffer_id = response.output_buffer_id
 
-        async def generate_inputs():
-            async for arg in inputs:
-                item = pack_input_buffer_item(client.serialize(arg), client.serialize(kwargs), output_buffer_id)
+        def get_protobuf(arg):
+            item = pack_input_buffer_item(client.serialize(arg), client.serialize(kwargs), output_buffer_id)
+            buffer_req = api_pb2.BufferWriteRequest(item=item, buffer_id=input_buffer_id)
+            return api_pb2.FunctionCallRequest(function_id=function_id, buffer_req=buffer_req)
 
-                buffer_req = api_pb2.BufferWriteRequest(item=item, buffer_id=input_buffer_id)
-
-                yield api_pb2.FunctionCallRequest(function_id=function_id, buffer_req=buffer_req)
+        inputs = aiostream.stream.map(inputs, get_protobuf)
 
         # send_EOF is True for now, for easier testing and iteration. Sending this signal also terminates
         # the function container, so we might want to not do that in the future and rely on the timeout instead.
-        pump_task = create_task(buffered_write_all(client.stub.FunctionCall, generate_inputs(), send_EOF=True))
+        pump_task = create_task(buffered_write_all(client.stub.FunctionCall, inputs, send_EOF=True))
 
         request = api_pb2.FunctionGetNextOutputRequest(function_id=function_id)
 
