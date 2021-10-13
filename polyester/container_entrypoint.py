@@ -113,12 +113,16 @@ async def call_function(
             )
 
     except Exception as exc:
-        # Note that we have to stringify the exception/traceback since
-        # it isn't always possible to unpickle on the client side
+        # Note: we're not serializing the traceback since it contains
+        # local references that means we can't unpickle it. We *are*
+        # serializing the exception, which may have some issues (there
+        # was an earlier note about it that it might not be possible
+        # to unpickle it in some cases). Let's watch oout for issues.
         yield make_output_request(
             input_id,
             output_buffer_id,
             status=api_pb2.GenericResult.Status.FAILURE,
+            data=serializer(exc),
             exception=repr(exc),
             traceback=traceback.format_exc(),
         )

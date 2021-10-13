@@ -5,6 +5,7 @@ import inspect
 import os
 import sys
 import uuid
+import warnings
 
 import cloudpickle
 from google.protobuf.any_pb2 import Any
@@ -18,6 +19,10 @@ from .mount import Mount, create_package_mounts
 from .object import Object, requires_create
 from .proto import api_pb2
 from .queue import Queue
+
+
+class RemoteException(Exception):
+    pass
 
 
 class FunctionInfo:
@@ -123,7 +128,15 @@ class Invocation:
 
     def process_result(self, result):
         if result.status != api_pb2.GenericResult.Status.SUCCESS:
-            raise Exception("Remote exception: %s\n%s" % (result.exception, result.traceback))
+            if result.data:
+                try:
+                    exc = self.client.deserialize(result.data)
+                except:
+                    exc = None
+                    warnings.warn("Could not deserialize remote exception!")
+                if exc is not None:
+                    raise exc
+            raise RemoteException(result.exception)
 
         return self.client.deserialize(result.data)
 
