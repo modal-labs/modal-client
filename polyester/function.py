@@ -14,15 +14,12 @@ from .async_utils import create_task, retry, synchronizer
 from .buffer_utils import buffered_rpc_read, buffered_rpc_write
 from .client import Client
 from .config import config, logger
+from .exception import RemoteException
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .mount import Mount, create_package_mounts
 from .object import Object, requires_create
 from .proto import api_pb2
 from .queue import Queue
-
-
-class RemoteException(Exception):
-    pass
 
 
 class FunctionInfo:

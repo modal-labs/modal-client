@@ -5,6 +5,7 @@ from typing import Dict
 
 from .async_utils import retry
 from .config import config, logger
+from .exception import RemoteException
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .mount import get_sha256_hex_from_content  # TODO: maybe not
 from .object import Object, requires_create
@@ -92,11 +93,11 @@ class Layer(Object):
             if not response.result.status:
                 continue
             elif response.result.status == api_pb2.GenericResult.Status.FAILURE:
-                raise Exception(response.result.exception)
+                raise RemoteException(response.result.exception)
             elif response.result.status == api_pb2.GenericResult.Status.SUCCESS:
                 break
             else:
-                raise Exception("Unknown status %s!" % response.result.status)
+                raise RemoteException("Unknown status %s!" % response.result.status)
 
         return layer_id
 
