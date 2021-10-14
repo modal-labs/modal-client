@@ -91,8 +91,69 @@ def unpack_output_buffer_item(buffer_item: api_pb2.BufferItem) -> api_pb2.Generi
     return output
 
 
+def process_result(client, result):
+    if result.status != api_pb2.GenericResult.Status.SUCCESS:
+        if result.data:
+            try:
+                exc = client.deserialize(result.data)
+            except Exception:
+                exc = None
+                warnings.warn("Could not deserialize remote exception!")
+            if exc is not None:
+                raise exc
+        raise RemoteException(result.exception)
+
+    return client.deserialize(result.data)
+
+
 @synchronizer
 class Invocation:
+    def __init__(self, client, function_id, output_buffer_id):
+        self.client = client
+        self.function_id = function_id
+        self.output_buffer_id = output_buffer_id
+
+    @staticmethod
+    async def create(function_id, args, kwargs, client):
+        request = api_pb2.FunctionMapRequest(function_id=function_id)
+        response = await retry(client.stub.FunctionMap)(request)
+
+        input_buffer_id = response.input_buffer_id
+        output_buffer_id = response.output_buffer_id
+
+        item = pack_input_buffer_item(client.serialize(args), client.serialize(kwargs), output_buffer_id)
+        buffer_req = api_pb2.BufferWriteRequest(item=item, buffer_id=input_buffer_id)
+        request = api_pb2.FunctionCallRequest(function_id=function_id, buffer_req=buffer_req)
+        await buffered_rpc_write(client.stub.FunctionCall, request)
+
+        return Invocation(client, function_id, output_buffer_id)
+
+    async def run(self):
+        async def get_item():
+            request = api_pb2.FunctionGetNextOutputRequest(function_id=self.function_id)
+            response = await buffered_rpc_read(
+                self.client.stub.FunctionGetNextOutput, request, self.output_buffer_id, timeout=None
+            )
+            return unpack_output_buffer_item(response.item)
+
+        first_result = await get_item()
+        if first_result.gen_status != api_pb2.GenericResult.GeneratorStatus.NOT_GENERATOR:
+
+            @synchronizer
+            async def gen():
+                cur_result = first_result
+                while cur_result.gen_status != api_pb2.GenericResult.GeneratorStatus.COMPLETE:
+                    yield process_result(self.client, cur_result)
+
+                    cur_result = await get_item()
+
+            return gen()
+        else:
+            return process_result(self.client, first_result)
+
+
+@synchronizer
+class MapInvocation:
     # TODO: should this be an object?
     def __init__(self, client, response_gen):
         self.client = client
@@ -113,14 +174,7 @@ class Invocation:
                 request = api_pb2.FunctionCallRequest(function_id=function_id, buffer_req=buffer_req)
                 # No timeout so this can block forever.
                 yield await buffered_rpc_write(client.stub.FunctionCall, request)
-
-            # TODO: removed in Andrew's PR
-            item = pack_input_buffer_item(None, None, output_buffer_id)
-            item.EOF = True
-            request = api_pb2.FunctionCallRequest(
-                buffer_req=api_pb2.BufferWriteRequest(item=item, buffer_id=input_buffer_id)
-            )
-            yield await buffered_rpc_write(client.stub.FunctionCall, request)
+            yield
 
         async def poll_outputs():
             """Keep trying to dequeue outputs."""
@@ -130,52 +184,36 @@ class Invocation:
                     client.stub.FunctionGetNextOutput, request, output_buffer_id, timeout=None
                 )
                 yield response
-                if response.item.EOF:
-                    break
 
-        pump_stream = stream.preserve(pump_inputs())
-        poll_stream = stream.preserve(poll_outputs())
-        response_gen = stream.merge(pump_stream, poll_stream)
+        response_gen = stream.merge(pump_inputs(), poll_outputs())
 
-        return Invocation(client, response_gen)
-
-    def process_result(self, result):
-        if result.status != api_pb2.GenericResult.Status.SUCCESS:
-            if result.data:
-                try:
-                    exc = self.client.deserialize(result.data)
-                except:
-                    exc = None
-                    warnings.warn("Could not deserialize remote exception!")
-                if exc is not None:
-                    raise exc
-            raise RemoteException(result.exception)
-
-        return self.client.deserialize(result.data)
-
-    async def peek(self):
-        """Get the next output from the iterator. Not named __anext__ because it returns the raw output,
-        and not the deserialized data that the main iterator returns."""
-
-        first_response = await stream.until(self.response_gen, lambda r: isinstance(r, api_pb2.BufferReadResponse))
-        return first_response.item
+        return MapInvocation(client, response_gen)
 
     async def __aiter__(self):
+        num_inputs = 0
+        have_all_inputs = False
+        num_outputs = 0
         async with self.response_gen.stream() as streamer:
             async for response in streamer:
-                if not isinstance(response, api_pb2.BufferReadResponse):
-                    continue
+                if response is None:
+                    have_all_inputs = True
+                elif isinstance(response, api_pb2.BufferWriteResponse):
+                    assert not have_all_inputs
+                    num_inputs += 1
+                elif isinstance(response, api_pb2.BufferReadResponse):
+                    result = unpack_output_buffer_item(response.item)
 
-                if response.item.EOF:
+                    if result.gen_status != api_pb2.GenericResult.GeneratorStatus.INCOMPLETE:
+                        num_outputs += 1
+
+                    if result.gen_status != api_pb2.GenericResult.GeneratorStatus.COMPLETE:
+                        yield process_result(self.client, result)
+                else:
+                    assert False, f"Got unknown type in invocation stream: {type(response)}"
+
+                assert num_outputs <= num_inputs
+                if have_all_inputs and num_outputs == num_inputs:
                     break
-
-                result = unpack_output_buffer_item(response.item)
-
-                if result.gen_status == api_pb2.GenericResult.GeneratorStatus.COMPLETE:
-                    # Empty generators must at least produce a stop token.
-                    continue
-
-                yield self.process_result(result)
 
 
 @synchronizer
@@ -221,30 +259,13 @@ class Function(Object):
     async def map(self, inputs, window=100, kwargs={}):
         inputs = stream.iterate(inputs)
         inputs = stream.map(inputs, lambda arg: (arg,))
-        async for item in await Invocation.create(self.object_id, inputs, kwargs, self.client):
+        async for item in await MapInvocation.create(self.object_id, inputs, kwargs, self.client):
             yield item
 
     @requires_create
     async def __call__(self, *args, **kwargs):
-        inputs = stream.iterate([args])
-        invocation = await Invocation.create(self.object_id, inputs, kwargs, self.client)
-
-        # dumb but we need to pop a value from the iterator to see if it's incomplete.
-        first_output = await invocation.peek()
-        first_result = unpack_output_buffer_item(first_output)
-
-        if first_result.gen_status != api_pb2.GenericResult.GeneratorStatus.NOT_GENERATOR:
-
-            @synchronizer
-            async def gen():
-                if first_result.gen_status != api_pb2.GenericResult.GeneratorStatus.COMPLETE:
-                    yield invocation.process_result(first_result)
-                async for result in invocation:
-                    yield result
-
-            return gen()
-        else:
-            return invocation.process_result(first_result)
+        invocation = await Invocation.create(self.object_id, args, kwargs, self.client)
+        return await invocation.run()
 
     def get_raw_f(self):
         return self.args.raw_f
