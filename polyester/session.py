@@ -88,7 +88,7 @@ class Session(Object):
             obj.create_from_id(object_id)
 
     @asynccontextmanager
-    async def run(self, client=None, /, stdout=None, stderr=None):
+    async def run(self, /, client=None, stdout=None, stderr=None):
         if client is None:
             client = await Client.from_env()
         if stdout is None:
