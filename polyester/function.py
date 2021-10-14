@@ -166,11 +166,11 @@ class Invocation:
 
         dequeue_task = create_task(self.items_queue.get())
         while True:
+            background_tasks = [t for t in [self.pump_task, self.poll_task] if not t.done()]
+
             # Wait for pump_task or poll_task to potentially finish before next output is dequeued. This allows us to
             # terminate if one of them encountered an exception (and not block on the queue forever)
-            done, _ = await asyncio.wait(
-                [self.pump_task, self.poll_task, dequeue_task], return_when=asyncio.FIRST_COMPLETED
-            )
+            done, _ = await asyncio.wait([*background_tasks, dequeue_task], return_when=asyncio.FIRST_COMPLETED)
 
             for task in done:
                 if task == dequeue_task:
