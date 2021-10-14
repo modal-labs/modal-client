@@ -96,7 +96,7 @@ class Session(Object):
         if stderr is None:
             stderr = sys.stderr.buffer
 
-        self.client = client
+        self.client = client  # TODO: do we need to mutate state like this?
 
         # Start session
         req = api_pb2.SessionCreateRequest(client_id=client.client_id)

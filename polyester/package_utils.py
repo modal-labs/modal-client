@@ -26,7 +26,8 @@ def requirement_to_module_name(package):
                 if filename.endswith(".py") and parts[-1] == "__init__":
                     return parts[-2]
     except PackageNotFoundError:
-        return package
+        pass
+    return package
 
 
 def package_mount_condition(f):
@@ -38,6 +39,7 @@ BINARY_FORMATS = ["so", "S", "s", "asm"]  # TODO
 
 def get_mount_info(package_name, module_name):
     """Returns a list of tuples [(module_name, path, condition)] describing how to mount a given module."""
+    print(package_name, module_name)
 
     file_formats = get_file_formats(package_name)
     logger.info(f"{package_name}: {file_formats}")
