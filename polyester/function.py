@@ -159,16 +159,31 @@ class Invocation:
 
         return self.client.deserialize(result.data)
 
-    async def peek(self):
-        """Get the next output from the iterator. Not named __anext__ because it returns the raw output,
-        and not the deserialized data that the main iterator returns."""
+    async def dequeue(self):
+        """Get the next output from the iterator, and handle pump and poll task completions.
+        Not named __anext__ because it returns the raw output, and not the deserialized data that the main
+        iterator returns."""
 
-        output = await self.items_queue.get()
-        return unpack_output_buffer_item(output)
+        dequeue_task = create_task(self.items_queue.get())
+        while True:
+            # Wait for pump_task or poll_task to potentially finish before next output is dequeued. This allows us to
+            # terminate if one of them encountered an exception (and not block on the queue forever)
+            done, _ = await asyncio.wait(
+                [self.pump_task, self.poll_task, dequeue_task], return_when=asyncio.FIRST_COMPLETED
+            )
+
+            for task in done:
+                if task == dequeue_task:
+                    return task.result()
+                task.result()  # propagate exceptions if needed.
+
+    async def join(self):
+        await asyncio.wait_for(self.pump_task, timeout=BLOCKING_REQUEST_TIMEOUT)
+        await asyncio.wait_for(self.poll_task, timeout=BLOCKING_REQUEST_TIMEOUT)
 
     async def __aiter__(self):
         while True:
-            output = await self.items_queue.get()
+            output = await self.dequeue()
 
             if output.EOF:
                 break
@@ -181,9 +196,7 @@ class Invocation:
 
             yield self.process_result(result)
 
-        # TODO: do thi somewhere else
-        await asyncio.wait_for(self.pump_task, timeout=BLOCKING_REQUEST_TIMEOUT)
-        await asyncio.wait_for(self.poll_task, timeout=BLOCKING_REQUEST_TIMEOUT)
+        await self.join()
 
 
 @synchronizer
@@ -238,7 +251,8 @@ class Function(Object):
         invocation = await Invocation.create(self.object_id, inputs, kwargs, self.client)
 
         # dumb but we need to pop a value from the iterator to see if it's incomplete.
-        first_result = await invocation.peek()
+        first_output = await invocation.dequeue()
+        first_result = unpack_output_buffer_item(first_output)
 
         if first_result.gen_status != api_pb2.GenericResult.GeneratorStatus.NOT_GENERATOR:
 
@@ -251,6 +265,7 @@ class Function(Object):
 
             return gen()
         else:
+            await invocation.join()
             return invocation.process_result(first_result)
 
     def get_raw_f(self):
