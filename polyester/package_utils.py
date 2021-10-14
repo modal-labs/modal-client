@@ -39,7 +39,6 @@ BINARY_FORMATS = ["so", "S", "s", "asm"]  # TODO
 
 def get_mount_info(package_name, module_name):
     """Returns a list of tuples [(module_name, path, condition)] describing how to mount a given module."""
-    print(package_name, module_name)
 
     file_formats = get_file_formats(package_name)
     logger.info(f"{package_name}: {file_formats}")
