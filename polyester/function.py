@@ -6,8 +6,8 @@ import sys
 import uuid
 import warnings
 
-import aiostream
 import cloudpickle
+from aiostream import stream
 from google.protobuf.any_pb2 import Any
 
 from .async_utils import create_task, retry, synchronizer
@@ -97,11 +97,9 @@ def unpack_output_buffer_item(buffer_item: api_pb2.BufferItem) -> api_pb2.Generi
 @synchronizer
 class Invocation:
     # TODO: should this be an object?
-    def __init__(self, client, pump_task, poll_task, items_queue):
+    def __init__(self, client, response_gen):
         self.client = client
-        self.pump_task = pump_task
-        self.poll_task = poll_task
-        self.items_queue = items_queue
+        self.response_gen = response_gen
 
     @staticmethod
     async def create(function_id, inputs, kwargs, client):
@@ -110,7 +108,6 @@ class Invocation:
 
         input_buffer_id = response.input_buffer_id
         output_buffer_id = response.output_buffer_id
-        items_queue = asyncio.Queue()
 
         async def pump_inputs():
             async for arg in inputs:
@@ -118,14 +115,15 @@ class Invocation:
                 buffer_req = api_pb2.BufferWriteRequest(item=item, buffer_id=input_buffer_id)
                 request = api_pb2.FunctionCallRequest(function_id=function_id, buffer_req=buffer_req)
                 # No timeout so this can block forever.
-                await buffered_rpc_write(client.stub.FunctionCall, request)
+                yield await buffered_rpc_write(client.stub.FunctionCall, request)
 
+            # TODO: removed in Andrew's PR
             item = pack_input_buffer_item(None, None, output_buffer_id)
             item.EOF = True
             request = api_pb2.FunctionCallRequest(
                 buffer_req=api_pb2.BufferWriteRequest(item=item, buffer_id=input_buffer_id)
             )
-            await buffered_rpc_write(client.stub.FunctionCall, request)
+            yield await buffered_rpc_write(client.stub.FunctionCall, request)
 
         async def poll_outputs():
             """Keep trying to dequeue outputs."""
@@ -134,16 +132,15 @@ class Invocation:
                 response = await buffered_rpc_read(
                     client.stub.FunctionGetNextOutput, request, output_buffer_id, timeout=None
                 )
-                await items_queue.put(response.item)
+                yield response
                 if response.item.EOF:
                     break
 
-        # send_EOF is True for now, for easier testing and iteration. Sending this signal also terminates
-        # the function container, so we might want to not do that in the future and rely on the timeout instead.
-        pump_task = create_task(pump_inputs())
-        poll_task = create_task(poll_outputs())
+        pump_stream = stream.preserve(pump_inputs())
+        poll_stream = stream.preserve(poll_outputs())
+        response_gen = stream.merge(pump_stream, poll_stream)
 
-        return Invocation(client, pump_task, poll_task, items_queue)
+        return Invocation(client, response_gen)
 
     def process_result(self, result):
         if result.status != api_pb2.GenericResult.Status.SUCCESS:
@@ -159,44 +156,29 @@ class Invocation:
 
         return self.client.deserialize(result.data)
 
-    async def dequeue(self):
-        """Get the next output from the iterator, and handle pump and poll task completions.
-        Not named __anext__ because it returns the raw output, and not the deserialized data that the main
-        iterator returns."""
+    async def peek(self):
+        """Get the next output from the iterator. Not named __anext__ because it returns the raw output,
+        and not the deserialized data that the main iterator returns."""
 
-        dequeue_task = create_task(self.items_queue.get())
-        while True:
-            background_tasks = [t for t in [self.pump_task, self.poll_task] if not t.done()]
-
-            # Wait for pump_task or poll_task to potentially finish before next output is dequeued. This allows us to
-            # terminate if one of them encountered an exception (and not block on the queue forever)
-            done, _ = await asyncio.wait([*background_tasks, dequeue_task], return_when=asyncio.FIRST_COMPLETED)
-
-            for task in done:
-                if task == dequeue_task:
-                    return task.result()
-                task.result()  # propagate exceptions if needed.
-
-    async def join(self):
-        await asyncio.wait_for(self.pump_task, timeout=BLOCKING_REQUEST_TIMEOUT)
-        await asyncio.wait_for(self.poll_task, timeout=BLOCKING_REQUEST_TIMEOUT)
+        first_response = await stream.until(self.response_gen, lambda r: isinstance(r, api_pb2.BufferReadResponse))
+        return first_response.item
 
     async def __aiter__(self):
-        while True:
-            output = await self.dequeue()
+        async with self.response_gen.stream() as streamer:
+            async for response in streamer:
+                if not isinstance(response, api_pb2.BufferReadResponse):
+                    continue
 
-            if output.EOF:
-                break
+                if response.item.EOF:
+                    break
 
-            result = unpack_output_buffer_item(output)
+                result = unpack_output_buffer_item(response.item)
 
-            if result.gen_status == api_pb2.GenericResult.GeneratorStatus.COMPLETE:
-                # Empty generators must at least produce a stop token.
-                continue
+                if result.gen_status == api_pb2.GenericResult.GeneratorStatus.COMPLETE:
+                    # Empty generators must at least produce a stop token.
+                    continue
 
-            yield self.process_result(result)
-
-        await self.join()
+                yield self.process_result(result)
 
 
 @synchronizer
@@ -240,18 +222,18 @@ class Function(Object):
 
     @requires_create
     async def map(self, inputs, window=100, kwargs={}):
-        inputs = aiostream.stream.iterate(inputs)
-        inputs = aiostream.stream.map(inputs, lambda arg: (arg,))
+        inputs = stream.iterate(inputs)
+        inputs = stream.map(inputs, lambda arg: (arg,))
         async for item in await Invocation.create(self.object_id, inputs, kwargs, self.client):
             yield item
 
     @requires_create
     async def __call__(self, *args, **kwargs):
-        inputs = aiostream.stream.iterate([args])
+        inputs = stream.iterate([args])
         invocation = await Invocation.create(self.object_id, inputs, kwargs, self.client)
 
         # dumb but we need to pop a value from the iterator to see if it's incomplete.
-        first_output = await invocation.dequeue()
+        first_output = await invocation.peek()
         first_result = unpack_output_buffer_item(first_output)
 
         if first_result.gen_status != api_pb2.GenericResult.GeneratorStatus.NOT_GENERATOR:
@@ -265,7 +247,6 @@ class Function(Object):
 
             return gen()
         else:
-            await invocation.join()
             return invocation.process_result(first_result)
 
     def get_raw_f(self):
