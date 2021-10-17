@@ -85,15 +85,15 @@ def call_function(
     buffer_item: api_pb2.BufferItem,
     serializer: typing.Callable[[typing.Any], bytes],
     deserializer: typing.Callable[[bytes], typing.Any],
-) -> (str, api_pb2.GenericResult):
-
+    function_context: FunctionContext,
+):
     input = unpack_input_buffer_item(buffer_item)
     output_buffer_id = input.output_buffer_id
 
     if buffer_item.EOF:
         # Let the caller know that all inputs have been processed.
         # TODO: This isn't exactly part of the function call, so could be separated out.
-        yield make_eof_request(output_buffer_id)
+        function_context.output(make_eof_request(output_buffer_id))
         return
 
     input_id = buffer_item.item_id
@@ -111,28 +111,28 @@ def call_function(
 
         if inspect.isgenerator(res):
             for value in res:
-                yield make_output_request(
+                function_context.output(make_output_request(
                     input_id,
                     output_buffer_id,
                     status=api_pb2.GenericResult.Status.SUCCESS,
                     data=serializer(value),
                     gen_status=api_pb2.GenericResult.GeneratorStatus.INCOMPLETE,
-                )
+                ))
 
             # send EOF
-            yield make_output_request(
+            function_context.output(make_output_request(
                 input_id,
                 output_buffer_id,
                 status=api_pb2.GenericResult.Status.SUCCESS,
                 gen_status=api_pb2.GenericResult.GeneratorStatus.COMPLETE,
-            )
+            ))
         else:
-            yield make_output_request(
+            function_context.output(make_output_request(
                 input_id,
                 output_buffer_id,
                 status=api_pb2.GenericResult.Status.SUCCESS,
                 data=serializer(res),
-            )
+            ))
 
     except Exception as exc:
         # Note: we're not serializing the traceback since it contains
@@ -140,14 +140,14 @@ def call_function(
         # serializing the exception, which may have some issues (there
         # was an earlier note about it that it might not be possible
         # to unpickle it in some cases). Let's watch oout for issues.
-        yield make_output_request(
+        function_context.output(make_output_request(
             input_id,
             output_buffer_id,
             status=api_pb2.GenericResult.Status.FAILURE,
             data=serializer(exc),
             exception=repr(exc),
             traceback=traceback.format_exc(),
-        )
+        ))
 
 
 def main(container_args, client=None):
@@ -161,10 +161,9 @@ def main(container_args, client=None):
     function = function_context.get_function()
 
     for buffer_item in function_context.generate_inputs():
-        for output in call_function(function, buffer_item, client.serialize, client.deserialize):
-            # Note: this blocks the call_function as well. In the future we might want to stream outputs
-            # back asynchronously, but then block the call_function if there is back-pressure.
-            function_context.output(output)
+        # Note: this blocks the call_function as well. In the future we might want to stream outputs
+        # back asynchronously, but then block the call_function if there is back-pressure.
+        call_function(function, buffer_item, client.serialize, client.deserialize, function_context)
 
 
 if __name__ == "__main__":
