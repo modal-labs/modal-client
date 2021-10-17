@@ -102,12 +102,6 @@ def call_function(
     try:
         res = function(*args, **kwargs)
 
-        if inspect.iscoroutine(res):
-            res = asyncio.run(res)
-
-        if inspect.isasyncgen(res):
-            res = synchronizer._run_generator_sync(res)
-
         if inspect.isgenerator(res):
             for value in res:
                 function_context.output_request(
@@ -125,7 +119,31 @@ def call_function(
                 status=api_pb2.GenericResult.Status.SUCCESS,
                 gen_status=api_pb2.GenericResult.GeneratorStatus.COMPLETE,
             )
+        elif inspect.isasyncgen(res):
+
+            async def run_asyncgen():
+                async for value in res:
+                    await function_context.output_request(
+                        input_id,
+                        output_buffer_id,
+                        status=api_pb2.GenericResult.Status.SUCCESS,
+                        data=serializer(value),
+                        gen_status=api_pb2.GenericResult.GeneratorStatus.INCOMPLETE,
+                    )
+
+                # send EOF
+                await function_context.output_request(
+                    input_id,
+                    output_buffer_id,
+                    status=api_pb2.GenericResult.Status.SUCCESS,
+                    gen_status=api_pb2.GenericResult.GeneratorStatus.COMPLETE,
+                )
+            asyncio.run(run_asyncgen())
+
         else:
+            if inspect.iscoroutine(res):
+                res = asyncio.run(res)
+
             function_context.output_request(
                 input_id,
                 output_buffer_id,
