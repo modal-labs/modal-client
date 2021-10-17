@@ -61,23 +61,22 @@ class FunctionContext:
                 logger.info(f"Task {self.task_id} input got EOF.")
                 break
 
-    async def output(self, request):
+    async def _output(self, request):
         # No timeout so this can block forever.
         await buffered_rpc_write(self.client.stub.FunctionOutput, request)
 
+    async def output_request(self, input_id, output_buffer_id, **kwargs):
+        result = api_pb2.GenericResult(**kwargs)
+        item = pack_output_buffer_item(result)
+        buffer_req = api_pb2.BufferWriteRequest(item=item, buffer_id=output_buffer_id)
+        req = api_pb2.FunctionOutputRequest(input_id=input_id, buffer_req=buffer_req)
+        return await self._output(req)
 
-def make_output_request(input_id, output_buffer_id, **kwargs):
-    result = api_pb2.GenericResult(**kwargs)
-    item = pack_output_buffer_item(result)
-    buffer_req = api_pb2.BufferWriteRequest(item=item, buffer_id=output_buffer_id)
-
-    return api_pb2.FunctionOutputRequest(input_id=input_id, buffer_req=buffer_req)
-
-
-def make_eof_request(output_buffer_id):
-    item = api_pb2.BufferItem(EOF=True)
-    buffer_req = api_pb2.BufferWriteRequest(item=item, buffer_id=output_buffer_id)
-    return api_pb2.FunctionOutputRequest(buffer_req=buffer_req)
+    async def eof_request(self, output_buffer_id):
+        item = api_pb2.BufferItem(EOF=True)
+        buffer_req = api_pb2.BufferWriteRequest(item=item, buffer_id=output_buffer_id)
+        req = api_pb2.FunctionOutputRequest(buffer_req=buffer_req)
+        return await self._output(req)
 
 
 def call_function(
@@ -93,7 +92,7 @@ def call_function(
     if buffer_item.EOF:
         # Let the caller know that all inputs have been processed.
         # TODO: This isn't exactly part of the function call, so could be separated out.
-        function_context.output(make_eof_request(output_buffer_id))
+        function_context.eof_request(output_buffer_id)
         return
 
     input_id = buffer_item.item_id
@@ -111,28 +110,28 @@ def call_function(
 
         if inspect.isgenerator(res):
             for value in res:
-                function_context.output(make_output_request(
+                function_context.output_request(
                     input_id,
                     output_buffer_id,
                     status=api_pb2.GenericResult.Status.SUCCESS,
                     data=serializer(value),
                     gen_status=api_pb2.GenericResult.GeneratorStatus.INCOMPLETE,
-                ))
+                )
 
             # send EOF
-            function_context.output(make_output_request(
+            function_context.output_request(
                 input_id,
                 output_buffer_id,
                 status=api_pb2.GenericResult.Status.SUCCESS,
                 gen_status=api_pb2.GenericResult.GeneratorStatus.COMPLETE,
-            ))
+            )
         else:
-            function_context.output(make_output_request(
+            function_context.output_request(
                 input_id,
                 output_buffer_id,
                 status=api_pb2.GenericResult.Status.SUCCESS,
                 data=serializer(res),
-            ))
+            )
 
     except Exception as exc:
         # Note: we're not serializing the traceback since it contains
@@ -140,14 +139,14 @@ def call_function(
         # serializing the exception, which may have some issues (there
         # was an earlier note about it that it might not be possible
         # to unpickle it in some cases). Let's watch oout for issues.
-        function_context.output(make_output_request(
+        function_context.output_request(
             input_id,
             output_buffer_id,
             status=api_pb2.GenericResult.Status.FAILURE,
             data=serializer(exc),
             exception=repr(exc),
             traceback=traceback.format_exc(),
-        ))
+        )
 
 
 def main(container_args, client=None):
