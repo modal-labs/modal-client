@@ -32,6 +32,12 @@ class FunctionContext:
         self.function_name = container_args.function_name
         self.client = client
 
+    def serialize(self, obj: typing.Any) -> bytes:
+        return self.client.serialize(obj)
+
+    def deserialize(self, data: bytes) -> typing.Any:
+        return self.client.deserialize(data)
+
     async def get_function(self) -> typing.Callable:
         """Note that this also initializes the session."""
         fun = Function.get_function(self.module_name, self.function_name)
@@ -80,11 +86,9 @@ class FunctionContext:
 
 
 def call_function(
+    function_context: FunctionContext,
     function: typing.Callable,
     buffer_item: api_pb2.BufferItem,
-    serializer: typing.Callable[[typing.Any], bytes],
-    deserializer: typing.Callable[[bytes], typing.Any],
-    function_context: FunctionContext,
 ):
     input = unpack_input_buffer_item(buffer_item)
     output_buffer_id = input.output_buffer_id
@@ -96,8 +100,8 @@ def call_function(
         return
 
     input_id = buffer_item.item_id
-    args = deserializer(input.args)
-    kwargs = deserializer(input.kwargs)
+    args = function_context.deserialize(input.args)
+    kwargs = function_context.deserialize(input.kwargs)
 
     try:
         res = function(*args, **kwargs)
@@ -108,7 +112,7 @@ def call_function(
                     input_id,
                     output_buffer_id,
                     status=api_pb2.GenericResult.Status.SUCCESS,
-                    data=serializer(value),
+                    data=function_context.serialize(value),
                     gen_status=api_pb2.GenericResult.GeneratorStatus.INCOMPLETE,
                 )
 
@@ -127,7 +131,7 @@ def call_function(
                         input_id,
                         output_buffer_id,
                         status=api_pb2.GenericResult.Status.SUCCESS,
-                        data=serializer(value),
+                        data=function_context.serialize(value),
                         gen_status=api_pb2.GenericResult.GeneratorStatus.INCOMPLETE,
                     )
 
@@ -138,6 +142,7 @@ def call_function(
                     status=api_pb2.GenericResult.Status.SUCCESS,
                     gen_status=api_pb2.GenericResult.GeneratorStatus.COMPLETE,
                 )
+
             asyncio.run(run_asyncgen())
 
         else:
@@ -148,7 +153,7 @@ def call_function(
                 input_id,
                 output_buffer_id,
                 status=api_pb2.GenericResult.Status.SUCCESS,
-                data=serializer(res),
+                data=function_context.serialize(res),
             )
 
     except Exception as exc:
@@ -161,7 +166,7 @@ def call_function(
             input_id,
             output_buffer_id,
             status=api_pb2.GenericResult.Status.FAILURE,
-            data=serializer(exc),
+            data=function_context.serialize(exc),
             exception=repr(exc),
             traceback=traceback.format_exc(),
         )
@@ -180,7 +185,7 @@ def main(container_args, client=None):
     for buffer_item in function_context.generate_inputs():
         # Note: this blocks the call_function as well. In the future we might want to stream outputs
         # back asynchronously, but then block the call_function if there is back-pressure.
-        call_function(function, buffer_item, client.serialize, client.deserialize, function_context)
+        call_function(function_context, function, buffer_item)
 
 
 if __name__ == "__main__":
