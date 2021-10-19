@@ -83,10 +83,10 @@ def infinite_loop(async_f, timeout=90, sleep=10):
         while True:
             try:
                 await asyncio.wait_for(async_f(), timeout=timeout)
+            except asyncio.CancelledError:
+                raise
             except Exception:
                 logger.exception(f"Loop attempt failed for {async_f}")
-            except asyncio.CancelledError:
-                return
             await asyncio.sleep(sleep)
 
     # functools.partial objects have no __name__ attribute :(

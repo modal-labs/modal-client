@@ -42,7 +42,7 @@ class Client:
             req = api_pb2.ClientCreateRequest(client_type=self.client_type)
             resp = await self.stub.ClientCreate(req)
             self.client_id = resp.client_id
-        except:
+        except Exception:
             # Just helpful for debugging
             logger.info(f"{self.server_url=}")
             raise

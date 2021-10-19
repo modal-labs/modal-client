@@ -44,7 +44,7 @@ class GRPCConnectionFactory:
     def __init__(self, server_url, client_type=None, credentials=None):
         try:
             o = urllib.parse.urlparse(server_url)
-        except:
+        except Exception:
             logger.info(f"server url: {server_url}")
             raise
 
