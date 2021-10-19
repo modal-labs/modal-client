@@ -67,7 +67,7 @@ async def test_chunk_generator():
                 await asyncio.sleep(0.1)
                 yield i
         except BaseException as exc:
-            print(f"generator {exc=}")
+            print(f"generator exc {exc}")
             raise
 
     ret = await unchunk_generator(chunk_generator(generator(), 0.33))

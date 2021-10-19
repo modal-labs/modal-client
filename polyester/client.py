@@ -44,7 +44,7 @@ class Client:
             self.client_id = resp.client_id
         except Exception:
             # Just helpful for debugging
-            logger.info(f"{self.server_url=}")
+            logger.info(f"server_url={self.server_url}")
             raise
 
         # Start heartbeats

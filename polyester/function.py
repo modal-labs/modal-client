@@ -59,9 +59,9 @@ def _path_to_function(module_name, function_name):
         return getattr(module, function_name)
     except ModuleNotFoundError:
         # Just print some debug stuff, then re-raise
-        logger.info(f"{os.getcwd()=}")
-        logger.info(f"{sys.path=}")
-        logger.info(f"{os.listdir()=}")
+        logger.info(f"cwd: {os.getcwd()}")
+        logger.info(f"path: {sys.path}")
+        logger.info(f"ls: {os.listdir()}")
         raise
 
 
