@@ -93,101 +93,67 @@ def infinite_loop(async_f, timeout=90, sleep=10):
     return create_task(loop_coro(), name=f"infinite_loop_{async_f}")
 
 
-class GeneratorStream:
-    """Utility for taking a sync/async generator and iterating over it.
-
-    TODO: break this out into an open source package, maybe synchronizer for now
-    """
-
-    def __init__(self, generator):
-        self._q = asyncio.Queue()
-        self.done = False
-        self._generator = generator
-
-    async def __aenter__(self):
-        if inspect.isgenerator(self._generator):
-            loop = asyncio.get_event_loop()
-            self._pump_task = loop.run_in_executor(None, self._pump_syncgen, self._generator)
-        elif inspect.isasyncgen(self._generator):
-            self._pump_task = asyncio.create_task(
-                self._pump_asyncgen(self._generator), name=f"pump_task_{self._generator}"
-            )
-        else:
-            raise Exception(f"{self._generator} has to be a sync/async generator")
-        return self
-
-    async def __aexit__(self, exc_type, exc, tb):
-        self._pump_task.cancel()
-
-    def _pump_syncgen(self, generator):
-        try:
-            for val in generator:
-                self._q.put_nowait(("val", val))
-        except Exception as exc:
-            logger.exception(f"Exception while running {generator}")
-            self._q.put_nowait(("exc", exc))
-        self._q.put_nowait(("fin", None))
-
-    async def _pump_asyncgen(self, generator):
-        try:
-            async for val in generator:
-                await self._q.put(("val", val))
-        except Exception as exc:
-            logger.exception(f"Exception while running {generator}")
-            await self._q.put(("exc", exc))
-        await self._q.put(("fin", None))
-
-    async def _get(self, timeout=None):
-        tag, value = await asyncio.wait_for(self._q.get(), timeout=timeout)
-
-        if tag == "val":
-            return value
-        elif tag == "exc":
-            raise value
-        elif tag == "fin":
-            self.done = True
-        else:
-            raise Exception(f"weird tag {tag}")
-
-    async def all(self):
-        while True:
-            value = await self._get()
-            if self.done:
-                return
-            yield value
-
-    async def chunk(self, timeout):
-        """Returns an async generator that generates elements up until timeout."""
-        t0 = time.time()
-        while True:
-            attempt_timeout = timeout - (time.time() - t0)
-            try:
-                value = await self._get(timeout=attempt_timeout)
-            except asyncio.TimeoutError:
-                break
-            except asyncio.CancelledError:
-                break
-            if self.done:
-                return
-            yield value
-
-
 async def chunk_generator(generator, timeout):
-    async with GeneratorStream(generator) as stream:
-        while not stream.done:
-            yield stream.chunk(timeout)
+    """Takes a generator and returns a generator of generator where each sub-generator only runs for a certain time.
+
+    TODO: merge this into aiostream.
+    """
+    done = False
+    task = None
+    try:
+        while not done:
+
+            async def chunk():
+                nonlocal done, task
+                t0 = time.time()
+                while True:
+                    try:
+                        attempt_timeout = t0 + timeout - time.time()
+                        if task is None:
+                            coro = generator.__anext__()
+                            task = asyncio.create_task(coro)
+                        value = await asyncio.wait_for(asyncio.shield(task), attempt_timeout)
+                        yield value
+                        task = None
+                    except asyncio.TimeoutError:
+                        return
+                    except StopAsyncIteration:
+                        done = True
+                        return
+
+            yield chunk()
+    finally:
+        if task is not None:
+            task.cancel()
 
 
 # TODO: maybe these methods could move into synchronizer later?
 
 
 def asyncify_generator(generator_fn):
-    """Takes a blocking generator and returns an async generator."""
+    """Takes a blocking generator and returns an async generator.
 
+    TODO: merge into aiostream: https://github.com/vxgmichel/aiostream/issues/78
+    """
+
+    @functools.wraps(generator_fn)
     async def new_generator(*args, **kwargs):
-        async with GeneratorStream(generator_fn(*args, **kwargs)) as stream:
-            async for elm in stream.all():
-                yield elm
+        generator = generator_fn(*args, **kwargs)
+        loop = asyncio.get_event_loop()
+        done = False
+
+        def safe_next(it):
+            nonlocal done
+            try:
+                return next(it)
+            except StopIteration as exc:
+                done = True
+
+        while True:
+            ret = await loop.run_in_executor(None, safe_next, generator)
+            if done:
+                break
+            yield ret
 
     return new_generator
 
@@ -255,7 +221,10 @@ AsyncGeneratorContextManager = synchronizer(contextlib._AsyncGeneratorContextMan
 
 
 def asynccontextmanager(func):
-    """This works just like contextlib.asynccontextmanager, but also in synchronous contexts."""
+    """This works just like contextlib.asynccontextmanager, but also in synchronous contexts.
+
+    TODO: merge into synchronicity
+    """
 
     @functools.wraps(func)
     def func_in_loop(*args, **kwargs):

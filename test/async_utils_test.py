@@ -12,6 +12,10 @@ from polyester.async_utils import (
 )
 
 
+class SampleException(Exception):
+    pass
+
+
 class FailNTimes:
     def __init__(self, n_failures):
         self.n_failures = n_failures
@@ -20,7 +24,7 @@ class FailNTimes:
     async def __call__(self, x):
         self.n_calls += 1
         if self.n_calls < self.n_failures:
-            raise Exception("Something bad happened")
+            raise SampleException("Something bad happened")
         else:
             return x + 1
 
@@ -30,14 +34,14 @@ async def test_retry():
     f_retry = retry(FailNTimes(3))
     assert await f_retry(42) == 43
 
-    with pytest.raises(Exception):
+    with pytest.raises(SampleException):
         f_retry = retry(FailNTimes(4))
         assert await f_retry(42) == 43
 
     f_retry = retry(n_attempts=5)(FailNTimes(5))
     assert await f_retry(42) == 43
 
-    with pytest.raises(Exception):
+    with pytest.raises(SampleException):
         f_retry = retry(n_attempts=5)(FailNTimes(6))
         assert await f_retry(42) == 43
 
@@ -50,7 +54,7 @@ async def unchunk_generator(generator):
         try:
             async for value in chunk:
                 loop_ret.append(value)
-        except:
+        except SampleException:
             loop_ret.append("exc")
             break
     return ret
@@ -59,9 +63,13 @@ async def unchunk_generator(generator):
 @pytest.mark.asyncio
 async def test_chunk_generator():
     async def generator():
-        for i in range(10):
-            await asyncio.sleep(0.1)
-            yield i
+        try:
+            for i in range(10):
+                await asyncio.sleep(0.1)
+                yield i
+        except BaseException as exc:
+            print(f"generator {exc=}")
+            raise
 
     ret = await unchunk_generator(chunk_generator(generator(), 0.33))
     assert ret == [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9]]
@@ -71,7 +79,7 @@ async def test_chunk_generator():
 async def test_chunk_generator_raises():
     async def generator_raises():
         yield 42
-        raise Exception("foo")
+        raise SampleException("foo")
 
     ret = await unchunk_generator(chunk_generator(generator_raises(), 0.33))
     assert ret == [[42, "exc"]]
@@ -95,10 +103,10 @@ async def test_asyncify_generator_raises():
     @asyncify_generator
     def g(x):
         yield x ** 2
-        raise Exception("banana")
+        raise SampleException("banana")
 
     ret = []
-    with pytest.raises(Exception) as exc:
+    with pytest.raises(SampleException) as exc:
         async for x in g(99):
             ret.append(x)
     assert ret == [99 ** 2]
@@ -135,12 +143,8 @@ async def test_task_context_grace():
     assert v.cancelled()
 
 
-class MyException(Exception):
-    pass
-
-
-async def raise_my_exception():
-    raise MyException()
+async def raise_exception():
+    raise SampleException("foo")
 
 
 @pytest.mark.asyncio
@@ -153,10 +157,10 @@ async def test_task_context_wait():
     assert u.done()
     assert v.cancelled()
 
-    with pytest.raises(MyException):
+    with pytest.raises(SampleException):
         async with TaskContext(grace=0.2) as task_context:
             u = task_context.create_task(asyncio.sleep(1.1))
-            v = task_context.create_task(raise_my_exception())
+            v = task_context.create_task(raise_exception())
             await task_context.wait(u)
 
     assert u.cancelled()
