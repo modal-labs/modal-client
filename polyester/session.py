@@ -46,7 +46,7 @@ class Session(Object):
     def __getitem__(self, tag):
         return self._objects[tag]
 
-    def function(self, raw_f=None, /, image=base_image):
+    def function(self, raw_f=None, image=base_image):
         def decorate(raw_f):
             fun = Function(raw_f, image=image)
             # TODO: we need the containers to locate the session somehow. Right now it happens in a bit of an indirect way
@@ -87,7 +87,7 @@ class Session(Object):
             obj.create_from_id(object_id)
 
     @synchronizer.asynccontextmanager
-    async def run(self, /, client=None, stdout=None, stderr=None):
+    async def run(self, client=None, stdout=None, stderr=None):
         if client is None:
             client = await Client.from_env()
         if stdout is None:

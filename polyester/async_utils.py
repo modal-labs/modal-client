@@ -72,7 +72,7 @@ def add_traceback(obj, func_name=None):
         raise Exception(f"{obj} is not a coro or async gen!")
 
 
-def create_task(coro, /, name=None):
+def create_task(coro, name=None):
     return asyncio.create_task(add_traceback(coro), name=name)
 
 
