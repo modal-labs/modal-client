@@ -72,8 +72,8 @@ def add_traceback(obj, func_name=None):
         raise Exception(f"{obj} is not a coro or async gen!")
 
 
-def create_task(coro, name=None):
-    return asyncio.create_task(add_traceback(coro), name=name)
+def create_task(coro):
+    return asyncio.create_task(add_traceback(coro))
 
 
 def infinite_loop(async_f, timeout=90, sleep=10):
@@ -89,7 +89,7 @@ def infinite_loop(async_f, timeout=90, sleep=10):
             await asyncio.sleep(sleep)
 
     # functools.partial objects have no __name__ attribute :(
-    return create_task(loop_coro(), name=f"infinite_loop_{async_f}")
+    return create_task(loop_coro())
 
 
 async def chunk_generator(generator, timeout):
