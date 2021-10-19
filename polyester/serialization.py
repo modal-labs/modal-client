@@ -8,12 +8,14 @@ from .object import Object
 # TODO: the code below uses the attributes "local_id" and "remote_id" which are not the correct ones
 # TODO: deserialization should be done using the Object constructor (setting the client and object_id)
 
+PICKLE_PROTOCOL = 4  # Support older Python versions.
+
 
 class Pickler(cloudpickle.Pickler):
     def __init__(self, client, type_to_name, buf):
         self.client = client
         self.type_to_name = type_to_name
-        super().__init__(buf)
+        super().__init__(buf, protocol=PICKLE_PROTOCOL)
 
     def persistent_id(self, obj):
         if not isinstance(obj, Object):
