@@ -4,7 +4,6 @@ import sys
 
 from .async_utils import (
     TaskContext,
-    asynccontextmanager,
     infinite_loop,
     retry,
     synchronizer,
@@ -87,7 +86,7 @@ class Session(Object):
             await obj.set_context(self, self.client)
             obj.create_from_id(object_id)
 
-    @asynccontextmanager
+    @synchronizer.asynccontextmanager
     async def run(self, /, client=None, stdout=None, stderr=None):
         if client is None:
             client = await Client.from_env()
