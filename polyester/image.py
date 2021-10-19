@@ -160,10 +160,14 @@ class Image(Object):
         return os.getenv("POLYESTER_IMAGE_LOCAL_ID") == self.args.local_id
 
 
+def get_python_version():
+    return "%d.%d.%d" % sys.version_info[:3]
+
+
 class DebianSlim(Image):
     def __init__(self, layer=None, python_version=None):
         if python_version is None:
-            python_version = "%d.%d.%d" % sys.version_info[:3]
+            python_version = get_python_version()
         if layer is None:
             layer = Layer(tag="python-%s-slim-buster-base" % python_version)
         super().__init__(
