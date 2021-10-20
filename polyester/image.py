@@ -161,7 +161,7 @@ class Image(Object):
 
 
 def get_python_version():
-    return "%d.%d.%d" % sys.version_info[:3]
+    return config["image_python_version"] or "%d.%d.%d" % sys.version_info[:3]
 
 
 class DebianSlim(Image):
