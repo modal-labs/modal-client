@@ -1,6 +1,14 @@
 import logging
 import os
 
+try:
+    import icecream
+
+    icecream.install()
+except ImportError:
+    pass
+
+
 config = {
     "loglevel": os.environ.get("LOGLEVEL", "WARNING").upper(),
     "server.url": os.environ.get("POLYESTER_SERVER_URL", "https://api.polyester.cloud"),
