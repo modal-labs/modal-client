@@ -1,5 +1,4 @@
 import asyncio
-import contextlib
 import functools
 import inspect
 import time
@@ -215,26 +214,3 @@ class TaskContext:
                 task.result()  # Raise exception if needed
                 if task in unfinished_tasks:
                     unfinished_tasks.remove(task)
-
-
-AsyncGeneratorContextManager = synchronizer(contextlib._AsyncGeneratorContextManager)
-
-
-def asynccontextmanager(func):
-    """This works just like contextlib.asynccontextmanager, but also in synchronous contexts.
-
-    TODO: merge into synchronicity
-    """
-
-    @functools.wraps(func)
-    def func_in_loop(*args, **kwargs):
-        # This is a bit ugly, but we need to
-        # 1. Make sure this runs in the right loop
-        # 2. Make sure we still have an async (not sync) generator
-        return synchronizer._run_generator_async(func(*args, **kwargs))
-
-    @functools.wraps(func)
-    def helper(*args, **kwargs):
-        return AsyncGeneratorContextManager(func_in_loop, args, kwargs)
-
-    return helper

@@ -4,7 +4,6 @@ import pytest
 
 from polyester.async_utils import (
     TaskContext,
-    asynccontextmanager,
     asyncify_function,
     asyncify_generator,
     chunk_generator,
@@ -165,21 +164,3 @@ async def test_task_context_wait():
 
     assert u.cancelled()
     assert v.done()
-
-
-@asynccontextmanager
-async def wait_and_square(x):
-    await asyncio.sleep(0.1)
-    yield x ** 2
-    await asyncio.sleep(0.1)
-
-
-def test_asynccontextmanager_sync(event_loop):
-    with wait_and_square(42) as result:
-        assert result == 1764
-
-
-@pytest.mark.asyncio
-async def test_asynccontextmanager_async(event_loop):
-    async with wait_and_square(42) as result:
-        assert result == 1764

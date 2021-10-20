@@ -1,6 +1,5 @@
 import abc
 import asyncio
-import contextlib
 import enum
 import re
 import time
@@ -99,7 +98,6 @@ class ChannelPool:
 
         self.purge_task = asyncio.create_task(purge_channels_loop())
 
-    @contextlib.asynccontextmanager
     async def _get_channel(self):
         async with self._lock:
             eligible_channels = [
@@ -118,11 +116,7 @@ class ChannelPool:
                 n_conc_reqs_str = ", ".join(str(z) for z in n_conc_reqs)
                 logger.debug(f"Pool: Added new channel (concurrent requests: {n_conc_reqs_str}")
 
-        ch.n_concurrent_requests += 1
-        try:
-            yield ch
-        finally:
-            ch.n_concurrent_requests -= 1
+        return ch
 
     async def close(self):
         logger.debug("Pool: Shutting down")
@@ -175,9 +169,13 @@ class ChannelPool:
     def _wrap_function(self, rpc_type, method, request_serializer, response_deserializer):
         async def coro(req, **kwargs):
             async for sub_req in self._chunk_generator(req, rpc_type, method):
-                async with self._get_channel() as ch:
+                ch = await self._get_channel()
+                ch.n_concurrent_requests += 1
+                try:
                     fn = ch.get_method(rpc_type, method, request_serializer, response_deserializer)
                     ret = await fn(sub_req, **kwargs)
+                finally:
+                    ch.n_concurrent_requests -= 1
             return ret
 
         return self._wrap_base(coro, method)
@@ -185,11 +183,15 @@ class ChannelPool:
     def _wrap_generator(self, rpc_type, method, request_serializer, response_deserializer):
         async def coro_gen(req, **kwargs):
             async for sub_req in self._chunk_generator(req, rpc_type, method):
-                async with self._get_channel() as ch:
+                ch = await self._get_channel()
+                ch.n_concurrent_requests += 1
+                try:
                     fn = ch.get_method(rpc_type, method, request_serializer, response_deserializer)
                     gen = fn(sub_req, **kwargs)
                     async for ret in gen:
                         yield ret
+                finally:
+                    ch.n_concurrent_requests -= 1
 
         return self._wrap_base(coro_gen, method)
 
