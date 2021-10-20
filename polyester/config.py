@@ -9,6 +9,7 @@ config = {
     "task.id": os.environ.get("POLYESTER_TASK_ID"),  # Maybe redundant since it's also passed as a cmd arg
     "task.secret": os.environ.get("POLYESTER_TASK_SECRET"),
     "sync_entrypoint": os.environ.get("POLYESTER_SYNC_ENTRYPOINT"),
+    "logs_timeout": float(os.environ.get("POLYESTER_LOGS_TIMEOUT", 10)),
 }
 
 logging.basicConfig(

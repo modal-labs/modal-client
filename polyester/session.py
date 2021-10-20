@@ -10,7 +10,7 @@ from .async_utils import (
     synchronizer,
 )
 from .client import Client
-from .config import logger
+from .config import config, logger
 from .function import Function
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIME_BUFFER, ChannelPool
 from .image import base_image
@@ -129,4 +129,4 @@ class Session(Object):
 
         # Fetch any straggling logs
         logger.debug("Draining logs")
-        await self._get_logs(stdout, stderr, draining=True, timeout=10.0)
+        await self._get_logs(stdout, stderr, draining=True, timeout=config["logs_timeout"])
