@@ -70,9 +70,11 @@ class Session(Object):
         async for log_entry in self.client.stub.SessionGetLogs(request, timeout=timeout + GRPC_REQUEST_TIME_BUFFER):
             if log_entry.done:
                 logger.info("No more logs")
-                break
+                return
             else:
                 print_logs(log_entry.data, log_entry.fd, stdout, stderr)
+        if draining:
+            raise Exception("Failed waiting for all logs to finish, server will kill remaining tasks")
 
     async def initialize(self, session_id, client):
         """Used by the container to bootstrap the session and all its objects."""
