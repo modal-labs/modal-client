@@ -271,8 +271,12 @@ class Function(Object):
 
     @requires_create
     async def __call__(self, *args, **kwargs):
+        return await (await self.call_async(*args, **kwargs))
+
+    @requires_create
+    async def call_async(self, *args, **kwargs):
         invocation = await Invocation.create(self.object_id, args, kwargs, self.session)
-        return await invocation.run()
+        return invocation.run()
 
     def get_raw_f(self):
         return self.raw_f
