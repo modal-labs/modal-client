@@ -24,7 +24,7 @@ def get_sha256_hex_from_filename(filename, rel_filename):
 
 
 async def get_files(local_dir, condition, recursive):
-    loop = asyncio.get_running_loop()
+    loop = asyncio.get_event_loop()
     with concurrent.futures.ThreadPoolExecutor() as exe:
         futs = []
         if recursive:

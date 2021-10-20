@@ -73,7 +73,8 @@ def add_traceback(obj, func_name=None):
 
 
 def create_task(coro):
-    return asyncio.create_task(add_traceback(coro))
+    loop = asyncio.get_event_loop()
+    return loop.create_task(add_traceback(coro))
 
 
 def infinite_loop(async_f, timeout=90, sleep=10):
@@ -110,7 +111,8 @@ async def chunk_generator(generator, timeout):
                         attempt_timeout = t0 + timeout - time.time()
                         if task is None:
                             coro = generator.__anext__()
-                            task = asyncio.create_task(coro)
+                            loop = asyncio.get_event_loop()
+                            task = loop.create_task(coro)
                         value = await asyncio.wait_for(asyncio.shield(task), attempt_timeout)
                         yield value
                         task = None
@@ -159,7 +161,7 @@ def asyncify_generator(generator_fn):
 
 def asyncify_function(function):
     async def asynced_function(*args, **kwargs):
-        loop = asyncio.get_running_loop()
+        loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, lambda: function(*args, **kwargs))
 
     return asynced_function

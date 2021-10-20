@@ -96,7 +96,8 @@ class ChannelPool:
                 await self._purge_channels()
                 await asyncio.sleep(10.0)
 
-        self.purge_task = asyncio.create_task(purge_channels_loop())
+        loop = asyncio.get_event_loop()
+        self.purge_task = loop.create_task(purge_channels_loop())
 
     async def _get_channel(self):
         async with self._lock:
