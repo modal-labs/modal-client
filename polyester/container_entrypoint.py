@@ -61,11 +61,11 @@ class FunctionContext:
                 logger.info(f"Task {self.task_id} input request timed out.")
                 break
 
-            yield response.item
-
             if response.item.EOF:
                 logger.info(f"Task {self.task_id} input got EOF.")
                 break
+
+            yield response.item
 
     async def _output(self, request):
         # No timeout so this can block forever.
@@ -78,12 +78,6 @@ class FunctionContext:
         req = api_pb2.FunctionOutputRequest(input_id=input_id, buffer_req=buffer_req)
         return await self._output(req)
 
-    async def eof_request(self, output_buffer_id):
-        item = api_pb2.BufferItem(EOF=True)
-        buffer_req = api_pb2.BufferWriteRequest(item=item, buffer_id=output_buffer_id)
-        req = api_pb2.FunctionOutputRequest(buffer_req=buffer_req)
-        return await self._output(req)
-
 
 def call_function(
     function_context: FunctionContext,
@@ -92,12 +86,6 @@ def call_function(
 ):
     input = unpack_input_buffer_item(buffer_item)
     output_buffer_id = input.output_buffer_id
-
-    if buffer_item.EOF:
-        # Let the caller know that all inputs have been processed.
-        # TODO: This isn't exactly part of the function call, so could be separated out.
-        function_context.eof_request(output_buffer_id)
-        return
 
     input_id = buffer_item.item_id
     args = function_context.deserialize(input.args)
