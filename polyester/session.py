@@ -46,9 +46,9 @@ class Session(Object):
     def __getitem__(self, tag):
         return self._objects[tag]
 
-    def function(self, raw_f=None, image=base_image):
+    def function(self, raw_f=None, image=base_image, env_dict=None):
         def decorate(raw_f):
-            fun = Function(raw_f, image=image)
+            fun = Function(raw_f, image=image, env_dict=env_dict)
             # TODO: we need the containers to locate the session somehow. Right now it happens in a bit of an indirect way
             # because they import the module and locate the function first, then look up the session through the function.
             # It might make more sense to find the session first and then find the function, in which case we don't have to
