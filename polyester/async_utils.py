@@ -174,7 +174,7 @@ class TaskContext:
 
     async def start(self):
         # TODO: this only exists as a standalone method because Client doesn't have a proper ctx mgr
-        self._tasks = []
+        self._tasks = set()
         self._exited = asyncio.Event()  # Used to stop infinite loops
 
     async def __aenter__(self):
@@ -198,6 +198,11 @@ class TaskContext:
     async def __aexit__(self, exc_type, value, tb):
         await self.stop()
 
+    def _mark_finished(self, task):
+        assert task.done()
+        assert task in self._tasks
+        self._tasks.remove(task)
+
     def create_task(self, coro_or_task):
         if isinstance(coro_or_task, asyncio.Task):
             task = coro_or_task
@@ -206,7 +211,8 @@ class TaskContext:
             task = loop.create_task(coro_or_task)
         else:
             raise Exception(f"{coro_or_task} is not a coroutine or Task")
-        self._tasks.append(task)
+        self._tasks.add(task)
+        task.add_done_callback(self._mark_finished)
         return task
 
     def infinite_loop(self, async_f, timeout=90, sleep=10):
@@ -233,9 +239,8 @@ class TaskContext:
         # If any of the task context's task raises, throw that exception
         # This is probably O(n^2) sadly but I guess it's fine
         unfinished_tasks = set(tasks)
-        all_tasks = set(self._tasks)
         while unfinished_tasks:
-            done, pending = await asyncio.wait(all_tasks, return_when=asyncio.FIRST_COMPLETED)
+            done, pending = await asyncio.wait(self._tasks, return_when=asyncio.FIRST_COMPLETED)
             for task in done:
                 task.result()  # Raise exception if needed
                 if task in unfinished_tasks:
