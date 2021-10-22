@@ -218,13 +218,14 @@ class MapInvocation:
 
 @synchronizer
 class Function(Object):
-    def __init__(self, raw_f, image=None, client=None):
+    def __init__(self, raw_f, image=None, env_dict=None, client=None):
         assert callable(raw_f)
         self.info = FunctionInfo(raw_f)
         super().__init__(
             args=dict(
                 raw_f=raw_f,
                 image=image,
+                env_dict=env_dict,
             ),
         )
 
@@ -239,6 +240,11 @@ class Function(Object):
         # Wait for image and mounts to finish
         # TODO: should we really join recursively here? Maybe it's better to move this logic to the session class?
         image = await self.session.create_or_get_object(self.args.image)
+        if self.args.env_dict is not None:
+            env_dict = await self.session.create_or_get_object(self.args.env_dict)
+            env_dict_id = env_dict.object_id
+        else:
+            env_dict_id = None
         mounts = await asyncio.gather(*(self.session.create_or_get_object(mount) for mount in mounts))
 
         # Create function remotely
@@ -246,10 +252,11 @@ class Function(Object):
             module_name=self.info.module_name,
             function_name=self.info.function_name,
             mount_ids=[mount.object_id for mount in mounts],
+            env_dict_id=env_dict_id,
+            image_id=image.object_id,
         )
         request = api_pb2.FunctionGetOrCreateRequest(
             session_id=self.session.session_id,
-            image_id=image.object_id,  # TODO: move into the function definition?
             function=function_definition,
         )
         response = await self.client.stub.FunctionGetOrCreate(request)

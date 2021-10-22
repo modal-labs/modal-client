@@ -286,13 +286,12 @@ message ImageCreateResponse {
 message Function {
   string module_name = 1;
   string function_name = 2;
-  // TODO: should we include client id or some sort of namespace?
-  // What about image_local_id? (needed to hash function to an id)
   repeated string mount_ids = 3;
+  string image_id = 4;
+  string env_dict_id = 5;
 }
 
 message FunctionGetOrCreateRequest {
-  string image_id = 2;
   Function function = 8;
   string session_id = 9;
 }
