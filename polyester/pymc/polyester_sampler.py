@@ -1,0 +1,215 @@
+import ctypes
+import logging
+import multiprocessing
+import multiprocessing.sharedctypes
+import platform
+import time
+import traceback
+from collections import namedtuple
+from typing import Dict, Sequence
+
+import numpy as np
+from aiostream import stream
+
+from polyester import Session
+from polyester.image import debian_slim
+
+session = Session()
+
+image = debian_slim.add_python_packages(["pymc3", "fastprogress", "sklearn", "numpy", "cloudpickle"])
+
+if image.is_inside():
+    import cloudpickle
+    import numpy as np
+    from fastprogress.fastprogress import progress_bar
+    from pymc3 import theanof
+    from pymc3.exceptions import SamplingError
+    from sklearn import datasets, linear_model
+
+
+class ParallelSamplingError(Exception):
+    def __init__(self, message, chain, warnings=None):
+        super().__init__(message)
+        if warnings is None:
+            warnings = []
+        self._chain = chain
+        self._warnings = warnings
+
+
+# Taken from https://hg.python.org/cpython/rev/c4f92b597074
+class RemoteTraceback(Exception):
+    def __init__(self, tb):
+        self.tb = tb
+
+    def __str__(self):
+        return self.tb
+
+
+class ExceptionWithTraceback:
+    def __init__(self, exc, tb):
+        tb = traceback.format_exception(type(exc), exc, tb)
+        tb = "".join(tb)
+        self.exc = exc
+        self.tb = '\n"""\n%s"""' % tb
+
+    def __reduce__(self):
+        return rebuild_exc, (self.exc, self.tb)
+
+
+def rebuild_exc(exc, tb):
+    exc.__cause__ = RemoteTraceback(tb)
+    return exc
+
+
+@session.function(image=image)
+def sample_process(
+    draws: int,
+    tune: int,
+    step_method,
+    chain: int,
+    seed,
+    start: Dict[str, np.ndarray],
+):
+    tt_seed = seed + 1
+
+    np_point = {}
+    point = {}
+    stats = None
+
+    for name, (shape, dtype) in step_method.vars_shape_dtype.items():
+        size = 1
+        for dim in shape:
+            size *= int(dim)
+        size *= dtype.itemsize
+        if size != ctypes.c_size_t(size).value:
+            raise ValueError("Variable %s is too large" % name)
+
+        array = bytearray(size)
+        point[name] = (array, shape, dtype)
+
+        array_np = np.frombuffer(array, dtype).reshape(shape)
+        array_np[...] = start[name]
+        np_point[name] = array_np
+
+    def _compute_point():
+        if step_method.generates_stats:
+            point, stats = step_method.step(point)
+        else:
+            point = step_method.step(point)
+            stats = None
+
+    def _collect_warnings():
+        if hasattr(step_method, "warnings"):
+            return step_method.warnings()
+        else:
+            return []
+
+    np.random.seed(seed)
+    theanof.set_tt_rng(self._tt_seed)
+
+    draw = 0
+    tuning = True
+
+    while True:
+        if draw == tune:
+            step_method.stop_tuning()
+            tuning = False
+
+        if draw < draws + tune:
+            try:
+                compute_point()
+            except SamplingError as e:
+                warns = collect_warnings()
+                e = ExceptionWithTraceback(e, e.__traceback__)
+                raise e  # TODO: deal w/ warns
+        else:
+            return
+
+        is_last = draw + 1 == draws + tune
+        if is_last:
+            warns = collect_warnings()
+        else:
+            warns = None
+        yield (np_point, is_last, draw, tuning, stats, warns)
+        draw += 1
+
+
+Draw = namedtuple("Draw", ["chain", "is_last", "draw_idx", "tuning", "stats", "point", "warnings"])
+
+
+class PolyesterSampler:
+    def __init__(
+        self,
+        draws: int,
+        tune: int,
+        chains: int,
+        cores: int,
+        seeds: list,
+        start_points: Sequence[Dict[str, np.ndarray]],
+        step_method,
+        start_chain_num: int = 0,
+        progressbar: bool = True,
+        mp_ctx=None,
+    ):
+        ic("HERE!")
+
+        if any(len(arg) != chains for arg in [seeds, start_points]):
+            raise ValueError("Number of seeds and start_points must be %s." % chains)
+
+        self._finished = []
+        self._active = []
+        self._max_active = cores
+
+        self._in_context = False
+        self._start_chain_num = start_chain_num
+
+        self._progress = None
+        self._divergences = 0
+        self._total_draws = 0
+        self._desc = "Sampling {0._chains:d} chains, {0._divergences:,d} divergences"
+        self._chains = chains
+        if progressbar:
+            self._progress = progress_bar(range(chains * (draws + tune)), display=progressbar)
+            self._progress.comment = self._desc.format(self)
+
+    def __iter__(self):
+        if not self._in_context:
+            raise ValueError("Use ParallelSampler as context manager.")
+
+        samplers = [
+            sample_process(
+                draws,
+                tune,
+                step_method,
+                chain + start_chain_num,
+                seed,
+                start,
+            )
+            for chain, seed, start in zip(range(chains), seeds, start_points)
+        ]
+
+        merged_samplers = stream.merge(*samplers)
+
+        if self._progress:
+            self._progress.update(self._total_draws)
+
+        with merged_samplers.stream() as streamer:
+            for draw in streamer:
+                draw = ProcessAdapter.recv_draw(self._active)
+                proc, is_last, draw, tuning, stats, warns = draw
+                self._total_draws += 1
+                if not tuning and stats and stats[0].get("diverging"):
+                    self._divergences += 1
+                    if self._progress:
+                        self._progress.comment = self._desc.format(self)
+                if self._progress:
+                    self._progress.update(self._total_draws)
+
+                yield Draw(proc.chain, is_last, draw, tuning, stats, point, warns)
+
+    def __enter__(self):
+        self._in_context = True
+        return self
+
+    def __exit__(self, *args):
+        pass
