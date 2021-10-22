@@ -122,19 +122,14 @@ class EnvDict(Object):
 
 
 class Image(Object):
-    def __init__(self, layer=None, env_dict=None, local=False, **kwargs):
+    def __init__(self, layer=None, local=False, **kwargs):
         if local:
             local_id = "local_image"
         else:
             local_id = "i:(%s)" % layer.args.local_id
-        super().__init__(args=dict(layer=layer, env_dict=env_dict, local_id=local_id, local=local, **kwargs))
+        super().__init__(args=dict(layer=layer, local_id=local_id, local=local, **kwargs))
 
     async def create_or_get(self):
-        if self.args.env_dict:
-            env_dict_id = await self.session.create_or_get_object(args.env_dict)
-        else:
-            env_dict_id = None
-
         if self.args.layer:
             layer = await self.session.create_or_get_object(self.args.layer)
             layer_id = layer.object_id
@@ -144,16 +139,12 @@ class Image(Object):
         image = api_pb2.Image(
             layer_id=layer_id,
             local_id=self.args.local_id,
-            env_dict_id=env_dict_id,
             local=self.args.local,
         )
 
         request = api_pb2.ImageCreateRequest(session_id=self.session.session_id, image=image)
         response = await self.client.stub.ImageCreate(request)
         return response.image_id
-
-    def set_env_vars(self, env_vars: Dict[str, str]):
-        return Image(self.args.layer, EnvDict(env_vars))
 
     def is_inside(self):
         # This is used from inside of containers to know whether this container is active or not
