@@ -1,3 +1,4 @@
+import asyncio
 import ctypes
 import logging
 import multiprocessing
@@ -9,19 +10,32 @@ from collections import namedtuple
 from typing import Dict, Sequence
 
 import numpy as np
+import synchronicity
 from aiostream import stream
+from fastprogress.fastprogress import progress_bar
 
-from polyester import Session
-from polyester.image import debian_slim
+from polyester import Image, Session
+
+synchronizer = synchronicity.Synchronizer()
 
 session = Session()
 
-image = debian_slim.add_python_packages(["pymc3", "fastprogress", "sklearn", "numpy", "cloudpickle"])
+image = Image(
+    base_images={"base": Image(tag="conda")},
+    dockerfile_commands=[
+        "FROM base",
+        'SHELL ["/bin/bash", "-c"]',
+        "RUN conda info",
+        "RUN echo $0 \ ",
+        "&& . /root/.bashrc \ ",
+        "&& conda activate base \ ",
+        "&& conda info \ ",
+        "&& conda install theano-pymc==1.1.2 pymc3==3.11.2 scikit-learn --yes \ ",
+    ],
+)
 
 if image.is_inside():
-    import cloudpickle
     import numpy as np
-    from fastprogress.fastprogress import progress_bar
     from pymc3 import theanof
     from pymc3.exceptions import SamplingError
     from sklearn import datasets, linear_model
@@ -90,22 +104,24 @@ def sample_process(
         array_np = np.frombuffer(array, dtype).reshape(shape)
         array_np[...] = start[name]
         np_point[name] = array_np
+        point[name] = np_point[name]
 
-    def _compute_point():
+    def compute_point():
+        nonlocal point, stats
         if step_method.generates_stats:
             point, stats = step_method.step(point)
         else:
             point = step_method.step(point)
             stats = None
 
-    def _collect_warnings():
+    def collect_warnings():
         if hasattr(step_method, "warnings"):
             return step_method.warnings()
         else:
             return []
 
     np.random.seed(seed)
-    theanof.set_tt_rng(self._tt_seed)
+    theanof.set_tt_rng(tt_seed)
 
     draw = 0
     tuning = True
@@ -130,13 +146,15 @@ def sample_process(
             warns = collect_warnings()
         else:
             warns = None
-        yield (np_point, is_last, draw, tuning, stats, warns)
+        print(f"yielding {draw} {chain}")
+        yield np_point, is_last, draw, tuning, stats, warns, chain
         draw += 1
 
 
 Draw = namedtuple("Draw", ["chain", "is_last", "draw_idx", "tuning", "stats", "point", "warnings"])
 
 
+@synchronizer
 class PolyesterSampler:
     def __init__(
         self,
@@ -150,8 +168,8 @@ class PolyesterSampler:
         start_chain_num: int = 0,
         progressbar: bool = True,
         mp_ctx=None,
+        pickle_backend: str = "pickle",
     ):
-        ic("HERE!")
 
         if any(len(arg) != chains for arg in [seeds, start_points]):
             raise ValueError("Number of seeds and start_points must be %s." % chains)
@@ -172,31 +190,37 @@ class PolyesterSampler:
             self._progress = progress_bar(range(chains * (draws + tune)), display=progressbar)
             self._progress.comment = self._desc.format(self)
 
-    def __iter__(self):
-        if not self._in_context:
-            raise ValueError("Use ParallelSampler as context manager.")
+        self._draws = draws
+        self._tune = tune
+        self._step_method = step_method
+        self._seeds = seeds
+        self._start_points = start_points
 
-        samplers = [
+    async def __aiter__(self):
+        sampler_coros = [
             sample_process(
-                draws,
-                tune,
-                step_method,
-                chain + start_chain_num,
+                self._draws,
+                self._tune,
+                self._step_method,
+                chain + self._start_chain_num,
                 seed,
                 start,
             )
-            for chain, seed, start in zip(range(chains), seeds, start_points)
+            for chain, seed, start in zip(range(self._chains), self._seeds, self._start_points)
         ]
+        samplers = await asyncio.gather(*sampler_coros)
+        print(f"{len(samplers)} samplers")
+
+        if not self._in_context:
+            raise ValueError("Use ParallelSampler as context manager.")
 
         merged_samplers = stream.merge(*samplers)
-
         if self._progress:
             self._progress.update(self._total_draws)
 
-        with merged_samplers.stream() as streamer:
-            for draw in streamer:
-                draw = ProcessAdapter.recv_draw(self._active)
-                proc, is_last, draw, tuning, stats, warns = draw
+        async with merged_samplers.stream() as streamer:
+            async for draw in streamer:
+                point, is_last, draw, tuning, stats, warns, chain = draw
                 self._total_draws += 1
                 if not tuning and stats and stats[0].get("diverging"):
                     self._divergences += 1
@@ -205,7 +229,7 @@ class PolyesterSampler:
                 if self._progress:
                     self._progress.update(self._total_draws)
 
-                yield Draw(proc.chain, is_last, draw, tuning, stats, point, warns)
+                yield Draw(chain, is_last, draw, tuning, stats, point, warns)
 
     def __enter__(self):
         self._in_context = True
