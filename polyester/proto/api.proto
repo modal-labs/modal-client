@@ -149,55 +149,55 @@ message QueuePutRequest {
   repeated bytes values = 4;
 }
 
-message BaseLayer {
-  string layer_id = 1;
+message BaseImage {
+  string image_id = 1;
   string docker_tag = 2;
 }
 
-message LayerContextFile {
+message ImageContextFile {
   string filename = 1;
   bytes data = 2;
 }
 
-message Layer {
+message Image {
   string processor = 4;
-  repeated BaseLayer base_layers = 5;
+  repeated BaseImage base_images = 5;
   repeated string dockerfile_commands = 6;
-  repeated LayerContextFile context_files = 7;
+  repeated ImageContextFile context_files = 7;
   bool local = 8;
   string local_id = 9;
 }
 
-message LayerGetOrCreateRequest {
-  Layer layer = 2;
+message ImageGetOrCreateRequest {
+  Image image = 2;
   bool must_create = 3;
   string session_id = 4;
 }
 
-message LayerGetOrCreateResponse {
-  string layer_id = 1;
+message ImageGetOrCreateResponse {
+  string image_id = 1;
 }
 
-message LayerJoinRequest {
-  string layer_id = 1;
+message ImageJoinRequest {
+  string image_id = 1;
   float timeout = 2;
   string session_id = 3;
 }
 
-message LayerJoinResponse {
+message ImageJoinResponse {
   GenericResult result = 1;
 }
 
-message LayerGetByTagRequest {
+message ImageGetByTagRequest {
   string tag = 1;
 }
 
-message LayerGetByTagResponse {
-  string layer_id = 1;
+message ImageGetByTagResponse {
+  string image_id = 1;
 }
 
-message LayerSetTagRequest {
-  string layer_id = 1;
+message ImageSetTagRequest {
+  string image_id = 1;
   string tag = 2;
 }
 
@@ -273,7 +273,7 @@ message Function {
   string module_name = 1;
   string function_name = 2;
   repeated string mount_ids = 3;
-  string image_id = 4;  // Note: refers to a *layer* (until we rename Layer to Image)
+  string image_id = 4;
   string env_dict_id = 5;
 }
 
@@ -375,11 +375,11 @@ service PolyesterClient {
   rpc MountUploadFile(stream MountUploadFileRequest) returns (Empty);  // TODO: return something?
   rpc MountDone(MountDoneRequest) returns (Empty);
 
-  // Layers
-  rpc LayerGetOrCreate(LayerGetOrCreateRequest) returns (LayerGetOrCreateResponse);
-  rpc LayerJoin(LayerJoinRequest) returns (LayerJoinResponse);
-  rpc LayerGetByTag(LayerGetByTagRequest) returns (LayerGetByTagResponse);
-  rpc LayerSetTag(LayerSetTagRequest) returns (Empty);
+  // Images
+  rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);
+  rpc ImageJoin(ImageJoinRequest) returns (ImageJoinResponse);
+  rpc ImageGetByTag(ImageGetByTagRequest) returns (ImageGetByTagResponse);
+  rpc ImageSetTag(ImageSetTagRequest) returns (Empty);
 
   // Dicts
   rpc DictCreate(DictCreateRequest) returns (DictCreateResponse);
