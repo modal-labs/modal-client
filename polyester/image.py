@@ -139,9 +139,7 @@ class DebianSlim(Layer):
             python_version = get_python_version()
         tag = "python-%s-slim-buster-base" % python_version
         self.python_version = python_version
-        super().__init__(
-            tag=tag
-        )
+        super().__init__(tag=tag)
 
     def add_python_packages(self, python_packages, find_links=None):
         find_links_arg = f"-f {find_links}" if find_links else ""
