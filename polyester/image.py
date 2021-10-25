@@ -25,6 +25,7 @@ class Layer(Object):
         dockerfile_commands=[],
         context_files={},
         must_create=False,
+        local=False,
     ):
         dockerfile_commands = [_make_bytes(s) for s in dockerfile_commands]
 
@@ -44,6 +45,7 @@ class Layer(Object):
                 dockerfile_commands=dockerfile_commands,
                 context_files=context_files,
                 must_create=must_create,
+                local=local,
             )
         )
 
@@ -72,6 +74,8 @@ class Layer(Object):
                 base_layers=base_layers_pb2s,
                 dockerfile_commands=self.args.dockerfile_commands,
                 context_files=context_file_pb2s,
+                local_id=self.args.local_id,
+                local=self.args.local,
             )
 
             req = api_pb2.LayerGetOrCreateRequest(
@@ -106,6 +110,10 @@ class Layer(Object):
         req = api_pb2.LayerSetTagRequest(layer_id=self.object_id, tag=tag)
         await self.client.stub.LayerSetTag(req)
 
+    def is_inside(self):
+        # This is used from inside of containers to know whether this container is active or not
+        return os.getenv("POLYESTER_IMAGE_LOCAL_ID") == self.args.local_id
+
 
 class EnvDict(Object):
     def __init__(self, env_dict):
@@ -121,49 +129,18 @@ class EnvDict(Object):
         return resp.env_dict_id
 
 
-class Image(Object):
-    def __init__(self, layer=None, local=False, **kwargs):
-        if local:
-            local_id = "local_image"
-        else:
-            local_id = "i:(%s)" % layer.args.local_id
-        super().__init__(args=dict(layer=layer, local_id=local_id, local=local, **kwargs))
-
-    async def create_or_get(self):
-        if self.args.layer:
-            layer = await self.session.create_or_get_object(self.args.layer)
-            layer_id = layer.object_id
-        else:
-            layer_id = None
-
-        image = api_pb2.Image(
-            layer_id=layer_id,
-            local_id=self.args.local_id,
-            local=self.args.local,
-        )
-
-        request = api_pb2.ImageCreateRequest(session_id=self.session.session_id, image=image)
-        response = await self.client.stub.ImageCreate(request)
-        return response.image_id
-
-    def is_inside(self):
-        # This is used from inside of containers to know whether this container is active or not
-        return os.getenv("POLYESTER_IMAGE_LOCAL_ID") == self.args.local_id
-
-
 def get_python_version():
     return config["image_python_version"] or "%d.%d.%d" % sys.version_info[:3]
 
 
-class DebianSlim(Image):
-    def __init__(self, layer=None, python_version=None):
+class DebianSlim(Layer):
+    def __init__(self, python_version=None):
         if python_version is None:
             python_version = get_python_version()
-        if layer is None:
-            layer = Layer(tag="python-%s-slim-buster-base" % python_version)
+        tag = "python-%s-slim-buster-base" % python_version
+        self.python_version = python_version
         super().__init__(
-            layer=layer,
-            python_version=python_version,
+            tag=tag
         )
 
     def add_python_packages(self, python_packages, find_links=None):
@@ -171,8 +148,8 @@ class DebianSlim(Image):
 
         layer = Layer(
             base_layers={
-                "base": self.args.layer,
-                "builder": Layer(tag="python-%s-slim-buster-builder" % self.args.python_version),
+                "base": self,
+                "builder": Layer(tag="python-%s-slim-buster-builder" % self.python_version),
             },
             dockerfile_commands=[
                 "FROM builder as builder-vehicle",
@@ -183,14 +160,14 @@ class DebianSlim(Image):
                 "RUN rm -rf /tmp/wheels",
             ],
         )
-        return DebianSlim(layer=layer)
+        return layer
 
     def run_commands(self, commands):
         layer = Layer(
-            base_layers={"base": self.args.layer},
+            base_layers={"base": self},
             dockerfile_commands=["FROM base"] + ["RUN " + command for command in commands],
         )
-        return DebianSlim(layer=layer)
+        return layer
 
 
 debian_slim = DebianSlim()

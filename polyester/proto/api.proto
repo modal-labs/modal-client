@@ -164,6 +164,8 @@ message Layer {
   repeated BaseLayer base_layers = 5;
   repeated string dockerfile_commands = 6;
   repeated LayerContextFile context_files = 7;
+  bool local = 8;
+  string local_id = 9;
 }
 
 message LayerGetOrCreateRequest {
@@ -267,26 +269,11 @@ message EnvDictCreateResponse {
   string env_dict_id = 1;
 }
 
-message Image {
-  string layer_id = 1;
-  string local_id = 2;
-  bool local = 4;
-}
-
-message ImageCreateRequest {
-  Image image = 1;
-  string session_id = 3;
-}
-
-message ImageCreateResponse {
-  string image_id = 2;
-}
-
 message Function {
   string module_name = 1;
   string function_name = 2;
   repeated string mount_ids = 3;
-  string image_id = 4;
+  string image_id = 4;  // Note: refers to a *layer* (until we rename Layer to Image)
   string env_dict_id = 5;
 }
 
@@ -404,9 +391,6 @@ service PolyesterClient {
 
   // Env Dicts
   rpc EnvDictCreate(EnvDictCreateRequest) returns (EnvDictCreateResponse);
-
-  // Images
-  rpc ImageCreate(ImageCreateRequest) returns (ImageCreateResponse);
 
   // Functions
   rpc FunctionGetOrCreate(FunctionGetOrCreateRequest) returns (FunctionGetOrCreateResponse);
