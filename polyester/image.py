@@ -36,7 +36,9 @@ class Image(Object):
         This is a bit confusing right now, but I hope to address it as a part of refactoring persistence.
         """
 
-        if local_id is None and local_image_python_executable is False:
+        if local_image_python_executable and local_id is None:
+            local_id = "local"
+        if local_id is None:
             raise Exception("Every image needs a local_id")
 
         dockerfile_commands = [_make_bytes(s) for s in dockerfile_commands]
@@ -117,7 +119,9 @@ class Image(Object):
 
     def is_inside(self):
         # This is used from inside of containers to know whether this container is active or not
-        return os.getenv("POLYESTER_IMAGE_LOCAL_ID") == self.args.local_id
+        env_local_id = os.getenv("POLYESTER_IMAGE_LOCAL_ID")
+        logger.debug(f"Is image inside? env {env_local_id} image {self.args.local_id}")
+        return env_local_id == self.args.local_id
 
 
 class EnvDict(Object):
