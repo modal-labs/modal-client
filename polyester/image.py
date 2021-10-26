@@ -152,7 +152,7 @@ class DebianSlim(Image):
         new_local_id = self.args.local_id + "/" + h
         builder_tagged = Image(
             local_id="python-%s-slim-buster-builder" % self.python_version,
-            tag="python-%s-slim-buster-builder" % self.python_version
+            tag="python-%s-slim-buster-builder" % self.python_version,
         )
         image = Image(
             local_id=new_local_id,
