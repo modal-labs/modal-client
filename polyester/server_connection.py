@@ -38,6 +38,9 @@ class BasicAuth(grpc.AuthMetadataPlugin):
         callback(self._metadata, None)
 
 
+MAX_MESSAGE_LENGTH = 1000000000  # 100 MB
+
+
 class GRPCConnectionFactory:
     """Manages gRPC connection with the server. This factory is used by the channel pool."""
 
@@ -63,8 +66,8 @@ class GRPCConnectionFactory:
             self.credentials = None
 
         self.options = [
-            ("grpc.max_send_message_length", 1 << 26),
-            ("grpc.max_receive_message_length", 1 << 26),
+            ("grpc.max_send_message_length", MAX_MESSAGE_LENGTH),
+            ("grpc.max_receive_message_length", MAX_MESSAGE_LENGTH),
         ]
 
     async def create(self):
