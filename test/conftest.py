@@ -5,7 +5,6 @@ import typing
 import grpc
 import pytest
 
-from polyester.async_utils import synchronizer
 from polyester.client import Client
 from polyester.proto import api_pb2, api_pb2_grpc
 
@@ -69,14 +68,6 @@ class GRPCClientServicer(api_pb2_grpc.PolyesterClient):
         self, request: api_pb2.SessionGetObjectsRequest, context: grpc.aio.ServicerContext
     ) -> api_pb2.SessionGetObjectsResponse:
         return api_pb2.SessionGetObjectsResponse(object_ids={})
-
-
-@pytest.fixture(scope="package")
-def event_loop():
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    synchronizer._start_loop(loop)
-    yield loop
-    synchronizer._close_loop()
 
 
 @pytest.fixture(scope="function")
