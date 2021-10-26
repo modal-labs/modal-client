@@ -25,21 +25,25 @@ class Image(Object):
         dockerfile_commands=[],
         context_files={},
         must_create=False,
+        local_id=None,
         local_image_python_executable=None,
     ):
-        dockerfile_commands = [_make_bytes(s) for s in dockerfile_commands]
+        """
+        An image can be created either as a reference to an existing image, or as a new image
+        The `tag` parameter refers to an existing image (built elsewhere)
+        The `local_id` is a property used to identify images within sessions (but across processes)
 
-        # Construct the local id
-        local_id_args = []
-        for docker_tag, image in base_images.items():
-            local_id_args.append("b:%s:(%s)" % (docker_tag, image.args.local_id))
-        local_id_args.append("c:%s" % get_sha256_hex_from_content(b"\n".join(dockerfile_commands)))
-        for filename, content in context_files.items():
-            local_id_args.append("f:%s:%s" % (filename, get_sha256_hex_from_content(content)))
+        This is a bit confusing right now, but I hope to address it as a part of refactoring persistence.
+        """
+
+        if local_id is None and local_image_python_executable is False:
+            raise Exception("Every image needs a local_id")
+
+        dockerfile_commands = [_make_bytes(s) for s in dockerfile_commands]
 
         super().__init__(
             args=dict(
-                local_id=",".join(local_id_args),
+                local_id=local_id,
                 tag=tag,
                 base_images=base_images,
                 dockerfile_commands=dockerfile_commands,
@@ -51,6 +55,7 @@ class Image(Object):
 
     async def create_or_get(self):
         if self.args.tag:
+            # Just fetch the image id from some existing image
             req = api_pb2.ImageGetByTagRequest(tag=self.args.tag)
             resp = await self.client.stub.ImageGetByTag(req)
             image_id = resp.image_id
@@ -139,15 +144,21 @@ class DebianSlim(Image):
             python_version = get_python_version()
         tag = "python-%s-slim-buster-base" % python_version
         self.python_version = python_version
-        super().__init__(tag=tag)
+        super().__init__(tag=tag, local_id=tag)
 
     def add_python_packages(self, python_packages, find_links=None):
         find_links_arg = f"-f {find_links}" if find_links else ""
-
+        h = get_sha256_hex_from_content(b",".join(p.encode("ascii") for p in python_packages))
+        new_local_id = self.args.local_id + "/" + h
+        builder_tagged = Image(
+            local_id="python-%s-slim-buster-builder" % self.python_version,
+            tag="python-%s-slim-buster-builder" % self.python_version
+        )
         image = Image(
+            local_id=new_local_id,
             base_images={
                 "base": self,
-                "builder": Image(tag="python-%s-slim-buster-builder" % self.python_version),
+                "builder": builder_tagged,
             },
             dockerfile_commands=[
                 "FROM builder as builder-vehicle",
@@ -161,7 +172,10 @@ class DebianSlim(Image):
         return image
 
     def run_commands(self, commands):
+        h = get_sha256_hex_from_content(b",".join(c.encode("ascii") for c in commands))
+        new_local_id = self.args.local_id + "/" + h
         image = Image(
+            local_id=new_local_id,
             base_images={"base": self},
             dockerfile_commands=["FROM base"] + ["RUN " + command for command in commands],
         )
