@@ -68,7 +68,8 @@ class ChannelPool:
     purges it.
     """
 
-    def __init__(self, conn_factory, max_channel_lifetime=MAX_CHANNEL_LIFETIME):
+    def __init__(self, task_context, conn_factory, max_channel_lifetime=MAX_CHANNEL_LIFETIME):
+        self._task_context = task_context
         self._conn_factory = conn_factory
         self._max_requests_per_channel = 64
         self._channels = []
@@ -91,13 +92,7 @@ class ChannelPool:
             await ch.channel.close()
 
     async def start(self):
-        async def purge_channels_loop():
-            while True:
-                await self._purge_channels()
-                await asyncio.sleep(10.0)
-
-        loop = asyncio.get_event_loop()
-        self.purge_task = loop.create_task(purge_channels_loop())  # TODO: remove this!
+        self._task_context.infinite_loop(self._purge_channels, sleep=10.0)
 
     async def _get_channel(self):
         async with self._lock:
@@ -124,8 +119,6 @@ class ChannelPool:
         for ch in self._channels:
             await ch.channel.close()
         self._channels = []
-        if self.purge_task:
-            self.purge_task.cancel()
 
     def _update_kwargs(self, kwargs):
         # Override timeout (or set it if it's not set) and cap it to the channel lifetime

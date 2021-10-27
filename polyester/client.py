@@ -33,12 +33,12 @@ class Client:
         self._task_context = TaskContext()
         await self._task_context.start()
         try:
-            self.connection_factory = GRPCConnectionFactory(
+            self._connection_factory = GRPCConnectionFactory(
                 self.server_url,
                 self.client_type,
                 self.credentials,
             )
-            self._channel_pool = ChannelPool(self.connection_factory)
+            self._channel_pool = ChannelPool(self._task_context, self._connection_factory)
             await self._channel_pool.start()
             self.stub = api_pb2_grpc.PolyesterClientStub(self._channel_pool)
             req = api_pb2.ClientCreateRequest(client_type=self.client_type)
