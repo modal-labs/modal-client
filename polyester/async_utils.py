@@ -185,7 +185,7 @@ class TaskContext:
     def create_task(self, coro_or_task):
         if isinstance(coro_or_task, asyncio.Task):
             task = coro_or_task
-        elif inspect.iscoroutine(coro_or_task):
+        elif asyncio.iscoroutine(coro_or_task):
             loop = asyncio.get_event_loop()
             task = loop.create_task(coro_or_task)
         else:
