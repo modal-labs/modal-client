@@ -164,8 +164,8 @@ message Image {
   repeated BaseImage base_images = 5;
   repeated string dockerfile_commands = 6;
   repeated ImageContextFile context_files = 7;
-  bool local = 8;
   string local_id = 9;
+  string local_image_python_executable = 10;
 }
 
 message ImageGetOrCreateRequest {

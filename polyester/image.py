@@ -25,7 +25,7 @@ class Image(Object):
         dockerfile_commands=[],
         context_files={},
         must_create=False,
-        local=False,
+        local_image_python_executable=None,
     ):
         dockerfile_commands = [_make_bytes(s) for s in dockerfile_commands]
 
@@ -45,7 +45,7 @@ class Image(Object):
                 dockerfile_commands=dockerfile_commands,
                 context_files=context_files,
                 must_create=must_create,
-                local=local,
+                local_image_python_executable=local_image_python_executable,
             )
         )
 
@@ -75,7 +75,7 @@ class Image(Object):
                 dockerfile_commands=self.args.dockerfile_commands,
                 context_files=context_file_pb2s,
                 local_id=self.args.local_id,
-                local=self.args.local,
+                local_image_python_executable=self.args.local_image_python_executable,
             )
 
             req = api_pb2.ImageGetOrCreateRequest(
