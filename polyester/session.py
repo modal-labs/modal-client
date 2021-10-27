@@ -4,7 +4,6 @@ import sys
 
 from .async_utils import (
     TaskContext,
-    infinite_loop,
     retry,
     synchronizer,
 )
@@ -106,7 +105,7 @@ class Session(Object):
 
         # Start tracking logs and yield context
         async with TaskContext() as tc:
-            tc.create_task(infinite_loop(functools.partial(self._get_logs, stdout, stderr)))
+            tc.infinite_loop(functools.partial(self._get_logs, stdout, stderr))
 
             # Create all members
             # TODO: do this in parallel

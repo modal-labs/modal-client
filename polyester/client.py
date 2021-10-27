@@ -4,7 +4,7 @@ import os
 
 import grpc.aio
 
-from .async_utils import infinite_loop, retry, synchronizer
+from .async_utils import retry, synchronizer, TaskContext
 from .config import config, logger
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT, ChannelPool
 from .object import ObjectMeta
@@ -48,9 +48,10 @@ class Client:
             raise
 
         # Start heartbeats
-        # TODO: would be nice to have some proper ownership of these tasks so they are garbage collected
-        # TODO: we should have some more graceful termination of these
-        self._heartbeats_task = infinite_loop(self._heartbeats, timeout=None)
+        # TODO: this is an ugly abuse of the task context
+        self._task_context = TaskContext()
+        await self._task_context.__aenter__()
+        self._task_context.infinite_loop(self._heartbeats, timeout=None)
 
         logger.debug("Client: Done starting")
 
@@ -58,7 +59,7 @@ class Client:
         # TODO: we should trigger this using an exit handler
         self.stopped.set()  # notify heartbeat loop to quit.
         logger.debug("Client: Shutting down")
-        self._heartbeats_task.cancel()
+        await self._task_context.__aexit__(None, None, None)
         await self._channel_pool.close()
         logger.debug("Client: Done shutting down")
         # Needed to catch straggling CancelledErrors and GeneratorExits that propagate

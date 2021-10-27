@@ -164,3 +164,20 @@ async def test_task_context_wait():
 
     assert u.cancelled()
     assert v.done()
+
+
+@pytest.mark.asyncio
+async def test_task_context_infinite_loop():
+    async with TaskContext() as task_context:
+        counter = 0
+        async def f():
+            nonlocal counter
+            counter += 1
+        t = task_context.infinite_loop(f, sleep=0.1)
+        assert not t.done()
+        await asyncio.sleep(0.35)
+        assert counter == 4  # at 0.00, 0.10, 0.20, 0.30
+    await asyncio.sleep(0.0)  # just waste a loop step for the cancellation to go through
+    assert not t.cancelled()
+    assert t.done()
+    assert counter == 4  # should be exited immediately

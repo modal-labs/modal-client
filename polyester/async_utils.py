@@ -77,22 +77,6 @@ def create_task(coro):
     return loop.create_task(add_traceback(coro))
 
 
-def infinite_loop(async_f, timeout=90, sleep=10):
-    async def loop_coro():
-        logger.debug(f"Starting infinite loop {async_f}")
-        while True:
-            try:
-                await asyncio.wait_for(async_f(), timeout=timeout)
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                logger.exception(f"Loop attempt failed for {async_f}")
-            await asyncio.sleep(sleep)
-
-    # functools.partial objects have no __name__ attribute :(
-    return create_task(loop_coro())
-
-
 async def chunk_generator(generator, timeout):
     """Takes a generator and returns a generator of generator where each sub-generator only runs for a certain time.
 
@@ -180,9 +164,11 @@ class TaskContext:
 
     async def __aenter__(self):
         self._tasks = []
+        self._exited = asyncio.Event()  # Used to stop infinite loops
         return self
 
-    async def __aexit__(self, exc_type, value, tb):
+    async def __aexit__(self, exc_type , value, tb):
+        self._exited.set()
         await asyncio.sleep(0)  # Causes any just-created tasks to get started
         unfinished_tasks = [t for t in self._tasks if not t.done()]
         try:
@@ -204,8 +190,27 @@ class TaskContext:
         self._tasks.append(task)
         return task
 
+    def infinite_loop(self, async_f, timeout=90, sleep=10):
+        async def loop_coro():
+            logger.debug(f"Starting infinite loop {async_f}")
+            while True:
+                try:
+                    await asyncio.wait_for(async_f(), timeout=timeout)
+                except Exception:
+                    logger.exception(f"Loop attempt failed for {async_f}")
+                try:
+                    await asyncio.wait_for(self._exited.wait(), timeout=sleep)
+                except asyncio.TimeoutError:
+                    continue
+                logger.info(f"Exiting infinite loop for {async_f}")
+                break
+
+        return self.create_task(loop_coro())
+
     async def wait(self, *tasks):
         # Waits until all of tasks have finished
+        # This is slightly different than asyncio.wait since the `tasks` argument
+        # may be a subset of all the tasks.
         # If any of the task context's task raises, throw that exception
         # This is probably O(n^2) sadly but I guess it's fine
         unfinished_tasks = set(tasks)
