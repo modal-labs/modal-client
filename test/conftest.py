@@ -39,11 +39,10 @@ class GRPCClientServicer(api_pb2_grpc.PolyesterClient):
     #    self.done = True
     #    return api_pb2.Empty()
 
-    async def ClientHeartbeats(
-        self, requests: typing.AsyncIterator[api_pb2.ClientHeartbeatRequest], context: grpc.aio.ServicerContext
+    async def ClientHeartbeat(
+        self, request: api_pb2.ClientHeartbeatRequest, context: grpc.aio.ServicerContext
     ) -> api_pb2.Empty:
-        async for request in requests:
-            self.requests.append(request)
+        self.requests.append(request)
         return api_pb2.Empty()
 
     async def SessionGetLogs(

@@ -50,13 +50,12 @@ class Client:
             raise
 
         # Start heartbeats
-        self._task_context.infinite_loop(self._heartbeats, timeout=None)
+        self._task_context.infinite_loop(self._heartbeat, sleep=3.0)
 
         logger.debug("Client: Done starting")
 
     async def _stop(self):
         # TODO: we should trigger this using an exit handler
-        self.stopped.set()  # notify heartbeat loop to quit.
         logger.debug("Client: Shutting down")
         await self._task_context.stop()
         await self._channel_pool.close()
@@ -65,17 +64,9 @@ class Client:
         # through our chains of async generators.
         await asyncio.sleep(0.01)
 
-    async def _heartbeats(self, sleep=3):
-        async def loop():
-            while not self.stopped.is_set():
-                yield api_pb2.ClientHeartbeatRequest(client_id=self.client_id)
-                # Wait for event, or until sleep seconds have passed.
-                try:
-                    await asyncio.wait_for(self.stopped.wait(), sleep)
-                except asyncio.TimeoutError:
-                    continue
-
-        await self.stub.ClientHeartbeats(loop())
+    async def _heartbeat(self):
+        req = api_pb2.ClientHeartbeatRequest(client_id=self.client_id)
+        await self.stub.ClientHeartbeat(req)
 
     def serialize(self, obj):
         """Serializes object and replaces all references to the client class by a placeholder."""

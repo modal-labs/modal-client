@@ -355,7 +355,7 @@ message MountDoneRequest {
 service PolyesterClient {
   // Clients
   rpc ClientCreate(ClientCreateRequest) returns (ClientCreateResponse);
-  rpc ClientHeartbeats(stream ClientHeartbeatRequest) returns (Empty);
+  rpc ClientHeartbeat(ClientHeartbeatRequest) returns (Empty);
 
   // Sessions
   rpc SessionCreate(SessionCreateRequest) returns (SessionCreateResponse);
