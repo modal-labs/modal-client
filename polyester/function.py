@@ -10,7 +10,7 @@ import cloudpickle
 from aiostream import stream
 from google.protobuf.any_pb2 import Any
 
-from .async_utils import create_task, retry, synchronizer
+from .async_utils import retry, synchronizer
 from .buffer_utils import buffered_rpc_read, buffered_rpc_write
 from .client import Client
 from .config import config, logger

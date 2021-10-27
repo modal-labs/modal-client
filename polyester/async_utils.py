@@ -72,11 +72,6 @@ def add_traceback(obj, func_name=None):
         raise Exception(f"{obj} is not a coro or async gen!")
 
 
-def create_task(coro):
-    loop = asyncio.get_event_loop()
-    return loop.create_task(add_traceback(coro))
-
-
 async def chunk_generator(generator, timeout):
     """Takes a generator and returns a generator of generator where each sub-generator only runs for a certain time.
 
@@ -191,7 +186,8 @@ class TaskContext:
         if isinstance(coro_or_task, asyncio.Task):
             task = coro_or_task
         elif inspect.iscoroutine(coro_or_task):
-            task = create_task(coro_or_task)
+            loop = asyncio.get_event_loop()
+            task = loop.create_task(coro_or_task)
         else:
             raise Exception(f"{coro_or_task} is not a coroutine or Task")
         self._tasks.append(task)
