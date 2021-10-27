@@ -29,13 +29,14 @@ class FunctionInfo:
         if module.__package__:
             # This is a "real" module, eg. examples.logs.f
             # Get the package path
+            # Note: __import__ always returns the top-level package.
             package_path = __import__(module.__package__).__path__
             # TODO: we should handle the array case, https://stackoverflow.com/questions/2699287/what-is-path-useful-for
             assert len(package_path) == 1
             (self.package_path,) = package_path
             self.module_name = module.__spec__.name
             self.recursive_upload = True
-            self.remote_dir = "/root/" + module.__package__  # TODO: don't hardcode /root
+            self.remote_dir = "/root/" + module.__package__.split(".")[0]  # TODO: don't hardcode /root
         else:
             # This generally covers the case where it's invoked with
             # python foo/bar/baz.py
