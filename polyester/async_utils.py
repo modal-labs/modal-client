@@ -162,12 +162,16 @@ class TaskContext:
     def __init__(self, grace=None):
         self._grace = grace
 
-    async def __aenter__(self):
+    async def start(self):
+        # TODO: this only exists as a standalone method because Client doesn't have a proper ctx mgr
         self._tasks = []
         self._exited = asyncio.Event()  # Used to stop infinite loops
+
+    async def __aenter__(self):
+        await self.start()
         return self
 
-    async def __aexit__(self, exc_type , value, tb):
+    async def stop(self):
         self._exited.set()
         await asyncio.sleep(0)  # Causes any just-created tasks to get started
         unfinished_tasks = [t for t in self._tasks if not t.done()]
@@ -179,6 +183,9 @@ class TaskContext:
         finally:
             for task in self._tasks:
                 task.cancel()
+
+    async def __aexit__(self, exc_type, value, tb):
+        await self.stop()
 
     def create_task(self, coro_or_task):
         if isinstance(coro_or_task, asyncio.Task):

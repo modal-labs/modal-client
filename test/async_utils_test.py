@@ -170,9 +170,11 @@ async def test_task_context_wait():
 async def test_task_context_infinite_loop():
     async with TaskContext() as task_context:
         counter = 0
+
         async def f():
             nonlocal counter
             counter += 1
+
         t = task_context.infinite_loop(f, sleep=0.1)
         assert not t.done()
         await asyncio.sleep(0.35)

@@ -30,6 +30,8 @@ class Client:
     async def _start(self):
         logger.debug("Client: Starting")
         self.stopped = asyncio.Event()
+        self._task_context = TaskContext()
+        await self._task_context.start()
         try:
             self.connection_factory = GRPCConnectionFactory(
                 self.server_url,
@@ -48,9 +50,6 @@ class Client:
             raise
 
         # Start heartbeats
-        # TODO: this is an ugly abuse of the task context
-        self._task_context = TaskContext()
-        await self._task_context.__aenter__()
         self._task_context.infinite_loop(self._heartbeats, timeout=None)
 
         logger.debug("Client: Done starting")
@@ -59,7 +58,7 @@ class Client:
         # TODO: we should trigger this using an exit handler
         self.stopped.set()  # notify heartbeat loop to quit.
         logger.debug("Client: Shutting down")
-        await self._task_context.__aexit__(None, None, None)
+        await self._task_context.stop()
         await self._channel_pool.close()
         logger.debug("Client: Done shutting down")
         # Needed to catch straggling CancelledErrors and GeneratorExits that propagate
