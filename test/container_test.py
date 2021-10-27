@@ -102,7 +102,7 @@ async def test_container_entrypoint_failure(servicer):
 
     output = _get_output(outputs[0])
     assert output.status == api_pb2.GenericResult.Status.FAILURE
-    assert output.exception == "Exception('Failure!')"
+    assert output.exception in ["Exception('Failure!')", "Exception('Failure!',)"]  # The 2nd is 3.6
     assert "Traceback" in output.traceback
 
 

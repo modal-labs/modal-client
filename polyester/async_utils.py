@@ -1,6 +1,7 @@
 import asyncio
 import functools
 import inspect
+import sys
 import time
 
 import synchronicity
@@ -9,6 +10,20 @@ from .config import logger
 
 synchronizer = synchronicity.Synchronizer()
 # atexit.register(synchronizer.close)
+
+
+def asyncio_run(coro):
+    # 3.6 compatibility version of asyncio.run
+    if sys.version_info >= (3, 7):
+        return asyncio.run(coro)
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+        asyncio.set_event_loop(None)
 
 
 def retry(direct_fn=None, n_attempts=3, base_delay=0, delay_factor=2, timeout=90):
@@ -178,6 +193,7 @@ class TaskContext:
         finally:
             for task in self._tasks:
                 task.cancel()
+        await asyncio.sleep(0)  # Needed in 3.6 to make any just-cancelled tasks actually cancel
 
     async def __aexit__(self, exc_type, value, tb):
         await self.stop()

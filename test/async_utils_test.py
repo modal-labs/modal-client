@@ -168,7 +168,7 @@ async def test_task_context_wait():
 
 @pytest.mark.asyncio
 async def test_task_context_infinite_loop():
-    async with TaskContext() as task_context:
+    async with TaskContext(grace=0.01) as task_context:
         counter = 0
 
         async def f():

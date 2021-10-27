@@ -9,7 +9,7 @@ import uuid
 import aiostream
 import google.protobuf.json_format
 
-from .async_utils import synchronizer
+from .async_utils import asyncio_run, synchronizer
 from .buffer_utils import buffered_rpc_read, buffered_rpc_write
 from .client import Client
 from .config import logger
@@ -131,11 +131,11 @@ def call_function(
                     gen_status=api_pb2.GenericResult.GeneratorStatus.COMPLETE,
                 )
 
-            asyncio.run(run_asyncgen())
+            asyncio_run(run_asyncgen())
 
         else:
             if inspect.iscoroutine(res):
-                res = asyncio.run(res)
+                res = asyncio_run(res)
 
             function_context.output_request(
                 input_id,
