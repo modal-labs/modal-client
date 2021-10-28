@@ -38,6 +38,8 @@ class Session(Object):
         if tag in self._objects:
             raise KeyError(tag)
         self._objects[tag] = obj
+        ## TODO: this is kind of weird, since we modify the RHS of an an assignment.
+        ## Probably need to rethink the relationships b/w objects, sessions and clients.
         self._initialize_object(tag)
 
     def __getitem__(self, tag):
