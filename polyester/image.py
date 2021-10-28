@@ -146,6 +146,11 @@ class DebianSlim(Image):
     def __init__(self, python_version=None):
         if python_version is None:
             python_version = get_python_version()
+        else:
+            # We need to make sure that the version *inside* the image matches the version *outside*
+            # This is important or else image.is_inside() won't work
+            numbers = [int(z) for z in python_version.split(".")]
+            assert len(numbers) == 3
         tag = "python-%s-slim-buster-base" % python_version
         self.python_version = python_version
         super().__init__(tag=tag, local_id=tag)
