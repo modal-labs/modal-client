@@ -8,6 +8,7 @@ from .async_utils import retry
 from .config import config, logger
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .object import Object
+from .package_utils import get_package_deps_mount_info
 from .proto import api_pb2
 
 
@@ -106,7 +107,5 @@ class Mount(Object):
 
 
 def create_package_mounts(package_name):
-    from .package_utils import get_package_deps_mount_info
-
     mount_infos = get_package_deps_mount_info(package_name)
     return [Mount(path, f"/pkg/{name}", condition) for (name, path, condition) in mount_infos]
