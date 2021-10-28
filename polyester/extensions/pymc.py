@@ -86,7 +86,9 @@ def sample_process(
 ):
     tt_seed = seed + 1
 
-    np_point = {}
+    np.random.seed(seed)
+    theanof.set_tt_rng(tt_seed)
+
     point = {}
     stats = None
 
@@ -103,8 +105,7 @@ def sample_process(
 
         array_np = np.frombuffer(array, dtype).reshape(shape)
         array_np[...] = start[name]
-        np_point[name] = array_np
-        point[name] = np_point[name]
+        point[name] = array_np
 
     def compute_point():
         nonlocal point, stats
@@ -119,9 +120,6 @@ def sample_process(
             return step_method.warnings()
         else:
             return []
-
-    np.random.seed(seed)
-    theanof.set_tt_rng(tt_seed)
 
     draw = 0
     tuning = True
@@ -146,8 +144,7 @@ def sample_process(
             warns = collect_warnings()
         else:
             warns = None
-        print(f"yielding {draw} {chain}")
-        yield np_point, is_last, draw, tuning, stats, warns, chain
+        yield point, is_last, draw, tuning, stats, warns, chain
         draw += 1
 
 
@@ -197,39 +194,40 @@ class PolyesterSampler:
         self._start_points = start_points
 
     async def __aiter__(self):
-        sampler_coros = [
-            sample_process(
-                self._draws,
-                self._tune,
-                self._step_method,
-                chain + self._start_chain_num,
-                seed,
-                start,
-            )
-            for chain, seed, start in zip(range(self._chains), self._seeds, self._start_points)
-        ]
-        samplers = await asyncio.gather(*sampler_coros)
-        print(f"{len(samplers)} samplers")
+        async with session.run():
+            sampler_coros = [
+                sample_process(
+                    self._draws,
+                    self._tune,
+                    self._step_method,
+                    chain + self._start_chain_num,
+                    seed,
+                    start,
+                )
+                for chain, seed, start in zip(range(self._chains), self._seeds, self._start_points)
+            ]
+            samplers = await asyncio.gather(*sampler_coros)
+            print(f"{len(samplers)} samplers")
 
-        if not self._in_context:
-            raise ValueError("Use ParallelSampler as context manager.")
+            if not self._in_context:
+                raise ValueError("Use ParallelSampler as context manager.")
 
-        merged_samplers = stream.merge(*samplers)
-        if self._progress:
-            self._progress.update(self._total_draws)
+            merged_samplers = stream.merge(*samplers)
+            if self._progress:
+                self._progress.update(self._total_draws)
 
-        async with merged_samplers.stream() as streamer:
-            async for draw in streamer:
-                point, is_last, draw, tuning, stats, warns, chain = draw
-                self._total_draws += 1
-                if not tuning and stats and stats[0].get("diverging"):
-                    self._divergences += 1
+            async with merged_samplers.stream() as streamer:
+                async for result in streamer:
+                    point, is_last, draw, tuning, stats, warns, chain = result
+                    self._total_draws += 1
+                    if not tuning and stats and stats[0].get("diverging"):
+                        self._divergences += 1
+                        if self._progress:
+                            self._progress.comment = self._desc.format(self)
                     if self._progress:
-                        self._progress.comment = self._desc.format(self)
-                if self._progress:
-                    self._progress.update(self._total_draws)
+                        self._progress.update(self._total_draws)
 
-                yield Draw(chain, is_last, draw, tuning, stats, point, warns)
+                    yield Draw(chain, is_last, draw, tuning, stats, point, warns)
 
     def __enter__(self):
         self._in_context = True
