@@ -1,6 +1,6 @@
 import os
 from importlib import import_module
-from importlib.metadata import PackageNotFoundError, files, requires
+from importlib_metadata import PackageNotFoundError, files, requires
 
 from packaging.requirements import Requirement
 
