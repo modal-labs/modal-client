@@ -101,6 +101,7 @@ def process_result(client, result):
                 exc = None
                 warnings.warn("Could not deserialize remote exception!")
             if exc is not None:
+                print(result.traceback)
                 raise exc
         raise RemoteException(result.exception)
 
