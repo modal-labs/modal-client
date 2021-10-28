@@ -77,7 +77,7 @@ class Session(Object):
     def _initialize_object(self, tag):
         """If this tag is already present on the server, set this object to use the same object_id."""
 
-        if tag not in self._initialized_object_ids:
+        if not self._initialized_object_ids or tag not in self._initialized_object_ids:
             return
 
         object_id = self._initialized_object_ids[tag]
