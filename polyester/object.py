@@ -66,7 +66,7 @@ class Object(metaclass=ObjectMeta):
         new_self.args = self.args
         return new_self
 
-    async def set_context(self, session, client):
+    def set_context(self, session, client):
         self.session = session
         self.client = client
 
