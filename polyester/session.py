@@ -2,11 +2,7 @@ import asyncio
 import functools
 import sys
 
-from .async_utils import (
-    TaskContext,
-    retry,
-    synchronizer,
-)
+from .async_utils import TaskContext, retry, synchronizer
 from .client import Client
 from .config import config, logger
 from .function import Function
@@ -21,6 +17,7 @@ from .utils import print_logs
 class Session(Object):
     def __init__(self):
         self._objects = {}
+        self._initialized_object_ids = None
         super().__init__()
 
     async def create_or_get_object(self, obj, tag=None, return_copy=False):
@@ -32,7 +29,7 @@ class Session(Object):
             # Don't modify the underlying object, just return a new
             obj = obj.clone()
 
-        await obj.set_context(self, self.client)
+        obj.set_context(self, self.client)
         await obj.create_from_scratch()
         return obj
 
@@ -41,6 +38,9 @@ class Session(Object):
         if tag in self._objects:
             raise KeyError(tag)
         self._objects[tag] = obj
+        ## TODO: this is kind of weird, since we modify the RHS of an an assignment.
+        ## Probably need to rethink the relationships b/w objects, sessions and clients.
+        self._initialize_object(tag)
 
     def __getitem__(self, tag):
         return self._objects[tag]
@@ -55,6 +55,7 @@ class Session(Object):
             fun.session = self
             tag = f"{fun.info.module_name}.{fun.info.function_name}"
             self._objects[tag] = fun
+            self._initialize_object(tag)
             return fun
 
         if raw_f is None:
@@ -75,6 +76,17 @@ class Session(Object):
         if draining:
             raise Exception("Failed waiting for all logs to finish, server will kill remaining tasks")
 
+    def _initialize_object(self, tag):
+        """If this tag is already present on the server, set this object to use the same object_id."""
+
+        if not self._initialized_object_ids or tag not in self._initialized_object_ids:
+            return
+
+        object_id = self._initialized_object_ids[tag]
+        obj = self._objects[tag]
+        obj.set_context(self, self.client)
+        obj.create_from_id(object_id)
+
     async def initialize(self, session_id, client):
         """Used by the container to bootstrap the session and all its objects."""
         self.session_id = session_id
@@ -82,10 +94,12 @@ class Session(Object):
 
         req = api_pb2.SessionGetObjectsRequest(session_id=session_id)
         resp = await self.client.stub.SessionGetObjects(req)
-        for tag, object_id in resp.object_ids.items():
-            obj = self._objects[tag]
-            await obj.set_context(self, self.client)
-            obj.create_from_id(object_id)
+
+        self._initialized_object_ids = dict(resp.object_ids.items())
+
+        # Initialize objects that are already present.
+        for tag in self._objects.keys():
+            self._initialize_object(tag)
 
     @synchronizer.asynccontextmanager
     async def run(self, client=None, stdout=None, stderr=None):
