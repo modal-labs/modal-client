@@ -20,7 +20,7 @@ def _make_bytes(s):
 class Image(Object):
     def __init__(
         self,
-        tag=None,
+        existing_image_tag=None,
         base_images={},
         dockerfile_commands=[],
         context_files={},
@@ -46,7 +46,7 @@ class Image(Object):
         super().__init__(
             args=dict(
                 local_id=local_id,
-                tag=tag,
+                existing_image_tag=existing_image_tag,
                 base_images=base_images,
                 dockerfile_commands=dockerfile_commands,
                 context_files=context_files,
@@ -56,9 +56,9 @@ class Image(Object):
         )
 
     async def create_or_get(self):
-        if self.args.tag:
+        if self.args.existing_image_tag:
             # Just fetch the image id from some existing image
-            req = api_pb2.ImageGetByTagRequest(tag=self.args.tag)
+            req = api_pb2.ImageGetByTagRequest(tag=self.args.existing_image_tag)
             resp = await self.client.stub.ImageGetByTag(req)
             image_id = resp.image_id
 
@@ -153,7 +153,7 @@ class DebianSlim(Image):
             assert len(numbers) == 3
         tag = "python-%s-slim-buster-base" % python_version
         self.python_version = python_version
-        super().__init__(tag=tag, local_id=tag)
+        super().__init__(existing_image_tag=tag, local_id=tag)
 
     def add_python_packages(self, python_packages, find_links=None):
         find_links_arg = f"-f {find_links}" if find_links else ""
@@ -161,7 +161,7 @@ class DebianSlim(Image):
         new_local_id = self.args.local_id + "/" + h
         builder_tagged = Image(
             local_id="python-%s-slim-buster-builder" % self.python_version,
-            tag="python-%s-slim-buster-builder" % self.python_version,
+            existing_image_tag="python-%s-slim-buster-builder" % self.python_version,
         )
         image = Image(
             local_id=new_local_id,
