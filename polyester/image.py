@@ -16,112 +16,6 @@ def _make_bytes(s):
     assert type(s) in (str, bytes)
     return s.encode("ascii") if type(s) is str else s
 
-
-class Image(Object):
-    def __init__(
-        self,
-        existing_image_tag=None,
-        base_images={},
-        dockerfile_commands=[],
-        context_files={},
-        must_create=False,
-        local_id=None,
-        local_image_python_executable=None,
-    ):
-        """
-        An image can be created either as a reference to an existing image, or as a new image
-        The `tag` parameter refers to an existing image (built elsewhere)
-        The `local_id` is a property used to identify images within sessions (but across processes)
-
-        This is a bit confusing right now, but I hope to address it as a part of refactoring persistence.
-        """
-
-        if local_image_python_executable and local_id is None:
-            local_id = "local"
-        if local_id is None:
-            raise Exception("Every image needs a local_id")
-
-        dockerfile_commands = [_make_bytes(s) for s in dockerfile_commands]
-
-        super().__init__()
-
-        self.local_id = local_id
-        self.existing_image_tag = existing_image_tag
-        self.base_images = base_images
-        self.dockerfile_commands = dockerfile_commands
-        self.context_files = context_files
-        self.must_create = must_create
-        self.local_image_python_executable = local_image_python_executable
-
-    async def create_or_get(self):
-        if self.existing_image_tag:
-            # Just fetch the image id from some existing image
-            req = api_pb2.ImageGetByTagRequest(tag=self.existing_image_tag)
-            resp = await self.client.stub.ImageGetByTag(req)
-            image_id = resp.image_id
-
-        else:
-            # Recursively build base images
-            base_image_objs = await asyncio.gather(
-                *(self.session.create_or_get_object(image) for image in self.base_images.values())
-            )
-            base_images_pb2s = [
-                api_pb2.BaseImage(docker_tag=docker_tag, image_id=image.object_id)
-                for docker_tag, image in zip(self.base_images.keys(), base_image_objs)
-            ]
-
-            context_file_pb2s = [
-                api_pb2.ImageContextFile(filename=filename, data=data)
-                for filename, data in self.context_files.items()
-            ]
-
-            image_definition = api_pb2.Image(
-                base_images=base_images_pb2s,
-                dockerfile_commands=self.dockerfile_commands,
-                context_files=context_file_pb2s,
-                local_id=self.local_id,
-                local_image_python_executable=self.local_image_python_executable,
-            )
-
-            req = api_pb2.ImageGetOrCreateRequest(
-                session_id=self.session.session_id,
-                image=image_definition,
-                must_create=self.must_create,
-            )
-            resp = await self.client.stub.ImageGetOrCreate(req)
-            image_id = resp.image_id
-
-        logger.debug("Waiting for image %s" % image_id)
-        while True:
-            request = api_pb2.ImageJoinRequest(
-                image_id=image_id,
-                timeout=BLOCKING_REQUEST_TIMEOUT,
-                session_id=self.session.session_id,
-            )
-            response = await retry(self.client.stub.ImageJoin)(request, timeout=GRPC_REQUEST_TIMEOUT)
-            if not response.result.status:
-                continue
-            elif response.result.status == api_pb2.GenericResult.Status.FAILURE:
-                raise RemoteException(response.result.exception)
-            elif response.result.status == api_pb2.GenericResult.Status.SUCCESS:
-                break
-            else:
-                raise RemoteException("Unknown status %s!" % response.result.status)
-
-        return image_id
-
-    @requires_create
-    async def set_tag(self, tag):
-        req = api_pb2.ImageSetTagRequest(image_id=self.object_id, tag=tag)
-        await self.client.stub.ImageSetTag(req)
-
-    def is_inside(self):
-        # This is used from inside of containers to know whether this container is active or not
-        env_local_id = os.getenv("POLYESTER_IMAGE_LOCAL_ID")
-        logger.info(f"Is image inside? env {env_local_id} image {self.local_id}")
-        return env_local_id == self.local_id
-
-
 class EnvDict(Object):
     def __init__(self, env_dict):
         super().__init__()
@@ -140,8 +34,108 @@ def get_python_version():
     return config["image_python_version"] or "%d.%d.%d" % sys.version_info[:3]
 
 
+async def _build_custom_image(client, session, local_id, base_images={}, context_files={}, dockerfile_commands=[], must_create=False):
+    # Recursively build base images
+    base_image_objs = await asyncio.gather(
+        *(session.create_or_get_object(image) for image in base_images.values())
+    )
+    base_images_pb2s = [
+        api_pb2.BaseImage(docker_tag=docker_tag, image_id=image.object_id)
+        for docker_tag, image in zip(base_images.keys(), base_image_objs)
+    ]
+
+    context_file_pb2s = [
+        api_pb2.ImageContextFile(filename=filename, data=data)
+        for filename, data in context_files.items()
+    ]
+
+    dockerfile_commands = [_make_bytes(s) for s in dockerfile_commands]
+    image_definition = api_pb2.Image(
+        base_images=base_images_pb2s,
+        dockerfile_commands=dockerfile_commands,
+        context_files=context_file_pb2s,
+        local_id=local_id,
+    )
+
+    req = api_pb2.ImageGetOrCreateRequest(
+        session_id=session.session_id,
+        image=image_definition,
+        must_create=must_create,
+    )
+    resp = await client.stub.ImageGetOrCreate(req)
+    image_id = resp.image_id
+
+    logger.debug("Waiting for image %s" % image_id)
+    while True:
+        request = api_pb2.ImageJoinRequest(
+            image_id=image_id,
+            timeout=BLOCKING_REQUEST_TIMEOUT,
+            session_id=session.session_id,
+        )
+        response = await retry(client.stub.ImageJoin)(request, timeout=GRPC_REQUEST_TIMEOUT)
+        if not response.result.status:
+            continue
+        elif response.result.status == api_pb2.GenericResult.Status.FAILURE:
+            raise RemoteException(response.result.exception)
+        elif response.result.status == api_pb2.GenericResult.Status.SUCCESS:
+            break
+        else:
+            raise RemoteException("Unknown status %s!" % response.result.status)
+
+    return image_id
+
+
+class Image(Object):
+    def __init__(self, local_id):
+        if local_id is None:
+            raise Exception("Every image needs a local_id")
+        self.local_id = local_id
+        super().__init__()
+
+    @requires_create
+    async def set_tag(self, tag):
+        req = api_pb2.ImageSetTagRequest(image_id=self.object_id, tag=tag)
+        await self.client.stub.ImageSetTag(req)
+
+    def is_inside(self):
+        # This is used from inside of containers to know whether this container is active or not
+        env_local_id = os.getenv("POLYESTER_IMAGE_LOCAL_ID")
+        logger.info(f"Is image inside? env {env_local_id} image {self.local_id}")
+        return env_local_id == self.local_id
+
+
+class TaggedImage(Image):
+    def __init__(self, existing_image_tag):
+        super().__init__(local_id=existing_image_tag)
+        self.existing_image_tag = existing_image_tag
+
+    async def create_or_get(self):
+        req = api_pb2.ImageGetByTagRequest(tag=self.existing_image_tag)
+        resp = await self.client.stub.ImageGetByTag(req)
+        image_id = resp.image_id
+        return image_id
+
+
+class LocalImage(Image):
+    def __init__(self, python_executable):
+        super().__init__(local_id="local")
+        self.python_executable = python_executable
+
+    async def create_or_get(self):
+        image_definition = api_pb2.Image(
+            local_id=self.local_id,
+            local_image_python_executable=self.python_executable,
+        )
+        req = api_pb2.ImageGetOrCreateRequest(
+            session_id=self.session.session_id,
+            image=image_definition,
+        )
+        resp = await self.client.stub.ImageGetOrCreate(req)
+        return resp.image_id
+
+
 class DebianSlim(Image):
-    def __init__(self, python_version=None):
+    def __init__(self, python_version=None, build_instructions=[]):
         if python_version is None:
             python_version = get_python_version()
         else:
@@ -149,44 +143,47 @@ class DebianSlim(Image):
             # This is important or else image.is_inside() won't work
             numbers = [int(z) for z in python_version.split(".")]
             assert len(numbers) == 3
-        tag = "python-%s-slim-buster-base" % python_version
-        self.python_version = python_version
-        super().__init__(existing_image_tag=tag, local_id=tag)
 
-    def add_python_packages(self, python_packages, find_links=None):
-        find_links_arg = f"-f {find_links}" if find_links else ""
-        h = get_sha256_hex_from_content(b",".join(p.encode("ascii") for p in python_packages))
-        new_local_id = self.local_id + "/" + h
-        builder_tagged = Image(
-            local_id="python-%s-slim-buster-builder" % self.python_version,
-            existing_image_tag="python-%s-slim-buster-builder" % self.python_version,
-        )
-        image = Image(
-            local_id=new_local_id,
-            base_images={
-                "base": self,
-                "builder": builder_tagged,
-            },
-            dockerfile_commands=[
-                "FROM builder as builder-vehicle",
-                f"RUN pip wheel {' '.join(python_packages)} -w /tmp/wheels {find_links_arg}",
-                "FROM base",
-                "COPY --from=builder-vehicle /tmp/wheels /tmp/wheels",
-                "RUN pip install /tmp/wheels/*",
-                "RUN rm -rf /tmp/wheels",
-            ],
-        )
-        return image
+        self.python_version = python_version
+        self.build_instructions = build_instructions
+        h = get_sha256_hex_from_content(repr(build_instructions).encode("ascii"))
+        local_id = f"debian-slim-{python_version}-{h}"
+        super().__init__(local_id=local_id)
+
+    def add_python_packages(self, python_packages):
+        return DebianSlim(self.python_version, self.build_instructions + [("py", python_packages)])
 
     def run_commands(self, commands):
-        h = get_sha256_hex_from_content(b",".join(c.encode("ascii") for c in commands))
-        new_local_id = self.local_id + "/" + h
-        image = Image(
-            local_id=new_local_id,
-            base_images={"base": self},
-            dockerfile_commands=["FROM base"] + ["RUN " + command for command in commands],
+        return DebianSlim(self.python_version, self.build_instructions + [('cmd' + commands)])
+
+    async def create_or_get(self):
+        base_images = {
+            "builder": TaggedImage(f"python-{self.python_version}-slim-buster-builder"),
+            "base": TaggedImage(f"python-{self.python_version}-slim-buster-base"),
+        }
+        if not self.build_instructions:
+            obj = await self.session.create_or_get_object(base_images["base"])
+            return obj.object_id
+
+        dockerfile_commands = []
+        for t, data in self.build_instructions:
+            if t == "py":
+                dockerfile_commands += [
+                    "FROM builder as builder-vehicle",
+                    f"RUN pip wheel {' '.join(data)} -w /tmp/wheels",  #  {find_links_arg}
+                    "FROM base",
+                    "COPY --from=builder-vehicle /tmp/wheels /tmp/wheels",
+                    "RUN pip install /tmp/wheels/*",
+                    "RUN rm -rf /tmp/wheels",
+                ]
+            elif t == "cmd":
+                dockerfile_commands += [f"RUN {cmd}" for cmd in data]
+
+        return await _build_custom_image(
+            self.client, self.session, self.local_id,
+            dockerfile_commands=dockerfile_commands,
+            base_images=base_images,
         )
-        return image
 
 
 debian_slim = DebianSlim()
