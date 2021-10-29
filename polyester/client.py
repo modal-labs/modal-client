@@ -15,8 +15,6 @@ from .server_connection import GRPCConnectionFactory
 
 @synchronizer
 class Client:
-    current_from_env = None
-
     def __init__(
         self,
         server_url,
@@ -89,9 +87,6 @@ class Client:
 
     @classmethod
     async def from_env(cls):
-        if cls.current_from_env is not None:
-            return cls.current_from_env
-
         server_url = config["server.url"]
         token_id = config["token.id"]
         token_secret = config["token.secret"]
@@ -109,6 +104,4 @@ class Client:
             credentials = None
 
         client = Client(server_url, client_type, credentials)
-        await client._start()
-        cls.current_from_env = client  # TODO: minor risk of overwriting one
         return client

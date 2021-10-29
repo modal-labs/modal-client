@@ -103,13 +103,20 @@ class Session(Object):
 
     @synchronizer.asynccontextmanager
     async def run(self, client=None, stdout=None, stderr=None):
-        if client is None:
-            client = await Client.from_env()
         if stdout is None:
             stdout = sys.stdout.buffer
         if stderr is None:
             stderr = sys.stderr.buffer
+        if client is None:
+            client = await Client.from_env()
+            async with client:
+                async for it in self._run(client, stdout, stderr):
+                    yield it
+        else:
+            async for it in self._run(client, stdout, stderr):
+                yield it
 
+    async def _run(self, client, stdout, stderr):
         self.client = client  # TODO: do we need to mutate state like this?
 
         # Start session
@@ -118,7 +125,7 @@ class Session(Object):
         self.session_id = resp.session_id
 
         # Start tracking logs and yield context
-        async with TaskContext() as tc:
+        async with TaskContext(grace=1.0) as tc:
             get_logs_closure = functools.partial(self._get_logs, stdout, stderr)
             functools.update_wrapper(get_logs_closure, self._get_logs)  # Needed for debugging tasks
             tc.infinite_loop(get_logs_closure)
