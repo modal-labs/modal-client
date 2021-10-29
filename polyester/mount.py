@@ -45,20 +45,17 @@ async def get_files(local_dir, condition, recursive):
 
 class Mount(Object):
     def __init__(self, local_dir, remote_dir, condition, recursive=True):
-        super().__init__(
-            args=dict(
-                local_dir=local_dir,
-                remote_dir=remote_dir,
-                condition=condition,
-                recursive=recursive,
-            )
-        )
+        super().__init__()
+        self.local_dir = local_dir
+        self.remote_dir = remote_dir
+        self.condition = condition
+        self.recursive = recursive
 
     async def _register_file_requests(self, mount_id, hashes, filenames):
         async for filename, rel_filename, sha256_hex in get_files(
-            self.args.local_dir, self.args.condition, self.args.recursive
+            self.local_dir, self.condition, self.recursive
         ):
-            remote_filename = os.path.join(self.args.remote_dir, rel_filename)  # won't work on windows
+            remote_filename = os.path.join(self.remote_dir, rel_filename)  # won't work on windows
             filenames[remote_filename] = filename
             request = api_pb2.MountRegisterFileRequest(
                 filename=remote_filename, sha256_hex=sha256_hex, mount_id=mount_id

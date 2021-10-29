@@ -223,13 +223,10 @@ class Function(Object):
     def __init__(self, raw_f, image=None, env_dict=None, client=None):
         assert callable(raw_f)
         self.info = FunctionInfo(raw_f)
-        super().__init__(
-            args=dict(
-                raw_f=raw_f,
-                image=image,
-                env_dict=env_dict,
-            ),
-        )
+        super().__init__()
+        self.raw_f = raw_f
+        self.image = image
+        self.env_dict = env_dict
 
     async def create_or_get(self):
         mounts = [self.info.get_mount()]
@@ -241,9 +238,9 @@ class Function(Object):
 
         # Wait for image and mounts to finish
         # TODO: should we really join recursively here? Maybe it's better to move this logic to the session class?
-        image = await self.session.create_or_get_object(self.args.image)
-        if self.args.env_dict is not None:
-            env_dict = await self.session.create_or_get_object(self.args.env_dict)
+        image = await self.session.create_or_get_object(self.image)
+        if self.env_dict is not None:
+            env_dict = await self.session.create_or_get_object(self.env_dict)
             env_dict_id = env_dict.object_id
         else:
             env_dict_id = None
@@ -277,7 +274,7 @@ class Function(Object):
         return await invocation.run()
 
     def get_raw_f(self):
-        return self.args.raw_f
+        return self.raw_f
 
     @staticmethod
     def get_function(module_name, function_name):

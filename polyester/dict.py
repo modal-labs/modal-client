@@ -11,7 +11,8 @@ from .proto import api_pb2
 
 class Dict(Object):
     def __init__(self, init_data={}):
-        super().__init__(args=dict(init_data=init_data))
+        super().__init__()
+        self.init_data = init_data
 
     def _serialize_dict(self, data):
         return [
@@ -19,7 +20,7 @@ class Dict(Object):
         ]
 
     async def create_or_get(self):
-        serialized = self._serialize_dict(self.args.init_data)
+        serialized = self._serialize_dict(self.init_data)
         req = api_pb2.DictCreateRequest(session_id=self.session.session_id, data=serialized)
         response = await self.client.stub.DictCreate(req)
         logger.debug("Created dict with id %s" % response.dict_id)

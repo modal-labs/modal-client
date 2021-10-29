@@ -22,35 +22,12 @@ class ObjectMeta(type):
         return new_cls
 
 
-class Args:
-    def __init__(self, data):
-        self.__dict__["data"] = data if data is not None else {}
-
-    def __getattr__(self, k):
-        return self.__dict__["data"][k]
-
-    def __setattr__(self, k, v):
-        raise AttributeError("Args object is immutable")
-
-
 class Object(metaclass=ObjectMeta):
     # A bit ugly to leverage implemenation inheritance here, but I guess you could
     # roughly think of this class as a mixin
 
-    def __init__(self, args=None):
+    def __init__(self):
         logger.debug(f"Creating object {self}")
-
-        # TODO: should we make these attributes hidden for subclasses?
-        # (i.e. "private" not even "protected" to use the C++ terminology)
-        # Feels like there could be some benefits of doing so
-        if isinstance(args, dict):
-            self.args = Args(args)
-        elif isinstance(args, Args):
-            self.args = args
-        elif args is None:
-            self.args = None
-        else:
-            raise Exception(f"{args} of type {type(args)} must be instance of (dict, Args, NoneType)")
 
         # Default values for non-created objects
         self.created = False
@@ -59,12 +36,6 @@ class Object(metaclass=ObjectMeta):
 
     async def create_or_get(self):
         raise NotImplementedError
-
-    def clone(self):
-        cls = type(self)
-        new_self = cls.__new__(cls)
-        new_self.args = self.args
-        return new_self
 
     def set_context(self, session, client):
         self.session = session

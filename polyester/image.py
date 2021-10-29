@@ -43,52 +43,50 @@ class Image(Object):
 
         dockerfile_commands = [_make_bytes(s) for s in dockerfile_commands]
 
-        super().__init__(
-            args=dict(
-                local_id=local_id,
-                existing_image_tag=existing_image_tag,
-                base_images=base_images,
-                dockerfile_commands=dockerfile_commands,
-                context_files=context_files,
-                must_create=must_create,
-                local_image_python_executable=local_image_python_executable,
-            )
-        )
+        super().__init__()
+
+        self.local_id = local_id
+        self.existing_image_tag = existing_image_tag
+        self.base_images = base_images
+        self.dockerfile_commands = dockerfile_commands
+        self.context_files = context_files
+        self.must_create = must_create
+        self.local_image_python_executable = local_image_python_executable
 
     async def create_or_get(self):
-        if self.args.existing_image_tag:
+        if self.existing_image_tag:
             # Just fetch the image id from some existing image
-            req = api_pb2.ImageGetByTagRequest(tag=self.args.existing_image_tag)
+            req = api_pb2.ImageGetByTagRequest(tag=self.existing_image_tag)
             resp = await self.client.stub.ImageGetByTag(req)
             image_id = resp.image_id
 
         else:
             # Recursively build base images
             base_image_objs = await asyncio.gather(
-                *(self.session.create_or_get_object(image) for image in self.args.base_images.values())
+                *(self.session.create_or_get_object(image) for image in self.base_images.values())
             )
             base_images_pb2s = [
                 api_pb2.BaseImage(docker_tag=docker_tag, image_id=image.object_id)
-                for docker_tag, image in zip(self.args.base_images.keys(), base_image_objs)
+                for docker_tag, image in zip(self.base_images.keys(), base_image_objs)
             ]
 
             context_file_pb2s = [
                 api_pb2.ImageContextFile(filename=filename, data=data)
-                for filename, data in self.args.context_files.items()
+                for filename, data in self.context_files.items()
             ]
 
             image_definition = api_pb2.Image(
                 base_images=base_images_pb2s,
-                dockerfile_commands=self.args.dockerfile_commands,
+                dockerfile_commands=self.dockerfile_commands,
                 context_files=context_file_pb2s,
-                local_id=self.args.local_id,
-                local_image_python_executable=self.args.local_image_python_executable,
+                local_id=self.local_id,
+                local_image_python_executable=self.local_image_python_executable,
             )
 
             req = api_pb2.ImageGetOrCreateRequest(
                 session_id=self.session.session_id,
                 image=image_definition,
-                must_create=self.args.must_create,
+                must_create=self.must_create,
             )
             resp = await self.client.stub.ImageGetOrCreate(req)
             image_id = resp.image_id
@@ -120,20 +118,20 @@ class Image(Object):
     def is_inside(self):
         # This is used from inside of containers to know whether this container is active or not
         env_local_id = os.getenv("POLYESTER_IMAGE_LOCAL_ID")
-        logger.info(f"Is image inside? env {env_local_id} image {self.args.local_id}")
-        return env_local_id == self.args.local_id
+        logger.info(f"Is image inside? env {env_local_id} image {self.local_id}")
+        return env_local_id == self.local_id
 
 
 class EnvDict(Object):
     def __init__(self, env_dict):
-        super().__init__(
-            args=dict(
-                env_dict=env_dict,
-            )
-        )
+        super().__init__()
+        self.env_dict = env_dict
 
     async def create_or_get(self):
-        req = api_pb2.EnvDictCreateRequest(session_id=self.session.session_id, env_dict=self.args.env_dict)
+        req = api_pb2.EnvDictCreateRequest(
+            session_id=self.session.session_id,
+            env_dict=self.env_dict
+        )
         resp = await self.client.stub.EnvDictCreate(req)
         return resp.env_dict_id
 
@@ -158,7 +156,7 @@ class DebianSlim(Image):
     def add_python_packages(self, python_packages, find_links=None):
         find_links_arg = f"-f {find_links}" if find_links else ""
         h = get_sha256_hex_from_content(b",".join(p.encode("ascii") for p in python_packages))
-        new_local_id = self.args.local_id + "/" + h
+        new_local_id = self.local_id + "/" + h
         builder_tagged = Image(
             local_id="python-%s-slim-buster-builder" % self.python_version,
             existing_image_tag="python-%s-slim-buster-builder" % self.python_version,
@@ -182,7 +180,7 @@ class DebianSlim(Image):
 
     def run_commands(self, commands):
         h = get_sha256_hex_from_content(b",".join(c.encode("ascii") for c in commands))
-        new_local_id = self.args.local_id + "/" + h
+        new_local_id = self.local_id + "/" + h
         image = Image(
             local_id=new_local_id,
             base_images={"base": self},

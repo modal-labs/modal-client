@@ -108,4 +108,4 @@ async def test_container_entrypoint_failure(servicer):
 
 def test_import_function_dynamically():
     f = Function.get_function("polyester.test_support", "square")
-    assert f.args.raw_f(42) == 42 * 42
+    assert f.raw_f(42) == 42 * 42
