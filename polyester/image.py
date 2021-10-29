@@ -16,16 +16,14 @@ def _make_bytes(s):
     assert type(s) in (str, bytes)
     return s.encode("ascii") if type(s) is str else s
 
+
 class EnvDict(Object):
     def __init__(self, env_dict):
         super().__init__()
         self.env_dict = env_dict
 
     async def create_or_get(self):
-        req = api_pb2.EnvDictCreateRequest(
-            session_id=self.session.session_id,
-            env_dict=self.env_dict
-        )
+        req = api_pb2.EnvDictCreateRequest(session_id=self.session.session_id, env_dict=self.env_dict)
         resp = await self.client.stub.EnvDictCreate(req)
         return resp.env_dict_id
 
@@ -34,19 +32,18 @@ def get_python_version():
     return config["image_python_version"] or "%d.%d.%d" % sys.version_info[:3]
 
 
-async def _build_custom_image(client, session, local_id, base_images={}, context_files={}, dockerfile_commands=[], must_create=False):
+async def _build_custom_image(
+    client, session, local_id, base_images={}, context_files={}, dockerfile_commands=[], must_create=False
+):
     # Recursively build base images
-    base_image_objs = await asyncio.gather(
-        *(session.create_or_get_object(image) for image in base_images.values())
-    )
+    base_image_objs = await asyncio.gather(*(session.create_or_get_object(image) for image in base_images.values()))
     base_images_pb2s = [
         api_pb2.BaseImage(docker_tag=docker_tag, image_id=image.object_id)
         for docker_tag, image in zip(base_images.keys(), base_image_objs)
     ]
 
     context_file_pb2s = [
-        api_pb2.ImageContextFile(filename=filename, data=data)
-        for filename, data in context_files.items()
+        api_pb2.ImageContextFile(filename=filename, data=data) for filename, data in context_files.items()
     ]
 
     dockerfile_commands = [_make_bytes(s) for s in dockerfile_commands]
@@ -154,7 +151,7 @@ class DebianSlim(Image):
         return DebianSlim(self.python_version, self.build_instructions + [("py", python_packages)])
 
     def run_commands(self, commands):
-        return DebianSlim(self.python_version, self.build_instructions + [('cmd' + commands)])
+        return DebianSlim(self.python_version, self.build_instructions + [("cmd" + commands)])
 
     async def create_or_get(self):
         base_images = {
@@ -180,7 +177,9 @@ class DebianSlim(Image):
                 dockerfile_commands += [f"RUN {cmd}" for cmd in data]
 
         return await _build_custom_image(
-            self.client, self.session, self.local_id,
+            self.client,
+            self.session,
+            self.local_id,
             dockerfile_commands=dockerfile_commands,
             base_images=base_images,
         )

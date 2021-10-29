@@ -52,9 +52,7 @@ class Mount(Object):
         self.recursive = recursive
 
     async def _register_file_requests(self, mount_id, hashes, filenames):
-        async for filename, rel_filename, sha256_hex in get_files(
-            self.local_dir, self.condition, self.recursive
-        ):
+        async for filename, rel_filename, sha256_hex in get_files(self.local_dir, self.condition, self.recursive):
             remote_filename = os.path.join(self.remote_dir, rel_filename)  # won't work on windows
             filenames[remote_filename] = filename
             request = api_pb2.MountRegisterFileRequest(
