@@ -230,7 +230,10 @@ class TaskContext:
                 logger.info(f"Exiting infinite loop for {async_f}")
                 break
 
-        return self.create_task(loop_coro())
+        t = self.create_task(loop_coro())
+        if hasattr(t, 'set_name'):  # Was added in Python 3.8:
+            t.set_name(f"{async_f.__name__} loop")
+        return t
 
     async def wait(self, *tasks):
         # Waits until all of tasks have finished

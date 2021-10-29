@@ -119,7 +119,9 @@ class Session(Object):
 
         # Start tracking logs and yield context
         async with TaskContext() as tc:
-            tc.infinite_loop(functools.partial(self._get_logs, stdout, stderr))
+            get_logs_closure = functools.partial(self._get_logs, stdout, stderr)
+            functools.update_wrapper(get_logs_closure, self._get_logs)  # Needed for debugging tasks
+            tc.infinite_loop(get_logs_closure)
 
             # Create all members
             # TODO: do this in parallel
