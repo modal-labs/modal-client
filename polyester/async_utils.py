@@ -184,7 +184,7 @@ class TaskContext:
     async def stop(self):
         self._exited.set()
         await asyncio.sleep(0)  # Causes any just-created tasks to get started
-        unfinished_tasks = [t for t in self._tasks if not t.done() and not t.cancelled()]
+        unfinished_tasks = [t for t in self._tasks if not t.done()]
         try:
             if self._grace is not None:
                 await asyncio.wait_for(asyncio.gather(*unfinished_tasks, return_exceptions=True), timeout=self._grace)
