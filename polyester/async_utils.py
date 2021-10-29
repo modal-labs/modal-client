@@ -202,6 +202,8 @@ class TaskContext:
         assert task.done()
         assert task in self._tasks
         self._tasks.remove(task)
+        if not task.cancelled():
+            task.result()  # Show exception if it happened
 
     def create_task(self, coro_or_task):
         if isinstance(coro_or_task, asyncio.Task):
