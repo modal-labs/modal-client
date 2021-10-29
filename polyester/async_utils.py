@@ -233,7 +233,7 @@ class TaskContext:
                 break
 
         t = self.create_task(loop_coro())
-        if hasattr(t, 'set_name'):  # Was added in Python 3.8:
+        if hasattr(t, "set_name"):  # Was added in Python 3.8:
             t.set_name(f"{async_f.__name__} loop")
         return t
 
