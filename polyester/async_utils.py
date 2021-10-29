@@ -184,12 +184,12 @@ class TaskContext:
     async def stop(self):
         self._exited.set()
         await asyncio.sleep(0)  # Causes any just-created tasks to get started
-        unfinished_tasks = [t for t in self._tasks if not t.done()]
+        unfinished_tasks = [t for t in self._tasks if not t.done() and not t.cancelled()]
         try:
             if self._grace is not None:
-                await asyncio.wait_for(asyncio.gather(*unfinished_tasks), timeout=self._grace)
-        except BaseException:
-            logger.exception(f"Exception while waiting for {len(unfinished_tasks)} unfinished tasks")
+                await asyncio.wait_for(asyncio.gather(*unfinished_tasks, return_exceptions=True), timeout=self._grace)
+        except asyncio.TimeoutError:
+            pass
         finally:
             for task in self._tasks:
                 task.cancel()
@@ -227,7 +227,7 @@ class TaskContext:
                     await asyncio.wait_for(self._exited.wait(), timeout=sleep)
                 except asyncio.TimeoutError:
                     continue
-                logger.info(f"Exiting infinite loop for {async_f}")
+                logger.debug(f"Exiting infinite loop for {async_f}")
                 break
 
         t = self.create_task(loop_coro())
