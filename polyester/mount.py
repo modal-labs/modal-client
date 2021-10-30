@@ -44,8 +44,8 @@ async def get_files(local_dir, condition, recursive):
 
 
 class Mount(Object):
-    def __init__(self, local_dir, remote_dir, condition, recursive=True):
-        super().__init__()
+    def __init__(self, local_dir, remote_dir, condition, recursive=True, session=None):
+        super().__init__(tag=Object.RANDOM_TAG, session=session)
         self.local_dir = local_dir
         self.remote_dir = remote_dir
         self.condition = condition
@@ -79,7 +79,7 @@ class Mount(Object):
 
         logger.info(f"Uploaded {n_missing_files}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
 
-    async def create_or_get(self):
+    async def create_or_get(self, session):
         # TODO: I think in theory we could split the get_files iterator and launch multiple concurrent
         # calls to MountRegisterFileRequest and MountUploadFileRequest. This would speed up a lot of the
         # serial operations on the server side (like hitting Redis for every file serially).
@@ -88,15 +88,15 @@ class Mount(Object):
         hashes = {}
         filenames = {}
 
-        req = api_pb2.MountCreateRequest(session_id=self.session.session_id)
-        resp = await self.client.stub.MountCreate(req)
+        req = api_pb2.MountCreateRequest(session_id=session.session_id)
+        resp = await session.client.stub.MountCreate(req)
         mount_id = resp.mount_id
 
         logger.debug(f"Uploading mount {mount_id}")
-        await self.client.stub.MountUploadFile(self._upload_file_requests(self.client, mount_id, hashes, filenames))
+        await session.client.stub.MountUploadFile(self._upload_file_requests(session.client, mount_id, hashes, filenames))
 
         req = api_pb2.MountDoneRequest(mount_id=mount_id)
-        await self.client.stub.MountDone(req)
+        await session.client.stub.MountDone(req)
 
         return mount_id
 

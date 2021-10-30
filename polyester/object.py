@@ -1,6 +1,7 @@
 import asyncio
 import functools
 import inspect
+import uuid
 
 from .async_utils import synchronizer
 from .config import logger
@@ -25,30 +26,29 @@ class ObjectMeta(type):
 class Object(metaclass=ObjectMeta):
     # A bit ugly to leverage implemenation inheritance here, but I guess you could
     # roughly think of this class as a mixin
+    RANDOM_TAG = []  # sentinel
 
-    def __init__(self):
+    def __init__(self, tag, session=None):
         logger.debug(f"Creating object {self}")
+        if tag is self.RANDOM_TAG:
+            tag = str(uuid.uuid4())
+        else:
+            assert tag
 
-        # Default values for non-created objects
-        self.created = False
-        self.client = None
-        self.session = None
+        self.tag = tag
+        self.session = session
+        if session:
+            self.session.register(self.tag, self)
 
-    async def create_or_get(self):
+        # TODO: if the session is running, enforce that tag is set
+        # TODO: if the object has methods that requires creation, enforce that session is set
+
+    async def create_or_get(self, session):
         raise NotImplementedError
 
-    def set_context(self, session, client):
-        self.session = session
-        self.client = client
-
-    async def create_from_scratch(self):
-        self.object_id = await self.create_or_get()
-        self.created = True
-        return self.object_id
-
-    def create_from_id(self, object_id):
-        self.object_id = object_id
-        self.created = True
+    @property
+    def object_id(self):
+        return self.session.get_object_id(self.tag)
 
 
 def requires_create(method):
@@ -57,7 +57,7 @@ def requires_create(method):
 
     @functools.wraps(method)
     def wrapped_method(self, *args, **kwargs):
-        if not self.created:
+        if not self.object_id:
             raise Exception(f"Error running method {method} on object {self}: object is not created yet")
         return method(self, *args, **kwargs)
 

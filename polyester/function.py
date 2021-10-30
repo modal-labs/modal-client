@@ -220,15 +220,16 @@ class MapInvocation:
 
 @synchronizer
 class Function(Object):
-    def __init__(self, raw_f, image=None, env_dict=None, client=None):
+    def __init__(self, session, raw_f, image=None, env_dict=None):
         assert callable(raw_f)
         self.info = FunctionInfo(raw_f)
-        super().__init__()
+        tag = f"{self.info.module_name}.{self.info.function_name}"
+        super().__init__(session=session, tag=tag)
         self.raw_f = raw_f
         self.image = image
         self.env_dict = env_dict
 
-    async def create_or_get(self):
+    async def create_or_get(self, session):
         mounts = [self.info.get_mount()]
         if config["sync_entrypoint"] and not os.getenv("POLYESTER_IMAGE_LOCAL_ID"):
             # TODO(erikbern): If the first condition is true then we're running in a local
@@ -238,39 +239,38 @@ class Function(Object):
 
         # Wait for image and mounts to finish
         # TODO: should we really join recursively here? Maybe it's better to move this logic to the session class?
-        image = await self.session.create_or_get_object(self.image)
+        image_id = await session.create_or_get_object(self.image)
         if self.env_dict is not None:
-            env_dict = await self.session.create_or_get_object(self.env_dict)
-            env_dict_id = env_dict.object_id
+            env_dict_id = await session.create_or_get_object(self.env_dict)
         else:
             env_dict_id = None
-        mounts = await asyncio.gather(*(self.session.create_or_get_object(mount) for mount in mounts))
+        mount_ids = await asyncio.gather(*(session.create_or_get_object(mount) for mount in mounts))
 
         # Create function remotely
         function_definition = api_pb2.Function(
             module_name=self.info.module_name,
             function_name=self.info.function_name,
-            mount_ids=[mount.object_id for mount in mounts],
+            mount_ids=mount_ids,
             env_dict_id=env_dict_id,
-            image_id=image.object_id,
+            image_id=image_id,
         )
         request = api_pb2.FunctionGetOrCreateRequest(
-            session_id=self.session.session_id,
+            session_id=session.session_id,
             function=function_definition,
         )
-        response = await self.client.stub.FunctionGetOrCreate(request)
+        response = await session.client.stub.FunctionGetOrCreate(request)
         return response.function_id
 
     @requires_create
     async def map(self, inputs, window=100, kwargs={}):
         inputs = stream.iterate(inputs)
         inputs = stream.map(inputs, lambda arg: (arg,))
-        async for item in await MapInvocation.create(self.object_id, inputs, kwargs, self.client):
+        async for item in await MapInvocation.create(self.object_id, inputs, kwargs, self.session.client):
             yield item
 
     @requires_create
     async def __call__(self, *args, **kwargs):
-        invocation = await Invocation.create(self.object_id, args, kwargs, self.client)
+        invocation = await Invocation.create(self.object_id, args, kwargs, self.session.client)
         return await invocation.run()
 
     def get_raw_f(self):

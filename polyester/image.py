@@ -19,12 +19,12 @@ def _make_bytes(s):
 
 class EnvDict(Object):
     def __init__(self, env_dict):
-        super().__init__()
+        super().__init__(tag=Object.RANDOM_TAG)
         self.env_dict = env_dict
 
-    async def create_or_get(self):
-        req = api_pb2.EnvDictCreateRequest(session_id=self.session.session_id, env_dict=self.env_dict)
-        resp = await self.client.stub.EnvDictCreate(req)
+    async def create_or_get(self, session):
+        req = api_pb2.EnvDictCreateRequest(session_id=session.session_id, env_dict=self.env_dict)
+        resp = await session.client.stub.EnvDictCreate(req)
         return resp.env_dict_id
 
 
@@ -83,16 +83,15 @@ async def _build_custom_image(
 
 
 class Image(Object):
-    def __init__(self, local_id):
-        if local_id is None:
+    def __init__(self, tag, session=None):
+        if tag is None:
             raise Exception("Every image needs a local_id")
-        self.local_id = local_id
-        super().__init__()
+        super().__init__(tag=tag, session=session)
 
     @requires_create
-    async def set_tag(self, tag):
-        req = api_pb2.ImageSetTagRequest(image_id=self.object_id, tag=tag)
-        await self.client.stub.ImageSetTag(req)
+    async def set_image_tag(self, image_tag):
+        req = api_pb2.ImageSetTagRequest(image_id=self.object_id, tag=image_tag)
+        await self.session.client.stub.ImageSetTag(req)
 
     def is_inside(self):
         # This is used from inside of containers to know whether this container is active or not
@@ -102,37 +101,37 @@ class Image(Object):
 
 
 class TaggedImage(Image):
-    def __init__(self, existing_image_tag):
-        super().__init__(local_id=existing_image_tag)
+    def __init__(self, existing_image_tag, session=None):
+        super().__init__(tag=existing_image_tag, session=session)
         self.existing_image_tag = existing_image_tag
 
-    async def create_or_get(self):
+    async def create_or_get(self, session):
         req = api_pb2.ImageGetByTagRequest(tag=self.existing_image_tag)
-        resp = await self.client.stub.ImageGetByTag(req)
+        resp = await session.client.stub.ImageGetByTag(req)
         image_id = resp.image_id
         return image_id
 
 
 class LocalImage(Image):
-    def __init__(self, python_executable):
-        super().__init__(local_id="local")
+    def __init__(self, python_executable, session=None):
+        super().__init__(tag="local", session=session)
         self.python_executable = python_executable
 
-    async def create_or_get(self):
+    async def create_or_get(self, session):
         image_definition = api_pb2.Image(
-            local_id=self.local_id,
+            local_id=self.tag,  # rename local_id
             local_image_python_executable=self.python_executable,
         )
         req = api_pb2.ImageGetOrCreateRequest(
-            session_id=self.session.session_id,
+            session_id=session.session_id,
             image=image_definition,
         )
-        resp = await self.client.stub.ImageGetOrCreate(req)
+        resp = await session.client.stub.ImageGetOrCreate(req)
         return resp.image_id
 
 
 class DebianSlim(Image):
-    def __init__(self, python_version=None, build_instructions=[]):
+    def __init__(self, python_version=None, build_instructions=[], session=None):
         if python_version is None:
             python_version = get_python_version()
         else:
@@ -144,25 +143,25 @@ class DebianSlim(Image):
         self.python_version = python_version
         self.build_instructions = build_instructions
         h = get_sha256_hex_from_content(repr(build_instructions).encode("ascii"))
-        local_id = f"debian-slim-{python_version}-{h}"
-        super().__init__(local_id=local_id)
+        tag = f"debian-slim-{python_version}-{h}"
+        super().__init__(tag=tag, session=session)
 
     def add_python_packages(self, python_packages):
-        return DebianSlim(self.python_version, self.build_instructions + [("py", python_packages)])
+        return DebianSlim(self.python_version, self.build_instructions + [("py", python_packages)], session=self.session)
 
     def run_commands(self, commands):
-        return DebianSlim(self.python_version, self.build_instructions + [("cmd", commands)])
+        return DebianSlim(self.python_version, self.build_instructions + [("cmd", commands)], session=self.session)
 
     def copy_from_image(self, image, src, dest):
-        return DebianSlim(self.python_version, self.build_instructions + [("cp", (image, src, dest))])
+        return DebianSlim(self.python_version, self.build_instructions + [("cp", (image, src, dest))], session=self.session)
 
-    async def create_or_get(self):
+    async def create_or_get(self, session):
         base_images = {
             "builder": TaggedImage(f"python-{self.python_version}-slim-buster-builder"),
             "base": TaggedImage(f"python-{self.python_version}-slim-buster-base"),
         }
         if not self.build_instructions:
-            obj = await self.session.create_or_get_object(base_images["base"])
+            obj = await session.create_or_get_object(base_images["base"])
             return obj.object_id
 
         dockerfile_commands = ["FROM base as target"]
@@ -183,9 +182,9 @@ class DebianSlim(Image):
                 dockerfile_commands += [f"COPY --from={image} {src} {dest}"]
 
         return await _build_custom_image(
-            self.client,
-            self.session,
-            self.local_id,
+            session.client,
+            session,
+            self.tag,
             dockerfile_commands=dockerfile_commands,
             base_images=base_images,
         )
