@@ -36,10 +36,10 @@ async def _build_custom_image(
     client, session, local_id, base_images={}, context_files={}, dockerfile_commands=[], must_create=False
 ):
     # Recursively build base images
-    base_image_objs = await asyncio.gather(*(session.create_or_get_object(image) for image in base_images.values()))
+    base_image_ids = await asyncio.gather(*(session.create_or_get_object(image) for image in base_images.values()))
     base_images_pb2s = [
-        api_pb2.BaseImage(docker_tag=docker_tag, image_id=image.object_id)
-        for docker_tag, image in zip(base_images.keys(), base_image_objs)
+        api_pb2.BaseImage(docker_tag=docker_tag, image_id=image_id)
+        for docker_tag, image_id in zip(base_images.keys(), base_image_ids)
     ]
 
     context_file_pb2s = [
@@ -96,8 +96,8 @@ class Image(Object):
     def is_inside(self):
         # This is used from inside of containers to know whether this container is active or not
         env_local_id = os.getenv("POLYESTER_IMAGE_LOCAL_ID")
-        logger.info(f"Is image inside? env {env_local_id} image {self.local_id}")
-        return env_local_id == self.local_id
+        logger.info(f"Is image inside? env {env_local_id} image {self.tag}")
+        return env_local_id == self.tag
 
 
 class TaggedImage(Image):
@@ -161,8 +161,7 @@ class DebianSlim(Image):
             "base": TaggedImage(f"python-{self.python_version}-slim-buster-base"),
         }
         if not self.build_instructions:
-            obj = await session.create_or_get_object(base_images["base"])
-            return obj.object_id
+            return await session.create_or_get_object(base_images["base"])
 
         dockerfile_commands = ["FROM base as target"]
         for t, data in self.build_instructions:
