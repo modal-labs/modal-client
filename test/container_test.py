@@ -3,7 +3,7 @@ import time
 
 import pytest
 
-from polyester.client import Client
+from polyester import Client, Session
 from polyester.container_entrypoint import main
 from polyester.function import Function, pack_input_buffer_item
 from polyester.proto import api_pb2
@@ -13,9 +13,11 @@ EXTRA_TOLERANCE_DELAY = 0.08
 OUTPUT_BUFFER = "output_buffer_id"
 INPUT_BUFFER = "input_buffer_id"
 
+session = Session()  # Just used for (de)serialization
+
 
 def _get_inputs(client):
-    item = pack_input_buffer_item(client.serialize((42,)), client.serialize({}), OUTPUT_BUFFER)
+    item = pack_input_buffer_item(session.serialize((42,)), session.serialize({}), OUTPUT_BUFFER)
 
     return [
         api_pb2.BufferReadResponse(item=item, status=api_pb2.BufferReadResponse.BufferReadStatus.SUCCESS),
@@ -61,7 +63,8 @@ async def test_container_entrypoint_success(servicer):
 
     output = _get_output(outputs[0])
     assert output.status == api_pb2.GenericResult.Status.SUCCESS
-    assert output.data == client.serialize(42 ** 2)
+    session = Session()
+    assert output.data == session.serialize(42 ** 2)
 
 
 @pytest.mark.asyncio
@@ -76,7 +79,7 @@ async def test_container_entrypoint_async(servicer):
 
     output = _get_output(outputs[0])
     assert output.status == api_pb2.GenericResult.Status.SUCCESS
-    assert output.data == client.serialize(42 ** 2)
+    assert output.data == session.serialize(42 ** 2)
 
 
 @pytest.mark.asyncio
@@ -90,7 +93,7 @@ async def test_container_entrypoint_sync_returning_async(servicer):
 
     output = _get_output(outputs[0])
     assert output.status == api_pb2.GenericResult.Status.SUCCESS
-    assert output.data == client.serialize(42 ** 2)
+    assert output.data == session.serialize(42 ** 2)
 
 
 @pytest.mark.asyncio
