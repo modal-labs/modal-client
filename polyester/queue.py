@@ -9,15 +9,14 @@ from .object import Object, requires_create
 from .proto import api_pb2
 
 
-@synchronizer
 class Queue(Object):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, session, tag=None):
+        super().__init__(tag, session)
 
-    async def create_or_get(self):
+    async def create_or_get(self, session):
         """This creates a queue on the server and returns its id."""
         # TODO: we should create the queue in a session here
-        response = await self.client.stub.QueueCreate(api_pb2.Empty())
+        response = await session.client.stub.QueueCreate(api_pb2.Empty())
         logger.debug("Created queue with id %s" % response.queue_id)
         return response.queue_id
 
@@ -34,9 +33,9 @@ class Queue(Object):
                 n_values=n_values,
                 idempotency_key=str(uuid.uuid4()),
             )
-            response = await retry(self.client.stub.QueueGet)(request, timeout=60.0)
+            response = await retry(self.session.client.stub.QueueGet)(request, timeout=60.0)
             if response.values:
-                return [self.client.deserialize(value) for value in response.values]
+                return [self.session.deserialize(value) for value in response.values]
             logger.debug("Queue get for %s had empty results, trying again" % self.object_id)
         raise queue.Empty()
 
@@ -51,13 +50,13 @@ class Queue(Object):
 
     @requires_create
     async def put_many(self, vs: List[Any]):
-        vs_encoded = [self.client.serialize(v) for v in vs]
+        vs_encoded = [self.session.serialize(v) for v in vs]
         request = api_pb2.QueuePutRequest(
             queue_id=self.object_id,
             values=vs_encoded,
             idempotency_key=str(uuid.uuid4()),
         )
-        return await retry(self.client.stub.QueuePut)(request, timeout=5.0)
+        return await retry(self.session.client.stub.QueuePut)(request, timeout=5.0)
 
     @requires_create
     async def put(self, v):

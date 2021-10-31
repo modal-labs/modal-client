@@ -45,7 +45,7 @@ async def get_files(local_dir, condition, recursive):
 
 class Mount(Object):
     def __init__(self, local_dir, remote_dir, condition, recursive=True, session=None):
-        super().__init__(tag=Object.RANDOM_TAG, session=session)
+        super().__init__(tag=None, session=session)
         self.local_dir = local_dir
         self.remote_dir = remote_dir
         self.condition = condition

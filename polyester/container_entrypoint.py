@@ -33,16 +33,16 @@ class FunctionContext:
         self.client = client
 
     def serialize(self, obj: typing.Any) -> bytes:
-        return self.client.serialize(obj)
+        return self.session.serialize(obj)
 
     def deserialize(self, data: bytes) -> typing.Any:
-        return self.client.deserialize(data)
+        return self.session.deserialize(data)
 
     async def get_function(self) -> typing.Callable:
         """Note that this also initializes the session."""
         fun = Function.get_function(self.module_name, self.function_name)
-        session = fun.session
-        await session.initialize(self.session_id, self.client)
+        self.session = fun.session
+        await self.session.initialize(self.session_id, self.client)
         return fun.get_raw_f()
 
     async def generate_inputs(

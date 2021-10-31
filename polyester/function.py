@@ -92,11 +92,11 @@ def unpack_output_buffer_item(buffer_item: api_pb2.BufferItem) -> api_pb2.Generi
     return output
 
 
-def process_result(client, result):
+def process_result(session, result):
     if result.status != api_pb2.GenericResult.Status.SUCCESS:
         if result.data:
             try:
-                exc = client.deserialize(result.data)
+                exc = session.deserialize(result.data)
             except Exception:
                 exc = None
                 warnings.warn("Could not deserialize remote exception!")
@@ -105,36 +105,36 @@ def process_result(client, result):
                 raise exc
         raise RemoteException(result.exception)
 
-    return client.deserialize(result.data)
+    return session.deserialize(result.data)
 
 
 @synchronizer
 class Invocation:
-    def __init__(self, client, function_id, output_buffer_id):
-        self.client = client
+    def __init__(self, session, function_id, output_buffer_id):
+        self.session = session
         self.function_id = function_id
         self.output_buffer_id = output_buffer_id
 
     @staticmethod
-    async def create(function_id, args, kwargs, client):
+    async def create(function_id, args, kwargs, session):
         request = api_pb2.FunctionMapRequest(function_id=function_id)
-        response = await retry(client.stub.FunctionMap)(request)
+        response = await retry(session.client.stub.FunctionMap)(request)
 
         input_buffer_id = response.input_buffer_id
         output_buffer_id = response.output_buffer_id
 
-        item = pack_input_buffer_item(client.serialize(args), client.serialize(kwargs), output_buffer_id)
+        item = pack_input_buffer_item(session.serialize(args), session.serialize(kwargs), output_buffer_id)
         buffer_req = api_pb2.BufferWriteRequest(item=item, buffer_id=input_buffer_id)
         request = api_pb2.FunctionCallRequest(function_id=function_id, buffer_req=buffer_req)
-        await buffered_rpc_write(client.stub.FunctionCall, request)
+        await buffered_rpc_write(session.client.stub.FunctionCall, request)
 
-        return Invocation(client, function_id, output_buffer_id)
+        return Invocation(session, function_id, output_buffer_id)
 
     async def run(self):
         async def get_item():
             request = api_pb2.FunctionGetNextOutputRequest(function_id=self.function_id)
             response = await buffered_rpc_read(
-                self.client.stub.FunctionGetNextOutput, request, self.output_buffer_id, timeout=None
+                self.session.client.stub.FunctionGetNextOutput, request, self.output_buffer_id, timeout=None
             )
             return unpack_output_buffer_item(response.item)
 
@@ -145,37 +145,37 @@ class Invocation:
             async def gen():
                 cur_result = first_result
                 while cur_result.gen_status != api_pb2.GenericResult.GeneratorStatus.COMPLETE:
-                    yield process_result(self.client, cur_result)
+                    yield process_result(self.session, cur_result)
 
                     cur_result = await get_item()
 
             return gen()
         else:
-            return process_result(self.client, first_result)
+            return process_result(self.session, first_result)
 
 
 @synchronizer
 class MapInvocation:
     # TODO: should this be an object?
-    def __init__(self, client, response_gen):
-        self.client = client
+    def __init__(self, session, response_gen):
+        self.session = session
         self.response_gen = response_gen
 
     @staticmethod
-    async def create(function_id, inputs, kwargs, client):
+    async def create(function_id, inputs, kwargs, session):
         request = api_pb2.FunctionMapRequest(function_id=function_id)
-        response = await retry(client.stub.FunctionMap)(request)
+        response = await retry(session.client.stub.FunctionMap)(request)
 
         input_buffer_id = response.input_buffer_id
         output_buffer_id = response.output_buffer_id
 
         async def pump_inputs():
             async for arg in inputs:
-                item = pack_input_buffer_item(client.serialize(arg), client.serialize(kwargs), output_buffer_id)
+                item = pack_input_buffer_item(session.serialize(arg), session.serialize(kwargs), output_buffer_id)
                 buffer_req = api_pb2.BufferWriteRequest(item=item, buffer_id=input_buffer_id)
                 request = api_pb2.FunctionCallRequest(function_id=function_id, buffer_req=buffer_req)
                 # No timeout so this can block forever.
-                yield await buffered_rpc_write(client.stub.FunctionCall, request)
+                yield await buffered_rpc_write(session.client.stub.FunctionCall, request)
             yield
 
         async def poll_outputs():
@@ -183,13 +183,13 @@ class MapInvocation:
             while True:
                 request = api_pb2.FunctionGetNextOutputRequest(function_id=function_id)
                 response = await buffered_rpc_read(
-                    client.stub.FunctionGetNextOutput, request, output_buffer_id, timeout=None
+                    session.client.stub.FunctionGetNextOutput, request, output_buffer_id, timeout=None
                 )
                 yield response
 
         response_gen = stream.merge(pump_inputs(), poll_outputs())
 
-        return MapInvocation(client, response_gen)
+        return MapInvocation(session, response_gen)
 
     async def __aiter__(self):
         num_inputs = 0
@@ -209,7 +209,7 @@ class MapInvocation:
                         num_outputs += 1
 
                     if result.gen_status != api_pb2.GenericResult.GeneratorStatus.COMPLETE:
-                        yield process_result(self.client, result)
+                        yield process_result(self.session, result)
                 else:
                     assert False, f"Got unknown type in invocation stream: {type(response)}"
 
@@ -265,12 +265,12 @@ class Function(Object):
     async def map(self, inputs, window=100, kwargs={}):
         inputs = stream.iterate(inputs)
         inputs = stream.map(inputs, lambda arg: (arg,))
-        async for item in await MapInvocation.create(self.object_id, inputs, kwargs, self.session.client):
+        async for item in await MapInvocation.create(self.object_id, inputs, kwargs, self.session):
             yield item
 
     @requires_create
     async def __call__(self, *args, **kwargs):
-        invocation = await Invocation.create(self.object_id, args, kwargs, self.session.client)
+        invocation = await Invocation.create(self.object_id, args, kwargs, self.session)
         return await invocation.run()
 
     def get_raw_f(self):

@@ -26,25 +26,32 @@ class ObjectMeta(type):
 class Object(metaclass=ObjectMeta):
     # A bit ugly to leverage implemenation inheritance here, but I guess you could
     # roughly think of this class as a mixin
-    RANDOM_TAG = []  # sentinel
-
-    def __init__(self, tag, session=None):
+    def __init__(self, tag=None, session=None):
         logger.debug(f"Creating object {self}")
-        if tag is self.RANDOM_TAG:
+
+        # If the session is not running, enforce that tag is set
+        # This is probably because the object is created in a global scope
+        # We need to have a tag set or else different processes won't be able to "reconcile"
+        if session and not session.client:  # TODO: dumb check
+            if not tag:
+                raise Exception("Objects created on non-running sessions need to have a tag set")
+        
+        # TODO: if the object has methods that requires creation, enforce that session is set
+
+        if tag is None:
             tag = str(uuid.uuid4())
-        else:
-            assert tag
 
         self.tag = tag
         self.session = session
         if session:
             self.session.register(self.tag, self)
 
-        # TODO: if the session is running, enforce that tag is set
-        # TODO: if the object has methods that requires creation, enforce that session is set
-
     async def create_or_get(self, session):
         raise NotImplementedError
+
+    async def create(self):
+        # TODO: this method name is pretty inconsistent
+        return await self.session.create_or_get_object(self)
 
     @property
     def object_id(self):

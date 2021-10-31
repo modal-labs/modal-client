@@ -1,5 +1,4 @@
 import asyncio
-import io
 import os
 
 import grpc
@@ -9,9 +8,7 @@ from .async_utils import retry, synchronizer, TaskContext
 from .config import config, logger
 from .exception import AuthException
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT, ChannelPool
-from .object import ObjectMeta
 from .proto import api_pb2, api_pb2_grpc
-from .serialization import Pickler, Unpickler
 from .server_connection import GRPCConnectionFactory
 
 
@@ -72,18 +69,6 @@ class Client:
     async def _heartbeat(self):
         req = api_pb2.ClientHeartbeatRequest(client_id=self.client_id)
         await self.stub.ClientHeartbeat(req)
-
-    def serialize(self, obj):
-        """Serializes object and replaces all references to the client class by a placeholder."""
-        # TODO: probably should not be here
-        buf = io.BytesIO()
-        Pickler(self, ObjectMeta.type_to_name, buf).dump(obj)
-        return buf.getvalue()
-
-    def deserialize(self, s: bytes):
-        """Deserializes object and replaces all client placeholders by self."""
-        # TODO: probably should not be here
-        return Unpickler(self, ObjectMeta.name_to_type, io.BytesIO(s)).load()
 
     async def __aenter__(self):
         await self._start()

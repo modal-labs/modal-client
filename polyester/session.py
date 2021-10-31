@@ -1,5 +1,6 @@
 import asyncio
 import functools
+import io
 import sys
 
 from .async_utils import TaskContext, retry, synchronizer
@@ -8,7 +9,8 @@ from .config import config, logger
 from .function import Function
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIME_BUFFER, ChannelPool
 from .image import base_image
-from .object import Object
+from .object import Object, ObjectMeta
+from .serialization import Pickler, Unpickler
 from .proto import api_pb2
 from .utils import print_logs
 
@@ -18,6 +20,7 @@ class Session:  # (Object):
     def __init__(self):
         self._objects = {}  # tag -> object
         self._object_ids = {}  # tag -> object id
+        self.client = None
         super().__init__()
 
     def register(self, tag, obj):
@@ -70,8 +73,9 @@ class Session:  # (Object):
 
     def get_object_id(self, tag):
         if tag not in self._object_ids:
-            raise KeyError(tag)
-        return self._object_ids[tag]
+            print(tag)
+            print(self._object_ids)
+        return self._object_ids.get(tag)
 
     @synchronizer.asynccontextmanager
     async def run(self, client=None, stdout=None, stderr=None):
@@ -126,3 +130,15 @@ class Session:  # (Object):
         # Fetch any straggling logs
         logger.debug("Draining logs")
         await self._get_logs(stdout, stderr, draining=True, timeout=config["logs_timeout"])
+
+    def serialize(self, obj):
+        """Serializes object and replaces all references to the client class by a placeholder."""
+        # TODO: probably should not be here
+        buf = io.BytesIO()
+        Pickler(self, ObjectMeta.type_to_name, buf).dump(obj)
+        return buf.getvalue()
+
+    def deserialize(self, s: bytes):
+        """Deserializes object and replaces all client placeholders by self."""
+        # TODO: probably should not be here
+        return Unpickler(self, ObjectMeta.name_to_type, io.BytesIO(s)).load()

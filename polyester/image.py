@@ -19,7 +19,7 @@ def _make_bytes(s):
 
 class EnvDict(Object):
     def __init__(self, env_dict):
-        super().__init__(tag=Object.RANDOM_TAG)
+        super().__init__(tag=None)
         self.env_dict = env_dict
 
     async def create_or_get(self, session):
