@@ -19,7 +19,7 @@ from .utils import print_logs
 class Session:  # (Object):
     def __init__(self):
         self._objects = {}  # tag -> object
-        self._object_ids = {}  # tag -> object id
+        self._object_ids = None  # tag -> object id
         self.client = None
         super().__init__()
 
@@ -93,43 +93,51 @@ class Session:  # (Object):
                 yield it
 
     async def _run(self, client, stdout, stderr):
+        if self.client is not None:
+            raise Exception("Session appears to be running already!")
         self.client = client  # TODO: do we need to mutate state like this?
+        self._object_ids = {}
 
-        # Start session
-        req = api_pb2.SessionCreateRequest(client_id=client.client_id)
-        resp = await client.stub.SessionCreate(req)
-        self.session_id = resp.session_id
+        try:
+            # Start session
+            req = api_pb2.SessionCreateRequest(client_id=client.client_id)
+            resp = await client.stub.SessionCreate(req)
+            self.session_id = resp.session_id
 
-        # Start tracking logs and yield context
-        async with TaskContext(grace=1.0) as tc:
-            get_logs_closure = functools.partial(self._get_logs, stdout, stderr)
-            functools.update_wrapper(get_logs_closure, self._get_logs)  # Needed for debugging tasks
-            tc.infinite_loop(get_logs_closure)
+            # Start tracking logs and yield context
+            async with TaskContext(grace=1.0) as tc:
+                get_logs_closure = functools.partial(self._get_logs, stdout, stderr)
+                functools.update_wrapper(get_logs_closure, self._get_logs)  # Needed for debugging tasks
+                tc.infinite_loop(get_logs_closure)
 
-            # Create all members
-            # TODO: do this in parallel
-            all_objects = list(self._objects.values())
-            for obj in all_objects:  # can't iterate over the original hash since it might change
-                logger.debug(f"Creating object {obj}")
-                await self.create_or_get_object(obj)
+                # Create all members
+                # TODO: do this in parallel
+                all_objects = list(self._objects.values())
+                for obj in all_objects:  # can't iterate over the original hash since it might change
+                    logger.debug(f"Creating object {obj}")
+                    await self.create_or_get_object(obj)
 
-            # TODO: the below is a temporary thing until we unify object creation
-            req = api_pb2.SessionSetObjectsRequest(
-                session_id=self.session_id,
-                object_ids=self._object_ids,
-            )
-            await self.client.stub.SessionSetObjects(req)
+                # TODO: the below is a temporary thing until we unify object creation
+                req = api_pb2.SessionSetObjectsRequest(
+                    session_id=self.session_id,
+                    object_ids=self._object_ids,
+                )
+                await self.client.stub.SessionSetObjects(req)
 
-            yield self # yield context manager to block
+                yield self # yield context manager to block
 
-        # Stop session (this causes the server to kill any running task)
-        logger.debug("Stopping the session server-side")
-        req = api_pb2.SessionStopRequest(session_id=self.session_id)
-        await self.client.stub.SessionStop(req)
+            # Stop session (this causes the server to kill any running task)
+            logger.debug("Stopping the session server-side")
+            req = api_pb2.SessionStopRequest(session_id=self.session_id)
+            await self.client.stub.SessionStop(req)
 
-        # Fetch any straggling logs
-        logger.debug("Draining logs")
-        await self._get_logs(stdout, stderr, draining=True, timeout=config["logs_timeout"])
+            # Fetch any straggling logs
+            logger.debug("Draining logs")
+            await self._get_logs(stdout, stderr, draining=True, timeout=config["logs_timeout"])
+
+        finally:
+            self.client = None
+            self._object_ids = None
 
     def serialize(self, obj):
         """Serializes object and replaces all references to the client class by a placeholder."""
