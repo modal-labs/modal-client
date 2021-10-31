@@ -10,40 +10,40 @@ from .proto import api_pb2
 
 
 class Dict(Object):
-    def __init__(self, init_data={}):
-        super().__init__()
-        self.init_data = init_data
+    def __init__(self, session, data={}, tag=None):
+        super().__init__(session=session, tag=tag)
+        self.data = data
 
-    def _serialize_dict(self, data):
+    def _serialize_dict(self, session, data):
         return [
-            api_pb2.DictEntry(key=self.client.serialize(k), value=self.client.serialize(v)) for k, v in data.items()
+            api_pb2.DictEntry(key=session.serialize(k), value=session.serialize(v)) for k, v in data.items()
         ]
 
-    async def create_or_get(self):
-        serialized = self._serialize_dict(self.init_data)
-        req = api_pb2.DictCreateRequest(session_id=self.session.session_id, data=serialized)
-        response = await self.client.stub.DictCreate(req)
+    async def create_or_get(self, session):
+        serialized = self._serialize_dict(session, self.data)
+        req = api_pb2.DictCreateRequest(session_id=session.session_id, data=serialized)
+        response = await session.client.stub.DictCreate(req)
         logger.debug("Created dict with id %s" % response.dict_id)
         return response.dict_id
 
     @requires_create
     async def get(self, key):
-        req = api_pb2.DictGetRequest(dict_id=self.object_id, key=self.client.serialize(key))
-        resp = await self.client.stub.DictGet(req)
+        req = api_pb2.DictGetRequest(dict_id=self.object_id, key=self.session.serialize(key))
+        resp = await self.session.client.stub.DictGet(req)
         if not resp.found:
             raise KeyError(f"KeyError: {key} not in dict {self.object_id}")
-        return self.client.deserialize(resp.value)
+        return self.session.deserialize(resp.value)
 
     @requires_create
     async def contains(self, key):
-        req = api_pb2.DictContainsRequest(dict_id=self.object_id, key=self.client.serialize(key))
-        resp = await self.client.stub.DictContains(req)
+        req = api_pb2.DictContainsRequest(dict_id=self.object_id, key=self.session.serialize(key))
+        resp = await self.session.client.stub.DictContains(req)
         return resp.found
 
     @requires_create
     async def len(self):
         req = api_pb2.DictLenRequest(dict_id=self.object_id)
-        resp = await self.client.stub.DictLen(req)
+        resp = await self.session.client.stub.DictLen(req)
         return resp.len
 
     @requires_create
@@ -52,16 +52,16 @@ class Dict(Object):
 
     @requires_create
     async def update(self, **kwargs):
-        serialized = self._serialize_dict(kwargs)
+        serialized = self._serialize_dict(self.session, kwargs)
         req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized)
-        await self.client.stub.DictUpdate(req)
+        await self.session.client.stub.DictUpdate(req)
 
     @requires_create
     async def put(self, key, value):
         updates = {key: value}
-        serialized = self._serialize_dict(updates)
+        serialized = self._serialize_dict(self.session, updates)
         req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized)
-        await self.client.stub.DictUpdate(req)
+        await self.session.client.stub.DictUpdate(req)
 
     # NOTE: setitem only works in a synchronous context.
     @requires_create
@@ -70,8 +70,8 @@ class Dict(Object):
 
     @requires_create
     async def pop(self, key):
-        req = api_pb2.DictPopRequest(dict_id=self.object_id, key=self.client.serialize(key))
-        resp = await self.client.stub.DictPop(req)
+        req = api_pb2.DictPopRequest(dict_id=self.object_id, key=self.session.serialize(key))
+        resp = await self.session.client.stub.DictPop(req)
         if not resp.found:
             raise KeyError(f"KeyError: {key} not in dict {self.object_id}")
-        return self.client.deserialize(resp.value)
+        return self.session.deserialize(resp.value)
