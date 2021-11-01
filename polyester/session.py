@@ -133,7 +133,7 @@ class Session:  # (Object):
                 await self.client.stub.SessionSetObjects(req)
 
                 self.state = SessionState.RUNNING
-                yield self # yield context manager to block
+                yield self  # yield context manager to block
                 self.state = SessionState.STOPPING
 
             # Stop session (this causes the server to kill any running task)

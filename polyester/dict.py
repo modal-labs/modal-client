@@ -15,9 +15,7 @@ class Dict(Object):
         self.data = data
 
     def _serialize_dict(self, session, data):
-        return [
-            api_pb2.DictEntry(key=session.serialize(k), value=session.serialize(v)) for k, v in data.items()
-        ]
+        return [api_pb2.DictEntry(key=session.serialize(k), value=session.serialize(v)) for k, v in data.items()]
 
     async def _create_impl(self, session):
         serialized = self._serialize_dict(session, self.data)

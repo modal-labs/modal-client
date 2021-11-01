@@ -36,7 +36,7 @@ class Object(metaclass=ObjectMeta):
         if session and session.state != SessionState.RUNNING:
             if not tag:
                 raise Exception("Objects created on non-running sessions need to have a tag set")
-        
+
         # TODO: if the object has methods that requires creation, enforce that session is set
 
         if tag is None:

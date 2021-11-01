@@ -93,7 +93,9 @@ class Mount(Object):
         mount_id = resp.mount_id
 
         logger.debug(f"Uploading mount {mount_id}")
-        await session.client.stub.MountUploadFile(self._upload_file_requests(session.client, mount_id, hashes, filenames))
+        await session.client.stub.MountUploadFile(
+            self._upload_file_requests(session.client, mount_id, hashes, filenames)
+        )
 
         req = api_pb2.MountDoneRequest(mount_id=mount_id)
         await session.client.stub.MountDone(req)

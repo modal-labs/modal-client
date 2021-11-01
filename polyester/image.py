@@ -147,7 +147,9 @@ class DebianSlim(Image):
         super().__init__(tag=tag, session=session)
 
     def add_python_packages(self, python_packages):
-        return DebianSlim(self.python_version, self.build_instructions + [("py", python_packages)], session=self.session)
+        return DebianSlim(
+            self.python_version, self.build_instructions + [("py", python_packages)], session=self.session
+        )
 
     def run_commands(self, commands):
         return DebianSlim(self.python_version, self.build_instructions + [("cmd", commands)], session=self.session)
