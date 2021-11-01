@@ -5,6 +5,7 @@ import uuid
 
 from .async_utils import synchronizer
 from .config import logger
+from .session_state import SessionState
 
 
 class ObjectMeta(type):
@@ -32,7 +33,7 @@ class Object(metaclass=ObjectMeta):
         # If the session is not running, enforce that tag is set
         # This is probably because the object is created in a global scope
         # We need to have a tag set or else different processes won't be able to "reconcile"
-        if session and not session.client:  # TODO: dumb check
+        if session and session.state != SessionState.RUNNING:
             if not tag:
                 raise Exception("Objects created on non-running sessions need to have a tag set")
         
@@ -46,12 +47,13 @@ class Object(metaclass=ObjectMeta):
         if session:
             self.session.register(self.tag, self)
 
-    async def create_or_get(self, session):
+    async def _create_impl(self, session):
+        # Overloaded in subclasses to do the actual logic
         raise NotImplementedError
 
     async def create(self):
         # TODO: this method name is pretty inconsistent
-        return await self.session.create_or_get_object(self)
+        return await self.session.create_object(self)
 
     @property
     def object_id(self):
@@ -64,8 +66,12 @@ def requires_create(method):
 
     @functools.wraps(method)
     def wrapped_method(self, *args, **kwargs):
+        if not self.session:
+            raise Exception("Can only run this method on an object with a session set")
+        if self.session.state != SessionState.RUNNING:
+            raise Exception("Can only run this method on an object with a running session")
         if not self.object_id:
-            raise Exception(f"Error running method {method} on object {self}: object is not created yet")
+            raise Exception("Can only run this on a method that has been created: consider obj.create()")
         return method(self, *args, **kwargs)
 
     return wrapped_method

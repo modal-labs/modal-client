@@ -1,4 +1,5 @@
 import asyncio
+import enum
 import functools
 import io
 import sys
@@ -12,6 +13,7 @@ from .image import base_image
 from .object import Object, ObjectMeta
 from .serialization import Pickler, Unpickler
 from .proto import api_pb2
+from .session_state import SessionState
 from .utils import print_logs
 
 
@@ -21,6 +23,7 @@ class Session:  # (Object):
         self._objects = {}  # tag -> object
         self._object_ids = None  # tag -> object id
         self.client = None
+        self.state = SessionState.NONE
         super().__init__()
 
     def register(self, tag, obj):
@@ -61,20 +64,22 @@ class Session:  # (Object):
         # TODO: check duplicates???
         self._object_ids = dict(resp.object_ids.items())
 
-    async def create_or_get_object(self, obj):
+        # In the container, run forever
+        self.state = SessionState.RUNNING
+
+    async def create_object(self, obj):
         # This just register + creates the object
         if obj.tag in self._objects:
             assert self._objects[obj.tag] == obj
         else:
             self._objects[obj.tag] = obj
         if obj.tag not in self._object_ids:
-            self._object_ids[obj.tag] = await obj.create_or_get(self)
+            self._object_ids[obj.tag] = await obj._create_impl(self)
         return self._object_ids[obj.tag]
 
     def get_object_id(self, tag):
-        if tag not in self._object_ids:
-            print(tag)
-            print(self._object_ids)
+        if self.state != SessionState.RUNNING:  # Maybe also starting?
+            raise Exception("Can only look up object ids for objects on a running session")
         return self._object_ids.get(tag)
 
     @synchronizer.asynccontextmanager
@@ -87,15 +92,18 @@ class Session:  # (Object):
             client = await Client.from_env()
             async with client:
                 async for it in self._run(client, stdout, stderr):
-                    yield it
+                    yield it  # ctx mgr
         else:
             async for it in self._run(client, stdout, stderr):
-                yield it
+                yield it  # ctx mgr
 
     async def _run(self, client, stdout, stderr):
-        if self.client is not None:
-            raise Exception("Session appears to be running already!")
-        self.client = client  # TODO: do we need to mutate state like this?
+        # TOOD: use something smarter than checking for the .client to exists in order to prevent
+        # race conditions here!
+        if self.state != SessionState.NONE:
+            raise Exception(f"Can't start a session that's already in state {self.state}")
+        self.state = SessionState.STARTING
+        self.client = client
         self._object_ids = {}
 
         try:
@@ -115,7 +123,7 @@ class Session:  # (Object):
                 all_objects = list(self._objects.values())
                 for obj in all_objects:  # can't iterate over the original hash since it might change
                     logger.debug(f"Creating object {obj}")
-                    await self.create_or_get_object(obj)
+                    await self.create_object(obj)
 
                 # TODO: the below is a temporary thing until we unify object creation
                 req = api_pb2.SessionSetObjectsRequest(
@@ -124,7 +132,9 @@ class Session:  # (Object):
                 )
                 await self.client.stub.SessionSetObjects(req)
 
+                self.state = SessionState.RUNNING
                 yield self # yield context manager to block
+                self.state = SessionState.STOPPING
 
             # Stop session (this causes the server to kill any running task)
             logger.debug("Stopping the session server-side")
@@ -138,6 +148,7 @@ class Session:  # (Object):
         finally:
             self.client = None
             self._object_ids = None
+            self.state = SessionState.NONE
 
     def serialize(self, obj):
         """Serializes object and replaces all references to the client class by a placeholder."""

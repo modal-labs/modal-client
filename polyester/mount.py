@@ -79,7 +79,7 @@ class Mount(Object):
 
         logger.info(f"Uploaded {n_missing_files}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
 
-    async def create_or_get(self, session):
+    async def _create_impl(self, session):
         # TODO: I think in theory we could split the get_files iterator and launch multiple concurrent
         # calls to MountRegisterFileRequest and MountUploadFileRequest. This would speed up a lot of the
         # serial operations on the server side (like hitting Redis for every file serially).

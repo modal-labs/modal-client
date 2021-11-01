@@ -22,7 +22,7 @@ class EnvDict(Object):
         super().__init__(tag=None)
         self.env_dict = env_dict
 
-    async def create_or_get(self, session):
+    async def _create_impl(self, session):
         req = api_pb2.EnvDictCreateRequest(session_id=session.session_id, env_dict=self.env_dict)
         resp = await session.client.stub.EnvDictCreate(req)
         return resp.env_dict_id
@@ -36,7 +36,7 @@ async def _build_custom_image(
     client, session, local_id, base_images={}, context_files={}, dockerfile_commands=[], must_create=False
 ):
     # Recursively build base images
-    base_image_ids = await asyncio.gather(*(session.create_or_get_object(image) for image in base_images.values()))
+    base_image_ids = await asyncio.gather(*(session.create_object(image) for image in base_images.values()))
     base_images_pb2s = [
         api_pb2.BaseImage(docker_tag=docker_tag, image_id=image_id)
         for docker_tag, image_id in zip(base_images.keys(), base_image_ids)
@@ -105,7 +105,7 @@ class TaggedImage(Image):
         super().__init__(tag=existing_image_tag, session=session)
         self.existing_image_tag = existing_image_tag
 
-    async def create_or_get(self, session):
+    async def _create_impl(self, session):
         req = api_pb2.ImageGetByTagRequest(tag=self.existing_image_tag)
         resp = await session.client.stub.ImageGetByTag(req)
         image_id = resp.image_id
@@ -117,7 +117,7 @@ class LocalImage(Image):
         super().__init__(tag="local", session=session)
         self.python_executable = python_executable
 
-    async def create_or_get(self, session):
+    async def _create_impl(self, session):
         image_definition = api_pb2.Image(
             local_id=self.tag,  # rename local_id
             local_image_python_executable=self.python_executable,
@@ -155,13 +155,13 @@ class DebianSlim(Image):
     def copy_from_image(self, image, src, dest):
         return DebianSlim(self.python_version, self.build_instructions + [("cp", (image, src, dest))], session=self.session)
 
-    async def create_or_get(self, session):
+    async def _create_impl(self, session):
         base_images = {
             "builder": TaggedImage(f"python-{self.python_version}-slim-buster-builder"),
             "base": TaggedImage(f"python-{self.python_version}-slim-buster-base"),
         }
         if not self.build_instructions:
-            return await session.create_or_get_object(base_images["base"])
+            return await session.create_object(base_images["base"])
 
         dockerfile_commands = ["FROM base as target"]
         for t, data in self.build_instructions:

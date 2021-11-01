@@ -19,7 +19,7 @@ class Dict(Object):
             api_pb2.DictEntry(key=session.serialize(k), value=session.serialize(v)) for k, v in data.items()
         ]
 
-    async def create_or_get(self, session):
+    async def _create_impl(self, session):
         serialized = self._serialize_dict(session, self.data)
         req = api_pb2.DictCreateRequest(session_id=session.session_id, data=serialized)
         response = await session.client.stub.DictCreate(req)

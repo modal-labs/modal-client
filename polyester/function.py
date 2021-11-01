@@ -229,7 +229,7 @@ class Function(Object):
         self.image = image
         self.env_dict = env_dict
 
-    async def create_or_get(self, session):
+    async def _create_impl(self, session):
         mounts = [self.info.get_mount()]
         if config["sync_entrypoint"] and not os.getenv("POLYESTER_IMAGE_LOCAL_ID"):
             # TODO(erikbern): If the first condition is true then we're running in a local
@@ -239,12 +239,12 @@ class Function(Object):
 
         # Wait for image and mounts to finish
         # TODO: should we really join recursively here? Maybe it's better to move this logic to the session class?
-        image_id = await session.create_or_get_object(self.image)
+        image_id = await session.create_object(self.image)
         if self.env_dict is not None:
-            env_dict_id = await session.create_or_get_object(self.env_dict)
+            env_dict_id = await session.create_object(self.env_dict)
         else:
             env_dict_id = None
-        mount_ids = await asyncio.gather(*(session.create_or_get_object(mount) for mount in mounts))
+        mount_ids = await asyncio.gather(*(session.create_object(mount) for mount in mounts))
 
         # Create function remotely
         function_definition = api_pb2.Function(
