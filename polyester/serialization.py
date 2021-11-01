@@ -41,5 +41,4 @@ class Unpickler(pickle.Unpickler):
         obj.tag = tag
         self.session._objects[tag] = obj  # TODO: put method on session
         self.session._object_ids[tag] = object_id  # TODO: put method on session
-        print("deserialized", obj, "and set its tag to", tag)
         return obj
