@@ -81,7 +81,6 @@ class Client:
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
-        print("Stopping client")
         await self._stop()
 
     @classmethod
