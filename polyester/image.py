@@ -153,6 +153,9 @@ class DebianSlim(Image):
     def run_commands(self, commands):
         return DebianSlim(self.python_version, self.build_instructions + [("cmd", commands)])
 
+    def copy_from_image(self, image, src, dest):
+        return DebianSlim(self.python_version, self.build_instructions + [("cp", (image, src, dest))])
+
     async def create_or_get(self):
         base_images = {
             "builder": TaggedImage(f"python-{self.python_version}-slim-buster-builder"),
@@ -175,6 +178,9 @@ class DebianSlim(Image):
                 ]
             elif t == "cmd":
                 dockerfile_commands += [f"RUN {cmd}" for cmd in data]
+            elif t == "cp":
+                image, src, dest = data
+                dockerfile_commands += [f"COPY --from={image} {src} {dest}"]
 
         return await _build_custom_image(
             self.client,
