@@ -151,7 +151,7 @@ class DebianSlim(Image):
         return DebianSlim(self.python_version, self.build_instructions + [("py", python_packages)])
 
     def run_commands(self, commands):
-        return DebianSlim(self.python_version, self.build_instructions + [("cmd" + commands)])
+        return DebianSlim(self.python_version, self.build_instructions + [("cmd", commands)])
 
     async def create_or_get(self):
         base_images = {
@@ -162,13 +162,13 @@ class DebianSlim(Image):
             obj = await self.session.create_or_get_object(base_images["base"])
             return obj.object_id
 
-        dockerfile_commands = []
+        dockerfile_commands = ["FROM base as target"]
         for t, data in self.build_instructions:
             if t == "py":
                 dockerfile_commands += [
                     "FROM builder as builder-vehicle",
                     f"RUN pip wheel {' '.join(data)} -w /tmp/wheels",  #  {find_links_arg}
-                    "FROM base",
+                    "FROM target",
                     "COPY --from=builder-vehicle /tmp/wheels /tmp/wheels",
                     "RUN pip install /tmp/wheels/*",
                     "RUN rm -rf /tmp/wheels",
