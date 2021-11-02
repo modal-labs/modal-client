@@ -23,6 +23,8 @@ class Client:
         self.server_url = server_url
         self.client_type = client_type
         self.credentials = credentials
+        self._task_context = None
+        self._channel_pool = None
 
     async def _start(self):
         logger.debug("Client: Starting")
@@ -57,8 +59,10 @@ class Client:
     async def _stop(self):
         # TODO: we should trigger this using an exit handler
         logger.debug("Client: Shutting down")
-        await self._task_context.stop()
-        await self._channel_pool.close()
+        if self._task_context:
+            await self._task_context.stop()
+        if self._channel_pool:
+            await self._channel_pool.close()
         logger.debug("Client: Done shutting down")
         # Needed to catch straggling CancelledErrors and GeneratorExits that propagate
         # through our chains of async generators.
@@ -69,10 +73,15 @@ class Client:
         await self.stub.ClientHeartbeat(req)
 
     async def __aenter__(self):
-        await self._start()
+        try:
+            await self._start()
+        except:
+            await self._stop()
+            raise
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
+        print("Stopping client")
         await self._stop()
 
     @classmethod
