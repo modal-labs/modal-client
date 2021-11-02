@@ -53,7 +53,7 @@ class GRPCConnectionFactory:
 
         self.target = o.netloc
 
-        host, port = o.netloc.split(":")
+        host = o.netloc.split(":")[0]
         if credentials and not o.scheme.endswith("s") and host != "localhost":
             # There are only two options for vanilla http traffic in GRPC:
             # - grpc.experimental.insecure_channel(): can't be used with call credentials
