@@ -6,7 +6,7 @@ import grpc.aio
 
 from .async_utils import retry, synchronizer, TaskContext
 from .config import config, logger
-from .exception import AuthException
+from .exception import AuthException, ConnectionException
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT, ChannelPool
 from .proto import api_pb2, api_pb2_grpc
 from .server_connection import GRPCConnectionFactory
@@ -29,27 +29,25 @@ class Client:
         self.stopped = asyncio.Event()
         self._task_context = TaskContext()
         await self._task_context.start()
+        self._connection_factory = GRPCConnectionFactory(
+            self.server_url,
+            self.client_type,
+            self.credentials,
+        )
+        self._channel_pool = ChannelPool(self._task_context, self._connection_factory)
+        await self._channel_pool.start()
+        self.stub = api_pb2_grpc.PolyesterClientStub(self._channel_pool)
         try:
-            self._connection_factory = GRPCConnectionFactory(
-                self.server_url,
-                self.client_type,
-                self.credentials,
-            )
-            self._channel_pool = ChannelPool(self._task_context, self._connection_factory)
-            await self._channel_pool.start()
-            self.stub = api_pb2_grpc.PolyesterClientStub(self._channel_pool)
             req = api_pb2.ClientCreateRequest(client_type=self.client_type)
             resp = await self.stub.ClientCreate(req)
             self.client_id = resp.client_id
         except grpc.aio._call.AioRpcError as exc:
             if exc.code() == grpc.StatusCode.UNAUTHENTICATED:
-                raise AuthException(exc.details())
+                raise AuthException(f"Connecting to {self.server_url}: {exc.details()}")
+            elif exc.code() == grpc.StatusCode.UNAVAILABLE:
+                raise ConnectionException(f"Connecting to {self.server_url}: {exc.details()}")
             else:
                 raise
-        except Exception:
-            # Just helpful for debugging
-            logger.info(f"server_url={self.server_url}")
-            raise
 
         # Start heartbeats
         self._task_context.infinite_loop(self._heartbeat, sleep=3.0)

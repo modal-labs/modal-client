@@ -6,4 +6,8 @@ class AuthException(Exception):
     pass
 
 
+class ConnectionException(Exception):
+    pass
+
+
 # TODO: define more exceptions later

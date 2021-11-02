@@ -3,6 +3,7 @@ import asyncio
 import pytest
 
 from polyester.client import Client
+from polyester.exception import ConnectionException
 from polyester.proto import api_pb2
 
 
@@ -31,3 +32,10 @@ async def test_container_client(servicer):
     assert servicer.requests[0].client_type == api_pb2.ClientType.CONTAINER
     assert isinstance(servicer.requests[1], api_pb2.ClientHeartbeatRequest)
     # assert isinstance(servicer.requests[2], api_pb2.ByeRequest)
+
+
+@pytest.mark.asyncio
+async def test_client_connection_failure():
+    with pytest.raises(ConnectionException) as exc:
+        async with Client("https://xyz.coconut", api_pb2.ClientType.CLIENT, None) as client:
+            pass
