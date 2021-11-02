@@ -155,7 +155,9 @@ class DebianSlim(Image):
         return DebianSlim(self.python_version, self.build_instructions + [("cmd", commands)], session=self.session)
 
     def copy_from_image(self, image, src, dest):
-        return DebianSlim(self.python_version, self.build_instructions + [("cp", (image, src, dest))], session=self.session)
+        return DebianSlim(
+            self.python_version, self.build_instructions + [("cp", (image, src, dest))], session=self.session
+        )
 
     async def _create_impl(self, session):
         base_images = {
