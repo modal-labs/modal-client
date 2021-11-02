@@ -5,7 +5,7 @@ from typing import Dict
 
 from .async_utils import retry
 from .config import config, logger
-from .exception import RemoteException
+from .exception import RemoteError
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .mount import get_sha256_hex_from_content  # TODO: maybe not
 from .object import Object, requires_create
@@ -73,11 +73,11 @@ async def _build_custom_image(
         if not response.result.status:
             continue
         elif response.result.status == api_pb2.GenericResult.Status.FAILURE:
-            raise RemoteException(response.result.exception)
+            raise RemoteError(response.result.exception)
         elif response.result.status == api_pb2.GenericResult.Status.SUCCESS:
             break
         else:
-            raise RemoteException("Unknown status %s!" % response.result.status)
+            raise RemoteError("Unknown status %s!" % response.result.status)
 
     return image_id
 

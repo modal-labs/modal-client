@@ -6,7 +6,7 @@ import grpc.aio
 
 from .async_utils import retry, synchronizer, TaskContext
 from .config import config, logger
-from .exception import AuthException, ConnectionException
+from .exception import AuthError, ConnectionError
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT, ChannelPool
 from .proto import api_pb2, api_pb2_grpc
 from .server_connection import GRPCConnectionFactory
@@ -43,9 +43,9 @@ class Client:
             self.client_id = resp.client_id
         except grpc.aio._call.AioRpcError as exc:
             if exc.code() == grpc.StatusCode.UNAUTHENTICATED:
-                raise AuthException(f"Connecting to {self.server_url}: {exc.details()}")
+                raise AuthError(f"Connecting to {self.server_url}: {exc.details()}")
             elif exc.code() == grpc.StatusCode.UNAVAILABLE:
-                raise ConnectionException(f"Connecting to {self.server_url}: {exc.details()}")
+                raise ConnectionError(f"Connecting to {self.server_url}: {exc.details()}")
             else:
                 raise
 

@@ -1,12 +1,12 @@
-class RemoteException(Exception):
+class RemoteError(Exception):
     pass
 
 
-class AuthException(Exception):
+class AuthError(Exception):
     pass
 
 
-class ConnectionException(Exception):
+class ConnectionError(Exception):
     pass
 
 

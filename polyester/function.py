@@ -14,7 +14,7 @@ from .async_utils import retry, synchronizer
 from .buffer_utils import buffered_rpc_read, buffered_rpc_write
 from .client import Client
 from .config import config, logger
-from .exception import RemoteException
+from .exception import RemoteError
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .mount import Mount, create_package_mounts
 from .object import Object, requires_create
@@ -103,7 +103,7 @@ def process_result(session, result):
             if exc is not None:
                 print(result.traceback)
                 raise exc
-        raise RemoteException(result.exception)
+        raise RemoteError(result.exception)
 
     return session.deserialize(result.data)
 
