@@ -62,7 +62,7 @@ class GRPCConnectionFactory:
             # we need to use the insecure channel, which means we can't use call credentials.
             credentials = None
 
-        if credentials:
+        if credentials or o.scheme.endswith("s"):
             basic_auth = BasicAuth(client_type, credentials)
             if o.scheme.endswith("s"):
                 channel_credentials = grpc.ssl_channel_credentials()
@@ -75,6 +75,8 @@ class GRPCConnectionFactory:
             )._credentials
         else:
             self.credentials = None
+
+        logger.info(f"Connecting to {self.target} using scheme {o.scheme}, credentials? {self.credentials is not None}")
 
         self.options = [
             ("grpc.max_send_message_length", MAX_MESSAGE_LENGTH),
