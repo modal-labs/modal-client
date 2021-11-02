@@ -400,3 +400,7 @@ service PolyesterClient {
   rpc FunctionGetNextInput(FunctionGetNextInputRequest) returns (BufferReadResponse);  // For containers to request next call
   rpc FunctionOutput(FunctionOutputRequest) returns (BufferWriteResponse);  // For containers to return result
 }
+
+service ALB {
+  rpc healthcheck(Empty) returns (Empty);
+}
