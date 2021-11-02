@@ -2,10 +2,12 @@ import asyncio
 import io
 import os
 
+import grpc
 import grpc.aio
 
 from .async_utils import retry, synchronizer, TaskContext
 from .config import config, logger
+from .exception import AuthException
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT, ChannelPool
 from .object import ObjectMeta
 from .proto import api_pb2, api_pb2_grpc
@@ -42,6 +44,11 @@ class Client:
             req = api_pb2.ClientCreateRequest(client_type=self.client_type)
             resp = await self.stub.ClientCreate(req)
             self.client_id = resp.client_id
+        except grpc.aio._call.AioRpcError as exc:
+            if exc.code() == grpc.StatusCode.UNAUTHENTICATED:
+                raise AuthException(exc.details())
+            else:
+                raise
         except Exception:
             # Just helpful for debugging
             logger.info(f"server_url={self.server_url}")
