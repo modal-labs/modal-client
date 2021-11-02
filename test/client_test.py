@@ -37,5 +37,5 @@ async def test_container_client(servicer):
 @pytest.mark.asyncio
 async def test_client_connection_failure():
     with pytest.raises(ConnectionError) as exc:
-        async with Client("https://xyz.coconut", api_pb2.ClientType.CLIENT, None) as client:
+        async with Client("https://xyz.invalid", api_pb2.ClientType.CLIENT, None) as client:
             pass
