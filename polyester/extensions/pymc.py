@@ -9,33 +9,47 @@ import traceback
 from collections import namedtuple
 from typing import Dict, Sequence
 
-import numpy as np
 import synchronicity
 from aiostream import stream
-from fastprogress.fastprogress import progress_bar
 
 from polyester import Image, Session
+from polyester.image import TaggedImage, _build_custom_image
 
 synchronizer = synchronicity.Synchronizer()
 
 session = Session()
 
-image = Image(
-    base_images={"base": Image(tag="conda")},
-    dockerfile_commands=[
-        "FROM base",
-        'SHELL ["/bin/bash", "-c"]',
-        "RUN conda info",
-        "RUN echo $0 \ ",
-        "&& . /root/.bashrc \ ",
-        "&& conda activate base \ ",
-        "&& conda info \ ",
-        "&& conda install theano-pymc==1.1.2 pymc3==3.11.2 scikit-learn --yes \ ",
-    ],
-)
+
+class PyMCImage(Image):
+    def __init__(self):
+        super().__init__(tag="pymc-image")
+
+    async def _create_impl(self, session):
+        dockerfile_commands = [
+            "FROM base",
+            'SHELL ["/bin/bash", "-c"]',
+            "RUN conda info",
+            "RUN echo $0 \ ",
+            "&& . /root/.bashrc \ ",
+            "&& conda activate base \ ",
+            "&& conda info \ ",
+            "&& conda install theano-pymc==1.1.2 pymc3==3.11.2 scikit-learn --yes \ ",
+        ]
+
+        return await _build_custom_image(
+            session.client,
+            session,
+            self.tag,
+            dockerfile_commands=dockerfile_commands,
+            base_images={"base": TaggedImage("conda")},
+        )
+
+
+image = PyMCImage()
 
 if image.is_inside():
     import numpy as np
+    from fastprogress.fastprogress import progress_bar
     from pymc3 import theanof
     from pymc3.exceptions import SamplingError
     from sklearn import datasets, linear_model
@@ -82,7 +96,7 @@ def sample_process(
     step_method,
     chain: int,
     seed,
-    start: Dict[str, np.ndarray],
+    start,  # Dict[str, np.ndarray],
 ):
     tt_seed = seed + 1
 
@@ -160,7 +174,7 @@ class PolyesterSampler:
         chains: int,
         cores: int,
         seeds: list,
-        start_points: Sequence[Dict[str, np.ndarray]],
+        start_points,  # Sequence[Dict[str, np.ndarray]],
         step_method,
         start_chain_num: int = 0,
         progressbar: bool = True,
@@ -194,40 +208,39 @@ class PolyesterSampler:
         self._start_points = start_points
 
     async def __aiter__(self):
-        async with session.run():
-            sampler_coros = [
-                sample_process(
-                    self._draws,
-                    self._tune,
-                    self._step_method,
-                    chain + self._start_chain_num,
-                    seed,
-                    start,
-                )
-                for chain, seed, start in zip(range(self._chains), self._seeds, self._start_points)
-            ]
-            samplers = await asyncio.gather(*sampler_coros)
-            print(f"{len(samplers)} samplers")
+        sampler_coros = [
+            sample_process(
+                self._draws,
+                self._tune,
+                self._step_method,
+                chain + self._start_chain_num,
+                seed,
+                start,
+            )
+            for chain, seed, start in zip(range(self._chains), self._seeds, self._start_points)
+        ]
+        samplers = await asyncio.gather(*sampler_coros)
+        print(f"{len(samplers)} samplers")
 
-            if not self._in_context:
-                raise ValueError("Use ParallelSampler as context manager.")
+        if not self._in_context:
+            raise ValueError("Use ParallelSampler as context manager.")
 
-            merged_samplers = stream.merge(*samplers)
-            if self._progress:
-                self._progress.update(self._total_draws)
+        merged_samplers = stream.merge(*samplers)
+        if self._progress:
+            self._progress.update(self._total_draws)
 
-            async with merged_samplers.stream() as streamer:
-                async for result in streamer:
-                    point, is_last, draw, tuning, stats, warns, chain = result
-                    self._total_draws += 1
-                    if not tuning and stats and stats[0].get("diverging"):
-                        self._divergences += 1
-                        if self._progress:
-                            self._progress.comment = self._desc.format(self)
+        async with merged_samplers.stream() as streamer:
+            async for result in streamer:
+                point, is_last, draw, tuning, stats, warns, chain = result
+                self._total_draws += 1
+                if not tuning and stats and stats[0].get("diverging"):
+                    self._divergences += 1
                     if self._progress:
-                        self._progress.update(self._total_draws)
+                        self._progress.comment = self._desc.format(self)
+                if self._progress:
+                    self._progress.update(self._total_draws)
 
-                    yield Draw(chain, is_last, draw, tuning, stats, point, warns)
+                yield Draw(chain, is_last, draw, tuning, stats, point, warns)
 
     def __enter__(self):
         self._in_context = True
