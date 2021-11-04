@@ -52,9 +52,10 @@ class GRPCConnectionFactory:
             raise
 
         self.target = o.netloc
+        is_tls = o.scheme.endswith("s")
 
         host = o.netloc.split(":")[0]
-        if credentials and not o.scheme.endswith("s") and host != "localhost":
+        if credentials and not is_tls and host != "localhost":
             # There are only two options for vanilla http traffic in GRPC:
             # - grpc.experimental.insecure_channel(): can't be used with call credentials
             # - grpc.local_channel_credentials(): can only be used with localhost
@@ -62,9 +63,9 @@ class GRPCConnectionFactory:
             # we need to use the insecure channel, which means we can't use call credentials.
             credentials = None
 
-        if credentials or o.scheme.endswith("s"):
+        if credentials or is_tls:
             basic_auth = BasicAuth(client_type, credentials)
-            if o.scheme.endswith("s"):
+            if is_tls:
                 channel_credentials = grpc.ssl_channel_credentials()
             else:
                 channel_credentials = grpc.local_channel_credentials()
@@ -76,7 +77,9 @@ class GRPCConnectionFactory:
         else:
             self.credentials = None
 
-        logger.info(f"Connecting to {self.target} using scheme {o.scheme}, credentials? {self.credentials is not None}")
+        logger.debug(
+            f"Connecting to {self.target} using scheme {o.scheme}, credentials? {self.credentials is not None}"
+        )
 
         self.options = [
             ("grpc.max_send_message_length", MAX_MESSAGE_LENGTH),

@@ -62,7 +62,7 @@ class FunctionContext:
                 break
 
             if response.item.EOF:
-                logger.info(f"Task {self.task_id} input got EOF.")
+                logger.debug(f"Task {self.task_id} input got EOF.")
                 break
 
             yield response.item

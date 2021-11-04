@@ -7,7 +7,7 @@ import uuid
 import warnings
 
 import cloudpickle
-from aiostream import stream
+from aiostream import stream, pipe
 from google.protobuf.any_pb2 import Any
 
 from .async_utils import retry, synchronizer
@@ -162,7 +162,7 @@ class MapInvocation:
         self.response_gen = response_gen
 
     @staticmethod
-    async def create(function_id, inputs, kwargs, session):
+    async def create(function_id, input_stream, kwargs, session):
         request = api_pb2.FunctionMapRequest(function_id=function_id)
         response = await retry(session.client.stub.FunctionMap)(request)
 
@@ -170,13 +170,14 @@ class MapInvocation:
         output_buffer_id = response.output_buffer_id
 
         async def pump_inputs():
-            async for arg in inputs:
-                item = pack_input_buffer_item(session.serialize(arg), session.serialize(kwargs), output_buffer_id)
-                buffer_req = api_pb2.BufferWriteRequest(item=item, buffer_id=input_buffer_id)
-                request = api_pb2.FunctionCallRequest(function_id=function_id, buffer_req=buffer_req)
-                # No timeout so this can block forever.
-                yield await buffered_rpc_write(session.client.stub.FunctionCall, request)
-            yield
+            async with input_stream.stream() as streamer:
+                async for arg in streamer:
+                    item = pack_input_buffer_item(session.serialize(arg), session.serialize(kwargs), output_buffer_id)
+                    buffer_req = api_pb2.BufferWriteRequest(item=item, buffer_id=input_buffer_id)
+                    request = api_pb2.FunctionCallRequest(function_id=function_id, buffer_req=buffer_req)
+                    # No timeout so this can block forever.
+                    yield await buffered_rpc_write(session.client.stub.FunctionCall, request)
+                yield
 
         async def poll_outputs():
             """Keep trying to dequeue outputs."""
@@ -263,9 +264,8 @@ class Function(Object):
 
     @requires_create
     async def map(self, inputs, window=100, kwargs={}):
-        inputs = stream.iterate(inputs)
-        inputs = stream.map(inputs, lambda arg: (arg,))
-        async for item in await MapInvocation.create(self.object_id, inputs, kwargs, self.session):
+        input_stream = stream.iterate(inputs) | pipe.map(lambda arg: (arg,))
+        async for item in await MapInvocation.create(self.object_id, input_stream, kwargs, self.session):
             yield item
 
     @requires_create
