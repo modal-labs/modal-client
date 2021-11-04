@@ -45,7 +45,7 @@ class Object(metaclass=ObjectMeta):
         self.tag = tag
         self.session = session
         if session:
-            self.session.register(self.tag, self)
+            self.session.register(self)
 
     async def _create_impl(self, session):
         # Overloaded in subclasses to do the actual logic

@@ -3,6 +3,7 @@ import enum
 import functools
 import io
 import sys
+import warnings
 
 from .async_utils import TaskContext, retry, synchronizer
 from .client import Client
@@ -26,10 +27,14 @@ class Session:  # (Object):
         self.state = SessionState.NONE
         super().__init__()
 
-    def register(self, tag, obj):
-        if tag in self._objects and self._objects[tag] != obj:
-            raise KeyError(tag)
-        self._objects[tag] = obj
+    def register(self, obj):
+        if obj.tag in self._objects and self._objects[obj.tag] != obj:
+            # TODO: this situation currently happens when two objects are different references to
+            # what's basically the same object, eg. both are TaggedImage("foo") but different
+            # instances. It should mostly go away once we support proper persistence, but might
+            # still happen in some weird edge cases
+            warnings.warn(f"tag: {obj.tag} used for object {self._objects[obj.tag]} now overwritten by {obj}")
+        self._objects[obj.tag] = obj
 
     def function(self, raw_f=None, image=base_image, env_dict=None):
         def decorate(raw_f):
@@ -69,10 +74,7 @@ class Session:  # (Object):
 
     async def create_object(self, obj):
         # This just register + creates the object
-        if obj.tag in self._objects:
-            assert self._objects[obj.tag] == obj
-        else:
-            self._objects[obj.tag] = obj
+        self.register(obj)
         if obj.tag not in self._object_ids:
             self._object_ids[obj.tag] = await obj._create_impl(self)
         return self._object_ids[obj.tag]
