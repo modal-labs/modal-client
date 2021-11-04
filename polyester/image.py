@@ -201,7 +201,7 @@ class ExtendedImage(Image):
         if callable(arg):
             tag = arg.__name__
         else:
-            tag = get_sha256_hex_from_content(base.tag.encode('ascii') + b'/' + repr(arg).encode('ascii'))
+            tag = get_sha256_hex_from_content(base.tag.encode("ascii") + b"/" + repr(arg).encode("ascii"))
         self.base = base
         self.arg = arg
         super().__init__(session=session, tag=tag)
@@ -213,11 +213,7 @@ class ExtendedImage(Image):
         else:
             build_instructions += self.arg
         return await _build_custom_image(
-            session.client,
-            session,
-            self.tag,
-            dockerfile_commands=build_instructions,
-            base_images={"base": self.base}
+            session.client, session, self.tag, dockerfile_commands=build_instructions, base_images={"base": self.base}
         )
 
 
