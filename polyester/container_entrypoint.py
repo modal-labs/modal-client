@@ -1,4 +1,5 @@
 import asyncio
+import importlib
 import inspect
 import sys
 import threading
@@ -7,6 +8,7 @@ import typing
 import uuid
 
 import aiostream
+import cloudpickle
 import google.protobuf.json_format
 
 from .async_utils import asyncio_run, synchronizer
@@ -17,6 +19,19 @@ from .function import Function, pack_output_buffer_item, unpack_input_buffer_ite
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .object import Object
 from .proto import api_pb2
+from .session import Session
+
+
+def _path_to_function(module_name, function_name):
+    try:
+        module = importlib.import_module(module_name)
+        return getattr(module, function_name)
+    except ModuleNotFoundError:
+        # Just print some debug stuff, then re-raise
+        logger.info(f"cwd: {os.getcwd()}")
+        logger.info(f"path: {sys.path}")
+        logger.info(f"ls: {os.listdir()}")
+        raise
 
 
 @synchronizer
@@ -28,8 +43,7 @@ class FunctionContext:
         self.function_id = container_args.function_id
         self.input_buffer_id = container_args.input_buffer_id
         self.session_id = container_args.session_id
-        self.module_name = container_args.module_name
-        self.function_name = container_args.function_name
+        self.function_def = container_args.function_def
         self.client = client
 
     def serialize(self, obj: typing.Any) -> bytes:
@@ -40,7 +54,16 @@ class FunctionContext:
 
     async def get_function(self) -> typing.Callable:
         """Note that this also initializes the session."""
-        fun = Function.get_function(self.module_name, self.function_name)
+
+        if self.function_def.function_serialized:
+            # Create a new session object. It will get initialized with the right object ID next.
+            session = Session()
+            raw_f = cloudpickle.loads(self.function_def.function_serialized)
+            fun = Function(session, raw_f)
+        else:
+            fun = _path_to_function(self.function_def.module_name, self.function_def.function_name)
+            assert isinstance(fun, Function)
+
         self.session = fun.session
         await self.session.initialize(self.session_id, self.client)
         return fun.get_raw_f()

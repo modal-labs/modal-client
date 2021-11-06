@@ -12,10 +12,10 @@ from .function import Function
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIME_BUFFER, ChannelPool
 from .image import base_image
 from .object import Object, ObjectMeta
-from .serialization import Pickler, Unpickler
 from .proto import api_pb2
+from .serialization import Pickler, Unpickler
 from .session_state import SessionState
-from .utils import print_logs
+from .utils import get_buffer, print_logs
 
 
 @synchronizer
@@ -87,9 +87,9 @@ class Session:  # (Object):
     @synchronizer.asynccontextmanager
     async def run(self, client=None, stdout=None, stderr=None):
         if stdout is None:
-            stdout = sys.stdout.buffer
+            stdout = get_buffer(sys.stdout)
         if stderr is None:
-            stderr = sys.stderr.buffer
+            stderr = get_buffer(sys.stderr)
         if client is None:
             client = await Client.from_env()
             async with client:

@@ -1,5 +1,4 @@
 import asyncio
-import importlib
 import inspect
 import os
 import sys
@@ -7,7 +6,7 @@ import uuid
 import warnings
 
 import cloudpickle
-from aiostream import stream, pipe
+from aiostream import pipe, stream
 from google.protobuf.any_pb2 import Any
 
 from .async_utils import retry, synchronizer
@@ -25,6 +24,7 @@ from .queue import Queue
 class FunctionInfo:
     def __init__(self, f):
         self.function_name = f.__name__
+        self.function_serialized = None
         module = inspect.getmodule(f)
         if module.__package__:
             # This is a "real" module, eg. examples.logs.f
@@ -37,11 +37,19 @@ class FunctionInfo:
             self.module_name = module.__spec__.name
             self.recursive_upload = True
             self.remote_dir = "/root/" + module.__package__.split(".")[0]  # TODO: don't hardcode /root
-        else:
+        elif hasattr(module, "__file__"):
             # This generally covers the case where it's invoked with
             # python foo/bar/baz.py
             self.module_name = os.path.splitext(os.path.basename(module.__file__))[0]
             self.package_path = os.path.dirname(module.__file__)
+            self.recursive_upload = False  # Just pick out files in the same directory
+            self.remote_dir = "/root"  # TODO: don't hardcore /root
+        else:
+            # Use cloudpickle. Used when working w/ Jupyter notebooks.
+            self.function_serialized = cloudpickle.dumps(f)
+            logger.info(f"Serializing {f.__name__}, size is {len(self.function_serialized)}")
+            self.module_name = None
+            self.package_path = os.path.abspath("")  # get current dir
             self.recursive_upload = False  # Just pick out files in the same directory
             self.remote_dir = "/root"  # TODO: don't hardcore /root
 
@@ -52,18 +60,6 @@ class FunctionInfo:
             condition=lambda filename: os.path.splitext(filename)[1] == ".py",
             recursive=self.recursive_upload,
         )
-
-
-def _path_to_function(module_name, function_name):
-    try:
-        module = importlib.import_module(module_name)
-        return getattr(module, function_name)
-    except ModuleNotFoundError:
-        # Just print some debug stuff, then re-raise
-        logger.info(f"cwd: {os.getcwd()}")
-        logger.info(f"path: {sys.path}")
-        logger.info(f"ls: {os.listdir()}")
-        raise
 
 
 # TODO: maybe we can create a special Buffer class in the ORM that keeps track of the protobuf type
@@ -254,6 +250,7 @@ class Function(Object):
             mount_ids=mount_ids,
             env_dict_id=env_dict_id,
             image_id=image_id,
+            function_serialized=self.info.function_serialized,
         )
         request = api_pb2.FunctionGetOrCreateRequest(
             session_id=session.session_id,
@@ -275,9 +272,3 @@ class Function(Object):
 
     def get_raw_f(self):
         return self.raw_f
-
-    @staticmethod
-    def get_function(module_name, function_name):
-        f = _path_to_function(module_name, function_name)
-        assert isinstance(f, Function)
-        return f

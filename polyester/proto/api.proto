@@ -19,8 +19,7 @@ message ContainerArguments{  // This is used to pass data from the worker to the
   string function_id = 2;
   string input_buffer_id = 3;
   string session_id = 4;
-  string module_name = 5;
-  string function_name = 6;
+  Function function_def = 7;
 }
 
 message GenericResult {  // Used for both tasks and function outputs
@@ -275,6 +274,7 @@ message Function {
   repeated string mount_ids = 3;
   string image_id = 4;
   string env_dict_id = 5;
+  bytes function_serialized = 6;
 }
 
 message FunctionGetOrCreateRequest {
