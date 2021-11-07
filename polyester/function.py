@@ -37,6 +37,7 @@ class FunctionInfo:
             self.module_name = module.__spec__.name
             self.recursive_upload = True
             self.remote_dir = "/root/" + module.__package__.split(".")[0]  # TODO: don't hardcode /root
+            self.definition_type = api_pb2.Function.DefinitionType.FILE
         elif hasattr(module, "__file__"):
             # This generally covers the case where it's invoked with
             # python foo/bar/baz.py
@@ -44,6 +45,7 @@ class FunctionInfo:
             self.package_path = os.path.dirname(module.__file__)
             self.recursive_upload = False  # Just pick out files in the same directory
             self.remote_dir = "/root"  # TODO: don't hardcore /root
+            self.definition_type = api_pb2.Function.DefinitionType.FILE
         else:
             # Use cloudpickle. Used when working w/ Jupyter notebooks.
             self.function_serialized = cloudpickle.dumps(f)
@@ -52,6 +54,7 @@ class FunctionInfo:
             self.package_path = os.path.abspath("")  # get current dir
             self.recursive_upload = False  # Just pick out files in the same directory
             self.remote_dir = "/root"  # TODO: don't hardcore /root
+            self.definition_type = api_pb2.Function.DefinitionType.SERIALIZED
 
     def get_mount(self):
         return Mount(
@@ -250,6 +253,7 @@ class Function(Object):
             mount_ids=mount_ids,
             env_dict_id=env_dict_id,
             image_id=image_id,
+            definition_type=self.info.definition_type,
             function_serialized=self.info.function_serialized,
         )
         request = api_pb2.FunctionGetOrCreateRequest(

@@ -55,10 +55,14 @@ class FunctionContext:
     async def get_function(self) -> typing.Callable:
         """Note that this also initializes the session."""
 
-        if self.function_def.function_serialized:
+        if self.function_def.definition_type == api_pb2.Function.DefinitionType.SERIALIZED:
+            # Fetch the serialized function definition
+            request = api_pb2.FunctionGetSerializedRequest(function_id=self.function_id)
+            response = await self.client.stub.FunctionGetSerialized(request)
+            raw_f = cloudpickle.loads(response.function_serialized)
+
             # Create a new session object. It will get initialized with the right object ID next.
             session = Session()
-            raw_f = cloudpickle.loads(self.function_def.function_serialized)
             fun = Function(session, raw_f)
         else:
             fun = _path_to_function(self.function_def.module_name, self.function_def.function_name)

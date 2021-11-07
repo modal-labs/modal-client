@@ -1,19 +1,16 @@
+import io
 import sys
 
 import colorama
 
 
-def is_ipykernel_outstream(handle):
-    return type(handle).__name__ == "OutStream"
-
-
 def get_buffer(handle):
     # HACK: Jupyter notebooks have sys.stdout point to an OutStream object,
     # which doesn't have a buffer attribute.
-    if is_ipykernel_outstream(handle):
-        return handle
-    else:
+    if hasattr(handle, "buffer"):
         return handle.buffer
+    else:
+        return handle
 
 
 def print_logs(output: bytes, fd: str, stdout=None, stderr=None):
@@ -29,14 +26,14 @@ def print_logs(output: bytes, fd: str, stdout=None, stderr=None):
     else:
         raise Exception("weird fd for log output")
 
-    is_ipykernel = is_ipykernel_outstream(buf)
-
     if buf.isatty():
         buf.write(color)
-    if is_ipykernel:
-        buf.write(output.decode("utf-8"))
-    else:
+
+    if isinstance(buf, (io.RawIOBase, io.BufferedIOBase)):
         buf.write(output)
+    else:
+        buf.write(output.decode("utf-8"))
+
     if buf.isatty():
         buf.write(colorama.Style.RESET_ALL.encode())
         buf.flush()

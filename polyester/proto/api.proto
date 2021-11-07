@@ -275,6 +275,9 @@ message Function {
   string image_id = 4;
   string env_dict_id = 5;
   bytes function_serialized = 6;
+
+  enum DefinitionType {FILE = 0; SERIALIZED = 1;}
+  DefinitionType definition_type = 7;
 }
 
 message FunctionGetOrCreateRequest {
@@ -284,6 +287,14 @@ message FunctionGetOrCreateRequest {
 
 message FunctionGetOrCreateResponse {
   string function_id = 1;
+}
+
+message FunctionGetSerializedRequest {
+  string function_id = 1;
+}
+
+message FunctionGetSerializedResponse {
+  bytes function_serialized = 1;
 }
 
 message FunctionMapRequest {
@@ -394,6 +405,7 @@ service PolyesterClient {
 
   // Functions
   rpc FunctionGetOrCreate(FunctionGetOrCreateRequest) returns (FunctionGetOrCreateResponse);
+  rpc FunctionGetSerialized(FunctionGetSerializedRequest) returns (FunctionGetSerializedResponse);
   rpc FunctionMap(FunctionMapRequest) returns (FunctionMapResponse);
   rpc FunctionCall(FunctionCallRequest) returns (BufferWriteResponse);
   rpc FunctionGetNextOutput(FunctionGetNextOutputRequest) returns (BufferReadResponse);  // Returns the next result

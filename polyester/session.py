@@ -15,7 +15,7 @@ from .object import Object, ObjectMeta
 from .proto import api_pb2
 from .serialization import Pickler, Unpickler
 from .session_state import SessionState
-from .utils import get_buffer, print_logs
+from .utils import print_logs
 
 
 @synchronizer
@@ -86,10 +86,6 @@ class Session:  # (Object):
 
     @synchronizer.asynccontextmanager
     async def run(self, client=None, stdout=None, stderr=None):
-        if stdout is None:
-            stdout = get_buffer(sys.stdout)
-        if stderr is None:
-            stderr = get_buffer(sys.stderr)
         if client is None:
             client = await Client.from_env()
             async with client:
