@@ -37,14 +37,18 @@ async def _run_container(servicer, module_name, function_name):
     async with Client(servicer.remote_addr, api_pb2.ClientType.CONTAINER, ("ta-123", "task-secret")) as client:
         servicer.inputs = _get_inputs(client)
 
+        function_def = api_pb2.Function(
+            module_name=module_name,
+            function_name=function_name,
+        )
+
         # Note that main is a synchronous function, so we need to run it in a separate thread
         container_args = api_pb2.ContainerArguments(
             task_id="ta-123",
             function_id="fu-123",
             input_buffer_id=INPUT_BUFFER,
             session_id="se-123",
-            module_name=module_name,
-            function_name=function_name,
+            function_def=function_def,
         )
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, main, container_args, client)
@@ -107,8 +111,3 @@ async def test_container_entrypoint_failure(servicer):
     assert output.status == api_pb2.GenericResult.Status.FAILURE
     assert output.exception in ["Exception('Failure!')", "Exception('Failure!',)"]  # The 2nd is 3.6
     assert "Traceback" in output.traceback
-
-
-def test_import_function_dynamically():
-    f = Function.get_function("polyester.test_support", "square")
-    assert f.raw_f(42) == 42 * 42
