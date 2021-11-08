@@ -17,17 +17,6 @@ def _make_bytes(s):
     return s.encode("ascii") if type(s) is str else s
 
 
-class EnvDict(Object):
-    def __init__(self, env_dict):
-        super().__init__(tag=None)
-        self.env_dict = env_dict
-
-    async def _create_impl(self, session):
-        req = api_pb2.EnvDictCreateRequest(session_id=session.session_id, env_dict=self.env_dict)
-        resp = await session.client.stub.EnvDictCreate(req)
-        return resp.env_dict_id
-
-
 def get_python_version():
     return config["image_python_version"] or "%d.%d.%d" % sys.version_info[:3]
 
