@@ -115,6 +115,11 @@ class Session:  # (Object):
             raise Exception("Can only look up object ids for objects on a running session")
         return self._object_ids.get(tag)
 
+    async def export(self, obj, path):
+        object_id = await self.create_object(self, obj)
+        request = api_pb2.SessionExportObjectRequest(session_id=self.session_id, object_id=object_id, path=path)
+        await self.client.stub.SessionExportObject(request)
+
     @synchronizer.asynccontextmanager
     async def run(self, client=None, stdout=None, stderr=None):
         # HACK because Lock needs to be created on the synchronizer thread
