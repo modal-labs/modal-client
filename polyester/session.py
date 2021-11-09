@@ -22,6 +22,7 @@ from .utils import print_logs
 class Session:  # (Object):
     def __init__(self):
         self._objects = {}  # tag -> object
+        self._flush_lock = None
         self._pending_create_objects = set()  # list of tags that haven't been created
         self._object_ids = None  # tag -> object id
         self.client = None
@@ -35,6 +36,8 @@ class Session:  # (Object):
             # instances. It should mostly go away once we support proper persistence, but might
             # still happen in some weird edge cases
             warnings.warn(f"tag: {obj.tag} used for object {self._objects[obj.tag]} now overwritten by {obj}")
+
+        # We could add duplicates here, but flush_objects doesn't re-create objects that are already created.
         self._pending_create_objects.add(obj.tag)
         self._objects[obj.tag] = obj
 
@@ -65,6 +68,9 @@ class Session:  # (Object):
         self.session_id = session_id
         self.client = client
 
+        if self._flush_lock is None:
+            self._flush_lock = asyncio.Lock()
+
         req = api_pb2.SessionGetObjectsRequest(session_id=session_id)
         resp = await self.client.stub.SessionGetObjects(req)
 
@@ -85,18 +91,19 @@ class Session:  # (Object):
     async def flush_objects(self):
         "Create objects that have been defined but not created on the server."
 
-        pending = list(self._pending_create_objects)  # can't iterate over the original hash since it might change
+        async with self._flush_lock:
+            pending = list(self._pending_create_objects)  # can't iterate over the original hash since it might change
 
-        for tag in pending:
-            obj = self._objects[tag]
+            for tag in pending:
+                obj = self._objects[tag]
 
-            if self.state == SessionState.RUNNING and self.get_object_id(tag):
-                # object is already created (happens due to object re-initialization in the container).
-                self._pending_create_objects.remove(obj.tag)
-                continue
+                if self.state == SessionState.RUNNING and self.get_object_id(tag):
+                    # object is already created (happens due to object re-initialization in the container).
+                    self._pending_create_objects.remove(obj.tag)
+                    continue
 
-            logger.debug(f"Creating object {obj}")
-            await self.create_object(obj)
+                logger.debug(f"Creating object {obj}")
+                await self.create_object(obj)
 
     def get_object_id(self, tag):
         if self.state != SessionState.RUNNING:  # Maybe also starting?
@@ -105,6 +112,10 @@ class Session:  # (Object):
 
     @synchronizer.asynccontextmanager
     async def run(self, client=None, stdout=None, stderr=None):
+        # HACK because Lock needs to be created on the synchronizer thread
+        if self._flush_lock is None:
+            self._flush_lock = asyncio.Lock()
+
         if client is None:
             client = await Client.from_env()
             async with client:

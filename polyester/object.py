@@ -57,9 +57,6 @@ class Object(metaclass=ObjectMeta):
 
 
 def requires_create_generator(method):
-    if not inspect.isasyncgenfunction(method):
-        raise Exception("@requires_create_generator can only wrap async gen functions")
-
     @functools.wraps(method)
     async def wrapped_method(self, *args, **kwargs):
         if not self.session:
@@ -77,12 +74,6 @@ def requires_create_generator(method):
 
 
 def requires_create(method):
-    # TODO: this does not work for generators (need to do `async for z in await f()` )
-    # See the old requires_join_generator function for how to make this work
-
-    if not inspect.iscoroutinefunction(method):
-        raise Exception("@requires_create can only wrap async functions")
-
     @functools.wraps(method)
     async def wrapped_method(self, *args, **kwargs):
         if not self.session:
