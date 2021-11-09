@@ -126,6 +126,15 @@ message SessionShareObjectRequest {
   // TODO: support different namespaces etc
 }
 
+message SessionUseObjectRequest {
+  string session_id = 1;
+  string path = 2;
+}
+
+message SessionUseObjectResponse {
+  string object_id = 1;
+}
+
 message TaskLogs {
   bytes data = 1;
   string fd = 2;
@@ -383,6 +392,7 @@ service PolyesterClient {
   rpc SessionSetObjects(SessionSetObjectsRequest) returns (Empty);
   rpc SessionGetObjects(SessionGetObjectsRequest) returns (SessionGetObjectsResponse);
   rpc SessionShareObject(SessionShareObjectRequest) returns (Empty);
+  rpc SessionUseObject(SessionUseObjectRequest) returns (SessionUseObjectResponse);
 
   // Queues
   rpc QueueCreate(Empty) returns (QueueCreateResponse);  // TODO: we should create it inside a session

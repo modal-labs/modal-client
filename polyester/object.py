@@ -42,6 +42,7 @@ class Object(metaclass=ObjectMeta):
         if tag is None:
             tag = str(uuid.uuid4())
 
+        self.export_path = None
         self.tag = tag
         self.session = session
         if session:
@@ -54,6 +55,16 @@ class Object(metaclass=ObjectMeta):
     @property
     def object_id(self):
         return self.session.get_object_id(self.tag)
+
+    @classmethod
+    def use(cls, path, session=None):
+        # TODO: this is a bit ugly, because it circumvents the contructor, which means
+        # it might not always work (eg you can't do DebianSlim.use("foo"))
+        # This interface is a bit TBD, let's think more about it
+        obj = Object.__new__(cls)
+        obj.session = session
+        obj.export_path = export_path
+        obj.tag = "use:" + export_path  # TODO: hacky? we should probably keep them apart
 
 
 def requires_create_generator(method):
