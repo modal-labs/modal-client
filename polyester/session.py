@@ -89,9 +89,9 @@ class Session:  # (Object):
         # This just register + creates the object
         self.register(obj)
         if obj.tag not in self._object_ids:
-            if obj.external_path:
+            if obj.share_path:
                 # This is a reference to a persistent object
-                self._object_ids[obj.tag] = await self._use_object(self, obj.external_path)
+                self._object_ids[obj.tag] = await self._use_object(obj.share_path)
             else:
                 # This is something created locally
                 self._object_ids[obj.tag] = await obj._create_impl(self)
@@ -121,13 +121,13 @@ class Session:  # (Object):
         return self._object_ids.get(tag)
 
     async def share(self, obj, path):
-        object_id = await self.create_object(self, obj)
+        object_id = await self.create_object(obj)
         request = api_pb2.SessionShareObjectRequest(session_id=self.session_id, object_id=object_id, path=path)
         await self.client.stub.SessionShareObject(request)
 
     async def _use_object(self, path):
         request = api_pb2.SessionUseObjectRequest(session_id=self.session_id, path=path)
-        response = await self.client.stub.SessionExportObject(request)
+        response = await self.client.stub.SessionUseObject(request)
         return response.object_id
 
     @synchronizer.asynccontextmanager

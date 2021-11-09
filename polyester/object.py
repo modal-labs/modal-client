@@ -42,7 +42,7 @@ class Object(metaclass=ObjectMeta):
         if tag is None:
             tag = str(uuid.uuid4())
 
-        self.export_path = None
+        self.share_path = None
         self.tag = tag
         self.session = session
         if session:
@@ -63,8 +63,11 @@ class Object(metaclass=ObjectMeta):
         # This interface is a bit TBD, let's think more about it
         obj = Object.__new__(cls)
         obj.session = session
-        obj.export_path = export_path
-        obj.tag = "use:" + export_path  # TODO: hacky? we should probably keep them apart
+        obj.share_path = path
+        obj.tag = "share:" + path  # TODO: hacky? we should probably keep them apart
+        if session:
+            session.register(obj)
+        return obj
 
 
 def requires_create_generator(method):
