@@ -51,27 +51,48 @@ class Object(metaclass=ObjectMeta):
         # Overloaded in subclasses to do the actual logic
         raise NotImplementedError
 
-    async def create(self):
-        # TODO: this method name is pretty inconsistent
-        return await self.session.create_object(self)
-
     @property
     def object_id(self):
         return self.session.get_object_id(self.tag)
+
+
+def requires_create_generator(method):
+    if not inspect.isasyncgenfunction(method):
+        raise Exception("@requires_create_generator can only wrap async gen functions")
+
+    @functools.wraps(method)
+    async def wrapped_method(self, *args, **kwargs):
+        if not self.session:
+            raise Exception("Can only run this method on an object with a session set")
+        if self.session.state != SessionState.RUNNING:
+            raise Exception("Can only run this method on an object with a running session")
+
+        # Flush all objects to the session
+        await self.session.flush_objects()
+
+        async for ret in method(self, *args, **kwargs):
+            yield ret
+
+    return wrapped_method
 
 
 def requires_create(method):
     # TODO: this does not work for generators (need to do `async for z in await f()` )
     # See the old requires_join_generator function for how to make this work
 
+    if not inspect.iscoroutinefunction(method):
+        raise Exception("@requires_create can only wrap async functions")
+
     @functools.wraps(method)
-    def wrapped_method(self, *args, **kwargs):
+    async def wrapped_method(self, *args, **kwargs):
         if not self.session:
             raise Exception("Can only run this method on an object with a session set")
         if self.session.state != SessionState.RUNNING:
             raise Exception("Can only run this method on an object with a running session")
-        if not self.object_id:
-            raise Exception("Can only run this on a method that has been created: consider obj.create()")
-        return method(self, *args, **kwargs)
+
+        # Flush all objects to the session
+        await self.session.flush_objects()
+
+        return await method(self, *args, **kwargs)
 
     return wrapped_method

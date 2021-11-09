@@ -15,6 +15,7 @@ class GRPCClientServicer(api_pb2_grpc.PolyesterClient):
         self.done = False
         self.inputs = []
         self.outputs = []
+        self.object_ids = {}
 
     async def ClientCreate(
         self,
@@ -66,7 +67,7 @@ class GRPCClientServicer(api_pb2_grpc.PolyesterClient):
     async def SessionGetObjects(
         self, request: api_pb2.SessionGetObjectsRequest, context: grpc.aio.ServicerContext
     ) -> api_pb2.SessionGetObjectsResponse:
-        return api_pb2.SessionGetObjectsResponse(object_ids={})
+        return api_pb2.SessionGetObjectsResponse(object_ids=self.object_ids)
 
 
 @pytest.fixture(scope="function")

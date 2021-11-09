@@ -16,7 +16,7 @@ from .config import config, logger
 from .exception import RemoteError
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .mount import Mount, create_package_mounts
-from .object import Object, requires_create
+from .object import Object, requires_create, requires_create_generator
 from .proto import api_pb2
 from .queue import Queue
 
@@ -263,7 +263,7 @@ class Function(Object):
         response = await session.client.stub.FunctionGetOrCreate(request)
         return response.function_id
 
-    @requires_create
+    @requires_create_generator
     async def map(self, inputs, window=100, kwargs={}):
         input_stream = stream.iterate(inputs) | pipe.map(lambda arg: (arg,))
         async for item in await MapInvocation.create(self.object_id, input_stream, kwargs, self.session):

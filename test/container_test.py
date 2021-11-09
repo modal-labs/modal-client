@@ -3,7 +3,7 @@ import time
 
 import pytest
 
-from polyester import Client, Session
+from polyester import Client, Session, base_image
 from polyester.container_entrypoint import main
 from polyester.function import Function, pack_input_buffer_item
 from polyester.proto import api_pb2
@@ -50,6 +50,14 @@ async def _run_container(servicer, module_name, function_name):
             session_id="se-123",
             function_def=function_def,
         )
+
+        servicer.object_ids = {
+            base_image.tag: "1",
+            "polyester.test_support.square": "2",
+            "polyester.test_support.square_sync_returning_async": "3",
+            "polyester.test_support.square_async": "4",
+            "polyester.test_support.raises": "5",
+        }
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, main, container_args, client)
 

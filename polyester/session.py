@@ -22,6 +22,7 @@ from .utils import print_logs
 class Session:  # (Object):
     def __init__(self):
         self._objects = {}  # tag -> object
+        self._pending_create_objects = set()  # list of tags that haven't been created
         self._object_ids = None  # tag -> object id
         self.client = None
         self.state = SessionState.NONE
@@ -34,6 +35,7 @@ class Session:  # (Object):
             # instances. It should mostly go away once we support proper persistence, but might
             # still happen in some weird edge cases
             warnings.warn(f"tag: {obj.tag} used for object {self._objects[obj.tag]} now overwritten by {obj}")
+        self._pending_create_objects.add(obj.tag)
         self._objects[obj.tag] = obj
 
     def function(self, raw_f=None, image=base_image, env_dict=None):
@@ -77,7 +79,24 @@ class Session:  # (Object):
         self.register(obj)
         if obj.tag not in self._object_ids:
             self._object_ids[obj.tag] = await obj._create_impl(self)
+        self._pending_create_objects.remove(obj.tag)
         return self._object_ids[obj.tag]
+
+    async def flush_objects(self):
+        "Create objects that have been defined but not created on the server."
+
+        pending = list(self._pending_create_objects)  # can't iterate over the original hash since it might change
+
+        for tag in pending:
+            obj = self._objects[tag]
+
+            if self.state == SessionState.RUNNING and self.get_object_id(tag):
+                # object is already created (happens due to object re-initialization in the container).
+                self._pending_create_objects.remove(obj.tag)
+                continue
+
+            logger.debug(f"Creating object {obj}")
+            await self.create_object(obj)
 
     def get_object_id(self, tag):
         if self.state != SessionState.RUNNING:  # Maybe also starting?
@@ -103,6 +122,8 @@ class Session:  # (Object):
         self.state = SessionState.STARTING
         self.client = client
         self._object_ids = {}
+        # We need to re-initialize all these objects. Needed if a session is reused.
+        self._pending_create_objects = set(self._objects.keys())
 
         try:
             # Start session
@@ -117,11 +138,7 @@ class Session:  # (Object):
                 tc.infinite_loop(get_logs_closure)
 
                 # Create all members
-                # TODO: do this in parallel
-                all_objects = list(self._objects.values())
-                for obj in all_objects:  # can't iterate over the original hash since it might change
-                    logger.debug(f"Creating object {obj}")
-                    await self.create_object(obj)
+                await self.flush_objects()
 
                 # TODO: the below is a temporary thing until we unify object creation
                 req = api_pb2.SessionSetObjectsRequest(

@@ -46,7 +46,11 @@ class FunctionContext:
         self.function_def = container_args.function_def
         self.client = client
 
-    def serialize(self, obj: typing.Any) -> bytes:
+    async def serialize(self, obj: typing.Any) -> bytes:
+        # Call session.flush first. We need this because the function might have defined new objects
+        # that have not been created on the server-side, but are part of the return value of the function.
+        await self.session.flush_objects()
+
         return self.session.serialize(obj)
 
     def deserialize(self, data: bytes) -> typing.Any:
@@ -146,7 +150,7 @@ def call_function(
                         input_id,
                         output_buffer_id,
                         status=api_pb2.GenericResult.Status.SUCCESS,
-                        data=function_context.serialize(value),
+                        data=await function_context.serialize(value),
                         gen_status=api_pb2.GenericResult.GeneratorStatus.INCOMPLETE,
                     )
 
