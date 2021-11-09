@@ -119,7 +119,7 @@ message SessionGetObjectsResponse {
   map<string, string> object_ids = 1;
 }
 
-message SessionExportObjectRequest {
+message SessionShareObjectRequest {
   string session_id = 1;
   string object_id = 2;
   string path = 3;
@@ -382,7 +382,7 @@ service PolyesterClient {
   rpc SessionGetLogs(SessionGetLogsRequest) returns (stream TaskLogs);
   rpc SessionSetObjects(SessionSetObjectsRequest) returns (Empty);
   rpc SessionGetObjects(SessionGetObjectsRequest) returns (SessionGetObjectsResponse);
-  rpc SessionExportObject(SessionExportObjectRequest) returns (Empty);
+  rpc SessionShareObject(SessionShareObjectRequest) returns (Empty);
 
   // Queues
   rpc QueueCreate(Empty) returns (QueueCreateResponse);  // TODO: we should create it inside a session
