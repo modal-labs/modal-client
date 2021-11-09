@@ -66,14 +66,19 @@ class FunctionContext:
             raw_f = cloudpickle.loads(response.function_serialized)
 
             # Create a new session object. It will get initialized with the right object ID next.
-            session = Session()
-            fun = Function(session, raw_f)
+            self.session = Session()
+            fun = Function(self.session, raw_f)
+            await self.session.initialize(self.session_id, self.client)
+            # Function object is already created, so we need to associate the correct object ID.
+            self.session._object_ids[fun.tag] = self.function_id
+
         else:
             fun = _path_to_function(self.function_def.module_name, self.function_def.function_name)
             assert isinstance(fun, Function)
 
-        self.session = fun.session
-        await self.session.initialize(self.session_id, self.client)
+            self.session = fun.session
+            await self.session.initialize(self.session_id, self.client)
+
         return fun.get_raw_f()
 
     async def generate_inputs(
