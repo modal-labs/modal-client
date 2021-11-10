@@ -54,14 +54,19 @@ class Session:  # (Object):
 
     async def _get_logs(self, stdout, stderr, draining=False, timeout=BLOCKING_REQUEST_TIMEOUT):
         request = api_pb2.SessionGetLogsRequest(session_id=self.session_id, timeout=timeout, draining=draining)
+        n_running = None
         async for log_entry in self.client.stub.SessionGetLogs(request, timeout=timeout + GRPC_REQUEST_TIME_BUFFER):
             if log_entry.done:
                 logger.info("No more logs")
                 return
+            elif log_entry.n_running:
+                n_running = log_entry.n_running
             else:
                 print_logs(log_entry.data, log_entry.fd, stdout, stderr)
         if draining:
-            raise Exception("Failed waiting for all logs to finish, server will kill remaining tasks")
+            raise Exception(
+                f"Failed waiting for all logs to finish. There are still {n_running} tasks the server will kill."
+            )
 
     async def initialize(self, session_id, client):
         """Used by the container to bootstrap the session and all its objects."""

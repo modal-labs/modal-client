@@ -124,6 +124,7 @@ message TaskLogs {
   string fd = 2;
   string task_id = 3;
   bool done = 4;
+  int64 n_running = 5;
 }
 
 message QueueCreateResponse {
