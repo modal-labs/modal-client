@@ -60,7 +60,7 @@ class FunctionInfo:
         return Mount(
             local_dir=self.package_path,
             remote_dir=self.remote_dir,
-            condition=lambda filename: os.path.splitext(filename)[1] == ".py",
+            condition=lambda filename: os.path.splitext(filename)[1] in [".py", ".ipynb"],
             recursive=self.recursive_upload,
         )
 
