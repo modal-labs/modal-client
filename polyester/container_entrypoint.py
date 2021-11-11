@@ -118,6 +118,7 @@ class FunctionContext:
 def call_function(
     function_context: FunctionContext,
     function: typing.Callable,
+    function_type: api_pb2.Function.FunctionType,
     buffer_item: api_pb2.BufferItem,
 ):
     input = unpack_input_buffer_item(buffer_item)
@@ -127,52 +128,54 @@ def call_function(
     args = function_context.deserialize(input.args)
     kwargs = function_context.deserialize(input.kwargs)
 
+    # TODO: this function is too deeply nested, maybe let's rethink
+
     try:
         res = function(*args, **kwargs)
 
-        # TODO: we should check that the return type matches the function_type
-        # and throw an error if not
-
-        if inspect.isgenerator(res):
-            for value in res:
-                function_context.output_request(
-                    input_id,
-                    output_buffer_id,
-                    status=api_pb2.GenericResult.Status.SUCCESS,
-                    data=function_context.serialize(value),
-                    gen_status=api_pb2.GenericResult.GeneratorStatus.INCOMPLETE,
-                )
-
-            # send EOF
-            function_context.output_request(
-                input_id,
-                output_buffer_id,
-                status=api_pb2.GenericResult.Status.SUCCESS,
-                gen_status=api_pb2.GenericResult.GeneratorStatus.COMPLETE,
-            )
-        elif inspect.isasyncgen(res):
-
-            async def run_asyncgen():
-                async for value in res:
-                    await function_context.output_request(
+        if function_type == api_pb2.Function.FunctionType.GENERATOR:
+            if inspect.isgenerator(res):
+                for value in res:
+                    function_context.output_request(
                         input_id,
                         output_buffer_id,
                         status=api_pb2.GenericResult.Status.SUCCESS,
-                        data=await function_context.serialize(value),
+                        data=function_context.serialize(value),
                         gen_status=api_pb2.GenericResult.GeneratorStatus.INCOMPLETE,
                     )
 
                 # send EOF
-                await function_context.output_request(
+                function_context.output_request(
                     input_id,
                     output_buffer_id,
                     status=api_pb2.GenericResult.Status.SUCCESS,
                     gen_status=api_pb2.GenericResult.GeneratorStatus.COMPLETE,
                 )
+            elif inspect.isasyncgen(res):
 
-            asyncio_run(run_asyncgen())
+                async def run_asyncgen():
+                    async for value in res:
+                        await function_context.output_request(
+                            input_id,
+                            output_buffer_id,
+                            status=api_pb2.GenericResult.Status.SUCCESS,
+                            data=await function_context.serialize(value),
+                            gen_status=api_pb2.GenericResult.GeneratorStatus.INCOMPLETE,
+                        )
 
-        else:
+                    # send EOF
+                    await function_context.output_request(
+                        input_id,
+                        output_buffer_id,
+                        status=api_pb2.GenericResult.Status.SUCCESS,
+                        gen_status=api_pb2.GenericResult.GeneratorStatus.COMPLETE,
+                    )
+
+                asyncio_run(run_asyncgen())
+            else:
+                raise Exception("Function of type generator returned a non-generator output")
+
+        elif function_type == api_pb2.Function.FunctionType.FUNCTION:
             if inspect.iscoroutine(res):
                 res = asyncio_run(res)
 
@@ -182,6 +185,9 @@ def call_function(
                 status=api_pb2.GenericResult.Status.SUCCESS,
                 data=function_context.serialize(res),
             )
+
+        else:
+            raise Exception(f"Unknown function type {function_type}")
 
     except Exception as exc:
         # Note: we're not serializing the traceback since it contains
@@ -201,12 +207,13 @@ def call_function(
 
 def main(container_args, client):
     function_context = FunctionContext(container_args, client)
+    function_type = container_args.function_def.function_type
     function = function_context.get_function()
 
     for buffer_item in function_context.generate_inputs():
         # Note: this blocks the call_function as well. In the future we might want to stream outputs
         # back asynchronously, but then block the call_function if there is back-pressure.
-        call_function(function_context, function, buffer_item)
+        call_function(function_context, function, function_type, buffer_item)
 
 
 if __name__ == "__main__":
