@@ -36,7 +36,11 @@ def _path_to_function(module_name, function_name):
 
 @synchronizer
 class FunctionContext:
-    """This class isn't much more than a helper method for some gRPC calls."""
+    """This class isn't much more than a helper method for some gRPC calls.
+
+    TODO: maybe we shouldn't synchronize the whole class.
+    Then we could potentially move a bunch of the global functions onto it.
+    """
 
     def __init__(self, container_args, client):
         self.task_id = container_args.task_id
@@ -115,6 +119,47 @@ class FunctionContext:
         return await self._output(req)
 
 
+def _call_function_generator(function_context, input_id, output_buffer_id, res):
+    for value in res:
+        function_context.output_request(
+            input_id,
+            output_buffer_id,
+            status=api_pb2.GenericResult.Status.SUCCESS,
+            data=function_context.serialize(value),
+            gen_status=api_pb2.GenericResult.GeneratorStatus.INCOMPLETE,
+        )
+
+    # send EOF
+    function_context.output_request(
+        input_id,
+        output_buffer_id,
+        status=api_pb2.GenericResult.Status.SUCCESS,
+        gen_status=api_pb2.GenericResult.GeneratorStatus.COMPLETE,
+    )
+
+
+def _call_function_asyncgen(function_context, input_id, output_buffer_id, res):
+    async def run_asyncgen():
+        async for value in res:
+            await function_context.output_request(
+                input_id,
+                output_buffer_id,
+                status=api_pb2.GenericResult.Status.SUCCESS,
+                data=await function_context.serialize(value),
+                gen_status=api_pb2.GenericResult.GeneratorStatus.INCOMPLETE,
+            )
+
+        # send EOF
+        await function_context.output_request(
+            input_id,
+            output_buffer_id,
+            status=api_pb2.GenericResult.Status.SUCCESS,
+            gen_status=api_pb2.GenericResult.GeneratorStatus.COMPLETE,
+        )
+
+    asyncio_run(run_asyncgen())
+
+
 def call_function(
     function_context: FunctionContext,
     function: typing.Callable,
@@ -128,50 +173,14 @@ def call_function(
     args = function_context.deserialize(input.args)
     kwargs = function_context.deserialize(input.kwargs)
 
-    # TODO: this function is too deeply nested, maybe let's rethink
-
     try:
         res = function(*args, **kwargs)
 
         if function_type == api_pb2.Function.FunctionType.GENERATOR:
             if inspect.isgenerator(res):
-                for value in res:
-                    function_context.output_request(
-                        input_id,
-                        output_buffer_id,
-                        status=api_pb2.GenericResult.Status.SUCCESS,
-                        data=function_context.serialize(value),
-                        gen_status=api_pb2.GenericResult.GeneratorStatus.INCOMPLETE,
-                    )
-
-                # send EOF
-                function_context.output_request(
-                    input_id,
-                    output_buffer_id,
-                    status=api_pb2.GenericResult.Status.SUCCESS,
-                    gen_status=api_pb2.GenericResult.GeneratorStatus.COMPLETE,
-                )
+                _call_function_generator(function_context, input_id, output_buffer_id, res)
             elif inspect.isasyncgen(res):
-
-                async def run_asyncgen():
-                    async for value in res:
-                        await function_context.output_request(
-                            input_id,
-                            output_buffer_id,
-                            status=api_pb2.GenericResult.Status.SUCCESS,
-                            data=await function_context.serialize(value),
-                            gen_status=api_pb2.GenericResult.GeneratorStatus.INCOMPLETE,
-                        )
-
-                    # send EOF
-                    await function_context.output_request(
-                        input_id,
-                        output_buffer_id,
-                        status=api_pb2.GenericResult.Status.SUCCESS,
-                        gen_status=api_pb2.GenericResult.GeneratorStatus.COMPLETE,
-                    )
-
-                asyncio_run(run_asyncgen())
+                _call_function_asyncgen(function_context, input_id, output_buffer_id, res)
             else:
                 raise Exception("Function of type generator returned a non-generator output")
 
