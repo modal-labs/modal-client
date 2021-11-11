@@ -9,7 +9,7 @@ import cloudpickle
 from aiostream import pipe, stream
 from google.protobuf.any_pb2 import Any
 
-from .async_utils import retry, synchronizer
+from .async_utils import retry
 from .buffer_utils import buffered_rpc_read, buffered_rpc_write
 from .client import Client
 from .config import config, logger
@@ -107,7 +107,6 @@ def process_result(session, result):
     return session.deserialize(result.data)
 
 
-@synchronizer
 class Invocation:
     def __init__(self, session, function_id, output_buffer_id):
         self.session = session
@@ -129,31 +128,27 @@ class Invocation:
 
         return Invocation(session, function_id, output_buffer_id)
 
-    async def run(self):
-        async def get_item():
-            request = api_pb2.FunctionGetNextOutputRequest(function_id=self.function_id)
-            response = await buffered_rpc_read(
-                self.session.client.stub.FunctionGetNextOutput, request, self.output_buffer_id, timeout=None
-            )
-            return unpack_output_buffer_item(response.item)
+    async def get_item(self):
+        request = api_pb2.FunctionGetNextOutputRequest(function_id=self.function_id)
+        response = await buffered_rpc_read(
+            self.session.client.stub.FunctionGetNextOutput, request, self.output_buffer_id, timeout=None
+        )
+        return unpack_output_buffer_item(response.item)
 
-        first_result = await get_item()
-        if first_result.gen_status != api_pb2.GenericResult.GeneratorStatus.NOT_GENERATOR:
+    async def run_function(self):
+        result = await self.get_item()
+        assert result.gen_status == api_pb2.GenericResult.GeneratorStatus.NOT_GENERATOR
+        return process_result(self.session, result)
 
-            @synchronizer
-            async def gen():
-                cur_result = first_result
-                while cur_result.gen_status != api_pb2.GenericResult.GeneratorStatus.COMPLETE:
-                    yield process_result(self.session, cur_result)
-
-                    cur_result = await get_item()
-
-            return gen()
-        else:
-            return process_result(self.session, first_result)
+    async def run_generator(self):
+        while True:
+            result = await self.get_item()
+            assert result.gen_status != api_pb2.GenericResult.GeneratorStatus.NOT_GENERATOR
+            if result.gen_status == api_pb2.GenericResult.GeneratorStatus.COMPLETE:
+                break
+            yield process_result(self.session, result)
 
 
-@synchronizer
 class MapInvocation:
     # TODO: should this be an object?
     def __init__(self, session, response_gen):
@@ -218,7 +213,6 @@ class MapInvocation:
                     break
 
 
-@synchronizer
 class Function(Object):
     def __init__(self, session, raw_f, image=None, env_dict=None, is_generator=False):
         assert callable(raw_f)
@@ -279,12 +273,13 @@ class Function(Object):
     @requires_create
     async def call_function(self, args, kwargs):
         invocation = await Invocation.create(self.object_id, args, kwargs, self.session)
-        return invocation.run()
+        return await invocation.run_function()
 
-    @requires_create
+    @requires_create_generator
     async def call_generator(self, args, kwargs):
         invocation = await Invocation.create(self.object_id, args, kwargs, self.session)
-        return await invocation.run()
+        async for res in invocation.run_generator():
+            yield res
 
     def __call__(self, *args, **kwargs):
         if self.is_generator:
