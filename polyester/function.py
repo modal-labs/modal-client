@@ -277,13 +277,20 @@ class Function(Object):
             yield item
 
     @requires_create
-    async def __call__(self, *args, **kwargs):
-        return await (await self.call_async(*args, **kwargs))
-
-    @requires_create
-    async def call_async(self, *args, **kwargs):
+    async def call_function(self, args, kwargs):
         invocation = await Invocation.create(self.object_id, args, kwargs, self.session)
         return invocation.run()
+
+    @requires_create
+    async def call_generator(self, args, kwargs):
+        invocation = await Invocation.create(self.object_id, args, kwargs, self.session)
+        return await invocation.run()
+
+    def __call__(self, *args, **kwargs):
+        if self.is_generator:
+            return self.call_generator(args, kwargs)
+        else:
+            return self.call_function(args, kwargs)
 
     def get_raw_f(self):
         return self.raw_f

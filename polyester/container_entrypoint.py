@@ -130,6 +130,9 @@ def call_function(
     try:
         res = function(*args, **kwargs)
 
+        # TODO: we should check that the return type matches the function_type
+        # and throw an error if not
+
         if inspect.isgenerator(res):
             for value in res:
                 function_context.output_request(

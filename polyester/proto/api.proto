@@ -297,7 +297,7 @@ message Function {
   DefinitionType definition_type = 7;
 
   enum FunctionType {FUNCTION = 0; GENERATOR = 1;}
-  FunctionType function_type = 8;
+  FunctionType function_type = 8;  // TODO: this is actually never used
 }
 
 message FunctionGetOrCreateRequest {
