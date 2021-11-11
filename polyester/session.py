@@ -41,9 +41,9 @@ class Session:  # (Object):
         self._pending_create_objects.add(obj.tag)
         self._objects[obj.tag] = obj
 
-    def function(self, raw_f=None, image=base_image, env_dict=None):
+    def function(self, raw_f=None, image=base_image, env_dict=None, is_generator=False):
         def decorate(raw_f):
-            return Function(self, raw_f, image=image, env_dict=env_dict)
+            return Function(self, raw_f, image=image, env_dict=env_dict, is_generator=is_generator)
 
         if raw_f is None:
             # called like @session.function(x=y)
@@ -51,6 +51,10 @@ class Session:  # (Object):
         else:
             # called like @session.function
             return decorate(raw_f)
+
+    def generator(self, *args, **kwargs):
+        kwargs = dict(is_generator=True, **kwargs)
+        return self.function(*args, **kwargs)
 
     async def _get_logs(self, stdout, stderr, draining=False, timeout=BLOCKING_REQUEST_TIMEOUT):
         request = api_pb2.SessionGetLogsRequest(session_id=self.session_id, timeout=timeout, draining=draining)

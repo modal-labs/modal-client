@@ -295,6 +295,9 @@ message Function {
 
   enum DefinitionType {FILE = 0; SERIALIZED = 1;}
   DefinitionType definition_type = 7;
+
+  enum FunctionType {FUNCTION = 0; GENERATOR = 1;}
+  FunctionType function_type = 8;
 }
 
 message FunctionGetOrCreateRequest {

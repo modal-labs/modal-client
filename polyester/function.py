@@ -220,7 +220,7 @@ class MapInvocation:
 
 @synchronizer
 class Function(Object):
-    def __init__(self, session, raw_f, image=None, env_dict=None):
+    def __init__(self, session, raw_f, image=None, env_dict=None, is_generator=False):
         assert callable(raw_f)
         self.info = FunctionInfo(raw_f)
         tag = f"{self.info.module_name}.{self.info.function_name}"
@@ -228,6 +228,7 @@ class Function(Object):
         self.raw_f = raw_f
         self.image = image
         self.env_dict = env_dict
+        self.is_generator = is_generator
 
     async def _create_impl(self, session):
         mounts = [self.info.get_mount()]
@@ -246,6 +247,11 @@ class Function(Object):
             env_dict_id = None
         mount_ids = await asyncio.gather(*(session.create_object(mount) for mount in mounts))
 
+        if self.is_generator:
+            function_type = api_pb2.Function.FunctionType.GENERATOR
+        else:
+            function_type = api_pb2.Function.FunctionType.FUNCTION
+
         # Create function remotely
         function_definition = api_pb2.Function(
             module_name=self.info.module_name,
@@ -255,6 +261,7 @@ class Function(Object):
             image_id=image_id,
             definition_type=self.info.definition_type,
             function_serialized=self.info.function_serialized,
+            function_type=function_type,
         )
         request = api_pb2.FunctionGetOrCreateRequest(
             session_id=session.session_id,
