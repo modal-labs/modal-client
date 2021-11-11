@@ -10,4 +10,5 @@ class ConnectionError(Exception):
     pass
 
 
-# TODO: define more exceptions later
+class InvalidError(Exception):
+    pass

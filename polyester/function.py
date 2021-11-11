@@ -143,7 +143,6 @@ class Invocation:
     async def run_generator(self):
         while True:
             result = await self.get_item()
-            assert result.gen_status != api_pb2.GenericResult.GeneratorStatus.NOT_GENERATOR
             if result.gen_status == api_pb2.GenericResult.GeneratorStatus.COMPLETE:
                 break
             yield process_result(self.session, result)

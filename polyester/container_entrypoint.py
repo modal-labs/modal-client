@@ -15,6 +15,7 @@ from .async_utils import asyncio_run, synchronizer
 from .buffer_utils import buffered_rpc_read, buffered_rpc_write
 from .client import Client
 from .config import logger
+from .exception import InvalidError
 from .function import Function, pack_output_buffer_item, unpack_input_buffer_item
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .object import Object
@@ -182,7 +183,7 @@ def call_function(
             elif inspect.isasyncgen(res):
                 _call_function_asyncgen(function_context, input_id, output_buffer_id, res)
             else:
-                raise Exception("Function of type generator returned a non-generator output")
+                raise InvalidError("Function of type generator returned a non-generator output")
 
         elif function_type == api_pb2.Function.FunctionType.FUNCTION:
             if inspect.iscoroutine(res):
@@ -196,7 +197,7 @@ def call_function(
             )
 
         else:
-            raise Exception(f"Unknown function type {function_type}")
+            raise InvalidError(f"Unknown function type {function_type}")
 
     except Exception as exc:
         # Note: we're not serializing the traceback since it contains
