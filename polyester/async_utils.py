@@ -60,6 +60,7 @@ def retry(direct_fn=None, n_attempts=3, base_delay=0, delay_factor=2, timeout=90
 
 
 def add_traceback(obj, func_name=None):
+    """Wrap a function/generator and make sure its traceback is always printed."""
     if func_name is None:
         func_name = repr(obj)
     if inspect.iscoroutine(obj):

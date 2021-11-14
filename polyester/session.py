@@ -19,7 +19,14 @@ from .utils import print_logs
 
 
 @synchronizer
-class Session:  # (Object):
+class Session:
+    """The Session manages objects in a few ways
+
+    1. Every object belongs to a session
+    2. Sessions are responsible for syncing object identities across processes
+    3. Sessions manage all log collection for ephemeral functions
+    """
+
     def __init__(self):
         self._objects = {}  # tag -> object
         self._flush_lock = None
