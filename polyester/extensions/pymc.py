@@ -89,7 +89,7 @@ def rebuild_exc(exc, tb):
     return exc
 
 
-@session.function(image=image)
+@session.generator(image=image)
 def sample_process(
     draws: int,
     tune: int,
@@ -208,7 +208,7 @@ class PolyesterSampler:
         self._start_points = start_points
 
     async def __aiter__(self):
-        sampler_coros = [
+        samplers = [
             sample_process(
                 self._draws,
                 self._tune,
@@ -219,7 +219,6 @@ class PolyesterSampler:
             )
             for chain, seed, start in zip(range(self._chains), self._seeds, self._start_points)
         ]
-        samplers = await asyncio.gather(*sampler_coros)
         print(f"{len(samplers)} samplers")
 
         if not self._in_context:
