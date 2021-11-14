@@ -189,6 +189,9 @@ def call_function(
             if inspect.iscoroutine(res):
                 res = asyncio_run(res)
 
+            if inspect.isgenerator(res) or inspect.isasyncgen(res):
+                raise InvalidError("Function which is not a generator returned a generator output")
+
             function_context.output_request(
                 input_id,
                 output_buffer_id,
