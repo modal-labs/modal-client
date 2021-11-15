@@ -11,7 +11,7 @@ from .proto import api_pb2
 
 class Queue(Object):
     def __init__(self, session, tag=None):
-        super().__init__(tag, session)
+        super().__init__(session, tag)
 
     async def _create_impl(self, session):
         """This creates a queue on the server and returns its id."""

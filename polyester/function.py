@@ -56,8 +56,9 @@ class FunctionInfo:
             self.remote_dir = "/root"  # TODO: don't hardcore /root
             self.definition_type = api_pb2.Function.DefinitionType.SERIALIZED
 
-    def get_mount(self):
+    def get_mount(self, session):
         return Mount(
+            session=session,
             local_dir=self.package_path,
             remote_dir=self.remote_dir,
             condition=lambda filename: os.path.splitext(filename)[1] in [".py", ".ipynb"],
@@ -224,11 +225,11 @@ class Function(Object):
         self.is_generator = is_generator
 
     async def _create_impl(self, session):
-        mounts = [self.info.get_mount()]
+        mounts = [self.info.get_mount(session)]
         if config["sync_entrypoint"] and not os.getenv("POLYESTER_IMAGE_LOCAL_ID"):
             # TODO(erikbern): If the first condition is true then we're running in a local
             # client which implies the second is always true as well?
-            mounts.extend(create_package_mounts("polyester"))
+            mounts.extend(create_package_mounts("polyester", session))
         # TODO(erikbern): couldn't we just create one single mount with all packages instead of multiple?
 
         # Wait for image and mounts to finish

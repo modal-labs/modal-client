@@ -3,8 +3,8 @@ from .proto import api_pb2
 
 
 class EnvDict(Object):
-    def __init__(self, env_dict):
-        super().__init__(tag=None)
+    def __init__(self, session, env_dict):
+        super().__init__(session=session, tag=None)
         self.env_dict = env_dict
 
     async def _create_impl(self, session):

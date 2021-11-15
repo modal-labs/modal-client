@@ -72,7 +72,7 @@ async def _build_custom_image(
 
 
 class Image(Object):
-    def __init__(self, tag, session=None):
+    def __init__(self, session, tag):
         if tag is None:
             raise Exception("Every image needs a local_id")
         super().__init__(tag=tag, session=session)
@@ -83,7 +83,7 @@ class Image(Object):
         await self.session.client.stub.ImageSetTag(req)
 
     def extend(self, arg):
-        return ExtendedImage(self, arg)
+        return ExtendedImage(self.session, self, arg)
 
     def is_inside(self):
         # This is used from inside of containers to know whether this container is active or not
@@ -93,7 +93,7 @@ class Image(Object):
 
 
 class TaggedImage(Image):
-    def __init__(self, existing_image_tag, session=None):
+    def __init__(self, session, existing_image_tag):
         super().__init__(tag=existing_image_tag, session=session)
         self.existing_image_tag = existing_image_tag
 
@@ -105,7 +105,7 @@ class TaggedImage(Image):
 
 
 class LocalImage(Image):
-    def __init__(self, python_executable, session=None):
+    def __init__(self, session, python_executable):
         super().__init__(tag="local", session=session)
         self.python_executable = python_executable
 
@@ -123,7 +123,7 @@ class LocalImage(Image):
 
 
 class DebianSlim(Image):
-    def __init__(self, python_version=None, build_instructions=[], session=None):
+    def __init__(self, session, python_version=None, build_instructions=[]):
         if python_version is None:
             python_version = get_python_version()
         else:
@@ -139,22 +139,18 @@ class DebianSlim(Image):
         super().__init__(tag=tag, session=session)
 
     def add_python_packages(self, python_packages):
-        return DebianSlim(
-            self.python_version, self.build_instructions + [("py", python_packages)], session=self.session
-        )
+        return DebianSlim(self.session, self.python_version, self.build_instructions + [("py", python_packages)])
 
     def run_commands(self, commands):
-        return DebianSlim(self.python_version, self.build_instructions + [("cmd", commands)], session=self.session)
+        return DebianSlim(self.session, self.python_version, self.build_instructions + [("cmd", commands)])
 
     def copy_from_image(self, image, src, dest):
-        return DebianSlim(
-            self.python_version, self.build_instructions + [("cp", (image, src, dest))], session=self.session
-        )
+        return DebianSlim(self.session, self.python_version, self.build_instructions + [("cp", (image, src, dest))])
 
     async def _create_impl(self, session):
         base_images = {
-            "builder": TaggedImage(f"python-{self.python_version}-slim-buster-builder"),
-            "base": TaggedImage(f"python-{self.python_version}-slim-buster-base"),
+            "builder": TaggedImage(session, f"python-{self.python_version}-slim-buster-builder"),
+            "base": TaggedImage(session, f"python-{self.python_version}-slim-buster-base"),
         }
         if not self.build_instructions:
             return await session.create_object(base_images["base"])
@@ -186,7 +182,7 @@ class DebianSlim(Image):
 
 
 class ExtendedImage(Image):
-    def __init__(self, base, arg, session=None):
+    def __init__(self, session, base, arg):
         if callable(arg):
             tag = arg.__name__
         else:
@@ -204,7 +200,3 @@ class ExtendedImage(Image):
         return await _build_custom_image(
             session.client, session, self.tag, dockerfile_commands=build_instructions, base_images={"base": self.base}
         )
-
-
-debian_slim = DebianSlim()
-base_image = debian_slim

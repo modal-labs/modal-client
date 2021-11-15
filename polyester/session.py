@@ -10,7 +10,7 @@ from .client import Client
 from .config import config, logger
 from .function import Function
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIME_BUFFER, ChannelPool
-from .image import base_image
+from .image import DebianSlim  # TODO: ugly
 from .object import Object, ObjectMeta
 from .proto import api_pb2
 from .serialization import Pickler, Unpickler
@@ -48,7 +48,10 @@ class Session:
         self._pending_create_objects.add(obj.tag)
         self._objects[obj.tag] = obj
 
-    def function(self, raw_f=None, image=base_image, env_dict=None, is_generator=False):
+    def function(self, raw_f=None, image=None, env_dict=None, is_generator=False):
+        if image is None:
+            image = DebianSlim(session=self)
+
         def decorate(raw_f):
             return Function(self, raw_f, image=image, env_dict=env_dict, is_generator=is_generator)
 

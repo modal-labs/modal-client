@@ -27,17 +27,10 @@ class ObjectMeta(type):
 class Object(metaclass=ObjectMeta):
     # A bit ugly to leverage implemenation inheritance here, but I guess you could
     # roughly think of this class as a mixin
-    def __init__(self, tag=None, session=None):
+    def __init__(self, session, tag=None):
         logger.debug(f"Creating object {self}")
 
-        # If the session is not running, enforce that tag is set
-        # This is probably because the object is created in a global scope
-        # We need to have a tag set or else different processes won't be able to "reconcile"
-        if session and session.state != SessionState.RUNNING:
-            if not tag:
-                raise Exception("Objects created on non-running sessions need to have a tag set")
-
-        # TODO: if the object has methods that requires creation, enforce that session is set
+        assert session
 
         if tag is None:
             tag = str(uuid.uuid4())
@@ -45,8 +38,7 @@ class Object(metaclass=ObjectMeta):
         self.share_path = None
         self.tag = tag
         self.session = session
-        if session:
-            self.session.register(self)
+        self.session.register(self)
 
     async def _create_impl(self, session):
         # Overloaded in subclasses to do the actual logic
@@ -57,7 +49,7 @@ class Object(metaclass=ObjectMeta):
         return self.session.get_object_id(self.tag)
 
     @classmethod
-    def use(cls, path, session=None):
+    def use(cls, session, path):
         # TODO: this is a bit ugly, because it circumvents the contructor, which means
         # it might not always work (eg you can't do DebianSlim.use("foo"))
         # This interface is a bit TBD, let's think more about it
