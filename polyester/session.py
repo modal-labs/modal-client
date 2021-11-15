@@ -123,7 +123,11 @@ class Session:
 
                 if self.state == SessionState.RUNNING and self.get_object_id(tag):
                     # object is already created (happens due to object re-initialization in the container).
-                    self._pending_create_objects.remove(obj.tag)
+                    if obj.tag in self._pending_create_objects:
+                        # TODO(erikbern): I'm not sure why this would not be true, but
+                        # it happens in the notebook tests. Going to refactor that code
+                        # later anyway.
+                        self._pending_create_objects.remove(obj.tag)
                     continue
 
                 logger.debug(f"Creating object {obj}")
