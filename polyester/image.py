@@ -138,8 +138,10 @@ class DebianSlim(Image):
         tag = f"debian-slim-{python_version}-{h}"
         super().__init__(tag=tag, session=session)
 
-    def add_python_packages(self, python_packages):
-        return DebianSlim(self.session, self.python_version, self.build_instructions + [("py", python_packages)])
+    def add_python_packages(self, python_packages, find_links=None):
+        return DebianSlim(
+            self.session, self.python_version, self.build_instructions + [("py", (python_packages, find_links))]
+        )
 
     def run_commands(self, commands):
         return DebianSlim(self.session, self.python_version, self.build_instructions + [("cmd", commands)])
@@ -158,9 +160,13 @@ class DebianSlim(Image):
         dockerfile_commands = ["FROM base as target"]
         for t, data in self.build_instructions:
             if t == "py":
+                (packages, find_links) = data
+
+                find_links_arg = f"-f {find_links}" if find_links else ""
+
                 dockerfile_commands += [
                     "FROM builder as builder-vehicle",
-                    f"RUN pip wheel {' '.join(data)} -w /tmp/wheels",  #  {find_links_arg}
+                    f"RUN pip wheel {' '.join(packages)} -w /tmp/wheels {find_links_arg}",
                     "FROM target",
                     "COPY --from=builder-vehicle /tmp/wheels /tmp/wheels",
                     "RUN pip install /tmp/wheels/*",
