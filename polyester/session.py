@@ -28,9 +28,9 @@ class Session:
     """
 
     def __init__(self):
-        self._objects = {}  # tag -> object
+        self._objects = []  # list of objects
         self._flush_lock = None
-        self._pending_create_objects = set()  # list of tags that haven't been created
+        self._pending_create_objects = []  # list of objects that haven't been created
         self.client = None
         self.state = SessionState.NONE
         super().__init__()
@@ -44,8 +44,8 @@ class Session:
             warnings.warn(f"tag: {obj.tag} used for object {self._objects[obj.tag]} now overwritten by {obj}")
 
         # We could add duplicates here, but flush_objects doesn't re-create objects that are already created.
-        self._pending_create_objects.add(obj.tag)
-        self._objects[obj.tag] = obj
+        self._pending_create_objects.append(obj)
+        self._objects.append(obj)
 
     def function(self, raw_f=None, image=None, env_dict=None, is_generator=False):
         if image is None:
@@ -93,10 +93,10 @@ class Session:
         resp = await self.client.stub.SessionGetObjects(req)
 
         # TODO: check duplicates???
-        for tag, obj in self._objects.items():
-            if tag in resp.object_ids:
+        for obj in self._objects:
+            if obj.tag in resp.object_ids:
                 # TODO: don't touch internals
-                self._objects[tag]._object_id = resp.object_ids[tag]
+                obj._object_id = resp.object_ids[obj.tag]
 
         # In the container, run forever
         self.state = SessionState.RUNNING
@@ -112,25 +112,18 @@ class Session:
             else:
                 # This is something created locally
                 obj._object_id = await obj._create_impl()
-        self._pending_create_objects.remove(obj.tag)
         return obj._object_id
 
     async def flush_objects(self):
         "Create objects that have been defined but not created on the server."
 
         async with self._flush_lock:
-            pending = list(self._pending_create_objects)  # can't iterate over the original hash since it might change
+            while len(self._pending_create_objects) > 0:
+                obj = self._pending_create_objects.pop()
 
-            for tag in pending:
-                obj = self._objects[tag]
-
-                if self.state == SessionState.RUNNING and obj.object_id:
+                if obj._object_id is not None:
                     # object is already created (happens due to object re-initialization in the container).
-                    if obj.tag in self._pending_create_objects:
-                        # TODO(erikbern): I'm not sure why this would not be true, but
-                        # it happens in the notebook tests. Going to refactor that code
-                        # later anyway.
-                        self._pending_create_objects.remove(obj.tag)
+                    # TODO: we should check that the object id isn't old
                     continue
 
                 logger.debug(f"Creating object {obj}")
@@ -174,7 +167,7 @@ class Session:
         self.state = SessionState.STARTING
         self.client = client
         # We need to re-initialize all these objects. Needed if a session is reused.
-        self._pending_create_objects = set(self._objects.keys())
+        self._pending_create_objects = list(self._objects)
 
         try:
             # Start session
@@ -192,7 +185,7 @@ class Session:
                 await self.flush_objects()
 
                 # TODO: the below is a temporary thing until we unify object creation
-                object_ids = {tag: obj._object_id for tag, obj in self._objects.items() if obj._object_id is not None}
+                object_ids = {obj.tag: obj._object_id for obj in self._objects if obj._object_id is not None}
                 req = api_pb2.SessionSetObjectsRequest(
                     session_id=self.session_id,
                     object_ids=object_ids,
