@@ -97,9 +97,9 @@ class TaggedImage(Image):
         super().__init__(tag=existing_image_tag, session=session)
         self.existing_image_tag = existing_image_tag
 
-    async def _create_impl(self, session):
+    async def _create_impl(self):
         req = api_pb2.ImageGetByTagRequest(tag=self.existing_image_tag)
-        resp = await session.client.stub.ImageGetByTag(req)
+        resp = await self.session.client.stub.ImageGetByTag(req)
         image_id = resp.image_id
         return image_id
 
@@ -109,16 +109,16 @@ class LocalImage(Image):
         super().__init__(tag="local", session=session)
         self.python_executable = python_executable
 
-    async def _create_impl(self, session):
+    async def _create_impl(self):
         image_definition = api_pb2.Image(
             local_id=self.tag,  # rename local_id
             local_image_python_executable=self.python_executable,
         )
         req = api_pb2.ImageGetOrCreateRequest(
-            session_id=session.session_id,
+            session_id=self.session.session_id,
             image=image_definition,
         )
-        resp = await session.client.stub.ImageGetOrCreate(req)
+        resp = await self.session.client.stub.ImageGetOrCreate(req)
         return resp.image_id
 
 
@@ -147,13 +147,13 @@ class DebianSlim(Image):
     def copy_from_image(self, image, src, dest):
         return DebianSlim(self.session, self.python_version, self.build_instructions + [("cp", (image, src, dest))])
 
-    async def _create_impl(self, session):
+    async def _create_impl(self):
         base_images = {
-            "builder": TaggedImage(session, f"python-{self.python_version}-slim-buster-builder"),
-            "base": TaggedImage(session, f"python-{self.python_version}-slim-buster-base"),
+            "builder": TaggedImage(self.session, f"python-{self.python_version}-slim-buster-builder"),
+            "base": TaggedImage(self.session, f"python-{self.python_version}-slim-buster-base"),
         }
         if not self.build_instructions:
-            return await session.create_object(base_images["base"])
+            return await self.session.create_object(base_images["base"])
 
         dockerfile_commands = ["FROM base as target"]
         for t, data in self.build_instructions:
@@ -173,8 +173,8 @@ class DebianSlim(Image):
                 dockerfile_commands += [f"COPY --from={image} {src} {dest}"]
 
         return await _build_custom_image(
-            session.client,
-            session,
+            self.session.client,
+            self.session,
             self.tag,
             dockerfile_commands=dockerfile_commands,
             base_images=base_images,
@@ -191,12 +191,16 @@ class ExtendedImage(Image):
         self.arg = arg
         super().__init__(session=session, tag=tag)
 
-    async def _create_impl(self, session):
+    async def _create_impl(self):
         build_instructions = ["FROM base"]
         if callable(self.arg):
             build_instructions += self.arg()
         else:
             build_instructions += self.arg
         return await _build_custom_image(
-            session.client, session, self.tag, dockerfile_commands=build_instructions, base_images={"base": self.base}
+            self.session.client,
+            self.session,
+            self.tag,
+            dockerfile_commands=build_instructions,
+            base_images={"base": self.base},
         )

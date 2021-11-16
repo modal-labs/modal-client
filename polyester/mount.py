@@ -79,7 +79,7 @@ class Mount(Object):
 
         logger.info(f"Uploaded {n_missing_files}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
 
-    async def _create_impl(self, session):
+    async def _create_impl(self):
         # TODO: I think in theory we could split the get_files iterator and launch multiple concurrent
         # calls to MountRegisterFileRequest and MountUploadFileRequest. This would speed up a lot of the
         # serial operations on the server side (like hitting Redis for every file serially).
@@ -88,17 +88,17 @@ class Mount(Object):
         hashes = {}
         filenames = {}
 
-        req = api_pb2.MountCreateRequest(session_id=session.session_id)
-        resp = await session.client.stub.MountCreate(req)
+        req = api_pb2.MountCreateRequest(session_id=self.session.session_id)
+        resp = await self.session.client.stub.MountCreate(req)
         mount_id = resp.mount_id
 
         logger.debug(f"Uploading mount {mount_id}")
-        await session.client.stub.MountUploadFile(
-            self._upload_file_requests(session.client, mount_id, hashes, filenames)
+        await self.session.client.stub.MountUploadFile(
+            self._upload_file_requests(self.session.client, mount_id, hashes, filenames)
         )
 
         req = api_pb2.MountDoneRequest(mount_id=mount_id)
-        await session.client.stub.MountDone(req)
+        await self.session.client.stub.MountDone(req)
 
         return mount_id
 

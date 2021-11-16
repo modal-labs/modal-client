@@ -108,7 +108,7 @@ class Session:
                 self._object_ids[obj.tag] = await self._use_object(obj.share_path)
             else:
                 # This is something created locally
-                self._object_ids[obj.tag] = await obj._create_impl(self)
+                self._object_ids[obj.tag] = await obj._create_impl()
         self._pending_create_objects.remove(obj.tag)
         return self._object_ids[obj.tag]
 

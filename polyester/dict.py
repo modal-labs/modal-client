@@ -17,10 +17,10 @@ class Dict(Object):
     def _serialize_dict(self, session, data):
         return [api_pb2.DictEntry(key=session.serialize(k), value=session.serialize(v)) for k, v in data.items()]
 
-    async def _create_impl(self, session):
-        serialized = self._serialize_dict(session, self.data)
-        req = api_pb2.DictCreateRequest(session_id=session.session_id, data=serialized)
-        response = await session.client.stub.DictCreate(req)
+    async def _create_impl(self):
+        serialized = self._serialize_dict(self.session, self.data)
+        req = api_pb2.DictCreateRequest(session_id=self.session.session_id, data=serialized)
+        response = await self.session.client.stub.DictCreate(req)
         logger.debug("Created dict with id %s" % response.dict_id)
         return response.dict_id
 

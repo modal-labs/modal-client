@@ -40,7 +40,7 @@ class Object(metaclass=ObjectMeta):
         self.session = session
         self.session.register(self)
 
-    async def _create_impl(self, session):
+    async def _create_impl(self):
         # Overloaded in subclasses to do the actual logic
         raise NotImplementedError
 

@@ -7,7 +7,7 @@ class EnvDict(Object):
         super().__init__(session=session, tag=None)
         self.env_dict = env_dict
 
-    async def _create_impl(self, session):
-        req = api_pb2.EnvDictCreateRequest(session_id=session.session_id, env_dict=self.env_dict)
-        resp = await session.client.stub.EnvDictCreate(req)
+    async def _create_impl(self):
+        req = api_pb2.EnvDictCreateRequest(session_id=self.session.session_id, env_dict=self.env_dict)
+        resp = await self.session.client.stub.EnvDictCreate(req)
         return resp.env_dict_id

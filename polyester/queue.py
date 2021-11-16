@@ -13,10 +13,10 @@ class Queue(Object):
     def __init__(self, session, tag=None):
         super().__init__(session, tag)
 
-    async def _create_impl(self, session):
+    async def _create_impl(self):
         """This creates a queue on the server and returns its id."""
         # TODO: we should create the queue in a session here
-        response = await session.client.stub.QueueCreate(api_pb2.Empty())
+        response = await self.session.client.stub.QueueCreate(api_pb2.Empty())
         logger.debug("Created queue with id %s" % response.queue_id)
         return response.queue_id
 

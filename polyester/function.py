@@ -224,22 +224,22 @@ class Function(Object):
         self.env_dict = env_dict
         self.is_generator = is_generator
 
-    async def _create_impl(self, session):
-        mounts = [self.info.get_mount(session)]
+    async def _create_impl(self):
+        mounts = [self.info.get_mount(self.session)]
         if config["sync_entrypoint"] and not os.getenv("POLYESTER_IMAGE_LOCAL_ID"):
             # TODO(erikbern): If the first condition is true then we're running in a local
             # client which implies the second is always true as well?
-            mounts.extend(create_package_mounts("polyester", session))
+            mounts.extend(create_package_mounts("polyester", self.session))
         # TODO(erikbern): couldn't we just create one single mount with all packages instead of multiple?
 
         # Wait for image and mounts to finish
         # TODO: should we really join recursively here? Maybe it's better to move this logic to the session class?
-        image_id = await session.create_object(self.image)
+        image_id = await self.session.create_object(self.image)
         if self.env_dict is not None:
-            env_dict_id = await session.create_object(self.env_dict)
+            env_dict_id = await self.session.create_object(self.env_dict)
         else:
             env_dict_id = None
-        mount_ids = await asyncio.gather(*(session.create_object(mount) for mount in mounts))
+        mount_ids = await asyncio.gather(*(self.session.create_object(mount) for mount in mounts))
 
         if self.is_generator:
             function_type = api_pb2.Function.FunctionType.GENERATOR
@@ -258,10 +258,10 @@ class Function(Object):
             function_type=function_type,
         )
         request = api_pb2.FunctionGetOrCreateRequest(
-            session_id=session.session_id,
+            session_id=self.session.session_id,
             function=function_definition,
         )
-        response = await session.client.stub.FunctionGetOrCreate(request)
+        response = await self.session.client.stub.FunctionGetOrCreate(request)
         return response.function_id
 
     @requires_create_generator
