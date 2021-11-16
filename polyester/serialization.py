@@ -37,9 +37,11 @@ class Unpickler(pickle.Unpickler):
         # TODO: we need a way to instantiate an object of type cls with tag and session set
         cls = self.name_to_type[type_tag]
         obj = Object.__new__(cls)
+        # TODO: put the initialization code on Object
         obj.session = self.session
         obj.tag = tag
         obj.share_path = None
-        self.session._objects[tag] = obj  # TODO: put method on session
-        self.session._object_ids[tag] = object_id  # TODO: put method on session
+        obj._object_id = object_id
+        if tag:
+            self.session._objects[tag] = obj  # TODO: put method on session
         return obj

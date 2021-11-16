@@ -35,6 +35,7 @@ class Object(metaclass=ObjectMeta):
         if tag is None:
             tag = str(uuid.uuid4())
 
+        self._object_id = None
         self.share_path = None
         self.tag = tag
         self.session = session
@@ -46,7 +47,8 @@ class Object(metaclass=ObjectMeta):
 
     @property
     def object_id(self):
-        return self.session.get_object_id(self.tag)
+        # TODO: handle session restarts
+        return self._object_id
 
     @classmethod
     def use(cls, session, path):
@@ -57,6 +59,7 @@ class Object(metaclass=ObjectMeta):
         obj.session = session
         obj.share_path = path
         obj.tag = "share:" + path  # TODO: hacky? we should probably keep them apart
+        obj._object_id = None
         if session:
             session.register(obj)
         return obj

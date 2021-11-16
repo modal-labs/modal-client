@@ -31,7 +31,6 @@ class Session:
         self._objects = {}  # tag -> object
         self._flush_lock = None
         self._pending_create_objects = set()  # list of tags that haven't been created
-        self._object_ids = None  # tag -> object id
         self.client = None
         self.state = SessionState.NONE
         super().__init__()
@@ -94,23 +93,27 @@ class Session:
         resp = await self.client.stub.SessionGetObjects(req)
 
         # TODO: check duplicates???
-        self._object_ids = dict(resp.object_ids.items())
+        for tag, obj in self._objects.items():
+            if tag in resp.object_ids:
+                # TODO: don't touch internals
+                self._objects[tag]._object_id = resp.object_ids[tag]
 
         # In the container, run forever
         self.state = SessionState.RUNNING
 
     async def create_object(self, obj):
         # This just register + creates the object
+        # TODO: move most of this out of the session to the object
         self.register(obj)
-        if obj.tag not in self._object_ids:
+        if obj._object_id is None:
             if obj.share_path:
                 # This is a reference to a persistent object
-                self._object_ids[obj.tag] = await self._use_object(obj.share_path)
+                obj._object_id = await self._use_object(obj.share_path)
             else:
                 # This is something created locally
-                self._object_ids[obj.tag] = await obj._create_impl()
+                obj._object_id = await obj._create_impl()
         self._pending_create_objects.remove(obj.tag)
-        return self._object_ids[obj.tag]
+        return obj._object_id
 
     async def flush_objects(self):
         "Create objects that have been defined but not created on the server."
@@ -121,7 +124,7 @@ class Session:
             for tag in pending:
                 obj = self._objects[tag]
 
-                if self.state == SessionState.RUNNING and self.get_object_id(tag):
+                if self.state == SessionState.RUNNING and obj.object_id:
                     # object is already created (happens due to object re-initialization in the container).
                     if obj.tag in self._pending_create_objects:
                         # TODO(erikbern): I'm not sure why this would not be true, but
@@ -133,10 +136,10 @@ class Session:
                 logger.debug(f"Creating object {obj}")
                 await self.create_object(obj)
 
-    def get_object_id(self, tag):
-        if self.state != SessionState.RUNNING:  # Maybe also starting?
-            raise Exception("Can only look up object ids for objects on a running session")
-        return self._object_ids.get(tag)
+    #    def get_object_id(self, tag):
+    #        if self.state != SessionState.RUNNING:  # Maybe also starting?
+    #            raise Exception("Can only look up object ids for objects on a running session")
+    #        return self._object_ids.get(tag)
 
     async def share(self, obj, path):
         object_id = await self.create_object(obj)
@@ -170,7 +173,6 @@ class Session:
             raise Exception(f"Can't start a session that's already in state {self.state}")
         self.state = SessionState.STARTING
         self.client = client
-        self._object_ids = {}
         # We need to re-initialize all these objects. Needed if a session is reused.
         self._pending_create_objects = set(self._objects.keys())
 
@@ -190,9 +192,10 @@ class Session:
                 await self.flush_objects()
 
                 # TODO: the below is a temporary thing until we unify object creation
+                object_ids = {tag: obj._object_id for tag, obj in self._objects.items() if obj._object_id is not None}
                 req = api_pb2.SessionSetObjectsRequest(
                     session_id=self.session_id,
-                    object_ids=self._object_ids,
+                    object_ids=object_ids,
                 )
                 await self.client.stub.SessionSetObjects(req)
 
@@ -211,7 +214,6 @@ class Session:
 
         finally:
             self.client = None
-            self._object_ids = None
             self.state = SessionState.NONE
 
     def serialize(self, obj):
