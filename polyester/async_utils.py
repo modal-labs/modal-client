@@ -246,7 +246,13 @@ class TaskContext:
         # This is probably O(n^2) sadly but I guess it's fine
         unfinished_tasks = set(tasks)
         while unfinished_tasks:
-            done, pending = await asyncio.wait(self._tasks, return_when=asyncio.FIRST_COMPLETED)
+            try:
+                done, pending = await asyncio.wait_for(
+                    asyncio.wait(self._tasks, return_when=asyncio.FIRST_COMPLETED), timeout=30.0
+                )
+            except asyncio.TimeoutError:
+                logger.warning(f"Timed out waiting for {self._tasks}, but will try again")
+                continue
             for task in done:
                 task.result()  # Raise exception if needed
                 if task in unfinished_tasks:
