@@ -61,6 +61,7 @@ class Object(metaclass=ObjectMeta):
         obj.share_path = path
         obj.tag = "share:" + path  # TODO: hacky? we should probably keep them apart
         obj._object_id = None
+        obj._session_id = None
         if session:
             session.register(obj)
         return obj
