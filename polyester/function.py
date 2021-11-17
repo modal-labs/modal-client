@@ -234,7 +234,10 @@ class Function(Object):
 
         # Wait for image and mounts to finish
         # TODO: should we really join recursively here? Maybe it's better to move this logic to the session class?
-        image_id = await self.session.create_object(self.image)
+        if self.image is not None:
+            image_id = await self.session.create_object(self.image)
+        else:
+            image_id = None  # Happens if it's a notebook function
         if self.env_dict is not None:
             env_dict_id = await self.session.create_object(self.env_dict)
         else:

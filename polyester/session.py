@@ -36,14 +36,8 @@ class Session:
         super().__init__()
 
     def register(self, obj):
-        if obj.tag in self._objects and self._objects[obj.tag] != obj:
-            # TODO: this situation currently happens when two objects are different references to
-            # what's basically the same object, eg. both are TaggedImage("foo") but different
-            # instances. It should mostly go away once we support proper persistence, but might
-            # still happen in some weird edge cases
-            warnings.warn(f"tag: {obj.tag} used for object {self._objects[obj.tag]} now overwritten by {obj}")
-
         # We could add duplicates here, but flush_objects doesn't re-create objects that are already created.
+        assert obj
         self._pending_create_objects.append(obj)
         self._objects.append(obj)
 
