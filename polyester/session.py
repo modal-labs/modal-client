@@ -125,11 +125,6 @@ class Session:
                 logger.debug(f"Creating object {obj}")
                 await self.create_object(obj)
 
-    #    def get_object_id(self, tag):
-    #        if self.state != SessionState.RUNNING:  # Maybe also starting?
-    #            raise Exception("Can only look up object ids for objects on a running session")
-    #        return self._object_ids.get(tag)
-
     async def share(self, obj, path):
         object_id = await self.create_object(obj)
         request = api_pb2.SessionShareObjectRequest(session_id=self.session_id, object_id=object_id, path=path)
