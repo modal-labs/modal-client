@@ -214,7 +214,7 @@ class MapInvocation:
 
 
 class Function(Object):
-    def __init__(self, session, raw_f, image=None, env_dict=None, is_generator=False):
+    def __init__(self, session, raw_f, image=None, env_dict=None, is_generator=False, gpu=False):
         assert callable(raw_f)
         self.info = FunctionInfo(raw_f)
         tag = f"{self.info.module_name}.{self.info.function_name}"
@@ -223,6 +223,7 @@ class Function(Object):
         self.image = image
         self.env_dict = env_dict
         self.is_generator = is_generator
+        self.gpu = gpu
 
     async def _create_impl(self):
         mounts = [self.info.get_mount(self.session)]
@@ -259,6 +260,7 @@ class Function(Object):
             definition_type=self.info.definition_type,
             function_serialized=self.info.function_serialized,
             function_type=function_type,
+            resources=api_pb2.Resources(gpu=self.gpu),
         )
         request = api_pb2.FunctionGetOrCreateRequest(
             session_id=self.session.session_id,

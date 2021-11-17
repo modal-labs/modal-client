@@ -41,12 +41,12 @@ class Session:
         self._pending_create_objects.append(obj)
         self._objects.append(obj)
 
-    def function(self, raw_f=None, image=None, env_dict=None, is_generator=False):
+    def function(self, raw_f=None, image=None, env_dict=None, is_generator=False, gpu=False):
         if image is None:
             image = DebianSlim(session=self)
 
         def decorate(raw_f):
-            return Function(self, raw_f, image=image, env_dict=env_dict, is_generator=is_generator)
+            return Function(self, raw_f, image=image, env_dict=env_dict, is_generator=is_generator, gpu=gpu)
 
         if raw_f is None:
             # called like @session.function(x=y)
