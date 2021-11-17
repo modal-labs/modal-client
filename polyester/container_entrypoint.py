@@ -74,9 +74,9 @@ class FunctionContext:
             self.session = Session()
             fun = Function(self.session, raw_f)
             await self.session.initialize(self.session_id, self.client)
-            # Function object is already created, so we need to associate the correct object ID.
-            fun._object_id = self.function_id  # TODO: don't modify it from the outside
 
+            # Function object is already created, so we need to associate the correct object ID.
+            fun.set_object_id(self.function_id, self.session_id)
         else:
             fun = _path_to_function(self.function_def.module_name, self.function_def.function_name)
             assert isinstance(fun, Function)

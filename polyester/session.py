@@ -89,9 +89,7 @@ class Session:
         # TODO: check duplicates???
         for obj in self._objects:
             if obj.tag in resp.object_ids:
-                # TODO: don't touch internals
-                obj._object_id = resp.object_ids[obj.tag]
-                obj._session_id = session_id
+                obj.set_object_id(resp.object_ids[obj.tag], session_id)
 
         # In the container, run forever
         self.state = SessionState.RUNNING
@@ -100,15 +98,15 @@ class Session:
         # This just register + creates the object
         # TODO: move most of this out of the session to the object
         self.register(obj)
-        if obj._object_id is None or obj._session_id != self.session_id:
+        if obj.object_id is None:
             if obj.share_path:
                 # This is a reference to a persistent object
-                obj._object_id = await self._use_object(obj.share_path)
+                object_id = await self._use_object(obj.share_path)
             else:
                 # This is something created locally
-                obj._object_id = await obj._create_impl()
-            obj._session_id = self.session_id
-        return obj._object_id
+                object_id = await obj._create_impl()
+            obj.set_object_id(object_id, self.session_id)
+        return obj.object_id
 
     async def flush_objects(self):
         "Create objects that have been defined but not created on the server."
@@ -176,7 +174,7 @@ class Session:
                 await self.flush_objects()
 
                 # TODO: the below is a temporary thing until we unify object creation
-                object_ids = {obj.tag: obj._object_id for obj in self._objects if obj._object_id is not None}
+                object_ids = {obj.tag: obj.object_id for obj in self._objects if obj.object_id is not None}
                 req = api_pb2.SessionSetObjectsRequest(
                     session_id=self.session_id,
                     object_ids=object_ids,

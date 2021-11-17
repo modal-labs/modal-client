@@ -35,16 +35,23 @@ class Object(metaclass=ObjectMeta):
         if tag is None:
             tag = str(uuid.uuid4())
 
+        self._init(session=session, tag=tag)
+        self.session.register(self)
+
+    def _init(self, session=None, tag=None, share_path=None):
         self._object_id = None
         self._session_id = None
-        self.share_path = None
+        self.share_path = share_path
         self.tag = tag
         self.session = session
-        self.session.register(self)
 
     async def _create_impl(self):
         # Overloaded in subclasses to do the actual logic
         raise NotImplementedError
+
+    def set_object_id(self, object_id, session_id):
+        self._object_id = object_id
+        self._session_id = session_id
 
     @property
     def object_id(self):
@@ -52,18 +59,19 @@ class Object(metaclass=ObjectMeta):
             return self._object_id
 
     @classmethod
+    def new(cls, **kwargs):
+        obj = Object.__new__(cls)
+        obj._init(**kwargs)
+        return obj
+
+    @classmethod
     def use(cls, session, path):
         # TODO: this is a bit ugly, because it circumvents the contructor, which means
         # it might not always work (eg you can't do DebianSlim.use("foo"))
         # This interface is a bit TBD, let's think more about it
-        obj = Object.__new__(cls)
-        obj.session = session
-        obj.share_path = path
-        obj.tag = "share:" + path  # TODO: hacky? we should probably keep them apart
-        obj._object_id = None
-        obj._session_id = None
+        obj = cls.new(session=session, share_path=path, tag="share:" + path)
         if session:
-            session.register(obj)
+            session.register(obj)  # TODO: is this needed?
         return obj
 
 

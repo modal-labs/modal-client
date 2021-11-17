@@ -36,12 +36,7 @@ class Unpickler(pickle.Unpickler):
             raise Exception(f"Unknown tag {type_tag}")
         # TODO: we need a way to instantiate an object of type cls with tag and session set
         cls = self.name_to_type[type_tag]
-        obj = Object.__new__(cls)
-        # TODO: put the initialization code on Object
-        obj.session = self.session
-        obj.tag = tag
-        obj.share_path = None
-        obj._object_id = object_id
-        obj._session_id = self.session.session_id
+        obj = cls.new(tag=tag, session=self.session)
+        obj.set_object_id(object_id, self.session.session_id)
         self.session._objects.append(obj)  # TODO: not sure if this is needed, remove??
         return obj
