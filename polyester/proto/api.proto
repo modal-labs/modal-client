@@ -285,6 +285,10 @@ message EnvDictCreateResponse {
   string env_dict_id = 1;
 }
 
+message Resources {
+  bool gpu = 1;
+}
+
 message Function {
   string module_name = 1;
   string function_name = 2;
@@ -298,6 +302,8 @@ message Function {
 
   enum FunctionType {FUNCTION = 0; GENERATOR = 1;}
   FunctionType function_type = 8;
+
+  Resources resources = 9;
 }
 
 message FunctionGetOrCreateRequest {
