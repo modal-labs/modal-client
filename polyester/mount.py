@@ -77,7 +77,7 @@ class Mount(Object):
                 )
                 yield request
 
-        logger.info(f"Uploaded {n_missing_files}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
+        logger.debug(f"Uploaded {n_missing_files}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
 
     async def _create_impl(self):
         # TODO: I think in theory we could split the get_files iterator and launch multiple concurrent

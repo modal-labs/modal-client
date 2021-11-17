@@ -97,6 +97,7 @@ class Session:
             if obj.tag in resp.object_ids:
                 # TODO: don't touch internals
                 obj._object_id = resp.object_ids[obj.tag]
+                obj._session_id = session_id
 
         # In the container, run forever
         self.state = SessionState.RUNNING
@@ -105,13 +106,14 @@ class Session:
         # This just register + creates the object
         # TODO: move most of this out of the session to the object
         self.register(obj)
-        if obj._object_id is None:
+        if obj._object_id is None or obj._session_id != self.session_id:
             if obj.share_path:
                 # This is a reference to a persistent object
                 obj._object_id = await self._use_object(obj.share_path)
             else:
                 # This is something created locally
                 obj._object_id = await obj._create_impl()
+            obj._session_id = self.session_id
         return obj._object_id
 
     async def flush_objects(self):
@@ -121,7 +123,7 @@ class Session:
             while len(self._pending_create_objects) > 0:
                 obj = self._pending_create_objects.pop()
 
-                if obj._object_id is not None:
+                if obj.object_id is not None:
                     # object is already created (happens due to object re-initialization in the container).
                     # TODO: we should check that the object id isn't old
                     continue

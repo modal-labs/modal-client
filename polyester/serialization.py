@@ -42,5 +42,6 @@ class Unpickler(pickle.Unpickler):
         obj.tag = tag
         obj.share_path = None
         obj._object_id = object_id
+        obj._session_id = self.session.session_id
         self.session._objects.append(obj)  # TODO: not sure if this is needed, remove??
         return obj

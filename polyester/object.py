@@ -36,6 +36,7 @@ class Object(metaclass=ObjectMeta):
             tag = str(uuid.uuid4())
 
         self._object_id = None
+        self._session_id = None
         self.share_path = None
         self.tag = tag
         self.session = session
@@ -47,8 +48,8 @@ class Object(metaclass=ObjectMeta):
 
     @property
     def object_id(self):
-        # TODO: handle session restarts
-        return self._object_id
+        if self._session_id is not None and self._session_id == self.session.session_id:
+            return self._object_id
 
     @classmethod
     def use(cls, session, path):
