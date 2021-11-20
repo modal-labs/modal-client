@@ -25,7 +25,29 @@ class Session:
     1. Every object belongs to a session
     2. Sessions are responsible for syncing object identities across processes
     3. Sessions manage all log collection for ephemeral functions
+
+    Sessions isn't a great name, a better name is probably "dependency set" or "application"
+    or maybe "collection" or "bag"
     """
+
+    _common = None  # When running inside a container, this is a singleton
+
+    @classmethod
+    def initialize_common(cls, unset=False):
+        if unset is False:
+            cls._common = cls()
+        else:  # Just used in test code to reset
+            cls._common = None
+
+    def __new__(cls):
+        if cls._common is not None:
+            # If there's a singleton session, just return it for everything
+            return cls._common
+        else:
+            # Refer to the normal constructor
+            session = super().__new__(cls)
+            session.__init__()
+            return session
 
     def __init__(self):
         self._objects = []  # list of objects
