@@ -21,8 +21,8 @@ session = Session()
 
 
 class PyMCImage(Image):
-    def __init__(self):
-        super().__init__(tag="pymc-image")
+    def __init__(self, session):
+        super().__init__(tag="pymc-image", session=session)
 
     async def _create_impl(self, session):
         dockerfile_commands = [
@@ -45,7 +45,7 @@ class PyMCImage(Image):
         )
 
 
-image = PyMCImage()
+image = PyMCImage(session=session)
 
 if image.is_inside():
     import numpy as np
