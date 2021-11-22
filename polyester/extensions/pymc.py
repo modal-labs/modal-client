@@ -24,7 +24,7 @@ class PyMCImage(Image):
     def __init__(self, session):
         super().__init__(tag="pymc-image", session=session)
 
-    async def _create_impl(self, session):
+    async def _create_impl(self):
         dockerfile_commands = [
             "FROM base",
             'SHELL ["/bin/bash", "-c"]',
@@ -37,8 +37,8 @@ class PyMCImage(Image):
         ]
 
         return await _build_custom_image(
-            session.client,
-            session,
+            self.session.client,
+            self.session,
             self.tag,
             dockerfile_commands=dockerfile_commands,
             base_images={"base": TaggedImage("conda")},
