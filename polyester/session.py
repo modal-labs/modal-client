@@ -30,19 +30,21 @@ class Session:
     or maybe "collection" or "bag"
     """
 
-    _common = None  # When running inside a container, this is a singleton
+    _singleton = None  # When running inside a container, this is a singleton
 
     @classmethod
-    def initialize_common(cls, unset=False):
-        if unset is False:
-            cls._common = super().__new__(cls)
-        else:  # Just used in test code to reset
-            cls._common = None
+    def initialize_singleton(cls):
+        cls._singleton = super().__new__(cls)
+
+    @classmethod
+    def reset_singleton(cls):
+        # Just used in test code to reset
+        cls._singleton = None
 
     def __new__(cls):
-        if cls._common is not None:
+        if cls._singleton is not None:
             # If there's a singleton session, just return it for everything
-            return cls._common
+            return cls._singleton
         else:
             # Refer to the normal constructor
             session = super().__new__(cls)

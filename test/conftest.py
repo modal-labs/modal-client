@@ -85,6 +85,6 @@ async def servicer():
 
 
 @pytest.fixture
-def unset_common_session():
+def reset_session_singleton():
     yield
-    Session.initialize_common(unset=True)
+    Session.reset_singleton()

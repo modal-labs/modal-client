@@ -58,7 +58,7 @@ class FunctionContext:
         # On the container, we know we're inside a session, so we initialize all Session
         # objects with the same singleton object. This then lets us pull the lookup
         # table of all the named objects
-        Session.initialize_common()
+        Session.initialize_singleton()
         self.session = Session()
         await self.session.initialize_container(self.session_id, self.client)
 
