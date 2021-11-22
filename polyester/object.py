@@ -1,7 +1,6 @@
 import asyncio
 import functools
 import inspect
-import uuid
 
 from .async_utils import synchronizer
 from .config import logger
@@ -29,11 +28,7 @@ class Object(metaclass=ObjectMeta):
     # roughly think of this class as a mixin
     def __init__(self, session, tag=None):
         logger.debug(f"Creating object {self}")
-
         assert session
-
-        if tag is None:
-            tag = str(uuid.uuid4())
 
         self._init(session=session, tag=tag)
         self.session.register(self)

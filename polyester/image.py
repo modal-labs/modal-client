@@ -123,6 +123,11 @@ class LocalImage(Image):
 
 
 class DebianSlim(Image):
+    # TODO: every time you extend this image, it registers a new image to be created
+    # Eg if you extend it n time then you will create n images that will be built individually
+    # The solution is either to
+    # (a) chain all images so they are based on the previous
+    # (b) have images without sessions that aren't built
     def __init__(self, session, python_version=None, build_instructions=[]):
         if python_version is None:
             python_version = get_python_version()

@@ -1,6 +1,7 @@
 import pytest
 
 from polyester import Session
+from polyester.session_state import SessionState
 
 
 @pytest.fixture
@@ -18,5 +19,7 @@ def test_session():
 
 def test_common_session(common_session):
     session_a = Session()
+    session_a.state = SessionState.RUNNING  # Dummy to make sure constructor isn't run twice
     session_b = Session()
     assert session_a == session_b
+    assert session_b.state == SessionState.RUNNING

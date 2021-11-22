@@ -52,6 +52,32 @@ class FunctionContext:
         self.function_def = container_args.function_def
         self.client = client
 
+    async def get_function(self) -> typing.Callable:
+        """Note that this also initializes the session."""
+
+        # On the container, we know we're inside a session, so we initialize all Session
+        # objects with the same singleton object. This then lets us pull the lookup
+        # table of all the named objects
+        Session.initialize_common()
+        self.session = Session()
+        await self.session.initialize_container(self.session_id, self.client)
+
+        if self.function_def.definition_type == api_pb2.Function.DefinitionType.SERIALIZED:
+            # Fetch the serialized function definition
+            request = api_pb2.FunctionGetSerializedRequest(function_id=self.function_id)
+            response = await self.client.stub.FunctionGetSerialized(request)
+            raw_f = cloudpickle.loads(response.function_serialized)
+
+            # Create a function dynamically
+            # Function object is already created, so we need to associate the correct object ID.
+            fun = Function(self.session, raw_f)
+            fun.set_object_id(self.function_id, self.session_id)
+        else:
+            fun = _path_to_function(self.function_def.module_name, self.function_def.function_name)
+            assert isinstance(fun, Function)
+
+        return fun.get_raw_f()
+
     async def serialize(self, obj: typing.Any) -> bytes:
         # Call session.flush first. We need this because the function might have defined new objects
         # that have not been created on the server-side, but are part of the return value of the function.
@@ -61,31 +87,6 @@ class FunctionContext:
 
     def deserialize(self, data: bytes) -> typing.Any:
         return self.session.deserialize(data)
-
-    async def get_function(self) -> typing.Callable:
-        """Note that this also initializes the session."""
-
-        if self.function_def.definition_type == api_pb2.Function.DefinitionType.SERIALIZED:
-            # Fetch the serialized function definition
-            request = api_pb2.FunctionGetSerializedRequest(function_id=self.function_id)
-            response = await self.client.stub.FunctionGetSerialized(request)
-            raw_f = cloudpickle.loads(response.function_serialized)
-
-            # Create a new session object. It will get initialized with the right object ID next.
-            self.session = Session()
-            fun = Function(self.session, raw_f)
-            await self.session.initialize(self.session_id, self.client)
-
-            # Function object is already created, so we need to associate the correct object ID.
-            fun.set_object_id(self.function_id, self.session_id)
-        else:
-            fun = _path_to_function(self.function_def.module_name, self.function_def.function_name)
-            assert isinstance(fun, Function)
-
-            self.session = fun.session
-            await self.session.initialize(self.session_id, self.client)
-
-        return fun.get_raw_f()
 
     async def generate_inputs(
         self,

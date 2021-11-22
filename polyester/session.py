@@ -35,7 +35,7 @@ class Session:
     @classmethod
     def initialize_common(cls, unset=False):
         if unset is False:
-            cls._common = cls()
+            cls._common = super().__new__(cls)
         else:  # Just used in test code to reset
             cls._common = None
 
@@ -46,22 +46,34 @@ class Session:
         else:
             # Refer to the normal constructor
             session = super().__new__(cls)
-            session.__init__()
             return session
 
     def __init__(self):
+        if hasattr(self, "_initialized"):
+            return  # Prevent re-initialization with the singleton
+        self._initialized = True
         self._objects = []  # list of objects
         self._flush_lock = None
         self._pending_create_objects = []  # list of objects that haven't been created
         self.client = None
         self.state = SessionState.NONE
+        self._created_tagged_objects = {}  # tag -> object id
         super().__init__()
 
     def register(self, obj):
-        # We could add duplicates here, but flush_objects doesn't re-create objects that are already created.
-        assert obj
-        self._pending_create_objects.append(obj)
-        self._objects.append(obj)
+        """Registers an object to be created by the session.
+
+        This is invoked by the constructor in Object."""
+        # TODO: should we enforce that only tagged objects can be created prior to the session running?
+        assert isinstance(obj, Object)
+        if obj.tag and obj.tag in self._created_tagged_objects:
+            # If this code runs inside the container, check if the object is already created
+            # In that case, just set the id on it
+            object_id = self._created_tagged_objects[obj.tag]
+            obj.set_object_id(object_id, self.session_id)
+        else:
+            self._pending_create_objects.append(obj)
+            self._objects.append(obj)
 
     def function(self, raw_f=None, image=None, env_dict=None, is_generator=False, gpu=False):
         if image is None:
@@ -97,7 +109,7 @@ class Session:
                 f"Failed waiting for all logs to finish. There are still {n_running} tasks the server will kill."
             )
 
-    async def initialize(self, session_id, client):
+    async def initialize_container(self, session_id, client):
         """Used by the container to bootstrap the session and all its objects."""
         self.session_id = session_id
         self.client = client
@@ -107,19 +119,14 @@ class Session:
 
         req = api_pb2.SessionGetObjectsRequest(session_id=session_id)
         resp = await self.client.stub.SessionGetObjects(req)
-
-        # TODO: check duplicates???
-        for obj in self._objects:
-            if obj.tag in resp.object_ids:
-                obj.set_object_id(resp.object_ids[obj.tag], session_id)
+        self._created_tagged_objects = dict(resp.object_ids)
 
         # In the container, run forever
         self.state = SessionState.RUNNING
 
     async def create_object(self, obj):
-        # This just register + creates the object
-        # TODO: move most of this out of the session to the object
-        self.register(obj)
+        if obj.tag is not None and obj.tag in self._created_tagged_objects:
+            return self._created_tagged_objects[obj.tag]
         if obj.object_id is None:
             if obj.share_path:
                 # This is a reference to a persistent object
@@ -195,11 +202,10 @@ class Session:
                 # Create all members
                 await self.flush_objects()
 
-                # TODO: the below is a temporary thing until we unify object creation
-                object_ids = {obj.tag: obj.object_id for obj in self._objects if obj.object_id is not None}
+                # Create the session (and send a list of all tagged obs)
                 req = api_pb2.SessionSetObjectsRequest(
                     session_id=self.session_id,
-                    object_ids=object_ids,
+                    object_ids=self._created_tagged_objects,
                 )
                 await self.client.stub.SessionSetObjects(req)
 
@@ -222,12 +228,10 @@ class Session:
 
     def serialize(self, obj):
         """Serializes object and replaces all references to the client class by a placeholder."""
-        # TODO: probably should not be here
         buf = io.BytesIO()
         Pickler(self, ObjectMeta.type_to_name, buf).dump(obj)
         return buf.getvalue()
 
     def deserialize(self, s: bytes):
         """Deserializes object and replaces all client placeholders by self."""
-        # TODO: probably should not be here
         return Unpickler(self, ObjectMeta.name_to_type, io.BytesIO(s)).load()
