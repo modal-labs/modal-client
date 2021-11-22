@@ -5,6 +5,7 @@ import typing
 import grpc
 import pytest
 
+from polyester import Session
 from polyester.client import Client
 from polyester.proto import api_pb2, api_pb2_grpc
 
@@ -81,3 +82,9 @@ async def servicer():
     await server.start()
     yield servicer
     await server.stop(0)
+
+
+@pytest.fixture
+def unset_common_session():
+    yield
+    Session.initialize_common(unset=True)
