@@ -34,9 +34,7 @@ class Unpickler(pickle.Unpickler):
         type_tag, (tag, object_id) = pid
         if type_tag not in self.name_to_type:
             raise Exception(f"Unknown tag {type_tag}")
-        # TODO: we need a way to instantiate an object of type cls with tag and session set
         cls = self.name_to_type[type_tag]
         obj = cls.new(tag=tag, session=self.session)
         obj.set_object_id(object_id, self.session.session_id)
-        self.session._objects.append(obj)  # TODO: not sure if this is needed, remove??
         return obj

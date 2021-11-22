@@ -52,11 +52,10 @@ class Session:
         if hasattr(self, "_initialized"):
             return  # Prevent re-initialization with the singleton
         self._initialized = True
-        self._objects = []  # list of objects
         self._flush_lock = None
-        self._pending_create_objects = []  # list of objects that haven't been created
         self.client = None
         self.state = SessionState.NONE
+        self._pending_create_objects = []  # list of objects that haven't been created
         self._created_tagged_objects = {}  # tag -> object id
         super().__init__()
 
@@ -64,16 +63,15 @@ class Session:
         """Registers an object to be created by the session.
 
         This is invoked by the constructor in Object."""
-        # TODO: should we enforce that only tagged objects can be created prior to the session running?
-        assert isinstance(obj, Object)
         if obj.tag and obj.tag in self._created_tagged_objects:
             # If this code runs inside the container, check if the object is already created
             # In that case, just set the id on it
             object_id = self._created_tagged_objects[obj.tag]
             obj.set_object_id(object_id, self.session_id)
         else:
+            if self.state == SessionState.NONE and obj.tag is None:
+                raise Exception(f"{obj}: Only objects with tags can be created prior to the session running")
             self._pending_create_objects.append(obj)
-            self._objects.append(obj)
 
     def function(self, raw_f=None, image=None, env_dict=None, is_generator=False, gpu=False):
         if image is None:
@@ -135,6 +133,8 @@ class Session:
                 # This is something created locally
                 object_id = await obj._create_impl()
             obj.set_object_id(object_id, self.session_id)
+            if obj.tag:
+                self._created_tagged_objects[obj.tag] = object_id
         return obj.object_id
 
     async def flush_objects(self):
@@ -184,8 +184,9 @@ class Session:
             raise Exception(f"Can't start a session that's already in state {self.state}")
         self.state = SessionState.STARTING
         self.client = client
+
         # We need to re-initialize all these objects. Needed if a session is reused.
-        self._pending_create_objects = list(self._objects)
+        initial_objects = list(self._pending_create_objects)
 
         try:
             # Start session
@@ -225,6 +226,8 @@ class Session:
         finally:
             self.client = None
             self.state = SessionState.NONE
+            self._pending_create_objects = initial_objects
+            self._created_tagged_objects = {}
 
     def serialize(self, obj):
         """Serializes object and replaces all references to the client class by a placeholder."""
