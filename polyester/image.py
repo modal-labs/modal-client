@@ -77,11 +77,6 @@ class Image(Object):
             raise Exception("Every image needs a local_id")
         super().__init__(tag=tag, session=session)
 
-    @requires_create
-    async def set_image_tag(self, image_tag):
-        req = api_pb2.ImageSetTagRequest(image_id=self.object_id, tag=image_tag)
-        await self.session.client.stub.ImageSetTag(req)
-
     def extend(self, arg):
         return ExtendedImage(self.session, self, arg)
 

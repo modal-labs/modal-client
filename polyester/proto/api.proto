@@ -204,19 +204,6 @@ message ImageJoinResponse {
   GenericResult result = 1;
 }
 
-message ImageGetByTagRequest {
-  string tag = 1;
-}
-
-message ImageGetByTagResponse {
-  string image_id = 1;
-}
-
-message ImageSetTagRequest {
-  string image_id = 1;
-  string tag = 2;
-}
-
 message DictEntry {
   bytes key = 1;
   bytes value = 2;
@@ -417,8 +404,6 @@ service PolyesterClient {
   // Images
   rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);
   rpc ImageJoin(ImageJoinRequest) returns (ImageJoinResponse);
-  rpc ImageGetByTag(ImageGetByTagRequest) returns (ImageGetByTagResponse);
-  rpc ImageSetTag(ImageSetTagRequest) returns (Empty);
 
   // Dicts
   rpc DictCreate(DictCreateRequest) returns (DictCreateResponse);
