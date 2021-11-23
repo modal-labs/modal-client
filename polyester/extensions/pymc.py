@@ -41,7 +41,7 @@ class PyMCImage(Image):
             self.session,
             self.tag,
             dockerfile_commands=dockerfile_commands,
-            base_images={"base": TaggedImage("conda")},
+            base_images={"base": TaggedImage(self.session, "conda")},
         )
 
 
