@@ -87,18 +87,6 @@ class Image(Object):
         return env_local_id == self.tag
 
 
-class TaggedImage(Image):
-    def __init__(self, session, existing_image_tag):
-        super().__init__(tag=existing_image_tag, session=session)
-        self.existing_image_tag = existing_image_tag
-
-    async def _create_impl(self):
-        req = api_pb2.ImageGetByTagRequest(tag=self.existing_image_tag)
-        resp = await self.session.client.stub.ImageGetByTag(req)
-        image_id = resp.image_id
-        return image_id
-
-
 class LocalImage(Image):
     def __init__(self, session, python_executable):
         super().__init__(tag="local", session=session)
@@ -151,8 +139,8 @@ class DebianSlim(Image):
 
     async def _create_impl(self):
         base_images = {
-            "builder": TaggedImage(self.session, f"python-{self.python_version}-slim-buster-builder"),
-            "base": TaggedImage(self.session, f"python-{self.python_version}-slim-buster-base"),
+            "builder": Image.use(self.session, f"python-{self.python_version}-slim-buster-builder"),
+            "base": Image.use(self.session, f"python-{self.python_version}-slim-buster-base"),
         }
         if not self.build_instructions:
             return await self.session.create_object(base_images["base"])
