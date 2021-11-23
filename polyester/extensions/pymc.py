@@ -13,7 +13,7 @@ import synchronicity
 from aiostream import stream
 
 from polyester import Image, Session
-from polyester.image import TaggedImage, _build_custom_image
+from polyester.image import _build_custom_image
 
 synchronizer = synchronicity.Synchronizer()
 
@@ -41,7 +41,7 @@ class PyMCImage(Image):
             self.session,
             self.tag,
             dockerfile_commands=dockerfile_commands,
-            base_images={"base": TaggedImage(self.session, "conda")},
+            base_images={"base": Image.use(self.session, "conda")},
         )
 
 
