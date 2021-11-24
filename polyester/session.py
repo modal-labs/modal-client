@@ -173,12 +173,13 @@ class Session:
         if client is None:
             client = await Client.from_env()
             async with client:
-                async for it in self._run(client, stdout, stderr):
+                async with self._run(client, stdout, stderr) as it:
                     yield it  # ctx mgr
         else:
-            async for it in self._run(client, stdout, stderr):
+            async with self._run(client, stdout, stderr) as it:
                 yield it  # ctx mgr
 
+    @synchronizer.asynccontextmanager
     async def _run(self, client, stdout, stderr):
         # TOOD: use something smarter than checking for the .client to exists in order to prevent
         # race conditions here!
@@ -224,8 +225,11 @@ class Session:
             # Fetch any straggling logs
             logger.debug("Draining logs")
             await self._get_logs(stdout, stderr, draining=True, timeout=config["logs_timeout"])
-
         finally:
+            if self.state == SessionState.RUNNING:
+                logger.warn("Stopping running session...")
+                req = api_pb2.SessionStopRequest(session_id=self.session_id)
+                await self.client.stub.SessionStop(req)
             self.client = None
             self.state = SessionState.NONE
             self._pending_create_objects = initial_objects
