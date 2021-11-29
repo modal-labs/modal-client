@@ -26,21 +26,21 @@ class ObjectMeta(type):
 class Object(metaclass=ObjectMeta):
     # A bit ugly to leverage implemenation inheritance here, but I guess you could
     # roughly think of this class as a mixin
-    def __init__(self, session, tag=None):
+    def __init__(self, session=None, tag=None):
         logger.debug(f"Creating object {self}")
-        assert session
 
         self._init(session=session, tag=tag)
-        self.session.register(self)
+        if session is not None:
+            self._session.register(self)
 
     def _init(self, session=None, tag=None, share_path=None):
         self._object_id = None
         self._session_id = None
         self.share_path = share_path
         self.tag = tag
-        self.session = session
+        self._session = session
 
-    async def _create_impl(self):
+    async def _create_impl(self, session):
         # Overloaded in subclasses to do the actual logic
         raise NotImplementedError
 
@@ -50,7 +50,7 @@ class Object(metaclass=ObjectMeta):
 
     @property
     def object_id(self):
-        if self._session_id is not None and self._session_id == self.session.session_id:
+        if self._session_id is not None and self._session is not None and self._session_id == self._session.session_id:
             return self._object_id
 
     @classmethod
@@ -73,13 +73,13 @@ class Object(metaclass=ObjectMeta):
 def requires_create_generator(method):
     @functools.wraps(method)
     async def wrapped_method(self, *args, **kwargs):
-        if not self.session:
+        if not self._session:
             raise Exception("Can only run this method on an object with a session set")
-        if self.session.state != SessionState.RUNNING:
+        if self._session.state != SessionState.RUNNING:
             raise Exception("Can only run this method on an object with a running session")
 
         # Flush all objects to the session
-        await self.session.flush_objects()
+        await self._session.flush_objects()
 
         async for ret in method(self, *args, **kwargs):
             yield ret
@@ -90,13 +90,13 @@ def requires_create_generator(method):
 def requires_create(method):
     @functools.wraps(method)
     async def wrapped_method(self, *args, **kwargs):
-        if not self.session:
+        if not self._session:
             raise Exception("Can only run this method on an object with a session set")
-        if self.session.state != SessionState.RUNNING:
+        if self._session.state != SessionState.RUNNING:
             raise Exception("Can only run this method on an object with a running session")
 
         # Flush all objects to the session
-        await self.session.flush_objects()
+        await self._session.flush_objects()
 
         return await method(self, *args, **kwargs)
 

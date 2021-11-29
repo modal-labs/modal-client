@@ -225,25 +225,25 @@ class Function(Object):
         self.is_generator = is_generator
         self.gpu = gpu
 
-    async def _create_impl(self):
-        mounts = [self.info.get_mount(self.session)]
+    async def _create_impl(self, session):
+        mounts = [self.info.get_mount(session)]
         if config["sync_entrypoint"] and not os.getenv("POLYESTER_IMAGE_LOCAL_ID"):
             # TODO(erikbern): If the first condition is true then we're running in a local
             # client which implies the second is always true as well?
-            mounts.extend(create_package_mounts("polyester", self.session))
+            mounts.extend(create_package_mounts("polyester", session))
         # TODO(erikbern): couldn't we just create one single mount with all packages instead of multiple?
 
         # Wait for image and mounts to finish
         # TODO: should we really join recursively here? Maybe it's better to move this logic to the session class?
         if self.image is not None:
-            image_id = await self.session.create_object(self.image)
+            image_id = await session.create_object(self.image)
         else:
             image_id = None  # Happens if it's a notebook function
         if self.env_dict is not None:
-            env_dict_id = await self.session.create_object(self.env_dict)
+            env_dict_id = await session.create_object(self.env_dict)
         else:
             env_dict_id = None
-        mount_ids = await asyncio.gather(*(self.session.create_object(mount) for mount in mounts))
+        mount_ids = await asyncio.gather(*(session.create_object(mount) for mount in mounts))
 
         if self.is_generator:
             function_type = api_pb2.Function.FunctionType.GENERATOR
@@ -263,26 +263,26 @@ class Function(Object):
             resources=api_pb2.Resources(gpu=self.gpu),
         )
         request = api_pb2.FunctionGetOrCreateRequest(
-            session_id=self.session.session_id,
+            session_id=session.session_id,
             function=function_definition,
         )
-        response = await self.session.client.stub.FunctionGetOrCreate(request)
+        response = await session.client.stub.FunctionGetOrCreate(request)
         return response.function_id
 
     @requires_create_generator
     async def map(self, inputs, window=100, kwargs={}):
         input_stream = stream.iterate(inputs) | pipe.map(lambda arg: (arg,))
-        async for item in await MapInvocation.create(self.object_id, input_stream, kwargs, self.session):
+        async for item in await MapInvocation.create(self.object_id, input_stream, kwargs, self._session):
             yield item
 
     @requires_create
     async def call_function(self, args, kwargs):
-        invocation = await Invocation.create(self.object_id, args, kwargs, self.session)
+        invocation = await Invocation.create(self.object_id, args, kwargs, self._session)
         return await invocation.run_function()
 
     @requires_create_generator
     async def call_generator(self, args, kwargs):
-        invocation = await Invocation.create(self.object_id, args, kwargs, self.session)
+        invocation = await Invocation.create(self.object_id, args, kwargs, self._session)
         async for res in invocation.run_generator():
             yield res
 

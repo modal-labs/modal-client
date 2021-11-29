@@ -13,10 +13,10 @@ class Queue(Object):
     def __init__(self, session, tag=None):
         super().__init__(session, tag)
 
-    async def _create_impl(self):
+    async def _create_impl(self, session):
         """This creates a queue on the server and returns its id."""
         # TODO: we should create the queue in a session here
-        response = await self.session.client.stub.QueueCreate(api_pb2.Empty())
+        response = await session.client.stub.QueueCreate(api_pb2.Empty())
         logger.debug("Created queue with id %s" % response.queue_id)
         return response.queue_id
 
@@ -33,9 +33,9 @@ class Queue(Object):
                 n_values=n_values,
                 idempotency_key=str(uuid.uuid4()),
             )
-            response = await retry(self.session.client.stub.QueueGet)(request, timeout=60.0)
+            response = await retry(self._session.client.stub.QueueGet)(request, timeout=60.0)
             if response.values:
-                return [self.session.deserialize(value) for value in response.values]
+                return [self._session.deserialize(value) for value in response.values]
             logger.debug("Queue get for %s had empty results, trying again" % self.object_id)
         raise queue.Empty()
 
@@ -50,13 +50,13 @@ class Queue(Object):
 
     @requires_create
     async def put_many(self, vs: List[Any]):
-        vs_encoded = [self.session.serialize(v) for v in vs]
+        vs_encoded = [self._session.serialize(v) for v in vs]
         request = api_pb2.QueuePutRequest(
             queue_id=self.object_id,
             values=vs_encoded,
             idempotency_key=str(uuid.uuid4()),
         )
-        return await retry(self.session.client.stub.QueuePut)(request, timeout=5.0)
+        return await retry(self._session.client.stub.QueuePut)(request, timeout=5.0)
 
     @requires_create
     async def put(self, v):

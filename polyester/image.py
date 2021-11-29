@@ -22,7 +22,7 @@ def get_python_version():
 
 
 async def _build_custom_image(
-    client, session, local_id, base_images={}, context_files={}, dockerfile_commands=[], must_create=False
+    session, local_id, base_images={}, context_files={}, dockerfile_commands=[], must_create=False
 ):
     # Recursively build base images
     base_image_ids = await asyncio.gather(*(session.create_object(image) for image in base_images.values()))
@@ -48,7 +48,7 @@ async def _build_custom_image(
         image=image_definition,
         must_create=must_create,
     )
-    resp = await client.stub.ImageGetOrCreate(req)
+    resp = await session.client.stub.ImageGetOrCreate(req)
     image_id = resp.image_id
 
     logger.debug("Waiting for image %s" % image_id)
@@ -58,7 +58,7 @@ async def _build_custom_image(
             timeout=BLOCKING_REQUEST_TIMEOUT,
             session_id=session.session_id,
         )
-        response = await retry(client.stub.ImageJoin)(request, timeout=GRPC_REQUEST_TIMEOUT)
+        response = await retry(session.client.stub.ImageJoin)(request, timeout=GRPC_REQUEST_TIMEOUT)
         if not response.result.status:
             continue
         elif response.result.status == api_pb2.GenericResult.Status.FAILURE:
@@ -78,7 +78,7 @@ class Image(Object):
         super().__init__(tag=tag, session=session)
 
     def extend(self, arg):
-        return ExtendedImage(self.session, self, arg)
+        return ExtendedImage(self._session, self, arg)
 
     def is_inside(self):
         # This is used from inside of containers to know whether this container is active or not
@@ -92,16 +92,16 @@ class LocalImage(Image):
         super().__init__(tag="local", session=session)
         self.python_executable = python_executable
 
-    async def _create_impl(self):
+    async def _create_impl(self, session):
         image_definition = api_pb2.Image(
             local_id=self.tag,  # rename local_id
             local_image_python_executable=self.python_executable,
         )
         req = api_pb2.ImageGetOrCreateRequest(
-            session_id=self.session.session_id,
+            session_id=session.session_id,
             image=image_definition,
         )
-        resp = await self.session.client.stub.ImageGetOrCreate(req)
+        resp = await session.client.stub.ImageGetOrCreate(req)
         return resp.image_id
 
 
@@ -111,7 +111,7 @@ class DebianSlim(Image):
     # The solution is either to
     # (a) chain all images so they are based on the previous
     # (b) have images without sessions that aren't built
-    def __init__(self, session, python_version=None, build_instructions=[]):
+    def __init__(self, session=None, python_version=None, build_instructions=[]):
         if python_version is None:
             python_version = get_python_version()
         else:
@@ -128,22 +128,22 @@ class DebianSlim(Image):
 
     def add_python_packages(self, python_packages, find_links=None):
         return DebianSlim(
-            self.session, self.python_version, self.build_instructions + [("py", (python_packages, find_links))]
+            self._session, self.python_version, self.build_instructions + [("py", (python_packages, find_links))]
         )
 
     def run_commands(self, commands):
-        return DebianSlim(self.session, self.python_version, self.build_instructions + [("cmd", commands)])
+        return DebianSlim(self._session, self.python_version, self.build_instructions + [("cmd", commands)])
 
     def copy_from_image(self, image, src, dest):
-        return DebianSlim(self.session, self.python_version, self.build_instructions + [("cp", (image, src, dest))])
+        return DebianSlim(self._session, self.python_version, self.build_instructions + [("cp", (image, src, dest))])
 
-    async def _create_impl(self):
+    async def _create_impl(self, session):
         base_images = {
-            "builder": Image.use(self.session, f"python-{self.python_version}-slim-buster-builder"),
-            "base": Image.use(self.session, f"python-{self.python_version}-slim-buster-base"),
+            "builder": Image.use(session, f"python-{self.python_version}-slim-buster-builder"),
+            "base": Image.use(session, f"python-{self.python_version}-slim-buster-base"),
         }
         if not self.build_instructions:
-            return await self.session.create_object(base_images["base"])
+            return await session.create_object(base_images["base"])
 
         dockerfile_commands = ["FROM base as target"]
         for t, data in self.build_instructions:
@@ -167,8 +167,7 @@ class DebianSlim(Image):
                 dockerfile_commands += [f"COPY --from={image} {src} {dest}"]
 
         return await _build_custom_image(
-            self.session.client,
-            self.session,
+            session,
             self.tag,
             dockerfile_commands=dockerfile_commands,
             base_images=base_images,
@@ -185,15 +184,14 @@ class ExtendedImage(Image):
         self.arg = arg
         super().__init__(session=session, tag=tag)
 
-    async def _create_impl(self):
+    async def _create_impl(self, session):
         build_instructions = ["FROM base"]
         if callable(self.arg):
             build_instructions += self.arg()
         else:
             build_instructions += self.arg
         return await _build_custom_image(
-            self.session.client,
-            self.session,
+            session,
             self.tag,
             dockerfile_commands=build_instructions,
             base_images={"base": self.base},

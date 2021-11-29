@@ -140,11 +140,13 @@ class Session:
                 object_id = await self._use_object(obj.share_path)
             else:
                 # This is something created locally
-                object_id = await obj._create_impl()
-            obj.set_object_id(object_id, self.session_id)
+                object_id = await obj._create_impl(self)
+            if obj._session is not None:  # TODO: ugly
+                obj.set_object_id(object_id, self.session_id)
             if obj.tag:
                 self._created_tagged_objects[obj.tag] = object_id
-        return obj.object_id
+        assert object_id
+        return object_id
 
     async def flush_objects(self):
         "Create objects that have been defined but not created on the server."
