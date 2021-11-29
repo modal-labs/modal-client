@@ -79,7 +79,7 @@ class Session:
 
     def function(self, raw_f=None, image=None, env_dict=None, is_generator=False, gpu=False):
         if image is None:
-            image = DebianSlim(session=self)
+            image = DebianSlim()
 
         def decorate(raw_f):
             return Function(self, raw_f, image=image, env_dict=env_dict, is_generator=is_generator, gpu=gpu)
