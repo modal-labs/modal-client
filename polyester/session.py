@@ -71,8 +71,10 @@ class Session:
             object_id = self._created_tagged_objects[obj.tag]
             obj.set_object_id(object_id, self.session_id)
         else:
-            if self.state == SessionState.NONE and obj.tag is None:
-                raise Exception(f"{obj}: Only objects with tags can be created prior to the session running")
+            if self.state == SessionState.NONE and obj.tag is None and obj.share_path is None:
+                raise Exception(
+                    f"{obj}: Only objects with tags or persistent objects can be created prior to the session running"
+                )
             self._pending_create_objects.append(obj)
 
     def function(self, raw_f=None, image=None, env_dict=None, is_generator=False, gpu=False):
