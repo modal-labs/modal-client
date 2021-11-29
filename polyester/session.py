@@ -127,7 +127,12 @@ class Session:
         self.state = SessionState.RUNNING
 
     async def create_object(self, obj):
+        """Takes an object as input, Returns an object id.
+
+        Will write the object id to the object
+        """
         if obj.tag is not None and obj.tag in self._created_tagged_objects:
+            # TODO: should we write the object id onto the object?
             return self._created_tagged_objects[obj.tag]
         if obj.object_id is None:
             if obj.share_path:
