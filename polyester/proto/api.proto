@@ -143,6 +143,10 @@ message TaskLogs {
   int64 n_running = 5;
 }
 
+message QueueCreateRequest {
+  string session_id = 1;
+}
+
 message QueueCreateResponse {
   string queue_id = 1;
 }
@@ -391,7 +395,7 @@ service PolyesterClient {
   rpc SessionUseObject(SessionUseObjectRequest) returns (SessionUseObjectResponse);
 
   // Queues
-  rpc QueueCreate(Empty) returns (QueueCreateResponse);  // TODO: we should create it inside a session
+  rpc QueueCreate(QueueCreateRequest) returns (QueueCreateResponse);
   rpc QueueGet(QueueGetRequest) returns (QueueGetResponse);
   rpc QueuePut(QueuePutRequest) returns (Empty);
 
