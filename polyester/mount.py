@@ -4,6 +4,8 @@ import hashlib
 import os
 import time
 
+import aiostream
+
 from .async_utils import retry
 from .config import config, logger
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
@@ -24,7 +26,7 @@ def get_sha256_hex_from_filename(filename, rel_filename):
     return filename, rel_filename, get_sha256_hex_from_content(content)
 
 
-async def get_files(local_dir, condition, recursive, q, n_sentinels):
+async def get_files(local_dir, condition, recursive):
     loop = asyncio.get_event_loop()
     with concurrent.futures.ThreadPoolExecutor() as exe:
         futs = []
@@ -40,9 +42,7 @@ async def get_files(local_dir, condition, recursive, q, n_sentinels):
         logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} workers")
         for fut in asyncio.as_completed(futs):
             filename, rel_filename, sha256_hex = await fut
-            await q.put((filename, rel_filename, sha256_hex))
-    for i in range(n_sentinels):
-        await q.put(None)
+            yield filename, rel_filename, sha256_hex
 
 
 class Mount(Object):
@@ -69,14 +69,6 @@ class Mount(Object):
             )
             response = await client.stub.MountUploadFile(request)
 
-    async def _put_files(self, client, mount_id, q):
-        while True:
-            z = await q.get()
-            if z is None:
-                return
-            filename, rel_filename, sha256_hex = z
-            await self._put_file(client, mount_id, filename, rel_filename, sha256_hex)
-
     async def _create_impl(self, session):
         req = api_pb2.MountCreateRequest(session_id=session.session_id)
         resp = await session.client.stub.MountCreate(req)
@@ -88,12 +80,22 @@ class Mount(Object):
         self.total_bytes = 0
         t0 = time.time()
         n_concurrent_uploads = 16
+
         logger.debug(f"Uploading mount {mount_id} using {n_concurrent_uploads} uploads")
-        q = asyncio.Queue()
-        coros = [get_files(self.local_dir, self.condition, self.recursive, q, n_concurrent_uploads)]
-        for i in range(n_concurrent_uploads):
-            coros.append(self._put_files(session.client, mount_id, q))
-        await asyncio.gather(*coros)
+
+        # Create async generator
+        files = get_files(self.local_dir, self.condition, self.recursive)
+        files_stream = aiostream.stream.iterate(files)
+
+        async def put_file_tupled(tup):
+            filename, rel_filename, sha256_hex = tup
+            await self._put_file(session.client, mount_id, filename, rel_filename, sha256_hex)
+
+        # Upload files
+        uploads_stream = aiostream.stream.map(files_stream, put_file_tupled, task_limit=n_concurrent_uploads)
+        async for ret in uploads_stream:
+            pass
+
         logger.debug(
             f"Uploaded {self.n_missing_files}/{self.n_files} files and {self.total_bytes} bytes in {time.time() - t0}s"
         )
