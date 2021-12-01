@@ -24,7 +24,7 @@ def get_sha256_hex_from_filename(filename, rel_filename):
     return filename, rel_filename, get_sha256_hex_from_content(content)
 
 
-async def get_files(local_dir, condition, recursive):
+async def get_files(local_dir, condition, recursive, q, n_sentinels):
     loop = asyncio.get_event_loop()
     with concurrent.futures.ThreadPoolExecutor() as exe:
         futs = []
@@ -40,7 +40,9 @@ async def get_files(local_dir, condition, recursive):
         logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} workers")
         for fut in asyncio.as_completed(futs):
             filename, rel_filename, sha256_hex = await fut
-            yield filename, rel_filename, sha256_hex
+            await q.put((filename, rel_filename, sha256_hex))
+    for i in range(n_sentinels):
+        await q.put(None)
 
 
 class Mount(Object):
@@ -51,52 +53,52 @@ class Mount(Object):
         self.condition = condition
         self.recursive = recursive
 
-    async def _register_file_requests(self, mount_id, hashes, filenames):
-        async for filename, rel_filename, sha256_hex in get_files(self.local_dir, self.condition, self.recursive):
-            remote_filename = os.path.join(self.remote_dir, rel_filename)  # won't work on windows
-            filenames[remote_filename] = filename
-            request = api_pb2.MountRegisterFileRequest(
-                filename=remote_filename, sha256_hex=sha256_hex, mount_id=mount_id
+    async def _put_file(self, client, mount_id, filename, rel_filename, sha256_hex):
+        remote_filename = os.path.join(self.remote_dir, rel_filename)  # won't work on windows
+        request = api_pb2.MountRegisterFileRequest(filename=remote_filename, sha256_hex=sha256_hex, mount_id=mount_id)
+        response = await client.stub.MountRegisterFile(request)
+        self.n_files += 1
+        if not response.exists:
+            # TODO: this will be moved to S3 soon
+            data = open(filename, "rb").read()
+            self.n_missing_files += 1
+            self.total_bytes += len(data)
+            logger.debug(f"Uploading file {filename} to {remote_filename} ({len(data)} bytes)")
+            request = api_pb2.MountUploadFileRequest(
+                data=data, sha256_hex=sha256_hex, size=len(data), mount_id=mount_id
             )
-            hashes[filename] = sha256_hex
-            yield request
+            response = await client.stub.MountUploadFile(request)
 
-    async def _upload_file_requests(self, client, mount_id, hashes, filenames):
-        t0 = time.time()
-        n_files, n_missing_files, total_bytes = 0, 0, 0
-        async for response in client.stub.MountRegisterFile(self._register_file_requests(mount_id, hashes, filenames)):
-            n_files += 1
-            if not response.exists:
-                filename = filenames[response.filename]
-                data = open(filename, "rb").read()
-                n_missing_files += 1
-                total_bytes += len(data)
-                logger.debug(f"Uploading file {filename} to {response.filename} ({len(data)} bytes)")
-                request = api_pb2.MountUploadFileRequest(
-                    data=data, sha256_hex=hashes[filename], size=len(data), mount_id=mount_id
-                )
-                yield request
-
-        logger.debug(f"Uploaded {n_missing_files}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
+    async def _put_files(self, client, mount_id, q):
+        while True:
+            z = await q.get()
+            if z is None:
+                return
+            filename, rel_filename, sha256_hex = z
+            await self._put_file(client, mount_id, filename, rel_filename, sha256_hex)
 
     async def _create_impl(self, session):
-        # TODO: I think in theory we could split the get_files iterator and launch multiple concurrent
-        # calls to MountRegisterFileRequest and MountUploadFileRequest. This would speed up a lot of the
-        # serial operations on the server side (like hitting Redis for every file serially).
-        # Another option is to parallelize more on the server side.
-
-        hashes = {}
-        filenames = {}
-
         req = api_pb2.MountCreateRequest(session_id=session.session_id)
         resp = await session.client.stub.MountCreate(req)
         mount_id = resp.mount_id
 
-        logger.debug(f"Uploading mount {mount_id}")
-        await session.client.stub.MountUploadFile(
-            self._upload_file_requests(session.client, mount_id, hashes, filenames)
+        # Run a threadpool to compute hash values, and use n coroutines to put files
+        self.n_files = 0
+        self.n_missing_files = 0
+        self.total_bytes = 0
+        t0 = time.time()
+        n_concurrent_uploads = 16
+        logger.debug(f"Uploading mount {mount_id} using {n_concurrent_uploads} uploads")
+        q = asyncio.Queue()
+        coros = [get_files(self.local_dir, self.condition, self.recursive, q, n_concurrent_uploads)]
+        for i in range(n_concurrent_uploads):
+            coros.append(self._put_files(session.client, mount_id, q))
+        await asyncio.gather(*coros)
+        logger.debug(
+            f"Uploaded {self.n_missing_files}/{self.n_files} files and {self.total_bytes} bytes in {time.time() - t0}s"
         )
 
+        # Set the mount to done
         req = api_pb2.MountDoneRequest(mount_id=mount_id)
         await session.client.stub.MountDone(req)
 

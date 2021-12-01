@@ -401,8 +401,8 @@ service PolyesterClient {
 
   // Mounts
   rpc MountCreate(MountCreateRequest) returns (MountCreateResponse);
-  rpc MountRegisterFile(stream MountRegisterFileRequest) returns (stream MountRegisterFileResponse);
-  rpc MountUploadFile(stream MountUploadFileRequest) returns (Empty);  // TODO: return something?
+  rpc MountRegisterFile(MountRegisterFileRequest) returns (MountRegisterFileResponse);
+  rpc MountUploadFile(MountUploadFileRequest) returns (Empty);  // TODO: return something?
   rpc MountDone(MountDoneRequest) returns (Empty);
 
   // Images
