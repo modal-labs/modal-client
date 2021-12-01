@@ -83,7 +83,7 @@ class Image(Object):
     def is_inside(self):
         # This is used from inside of containers to know whether this container is active or not
         env_local_id = os.getenv("POLYESTER_IMAGE_LOCAL_ID")
-        logger.info(f"Is image inside? env {env_local_id} image {self.tag}")
+        logger.debug(f"Is image inside? env {env_local_id} image {self.tag}")
         return env_local_id == self.tag
 
 

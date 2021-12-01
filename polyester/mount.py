@@ -93,8 +93,7 @@ class Mount(Object):
 
         # Upload files
         uploads_stream = aiostream.stream.map(files_stream, put_file_tupled, task_limit=n_concurrent_uploads)
-        async for ret in uploads_stream:
-            pass
+        await uploads_stream
 
         logger.debug(
             f"Uploaded {self.n_missing_files}/{self.n_files} files and {self.total_bytes} bytes in {time.time() - t0}s"
