@@ -208,9 +208,10 @@ class MapInvocation:
                 else:
                     assert False, f"Got unknown type in invocation stream: {type(response)}"
 
-                assert num_outputs <= num_inputs
-                if have_all_inputs and num_outputs == num_inputs:
-                    break
+                if have_all_inputs:
+                    assert num_outputs <= num_inputs
+                    if num_outputs == num_inputs:
+                        break
 
 
 class Function(Object):
