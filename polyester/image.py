@@ -191,3 +191,37 @@ class ExtendedImage(Image):
             dockerfile_commands=build_instructions,
             base_images={"base": self.base},
         )
+
+
+class CustomImage(Image):
+    """This is a stopgap class while will eventually become the Image class.
+
+    Needed to rewrite all the other subclasses to use composition instead of inheritance."""
+
+    def __init__(self, local_id, base_images={}, context_files={}, dockerfile_commands=[], must_create=False):
+        self._local_id = local_id
+        self._base_images = base_images
+        self._context_files = context_files
+        self._dockerfile_commands = dockerfile_commands
+        self._must_create = must_create
+        # super(Image, self).__init__(
+
+    async def _create_impl(self, session):
+        # TODO: move the whole _build_custom_image function into this
+        return await _build_custom_image(
+            session,
+            local_id=self._local_id,
+            base_images=self._base_images,
+            context_files=self._context_files,
+            dockerfile_commands=self._dockerfile_commands,
+            must_create=self._must_create,
+        )
+
+
+class ImageFactory(Image):
+    def __init__(self, fun):
+        self._fun = fun
+
+    async def _create_impl(self, session):
+        image = self._fun()
+        return await image._create_impl(session)
