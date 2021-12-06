@@ -21,9 +21,7 @@ def get_python_version():
     return config["image_python_version"] or "%d.%d.%d" % sys.version_info[:3]
 
 
-async def _build_custom_image(
-    session, local_id, base_images={}, context_files={}, dockerfile_commands=[], must_create=False
-):
+async def _build_custom_image(session, base_images={}, context_files={}, dockerfile_commands=[], must_create=False):
     # Recursively build base images
     base_image_ids = await asyncio.gather(*(session.create_object(image) for image in base_images.values()))
     base_images_pb2s = [
@@ -40,7 +38,6 @@ async def _build_custom_image(
         base_images=base_images_pb2s,
         dockerfile_commands=dockerfile_commands,
         context_files=context_file_pb2s,
-        local_id=local_id,
     )
 
     req = api_pb2.ImageGetOrCreateRequest(
@@ -74,7 +71,7 @@ async def _build_custom_image(
 class Image(Object):
     def __init__(self, session, tag):
         if tag is None:
-            raise Exception("Every image needs a local_id")
+            raise Exception("Every image needs a tag")
         super().__init__(tag=tag, session=session)
 
     def extend(self, arg):
@@ -82,9 +79,13 @@ class Image(Object):
 
     def is_inside(self):
         # This is used from inside of containers to know whether this container is active or not
-        env_local_id = os.getenv("POLYESTER_IMAGE_LOCAL_ID")
-        logger.debug(f"Is image inside? env {env_local_id} image {self.tag}")
-        return env_local_id == self.tag
+        # TODO: it's a bit janky because we're assuming the existance of a session and touching its internals
+        assert self.session  # TODO: return False?
+        assert self.tag in self.session._created_tagged_objects  # TODO: return False?
+        image_id = self.session._created_tagged_objects[self.tag]
+        env_image_id = os.getenv("POLYESTER_IMAGE_ID")
+        logger.debug(f"Is image inside? env {env_image_id} image {image_id}")
+        return env_image_id == image_id
 
 
 class LocalImage(Image):
@@ -94,7 +95,6 @@ class LocalImage(Image):
 
     async def _create_impl(self, session):
         image_definition = api_pb2.Image(
-            local_id=self.tag,  # rename local_id
             local_image_python_executable=self.python_executable,
         )
         req = api_pb2.ImageGetOrCreateRequest(
@@ -168,7 +168,6 @@ class DebianSlim(Image):
 
         return await _build_custom_image(
             session,
-            self.tag,
             dockerfile_commands=dockerfile_commands,
             base_images=base_images,
         )
@@ -192,7 +191,6 @@ class ExtendedImage(Image):
             build_instructions += self.arg
         return await _build_custom_image(
             session,
-            self.tag,
             dockerfile_commands=build_instructions,
             base_images={"base": self.base},
         )
