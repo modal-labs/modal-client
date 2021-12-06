@@ -11,7 +11,7 @@ except ImportError:
 
 config = {
     "loglevel": os.environ.get("LOGLEVEL", "WARNING").upper(),
-    "server.url": os.environ.get("POLYESTER_SERVER_URL", "https://api.polyester.cloud"),
+    "server.url": os.environ.get("POLYESTER_SERVER_URL", "https://api.modal.com"),
     "token.id": os.environ.get("POLYESTER_TOKEN_ID"),
     "token.secret": os.environ.get("POLYESTER_TOKEN_SECRET"),
     "task.id": os.environ.get("POLYESTER_TASK_ID"),  # Maybe redundant since it's also passed as a cmd arg
