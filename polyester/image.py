@@ -82,7 +82,7 @@ class Image(Object):
         env_image_id = os.getenv("POLYESTER_IMAGE_ID")
         image_id = self.object_id
         logger.debug(f"Is image inside? env {env_image_id} image {image_id}")
-        return env_image_id == image_id
+        return image_id is not None and env_image_id == image_id
 
 
 class LocalImage(Image):
