@@ -14,6 +14,7 @@ from .image import DebianSlim  # TODO: ugly
 from .object_meta import ObjectMeta
 from .proto import api_pb2
 from .serialization import Pickler, Unpickler
+from .session_singleton import get_session_singleton, set_session_singleton
 from .session_state import SessionState
 from .utils import print_logs
 
@@ -26,25 +27,18 @@ class Session:
     2. Sessions are responsible for syncing object identities across processes
     3. Sessions manage all log collection for ephemeral functions
 
-    Sessions isn't a great name, a better name is probably "dependency set" or "application"
-    or maybe "collection" or "bag"
+    "session" isn't a great name, a better name is probably "scope".
     """
-
-    _singleton = None  # When running inside a container, this is a singleton
 
     @classmethod
     def initialize_singleton(cls):
-        cls._singleton = super().__new__(cls)
-
-    @classmethod
-    def reset_singleton(cls):
-        # Just used in test code to reset
-        cls._singleton = None
+        set_session_singleton(super().__new__(cls))
 
     def __new__(cls):
-        if cls._singleton is not None:
+        singleton = get_session_singleton()
+        if singleton is not None:
             # If there's a singleton session, just return it for everything
-            return cls._singleton
+            return singleton
         else:
             # Refer to the normal constructor
             session = super().__new__(cls)

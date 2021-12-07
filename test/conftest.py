@@ -8,6 +8,7 @@ import pytest
 from polyester import Session
 from polyester.client import Client
 from polyester.proto import api_pb2, api_pb2_grpc
+from polyester.session_singleton import set_session_singleton
 
 
 class GRPCClientServicer(api_pb2_grpc.PolyesterClient):
@@ -87,4 +88,4 @@ async def servicer():
 @pytest.fixture
 def reset_session_singleton():
     yield
-    Session.reset_singleton()
+    set_session_singleton(None)
