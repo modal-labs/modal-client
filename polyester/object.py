@@ -4,6 +4,7 @@ import inspect
 
 from .config import logger
 from .object_meta import ObjectMeta
+from .session_singleton import get_session_singleton
 from .session_state import SessionState
 
 
@@ -14,8 +15,32 @@ class Object(metaclass=ObjectMeta):
         logger.debug(f"Creating object {self}")
 
         self._init(session=session, tag=tag)
-        if session is not None:
-            self._session.register(self)
+
+        # Fallback to singleton session
+        s = session or get_session_singleton()
+
+        if tag is not None:
+            # See if we can populate this with an object id
+            # (this happens if we're inside the container)
+            if s:
+                object_id = s.get_object_id_by_tag(tag)
+            else:
+                object_id = None
+
+            if object_id:
+                self._session = s
+                self._object_id = object_id
+                self._session_id = s.session_id
+            elif session:
+                # If not, let's register this for creation later
+                # Only if this was explicitly created with a session
+                self._session = session
+                self._session.create_object_later(self)
+
+        elif s:
+            # If there's a session around, create this
+            self._session = s
+            s.create_object_later(self)
 
     def _init(self, session=None, tag=None, share_path=None):
         self._object_id = None
@@ -50,7 +75,7 @@ class Object(metaclass=ObjectMeta):
         # This interface is a bit TBD, let's think more about it
         obj = cls.new(session=session, share_path=path)
         if session:
-            session.register(obj)  # TODO: is this needed?
+            session.create_object_later(obj)
         return obj
 
 

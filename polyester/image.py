@@ -79,11 +79,8 @@ class Image(Object):
 
     def is_inside(self):
         # This is used from inside of containers to know whether this container is active or not
-        # TODO: it's a bit janky because we're assuming the existance of a session and touching its internals
-        assert self.session  # TODO: return False?
-        assert self.tag in self.session._created_tagged_objects  # TODO: return False?
-        image_id = self.session._created_tagged_objects[self.tag]
         env_image_id = os.getenv("POLYESTER_IMAGE_ID")
+        image_id = self.object_id
         logger.debug(f"Is image inside? env {env_image_id} image {image_id}")
         return env_image_id == image_id
 

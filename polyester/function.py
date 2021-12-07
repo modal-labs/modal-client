@@ -116,6 +116,7 @@ class Invocation:
 
     @staticmethod
     async def create(function_id, args, kwargs, session):
+        assert function_id
         request = api_pb2.FunctionMapRequest(function_id=function_id)
         response = await retry(session.client.stub.FunctionMap)(request)
 
