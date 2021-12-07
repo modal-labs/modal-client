@@ -11,7 +11,7 @@ from .config import config, logger
 from .function import Function
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIME_BUFFER, ChannelPool
 from .image import DebianSlim  # TODO: ugly
-from .object import Object, ObjectMeta
+from .object_meta import ObjectMeta
 from .proto import api_pb2
 from .serialization import Pickler, Unpickler
 from .session_state import SessionState
