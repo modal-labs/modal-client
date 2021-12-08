@@ -51,7 +51,7 @@ class Object(metaclass=ObjectMeta):
 
     async def _create_impl(self, session):
         # Overloaded in subclasses to do the actual logic
-        raise NotImplementedError
+        raise NotImplementedError(f"Object of class {type(self)} with tag {self.tag} has no _create_impl method")
 
     def set_object_id(self, object_id, session_id):
         self._object_id = object_id

@@ -73,8 +73,6 @@ async def _build_custom_image(session, base_images={}, context_files={}, dockerf
 
 class Image(Object):
     def __init__(self, session, tag):
-        if tag is None:
-            raise Exception("Every image needs a tag")
         super().__init__(tag=tag, session=session)
 
     def extend(self, arg):
@@ -138,7 +136,10 @@ class ImageFactory(Image):
         super().__init__(session=None, tag=tag)
 
     async def _create_impl(self, session):
-        image = self._fun()
+        if self._args is not None:
+            image = self._fun(*self._args, **self._kwargs)
+        else:
+            image = self._fun()
         image_id = await image._create_impl(session)
         # Note that we can "steal" the image id from the other image
         # and set it on this image. This is a general trick we can do
@@ -178,8 +179,8 @@ def debian_slim(extra_commands=None, python_packages=None, python_version=None):
     if python_version is None:
         python_version = get_python_version()
 
-    base_image = Image.use(None, f"python-{self.python_version}-slim-buster-base")
-    builder_image = Image.use(None, f"python-{self.python_version}-slim-buster-builder")
+    base_image = Image.use(None, f"python-{python_version}-slim-buster-base")
+    builder_image = Image.use(None, f"python-{python_version}-slim-buster-builder")
 
     if extra_commands is None and python_packages is None:
         return base_image
