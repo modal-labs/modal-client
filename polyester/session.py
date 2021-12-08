@@ -138,7 +138,6 @@ class Session:
             if obj._session is not None:  # TODO: ugly
                 obj.set_object_id(object_id, self.session_id)
             if obj.tag:
-                print(f"created a tagged object: {obj.tag} -> {object_id}")
                 self._created_tagged_objects[obj.tag] = object_id
         assert object_id
         return object_id
