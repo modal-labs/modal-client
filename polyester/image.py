@@ -75,9 +75,6 @@ class Image(Object):
     def __init__(self, session, tag):
         super().__init__(tag=tag, session=session)
 
-    def extend(self, arg):
-        return ExtendedImage(self._session, self, arg)
-
     def is_inside(self):
         # This is used from inside of containers to know whether this container is active or not
         env_image_id = os.getenv("POLYESTER_IMAGE_ID")
@@ -276,27 +273,4 @@ class DebianSlim(Image):
             session,
             dockerfile_commands=dockerfile_commands,
             base_images=base_images,
-        )
-
-
-class ExtendedImage(Image):
-    def __init__(self, session, base, arg):
-        if callable(arg):
-            tag = arg.__name__
-        else:
-            tag = get_sha256_hex_from_content(base.tag.encode("ascii") + b"/" + repr(arg).encode("ascii"))
-        self.base = base
-        self.arg = arg
-        super().__init__(session=session, tag=tag)
-
-    async def _create_impl(self, session):
-        build_instructions = ["FROM base"]
-        if callable(self.arg):
-            build_instructions += self.arg()
-        else:
-            build_instructions += self.arg
-        return await _build_custom_image(
-            session,
-            dockerfile_commands=build_instructions,
-            base_images={"base": self.base},
         )
