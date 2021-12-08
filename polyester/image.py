@@ -41,11 +41,19 @@ class CustomImage(Image):
 
     Needed to rewrite all the other subclasses to use composition instead of inheritance."""
 
-    def __init__(self, base_images={}, context_files={}, dockerfile_commands=[], must_create=False):
+    def __init__(
+        self,
+        base_images={},
+        context_files={},
+        dockerfile_commands=[],
+        must_create=False,
+        local_image_python_executable=None,
+    ):
         self._base_images = base_images
         self._context_files = context_files
         self._dockerfile_commands = dockerfile_commands
         self._must_create = must_create
+        self._local_image_python_executable = local_image_python_executable
         # Note that these objects have neither sessions nor tags
         # They rely on the factories for this
         super().__init__(session=None, tag=None)
@@ -67,6 +75,7 @@ class CustomImage(Image):
             base_images=base_images_pb2s,
             dockerfile_commands=dockerfile_commands,
             context_files=context_file_pb2s,
+            local_image_python_executable=self._local_image_python_executable,
         )
 
         req = api_pb2.ImageGetOrCreateRequest(
@@ -142,22 +151,10 @@ class ImageFactory(Image):
 image_factory = ImageFactory  # Make it look nice as a decorator
 
 
-class LocalImage(Image):
-    # TODO: merge this into CustomImage
-    def __init__(self, session, python_executable):
-        super().__init__(tag="local", session=session)
-        self.python_executable = python_executable
-
-    async def _create_impl(self, session):
-        image_definition = api_pb2.Image(
-            local_image_python_executable=self.python_executable,
-        )
-        req = api_pb2.ImageGetOrCreateRequest(
-            session_id=session.session_id,
-            image=image_definition,
-        )
-        resp = await session.client.stub.ImageGetOrCreate(req)
-        return resp.image_id
+@image_factory
+def local_image(python_executable):
+    """Only used for various integration tests."""
+    return CustomImage(local_image_python_executable=python_executable)
 
 
 @image_factory
