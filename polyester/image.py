@@ -140,7 +140,7 @@ class ImageFactory(Image):
             image = self._fun(*self._args, **self._kwargs)
         else:
             image = self._fun()
-        image_id = await image._create_impl(session)
+        image_id = await session.create_object(image)
         # Note that we can "steal" the image id from the other image
         # and set it on this image. This is a general trick we can do
         # to other objects too.
@@ -205,6 +205,10 @@ def debian_slim(extra_commands=None, python_packages=None, python_version=None):
         dockerfile_commands=dockerfile_commands,
         base_images=base_images,
     )
+
+
+def extend_image(base_image, extra_dockerfile_commands):
+    return CustomImage(base_images={"base": base_image}, dockerfile_commands=["FROM base"] + extra_dockerfile_commands)
 
 
 class DebianSlim(Image):
