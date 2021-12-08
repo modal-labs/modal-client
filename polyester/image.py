@@ -173,6 +173,39 @@ class LocalImage(Image):
         return resp.image_id
 
 
+@image_factory
+def debian_slim(extra_commands=None, python_packages=None, python_version=None):
+    if python_version is None:
+        python_version = get_python_version()
+
+    base_image = Image.use(None, f"python-{self.python_version}-slim-buster-base")
+    builder_image = Image.use(None, f"python-{self.python_version}-slim-buster-builder")
+
+    if extra_commands is None and python_packages is None:
+        return base_image
+
+    dockerfile_commands = ["FROM base as target"]
+    base_images = {"base": base_image}
+    if extra_commands is not None:
+        dockerfile_commands += ["RUN {cmd}" for cmd in extra_commands]
+
+    if python_packages is not None:
+        base_images["builder"] = builder_image
+        dockerfile_commands += [
+            "FROM builder as builder-vehicle",
+            f"RUN pip wheel {' '.join(python_packages)} -w /tmp/wheels",
+            "FROM target",
+            "COPY --from=builder-vehicle /tmp/wheels /tmp/wheels",
+            "RUN pip install /tmp/wheels/*",
+            "RUN rm -rf /tmp/wheels",
+        ]
+
+    return CustomImage(
+        dockerfile_commands=dockerfile_commands,
+        base_images=base_images,
+    )
+
+
 class DebianSlim(Image):
     # TODO: every time you extend this image, it registers a new image to be created
     # Eg if you extend it n time then you will create n images that will be built individually
