@@ -52,17 +52,17 @@ class CustomImage(Image):
 
     async def _create_impl(self, session):
         # Recursively build base images
-        base_image_ids = await asyncio.gather(*(session.create_object(image) for image in self.base_images.values()))
+        base_image_ids = await asyncio.gather(*(session.create_object(image) for image in self._base_images.values()))
         base_images_pb2s = [
             api_pb2.BaseImage(docker_tag=docker_tag, image_id=image_id)
-            for docker_tag, image_id in zip(base_images.keys(), base_image_ids)
+            for docker_tag, image_id in zip(self._base_images.keys(), base_image_ids)
         ]
 
         context_file_pb2s = [
-            api_pb2.ImageContextFile(filename=filename, data=data) for filename, data in self.context_files.items()
+            api_pb2.ImageContextFile(filename=filename, data=data) for filename, data in self._context_files.items()
         ]
 
-        dockerfile_commands = [_make_bytes(s) for s in self.dockerfile_commands]
+        dockerfile_commands = [_make_bytes(s) for s in self._dockerfile_commands]
         image_definition = api_pb2.Image(
             base_images=base_images_pb2s,
             dockerfile_commands=dockerfile_commands,
@@ -72,7 +72,7 @@ class CustomImage(Image):
         req = api_pb2.ImageGetOrCreateRequest(
             session_id=session.session_id,
             image=image_definition,
-            must_create=must_create,
+            must_create=self._must_create,
         )
         resp = await session.client.stub.ImageGetOrCreate(req)
         image_id = resp.image_id
@@ -195,71 +195,3 @@ def debian_slim(extra_commands=None, python_packages=None, python_version=None):
 
 def extend_image(base_image, extra_dockerfile_commands):
     return CustomImage(base_images={"base": base_image}, dockerfile_commands=["FROM base"] + extra_dockerfile_commands)
-
-
-class DebianSlim(Image):
-    # TODO: every time you extend this image, it registers a new image to be created
-    # Eg if you extend it n time then you will create n images that will be built individually
-    # The solution is either to
-    # (a) chain all images so they are based on the previous
-    # (b) have images without sessions that aren't built
-    def __init__(self, session=None, python_version=None, build_instructions=[]):
-        if python_version is None:
-            python_version = get_python_version()
-        else:
-            # We need to make sure that the version *inside* the image matches the version *outside*
-            # This is important or else image.is_inside() won't work
-            numbers = [int(z) for z in python_version.split(".")]
-            assert len(numbers) == 3
-
-        self.python_version = python_version
-        self.build_instructions = build_instructions
-        h = get_sha256_hex_from_content(repr(build_instructions).encode("ascii"))
-        tag = f"debian-slim-{python_version}-{h}"
-        super().__init__(tag=tag, session=session)
-
-    def add_python_packages(self, python_packages, find_links=None):
-        return DebianSlim(
-            self._session, self.python_version, self.build_instructions + [("py", (python_packages, find_links))]
-        )
-
-    def run_commands(self, commands):
-        return DebianSlim(self._session, self.python_version, self.build_instructions + [("cmd", commands)])
-
-    def copy_from_image(self, image, src, dest):
-        return DebianSlim(self._session, self.python_version, self.build_instructions + [("cp", (image, src, dest))])
-
-    async def _create_impl(self, session):
-        base_images = {
-            "builder": Image.use(session, f"python-{self.python_version}-slim-buster-builder"),
-            "base": Image.use(session, f"python-{self.python_version}-slim-buster-base"),
-        }
-        if not self.build_instructions:
-            return await session.create_object(base_images["base"])
-
-        dockerfile_commands = ["FROM base as target"]
-        for t, data in self.build_instructions:
-            if t == "py":
-                (packages, find_links) = data
-
-                find_links_arg = f"-f {find_links}" if find_links else ""
-
-                dockerfile_commands += [
-                    "FROM builder as builder-vehicle",
-                    f"RUN pip wheel {' '.join(packages)} -w /tmp/wheels {find_links_arg}",
-                    "FROM target",
-                    "COPY --from=builder-vehicle /tmp/wheels /tmp/wheels",
-                    "RUN pip install /tmp/wheels/*",
-                    "RUN rm -rf /tmp/wheels",
-                ]
-            elif t == "cmd":
-                dockerfile_commands += [f"RUN {cmd}" for cmd in data]
-            elif t == "cp":
-                image, src, dest = data
-                dockerfile_commands += [f"COPY --from={image} {src} {dest}"]
-
-        return await _build_custom_image(
-            session,
-            dockerfile_commands=dockerfile_commands,
-            base_images=base_images,
-        )
