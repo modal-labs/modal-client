@@ -24,53 +24,6 @@ def get_python_version():
     return config["image_python_version"] or "%d.%d.%d" % sys.version_info[:3]
 
 
-async def _build_custom_image(session, base_images={}, context_files={}, dockerfile_commands=[], must_create=False):
-    # Recursively build base images
-    base_image_ids = await asyncio.gather(*(session.create_object(image) for image in base_images.values()))
-    base_images_pb2s = [
-        api_pb2.BaseImage(docker_tag=docker_tag, image_id=image_id)
-        for docker_tag, image_id in zip(base_images.keys(), base_image_ids)
-    ]
-
-    context_file_pb2s = [
-        api_pb2.ImageContextFile(filename=filename, data=data) for filename, data in context_files.items()
-    ]
-
-    dockerfile_commands = [_make_bytes(s) for s in dockerfile_commands]
-    image_definition = api_pb2.Image(
-        base_images=base_images_pb2s,
-        dockerfile_commands=dockerfile_commands,
-        context_files=context_file_pb2s,
-    )
-
-    req = api_pb2.ImageGetOrCreateRequest(
-        session_id=session.session_id,
-        image=image_definition,
-        must_create=must_create,
-    )
-    resp = await session.client.stub.ImageGetOrCreate(req)
-    image_id = resp.image_id
-
-    logger.debug("Waiting for image %s" % image_id)
-    while True:
-        request = api_pb2.ImageJoinRequest(
-            image_id=image_id,
-            timeout=BLOCKING_REQUEST_TIMEOUT,
-            session_id=session.session_id,
-        )
-        response = await retry(session.client.stub.ImageJoin)(request, timeout=GRPC_REQUEST_TIMEOUT)
-        if not response.result.status:
-            continue
-        elif response.result.status == api_pb2.GenericResult.Status.FAILURE:
-            raise RemoteError(response.result.exception)
-        elif response.result.status == api_pb2.GenericResult.Status.SUCCESS:
-            break
-        else:
-            raise RemoteError("Unknown status %s!" % response.result.status)
-
-    return image_id
-
-
 class Image(Object):
     def __init__(self, session, tag):
         super().__init__(tag=tag, session=session)
@@ -98,14 +51,50 @@ class CustomImage(Image):
         super().__init__(session=None, tag=None)
 
     async def _create_impl(self, session):
-        # TODO: move the whole _build_custom_image function into this
-        return await _build_custom_image(
-            session,
-            base_images=self._base_images,
-            context_files=self._context_files,
-            dockerfile_commands=self._dockerfile_commands,
-            must_create=self._must_create,
+        # Recursively build base images
+        base_image_ids = await asyncio.gather(*(session.create_object(image) for image in self.base_images.values()))
+        base_images_pb2s = [
+            api_pb2.BaseImage(docker_tag=docker_tag, image_id=image_id)
+            for docker_tag, image_id in zip(base_images.keys(), base_image_ids)
+        ]
+
+        context_file_pb2s = [
+            api_pb2.ImageContextFile(filename=filename, data=data) for filename, data in self.context_files.items()
+        ]
+
+        dockerfile_commands = [_make_bytes(s) for s in self.dockerfile_commands]
+        image_definition = api_pb2.Image(
+            base_images=base_images_pb2s,
+            dockerfile_commands=dockerfile_commands,
+            context_files=context_file_pb2s,
         )
+
+        req = api_pb2.ImageGetOrCreateRequest(
+            session_id=session.session_id,
+            image=image_definition,
+            must_create=must_create,
+        )
+        resp = await session.client.stub.ImageGetOrCreate(req)
+        image_id = resp.image_id
+
+        logger.debug("Waiting for image %s" % image_id)
+        while True:
+            request = api_pb2.ImageJoinRequest(
+                image_id=image_id,
+                timeout=BLOCKING_REQUEST_TIMEOUT,
+                session_id=session.session_id,
+            )
+            response = await retry(session.client.stub.ImageJoin)(request, timeout=GRPC_REQUEST_TIMEOUT)
+            if not response.result.status:
+                continue
+            elif response.result.status == api_pb2.GenericResult.Status.FAILURE:
+                raise RemoteError(response.result.exception)
+            elif response.result.status == api_pb2.GenericResult.Status.SUCCESS:
+                break
+            else:
+                raise RemoteError("Unknown status %s!" % response.result.status)
+
+        return image_id
 
 
 class ImageFactory(Image):

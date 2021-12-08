@@ -12,42 +12,33 @@ from typing import Dict, Sequence
 import synchronicity
 from aiostream import stream
 
-from polyester import Image, Session
-from polyester.image import _build_custom_image
+from polyester import Session
+from polyester.image import CustomImage, image_factory
 
 synchronizer = synchronicity.Synchronizer()
 
 session = Session()
 
 
-class PyMCImage(Image):
-    def __init__(self, session):
-        super().__init__(tag="pymc-image", session=session)
-
-    async def _create_impl(self):
-        dockerfile_commands = [
-            "FROM base",
-            'SHELL ["/bin/bash", "-c"]',
-            "RUN conda info",
-            "RUN echo $0 \ ",
-            "&& . /root/.bashrc \ ",
-            "&& conda activate base \ ",
-            "&& conda info \ ",
-            "&& conda install theano-pymc==1.1.2 pymc3==3.11.2 scikit-learn --yes \ ",
-        ]
-
-        return await _build_custom_image(
-            self.session.client,
-            self.session,
-            self.tag,
-            dockerfile_commands=dockerfile_commands,
-            base_images={"base": Image.use(self.session, "conda")},
-        )
+@image_factory
+def pymc_image():
+    dockerfile_commands = [
+        "FROM base",
+        'SHELL ["/bin/bash", "-c"]',
+        "RUN conda info",
+        "RUN echo $0 \ ",
+        "&& . /root/.bashrc \ ",
+        "&& conda activate base \ ",
+        "&& conda info \ ",
+        "&& conda install theano-pymc==1.1.2 pymc3==3.11.2 scikit-learn --yes \ ",
+    ]
+    return CustomImage(
+        dockerfile_commands=dockerfile_commands,
+        base_images={"base": Image.use(self.session, "conda")},
+    )
 
 
-image = PyMCImage(session=session)
-
-if image.is_inside():
+if pymc_image.is_inside():
     import numpy as np
     from fastprogress.fastprogress import progress_bar
     from pymc3 import theanof
@@ -89,7 +80,7 @@ def rebuild_exc(exc, tb):
     return exc
 
 
-@session.generator(image=image)
+@session.generator(image=pymc_image)
 def sample_process(
     draws: int,
     tune: int,
