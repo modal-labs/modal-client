@@ -73,6 +73,7 @@ class Object(metaclass=ObjectMeta):
         # TODO: this is a bit ugly, because it circumvents the contructor, which means
         # it might not always work (eg you can't do DebianSlim.use("foo"))
         # This interface is a bit TBD, let's think more about it
+        # TODO: session should be a 2nd optional arg
         obj = cls.new(session=session, share_path=path)
         if session:
             session.create_object_later(obj)

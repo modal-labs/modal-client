@@ -1,4 +1,7 @@
 import asyncio
+import functools
+import inspect
+import json
 import os
 import sys
 from typing import Dict
@@ -85,7 +88,75 @@ class Image(Object):
         return image_id is not None and env_image_id == image_id
 
 
+class CustomImage(Image):
+    """This might be a temporary thing until we can simplify other code.
+
+    Needed to rewrite all the other subclasses to use composition instead of inheritance."""
+
+    def __init__(self, base_images={}, context_files={}, dockerfile_commands=[], must_create=False):
+        self._base_images = base_images
+        self._context_files = context_files
+        self._dockerfile_commands = dockerfile_commands
+        self._must_create = must_create
+        # Note that these objects have neither sessions nor tags
+        # They rely on the factories for this
+        super().__init__(session=None, tag=None)
+
+    async def _create_impl(self, session):
+        # TODO: move the whole _build_custom_image function into this
+        return await _build_custom_image(
+            session,
+            base_images=self._base_images,
+            context_files=self._context_files,
+            dockerfile_commands=self._dockerfile_commands,
+            must_create=self._must_create,
+        )
+
+
+class ImageFactory(Image):
+    """Acts as a wrapper for a transient Image object.
+
+    Puts a tag and optionally a session on it. Otherwise just "steals" the image id from the
+    underlying image at construction time.
+    """
+
+    def __init__(self, fun, args=None, kwargs=None):  # TODO: session?
+        self._fun = fun
+        self._args = args
+        self._kwargs = kwargs
+        # TODO: merge code with FunctionInfo, get module name too
+        # TODO: break this out into a utility function
+        if self._args is not None:
+            args = inspect.signature(fun).bind(*self._args, **self._kwargs)
+            args.apply_defaults()
+            args = list(args.arguments.values())
+            args = json.dumps(args)
+            args = "(" + args[1:-1] + ")"  # replace the outer [] with ()
+            tag = fun.__name__ + args
+        else:
+            tag = fun.__name__
+        super().__init__(session=None, tag=tag)
+
+    async def _create_impl(self, session):
+        image = self._fun()
+        image_id = await image._create_impl(session)
+        # Note that we can "steal" the image id from the other image
+        # and set it on this image. This is a general trick we can do
+        # to other objects too.
+        return image_id
+
+    def __call__(self, *args, **kwargs):
+        """Binds arguments to this image."""
+        assert self._args is None
+        assert self._kwargs is None
+        return ImageFactory(self._fun, args=args, kwargs=kwargs)
+
+
+image_factory = ImageFactory  # Make it look nice as a decorator
+
+
 class LocalImage(Image):
+    # TODO: merge this into CustomImage
     def __init__(self, session, python_executable):
         super().__init__(tag="local", session=session)
         self.python_executable = python_executable
@@ -191,37 +262,3 @@ class ExtendedImage(Image):
             dockerfile_commands=build_instructions,
             base_images={"base": self.base},
         )
-
-
-class CustomImage(Image):
-    """This is a stopgap class while will eventually become the Image class.
-
-    Needed to rewrite all the other subclasses to use composition instead of inheritance."""
-
-    def __init__(self, local_id, base_images={}, context_files={}, dockerfile_commands=[], must_create=False):
-        self._local_id = local_id
-        self._base_images = base_images
-        self._context_files = context_files
-        self._dockerfile_commands = dockerfile_commands
-        self._must_create = must_create
-        # super(Image, self).__init__(
-
-    async def _create_impl(self, session):
-        # TODO: move the whole _build_custom_image function into this
-        return await _build_custom_image(
-            session,
-            local_id=self._local_id,
-            base_images=self._base_images,
-            context_files=self._context_files,
-            dockerfile_commands=self._dockerfile_commands,
-            must_create=self._must_create,
-        )
-
-
-class ImageFactory(Image):
-    def __init__(self, fun):
-        self._fun = fun
-
-    async def _create_impl(self, session):
-        image = self._fun()
-        return await image._create_impl(session)
