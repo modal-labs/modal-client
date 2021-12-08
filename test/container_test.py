@@ -3,7 +3,7 @@ import time
 
 import pytest
 
-from polyester import Client, DebianSlim, Session
+from polyester import Client, Session, debian_slim
 from polyester.container_entrypoint import main
 from polyester.function import Function, pack_input_buffer_item
 from polyester.proto import api_pb2
@@ -52,7 +52,7 @@ async def _run_container(servicer, module_name, function_name):
         )
 
         servicer.object_ids = {
-            DebianSlim(Session()).tag: "1",
+            debian_slim.tag: "1",
             "polyester.test_support.square": "2",
             "polyester.test_support.square_sync_returning_async": "3",
             "polyester.test_support.square_async": "4",
