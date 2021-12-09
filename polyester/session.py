@@ -135,11 +135,12 @@ class Session:
             else:
                 # This is something created locally
                 object_id = await obj._create_impl(self)
+            if object_id is None:
+                raise Exception(f"object_id for object of type {type(obj)} is None")
             if obj._session is not None:  # TODO: ugly
                 obj.set_object_id(object_id, self.session_id)
             if obj.tag:
                 self._created_tagged_objects[obj.tag] = object_id
-        assert object_id
         return object_id
 
     async def flush_objects(self):

@@ -171,7 +171,7 @@ def debian_slim(extra_commands=None, python_packages=None, python_version=None):
     dockerfile_commands = ["FROM base as target"]
     base_images = {"base": base_image}
     if extra_commands is not None:
-        dockerfile_commands += ["RUN {cmd}" for cmd in extra_commands]
+        dockerfile_commands += [f"RUN {cmd}" for cmd in extra_commands]
 
     if python_packages is not None:
         base_images["builder"] = builder_image

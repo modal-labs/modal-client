@@ -24,7 +24,7 @@ def print_logs(output: bytes, fd: str, stdout=None, stderr=None):
         buf = stderr or get_buffer(sys.stderr)
         color = colorama.Fore.YELLOW.encode()
     else:
-        raise Exception("weird fd for log output")
+        raise Exception(f"weird fd {fd} for log output")
 
     if buf.isatty():
         buf.write(color)
