@@ -106,6 +106,6 @@ class Mount(Object):
         return mount_id
 
 
-def create_package_mounts(package_name, session):
+def create_package_mounts(package_name):
     mount_infos = get_package_deps_mount_info(package_name)
-    return [Mount(session, path, f"/pkg/{name}", condition) for (name, path, condition) in mount_infos]
+    return [Mount(path, f"/pkg/{name}", condition) for (name, path, condition) in mount_infos]
