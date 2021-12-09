@@ -1,7 +1,5 @@
 import asyncio
 import functools
-import inspect
-import json
 import os
 import sys
 from typing import Dict
@@ -9,6 +7,7 @@ from typing import Dict
 from .async_utils import retry
 from .config import config, logger
 from .exception import RemoteError
+from .function_utils import FunctionInfo
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .mount import get_sha256_hex_from_content  # TODO: maybe not
 from .object import Object, requires_create
@@ -117,17 +116,8 @@ class ImageFactory(Image):
         self._fun = fun
         self._args = args
         self._kwargs = kwargs
-        # TODO: merge code with FunctionInfo, get module name too
-        # TODO: break this out into a utility function
-        if self._args is not None:
-            args = inspect.signature(fun).bind(*self._args, **self._kwargs)
-            args.apply_defaults()
-            args = list(args.arguments.values())
-            args = json.dumps(args)
-            args = "(" + args[1:-1] + ")"  # replace the outer [] with ()
-            tag = fun.__name__ + args
-        else:
-            tag = fun.__name__
+        function_info = FunctionInfo(fun)
+        tag = function_info.get_tag(args, kwargs)
         super().__init__(session=None, tag=tag)
 
     async def _create_impl(self, session):

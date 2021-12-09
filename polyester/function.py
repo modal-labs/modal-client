@@ -1,5 +1,4 @@
 import asyncio
-import inspect
 import os
 import sys
 import uuid
@@ -11,59 +10,13 @@ from google.protobuf.any_pb2 import Any
 
 from .async_utils import retry
 from .buffer_utils import buffered_rpc_read, buffered_rpc_write
-from .client import Client
 from .config import config, logger
 from .exception import RemoteError
+from .function_utils import FunctionInfo
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
-from .mount import Mount, create_package_mounts
+from .mount import create_package_mounts
 from .object import Object, requires_create, requires_create_generator
 from .proto import api_pb2
-from .queue import Queue
-
-
-class FunctionInfo:
-    def __init__(self, f):
-        self.function_name = f.__name__
-        self.function_serialized = None
-        module = inspect.getmodule(f)
-        if module.__package__:
-            # This is a "real" module, eg. examples.logs.f
-            # Get the package path
-            # Note: __import__ always returns the top-level package.
-            package_path = __import__(module.__package__).__path__
-            # TODO: we should handle the array case, https://stackoverflow.com/questions/2699287/what-is-path-useful-for
-            assert len(package_path) == 1
-            (self.package_path,) = package_path
-            self.module_name = module.__spec__.name
-            self.recursive_upload = True
-            self.remote_dir = "/root/" + module.__package__.split(".")[0]  # TODO: don't hardcode /root
-            self.definition_type = api_pb2.Function.DefinitionType.FILE
-        elif hasattr(module, "__file__"):
-            # This generally covers the case where it's invoked with
-            # python foo/bar/baz.py
-            self.module_name = os.path.splitext(os.path.basename(module.__file__))[0]
-            self.package_path = os.path.dirname(module.__file__)
-            self.recursive_upload = False  # Just pick out files in the same directory
-            self.remote_dir = "/root"  # TODO: don't hardcore /root
-            self.definition_type = api_pb2.Function.DefinitionType.FILE
-        else:
-            # Use cloudpickle. Used when working w/ Jupyter notebooks.
-            self.function_serialized = cloudpickle.dumps(f)
-            logger.info(f"Serializing {f.__name__}, size is {len(self.function_serialized)}")
-            self.module_name = None
-            self.package_path = os.path.abspath("")  # get current dir
-            self.recursive_upload = False  # Just pick out files in the same directory
-            self.remote_dir = "/root"  # TODO: don't hardcore /root
-            self.definition_type = api_pb2.Function.DefinitionType.SERIALIZED
-
-    def get_mount(self, session):
-        return Mount(
-            session=session,
-            local_dir=self.package_path,
-            remote_dir=self.remote_dir,
-            condition=lambda filename: os.path.splitext(filename)[1] in [".py", ".ipynb"],
-            recursive=self.recursive_upload,
-        )
 
 
 # TODO: maybe we can create a special Buffer class in the ORM that keeps track of the protobuf type
@@ -228,7 +181,7 @@ class Function(Object):
         self.gpu = gpu
 
     async def _create_impl(self, session):
-        mounts = [self.info.get_mount(session)]
+        mounts = [self.info.get_mount()]
         if config["sync_entrypoint"] and not os.getenv("POLYESTER_IMAGE_LOCAL_ID"):
             # TODO(erikbern): If the first condition is true then we're running in a local
             # client which implies the second is always true as well?
