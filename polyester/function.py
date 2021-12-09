@@ -4,7 +4,6 @@ import sys
 import uuid
 import warnings
 
-import cloudpickle
 from aiostream import pipe, stream
 from google.protobuf.any_pb2 import Any
 

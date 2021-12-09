@@ -2,6 +2,9 @@ import inspect
 import json
 import os
 
+import cloudpickle
+
+from .config import logger
 from .mount import Mount
 from .proto import api_pb2
 
