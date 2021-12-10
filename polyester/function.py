@@ -234,6 +234,12 @@ class Function(Object):
         invocation = await Invocation.create(self.object_id, args, kwargs, self._session)
         return await invocation.run_function()
 
+    @requires_create
+    async def invoke_function(self, args, kwargs):
+        """Returns a future rather than the result directly"""
+        invocation = await Invocation.create(self.object_id, args, kwargs, self._session)
+        return invocation.run_function()
+
     @requires_create_generator
     async def call_generator(self, args, kwargs):
         invocation = await Invocation.create(self.object_id, args, kwargs, self._session)
@@ -245,6 +251,12 @@ class Function(Object):
             return self.call_generator(args, kwargs)
         else:
             return self.call_function(args, kwargs)
+
+    def invoke(self, *args, **kwargs):
+        if self.is_generator:
+            return self.call_generator(args, kwargs)
+        else:
+            return self.invoke_function(args, kwargs)
 
     def get_raw_f(self):
         return self.raw_f
