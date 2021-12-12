@@ -10,8 +10,8 @@ from .proto import api_pb2
 
 
 class Dict(Object):
-    def __init__(self, session, data={}, tag=None):
-        super().__init__(session=session, tag=tag)
+    def __init__(self, session, data={}):
+        super().__init__(session=session)
         self.data = data
 
     def _serialize_dict(self, session, data):
