@@ -115,6 +115,11 @@ def requires_create(method):
 
 
 def make_factory(cls):
+    """Takes an Object subclass and creates a factory subclass of it.
+
+    Factories work as "named promises"."""
+    # TODO: is there some nicer way we could do this rather than creating a class inside a function?
+    # Maybe we could use the ObjectMeta meta class?
     assert issubclass(cls, Object)
 
     class Factory(cls):
