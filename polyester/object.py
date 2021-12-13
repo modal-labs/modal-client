@@ -135,7 +135,7 @@ def make_factory(cls):
             self._kwargs = kwargs
             function_info = FunctionInfo(fun)
             tag = function_info.get_tag(args, kwargs)
-            super().__init__(session=None, tag=tag)
+            Object.__init__(self, session=None, tag=tag)
 
         async def _create_impl(self, session):
             if self._args is not None:
