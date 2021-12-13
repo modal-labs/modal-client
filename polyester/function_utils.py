@@ -50,10 +50,11 @@ class FunctionInfo:
 
         self.condition = lambda filename: os.path.splitext(filename)[1] in [".py", ".ipynb"]
 
-    def get_tag(self, args, kwargs):
+    def get_tag(self, args_and_kwargs):
         # TODO: merge code with FunctionInfo, get module name too
         # TODO: break this out into a utility function
-        if args is not None:
+        if args_and_kwargs is not None:
+            args, kwargs = args_and_kwargs
             args = self.signature.bind(*args, **kwargs)
             args.apply_defaults()
             args = list(args.arguments.values())

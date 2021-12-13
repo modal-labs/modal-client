@@ -129,17 +129,17 @@ def make_factory(cls):
         underlying object at construction time.
         """
 
-        def __init__(self, fun, args=None, kwargs=None):  # TODO: session?
+        def __init__(self, fun, args_and_kwargs=None):  # TODO: session?
             self._fun = fun
-            self._args = args
-            self._kwargs = kwargs
+            self._args_and_kwargs = args_and_kwargs
             function_info = FunctionInfo(fun)
-            tag = function_info.get_tag(args, kwargs)
+            tag = function_info.get_tag(args_and_kwargs)
             Object.__init__(self, session=None, tag=tag)
 
         async def _create_impl(self, session):
-            if self._args is not None:
-                object = self._fun(*self._args, **self._kwargs)
+            if self._args_and_kwargs is not None:
+                args, kwargs = self._args_and_kwargs
+                object = self._fun(*args, **kwargs)
             else:
                 object = self._fun()
             assert isinstance(object, cls)
@@ -151,9 +151,8 @@ def make_factory(cls):
 
         def __call__(self, *args, **kwargs):
             """Binds arguments to this object."""
-            assert self._args is None
-            assert self._kwargs is None
-            return Factory(self._fun, args=args, kwargs=kwargs)
+            assert self._args_and_kwargs is None
+            return Factory(self._fun, args_and_kwargs=(args, kwargs))
 
     # Meant to be used as a decorator
     return Factory
