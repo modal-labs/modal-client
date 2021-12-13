@@ -8,6 +8,7 @@ import warnings
 from .async_utils import TaskContext, retry, synchronizer
 from .client import Client
 from .config import config, logger
+from .decorator_utils import decorator_with_options
 from .function import Function
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIME_BUFFER, ChannelPool
 from .image import debian_slim  # TODO: ugly
@@ -71,19 +72,11 @@ class Session:
             )
         self._pending_create_objects.append(obj)
 
+    @decorator_with_options
     def function(self, raw_f=None, image=None, env_dict=None, is_generator=False, gpu=False):
         if image is None:
             image = debian_slim
-
-        def decorate(raw_f):
-            return Function(self, raw_f, image=image, env_dict=env_dict, is_generator=is_generator, gpu=gpu)
-
-        if raw_f is None:
-            # called like @session.function(x=y)
-            return decorate
-        else:
-            # called like @session.function
-            return decorate(raw_f)
+        return Function(self, raw_f, image=image, env_dict=env_dict, is_generator=is_generator, gpu=gpu)
 
     def generator(self, *args, **kwargs):
         kwargs = dict(is_generator=True, **kwargs)
