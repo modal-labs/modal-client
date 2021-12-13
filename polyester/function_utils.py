@@ -5,7 +5,6 @@ import os
 import cloudpickle
 
 from .config import logger
-from .mount import Mount
 from .proto import api_pb2
 
 
@@ -28,7 +27,7 @@ class FunctionInfo:
             assert len(package_path) == 1
             (self.package_path,) = package_path
             self.module_name = module.__spec__.name
-            self.recursive_upload = True
+            self.recursive = True
             self.remote_dir = "/root/" + module.__package__.split(".")[0]  # TODO: don't hardcode /root
             self.definition_type = api_pb2.Function.DefinitionType.FILE
         elif hasattr(module, "__file__"):
@@ -36,7 +35,7 @@ class FunctionInfo:
             # python foo/bar/baz.py
             self.module_name = os.path.splitext(os.path.basename(module.__file__))[0]
             self.package_path = os.path.dirname(module.__file__)
-            self.recursive_upload = False  # Just pick out files in the same directory
+            self.recursive = False  # Just pick out files in the same directory
             self.remote_dir = "/root"  # TODO: don't hardcore /root
             self.definition_type = api_pb2.Function.DefinitionType.FILE
         else:
@@ -45,17 +44,11 @@ class FunctionInfo:
             logger.info(f"Serializing {f.__name__}, size is {len(self.function_serialized)}")
             self.module_name = None
             self.package_path = os.path.abspath("")  # get current dir
-            self.recursive_upload = False  # Just pick out files in the same directory
+            self.recursive = False  # Just pick out files in the same directory
             self.remote_dir = "/root"  # TODO: don't hardcore /root
             self.definition_type = api_pb2.Function.DefinitionType.SERIALIZED
 
-    def get_mount(self):
-        return Mount(
-            local_dir=self.package_path,
-            remote_dir=self.remote_dir,
-            condition=lambda filename: os.path.splitext(filename)[1] in [".py", ".ipynb"],
-            recursive=self.recursive_upload,
-        )
+        self.condition = lambda filename: os.path.splitext(filename)[1] in [".py", ".ipynb"]
 
     def get_tag(self, args, kwargs):
         # TODO: merge code with FunctionInfo, get module name too

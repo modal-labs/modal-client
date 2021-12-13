@@ -3,6 +3,7 @@ import functools
 import inspect
 
 from .config import logger
+from .function_utils import FunctionInfo
 from .object_meta import ObjectMeta
 from .session_singleton import get_session_singleton
 from .session_state import SessionState
@@ -111,3 +112,43 @@ def requires_create(method):
         return await method(self, *args, **kwargs)
 
     return wrapped_method
+
+
+def make_factory(cls):
+    assert issubclass(cls, Object)
+
+    class Factory(cls):
+        """Acts as a wrapper for a transient Object.
+
+        Puts a tag and optionally a session on it. Otherwise just "steals" the object id from the
+        underlying object at construction time.
+        """
+
+        def __init__(self, fun, args=None, kwargs=None):  # TODO: session?
+            self._fun = fun
+            self._args = args
+            self._kwargs = kwargs
+            function_info = FunctionInfo(fun)
+            tag = function_info.get_tag(args, kwargs)
+            super().__init__(session=None, tag=tag)
+
+        async def _create_impl(self, session):
+            if self._args is not None:
+                object = self._fun(*self._args, **self._kwargs)
+            else:
+                object = self._fun()
+            assert isinstance(object, cls)
+            object_id = await session.create_object(object)
+            # Note that we can "steal" the object id from the other object
+            # and set it on this object. This is a general trick we can do
+            # to other objects too.
+            return object_id
+
+        def __call__(self, *args, **kwargs):
+            """Binds arguments to this object."""
+            assert self._args is None
+            assert self._kwargs is None
+            return Factory(self._fun, args=args, kwargs=kwargs)
+
+    # Meant to be used as a decorator
+    return Factory

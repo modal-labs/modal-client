@@ -7,10 +7,9 @@ from typing import Dict
 from .async_utils import retry
 from .config import config, logger
 from .exception import RemoteError
-from .function_utils import FunctionInfo
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .mount import get_sha256_hex_from_content  # TODO: maybe not
-from .object import Object, requires_create
+from .object import Object, make_factory, requires_create
 from .proto import api_pb2
 
 
@@ -105,40 +104,7 @@ class CustomImage(Image):
         return image_id
 
 
-class ImageFactory(Image):
-    """Acts as a wrapper for a transient Image object.
-
-    Puts a tag and optionally a session on it. Otherwise just "steals" the image id from the
-    underlying image at construction time.
-    """
-
-    def __init__(self, fun, args=None, kwargs=None):  # TODO: session?
-        self._fun = fun
-        self._args = args
-        self._kwargs = kwargs
-        function_info = FunctionInfo(fun)
-        tag = function_info.get_tag(args, kwargs)
-        super().__init__(session=None, tag=tag)
-
-    async def _create_impl(self, session):
-        if self._args is not None:
-            image = self._fun(*self._args, **self._kwargs)
-        else:
-            image = self._fun()
-        image_id = await session.create_object(image)
-        # Note that we can "steal" the image id from the other image
-        # and set it on this image. This is a general trick we can do
-        # to other objects too.
-        return image_id
-
-    def __call__(self, *args, **kwargs):
-        """Binds arguments to this image."""
-        assert self._args is None
-        assert self._kwargs is None
-        return ImageFactory(self._fun, args=args, kwargs=kwargs)
-
-
-image_factory = ImageFactory  # Make it look nice as a decorator
+image_factory = make_factory(Image)  # Decorator
 
 
 @image_factory

@@ -13,7 +13,7 @@ from .config import config, logger
 from .exception import RemoteError
 from .function_utils import FunctionInfo
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
-from .mount import create_package_mounts
+from .mount import Mount, create_package_mounts
 from .object import Object, requires_create, requires_create_generator
 from .proto import api_pb2
 
@@ -180,7 +180,14 @@ class Function(Object):
         self.gpu = gpu
 
     async def _create_impl(self, session):
-        mounts = [self.info.get_mount()]
+        mounts = [
+            Mount(
+                local_dir=self.info.package_path,
+                remote_dir=self.info.remote_dir,
+                recursive=self.info.recursive,
+                condition=self.info.condition,
+            )
+        ]
         if config["sync_entrypoint"] and not os.getenv("POLYESTER_IMAGE_LOCAL_ID"):
             # TODO(erikbern): If the first condition is true then we're running in a local
             # client which implies the second is always true as well?
