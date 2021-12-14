@@ -3,6 +3,7 @@ import functools
 import inspect
 
 from .config import logger
+from .decorator_utils import decorator_with_options
 from .function_utils import FunctionInfo
 from .object_meta import ObjectMeta
 from .session_singleton import get_session_singleton
@@ -129,12 +130,13 @@ def make_factory(cls):
         underlying object at construction time.
         """
 
-        def __init__(self, fun, args_and_kwargs=None):  # TODO: session?
+        def __init__(self, fun, session, args_and_kwargs=None):  # TODO: session?
             self._fun = fun
             self._args_and_kwargs = args_and_kwargs
+            self._session = session
             function_info = FunctionInfo(fun)
             tag = function_info.get_tag(args_and_kwargs)
-            Object.__init__(self, session=None, tag=tag)
+            Object.__init__(self, session=session, tag=tag)
 
         async def _create_impl(self, session):
             if self._args_and_kwargs is not None:
@@ -152,7 +154,10 @@ def make_factory(cls):
         def __call__(self, *args, **kwargs):
             """Binds arguments to this object."""
             assert self._args_and_kwargs is None
-            return Factory(self._fun, args_and_kwargs=(args, kwargs))
+            return Factory(self._fun, self._session, args_and_kwargs=(args, kwargs))
 
-    # Meant to be used as a decorator
-    return Factory
+    @decorator_with_options
+    def factory_decorator(fun, session=None):
+        return Factory(fun, session)
+
+    return factory_decorator

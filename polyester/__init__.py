@@ -3,5 +3,5 @@ from .dict import Dict
 from .env_dict import EnvDict, env_dict_factory
 from .exception import RemoteError
 from .image import debian_slim, extend_image, image_factory
-from .queue import Queue
+from .queue import Queue, queue_factory
 from .session import Session

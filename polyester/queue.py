@@ -5,13 +5,13 @@ from typing import Any, List
 from .async_utils import retry, synchronizer
 from .client import Client
 from .config import logger
-from .object import Object, requires_create
+from .object import Object, make_factory, requires_create
 from .proto import api_pb2
 
 
 class Queue(Object):
-    def __init__(self, session, tag=None):
-        super().__init__(session, tag)
+    def __init__(self, session=None):
+        super().__init__(session=session)
 
     async def _create_impl(self, session):
         """This creates a queue on the server and returns its id."""
@@ -61,3 +61,6 @@ class Queue(Object):
     @requires_create
     async def put(self, v):
         return await self.put_many([v])
+
+
+queue_factory = make_factory(Queue)
