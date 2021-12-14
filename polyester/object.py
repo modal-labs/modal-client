@@ -24,8 +24,9 @@ class Object(metaclass=ObjectMeta):
         if tag is not None:
             # See if we can populate this with an object id
             # (this happens if we're inside the container)
-            # TODO: tag is only ever set when created from a Factory (see below)
-            # so we could probably make this constructor "private"
+            # TODO: tag is only ever set when (a) created from a Factory (see below)
+            # and (b) created from a Function: maybe this could be a separate
+            # constructor method.
             if s:
                 object_id = s.get_object_id_by_tag(tag)
             else:
