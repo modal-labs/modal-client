@@ -16,20 +16,21 @@ class ProgressSpinner:
     def update(self, text):
         self._spinner.text = colorama.Fore.WHITE + text + colorama.Style.RESET_ALL
 
-    def _hide_prev(self):
-        self._spinner.hide()
-        for substep in self._substeps:
-            substep.hide()
+    def _ok_prev(self):
+        num_lines = len(self._substeps)
+        sys.stdout.write(f"\r\033[{num_lines}A")
+        sys.stdout.write("\033[J")
 
-    def _show_prev(self):
-        self._spinner.show()
         self._spinner.ok()
         for substep in self._substeps:
-            substep.show()
             substep.ok(" ")
 
     def substep(self, text):
-        self._hide_prev()
+        if self._substeps:
+            prev_substep = self._substeps[-1]
+            prev_substep.ok(" ")
+        else:
+            self._spinner.ok()
         text = colorama.Fore.BLUE + "\t" + text + colorama.Style.RESET_ALL
         substep = yaspin(color="blue", text=text)
         substep.start()
@@ -40,7 +41,7 @@ class ProgressSpinner:
         if self._spinner:
             if prev_text:
                 self.update(prev_text)
-            self._show_prev()
+            self._ok_prev()
             self._substeps = []
         self._spinner = yaspin(color="white", timer=True)
         self._spinner.start()
@@ -51,7 +52,7 @@ class ProgressSpinner:
 
     def stop(self, text):
         self.update(text)
-        self._show_prev()
+        self._ok_prev()
 
 
 def get_buffer(handle):
