@@ -118,7 +118,10 @@ class Session:
         Will write the object id to the object
         """
         if obj.tag:
-            self._progress.substep(f"Creating {obj.tag}...")
+            self._progress.set_substep_text(f"Creating {obj.tag}...", obj.tag)
+            import time
+
+            time.sleep(1)
         if obj.tag is not None and obj.tag in self._created_tagged_objects:
             # TODO: should we write the object id onto the object?
             return self._created_tagged_objects[obj.tag]
@@ -198,14 +201,15 @@ class Session:
             # Start tracking logs and yield context
             async with TaskContext(grace=1.0) as tc:
                 self._progress = ProgressSpinner()
+                self._progress.step("Initializing...", "Initialized.")
                 get_logs_closure = functools.partial(self._get_logs, stdout, stderr)
                 functools.update_wrapper(get_logs_closure, self._get_logs)  # Needed for debugging tasks
                 tc.infinite_loop(get_logs_closure)
 
-                self._progress.step("Creating objects...")
+                self._progress.step("Creating objects...", "Created objects.")
                 # Create all members
                 await self.flush_objects()
-                self._progress.step("Running session...", "Created objects.")
+                self._progress.step("Running session...", "Session completed.")
 
                 # Create the session (and send a list of all tagged obs)
                 req = api_pb2.SessionSetObjectsRequest(
@@ -222,12 +226,12 @@ class Session:
             logger.debug("Stopping the session server-side")
             req = api_pb2.SessionStopRequest(session_id=self.session_id)
             await self.client.stub.SessionStop(req)
-            self._progress.step("Draining logs...", "Session completed.")
+            self._progress.step("Draining logs...", "Finished draining logs.")
 
             # Fetch any straggling logs
             logger.debug("Draining logs")
             await self._get_logs(stdout, stderr, draining=True, timeout=config["logs_timeout"])
-            self._progress.stop("Finished draining logs.")
+            self._progress.stop()
         finally:
             if self.state == SessionState.RUNNING:
                 logger.warn("Stopping running session...")
