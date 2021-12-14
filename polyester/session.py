@@ -73,14 +73,12 @@ class Session:
         self._pending_create_objects.append(obj)
 
     @decorator_with_options
-    def function(self, raw_f=None, image=None, env_dict=None, is_generator=False, gpu=False):
-        if image is None:
-            image = debian_slim
-        return Function(self, raw_f, image=image, env_dict=env_dict, is_generator=is_generator, gpu=gpu)
+    def function(self, raw_f=None, image=debian_slim, env_dict=None, gpu=False):
+        return Function(self, raw_f, image=image, env_dict=env_dict, is_generator=False, gpu=gpu)
 
-    def generator(self, *args, **kwargs):
-        kwargs = dict(is_generator=True, **kwargs)
-        return self.function(*args, **kwargs)
+    @decorator_with_options
+    def generator(self, raw_f=None, image=debian_slim, env_dict=None, gpu=False):
+        return Function(self, raw_f, image=image, env_dict=env_dict, is_generator=True, gpu=gpu)
 
     async def _get_logs(self, stdout, stderr, draining=False, timeout=BLOCKING_REQUEST_TIMEOUT):
         request = api_pb2.SessionGetLogsRequest(session_id=self.session_id, timeout=timeout, draining=draining)
