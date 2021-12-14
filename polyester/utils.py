@@ -2,6 +2,56 @@ import io
 import sys
 
 import colorama
+from yaspin import yaspin
+
+
+class ProgressSpinner:
+    """Just a wrapper around yaspin."""
+
+    def __init__(self):
+        self._spinner = None
+        self._substeps = []
+        self.step("Starting up...")
+
+    def update(self, text):
+        self._spinner.text = colorama.Fore.WHITE + text + colorama.Style.RESET_ALL
+
+    def _hide_prev(self):
+        self._spinner.hide()
+        for substep in self._substeps:
+            substep.hide()
+
+    def _show_prev(self):
+        self._spinner.show()
+        self._spinner.ok()
+        for substep in self._substeps:
+            substep.show()
+            substep.ok(" ")
+
+    def substep(self, text):
+        self._hide_prev()
+        text = colorama.Fore.BLUE + "\t" + text + colorama.Style.RESET_ALL
+        substep = yaspin(color="blue", text=text)
+        substep.start()
+        self._substeps.append(substep)
+
+    def step(self, text, prev_text=None):
+        """OK the previous stage of the spinner and start a new one."""
+        if self._spinner:
+            if prev_text:
+                self.update(prev_text)
+            self._show_prev()
+            self._substeps = []
+        self._spinner = yaspin(color="white", timer=True)
+        self._spinner.start()
+        self.update(text)
+
+    def hidden(self):
+        return self._spinner.hidden()
+
+    def stop(self, text):
+        self.update(text)
+        self._show_prev()
 
 
 def get_buffer(handle):

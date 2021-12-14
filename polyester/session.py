@@ -17,7 +17,7 @@ from .proto import api_pb2
 from .serialization import Pickler, Unpickler
 from .session_singleton import get_session_singleton, set_session_singleton
 from .session_state import SessionState
-from .utils import print_logs
+from .utils import ProgressSpinner, print_logs
 
 
 @synchronizer
@@ -90,7 +90,8 @@ class Session:
             elif log_entry.n_running:
                 n_running = log_entry.n_running
             else:
-                print_logs(log_entry.data, log_entry.fd, stdout, stderr)
+                with self._progress.hidden():
+                    print_logs(log_entry.data, log_entry.fd, stdout, stderr)
         if draining:
             raise Exception(
                 f"Failed waiting for all logs to finish. There are still {n_running} tasks the server will kill."
@@ -116,6 +117,8 @@ class Session:
 
         Will write the object id to the object
         """
+        if obj.tag:
+            self._progress.substep(f"Creating {obj.tag}...")
         if obj.tag is not None and obj.tag in self._created_tagged_objects:
             # TODO: should we write the object id onto the object?
             return self._created_tagged_objects[obj.tag]
@@ -194,12 +197,15 @@ class Session:
 
             # Start tracking logs and yield context
             async with TaskContext(grace=1.0) as tc:
+                self._progress = ProgressSpinner()
                 get_logs_closure = functools.partial(self._get_logs, stdout, stderr)
                 functools.update_wrapper(get_logs_closure, self._get_logs)  # Needed for debugging tasks
                 tc.infinite_loop(get_logs_closure)
 
+                self._progress.step("Creating objects...")
                 # Create all members
                 await self.flush_objects()
+                self._progress.step("Running session...", "Created objects.")
 
                 # Create the session (and send a list of all tagged obs)
                 req = api_pb2.SessionSetObjectsRequest(
@@ -216,10 +222,12 @@ class Session:
             logger.debug("Stopping the session server-side")
             req = api_pb2.SessionStopRequest(session_id=self.session_id)
             await self.client.stub.SessionStop(req)
+            self._progress.step("Draining logs...", "Session completed.")
 
             # Fetch any straggling logs
             logger.debug("Draining logs")
             await self._get_logs(stdout, stderr, draining=True, timeout=config["logs_timeout"])
+            self._progress.stop("Finished draining logs.")
         finally:
             if self.state == SessionState.RUNNING:
                 logger.warn("Stopping running session...")
