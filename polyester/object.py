@@ -24,6 +24,8 @@ class Object(metaclass=ObjectMeta):
         if tag is not None:
             # See if we can populate this with an object id
             # (this happens if we're inside the container)
+            # TODO: tag is only ever set when created from a Factory (see below)
+            # so we could probably make this constructor "private"
             if s:
                 object_id = s.get_object_id_by_tag(tag)
             else:
@@ -135,6 +137,9 @@ def make_factory(cls):
             self._args_and_kwargs = args_and_kwargs
             self._session = session
             function_info = FunctionInfo(fun)
+
+            # This is the only place where tags are being set on objects,
+            # besides Function
             tag = function_info.get_tag(args_and_kwargs)
             Object.__init__(self, session=session, tag=tag)
 

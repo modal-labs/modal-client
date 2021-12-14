@@ -171,7 +171,8 @@ class Function(Object):
     def __init__(self, session, raw_f, image=None, env_dict=None, is_generator=False, gpu=False):
         assert callable(raw_f)
         self.info = FunctionInfo(raw_f)
-        tag = f"{self.info.module_name}.{self.info.function_name}"
+        # This is the only place besides object factory that sets tags
+        tag = self.info.get_tag(None)
         super().__init__(session=session, tag=tag)
         self.raw_f = raw_f
         self.image = image

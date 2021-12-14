@@ -23,8 +23,8 @@ def get_python_version():
 
 
 class Image(Object):
-    def __init__(self, session, tag):
-        super().__init__(tag=tag, session=session)
+    def __init__(self, session):
+        super().__init__(session=session)
 
     def is_inside(self):
         # This is used from inside of containers to know whether this container is active or not
@@ -54,7 +54,7 @@ class CustomImage(Image):
         self._local_image_python_executable = local_image_python_executable
         # Note that these objects have neither sessions nor tags
         # They rely on the factories for this
-        super().__init__(session=None, tag=None)
+        super().__init__(session=None)
 
     async def _create_impl(self, session):
         # Recursively build base images
