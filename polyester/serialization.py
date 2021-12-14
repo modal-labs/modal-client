@@ -21,7 +21,7 @@ class Pickler(cloudpickle.Pickler):
         class_name = self.type_to_name[type(obj)]
         if not obj.object_id:
             raise Exception(f"Can't serialize object {obj} which hasn't been created")
-        return (class_name, (obj.tag, obj.object_id))
+        return (class_name, obj.object_id)
 
 
 class Unpickler(pickle.Unpickler):
@@ -31,10 +31,10 @@ class Unpickler(pickle.Unpickler):
         super().__init__(buf)
 
     def persistent_load(self, pid):
-        type_tag, (tag, object_id) = pid
+        type_tag, object_id = pid
         if type_tag not in self.name_to_type:
             raise Exception(f"Unknown tag {type_tag}")
         cls = self.name_to_type[type_tag]
-        obj = cls.new(tag=tag, session=self.session)
+        obj = cls.new(session=self.session)
         obj.set_object_id(object_id, self.session.session_id)
         return obj
