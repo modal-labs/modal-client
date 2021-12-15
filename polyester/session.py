@@ -13,11 +13,12 @@ from .function import Function
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIME_BUFFER, ChannelPool
 from .image import debian_slim  # TODO: ugly
 from .object_meta import ObjectMeta
+from .progress import ProgressSpinner
 from .proto import api_pb2
 from .serialization import Pickler, Unpickler
 from .session_singleton import get_session_singleton, set_session_singleton
 from .session_state import SessionState
-from .utils import ProgressSpinner, print_logs
+from .utils import print_logs
 
 
 @synchronizer
@@ -45,7 +46,7 @@ class Session:
             session = super().__new__(cls)
             return session
 
-    def __init__(self):
+    def __init__(self, show_progress=True):
         if hasattr(self, "_initialized"):
             return  # Prevent re-initialization with the singleton
         self._initialized = True
@@ -54,6 +55,7 @@ class Session:
         self.state = SessionState.NONE
         self._pending_create_objects = []  # list of objects that haven't been created
         self._created_tagged_objects = {}  # tag -> object id
+        self._show_progress = show_progress
         super().__init__()
 
     def get_object_id_by_tag(self, tag):
@@ -89,8 +91,8 @@ class Session:
                 return
             elif log_entry.n_running:
                 n_running = log_entry.n_running
-            elif log_entry.fd == "state":
-                self._progress.update_task_state(log_entry.task_id, int(log_entry.data))
+            elif log_entry.task_state:
+                self._progress.update_task_state(log_entry.task_id, log_entry.task_state)
             else:
                 with self._progress.hidden():
                     print_logs(log_entry.data, log_entry.fd, stdout, stderr)
@@ -121,9 +123,6 @@ class Session:
         """
         if obj.tag:
             self._progress.set_substep_text(f"Creating {obj.tag}...", obj.tag)
-            import time
-
-            time.sleep(1)
         if obj.tag is not None and obj.tag in self._created_tagged_objects:
             # TODO: should we write the object id onto the object?
             return self._created_tagged_objects[obj.tag]
@@ -202,7 +201,7 @@ class Session:
 
             # Start tracking logs and yield context
             async with TaskContext(grace=1.0) as tc:
-                self._progress = ProgressSpinner()
+                self._progress = ProgressSpinner(visible=self._show_progress)
                 self._progress.step("Initializing...", "Initialized.")
                 get_logs_closure = functools.partial(self._get_logs, stdout, stderr)
                 functools.update_wrapper(get_logs_closure, self._get_logs)  # Needed for debugging tasks
