@@ -89,6 +89,8 @@ class Session:
                 return
             elif log_entry.n_running:
                 n_running = log_entry.n_running
+            elif log_entry.fd == "state":
+                self._progress.update_task_state(log_entry.task_id, int(log_entry.data))
             else:
                 with self._progress.hidden():
                     print_logs(log_entry.data, log_entry.fd, stdout, stderr)

@@ -4,6 +4,8 @@ import sys
 import colorama
 from yaspin import yaspin
 
+from .proto import api_pb2
+
 
 class ProgressSpinner:
     """Just a wrapper around yaspin."""
@@ -12,6 +14,28 @@ class ProgressSpinner:
         self._spinner = None
         self._last_tag = None
         self._substeps = {}
+        self._task_states = {}
+
+    # TODO: move this somewhere else
+    def update_task_state(self, task_id, state):
+        self._task_states[task_id] = state
+
+        # Recompute task status string.
+
+        all_states = self._task_states.values()
+        max_state = max(all_states)
+        num_tasks = len(all_states)
+        tasks_at_max = len(list(filter(lambda x: x == max_state, all_states)))
+
+        if max_state == api_pb2.TaskState.CREATED:
+            msg = f"Tasks created..."
+        if max_state == api_pb2.TaskState.QUEUED:
+            msg = f"Tasks queued..."
+        elif max_state == api_pb2.TaskState.LOADING_IMAGE:
+            msg = f"Loading images ({tasks_at_max}/{num_tasks})..."
+        elif max_state == api_pb2.TaskState.RUNNING:
+            msg = f"Running ({tasks_at_max}/{num_tasks} containers in use)..."
+        self.set_substep_text("task", msg)
 
     def set_substep_text(self, tag, text):
         text = colorama.Fore.BLUE + "\t" + text + colorama.Style.RESET_ALL
@@ -36,7 +60,7 @@ class ProgressSpinner:
 
         self._spinner.ok("✓")
         for substep in self._substeps.values():
-            substep.ok(" ")
+            substep.stop()
 
     def _create_substep(self, tag, text):
         if self._substeps:

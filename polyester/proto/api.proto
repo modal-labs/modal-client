@@ -135,6 +135,15 @@ message SessionUseObjectResponse {
   string object_id = 1;
 }
 
+enum TaskState {
+  CREATED = 0;
+  QUEUED = 1;
+  WORKER_ASSIGNED = 2;
+  LOADING_IMAGE = 3;
+  RUNNING = 4;
+  COMPLETED = 5;
+}
+
 message TaskLogs {
   bytes data = 1;
   string fd = 2;
