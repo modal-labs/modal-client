@@ -133,6 +133,7 @@ message SessionUseObjectRequest {
 
 message SessionUseObjectResponse {
   string object_id = 1;
+  bool found = 2;
 }
 
 enum TaskState {

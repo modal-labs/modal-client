@@ -130,11 +130,13 @@ class Session:
             if obj.share_path:
                 # This is a reference to a persistent object
                 object_id = await self._use_object(obj.share_path)
+                if object_id is None:
+                    raise Exception(f"Could not find shared object {obj.share_path} of type {type(obj)}")
             else:
                 # This is something created locally
                 object_id = await obj._create_impl(self)
-            if object_id is None:
-                raise Exception(f"object_id for object of type {type(obj)} is None")
+                if object_id is None:
+                    raise Exception(f"object_id for object of type {type(obj)} is None")
             if obj._session is not None:  # TODO: ugly
                 obj.set_object_id(object_id, self.session_id)
             if obj.tag:
@@ -164,6 +166,8 @@ class Session:
     async def _use_object(self, path):
         request = api_pb2.SessionUseObjectRequest(session_id=self.session_id, path=path)
         response = await self.client.stub.SessionUseObject(request)
+        if not response.found:
+            return None
         return response.object_id
 
     @synchronizer.asynccontextmanager
