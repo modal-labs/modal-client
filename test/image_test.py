@@ -1,4 +1,20 @@
-from polyester.image import CustomImage, Image, debian_slim, image_factory
+import sys
+
+from polyester.image import (
+    CustomImage,
+    Image,
+    debian_slim,
+    dockerhub_python_version,
+    image_factory,
+)
+
+
+def test_python_version():
+    assert dockerhub_python_version("3.9.1") == "3.9.9"
+    assert dockerhub_python_version("3.9") == "3.9.9"
+    v = dockerhub_python_version().split(".")
+    assert len(v) == 3
+    assert (int(v[0]), int(v[1])) == sys.version_info[:2]
 
 
 @image_factory

@@ -18,10 +18,6 @@ def _make_bytes(s):
     return s.encode("ascii") if type(s) is str else s
 
 
-def get_python_version():
-    return config["image_python_version"] or "%d.%d.%d" % sys.version_info[:3]
-
-
 class Image(Object):
     def __init__(self, session):
         super().__init__(session=session)
@@ -113,11 +109,29 @@ def local_image(python_executable):
     return CustomImage(local_image_python_executable=python_executable)
 
 
+def dockerhub_python_version(python_version=None):
+    if python_version is None:
+        python_version = config["image_python_version"]
+    if python_version is None:
+        python_version = "%d.%d" % sys.version_info[:2]
+
+    # We use the same major/minor version, but the highest micro version
+    # See https://hub.docker.com/_/python
+    latest_micro_version = {
+        "3.10": "1",
+        "3.9": "9",
+        "3.8": "12",
+        "3.7": "12",
+        "3.6": "15",
+    }
+    major_minor_version = ".".join(python_version.split(".")[:2])
+    python_version = major_minor_version + "." + latest_micro_version[major_minor_version]
+    return python_version
+
+
 @image_factory
 def debian_slim(extra_commands=None, python_packages=None, python_version=None):
-    if python_version is None:
-        python_version = get_python_version()
-
+    python_version = dockerhub_python_version(python_version)
     base_image = Image.use(None, f"python-{python_version}-slim-buster-base")
     builder_image = Image.use(None, f"python-{python_version}-slim-buster-builder")
 
