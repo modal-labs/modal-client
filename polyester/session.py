@@ -101,7 +101,7 @@ class Session:
                 f"Failed waiting for all logs to finish. There are still {n_running} tasks the server will kill."
             )
 
-    async def initialize_container(self, session_id, client):
+    async def initialize_container(self, session_id, client, task_id):
         """Used by the container to bootstrap the session and all its objects."""
         self.session_id = session_id
         self.client = client
@@ -109,7 +109,7 @@ class Session:
         if self._flush_lock is None:
             self._flush_lock = asyncio.Lock()
 
-        req = api_pb2.SessionGetObjectsRequest(session_id=session_id)
+        req = api_pb2.SessionGetObjectsRequest(session_id=session_id, task_id=task_id)
         resp = await self.client.stub.SessionGetObjects(req)
         self._created_tagged_objects = dict(resp.object_ids)
 

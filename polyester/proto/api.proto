@@ -113,6 +113,7 @@ message SessionSetObjectsRequest {
 
 message SessionGetObjectsRequest {
   string session_id = 1;
+  string task_id = 2;
 }
 
 message SessionGetObjectsResponse {

@@ -60,7 +60,7 @@ class FunctionContext:
         # table of all the named objects
         Session.initialize_singleton()
         self.session = Session()
-        await self.session.initialize_container(self.session_id, self.client)
+        await self.session.initialize_container(self.session_id, self.client, self.task_id)
 
         if self.function_def.definition_type == api_pb2.Function.DefinitionType.SERIALIZED:
             # Fetch the serialized function definition
