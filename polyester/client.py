@@ -1,5 +1,6 @@
 import asyncio
 import os
+import time
 
 import grpc
 import grpc.aio
@@ -40,14 +41,16 @@ class Client:
         await self._channel_pool.start()
         self.stub = api_pb2_grpc.PolyesterClientStub(self._channel_pool)
         try:
+            t0 = time.time()
             req = api_pb2.ClientCreateRequest(client_type=self.client_type)
             resp = await self.stub.ClientCreate(req)
             self.client_id = resp.client_id
         except grpc.aio._call.AioRpcError as exc:
+            ms = int(1000 * (time.time() - t0))
             if exc.code() == grpc.StatusCode.UNAUTHENTICATED:
-                raise AuthError(f"Connecting to {self.server_url}: {exc.details()}")
-            elif exc.code() == grpc.StatusCode.UNAVAILABLE:
-                raise ConnectionError(f"Connecting to {self.server_url}: {exc.details()}")
+                raise AuthError(f"Connecting to {self.server_url}: {exc.details()} (after {ms} ms)")
+            elif exc.code() in [grpc.StatusCode.UNAVAILABLE, grpc.StatusCode.DEADLINE_EXCEEDED]:
+                raise ConnectionError(f"Connecting to {self.server_url}: {exc.details()} (after {ms} ms)")
             else:
                 raise
         if not self.client_id:
