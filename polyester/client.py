@@ -12,6 +12,8 @@ from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT, ChannelP
 from .proto import api_pb2, api_pb2_grpc
 from .server_connection import GRPCConnectionFactory
 
+CLIENT_CREATE_TIMEOUT = 5.0
+
 
 @synchronizer
 class Client:
@@ -43,7 +45,7 @@ class Client:
         try:
             t0 = time.time()
             req = api_pb2.ClientCreateRequest(client_type=self.client_type)
-            resp = await self.stub.ClientCreate(req)
+            resp = await self.stub.ClientCreate(req, timeout=CLIENT_CREATE_TIMEOUT)
             self.client_id = resp.client_id
         except grpc.aio._call.AioRpcError as exc:
             ms = int(1000 * (time.time() - t0))
