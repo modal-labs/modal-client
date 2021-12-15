@@ -34,7 +34,7 @@ class ProgressSpinner:
         if self._done_text:
             self.set_step_text(self._done_text)
 
-        self._spinner.ok()
+        self._spinner.ok("✓")
         for substep in self._substeps.values():
             substep.ok(" ")
 
@@ -43,7 +43,7 @@ class ProgressSpinner:
             prev_substep = self._substeps[self._last_tag]
             prev_substep.ok(" ")
         else:
-            self._spinner.ok()
+            self._spinner.ok("✓")
         substep = yaspin(color="blue")
 
         self._last_tag = tag
@@ -55,6 +55,7 @@ class ProgressSpinner:
         """OK the previous stage of the spinner and start a new one."""
         if self._spinner:
             self._ok_prev()
+            self._last_tag = None
             self._substeps = {}
         self._done_text = done_text
         self._spinner = yaspin(color="white", timer=True)
@@ -62,6 +63,8 @@ class ProgressSpinner:
         self.set_step_text(text)
 
     def hidden(self):
+        if self._last_tag:
+            return self._substeps[self._last_tag].hidden()
         return self._spinner.hidden()
 
     def stop(self):
