@@ -192,16 +192,15 @@ message ImageContextFile {
 }
 
 message Image {
-  string processor = 4;
   repeated BaseImage base_images = 5;
   repeated string dockerfile_commands = 6;
   repeated ImageContextFile context_files = 7;
   string local_image_python_executable = 10;
+  string version = 11;
 }
 
 message ImageGetOrCreateRequest {
   Image image = 2;
-  bool must_create = 3;
   string session_id = 4;
 }
 

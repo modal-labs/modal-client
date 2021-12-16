@@ -40,14 +40,14 @@ class CustomImage(Image):
         base_images={},
         context_files={},
         dockerfile_commands=[],
-        must_create=False,
         local_image_python_executable=None,
+        version=None,
     ):
         self._base_images = base_images
         self._context_files = context_files
         self._dockerfile_commands = dockerfile_commands
-        self._must_create = must_create
         self._local_image_python_executable = local_image_python_executable
+        self._version = version
         # Note that these objects have neither sessions nor tags
         # They rely on the factories for this
         super().__init__(session=None)
@@ -70,12 +70,12 @@ class CustomImage(Image):
             dockerfile_commands=dockerfile_commands,
             context_files=context_file_pb2s,
             local_image_python_executable=self._local_image_python_executable,
+            version=self._version,
         )
 
         req = api_pb2.ImageGetOrCreateRequest(
             session_id=session.session_id,
             image=image_definition,
-            must_create=self._must_create,
         )
         resp = await session.client.stub.ImageGetOrCreate(req)
         image_id = resp.image_id
