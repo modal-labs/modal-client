@@ -33,8 +33,9 @@ class FunctionInfo:
         elif hasattr(module, "__file__"):
             # This generally covers the case where it's invoked with
             # python foo/bar/baz.py
-            self.module_name = os.path.splitext(os.path.basename(module.__file__))[0]
-            self.package_path = os.path.dirname(module.__file__)
+            module_fn = os.path.abspath(module.__file__)
+            self.module_name = os.path.splitext(os.path.basename(module_fn))[0]
+            self.package_path = os.path.dirname(module_fn)
             self.recursive = False  # Just pick out files in the same directory
             self.remote_dir = "/root"  # TODO: don't hardcore /root
             self.definition_type = api_pb2.Function.DefinitionType.FILE
