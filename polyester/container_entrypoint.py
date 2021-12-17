@@ -117,7 +117,7 @@ class FunctionContext:
     async def output_request(self, input_id, output_buffer_id, **kwargs):
         result = api_pb2.GenericResult(**kwargs)
         item = pack_output_buffer_item(result)
-        buffer_req = api_pb2.BufferWriteRequest(item=item, buffer_id=output_buffer_id)
+        buffer_req = api_pb2.BufferWriteRequest(items=[item], buffer_id=output_buffer_id)
         req = api_pb2.FunctionOutputRequest(input_id=input_id, buffer_req=buffer_req)
         return await self._output(req)
 

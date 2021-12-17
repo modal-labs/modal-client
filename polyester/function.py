@@ -76,7 +76,7 @@ class Invocation:
         output_buffer_id = response.output_buffer_id
 
         item = pack_input_buffer_item(session.serialize(args), session.serialize(kwargs), output_buffer_id)
-        buffer_req = api_pb2.BufferWriteRequest(item=item, buffer_id=input_buffer_id)
+        buffer_req = api_pb2.BufferWriteRequest(items=[item], buffer_id=input_buffer_id)
         request = api_pb2.FunctionCallRequest(function_id=function_id, buffer_req=buffer_req)
         await buffered_rpc_write(session.client.stub.FunctionCall, request)
 
@@ -102,6 +102,9 @@ class Invocation:
             yield process_result(self.session, result)
 
 
+MAP_INVOCATION_CHUNK_SIZE = 10
+
+
 class MapInvocation:
     # TODO: should this be an object?
     def __init__(self, session, response_gen):
@@ -117,14 +120,21 @@ class MapInvocation:
         output_buffer_id = response.output_buffer_id
 
         async def pump_inputs():
-            async with input_stream.stream() as streamer:
-                async for arg in streamer:
-                    item = pack_input_buffer_item(session.serialize(arg), session.serialize(kwargs), output_buffer_id)
-                    buffer_req = api_pb2.BufferWriteRequest(item=item, buffer_id=input_buffer_id)
+            chunked_input_stream = input_stream | pipe.chunks(MAP_INVOCATION_CHUNK_SIZE)
+            async with chunked_input_stream.stream() as streamer:
+                async for chunk in streamer:
+                    items = []
+                    for arg in chunk:
+                        item = pack_input_buffer_item(
+                            session.serialize(arg), session.serialize(kwargs), output_buffer_id
+                        )
+                        items.append(item)
+                    buffer_req = api_pb2.BufferWriteRequest(items=items, buffer_id=input_buffer_id)
                     request = api_pb2.FunctionCallRequest(function_id=function_id, buffer_req=buffer_req)
-                    # No timeout so this can block forever.
-                    yield await buffered_rpc_write(session.client.stub.FunctionCall, request)
-                yield
+
+                    response = await buffered_rpc_write(session.client.stub.FunctionCall, request)
+                    yield len(items)
+            yield
 
         async def poll_outputs():
             """Keep trying to dequeue outputs."""
@@ -147,9 +157,9 @@ class MapInvocation:
             async for response in streamer:
                 if response is None:
                     have_all_inputs = True
-                elif isinstance(response, api_pb2.BufferWriteResponse):
+                elif isinstance(response, int):
                     assert not have_all_inputs
-                    num_inputs += 1
+                    num_inputs += response
                 elif isinstance(response, api_pb2.BufferReadResponse):
                     result = unpack_output_buffer_item(response.item)
 

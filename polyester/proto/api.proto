@@ -42,8 +42,7 @@ message BufferItem {
 
 message BufferWriteRequest {
   string buffer_id = 1;
-  int32 idx = 2;
-  BufferItem item = 3;
+  repeated BufferItem items = 5;
   string idempotency_key = 4;
 }
 

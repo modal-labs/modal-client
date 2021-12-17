@@ -29,7 +29,8 @@ def _get_inputs(client):
 
 def _get_output(function_output_req: api_pb2.FunctionOutputRequest) -> api_pb2.GenericResult:
     output = api_pb2.GenericResult()
-    function_output_req.buffer_req.item.data.Unpack(output)
+    assert len(function_output_req.buffer_req.items) == 1
+    function_output_req.buffer_req.items[0].data.Unpack(output)
     return output
 
 
