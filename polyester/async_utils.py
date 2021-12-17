@@ -68,6 +68,9 @@ def add_traceback(obj, func_name=None):
         async def _wrap_coro():
             try:
                 return await obj
+            # pre Python3.8, CancelledErrors were a subclass of exception
+            except asyncio.CancelledError:
+                raise
             except Exception:
                 logger.exception(f"Exception while running {func_name}")
                 raise
@@ -79,6 +82,9 @@ def add_traceback(obj, func_name=None):
             try:
                 async for elm in obj:
                     yield elm
+            # pre Python3.8, CancelledErrors were a subclass of exception
+            except asyncio.CancelledError:
+                raise
             except Exception:
                 logger.exception(f"Exception while running {func_name}")
                 raise
@@ -186,15 +192,27 @@ class TaskContext:
         self._exited.set()
         await asyncio.sleep(0)  # Causes any just-created tasks to get started
         unfinished_tasks = [t for t in self._tasks if not t.done()]
+        gather_future = None
         try:
-            if self._grace is not None:
-                await asyncio.wait_for(asyncio.gather(*unfinished_tasks, return_exceptions=True), timeout=self._grace)
+            if self._grace is not None and unfinished_tasks:
+                gather_future = asyncio.gather(*unfinished_tasks, return_exceptions=True)
+                await asyncio.wait_for(gather_future, timeout=self._grace)
         except asyncio.TimeoutError:
             pass
         finally:
             for task in self._tasks:
                 task.cancel()
         await asyncio.sleep(0)  # Needed in 3.6 to make any just-cancelled tasks actually cancel
+
+        # asyncio.wait_for cancels the future, but the CancelledError
+        # still needs to be handled
+        # (https://stackoverflow.com/a/63356323/2475114)
+        if gather_future:
+            try:
+                await gather_future
+            # pre Python3.8, CancelledErrors were a subclass of exception
+            except asyncio.CancelledError:
+                pass
 
     async def __aexit__(self, exc_type, value, tb):
         await self.stop()
@@ -224,6 +242,9 @@ class TaskContext:
             while True:
                 try:
                     await asyncio.wait_for(async_f(), timeout=timeout)
+                # pre Python3.8, CancelledErrors were a subclass of exception
+                except asyncio.CancelledError:
+                    break
                 except Exception:
                     logger.exception(f"Loop attempt failed for {async_f}")
                 try:
