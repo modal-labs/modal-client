@@ -92,11 +92,11 @@ class Client:
 
     @classmethod
     async def from_env(cls):
-        server_url = config["server.url"]
-        token_id = config["token.id"]
-        token_secret = config["token.secret"]
-        task_id = config["task.id"]
-        task_secret = config["task.secret"]
+        server_url = config["server_url"]
+        token_id = config["token_id"]
+        token_secret = config["token_secret"]
+        task_id = config["task_id"]
+        task_secret = config["task_secret"]
 
         if task_id and task_secret:
             client_type = api_pb2.ClientType.CONTAINER
