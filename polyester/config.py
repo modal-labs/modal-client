@@ -25,7 +25,7 @@ def read_user_config():
 
 
 _user_config = read_user_config()
-env = os.environ.get("POLYESTER_ENV", "default")
+_env = os.environ.get("POLYESTER_ENV", "default")
 
 
 class Config(typing.NamedTuple):
@@ -53,8 +53,8 @@ for c in _CONFIG:
     env_var_key = "POLYESTER_" + c.key.upper()
     if env_var_key in os.environ:
         config[c.key] = c.transform(os.environ[env_var_key])
-    elif env in _user_config and c.key in _user_config[env]:
-        config[c.key] = c.transform(_user_config[env][c.key])
+    elif _env in _user_config and c.key in _user_config[_env]:
+        config[c.key] = c.transform(_user_config[_env][c.key])
     else:
         config[c.key] = c.default
 
@@ -65,7 +65,7 @@ logging.basicConfig(
 logger = logging.getLogger()
 
 
-def store_user_config(new_settings, env="default"):
+def store_user_config(new_settings, env=_env):
     user_config = read_user_config()
     user_config.setdefault(env, {}).update(**new_settings)
     with open(_user_config_path, "w") as f:

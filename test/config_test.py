@@ -42,6 +42,9 @@ def test_config_store_user():
         # Set creds to abc / xyz
         _cli(["token", "set", "abc", "xyz"], env=env)
 
+        # Set creds to foo / bar for the local profile
+        _cli(["token", "set", "foo", "bar", "--env", "local"], env=env)
+
         # Now these should be stored in the user's home directory
         config = _get_config(env=env)
         assert config["token_id"] == "abc"
@@ -51,3 +54,8 @@ def test_config_store_user():
         config = _get_config(env={"POLYESTER_TOKEN_ID": "foo", **env})
         assert config["token_id"] == "foo"
         assert config["token_secret"] == "xyz"
+
+        # Check that we can get the local env creds too
+        config = _get_config(env={"POLYESTER_ENV": "local", **env})
+        assert config["token_id"] == "foo"
+        assert config["token_secret"] == "bar"
