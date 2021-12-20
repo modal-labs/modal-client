@@ -65,7 +65,9 @@ logging.basicConfig(
 logger = logging.getLogger()
 
 
-def store_user_config(new_settings, env=_env):
+def store_user_config(new_settings, env=None):
+    if env is None:
+        env = _env
     user_config = read_user_config()
     user_config.setdefault(env, {}).update(**new_settings)
     with open(_user_config_path, "w") as f:

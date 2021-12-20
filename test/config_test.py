@@ -42,8 +42,11 @@ def test_config_store_user():
         # Set creds to abc / xyz
         _cli(["token", "set", "abc", "xyz"], env=env)
 
-        # Set creds to foo / bar for the local profile
-        _cli(["token", "set", "foo", "bar", "--env", "local"], env=env)
+        # Set creds to foo / bar1 for the prof_1 profile
+        _cli(["token", "set", "foo", "bar1", "--env", "prof_1"], env=env)
+
+        # Set creds to foo / bar2 for the prof_2 profile (given as an env var)
+        _cli(["token", "set", "foo", "bar2"], env={"POLYESTER_ENV": "prof_2", **env})
 
         # Now these should be stored in the user's home directory
         config = _get_config(env=env)
@@ -55,7 +58,12 @@ def test_config_store_user():
         assert config["token_id"] == "foo"
         assert config["token_secret"] == "xyz"
 
-        # Check that we can get the local env creds too
-        config = _get_config(env={"POLYESTER_ENV": "local", **env})
+        # Check that we can get the prof_1 env creds too
+        config = _get_config(env={"POLYESTER_ENV": "prof_1", **env})
         assert config["token_id"] == "foo"
-        assert config["token_secret"] == "bar"
+        assert config["token_secret"] == "bar1"
+
+        # Check that we can get the prof_1 env creds too
+        config = _get_config(env={"POLYESTER_ENV": "prof_2", **env})
+        assert config["token_id"] == "foo"
+        assert config["token_secret"] == "bar2"

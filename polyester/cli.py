@@ -11,7 +11,7 @@ app.add_typer(config_app, name="config")
 
 
 @token_app.command()
-def set(token_id: str, token_secret: str, env: str = "default"):
+def set(token_id: str, token_secret: str, env: str = None):
     # TODO: let's verify that these creds are good
     store_user_config({"token_id": token_id, "token_secret": token_secret}, env=env)
 
