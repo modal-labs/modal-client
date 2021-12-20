@@ -44,3 +44,8 @@ def test_config_store_user():
         config = _get_config(env=env)
         assert config["token_id"] == "abc"
         assert config["token_secret"] == "xyz"
+
+        # Make sure it can be overridden too
+        config = _get_config(env={"POLYESTER_TOKEN_ID": "foo", **env})
+        assert config["token_id"] == "foo"
+        assert config["token_secret"] == "xyz"
