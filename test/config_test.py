@@ -9,8 +9,9 @@ import polyester
 def _cli(args, env={}):
     lib_dir = pathlib.Path(polyester.__file__).parent.parent
     args = [sys.executable, "-m", "polyester.cli"] + args
-    ret = subprocess.run(args, cwd=lib_dir, env=env, stdout=subprocess.PIPE)
-    assert ret.returncode == 0
+    ret = subprocess.run(args, cwd=lib_dir, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if ret.returncode != 0:
+        raise Exception(f"Failed with {ret.returncode} stdout: {ret.stdout} stderr: {ret.stderr}")
     return ret.stdout
 
 
