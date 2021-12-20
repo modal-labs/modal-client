@@ -15,7 +15,7 @@ def _cli(args, env={}):
 
 
 def _get_config(env={}):
-    stdout = _cli(["config-show"], env=env)
+    stdout = _cli(["config", "show"], env=env)
     return eval(stdout)
 
 
@@ -38,7 +38,7 @@ def test_config_store_user():
         assert config["token_id"] is None
 
         # Set creds to abc / xyz
-        _cli(["creds-set", "abc", "xyz"], env=env)
+        _cli(["token", "set", "abc", "xyz"], env=env)
 
         # Now these should be stored in the user's home directory
         config = _get_config(env=env)
