@@ -90,6 +90,11 @@ class Client:
     async def __aexit__(self, exc_type, exc, tb):
         await self._stop()
 
+    async def verify(self):
+        async with self:
+            # Just connect and disconnect
+            pass
+
     @classmethod
     async def from_env(cls):
         server_url = config["server_url"]

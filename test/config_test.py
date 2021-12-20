@@ -40,13 +40,13 @@ def test_config_store_user():
         assert config["token_id"] is None
 
         # Set creds to abc / xyz
-        _cli(["token", "set", "abc", "xyz"], env=env)
+        _cli(["token", "set", "abc", "xyz", "--no-verify"], env=env)
 
         # Set creds to foo / bar1 for the prof_1 profile
-        _cli(["token", "set", "foo", "bar1", "--env", "prof_1"], env=env)
+        _cli(["token", "set", "foo", "bar1", "--env", "prof_1", "--no-verify"], env=env)
 
         # Set creds to foo / bar2 for the prof_2 profile (given as an env var)
-        _cli(["token", "set", "foo", "bar2"], env={"POLYESTER_ENV": "prof_2", **env})
+        _cli(["token", "set", "foo", "bar2", "--no-verify"], env={"POLYESTER_ENV": "prof_2", **env})
 
         # Now these should be stored in the user's home directory
         config = _get_config(env=env)
