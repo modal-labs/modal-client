@@ -14,11 +14,15 @@ These can be configured in two ways:
 .polyester.toml
 ---------------
 
-The ``.polyester.toml`` file typically looks like this::
+The ``.polyester.toml`` file is generally stored in your home directory.
+It should look like this::
 
   [default]
   token_id = "ak-12345..."
   token_secret = "as-12345..."
+
+You can create this file manually, or you can run the ``polyester token set ...``
+command (see below).
 
 Setting tokens using the CLI
 ----------------------------
@@ -29,6 +33,8 @@ You can set a token by running the command::
       --token-id <token id> \\
       --token-secret <token secret>
 
+This will write the token id and secret to ``.polyester.toml``.
+
 If the token id or secret is provided as the string ``-`` (a single dash),
 then it will be read in a secret way from stdin instead.
 
@@ -37,9 +43,11 @@ Other configuration options
 
 Other possible configuration options are:
 
-* ``loglevel`` (toml) / ``POLYESTER_LOGLEVEL`` (env var). Defaults to ``WARNING``.
-  Set this to "DEBUG" to see a bunch of internal output.
-* ``server_url`` (toml) / ``POLYESTER_SERVER_URL`` (env var). Defaults to ``https://api.modal.com``.
+* ``loglevel`` (in the .toml file) / ``POLYESTER_LOGLEVEL`` (as an env var).
+  Defaults to ``WARNING``.
+  Set this to ``DEBUG`` to see a bunch of internal output.
+* ``server_url`` (in the .toml file) / ``POLYESTER_SERVER_URL`` (as an env var).
+  Defaults to ``https://api.modal.com``.
   Not typically meant to be used.
 
 Meta-configuration
