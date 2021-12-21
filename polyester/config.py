@@ -7,22 +7,43 @@ The main configuration options are the API tokens: the token id and the token se
 These can be configured in two ways:
 
 1. By running the ``polyester token set`` command.
-   This writes the tokens to .polyester.toml file in your home directory.
+   This writes the tokens to ``.polyester.toml`` file in your home directory.
 2. By setting the environment variables ``POLYESTER_TOKEN_ID`` and ``POLYESTER_TOKEN_SECRET``.
    This takes precedence over the previous method.
 
-The .polyester.toml file typically looks like this::
+.polyester.toml
+---------------
+
+The ``.polyester.toml`` file typically looks like this::
 
   [default]
   token_id = "ak-12345..."
   token_secret = "as-12345..."
 
+Setting tokens using the CLI
+----------------------------
+
+You can set a token by running the command::
+
+  polyester token set \\
+      --token-id <token id> \\
+      --token-secret <token secret>
+
+If the token id or secret is provided as the string ``-`` (a single dash),
+then it will be read in a secret way from stdin instead.
+
+Other configuration options
+---------------------------
+
 Other possible configuration options are:
 
-* ``loglevel`` (toml) / ``POLYESTER_LOGLEVEL`` (env var). Defaults to "WARNING".
+* ``loglevel`` (toml) / ``POLYESTER_LOGLEVEL`` (env var). Defaults to ``WARNING``.
   Set this to "DEBUG" to see a bunch of internal output.
-* ``server_url`` (toml) / ``POLYESTER_SERVER_URL`` (env var). Defaults to "https://api.modal.com".
+* ``server_url`` (toml) / ``POLYESTER_SERVER_URL`` (env var). Defaults to ``https://api.modal.com``.
   Not typically meant to be used.
+
+Meta-configuration
+------------------
 
 Some "meta-options" are set using environment variables only:
 
