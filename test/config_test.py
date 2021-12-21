@@ -39,6 +39,9 @@ def test_config_store_user():
         config = _get_config(env=env)
         assert config["token_id"] is None
 
+        # TODO(erikbern): we intentionally disable verifying tokens against the server here,
+        # but at some point it would be nice to run a basic server and make sure things work.
+
         # Set creds to abc / xyz
         _cli(["token", "set", "abc", "xyz", "--no-verify"], env=env)
 
