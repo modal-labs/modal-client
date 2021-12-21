@@ -1,3 +1,37 @@
+"""
+Configuration
+=============
+
+Polyester intentionally keeps configurability to a minimum.
+The main configuration options are the API tokens: the token id and the token secret.
+These can be configured in two ways:
+
+1. By running the ``polyester token set`` command.
+   This writes the tokens to .polyester.toml file in your home directory.
+2. By setting the environment variables ``POLYESTER_TOKEN_ID`` and ``POLYESTER_TOKEN_SECRET``.
+   This takes precedence over the previous method.
+
+The .polyester.toml file typically looks like this::
+
+  [default]
+  token_id = "ak-12345..."
+  token_secret = "as-12345..."
+
+Other possible configuration options are:
+
+* ``loglevel`` (toml) / ``POLYESTER_LOGLEVEL`` (env var). Defaults to "WARNING".
+  Set this to "DEBUG" to see a bunch of internal output.
+* ``server_url`` (toml) / ``POLYESTER_SERVER_URL`` (env var). Defaults to "https://api.modal.com".
+  Not typically meant to be used.
+
+Some "meta-options" are set using environment variables only:
+
+* ``POLYESTER_CONFIG_PATH`` lets you override the location of the .toml file,
+  by default ``~/.polyester.toml``.
+* ``POLYESTER_ENVIRONMENT`` lets you use multiple sections in the .toml file
+  and switch between them. It defaults to "default".
+"""
+
 import logging
 import os
 import typing
@@ -85,7 +119,7 @@ logger = logging.getLogger()
 
 
 def store_user_config(new_settings, env=None):
-    """Used by the CLI to store values."""
+    """Internal method, used by the CLI to set tokens."""
     if env is None:
         env = _env
     user_config = _read_user_config()

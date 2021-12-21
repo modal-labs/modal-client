@@ -31,25 +31,25 @@ def test_config_env_override():
     assert config["server_url"] == "xyz.corp"
 
 
-def test_config_store_user():
+def test_config_store_user(servicer):
     with tempfile.NamedTemporaryFile() as t:
-        env = {"POLYESTER_CONFIG_PATH": t.name}
+        env = {
+            "POLYESTER_CONFIG_PATH": t.name,
+            "POLYESTER_SERVER_URL": servicer.remote_addr,
+        }
 
         # No token by default
         config = _get_config(env=env)
         assert config["token_id"] is None
 
-        # TODO(erikbern): we intentionally disable verifying tokens against the server here,
-        # but at some point it would be nice to run a basic server and make sure things work.
-
         # Set creds to abc / xyz
-        _cli(["token", "set", "abc", "xyz", "--no-verify"], env=env)
+        _cli(["token", "set", "--token-id", "abc", "--token-secret", "xyz"], env=env)
 
         # Set creds to foo / bar1 for the prof_1 profile
-        _cli(["token", "set", "foo", "bar1", "--env", "prof_1", "--no-verify"], env=env)
+        _cli(["token", "set", "--token-id", "foo", "--token-secret", "bar1", "--env", "prof_1"], env=env)
 
         # Set creds to foo / bar2 for the prof_2 profile (given as an env var)
-        _cli(["token", "set", "foo", "bar2", "--no-verify"], env={"POLYESTER_ENV": "prof_2", **env})
+        _cli(["token", "set", "--token-id", "foo", "--token-secret", "bar2"], env={"POLYESTER_ENV": "prof_2", **env})
 
         # Now these should be stored in the user's home directory
         config = _get_config(env=env)
