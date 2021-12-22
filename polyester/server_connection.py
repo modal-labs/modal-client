@@ -18,16 +18,16 @@ class BasicAuth(grpc.AuthMetadataPlugin):
             token_id, token_secret = credentials
             self._metadata = tuple(
                 [
-                    ("x-polyester-token-id", token_id),
-                    ("x-polyester-token-secret", token_secret),
+                    ("x-modal-token-id", token_id),
+                    ("x-modal-token-secret", token_secret),
                 ]
             )
         elif credentials and client_type == api_pb2.ClientType.CONTAINER:
             task_id, task_secret = credentials
             self._metadata = tuple(
                 [
-                    ("x-polyester-task-id", task_id),
-                    ("x-polyester-task-secret", task_secret),
+                    ("x-modal-task-id", task_id),
+                    ("x-modal-task-secret", task_secret),
                 ]
             )
         else:

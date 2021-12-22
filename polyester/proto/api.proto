@@ -6,7 +6,7 @@ syntax = "proto3";
   python -m grpc_tools.protoc -I . --python_out=. --grpc_python_out=. polyester/proto/api.proto --experimental_allow_proto3_optional
 */
 
-package polyester.client;
+package modal.client;
 
 import "google/protobuf/any.proto";
 
@@ -389,7 +389,7 @@ message MountDoneRequest {
   string mount_id = 1;
 }
 
-service PolyesterClient {
+service ModalClient {
   // Clients
   rpc ClientCreate(ClientCreateRequest) returns (ClientCreateResponse);
   rpc ClientHeartbeat(ClientHeartbeatRequest) returns (Empty);

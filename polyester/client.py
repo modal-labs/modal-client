@@ -41,7 +41,7 @@ class Client:
         )
         self._channel_pool = ChannelPool(self._task_context, self._connection_factory)
         await self._channel_pool.start()
-        self.stub = api_pb2_grpc.PolyesterClientStub(self._channel_pool)
+        self.stub = api_pb2_grpc.ModalClientStub(self._channel_pool)
         try:
             t0 = time.time()
             req = api_pb2.ClientCreateRequest(client_type=self.client_type)

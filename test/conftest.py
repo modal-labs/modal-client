@@ -11,7 +11,7 @@ from polyester.proto import api_pb2, api_pb2_grpc
 from polyester.session_singleton import set_session_singleton
 
 
-class GRPCClientServicer(api_pb2_grpc.PolyesterClient):
+class GRPCClientServicer(api_pb2_grpc.ModalClient):
     def __init__(self):
         self.requests = []
         self.done = False
@@ -78,7 +78,7 @@ async def servicer():
     port = random.randint(8000, 8999)
     servicer.remote_addr = "http://localhost:%d" % port
     server = grpc.aio.server()
-    api_pb2_grpc.add_PolyesterClientServicer_to_server(servicer, server)
+    api_pb2_grpc.add_ModalClientServicer_to_server(servicer, server)
     server.add_insecure_port("[::]:%d" % port)
     await server.start()
     yield servicer
