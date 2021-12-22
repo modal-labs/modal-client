@@ -1,5 +1,4 @@
 import asyncio
-import random
 import typing
 
 import grpc
@@ -74,11 +73,10 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
 @pytest.fixture(scope="function")
 async def servicer():
     servicer = GRPCClientServicer()
-    port = random.randint(8000, 8999)
-    servicer.remote_addr = "http://localhost:%d" % port
     server = grpc.aio.server()
     api_pb2_grpc.add_ModalClientServicer_to_server(servicer, server)
-    server.add_insecure_port("[::]:%d" % port)
+    port = server.add_insecure_port("[::]:0")
+    servicer.remote_addr = "http://localhost:%d" % port
     await server.start()
     yield servicer
     await server.stop(0)
