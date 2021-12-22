@@ -199,10 +199,8 @@ class Function(Object):
                 condition=self.info.condition,
             )
         ]
-        if config["sync_entrypoint"] and not os.getenv("MODAL_IMAGE_LOCAL_ID"):
-            # TODO(erikbern): If the first condition is true then we're running in a local
-            # client which implies the second is always true as well?
-            mounts.extend(create_package_mounts("polyester"))
+        if config["sync_entrypoint"]:
+            mounts.extend(create_package_mounts("modal"))
         # TODO(erikbern): couldn't we just create one single mount with all packages instead of multiple?
 
         # Wait for image and mounts to finish
