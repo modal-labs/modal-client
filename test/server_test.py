@@ -1,4 +1,4 @@
-from polyester.server_connection import GRPCConnectionFactory
+from modal.server_connection import GRPCConnectionFactory
 
 
 async def test_create_factory():

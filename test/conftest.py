@@ -4,11 +4,10 @@ import typing
 
 import grpc
 import pytest
-
-from polyester import Session
-from polyester.client import Client
-from polyester.proto import api_pb2, api_pb2_grpc
-from polyester.session_singleton import set_session_singleton
+from modal import Session
+from modal.client import Client
+from modal.proto import api_pb2, api_pb2_grpc
+from modal.session_singleton import set_session_singleton
 
 
 class GRPCClientServicer(api_pb2_grpc.ModalClient):

@@ -3,12 +3,12 @@ import subprocess
 import sys
 import tempfile
 
-import polyester
+import modal
 
 
 def _cli(args, env={}):
-    lib_dir = pathlib.Path(polyester.__file__).parent.parent
-    args = [sys.executable, "-m", "polyester.cli"] + args
+    lib_dir = pathlib.Path(modal.__file__).parent.parent
+    args = [sys.executable, "-m", "modal.cli"] + args
     env = {"LC_ALL": "C.UTF-8", "LANG": "C.UTF-8", **env}  # This is a dumb Python 3.6 issue
     ret = subprocess.run(args, cwd=lib_dir, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if ret.returncode != 0:

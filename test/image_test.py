@@ -1,6 +1,6 @@
 import sys
 
-from polyester.image import (
+from modal.image import (
     CustomImage,
     Image,
     debian_slim,

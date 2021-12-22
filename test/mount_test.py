@@ -2,8 +2,7 @@ import asyncio
 import os
 
 import pytest
-
-from polyester.mount import get_files
+from modal.mount import get_files
 
 
 @pytest.mark.asyncio

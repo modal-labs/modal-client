@@ -1,7 +1,6 @@
 import pytest
-
-from polyester import Session
-from polyester.session_state import SessionState
+from modal import Session
+from modal.session_state import SessionState
 
 
 def test_session():

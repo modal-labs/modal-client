@@ -1,10 +1,9 @@
 import asyncio
 
 import pytest
-
-from polyester.client import Client
-from polyester.exception import ConnectionError
-from polyester.proto import api_pb2
+from modal.client import Client
+from modal.exception import ConnectionError
+from modal.proto import api_pb2
 
 
 @pytest.mark.asyncio

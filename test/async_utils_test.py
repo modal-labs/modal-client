@@ -1,8 +1,7 @@
 import asyncio
 
 import pytest
-
-from polyester.async_utils import (
+from modal.async_utils import (
     TaskContext,
     asyncify_function,
     asyncify_generator,

@@ -2,12 +2,11 @@ import asyncio
 import time
 
 import pytest
-
-from polyester import Client, Session, debian_slim
-from polyester.container_entrypoint import main
-from polyester.function import Function, pack_input_buffer_item
-from polyester.proto import api_pb2
-from polyester.test_support import SLEEP_DELAY
+from modal import Client, Session, debian_slim
+from modal.container_entrypoint import main
+from modal.function import Function, pack_input_buffer_item
+from modal.proto import api_pb2
+from modal.test_support import SLEEP_DELAY
 
 EXTRA_TOLERANCE_DELAY = 0.08
 OUTPUT_BUFFER = "output_buffer_id"
@@ -54,10 +53,10 @@ async def _run_container(servicer, module_name, function_name):
 
         servicer.object_ids = {
             debian_slim.tag: "1",
-            "polyester.test_support.square": "2",
-            "polyester.test_support.square_sync_returning_async": "3",
-            "polyester.test_support.square_async": "4",
-            "polyester.test_support.raises": "5",
+            "modal.test_support.square": "2",
+            "modal.test_support.square_sync_returning_async": "3",
+            "modal.test_support.square_async": "4",
+            "modal.test_support.raises": "5",
         }
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, main, container_args, client)
@@ -68,7 +67,7 @@ async def _run_container(servicer, module_name, function_name):
 @pytest.mark.asyncio
 async def test_container_entrypoint_success(servicer, reset_session_singleton):
     t0 = time.time()
-    client, outputs = await _run_container(servicer, "polyester.test_support", "square")
+    client, outputs = await _run_container(servicer, "modal.test_support", "square")
     assert 0 <= time.time() - t0 < EXTRA_TOLERANCE_DELAY
 
     assert len(outputs) == 1
@@ -83,7 +82,7 @@ async def test_container_entrypoint_success(servicer, reset_session_singleton):
 @pytest.mark.asyncio
 async def test_container_entrypoint_async(servicer, reset_session_singleton):
     t0 = time.time()
-    client, outputs = await _run_container(servicer, "polyester.test_support", "square_async")
+    client, outputs = await _run_container(servicer, "modal.test_support", "square_async")
     print(time.time() - t0, outputs)
     assert SLEEP_DELAY <= time.time() - t0 < SLEEP_DELAY + EXTRA_TOLERANCE_DELAY
 
@@ -98,7 +97,7 @@ async def test_container_entrypoint_async(servicer, reset_session_singleton):
 @pytest.mark.asyncio
 async def test_container_entrypoint_sync_returning_async(servicer, reset_session_singleton):
     t0 = time.time()
-    client, outputs = await _run_container(servicer, "polyester.test_support", "square_sync_returning_async")
+    client, outputs = await _run_container(servicer, "modal.test_support", "square_sync_returning_async")
     assert SLEEP_DELAY <= time.time() - t0 < SLEEP_DELAY + EXTRA_TOLERANCE_DELAY
 
     assert len(outputs) == 1
@@ -111,7 +110,7 @@ async def test_container_entrypoint_sync_returning_async(servicer, reset_session
 
 @pytest.mark.asyncio
 async def test_container_entrypoint_failure(servicer, reset_session_singleton):
-    client, outputs = await _run_container(servicer, "polyester.test_support", "raises")
+    client, outputs = await _run_container(servicer, "modal.test_support", "raises")
 
     assert len(outputs) == 1
     assert isinstance(outputs[0], api_pb2.FunctionOutputRequest)
