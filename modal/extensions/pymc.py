@@ -11,9 +11,8 @@ from typing import Dict, Sequence
 
 import synchronicity
 from aiostream import stream
-
-from polyester import Session
-from polyester.image import CustomImage, image_factory
+from modal import Session
+from modal.image import CustomImage, image_factory
 
 synchronizer = synchronicity.Synchronizer()
 
@@ -157,7 +156,7 @@ Draw = namedtuple("Draw", ["chain", "is_last", "draw_idx", "tuning", "stats", "p
 
 
 @synchronizer
-class PolyesterSampler:
+class ModalSampler:
     def __init__(
         self,
         draws: int,

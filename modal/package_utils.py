@@ -1,7 +1,7 @@
 import os
 from importlib import import_module
-from importlib_metadata import PackageNotFoundError, files, requires
 
+from importlib_metadata import PackageNotFoundError, files, requires
 from packaging.requirements import Requirement
 
 from .config import logger
