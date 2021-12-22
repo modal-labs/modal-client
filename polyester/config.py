@@ -6,22 +6,22 @@ Polyester intentionally keeps configurability to a minimum.
 The main configuration options are the API tokens: the token id and the token secret.
 These can be configured in two ways:
 
-1. By running the ``polyester token set`` command.
-   This writes the tokens to ``.polyester.toml`` file in your home directory.
-2. By setting the environment variables ``POLYESTER_TOKEN_ID`` and ``POLYESTER_TOKEN_SECRET``.
+1. By running the ``modal token set`` command.
+   This writes the tokens to ``.modal.toml`` file in your home directory.
+2. By setting the environment variables ``MODAL_TOKEN_ID`` and ``MODAL_TOKEN_SECRET``.
    This takes precedence over the previous method.
 
-.polyester.toml
+.modal.toml
 ---------------
 
-The ``.polyester.toml`` file is generally stored in your home directory.
+The ``.modal.toml`` file is generally stored in your home directory.
 It should look like this::
 
   [default]
   token_id = "ak-12345..."
   token_secret = "as-12345..."
 
-You can create this file manually, or you can run the ``polyester token set ...``
+You can create this file manually, or you can run the ``modal token set ...``
 command (see below).
 
 Setting tokens using the CLI
@@ -29,11 +29,11 @@ Setting tokens using the CLI
 
 You can set a token by running the command::
 
-  polyester token set \\
+  modal token set \\
       --token-id <token id> \\
       --token-secret <token secret>
 
-This will write the token id and secret to ``.polyester.toml``.
+This will write the token id and secret to ``.modal.toml``.
 
 If the token id or secret is provided as the string ``-`` (a single dash),
 then it will be read in a secret way from stdin instead.
@@ -43,10 +43,10 @@ Other configuration options
 
 Other possible configuration options are:
 
-* ``loglevel`` (in the .toml file) / ``POLYESTER_LOGLEVEL`` (as an env var).
+* ``loglevel`` (in the .toml file) / ``MODAL_LOGLEVEL`` (as an env var).
   Defaults to ``WARNING``.
   Set this to ``DEBUG`` to see a bunch of internal output.
-* ``server_url`` (in the .toml file) / ``POLYESTER_SERVER_URL`` (as an env var).
+* ``server_url`` (in the .toml file) / ``MODAL_SERVER_URL`` (as an env var).
   Defaults to ``https://api.modal.com``.
   Not typically meant to be used.
 
@@ -55,9 +55,9 @@ Meta-configuration
 
 Some "meta-options" are set using environment variables only:
 
-* ``POLYESTER_CONFIG_PATH`` lets you override the location of the .toml file,
-  by default ``~/.polyester.toml``.
-* ``POLYESTER_ENVIRONMENT`` lets you use multiple sections in the .toml file
+* ``MODAL_CONFIG_PATH`` lets you override the location of the .toml file,
+  by default ``~/.modal.toml``.
+* ``MODAL_ENVIRONMENT`` lets you use multiple sections in the .toml file
   and switch between them. It defaults to "default".
 """
 
@@ -75,9 +75,9 @@ except ImportError:
     pass
 
 
-_user_config_path = os.environ.get("POLYESTER_CONFIG_PATH")
+_user_config_path = os.environ.get("MODAL_CONFIG_PATH")
 if _user_config_path is None:
-    _user_config_path = os.path.expanduser("~/.polyester.toml")
+    _user_config_path = os.path.expanduser("~/.modal.toml")
 
 
 def _read_user_config():
@@ -88,7 +88,7 @@ def _read_user_config():
 
 
 _user_config = _read_user_config()
-_env = os.environ.get("POLYESTER_ENV", "default")
+_env = os.environ.get("MODAL_ENV", "default")
 
 
 class Setting(typing.NamedTuple):
@@ -106,6 +106,7 @@ _SETTINGS = {
     "sync_entrypoint": Setting(),
     "logs_timeout": Setting(10, float),
     "image_python_version": Setting(),
+    "image_id": Setting(),
 }
 
 
@@ -117,14 +118,14 @@ class Config:
         """Looks up a configuration value.
 
         Will check (in decreasing order of priority):
-        1. Any environment variable of the form POLYESTER_FOO_BAR
+        1. Any environment variable of the form MODAL_FOO_BAR
         2. Settings in the user's .toml configuration file
         3. The default value of the setting
         """
         if env is None:
             env = _env
         s = _SETTINGS[key]
-        env_var_key = "POLYESTER_" + key.upper()
+        env_var_key = "MODAL_" + key.upper()
         if env_var_key in os.environ:
             return s.transform(os.environ[env_var_key])
         elif env in _user_config and key in _user_config[env]:

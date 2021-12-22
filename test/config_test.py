@@ -27,15 +27,15 @@ def test_config():
 
 
 def test_config_env_override():
-    config = _get_config(env={"POLYESTER_SERVER_URL": "xyz.corp"})
+    config = _get_config(env={"MODAL_SERVER_URL": "xyz.corp"})
     assert config["server_url"] == "xyz.corp"
 
 
 def test_config_store_user(servicer):
     with tempfile.NamedTemporaryFile() as t:
         env = {
-            "POLYESTER_CONFIG_PATH": t.name,
-            "POLYESTER_SERVER_URL": servicer.remote_addr,
+            "MODAL_CONFIG_PATH": t.name,
+            "MODAL_SERVER_URL": servicer.remote_addr,
         }
 
         # No token by default
@@ -49,7 +49,7 @@ def test_config_store_user(servicer):
         _cli(["token", "set", "--token-id", "foo", "--token-secret", "bar1", "--env", "prof_1"], env=env)
 
         # Set creds to foo / bar2 for the prof_2 profile (given as an env var)
-        _cli(["token", "set", "--token-id", "foo", "--token-secret", "bar2"], env={"POLYESTER_ENV": "prof_2", **env})
+        _cli(["token", "set", "--token-id", "foo", "--token-secret", "bar2"], env={"MODAL_ENV": "prof_2", **env})
 
         # Now these should be stored in the user's home directory
         config = _get_config(env=env)
@@ -57,16 +57,16 @@ def test_config_store_user(servicer):
         assert config["token_secret"] == "xyz"
 
         # Make sure it can be overridden too
-        config = _get_config(env={"POLYESTER_TOKEN_ID": "foo", **env})
+        config = _get_config(env={"MODAL_TOKEN_ID": "foo", **env})
         assert config["token_id"] == "foo"
         assert config["token_secret"] == "xyz"
 
         # Check that we can get the prof_1 env creds too
-        config = _get_config(env={"POLYESTER_ENV": "prof_1", **env})
+        config = _get_config(env={"MODAL_ENV": "prof_1", **env})
         assert config["token_id"] == "foo"
         assert config["token_secret"] == "bar1"
 
         # Check that we can get the prof_1 env creds too
-        config = _get_config(env={"POLYESTER_ENV": "prof_2", **env})
+        config = _get_config(env={"MODAL_ENV": "prof_2", **env})
         assert config["token_id"] == "foo"
         assert config["token_secret"] == "bar2"
