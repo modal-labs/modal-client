@@ -82,27 +82,28 @@ class Invocation:
 
         return Invocation(session, function_id, output_buffer_id)
 
-    async def get_item(self):
+    async def get_items(self):
         request = api_pb2.FunctionGetNextOutputRequest(function_id=self.function_id)
         response = await buffered_rpc_read(
             self.session.client.stub.FunctionGetNextOutput, request, self.output_buffer_id, timeout=None
         )
-        return unpack_output_buffer_item(response.item)
+        for item in response.items:
+            yield unpack_output_buffer_item(item)
 
     async def run_function(self):
-        result = await self.get_item()
+        result = (await stream.list(self.get_items()))[0]
         assert result.gen_status == api_pb2.GenericResult.GeneratorStatus.NOT_GENERATOR
         return process_result(self.session, result)
 
     async def run_generator(self):
         while True:
-            result = await self.get_item()
-            if result.gen_status == api_pb2.GenericResult.GeneratorStatus.COMPLETE:
-                break
-            yield process_result(self.session, result)
+            async for result in self.get_items():
+                if result.gen_status == api_pb2.GenericResult.GeneratorStatus.COMPLETE:
+                    break
+                yield process_result(self.session, result)
 
 
-MAP_INVOCATION_CHUNK_SIZE = 10
+MAP_INVOCATION_CHUNK_SIZE = 1000
 
 
 class MapInvocation:

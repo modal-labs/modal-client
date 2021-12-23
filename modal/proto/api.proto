@@ -58,9 +58,9 @@ message BufferReadRequest {
 }
 
 message BufferReadResponse {
-  BufferItem item = 1;
   enum BufferReadStatus {UNKNOWN = 0; SUCCESS = 1; TIMEOUT = 2;}
   BufferReadStatus status = 2;
+  repeated BufferItem items = 3;
 }
 
 enum ClientType {
