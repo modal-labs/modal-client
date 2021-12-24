@@ -95,7 +95,8 @@ class FunctionContext:
             function_id=self.function_id,
             task_id=self.task_id,
         )
-        while True:
+        eof_received = False
+        while not eof_received:
             response = await buffered_rpc_read(
                 self.client.stub.FunctionGetNextInput, request, self.input_buffer_id, timeout=GRPC_REQUEST_TIMEOUT
             )
@@ -104,11 +105,13 @@ class FunctionContext:
                 logger.info(f"Task {self.task_id} input request timed out.")
                 break
 
-            if response.item.EOF:
-                logger.debug(f"Task {self.task_id} input got EOF.")
-                break
+            for item in response.items:
+                if item.EOF:
+                    logger.debug(f"Task {self.task_id} input got EOF.")
+                    eof_received = True
+                    break
 
-            yield response.item
+                yield item
 
     async def _output(self, request):
         # No timeout so this can block forever.

@@ -96,14 +96,16 @@ class Invocation:
         return process_result(self.session, result)
 
     async def run_generator(self):
-        while True:
+        completed = False
+        while not completed:
             async for result in self.get_items():
                 if result.gen_status == api_pb2.GenericResult.GeneratorStatus.COMPLETE:
+                    completed = True
                     break
                 yield process_result(self.session, result)
 
 
-MAP_INVOCATION_CHUNK_SIZE = 1000
+MAP_INVOCATION_CHUNK_SIZE = 100
 
 
 class MapInvocation:
@@ -144,7 +146,8 @@ class MapInvocation:
                 response = await buffered_rpc_read(
                     session.client.stub.FunctionGetNextOutput, request, output_buffer_id, timeout=None
                 )
-                yield response
+                for item in response.items:
+                    yield item
 
         response_gen = stream.merge(pump_inputs(), poll_outputs())
 
@@ -161,8 +164,8 @@ class MapInvocation:
                 elif isinstance(response, int):
                     assert not have_all_inputs
                     num_inputs += response
-                elif isinstance(response, api_pb2.BufferReadResponse):
-                    result = unpack_output_buffer_item(response.item)
+                elif isinstance(response, api_pb2.BufferItem):
+                    result = unpack_output_buffer_item(response)
 
                     if result.gen_status != api_pb2.GenericResult.GeneratorStatus.INCOMPLETE:
                         num_outputs += 1
