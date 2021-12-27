@@ -32,6 +32,8 @@ message GenericResult {  // Used for both tasks and function outputs
 
   enum GeneratorStatus {NOT_GENERATOR = 0; INCOMPLETE = 1; COMPLETE = 2;}
   GeneratorStatus gen_status = 7;
+
+  string input_id = 8;
 }
 
 message BufferItem {
@@ -355,8 +357,8 @@ message FunctionGetNextInputRequest {
 }
 
 message FunctionOutputRequest {
-  string input_id = 7;
   BufferWriteRequest buffer_req = 8;
+  string task_id = 9;
 }
 
 message MountCreateRequest {

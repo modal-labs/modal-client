@@ -36,6 +36,9 @@ def _path_to_function(module_name, function_name):
         raise
 
 
+MAX_OUTPUT_BATCH_SIZE = 100
+
+
 @synchronizer
 class FunctionContext:
     """This class isn't much more than a helper method for some gRPC calls.
@@ -51,6 +54,14 @@ class FunctionContext:
         self.session_id = container_args.session_id
         self.function_def = container_args.function_def
         self.client = client
+        self.output_queue = asyncio.Queue()
+
+    async def start(self):
+        self.output_task = asyncio.create_task(self.send_outputs())
+
+    async def stop(self):
+        await self.output_queue.put((None, None))
+        await asyncio.wait_for(self.output_task, timeout=None)
 
     async def get_function(self) -> typing.Callable:
         """Note that this also initializes the session."""
@@ -113,21 +124,55 @@ class FunctionContext:
 
                 yield item
 
-    async def _output(self, request):
+    async def _output(self, items, output_buffer_id):
+        if not items:
+            return
+        buffer_req = api_pb2.BufferWriteRequest(items=items, buffer_id=output_buffer_id)
+        req = api_pb2.FunctionOutputRequest(buffer_req=buffer_req, task_id=self.task_id)
         # No timeout so this can block forever.
-        await buffered_rpc_write(self.client.stub.FunctionOutput, request)
+        await buffered_rpc_write(self.client.stub.FunctionOutput, req)
 
-    async def output_request(self, input_id, output_buffer_id, **kwargs):
+    async def send_outputs(self):
+        """Background task that tries to drain output queue until it's empty,
+        or the output buffer changes, and then sends the entire batch in one request.
+        """
+        cur_output_buffer_id = None
+        items = []
+        while True:
+            try:
+                (item, output_buffer_id) = self.output_queue.get_nowait()
+
+                # No more inputs coming.
+                if item is None:
+                    await self._output(items, cur_output_buffer_id)
+                    break
+
+                output_buffer_changed = cur_output_buffer_id is not None and output_buffer_id != cur_output_buffer_id
+                # Send what we have so far for this output buffer and switch tracks
+                if output_buffer_changed or len(items) >= MAX_OUTPUT_BATCH_SIZE:
+                    await self._output(items, cur_output_buffer_id)
+                    cur_output_buffer_id = output_buffer_id
+                    items = [item]
+                else:
+                    cur_output_buffer_id = output_buffer_id
+                    items.append(item)
+
+            except asyncio.QueueEmpty:
+                await self._output(items, cur_output_buffer_id)
+                items = []
+                cur_output_buffer_id = None
+                await asyncio.sleep(0.1)
+
+    async def enqueue_output(self, input_id, output_buffer_id, **kwargs):
         result = api_pb2.GenericResult(**kwargs)
+        result.input_id = input_id
         item = pack_output_buffer_item(result)
-        buffer_req = api_pb2.BufferWriteRequest(items=[item], buffer_id=output_buffer_id)
-        req = api_pb2.FunctionOutputRequest(input_id=input_id, buffer_req=buffer_req)
-        return await self._output(req)
+        await self.output_queue.put((item, output_buffer_id))
 
 
 def _call_function_generator(function_context, input_id, output_buffer_id, res):
     for value in res:
-        function_context.output_request(
+        function_context.enqueue_output(
             input_id,
             output_buffer_id,
             status=api_pb2.GenericResult.Status.SUCCESS,
@@ -136,7 +181,7 @@ def _call_function_generator(function_context, input_id, output_buffer_id, res):
         )
 
     # send EOF
-    function_context.output_request(
+    function_context.enqueue_output(
         input_id,
         output_buffer_id,
         status=api_pb2.GenericResult.Status.SUCCESS,
@@ -147,7 +192,7 @@ def _call_function_generator(function_context, input_id, output_buffer_id, res):
 def _call_function_asyncgen(function_context, input_id, output_buffer_id, res):
     async def run_asyncgen():
         async for value in res:
-            await function_context.output_request(
+            await function_context.enqueue_output(
                 input_id,
                 output_buffer_id,
                 status=api_pb2.GenericResult.Status.SUCCESS,
@@ -156,7 +201,7 @@ def _call_function_asyncgen(function_context, input_id, output_buffer_id, res):
             )
 
         # send EOF
-        await function_context.output_request(
+        await function_context.enqueue_output(
             input_id,
             output_buffer_id,
             status=api_pb2.GenericResult.Status.SUCCESS,
@@ -197,7 +242,7 @@ def call_function(
             if inspect.isgenerator(res) or inspect.isasyncgen(res):
                 raise InvalidError("Function which is not a generator returned a generator output")
 
-            function_context.output_request(
+            function_context.enqueue_output(
                 input_id,
                 output_buffer_id,
                 status=api_pb2.GenericResult.Status.SUCCESS,
@@ -213,7 +258,7 @@ def call_function(
         # serializing the exception, which may have some issues (there
         # was an earlier note about it that it might not be possible
         # to unpickle it in some cases). Let's watch oout for issues.
-        function_context.output_request(
+        function_context.enqueue_output(
             input_id,
             output_buffer_id,
             status=api_pb2.GenericResult.Status.FAILURE,
@@ -227,11 +272,14 @@ def main(container_args, client):
     function_context = FunctionContext(container_args, client)
     function_type = container_args.function_def.function_type
     function = function_context.get_function()
+    function_context.start()
 
     for buffer_item in function_context.generate_inputs():
         # Note: this blocks the call_function as well. In the future we might want to stream outputs
         # back asynchronously, but then block the call_function if there is back-pressure.
         call_function(function_context, function, function_type, buffer_item)
+
+    function_context.stop()
 
 
 if __name__ == "__main__":
