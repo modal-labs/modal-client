@@ -12,7 +12,7 @@ import aiostream
 import cloudpickle
 import google.protobuf.json_format
 
-from .async_utils import asyncio_run, synchronizer
+from .async_utils import TaskContext, asyncio_run, synchronizer
 from .buffer_utils import buffered_rpc_read, buffered_rpc_write
 from .client import Client
 from .config import logger
@@ -54,14 +54,17 @@ class FunctionContext:
         self.session_id = container_args.session_id
         self.function_def = container_args.function_def
         self.client = client
-        self.output_queue = asyncio.Queue()
 
     async def start(self):
-        self.output_task = asyncio.create_task(self.send_outputs())
+        # TODO: have a way to set timeout=None in TaskContext
+        self.tc = TaskContext(grace=1000)
+        await self.tc.start()
+        self.output_queue = asyncio.Queue()
+        self.output_task = self.tc.create_task(self.send_outputs())
 
     async def stop(self):
         await self.output_queue.put((None, None))
-        await asyncio.wait_for(self.output_task, timeout=None)
+        await self.tc.stop()
 
     async def get_function(self) -> typing.Callable:
         """Note that this also initializes the session."""
@@ -161,7 +164,7 @@ class FunctionContext:
                 await self._output(items, cur_output_buffer_id)
                 items = []
                 cur_output_buffer_id = None
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0.01)
 
     async def enqueue_output(self, input_id, output_buffer_id, **kwargs):
         result = api_pb2.GenericResult(**kwargs)

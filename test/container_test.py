@@ -65,7 +65,7 @@ async def _run_container(servicer, module_name, function_name):
 
 
 @pytest.mark.asyncio
-async def test_container_entrypoint_success(servicer, reset_session_singleton):
+async def test_container_entrypoint_success(servicer, reset_session_singleton, event_loop):
     t0 = time.time()
     client, outputs = await _run_container(servicer, "modal.test_support", "square")
     assert 0 <= time.time() - t0 < EXTRA_TOLERANCE_DELAY
