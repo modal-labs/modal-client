@@ -55,16 +55,14 @@ class FunctionContext:
         self.function_def = container_args.function_def
         self.client = client
 
-    async def start(self):
-        # TODO: have a way to set timeout=None in TaskContext
-        self.tc = TaskContext(grace=1000)
-        await self.tc.start()
+    @synchronizer.asynccontextmanager
+    async def send_outputs(self):
         self.output_queue = asyncio.Queue()
-        self.output_task = self.tc.create_task(self.send_outputs())
 
-    async def stop(self):
-        await self.output_queue.put((None, None))
-        await self.tc.stop()
+        async with TaskContext(grace=10) as tc:
+            tc.create_task(self._send_outputs())
+            yield
+            await self.output_queue.put((None, None))
 
     async def get_function(self) -> typing.Callable:
         """Note that this also initializes the session."""
@@ -127,44 +125,58 @@ class FunctionContext:
 
                 yield item
 
-    async def _output(self, items, output_buffer_id):
-        if not items:
-            return
-        buffer_req = api_pb2.BufferWriteRequest(items=items, buffer_id=output_buffer_id)
-        req = api_pb2.FunctionOutputRequest(buffer_req=buffer_req, task_id=self.task_id)
-        # No timeout so this can block forever.
-        await buffered_rpc_write(self.client.stub.FunctionOutput, req)
-
-    async def send_outputs(self):
+    async def _send_outputs(self):
         """Background task that tries to drain output queue until it's empty,
         or the output buffer changes, and then sends the entire batch in one request.
         """
         cur_output_buffer_id = None
         items = []
-        while True:
+
+        async def _send():
+            nonlocal items, cur_output_buffer_id
+
+            if not items:
+                return
+
+            buffer_req = api_pb2.BufferWriteRequest(items=items, buffer_id=cur_output_buffer_id)
+            req = api_pb2.FunctionOutputRequest(buffer_req=buffer_req, task_id=self.task_id)
+            # No timeout so this can block forever.
+            await buffered_rpc_write(self.client.stub.FunctionOutput, req)
+
+            cur_output_buffer_id = None
+            items = []
+
+        def _try_get_output():
             try:
-                (item, output_buffer_id) = self.output_queue.get_nowait()
-
-                # No more inputs coming.
-                if item is None:
-                    await self._output(items, cur_output_buffer_id)
-                    break
-
-                output_buffer_changed = cur_output_buffer_id is not None and output_buffer_id != cur_output_buffer_id
-                # Send what we have so far for this output buffer and switch tracks
-                if output_buffer_changed or len(items) >= MAX_OUTPUT_BATCH_SIZE:
-                    await self._output(items, cur_output_buffer_id)
-                    cur_output_buffer_id = output_buffer_id
-                    items = [item]
-                else:
-                    cur_output_buffer_id = output_buffer_id
-                    items.append(item)
-
+                return self.output_queue.get_nowait()
             except asyncio.QueueEmpty:
-                await self._output(items, cur_output_buffer_id)
-                items = []
-                cur_output_buffer_id = None
-                await asyncio.sleep(0.01)
+                return None
+
+        while True:
+            output = _try_get_output()
+
+            if output is None:
+                # Queue is empty, send what we have so far.
+                await _send()
+                # Block until the queue has values again.
+                output = await self.output_queue.get()
+
+            (item, output_buffer_id) = output
+
+            # No more inputs coming.
+            if item is None:
+                await _send()
+                break
+
+            output_buffer_changed = cur_output_buffer_id is not None and output_buffer_id != cur_output_buffer_id
+            cur_output_buffer_id = output_buffer_id
+
+            # Send what we have so far for this output buffer and switch tracks
+            if output_buffer_changed or len(items) >= MAX_OUTPUT_BATCH_SIZE:
+                await _send()
+                items = [item]
+            else:
+                items.append(item)
 
     async def enqueue_output(self, input_id, output_buffer_id, **kwargs):
         result = api_pb2.GenericResult(**kwargs)
@@ -272,17 +284,16 @@ def call_function(
 
 
 def main(container_args, client):
-    function_context = FunctionContext(container_args, client)
     function_type = container_args.function_def.function_type
+
+    function_context = FunctionContext(container_args, client)
     function = function_context.get_function()
-    function_context.start()
 
-    for buffer_item in function_context.generate_inputs():
-        # Note: this blocks the call_function as well. In the future we might want to stream outputs
-        # back asynchronously, but then block the call_function if there is back-pressure.
-        call_function(function_context, function, function_type, buffer_item)
-
-    function_context.stop()
+    with function_context.send_outputs():
+        for buffer_item in function_context.generate_inputs():
+            # Note: this blocks the call_function as well. In the future we might want to stream outputs
+            # back asynchronously, but then block the call_function if there is back-pressure.
+            call_function(function_context, function, function_type, buffer_item)
 
 
 if __name__ == "__main__":
