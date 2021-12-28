@@ -14,7 +14,7 @@ class FunctionInfo:
     # TODO: we should have a bunch of unit tests for this
     # TODO: if the function is declared in a local scope, this function still "works": we should throw an exception
     def __init__(self, f):
-        self.function_name = f.__name__
+        self.function_name = f.__qualname__
         self.function_serialized = None
         self.signature = inspect.signature(f)
         module = inspect.getmodule(f)
@@ -42,7 +42,7 @@ class FunctionInfo:
         else:
             # Use cloudpickle. Used when working w/ Jupyter notebooks.
             self.function_serialized = cloudpickle.dumps(f)
-            logger.info(f"Serializing {f.__name__}, size is {len(self.function_serialized)}")
+            logger.info(f"Serializing {f.__qualname__}, size is {len(self.function_serialized)}")
             self.module_name = None
             self.package_path = os.path.abspath("")  # get current dir
             self.recursive = False  # Just pick out files in the same directory
@@ -64,4 +64,3 @@ class FunctionInfo:
             return f"{self.module_name}.{self.function_name}({args})"
         else:
             return f"{self.module_name}.{self.function_name}"
-            tag = fun.__name__

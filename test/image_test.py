@@ -1,12 +1,6 @@
 import sys
 
-from modal.image import (
-    CustomImage,
-    Image,
-    debian_slim,
-    dockerhub_python_version,
-    image_factory,
-)
+from modal.image import CustomImage, Image, debian_slim, dockerhub_python_version
 
 
 def test_python_version():
@@ -17,7 +11,7 @@ def test_python_version():
     assert (int(v[0]), int(v[1])) == sys.version_info[:2]
 
 
-@image_factory
+@Image.factory
 def my_image(pkg="python-numpy"):
     return CustomImage(dockerfile_commands=[f"apt-get install {pkg}"])
 

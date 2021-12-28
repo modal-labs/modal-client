@@ -12,14 +12,14 @@ from typing import Dict, Sequence
 import synchronicity
 from aiostream import stream
 from modal import Session
-from modal.image import CustomImage, image_factory
+from modal.image import CustomImage
 
 synchronizer = synchronicity.Synchronizer()
 
 session = Session()
 
 
-@image_factory
+@Image.factory
 def pymc_image():
     dockerfile_commands = [
         "FROM base",

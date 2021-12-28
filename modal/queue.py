@@ -5,11 +5,16 @@ from typing import Any, List
 from .async_utils import retry, synchronizer
 from .client import Client
 from .config import logger
-from .object import Object, make_factory, requires_create
+from .object import Object, requires_create
 from .proto import api_pb2
 
 
 class Queue(Object):
+    """A distributed FIFO Queue.
+
+    The contents of the Queue can be any serializable object.
+    """
+
     def __init__(self, session=None):
         super().__init__(session=session)
 
@@ -41,15 +46,18 @@ class Queue(Object):
 
     @requires_create
     async def get(self, block=True, timeout=None):
+        """Get and pop the next object"""
         values = await self._get(block, timeout, 1)
         return values[0]
 
     @requires_create
     async def get_many(self, n_values, block=True, timeout=None):
+        """Get up to n_values multiple objects"""
         return await self._get(block, timeout, n_values)
 
     @requires_create
     async def put_many(self, vs: List[Any]):
+        """Put several objects"""
         vs_encoded = [self._session.serialize(v) for v in vs]
         request = api_pb2.QueuePutRequest(
             queue_id=self.object_id,
@@ -60,7 +68,5 @@ class Queue(Object):
 
     @requires_create
     async def put(self, v):
+        """Put an object"""
         return await self.put_many([v])
-
-
-queue_factory = make_factory(Queue)

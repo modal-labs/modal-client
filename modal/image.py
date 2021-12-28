@@ -9,7 +9,7 @@ from .config import config, logger
 from .exception import RemoteError
 from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .mount import get_sha256_hex_from_content  # TODO: maybe not
-from .object import Object, make_factory, requires_create
+from .object import Object, requires_create
 from .proto import api_pb2
 
 
@@ -100,10 +100,7 @@ class CustomImage(Image):
         return image_id
 
 
-image_factory = make_factory(Image)  # Decorator
-
-
-@image_factory
+@Image.factory
 def local_image(python_executable):
     """Only used for various integration tests."""
     return CustomImage(local_image_python_executable=python_executable)
@@ -129,7 +126,7 @@ def dockerhub_python_version(python_version=None):
     return python_version
 
 
-@image_factory
+@Image.factory
 def debian_slim(extra_commands=None, python_packages=None, python_version=None):
     python_version = dockerhub_python_version(python_version)
     base_image = Image.use(None, f"python-{python_version}-slim-buster-base")

@@ -11,6 +11,34 @@ from .session_state import SessionState
 
 
 class Object(metaclass=ObjectMeta):
+    """The shared base class of any synced/distributed object in Modal.
+
+    Examples of objects include Modal primitives like Images and Functions, as
+    well as distributed data structures like Queues or Dicts.
+
+    The Object base class provides some common initialization patterns. There
+    are 2 main ways to initialize and use Objects.
+
+    The first pattern is to directly instantiate objects and pass them as
+    parameters when required. This is common for data structures (e.g. ``dict_
+    = Dict(session=session); main(dict_)``).
+    Instances of Object are just handles with an object ID and some associated
+    metadata, so they can be safely serialized or passed as parameters to Modal
+    functions.
+
+    The second pattern is to declare objects in the global scope. This is most
+    common for global and unique objects like Images. In this case, some
+    identifier is required to matching up local and remote copies objects and
+    to avoid double initialization.
+
+    The solution is to declare objects as "factory functions". A factory
+    function is a function decorated with ``@Type.factory`` whose body
+    initializes and returns an object of type ``Type``. This object will be
+    automatically initialized once and tagged with the function name/module.
+    The decorator will convert the function into a proxy object, so it can be
+    used directly.
+    """
+
     # A bit ugly to leverage implemenation inheritance here, but I guess you could
     # roughly think of this class as a mixin
     def __init__(self, session=None, tag=None):
@@ -69,12 +97,14 @@ class Object(metaclass=ObjectMeta):
 
     @classmethod
     def new(cls, **kwargs):
+        """TODO: Dead?"""
         obj = Object.__new__(cls)
         obj._init(**kwargs)
         return obj
 
     @classmethod
     def use(cls, session, path):
+        """Use a object published with :py:meth:`modal.session.Session.share`"""
         # TODO: this is a bit ugly, because it circumvents the contructor, which means
         # it might not always work (eg you can't do DebianSlim.use("foo"))
         # This interface is a bit TBD, let's think more about it
@@ -83,6 +113,65 @@ class Object(metaclass=ObjectMeta):
         if session:
             session.create_object_later(obj)
         return obj
+
+    @classmethod
+    @decorator_with_options
+    def factory(cls, fun, session=None):
+        """Decorator to mark a "factory function".
+
+        Factory functions work like "named promises" for Objects, they are
+        automatically tagged by name/path so they will always refer to the same
+        underlying Object across machines. The function body should return the
+        desired initialized object. The body will only be run on the local
+        machine, so it may access local resources/files.
+
+        The decorated function can be used directly as a proxy object (if no
+        parameters are needed), or can be called with arguments and will return
+        a proxy object.
+        """
+
+        if not hasattr(cls, "_factory_class"):
+            # TODO: is there some nicer way we could do this rather than creating a class inside a function?
+            # Maybe we could use the ObjectMeta meta class?
+            class Factory(cls):
+                """Acts as a wrapper for a transient Object.
+
+                Puts a tag and optionally a session on it. Otherwise just "steals" the object id from the
+                underlying object at construction time.
+                """
+
+                def __init__(self, fun, session, args_and_kwargs=None):  # TODO: session?
+                    self._fun = fun
+                    self._args_and_kwargs = args_and_kwargs
+                    self._session = session
+                    function_info = FunctionInfo(fun)
+
+                    # This is the only place where tags are being set on objects,
+                    # besides Function
+                    tag = function_info.get_tag(args_and_kwargs)
+                    Object.__init__(self, session=session, tag=tag)
+
+                async def _create_impl(self, session):
+                    if self._args_and_kwargs is not None:
+                        args, kwargs = self._args_and_kwargs
+                        object = self._fun(*args, **kwargs)
+                    else:
+                        object = self._fun()
+                    assert isinstance(object, cls)
+                    object_id = await session.create_object(object)
+                    # Note that we can "steal" the object id from the other object
+                    # and set it on this object. This is a general trick we can do
+                    # to other objects too.
+                    return object_id
+
+                def __call__(self, *args, **kwargs):
+                    """Binds arguments to this object."""
+                    assert self._args_and_kwargs is None
+                    return Factory(self._fun, self._session, args_and_kwargs=(args, kwargs))
+
+            cls._factory_class = Factory
+
+        return cls._factory_class(fun, session)
 
 
 def requires_create_generator(method):
@@ -116,54 +205,3 @@ def requires_create(method):
         return await method(self, *args, **kwargs)
 
     return wrapped_method
-
-
-def make_factory(cls):
-    """Takes an Object subclass and creates a factory subclass of it.
-
-    Factories work as "named promises"."""
-    # TODO: is there some nicer way we could do this rather than creating a class inside a function?
-    # Maybe we could use the ObjectMeta meta class?
-    assert issubclass(cls, Object)
-
-    class Factory(cls):
-        """Acts as a wrapper for a transient Object.
-
-        Puts a tag and optionally a session on it. Otherwise just "steals" the object id from the
-        underlying object at construction time.
-        """
-
-        def __init__(self, fun, session, args_and_kwargs=None):  # TODO: session?
-            self._fun = fun
-            self._args_and_kwargs = args_and_kwargs
-            self._session = session
-            function_info = FunctionInfo(fun)
-
-            # This is the only place where tags are being set on objects,
-            # besides Function
-            tag = function_info.get_tag(args_and_kwargs)
-            Object.__init__(self, session=session, tag=tag)
-
-        async def _create_impl(self, session):
-            if self._args_and_kwargs is not None:
-                args, kwargs = self._args_and_kwargs
-                object = self._fun(*args, **kwargs)
-            else:
-                object = self._fun()
-            assert isinstance(object, cls)
-            object_id = await session.create_object(object)
-            # Note that we can "steal" the object id from the other object
-            # and set it on this object. This is a general trick we can do
-            # to other objects too.
-            return object_id
-
-        def __call__(self, *args, **kwargs):
-            """Binds arguments to this object."""
-            assert self._args_and_kwargs is None
-            return Factory(self._fun, self._session, args_and_kwargs=(args, kwargs))
-
-    @decorator_with_options
-    def factory_decorator(fun, session=None):
-        return Factory(fun, session)
-
-    return factory_decorator
