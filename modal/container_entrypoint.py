@@ -268,6 +268,12 @@ def call_function(
             raise InvalidError(f"Unknown function type {function_type}")
 
     except Exception as exc:
+        try:
+            serialized_exc = function_context.serialize(exc)
+        except Exception:
+            # We can't always serialize exceptions.
+            serialized_exc = None
+
         # Note: we're not serializing the traceback since it contains
         # local references that means we can't unpickle it. We *are*
         # serializing the exception, which may have some issues (there
@@ -277,7 +283,7 @@ def call_function(
             input_id,
             output_buffer_id,
             status=api_pb2.GenericResult.Status.FAILURE,
-            data=function_context.serialize(exc),
+            data=serialized_exc,
             exception=repr(exc),
             traceback=traceback.format_exc(),
         )
