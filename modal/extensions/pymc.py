@@ -12,7 +12,7 @@ from typing import Dict, Sequence
 import synchronicity
 from aiostream import stream
 from modal import Session
-from modal.image import CustomImage
+from modal.image import CustomImage, Image
 
 synchronizer = synchronicity.Synchronizer()
 
