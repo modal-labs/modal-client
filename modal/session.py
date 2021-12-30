@@ -171,7 +171,7 @@ class Session:
         return response.object_id
 
     @synchronizer.asynccontextmanager
-    async def run(self, client=None, stdout=None, stderr=None):
+    async def run(self, client=None, stdout=None, stderr=None, logs_timeout=None):
         # HACK because Lock needs to be created on the synchronizer thread
         if self._flush_lock is None:
             self._flush_lock = asyncio.Lock()
@@ -179,14 +179,14 @@ class Session:
         if client is None:
             client = await Client.from_env()
             async with client:
-                async with self._run(client, stdout, stderr) as it:
+                async with self._run(client, stdout, stderr, logs_timeout) as it:
                     yield it  # ctx mgr
         else:
-            async with self._run(client, stdout, stderr) as it:
+            async with self._run(client, stdout, stderr, logs_timeout) as it:
                 yield it  # ctx mgr
 
     @synchronizer.asynccontextmanager
-    async def _run(self, client, stdout, stderr):
+    async def _run(self, client, stdout, stderr, logs_timeout):
         # TOOD: use something smarter than checking for the .client to exists in order to prevent
         # race conditions here!
         if self.state != SessionState.NONE:
@@ -235,7 +235,8 @@ class Session:
 
             # Fetch any straggling logs
             logger.debug("Draining logs")
-            await self._get_logs(stdout, stderr, draining=True, timeout=config["logs_timeout"])
+            logs_timeout = logs_timeout or config["logs_timeout"]
+            await self._get_logs(stdout, stderr, draining=True, timeout=logs_timeout)
             self._progress.stop()
         finally:
             if self.state == SessionState.RUNNING:
