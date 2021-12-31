@@ -79,7 +79,7 @@ def rebuild_exc(exc, tb):
     return exc
 
 
-@session.generator(image=pymc_image)
+@modal.generator(session=session, image=pymc_image)
 def sample_process(
     draws: int,
     tune: int,

@@ -18,7 +18,7 @@ from ._client import Client
 from ._grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .config import logger
 from .exception import InvalidError
-from .function import Function, _pack_output_buffer_item, _unpack_input_buffer_item
+from .functions import Function, _pack_output_buffer_item, _unpack_input_buffer_item
 from .object import Object
 from .proto import api_pb2
 from .session import Session

@@ -1,14 +1,10 @@
 import asyncio
-import enum
 import functools
 import io
-import sys
-import warnings
 
-from ._async_utils import TaskContext, retry, synchronizer
+from ._async_utils import TaskContext, synchronizer
 from ._client import Client
-from ._decorator_utils import decorator_with_options
-from ._grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIME_BUFFER, ChannelPool
+from ._grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIME_BUFFER
 from ._object_meta import ObjectMeta
 from ._progress import ProgressSpinner
 from ._serialization import Pickler, Unpickler
@@ -16,8 +12,6 @@ from ._session_singleton import get_session_singleton, set_session_singleton
 from ._session_state import SessionState
 from ._utils import print_logs
 from .config import config, logger
-from .function import Function
-from .image import debian_slim  # TODO: ugly
 from .proto import api_pb2
 
 
@@ -73,14 +67,6 @@ class Session:
                 f"{obj}: Only objects with tags or persistent objects can be created prior to the session running"
             )
         self._pending_create_objects.append(obj)
-
-    @decorator_with_options
-    def function(self, raw_f=None, image=debian_slim, env_dict=None, gpu=False):
-        return Function(self, raw_f, image=image, env_dict=env_dict, is_generator=False, gpu=gpu)
-
-    @decorator_with_options
-    def generator(self, raw_f=None, image=debian_slim, env_dict=None, gpu=False):
-        return Function(self, raw_f, image=image, env_dict=env_dict, is_generator=True, gpu=gpu)
 
     async def _get_logs(self, stdout, stderr, draining=False, timeout=BLOCKING_REQUEST_TIMEOUT):
         request = api_pb2.SessionGetLogsRequest(session_id=self.session_id, timeout=timeout, draining=draining)

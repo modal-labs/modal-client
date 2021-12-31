@@ -281,3 +281,13 @@ class Function(Object):
 
     def get_raw_f(self):
         return self.raw_f
+
+
+@decorator_with_options
+def function(raw_f=None, session=None, image=debian_slim, env_dict=None, gpu=False):
+    return Function(session, raw_f, image=image, env_dict=env_dict, is_generator=False, gpu=gpu)
+
+
+@decorator_with_options
+def generator(raw_f=None, session=None, image=debian_slim, env_dict=None, gpu=False):
+    return Function(session, raw_f, image=image, env_dict=env_dict, is_generator=True, gpu=gpu)

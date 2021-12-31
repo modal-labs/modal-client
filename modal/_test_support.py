@@ -1,24 +1,24 @@
 import asyncio
 
-from . import Session
+from . import Session, function
 
 SLEEP_DELAY = 0.1
 
 session = Session()
 
 
-@session.function
+@function(session=session)
 def square(x):
     return x * x
 
 
-@session.function
+@function(session=session)
 async def square_async(x):
     await asyncio.sleep(SLEEP_DELAY)
     return x * x
 
 
-@session.function
+@function(session=session)
 def square_sync_returning_async(x):
     async def square():
         await asyncio.sleep(SLEEP_DELAY)
@@ -27,7 +27,7 @@ def square_sync_returning_async(x):
     return square()
 
 
-@session.function
+@function(session=session)
 def raises(x):
     raise Exception("Failure!")
 
