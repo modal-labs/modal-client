@@ -1,7 +1,7 @@
 import asyncio
 
 import pytest
-from modal.client import Client
+from modal._client import Client
 from modal.exception import ConnectionError
 from modal.proto import api_pb2
 

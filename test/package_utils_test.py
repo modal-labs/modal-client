@@ -1,4 +1,4 @@
-from modal.package_utils import get_package_deps_mount_info
+from modal._package_utils import get_package_deps_mount_info
 
 
 def test_get_package_deps_mount_info():

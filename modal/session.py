@@ -5,20 +5,20 @@ import io
 import sys
 import warnings
 
-from .async_utils import TaskContext, retry, synchronizer
-from .client import Client
+from ._async_utils import TaskContext, retry, synchronizer
+from ._client import Client
+from ._decorator_utils import decorator_with_options
+from ._grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIME_BUFFER, ChannelPool
+from ._object_meta import ObjectMeta
+from ._progress import ProgressSpinner
+from ._serialization import Pickler, Unpickler
+from ._session_singleton import get_session_singleton, set_session_singleton
+from ._session_state import SessionState
+from ._utils import print_logs
 from .config import config, logger
-from .decorator_utils import decorator_with_options
 from .function import Function
-from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIME_BUFFER, ChannelPool
 from .image import debian_slim  # TODO: ugly
-from .object_meta import ObjectMeta
-from .progress import ProgressSpinner
 from .proto import api_pb2
-from .serialization import Pickler, Unpickler
-from .session_singleton import get_session_singleton, set_session_singleton
-from .session_state import SessionState
-from .utils import print_logs
 
 
 @synchronizer

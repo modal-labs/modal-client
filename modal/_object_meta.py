@@ -1,4 +1,4 @@
-from .async_utils import synchronizer
+from ._async_utils import synchronizer
 from .config import logger
 
 

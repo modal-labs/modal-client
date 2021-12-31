@@ -4,10 +4,10 @@ import os
 import sys
 from typing import Dict
 
-from .async_utils import retry
+from ._async_utils import retry
+from ._grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .config import config, logger
 from .exception import RemoteError
-from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .mount import get_sha256_hex_from_content  # TODO: maybe not
 from .object import Object, requires_create
 from .proto import api_pb2

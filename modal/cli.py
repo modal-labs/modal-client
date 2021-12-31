@@ -2,7 +2,7 @@ import getpass
 
 import typer
 
-from .client import Client
+from ._client import Client
 from .config import config, store_user_config
 from .proto import api_pb2
 

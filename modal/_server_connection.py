@@ -6,7 +6,7 @@ import uuid
 import grpc
 from grpc.aio._channel import Channel
 
-from .async_utils import retry
+from ._async_utils import retry
 from .config import config, logger
 from .proto import api_pb2
 

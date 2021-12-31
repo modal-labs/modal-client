@@ -5,12 +5,12 @@ import time
 import grpc
 import grpc.aio
 
-from .async_utils import TaskContext, retry, synchronizer
+from ._async_utils import TaskContext, retry, synchronizer
+from ._grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT, ChannelPool
+from ._server_connection import GRPCConnectionFactory
 from .config import config, logger
 from .exception import AuthError, ConnectionError, InvalidError
-from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT, ChannelPool
 from .proto import api_pb2, api_pb2_grpc
-from .server_connection import GRPCConnectionFactory
 
 CLIENT_CREATE_TIMEOUT = 5.0
 

@@ -7,12 +7,13 @@ import warnings
 from aiostream import pipe, stream
 from google.protobuf.any_pb2 import Any
 
-from .async_utils import retry
-from .buffer_utils import buffered_rpc_read, buffered_rpc_write
+from ._async_utils import retry
+from ._buffer_utils import buffered_rpc_read, buffered_rpc_write
+from ._decorator_utils import decorator_with_options
+from ._function_utils import FunctionInfo
 from .config import config, logger
 from .exception import RemoteError
-from .function_utils import FunctionInfo
-from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
+from .image import debian_slim
 from .mount import Mount, create_package_mounts
 from .object import Object, requires_create, requires_create_generator
 from .proto import api_pb2
@@ -20,31 +21,31 @@ from .proto import api_pb2
 
 # TODO: maybe we can create a special Buffer class in the ORM that keeps track of the protobuf type
 # of the bytes stored, so the packing/unpacking can happen automatically.
-def pack_input_buffer_item(args: bytes, kwargs: bytes, output_buffer_id: str) -> api_pb2.BufferItem:
+def _pack_input_buffer_item(args: bytes, kwargs: bytes, output_buffer_id: str) -> api_pb2.BufferItem:
     data = Any()
     data.Pack(api_pb2.FunctionInput(args=args, kwargs=kwargs, output_buffer_id=output_buffer_id))
     return api_pb2.BufferItem(data=data)
 
 
-def pack_output_buffer_item(result: api_pb2.GenericResult) -> api_pb2.BufferItem:
+def _pack_output_buffer_item(result: api_pb2.GenericResult) -> api_pb2.BufferItem:
     data = Any()
     data.Pack(result)
     return api_pb2.BufferItem(data=data)
 
 
-def unpack_input_buffer_item(buffer_item: api_pb2.BufferItem) -> api_pb2.FunctionInput:
+def _unpack_input_buffer_item(buffer_item: api_pb2.BufferItem) -> api_pb2.FunctionInput:
     input = api_pb2.FunctionInput()
     buffer_item.data.Unpack(input)
     return input
 
 
-def unpack_output_buffer_item(buffer_item: api_pb2.BufferItem) -> api_pb2.GenericResult:
+def _unpack_output_buffer_item(buffer_item: api_pb2.BufferItem) -> api_pb2.GenericResult:
     output = api_pb2.GenericResult()
     buffer_item.data.Unpack(output)
     return output
 
 
-def process_result(session, result):
+def _process_result(session, result):
     if result.status != api_pb2.GenericResult.Status.SUCCESS:
         if result.data:
             try:
@@ -60,7 +61,7 @@ def process_result(session, result):
     return session.deserialize(result.data)
 
 
-class Invocation:
+class _Invocation:
     def __init__(self, session, function_id, output_buffer_id):
         self.session = session
         self.function_id = function_id
@@ -75,12 +76,12 @@ class Invocation:
         input_buffer_id = response.input_buffer_id
         output_buffer_id = response.output_buffer_id
 
-        item = pack_input_buffer_item(session.serialize(args), session.serialize(kwargs), output_buffer_id)
+        item = _pack_input_buffer_item(session.serialize(args), session.serialize(kwargs), output_buffer_id)
         buffer_req = api_pb2.BufferWriteRequest(items=[item], buffer_id=input_buffer_id)
         request = api_pb2.FunctionCallRequest(function_id=function_id, buffer_req=buffer_req)
         await buffered_rpc_write(session.client.stub.FunctionCall, request)
 
-        return Invocation(session, function_id, output_buffer_id)
+        return _Invocation(session, function_id, output_buffer_id)
 
     async def get_items(self):
         request = api_pb2.FunctionGetNextOutputRequest(function_id=self.function_id)
@@ -88,12 +89,12 @@ class Invocation:
             self.session.client.stub.FunctionGetNextOutput, request, self.output_buffer_id, timeout=None
         )
         for item in response.items:
-            yield unpack_output_buffer_item(item)
+            yield _unpack_output_buffer_item(item)
 
     async def run_function(self):
         result = (await stream.list(self.get_items()))[0]
         assert result.gen_status == api_pb2.GenericResult.GeneratorStatus.NOT_GENERATOR
-        return process_result(self.session, result)
+        return _process_result(self.session, result)
 
     async def run_generator(self):
         completed = False
@@ -102,13 +103,13 @@ class Invocation:
                 if result.gen_status == api_pb2.GenericResult.GeneratorStatus.COMPLETE:
                     completed = True
                     break
-                yield process_result(self.session, result)
+                yield _process_result(self.session, result)
 
 
 MAP_INVOCATION_CHUNK_SIZE = 100
 
 
-class MapInvocation:
+class _MapInvocation:
     # TODO: should this be an object?
     def __init__(self, session, response_gen):
         self.session = session
@@ -128,7 +129,7 @@ class MapInvocation:
                 async for chunk in streamer:
                     items = []
                     for arg in chunk:
-                        item = pack_input_buffer_item(
+                        item = _pack_input_buffer_item(
                             session.serialize(arg), session.serialize(kwargs), output_buffer_id
                         )
                         items.append(item)
@@ -151,7 +152,7 @@ class MapInvocation:
 
         response_gen = stream.merge(pump_inputs(), poll_outputs())
 
-        return MapInvocation(session, response_gen)
+        return _MapInvocation(session, response_gen)
 
     async def __aiter__(self):
         num_inputs = 0
@@ -165,13 +166,13 @@ class MapInvocation:
                     assert not have_all_inputs
                     num_inputs += response
                 elif isinstance(response, api_pb2.BufferItem):
-                    result = unpack_output_buffer_item(response)
+                    result = _unpack_output_buffer_item(response)
 
                     if result.gen_status != api_pb2.GenericResult.GeneratorStatus.INCOMPLETE:
                         num_outputs += 1
 
                     if result.gen_status != api_pb2.GenericResult.GeneratorStatus.COMPLETE:
-                        yield process_result(self.session, result)
+                        yield _process_result(self.session, result)
                 else:
                     assert False, f"Got unknown type in invocation stream: {type(response)}"
 
@@ -246,23 +247,23 @@ class Function(Object):
     @requires_create_generator
     async def map(self, inputs, window=100, kwargs={}):
         input_stream = stream.iterate(inputs) | pipe.map(lambda arg: (arg,))
-        async for item in await MapInvocation.create(self.object_id, input_stream, kwargs, self._session):
+        async for item in await _MapInvocation.create(self.object_id, input_stream, kwargs, self._session):
             yield item
 
     @requires_create
     async def call_function(self, args, kwargs):
-        invocation = await Invocation.create(self.object_id, args, kwargs, self._session)
+        invocation = await _Invocation.create(self.object_id, args, kwargs, self._session)
         return await invocation.run_function()
 
     @requires_create
     async def invoke_function(self, args, kwargs):
         """Returns a future rather than the result directly"""
-        invocation = await Invocation.create(self.object_id, args, kwargs, self._session)
+        invocation = await _Invocation.create(self.object_id, args, kwargs, self._session)
         return invocation.run_function()
 
     @requires_create_generator
     async def call_generator(self, args, kwargs):
-        invocation = await Invocation.create(self.object_id, args, kwargs, self._session)
+        invocation = await _Invocation.create(self.object_id, args, kwargs, self._session)
         async for res in invocation.run_generator():
             yield res
 

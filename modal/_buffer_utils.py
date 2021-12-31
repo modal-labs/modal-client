@@ -2,9 +2,9 @@ import asyncio
 import time
 import uuid
 
-from .async_utils import retry
+from ._async_utils import retry
+from ._grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIME_BUFFER
 from .config import logger
-from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIME_BUFFER
 from .proto import api_pb2
 
 INITIAL_STREAM_SIZE = 5

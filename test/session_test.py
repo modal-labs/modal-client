@@ -1,6 +1,6 @@
 import pytest
 from modal import Session
-from modal.session_state import SessionState
+from modal._session_state import SessionState
 
 
 def test_session():

@@ -7,7 +7,7 @@ import traceback
 
 import grpc.aio
 
-from .async_utils import add_traceback, chunk_generator
+from ._async_utils import add_traceback, chunk_generator
 from .config import logger
 
 HTTP_TIME_BUFFER = 5

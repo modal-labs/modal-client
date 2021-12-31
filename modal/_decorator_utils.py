@@ -14,7 +14,7 @@ def decorator_with_options(dec_fun):
 
     @functools.wraps(dec_fun)
     def wrapper(*args, **kwargs):
-        if args and inspect.isfunction(args[-1]):
+        if args and not kwargs and inspect.isfunction(args[-1]):
             # The decorator is invoked without arguments
             # Return a closure that consumes the function
             return dec_fun(*args)

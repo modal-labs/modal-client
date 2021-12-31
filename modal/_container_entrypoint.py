@@ -12,13 +12,13 @@ import aiostream
 import cloudpickle
 import google.protobuf.json_format
 
-from .async_utils import TaskContext, asyncio_run, synchronizer
-from .buffer_utils import buffered_rpc_read, buffered_rpc_write
-from .client import Client
+from ._async_utils import TaskContext, asyncio_run, synchronizer
+from ._buffer_utils import buffered_rpc_read, buffered_rpc_write
+from ._client import Client
+from ._grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .config import logger
 from .exception import InvalidError
-from .function import Function, pack_output_buffer_item, unpack_input_buffer_item
-from .grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
+from .function import Function, _pack_output_buffer_item, _unpack_input_buffer_item
 from .object import Object
 from .proto import api_pb2
 from .session import Session
@@ -181,7 +181,7 @@ class FunctionContext:
     async def enqueue_output(self, input_id, output_buffer_id, **kwargs):
         result = api_pb2.GenericResult(**kwargs)
         result.input_id = input_id
-        item = pack_output_buffer_item(result)
+        item = _pack_output_buffer_item(result)
         await self.output_queue.put((item, output_buffer_id))
 
 
@@ -232,7 +232,7 @@ def call_function(
     function_type: api_pb2.Function.FunctionType,
     buffer_item: api_pb2.BufferItem,
 ):
-    input = unpack_input_buffer_item(buffer_item)
+    input = _unpack_input_buffer_item(buffer_item)
     output_buffer_id = input.output_buffer_id
 
     input_id = buffer_item.item_id

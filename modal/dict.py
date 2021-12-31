@@ -2,8 +2,8 @@ import queue  # The system library
 import uuid
 from typing import Any, List
 
-from .async_utils import retry
-from .client import Client
+from ._async_utils import retry
+from ._client import Client
 from .config import logger
 from .object import Object, requires_create
 from .proto import api_pb2

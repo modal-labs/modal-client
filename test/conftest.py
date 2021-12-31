@@ -4,9 +4,9 @@ import typing
 import grpc
 import pytest
 from modal import Session
-from modal.client import Client
+from modal._client import Client
+from modal._session_singleton import set_session_singleton
 from modal.proto import api_pb2, api_pb2_grpc
-from modal.session_singleton import set_session_singleton
 
 
 class GRPCClientServicer(api_pb2_grpc.ModalClient):

@@ -1,4 +1,4 @@
-from modal.utils import print_logs
+from modal._utils import print_logs
 
 
 def test_print_logs(capsys):
