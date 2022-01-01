@@ -87,29 +87,27 @@ class Object(metaclass=ObjectMeta):
         raise NotImplementedError(f"Object of class {type(self)} has no _create_impl method")
 
     def set_object_id(self, object_id, session_id):
+        """Set the Modal internal object id"""
         self._object_id = object_id
         self._session_id = session_id
 
     @property
     def object_id(self):
+        """The Modal internal object id"""
         if self._session_id is not None and self._session is not None and self._session_id == self._session.session_id:
             return self._object_id
 
     @classmethod
-    def new(cls, **kwargs):
-        """TODO: Dead?"""
+    def _new(cls, **kwargs):
         obj = Object.__new__(cls)
         obj._init(**kwargs)
         return obj
 
     @classmethod
     def use(cls, session, path):
-        """Use a object published with :py:meth:`modal.session.Session.share`"""
-        # TODO: this is a bit ugly, because it circumvents the contructor, which means
-        # it might not always work (eg you can't do DebianSlim.use("foo"))
-        # This interface is a bit TBD, let's think more about it
+        """Use an object published with :py:meth:`modal.session.Session.share`"""
         # TODO: session should be a 2nd optional arg
-        obj = cls.new(session=session, share_path=path)
+        obj = cls._new(session=session, share_path=path)
         if session:
             session.create_object_later(obj)
         return obj
@@ -141,6 +139,7 @@ class Object(metaclass=ObjectMeta):
                 """
 
                 def __init__(self, fun, session, args_and_kwargs=None):  # TODO: session?
+                    functools.update_wrapper(self, fun)
                     self._fun = fun
                     self._args_and_kwargs = args_and_kwargs
                     self._session = session
@@ -169,6 +168,14 @@ class Object(metaclass=ObjectMeta):
                     assert self._args_and_kwargs is None
                     return Factory(self._fun, self._session, args_and_kwargs=(args, kwargs))
 
+                def __repr__(self):
+                    return "<{}.{} {!r}>".format(
+                        type(self).__module__, type(self).__qualname__, getattr(self, "tag", None)
+                    )
+
+            Factory.__module__ = cls.__module__
+            Factory.__qualname__ = cls.__qualname__ + ".Factory"
+            Factory.__doc__ = "\n\n".join(filter(None, [Factory.__doc__, cls.__doc__]))
             cls._factory_class = Factory
 
         return cls._factory_class(fun, session)

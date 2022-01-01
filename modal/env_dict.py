@@ -3,7 +3,10 @@ from .proto import api_pb2
 
 
 class EnvDict(Object):
+    """A dictionary of environment variables for images"""
+
     def __init__(self, env_dict, session=None):
+        """Initialize using a dictionary"""
         super().__init__(session=session)
         self.env_dict = env_dict
 

@@ -1,12 +1,12 @@
 import sys
 
-from modal.image import CustomImage, Image, debian_slim, dockerhub_python_version
+from modal.image import CustomImage, Image, _dockerhub_python_version, debian_slim
 
 
 def test_python_version():
-    assert dockerhub_python_version("3.9.1") == "3.9.9"
-    assert dockerhub_python_version("3.9") == "3.9.9"
-    v = dockerhub_python_version().split(".")
+    assert _dockerhub_python_version("3.9.1") == "3.9.9"
+    assert _dockerhub_python_version("3.9") == "3.9.9"
+    v = _dockerhub_python_version().split(".")
     assert len(v) == 3
     assert (int(v[0]), int(v[1])) == sys.version_info[:2]
 

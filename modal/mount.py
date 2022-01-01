@@ -14,19 +14,19 @@ from .object import Object
 from .proto import api_pb2
 
 
-def get_sha256_hex_from_content(content):
+def _get_sha256_hex_from_content(content):
     m = hashlib.sha256()
     m.update(content)
     return m.hexdigest()
 
 
-def get_sha256_hex_from_filename(filename, rel_filename):
+def _get_sha256_hex_from_filename(filename, rel_filename):
     # Somewhat CPU intensive, so we run it in a thread/process
     content = open(filename, "rb").read()
-    return filename, rel_filename, get_sha256_hex_from_content(content)
+    return filename, rel_filename, _get_sha256_hex_from_content(content)
 
 
-async def get_files(local_dir, condition, recursive):
+async def _get_files(local_dir, condition, recursive):
     loop = asyncio.get_event_loop()
     with concurrent.futures.ThreadPoolExecutor() as exe:
         futs = []
@@ -38,7 +38,7 @@ async def get_files(local_dir, condition, recursive):
         for filename in gen:
             rel_filename = os.path.relpath(filename, local_dir)
             if condition(filename):
-                futs.append(loop.run_in_executor(exe, get_sha256_hex_from_filename, filename, rel_filename))
+                futs.append(loop.run_in_executor(exe, _get_sha256_hex_from_filename, filename, rel_filename))
         logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} workers")
         for fut in asyncio.as_completed(futs):
             filename, rel_filename, sha256_hex = await fut
@@ -84,7 +84,7 @@ class Mount(Object):
         logger.debug(f"Uploading mount {mount_id} using {n_concurrent_uploads} uploads")
 
         # Create async generator
-        files = get_files(self.local_dir, self.condition, self.recursive)
+        files = _get_files(self.local_dir, self.condition, self.recursive)
         files_stream = aiostream.stream.iterate(files)
 
         async def put_file_tupled(tup):

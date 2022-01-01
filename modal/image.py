@@ -8,7 +8,6 @@ from ._async_utils import retry
 from ._grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .config import config, logger
 from .exception import RemoteError
-from .mount import get_sha256_hex_from_content  # TODO: maybe not
 from .object import Object, requires_create
 from .proto import api_pb2
 
@@ -19,10 +18,21 @@ def _make_bytes(s):
 
 
 class Image(Object):
+    """Base class for container images to run functions in.
+
+    Do not construct this class directly; instead use
+    :py:func:`modal.image.debian_slim` or
+    :py:func:`modal.image.extend_image`.
+    """
+
     def __init__(self, session):
         super().__init__(session=session)
 
     def is_inside(self):
+        """Returns whether this container is active or not.
+
+        Useful for conditionally importing libraries when inside images.
+        """
         # This is used from inside of containers to know whether this container is active or not
         env_image_id = config.get("image_id")
         image_id = self.object_id
@@ -31,6 +41,11 @@ class Image(Object):
 
 
 class CustomImage(Image):
+    """A custom image built using docker commands.
+
+    Generally, you should instead use :py:func:`modal.image.extend_image`
+    """
+
     """This might be a temporary thing until we can simplify other code.
 
     Needed to rewrite all the other subclasses to use composition instead of inheritance."""
@@ -106,7 +121,7 @@ def local_image(python_executable):
     return CustomImage(local_image_python_executable=python_executable)
 
 
-def dockerhub_python_version(python_version=None):
+def _dockerhub_python_version(python_version=None):
     if python_version is None:
         python_version = config["image_python_version"]
     if python_version is None:
@@ -128,7 +143,12 @@ def dockerhub_python_version(python_version=None):
 
 @Image.factory
 def debian_slim(extra_commands=None, python_packages=None, python_version=None):
-    python_version = dockerhub_python_version(python_version)
+    """A default base image, built on the official python:<version>-slim-buster Docker hub images
+
+    Can also be called as a function to build a new image with additional bash
+    commands or python packages.
+    """
+    python_version = _dockerhub_python_version(python_version)
     base_image = Image.use(None, f"python-{python_version}-slim-buster-base")
     builder_image = Image.use(None, f"python-{python_version}-slim-buster-builder")
 
@@ -158,4 +178,5 @@ def debian_slim(extra_commands=None, python_packages=None, python_version=None):
 
 
 def extend_image(base_image, extra_dockerfile_commands):
+    """Extend an image with arbitrary dockerfile commands"""
     return CustomImage(base_images={"base": base_image}, dockerfile_commands=["FROM base"] + extra_dockerfile_commands)

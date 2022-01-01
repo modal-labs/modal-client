@@ -285,9 +285,25 @@ class Function(Object):
 
 @decorator_with_options
 def function(raw_f=None, session=None, image=debian_slim, env_dict=None, gpu=False):
+    """Decorator to create Modal functions
+
+    Args:
+        session (:py:class:`modal.session.Session`): The session
+        image (:py:class:`modal.image.Image`): The image to run the function in
+        env_dict (:py:class:`modal.env_dict.EnvDict`): Dictionary of environment variables
+        gpu (bool): Whether a GPU is required
+    """
     return Function(session, raw_f, image=image, env_dict=env_dict, is_generator=False, gpu=gpu)
 
 
 @decorator_with_options
 def generator(raw_f=None, session=None, image=debian_slim, env_dict=None, gpu=False):
+    """Decorator to create Modal generators
+
+    Args:
+        session (:py:class:`modal.session.Session`): The session
+        image (:py:class:`modal.image.Image`): The image to run the function in
+        env_dict (:py:class:`modal.env_dict.EnvDict`): Dictionary of environment variables
+        gpu (bool): Whether a GPU is required
+    """
     return Function(session, raw_f, image=image, env_dict=env_dict, is_generator=True, gpu=gpu)
