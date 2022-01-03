@@ -40,6 +40,7 @@ message BufferItem {
   google.protobuf.Any data = 1;
   bool EOF = 2;
   string item_id = 3; // Each element is given an ID by the server.
+  int32 idx = 4;
 }
 
 message BufferWriteRequest {

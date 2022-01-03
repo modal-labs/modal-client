@@ -178,18 +178,19 @@ class FunctionContext:
             else:
                 items.append(item)
 
-    async def enqueue_output(self, input_id, output_buffer_id, **kwargs):
+    async def enqueue_output(self, input_id, output_buffer_id, idx, **kwargs):
         result = api_pb2.GenericResult(**kwargs)
         result.input_id = input_id
-        item = _pack_output_buffer_item(result)
+        item = _pack_output_buffer_item(result, idx)
         await self.output_queue.put((item, output_buffer_id))
 
 
-def _call_function_generator(function_context, input_id, output_buffer_id, res):
+def _call_function_generator(function_context, input_id, output_buffer_id, res, idx):
     for value in res:
         function_context.enqueue_output(
             input_id,
             output_buffer_id,
+            idx,
             status=api_pb2.GenericResult.Status.SUCCESS,
             data=function_context.serialize(value),
             gen_status=api_pb2.GenericResult.GeneratorStatus.INCOMPLETE,
@@ -199,17 +200,19 @@ def _call_function_generator(function_context, input_id, output_buffer_id, res):
     function_context.enqueue_output(
         input_id,
         output_buffer_id,
+        idx,
         status=api_pb2.GenericResult.Status.SUCCESS,
         gen_status=api_pb2.GenericResult.GeneratorStatus.COMPLETE,
     )
 
 
-def _call_function_asyncgen(function_context, input_id, output_buffer_id, res):
+def _call_function_asyncgen(function_context, input_id, output_buffer_id, res, idx):
     async def run_asyncgen():
         async for value in res:
             await function_context.enqueue_output(
                 input_id,
                 output_buffer_id,
+                idx,
                 status=api_pb2.GenericResult.Status.SUCCESS,
                 data=await function_context.serialize(value),
                 gen_status=api_pb2.GenericResult.GeneratorStatus.INCOMPLETE,
@@ -219,6 +222,7 @@ def _call_function_asyncgen(function_context, input_id, output_buffer_id, res):
         await function_context.enqueue_output(
             input_id,
             output_buffer_id,
+            idx,
             status=api_pb2.GenericResult.Status.SUCCESS,
             gen_status=api_pb2.GenericResult.GeneratorStatus.COMPLETE,
         )
@@ -238,15 +242,16 @@ def call_function(
     input_id = buffer_item.item_id
     args = function_context.deserialize(input.args)
     kwargs = function_context.deserialize(input.kwargs)
+    idx = buffer_item.idx
 
     try:
         res = function(*args, **kwargs)
 
         if function_type == api_pb2.Function.FunctionType.GENERATOR:
             if inspect.isgenerator(res):
-                _call_function_generator(function_context, input_id, output_buffer_id, res)
+                _call_function_generator(function_context, input_id, output_buffer_id, res, idx)
             elif inspect.isasyncgen(res):
-                _call_function_asyncgen(function_context, input_id, output_buffer_id, res)
+                _call_function_asyncgen(function_context, input_id, output_buffer_id, res, idx)
             else:
                 raise InvalidError("Function of type generator returned a non-generator output")
 
@@ -260,6 +265,7 @@ def call_function(
             function_context.enqueue_output(
                 input_id,
                 output_buffer_id,
+                idx,
                 status=api_pb2.GenericResult.Status.SUCCESS,
                 data=function_context.serialize(res),
             )
@@ -282,6 +288,7 @@ def call_function(
         function_context.enqueue_output(
             input_id,
             output_buffer_id,
+            idx,
             status=api_pb2.GenericResult.Status.FAILURE,
             data=serialized_exc,
             exception=repr(exc),

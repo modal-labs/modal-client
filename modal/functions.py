@@ -21,16 +21,16 @@ from .proto import api_pb2
 
 # TODO: maybe we can create a special Buffer class in the ORM that keeps track of the protobuf type
 # of the bytes stored, so the packing/unpacking can happen automatically.
-def _pack_input_buffer_item(args: bytes, kwargs: bytes, output_buffer_id: str) -> api_pb2.BufferItem:
+def _pack_input_buffer_item(args: bytes, kwargs: bytes, output_buffer_id: str, idx=None) -> api_pb2.BufferItem:
     data = Any()
     data.Pack(api_pb2.FunctionInput(args=args, kwargs=kwargs, output_buffer_id=output_buffer_id))
-    return api_pb2.BufferItem(data=data)
+    return api_pb2.BufferItem(data=data, idx=idx)
 
 
-def _pack_output_buffer_item(result: api_pb2.GenericResult) -> api_pb2.BufferItem:
+def _pack_output_buffer_item(result: api_pb2.GenericResult, idx=None) -> api_pb2.BufferItem:
     data = Any()
     data.Pack(result)
-    return api_pb2.BufferItem(data=data)
+    return api_pb2.BufferItem(data=data, idx=idx)
 
 
 def _unpack_input_buffer_item(buffer_item: api_pb2.BufferItem) -> api_pb2.FunctionInput:
@@ -116,7 +116,7 @@ class _MapInvocation:
         self.response_gen = response_gen
 
     @staticmethod
-    async def create(function_id, input_stream, kwargs, session):
+    async def create(function_id, input_stream, kwargs, session, is_generator):
         request = api_pb2.FunctionMapRequest(function_id=function_id)
         response = await retry(session.client.stub.FunctionMap)(request)
 
@@ -125,12 +125,14 @@ class _MapInvocation:
 
         async def pump_inputs():
             chunked_input_stream = input_stream | pipe.chunks(MAP_INVOCATION_CHUNK_SIZE)
+            last_idx_sent = -1
             async with chunked_input_stream.stream() as streamer:
                 async for chunk in streamer:
                     items = []
                     for arg in chunk:
+                        last_idx_sent += 1
                         item = _pack_input_buffer_item(
-                            session.serialize(arg), session.serialize(kwargs), output_buffer_id
+                            session.serialize(arg), session.serialize(kwargs), output_buffer_id, idx=last_idx_sent
                         )
                         items.append(item)
                     buffer_req = api_pb2.BufferWriteRequest(items=items, buffer_id=input_buffer_id)
@@ -142,13 +144,33 @@ class _MapInvocation:
 
         async def poll_outputs():
             """Keep trying to dequeue outputs."""
+
+            next_idx = 0
+            # map to store out-of-order outputs received
+            pending_outputs = {}
+
             while True:
                 request = api_pb2.FunctionGetNextOutputRequest(function_id=function_id)
                 response = await buffered_rpc_read(
                     session.client.stub.FunctionGetNextOutput, request, output_buffer_id, timeout=None
                 )
                 for item in response.items:
+                    assert item.idx >= next_idx
+
+                    # yield output directly for generators.
+                    if is_generator:
+                        yield item
+                    # hold on to outputs for function maps, so we can reorder them correctly.
+                    else:
+                        pending_outputs[item.idx] = item
+
+                # send outputs sequentially while we can
+                while next_idx in pending_outputs:
+                    item = pending_outputs.pop(next_idx)
                     yield item
+                    next_idx += 1
+
+            assert len(pending_outputs) == 0
 
         response_gen = stream.merge(pump_inputs(), poll_outputs())
 
@@ -247,7 +269,9 @@ class Function(Object):
     @requires_create_generator
     async def map(self, inputs, window=100, kwargs={}):
         input_stream = stream.iterate(inputs) | pipe.map(lambda arg: (arg,))
-        async for item in await _MapInvocation.create(self.object_id, input_stream, kwargs, self._session):
+        async for item in await _MapInvocation.create(
+            self.object_id, input_stream, kwargs, self._session, self.is_generator
+        ):
             yield item
 
     @requires_create
