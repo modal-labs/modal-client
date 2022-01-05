@@ -9,32 +9,30 @@ import traceback
 from collections import namedtuple
 from typing import Dict, Sequence
 
+import modal
 import synchronicity
 from aiostream import stream
-from modal import Session
-from modal.image import CustomImage, Image
 
 synchronizer = synchronicity.Synchronizer()
 
-session = Session()
+session = modal.Session()
 
 
-@Image.factory
+@modal.Image.factory
 def pymc_image():
     dockerfile_commands = [
-        "FROM base",
         'SHELL ["/bin/bash", "-c"]',
         "RUN conda info",
         "RUN echo $0 \ ",
         "&& . /root/.bashrc \ ",
         "&& conda activate base \ ",
         "&& conda info \ ",
-        "&& conda install theano-pymc==1.1.2 pymc3==3.11.2 scikit-learn --yes \ ",
+        "&& conda list \ ",
+        "&& conda install theano-pymc==1.1.2 pymc3==3.11.2 scikit-learn --yes ",
     ]
-    return CustomImage(
-        dockerfile_commands=dockerfile_commands,
-        base_images={"base": Image.use(self.session, "conda")},
-    )
+    conda_image = modal.Image.use(None, "conda")
+
+    return modal.extend_image(conda_image, dockerfile_commands)
 
 
 if pymc_image.is_inside():
