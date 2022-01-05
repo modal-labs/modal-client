@@ -178,6 +178,7 @@ class TaskContext:
 
     def __init__(self, grace=None):
         self._grace = grace
+        self._loops = set()
 
     async def start(self):
         # TODO: this only exists as a standalone method because Client doesn't have a proper ctx mgr
@@ -201,7 +202,7 @@ class TaskContext:
             pass
         finally:
             for task in self._tasks:
-                if task.done():
+                if task.done() or task in self._loops:
                     continue
 
                 logger.warning(f"Canceling unfinished task {task}")
@@ -261,6 +262,7 @@ class TaskContext:
         t = self.create_task(loop_coro())
         if hasattr(t, "set_name"):  # Was added in Python 3.8:
             t.set_name(f"{async_f.__name__} loop")
+        self._loops.add(t)
         return t
 
     async def wait(self, *tasks):
