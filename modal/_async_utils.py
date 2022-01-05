@@ -201,6 +201,10 @@ class TaskContext:
             pass
         finally:
             for task in self._tasks:
+                if task.done():
+                    continue
+
+                logger.warning(f"Canceling unfinished task {task}")
                 task.cancel()
         await asyncio.sleep(0)  # Needed in 3.6 to make any just-cancelled tasks actually cancel
 
