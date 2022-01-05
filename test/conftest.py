@@ -5,7 +5,7 @@ import grpc
 import pytest
 from modal import Session
 from modal._client import Client
-from modal._session_singleton import set_session_singleton
+from modal._session_singleton import set_container_session, set_default_session
 from modal.proto import api_pb2, api_pb2_grpc
 
 
@@ -83,6 +83,7 @@ async def servicer():
 
 
 @pytest.fixture
-def reset_session_singleton():
+def reset_global_sessions():
     yield
-    set_session_singleton(None)
+    set_default_session(None)
+    set_container_session(None)

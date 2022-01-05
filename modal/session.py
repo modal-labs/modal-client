@@ -8,7 +8,12 @@ from ._grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIME_BUFFER
 from ._object_meta import ObjectMeta
 from ._progress import ProgressSpinner
 from ._serialization import Pickler, Unpickler
-from ._session_singleton import get_session_singleton, set_session_singleton
+from ._session_singleton import (
+    get_container_session,
+    get_default_session,
+    set_container_session,
+    set_running_session,
+)
 from ._session_state import SessionState
 from ._utils import print_logs
 from .config import config, logger
@@ -27,11 +32,11 @@ class Session:
     """
 
     @classmethod
-    def initialize_singleton(cls):
-        set_session_singleton(super().__new__(cls))
+    def initialize_container_session(cls):
+        set_container_session(super().__new__(cls))
 
     def __new__(cls):
-        singleton = get_session_singleton()
+        singleton = get_container_session()
         if singleton is not None:
             # If there's a singleton session, just return it for everything
             return singleton
@@ -158,18 +163,22 @@ class Session:
 
     @synchronizer.asynccontextmanager
     async def run(self, client=None, stdout=None, stderr=None, logs_timeout=None):
-        # HACK because Lock needs to be created on the synchronizer thread
-        if self._flush_lock is None:
-            self._flush_lock = asyncio.Lock()
+        set_running_session(self)
+        try:
+            # HACK because Lock needs to be created on the synchronizer thread
+            if self._flush_lock is None:
+                self._flush_lock = asyncio.Lock()
 
-        if client is None:
-            client = await Client.from_env()
-            async with client:
+            if client is None:
+                client = await Client.from_env()
+                async with client:
+                    async with self._run(client, stdout, stderr, logs_timeout) as it:
+                        yield it  # ctx mgr
+            else:
                 async with self._run(client, stdout, stderr, logs_timeout) as it:
                     yield it  # ctx mgr
-        else:
-            async with self._run(client, stdout, stderr, logs_timeout) as it:
-                yield it  # ctx mgr
+        finally:
+            set_running_session(None)
 
     @synchronizer.asynccontextmanager
     async def _run(self, client, stdout, stderr, logs_timeout):
@@ -243,3 +252,11 @@ class Session:
     def deserialize(self, s: bytes):
         """Deserializes object and replaces all client placeholders by self."""
         return Unpickler(self, ObjectMeta.name_to_type, io.BytesIO(s)).load()
+
+
+@synchronizer.asynccontextmanager
+async def run(**kwargs):
+    """Start up the default modal session"""
+    session = get_default_session()
+    async with session.run(**kwargs) as it:
+        yield it

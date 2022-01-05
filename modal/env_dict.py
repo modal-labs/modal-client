@@ -14,3 +14,7 @@ class EnvDict(Object):
         req = api_pb2.EnvDictCreateRequest(session_id=session.session_id, env_dict=self.env_dict)
         resp = await session.client.stub.EnvDictCreate(req)
         return resp.env_dict_id
+
+    @classmethod
+    def _can_omit_session(cls):
+        return True

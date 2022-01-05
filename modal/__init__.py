@@ -4,7 +4,7 @@ from .exception import RemoteError
 from .functions import function, generator
 from .image import Image, debian_slim, extend_image
 from .queue import Queue
-from .session import Session
+from .session import Session, run
 
 __all__ = [
     "Dict",
@@ -17,4 +17,5 @@ __all__ = [
     "extend_image",
     "Queue",
     "Session",
+    "run",
 ]

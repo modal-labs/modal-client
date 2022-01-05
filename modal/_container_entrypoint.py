@@ -70,7 +70,7 @@ class FunctionContext:
         # On the container, we know we're inside a session, so we initialize all Session
         # objects with the same singleton object. This then lets us pull the lookup
         # table of all the named objects
-        Session.initialize_singleton()
+        Session.initialize_container_session()
         self.session = Session()
         await self.session.initialize_container(self.session_id, self.client, self.task_id)
 

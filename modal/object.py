@@ -5,7 +5,7 @@ import inspect
 from ._decorator_utils import decorator_with_options
 from ._function_utils import FunctionInfo
 from ._object_meta import ObjectMeta
-from ._session_singleton import get_session_singleton
+from ._session_singleton import get_container_session, get_default_session
 from ._session_state import SessionState
 from .config import logger
 
@@ -44,10 +44,13 @@ class Object(metaclass=ObjectMeta):
     def __init__(self, session=None, tag=None):
         logger.debug(f"Creating object {self}")
 
+        if not self._can_omit_session():
+            session = session or get_default_session()
+
         self._init(session=session, tag=tag)
 
-        # Fallback to singleton session
-        s = session or get_session_singleton()
+        # Fallback to singleton container session
+        s = session or get_container_session()
 
         if tag is not None:
             # See if we can populate this with an object id
@@ -82,6 +85,14 @@ class Object(metaclass=ObjectMeta):
         self.tag = tag
         self._session = session
 
+    @classmethod
+    def _can_omit_session(cls):
+        # This should return true for "session-independent objects" like Images
+        # or EnvDicts; these objects can be used without specifying a session
+        # (they're always created in the session by the function that uses
+        # them), so there's no need to assign the default session.
+        return False
+
     async def _create_impl(self, session):
         # Overloaded in subclasses to do the actual logic
         raise NotImplementedError(f"Object of class {type(self)} has no _create_impl method")
@@ -99,6 +110,7 @@ class Object(metaclass=ObjectMeta):
 
     @classmethod
     def _new(cls, **kwargs):
+        """This is only used internally for deserializing objects"""
         obj = Object.__new__(cls)
         obj._init(**kwargs)
         return obj
@@ -142,7 +154,6 @@ class Object(metaclass=ObjectMeta):
                     functools.update_wrapper(self, fun)
                     self._fun = fun
                     self._args_and_kwargs = args_and_kwargs
-                    self._session = session
                     function_info = FunctionInfo(fun)
 
                     # This is the only place where tags are being set on objects,
@@ -151,6 +162,9 @@ class Object(metaclass=ObjectMeta):
                     Object.__init__(self, session=session, tag=tag)
 
                 async def _create_impl(self, session):
+                    if get_container_session() is not None:
+                        assert False
+
                     if self._args_and_kwargs is not None:
                         args, kwargs = self._args_and_kwargs
                         object = self._fun(*args, **kwargs)

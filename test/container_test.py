@@ -66,7 +66,7 @@ async def _run_container(servicer, module_name, function_name):
 
 
 @pytest.mark.asyncio
-async def test_container_entrypoint_success(servicer, reset_session_singleton, event_loop):
+async def test_container_entrypoint_success(servicer, reset_global_sessions, event_loop):
     t0 = time.time()
     client, outputs = await _run_container(servicer, "modal._test_support", "square")
     assert 0 <= time.time() - t0 < EXTRA_TOLERANCE_DELAY
@@ -81,7 +81,7 @@ async def test_container_entrypoint_success(servicer, reset_session_singleton, e
 
 
 @pytest.mark.asyncio
-async def test_container_entrypoint_async(servicer, reset_session_singleton):
+async def test_container_entrypoint_async(servicer, reset_global_sessions):
     t0 = time.time()
     client, outputs = await _run_container(servicer, "modal._test_support", "square_async")
     print(time.time() - t0, outputs)
@@ -96,7 +96,7 @@ async def test_container_entrypoint_async(servicer, reset_session_singleton):
 
 
 @pytest.mark.asyncio
-async def test_container_entrypoint_sync_returning_async(servicer, reset_session_singleton):
+async def test_container_entrypoint_sync_returning_async(servicer, reset_global_sessions):
     t0 = time.time()
     client, outputs = await _run_container(servicer, "modal._test_support", "square_sync_returning_async")
     assert SLEEP_DELAY <= time.time() - t0 < SLEEP_DELAY + EXTRA_TOLERANCE_DELAY
@@ -110,7 +110,7 @@ async def test_container_entrypoint_sync_returning_async(servicer, reset_session
 
 
 @pytest.mark.asyncio
-async def test_container_entrypoint_failure(servicer, reset_session_singleton):
+async def test_container_entrypoint_failure(servicer, reset_global_sessions):
     client, outputs = await _run_container(servicer, "modal._test_support", "raises")
 
     assert len(outputs) == 1
