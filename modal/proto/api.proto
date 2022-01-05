@@ -157,6 +157,12 @@ message TaskLogs {
   TaskState task_state = 6;
 }
 
+message TaskLogsBatch {
+  string task_id = 1;
+  bool done = 3;
+  repeated TaskLogs items = 2;
+}
+
 message QueueCreateRequest {
   string session_id = 1;
 }
