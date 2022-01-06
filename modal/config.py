@@ -46,6 +46,10 @@ Other possible configuration options are:
 * ``loglevel`` (in the .toml file) / ``MODAL_LOGLEVEL`` (as an env var).
   Defaults to ``WARNING``.
   Set this to ``DEBUG`` to see a bunch of internal output.
+* ``logs_timeout`` (in the .toml file) / ``MODAL_LOGS_TIMEOUT`` (as an env var).
+  Defaults to 10.
+  Number of seconds to wait for logs to drain when closing the session,
+  before giving up.
 * ``server_url`` (in the .toml file) / ``MODAL_SERVER_URL`` (as an env var).
   Defaults to ``https://api.modal.com``.
   Not typically meant to be used.
@@ -57,7 +61,7 @@ Some "meta-options" are set using environment variables only:
 
 * ``MODAL_CONFIG_PATH`` lets you override the location of the .toml file,
   by default ``~/.modal.toml``.
-* ``MODAL_ENVIRONMENT`` lets you use multiple sections in the .toml file
+* ``MODAL_ENV`` lets you use multiple sections in the .toml file
   and switch between them. It defaults to "default".
 """
 
@@ -91,26 +95,28 @@ _user_config = _read_user_config()
 _env = os.environ.get("MODAL_ENV", "default")
 
 
-class Setting(typing.NamedTuple):
+class _Setting(typing.NamedTuple):
     default: typing.Any = None
     transform: typing.Callable[[str], typing.Any] = lambda x: x
 
 
 _SETTINGS = {
-    "loglevel": Setting("WARNING", lambda s: s.upper()),
-    "server_url": Setting("https://api.modal.com"),
-    "token_id": Setting(),
-    "token_secret": Setting(),
-    "task_id": Setting(),
-    "task_secret": Setting(),
-    "sync_entrypoint": Setting(),
-    "logs_timeout": Setting(10, float),
-    "image_python_version": Setting(),
-    "image_id": Setting(),
+    "loglevel": _Setting("WARNING", lambda s: s.upper()),
+    "server_url": _Setting("https://api.modal.com"),
+    "token_id": _Setting(),
+    "token_secret": _Setting(),
+    "task_id": _Setting(),
+    "task_secret": _Setting(),
+    "sync_entrypoint": _Setting(),
+    "logs_timeout": _Setting(10, float),
+    "image_python_version": _Setting(),
+    "image_id": _Setting(),
 }
 
 
 class Config:
+    """Singleton that holds configuration used by Modal internally."""
+
     def __init__(self):
         pass
 
