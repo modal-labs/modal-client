@@ -178,11 +178,15 @@ class Session:
 
     async def share(self, obj, label):
         object_id = await self.create_object(obj)
-        request = api_pb2.SessionShareObjectRequest(session_id=self.session_id, object_id=object_id, label=label)
+        request = api_pb2.SessionShareObjectRequest(
+            session_id=self.session_id, object_id=object_id, label=label, namespace=api_pb2.ShareNamespace.ACCOUNT
+        )
         await self.client.stub.SessionShareObject(request)
 
     async def _use_object(self, label):
-        request = api_pb2.SessionUseObjectRequest(session_id=self.session_id, label=label)
+        request = api_pb2.SessionUseObjectRequest(
+            session_id=self.session_id, label=label, namespace=api_pb2.ShareNamespace.ACCOUNT
+        )
         response = await self.client.stub.SessionUseObject(request)
         if not response.found:
             return None
