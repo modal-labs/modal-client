@@ -15,6 +15,5 @@ class EnvDict(Object):
         resp = await session.client.stub.EnvDictCreate(req)
         return resp.env_dict_id
 
-    @classmethod
-    def _can_omit_session(cls):
-        return True
+    def _should_default_register(cls):
+        return False

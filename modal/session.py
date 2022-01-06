@@ -63,8 +63,8 @@ class Session:
         This happens inside a container in the global scope."""
         return self._created_tagged_objects.get(tag)
 
-    def create_object_later(self, obj):
-        """Registers an object to be created by the session.
+    def register_object(self, obj):
+        """Registers an object to be created by the session so that it's available in modal.
 
         This is invoked by the constructor in Object."""
         if self.state == SessionState.NONE and obj.tag is None and obj.share_path is None:
@@ -106,32 +106,44 @@ class Session:
 
         # In the container, run forever
         self.state = SessionState.RUNNING
+        set_running_session(self)
 
     async def create_object(self, obj):
         """Takes an object as input, Returns an object id.
 
         Will write the object id to the object
         """
+
+        if obj._session is self and obj._session_id == self.session_id:
+            assert obj.object_id is not None
+            return obj.object_id
+
         if obj.tag:
             self._progress.set_substep_text(f"Creating {obj.tag}...", obj.tag)
+
         if obj.tag is not None and obj.tag in self._created_tagged_objects:
-            # TODO: should we write the object id onto the object?
-            return self._created_tagged_objects[obj.tag]
-        if obj.object_id is None:
-            if obj.share_path:
-                # This is a reference to a persistent object
-                object_id = await self._use_object(obj.share_path)
-                if object_id is None:
-                    raise Exception(f"Could not find shared object {obj.share_path} of type {type(obj)}")
-            else:
-                # This is something created locally
-                object_id = await obj._create_impl(self)
-                if object_id is None:
-                    raise Exception(f"object_id for object of type {type(obj)} is None")
-            if obj._session is not None:  # TODO: ugly
-                obj.set_object_id(object_id, self.session_id)
-            if obj.tag:
-                self._created_tagged_objects[obj.tag] = object_id
+            # This is an already created tagged object, so just use the cached tag
+            object_id = self._created_tagged_objects[obj.tag]
+            if object_id is None:
+                raise Exception(f"Existing tagged object of type {type(obj)} has object_id is None")
+        elif obj.share_path:
+            # This is a reference to a persistent object
+            object_id = await self._use_object(obj.share_path)
+            if object_id is None:
+                raise Exception(f"Could not find shared object {obj.share_path} of type {type(obj)}")
+        else:
+            # This is something to be created
+
+            # TODO: We may want to raise an exception her if we're trying to invoke
+            # a Factory but are in the container
+
+            object_id = await obj._create_impl(self)
+            if object_id is None:
+                raise Exception(f"object_id for object of type {type(obj)} is None")
+
+        obj.set_object_id(object_id, self)
+        if obj.tag:
+            self._created_tagged_objects[obj.tag] = object_id
         return object_id
 
     async def flush_objects(self):

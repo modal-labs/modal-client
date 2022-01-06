@@ -21,6 +21,10 @@ def set_container_session(s):
 _running_session = None
 
 
+def get_running_session():
+    return _running_session
+
+
 def set_running_session(s):
     global _running_session
     if _running_session is not None and s is not None:

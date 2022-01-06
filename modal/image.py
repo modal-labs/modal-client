@@ -39,9 +39,8 @@ class Image(Object):
         logger.debug(f"Is image inside? env {env_image_id} image {image_id}")
         return image_id is not None and env_image_id == image_id
 
-    @classmethod
-    def _can_omit_session(cls):
-        return True
+    def _should_default_register(self):
+        return False
 
 
 class CustomImage(Image):

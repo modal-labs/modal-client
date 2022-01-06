@@ -64,3 +64,6 @@ class FunctionInfo:
             return f"{self.module_name}.{self.function_name}({args})"
         else:
             return f"{self.module_name}.{self.function_name}"
+
+    def is_nullary(self):
+        return all(param.default is not param.empty for param in self.signature.parameters.values())

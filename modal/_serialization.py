@@ -35,6 +35,7 @@ class Unpickler(pickle.Unpickler):
         if type_tag not in self.name_to_type:
             raise Exception(f"Unknown tag {type_tag}")
         cls = self.name_to_type[type_tag]
-        obj = cls._new(session=self.session)
-        obj.set_object_id(object_id, self.session.session_id)
+        obj = Object.__new__(cls)
+        obj._init_attributes()
+        obj.set_object_id(object_id, self.session)
         return obj

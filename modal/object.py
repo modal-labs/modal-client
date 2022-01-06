@@ -5,7 +5,11 @@ import inspect
 from ._decorator_utils import decorator_with_options
 from ._function_utils import FunctionInfo
 from ._object_meta import ObjectMeta
-from ._session_singleton import get_container_session, get_default_session
+from ._session_singleton import (
+    get_container_session,
+    get_default_session,
+    get_running_session,
+)
 from ._session_state import SessionState
 from .config import logger
 
@@ -21,7 +25,7 @@ class Object(metaclass=ObjectMeta):
 
     The first pattern is to directly instantiate objects and pass them as
     parameters when required. This is common for data structures (e.g. ``dict_
-    = Dict(session=session); main(dict_)``).
+    = Dict(); main(dict_)``).
     Instances of Object are just handles with an object ID and some associated
     metadata, so they can be safely serialized or passed as parameters to Modal
     functions.
@@ -41,66 +45,78 @@ class Object(metaclass=ObjectMeta):
 
     # A bit ugly to leverage implemenation inheritance here, but I guess you could
     # roughly think of this class as a mixin
-    def __init__(self, session=None, tag=None):
+    def __init__(self, session=None):
+        """Create an object, and optionally register it on a session.
+
+        If no session is specified, the object is registered on the default
+        session if possible.
+        """
         logger.debug(f"Creating object {self}")
 
-        if not self._can_omit_session():
-            session = session or get_default_session()
+        self._init_attributes()
 
-        self._init(session=session, tag=tag)
+        session = session or get_container_session()
+        if not session and self._should_default_register():
+            session = get_default_session()
 
-        # Fallback to singleton container session
-        s = session or get_container_session()
+        if session:
+            session.register_object(self)
 
-        if tag is not None:
-            # See if we can populate this with an object id
-            # (this happens if we're inside the container)
-            # TODO: tag is only ever set when (a) created from a Factory (see below)
-            # and (b) created from a Function: maybe this could be a separate
-            # constructor method.
-            if s:
-                object_id = s.get_object_id_by_tag(tag)
-            else:
-                object_id = None
-
-            if object_id:
-                self._session = s
-                self._object_id = object_id
-                self._session_id = s.session_id
-            elif session:
-                # If not, let's register this for creation later
-                # Only if this was explicitly created with a session
-                self._session = session
-                self._session.create_object_later(self)
-
-        elif s:
-            # If there's a session around, create this
-            self._session = s
-            s.create_object_later(self)
-
-    def _init(self, session=None, tag=None, share_path=None):
-        self._object_id = None
-        self._session_id = None
+    def _init_attributes(self, tag=None, share_path=None):
+        """Initialize attributes"""
         self.share_path = share_path
         self.tag = tag
-        self._session = session
+        self._object_id = None
+        self._session_id = None
+        self._session = None
 
-    @classmethod
-    def _can_omit_session(cls):
-        # This should return true for "session-independent objects" like Images
-        # or EnvDicts; these objects can be used without specifying a session
-        # (they're always created in the session by the function that uses
-        # them), so there's no need to assign the default session.
-        return False
+    def _init_tagged(self, session, tag):
+        """Create a new tagged object.
+
+        This is only used by the Factory or Function constructors
+        """
+
+        assert tag is not None
+        self._init_attributes(tag=tag)
+
+        container_session = get_container_session()
+        if container_session is not None:
+            # If we're inside the container, then just lookup the tag and use
+            # it if possible.
+
+            session = container_session
+            object_id = session.get_object_id_by_tag(tag)
+            if object_id is not None:
+                self.set_object_id(object_id, session)
+        else:
+            if not session and self._should_default_register():
+                session = get_default_session()
+
+            if session:
+                session.register_object(self)
+
+    def _should_default_register(self):
+        """Whether to register this object on the default session (by default).
+
+        This should return false for "session-independent objects" like Images
+        or EnvDicts; they're always depended on by the function that uses them,
+        so there's no need to register them eagerly.
+
+        If possible, try to use some other dependency tracking mechanism and
+        return False so that we do not register objects which don't eventually
+        get used.
+        """
+        return True
 
     async def _create_impl(self, session):
         # Overloaded in subclasses to do the actual logic
         raise NotImplementedError(f"Object of class {type(self)} has no _create_impl method")
 
-    def set_object_id(self, object_id, session_id):
+    def set_object_id(self, object_id, session):
         """Set the Modal internal object id"""
         self._object_id = object_id
-        self._session_id = session_id
+        self._session = session
+        self._session_id = session.session_id
 
     @property
     def object_id(self):
@@ -109,19 +125,13 @@ class Object(metaclass=ObjectMeta):
             return self._object_id
 
     @classmethod
-    def _new(cls, **kwargs):
-        """This is only used internally for deserializing objects"""
-        obj = Object.__new__(cls)
-        obj._init(**kwargs)
-        return obj
-
-    @classmethod
     def use(cls, session, path):
         """Use an object published with :py:meth:`modal.session.Session.share`"""
         # TODO: session should be a 2nd optional arg
-        obj = cls._new(session=session, share_path=path)
+        obj = Object.__new__(cls)
+        obj._init_attributes(share_path=path)
         if session:
-            session.create_object_later(obj)
+            session.register_object(obj)
         return obj
 
     @classmethod
@@ -154,12 +164,12 @@ class Object(metaclass=ObjectMeta):
                     functools.update_wrapper(self, fun)
                     self._fun = fun
                     self._args_and_kwargs = args_and_kwargs
-                    function_info = FunctionInfo(fun)
+                    self.function_info = FunctionInfo(fun)
 
                     # This is the only place where tags are being set on objects,
                     # besides Function
-                    tag = function_info.get_tag(args_and_kwargs)
-                    Object.__init__(self, session=session, tag=tag)
+                    tag = self.function_info.get_tag(args_and_kwargs)
+                    Object._init_tagged(self, session=session, tag=tag)
 
                 async def _create_impl(self, session):
                     if get_container_session() is not None:
@@ -187,6 +197,11 @@ class Object(metaclass=ObjectMeta):
                         type(self).__module__, type(self).__qualname__, getattr(self, "tag", None)
                     )
 
+                def _should_default_register(self):
+                    return super()._should_default_register() and (
+                        self._args_and_kwargs is not None or self.function_info.is_nullary()
+                    )
+
             Factory.__module__ = cls.__module__
             Factory.__qualname__ = cls.__qualname__ + ".Factory"
             Factory.__doc__ = "\n\n".join(filter(None, [Factory.__doc__, cls.__doc__]))
@@ -198,13 +213,15 @@ class Object(metaclass=ObjectMeta):
 def requires_create_generator(method):
     @functools.wraps(method)
     async def wrapped_method(self, *args, **kwargs):
-        if not self._session:
-            raise Exception("Can only run this method on an object with a session set")
-        if self._session.state != SessionState.RUNNING:
-            raise Exception("Can only run this method on an object with a running session")
+        running_session = get_running_session()
+        if not running_session:
+            raise Exception("Can only run this method with a running session")
 
         # Flush all objects to the session
-        await self._session.flush_objects()
+        await running_session.flush_objects()
+
+        if not self._session:
+            raise Exception("Can only run this method when registered on the running session")
 
         async for ret in method(self, *args, **kwargs):
             yield ret
@@ -215,13 +232,15 @@ def requires_create_generator(method):
 def requires_create(method):
     @functools.wraps(method)
     async def wrapped_method(self, *args, **kwargs):
-        if not self._session:
-            raise Exception("Can only run this method on an object with a session set")
-        if self._session.state != SessionState.RUNNING:
-            raise Exception("Can only run this method on an object with a running session")
+        running_session = get_running_session()
+        if not running_session:
+            raise Exception("Can only run this method with a running session")
 
         # Flush all objects to the session
-        await self._session.flush_objects()
+        await running_session.flush_objects()
+
+        if not self._session:
+            raise Exception("Can only run this method when registered on the running session")
 
         return await method(self, *args, **kwargs)
 
