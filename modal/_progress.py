@@ -33,7 +33,6 @@ class ProgressSpinner:
 
         all_states = self._task_states.values()
         max_state = max(all_states)
-        num_tasks = len(all_states)
         tasks_at_max = len(list(filter(lambda x: x == max_state, all_states)))
 
         if max_state == api_pb2.TaskState.CREATED:
@@ -41,9 +40,10 @@ class ProgressSpinner:
         if max_state == api_pb2.TaskState.QUEUED:
             msg = f"Tasks queued..."
         elif max_state == api_pb2.TaskState.LOADING_IMAGE:
-            msg = f"Loading images ({tasks_at_max}/{num_tasks})..."
+            msg = f"Loading images ({tasks_at_max} containers initializing)..."
         elif max_state == api_pb2.TaskState.RUNNING:
-            msg = f"Running ({tasks_at_max}/{num_tasks} containers in use)..."
+            tasks_loading = len(list(filter(lambda x: x == api_pb2.TaskState.LOADING_IMAGE, all_states)))
+            msg = f"Running ({tasks_at_max}/{tasks_at_max + tasks_loading} containers in use)..."
         self.set_substep_text("task", msg)
 
     def set_substep_text(self, tag, text):
