@@ -278,7 +278,6 @@ class TaskContext:
                     asyncio.wait(self._tasks, return_when=asyncio.FIRST_COMPLETED), timeout=30.0
                 )
             except asyncio.TimeoutError:
-                logger.warning(f"Timed out waiting for {self._tasks}, but will try again")
                 continue
             for task in done:
                 task.result()  # Raise exception if needed
