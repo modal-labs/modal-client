@@ -62,9 +62,9 @@ class Object(metaclass=ObjectMeta):
         if session:
             session.register_object(self)
 
-    def _init_attributes(self, tag=None, share_path=None):
+    def _init_attributes(self, tag=None, share_label=None):
         """Initialize attributes"""
-        self.share_path = share_path
+        self.share_label = share_label
         self.tag = tag
         self._object_id = None
         self._session_id = None
@@ -125,11 +125,11 @@ class Object(metaclass=ObjectMeta):
             return self._object_id
 
     @classmethod
-    def use(cls, session, path):
+    def use(cls, session, label):
         """Use an object published with :py:meth:`modal.session.Session.share`"""
         # TODO: session should be a 2nd optional arg
         obj = Object.__new__(cls)
-        obj._init_attributes(share_path=path)
+        obj._init_attributes(share_label=label)
         if session:
             session.register_object(obj)
         return obj
@@ -140,7 +140,7 @@ class Object(metaclass=ObjectMeta):
         """Decorator to mark a "factory function".
 
         Factory functions work like "named promises" for Objects, they are
-        automatically tagged by name/path so they will always refer to the same
+        automatically tagged by name/label so they will always refer to the same
         underlying Object across machines. The function body should return the
         desired initialized object. The body will only be run on the local
         machine, so it may access local resources/files.

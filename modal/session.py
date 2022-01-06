@@ -68,7 +68,7 @@ class Session:
         """Registers an object to be created by the session so that it's available in modal.
 
         This is invoked by the constructor in Object."""
-        if self.state == SessionState.NONE and obj.tag is None and obj.share_path is None:
+        if self.state == SessionState.NONE and obj.tag is None and obj.share_label is None:
             raise Exception(
                 f"{obj}: Only objects with tags or persistent objects can be created prior to the session running"
             )
@@ -141,11 +141,11 @@ class Session:
             object_id = self._created_tagged_objects[obj.tag]
             if object_id is None:
                 raise Exception(f"Existing tagged object of type {type(obj)} has object_id is None")
-        elif obj.share_path:
+        elif obj.share_label:
             # This is a reference to a persistent object
-            object_id = await self._use_object(obj.share_path)
+            object_id = await self._use_object(obj.share_label)
             if object_id is None:
-                raise Exception(f"Could not find shared object {obj.share_path} of type {type(obj)}")
+                raise Exception(f"Could not find shared object {obj.share_label} of type {type(obj)}")
         else:
             # This is something to be created
 
@@ -176,13 +176,13 @@ class Session:
                 logger.debug(f"Creating object {obj}")
                 await self.create_object(obj)
 
-    async def share(self, obj, path):
+    async def share(self, obj, label):
         object_id = await self.create_object(obj)
-        request = api_pb2.SessionShareObjectRequest(session_id=self.session_id, object_id=object_id, path=path)
+        request = api_pb2.SessionShareObjectRequest(session_id=self.session_id, object_id=object_id, label=label)
         await self.client.stub.SessionShareObject(request)
 
-    async def _use_object(self, path):
-        request = api_pb2.SessionUseObjectRequest(session_id=self.session_id, path=path)
+    async def _use_object(self, label):
+        request = api_pb2.SessionUseObjectRequest(session_id=self.session_id, label=label)
         response = await self.client.stub.SessionUseObject(request)
         if not response.found:
             return None
