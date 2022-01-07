@@ -3,6 +3,7 @@ import typing
 
 import grpc
 import pytest
+
 from modal import Session
 from modal._client import Client
 from modal._session_singleton import (
@@ -20,6 +21,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.inputs = []
         self.outputs = []
         self.object_ids = {}
+        self.queue = []
 
     async def ClientCreate(
         self,
@@ -39,10 +41,12 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         session_id = "se-123"
         return api_pb2.SessionCreateResponse(session_id=session_id)
 
-    # async def ClientStop(self, request: api_pb2.ByeRequest, context: grpc.aio.ServicerContext) -> api_pb2.Empty:
-    #    self.requests.append(request)
-    #    self.done = True
-    #    return api_pb2.Empty()
+    async def SessionStop(
+        self, request: api_pb2.SessionStopRequest, context: grpc.aio.ServicerContext
+    ) -> api_pb2.Empty:
+        self.requests.append(request)
+        self.done = True
+        return api_pb2.Empty()
 
     async def ClientHeartbeat(
         self, request: api_pb2.ClientHeartbeatRequest, context: grpc.aio.ServicerContext
@@ -73,6 +77,26 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     ) -> api_pb2.SessionGetObjectsResponse:
         return api_pb2.SessionGetObjectsResponse(object_ids=self.object_ids)
 
+    async def SessionSetObjects(
+        self, request: api_pb2.SessionSetObjectsRequest, context: grpc.aio.ServicerContext
+    ) -> api_pb2.Empty:
+        self.objects = dict(request.object_ids)
+        return api_pb2.Empty()
+
+    async def QueueCreate(
+        self, request: api_pb2.QueueCreateRequest, context: grpc.aio.ServicerContext
+    ) -> api_pb2.QueueCreateResponse:
+        return api_pb2.QueueCreateResponse(queue_id="qu-123456")
+
+    async def QueuePut(self, request: api_pb2.QueuePutRequest, context: grpc.aio.ServicerContext) -> api_pb2.Empty:
+        self.queue += request.values
+        return api_pb2.Empty()
+
+    async def QueueGet(
+        self, request: api_pb2.QueueGetRequest, context: grpc.aio.ServicerContext
+    ) -> api_pb2.QueueGetResponse:
+        return api_pb2.QueueGetResponse(values=[self.queue.pop(0)])
+
 
 @pytest.fixture(scope="function")
 async def servicer():
@@ -84,6 +108,18 @@ async def servicer():
     await server.start()
     yield servicer
     await server.stop(0)
+
+
+@pytest.fixture(scope="function")
+async def client(servicer):
+    async with Client(servicer.remote_addr, api_pb2.ClientType.CLIENT, ("foo-id", "foo-secret")) as client:
+        yield client
+
+
+@pytest.fixture(scope="function")
+async def container_client(servicer):
+    async with Client(servicer.remote_addr, api_pb2.ClientType.CONTAINER, ("ta-123", "task-secret")) as client:
+        yield client
 
 
 @pytest.fixture
