@@ -153,7 +153,23 @@ class Object(metaclass=ObjectMeta):
 
         The decorated function can be used directly as a proxy object (if no
         parameters are needed), or can be called with arguments and will return
-        a proxy object.
+        a proxy object. In the latter case, the session will be passed as the
+        first argument. Factories can be synchronous or asynchronous. however,
+        synchronous factories may cause issues if they operate on Modal objects.
+
+        .. code-block:: python
+
+           @Image.factory
+           def factory():
+               return OtherImage()
+
+        .. code-block:: python
+
+           @Queue.factory
+           async def factory(session, initial_value=42):
+               q = Queue(session)
+               await q.put(initial_value)
+               return q
         """
 
         if not hasattr(cls, "_factory_class"):
