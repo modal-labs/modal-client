@@ -162,6 +162,7 @@ message TaskLogsBatch {
   string task_id = 1;
   bool done = 3;
   repeated TaskLogs items = 2;
+  repeated TaskLogs state_updates = 4;
 }
 
 message QueueCreateRequest {
