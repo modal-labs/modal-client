@@ -155,7 +155,7 @@ message TaskLogs {
   bool done = 4;
   int64 n_running = 5;
   TaskState task_state = 6;
-  float timestamp = 7;
+  double timestamp = 7;
 }
 
 message TaskLogsBatch {
