@@ -75,14 +75,13 @@ class Session:
         self._pending_create_objects.append(obj)
 
     async def _get_logs(self, stdout, stderr, draining=False, timeout=BLOCKING_REQUEST_TIMEOUT):
-        # control flow-wise, there should only be one _get_logs running
-        # i.e. only one active SessionGetLogs grpc for any single session
-        # is there any way we can assert this?
+        # control flow-wise, there should only be one _get_logs running for each session
+        # i.e. maintain only one active SessionGetLogs grpc for each session
         request = api_pb2.SessionGetLogsRequest(
             session_id=self.session_id,
             timeout=timeout,
             draining=draining,
-            after_id=self._last_log_batch_entry_id,
+            last_entry_id=self._last_log_batch_entry_id,
         )
         n_running = None
         async for log_batch in self.client.stub.SessionGetLogs(request, timeout=timeout + GRPC_REQUEST_TIME_BUFFER):
