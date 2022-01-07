@@ -101,6 +101,7 @@ message SessionStopRequest {
 
 message SessionGetLogsRequest {
   string session_id = 1;
+  string after_id = 4;
   float timeout = 2;
   bool draining = 3;
 }
@@ -153,13 +154,14 @@ message TaskLogs {
   string fd = 2;
   string task_id = 3;
   bool done = 4;
-  int64 n_running = 5;
   TaskState task_state = 6;
   double timestamp = 7;
 }
 
 message TaskLogsBatch {
   string task_id = 1;
+  string entry_id = 4;
+  int64 n_running = 5;
   bool done = 3;
   repeated TaskLogs items = 2;
   repeated TaskLogs state_updates = 4;
@@ -408,7 +410,7 @@ service ModalClient {
   // Sessions
   rpc SessionCreate(SessionCreateRequest) returns (SessionCreateResponse);
   rpc SessionStop(SessionStopRequest) returns (Empty);
-  rpc SessionGetLogs(SessionGetLogsRequest) returns (stream TaskLogs);
+  rpc SessionGetLogs(SessionGetLogsRequest) returns (stream TaskLogsBatch);
   rpc SessionSetObjects(SessionSetObjectsRequest) returns (Empty);
   rpc SessionGetObjects(SessionGetObjectsRequest) returns (SessionGetObjectsResponse);
   rpc SessionShareObject(SessionShareObjectRequest) returns (Empty);
