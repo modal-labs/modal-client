@@ -92,13 +92,16 @@ class Session:
             elif log_batch.n_running:
                 n_running = log_batch.n_running
             else:
-                self._last_log_batch_entry_id = log_batch.entry_id
+                if log_batch.entry_id != "":
+                    # log_batch entry_id is empty for fd="server" messages from SessionGetLogs
+                    self._last_log_batch_entry_id = log_batch.entry_id
+                for log in log_batch.state_updates:
+                    assert log.task_state
+                    self._progress.update_task_state(log.task_id, log.task_state)
                 for log in log_batch.items:
-                    if log.task_state:
-                        self._progress.update_task_state(log.task_id, log.task_state)
-                    else:
-                        with self._progress.hidden():
-                            print_logs(log.data, log.fd, stdout, stderr)
+                    assert not log.task_state
+                    with self._progress.hidden():
+                        print_logs(log.data, log.fd, stdout, stderr)
         if draining:
             raise Exception(
                 f"Failed waiting for all logs to finish. There are still {n_running} tasks the server will kill."
