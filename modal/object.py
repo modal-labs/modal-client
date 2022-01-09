@@ -12,6 +12,7 @@ from ._session_singleton import (
 )
 from ._session_state import SessionState
 from .config import logger
+from .proto import api_pb2
 
 
 class Object(metaclass=ObjectMeta):
@@ -62,9 +63,10 @@ class Object(metaclass=ObjectMeta):
         if session:
             session.register_object(self)
 
-    def _init_attributes(self, tag=None, share_label=None):
+    def _init_attributes(self, tag=None, share_label=None, share_namespace=None):
         """Initialize attributes"""
         self.share_label = share_label
+        self.share_namespace = share_namespace
         self.tag = tag
         self._object_id = None
         self._session_id = None
@@ -125,11 +127,11 @@ class Object(metaclass=ObjectMeta):
             return self._object_id
 
     @classmethod
-    def use(cls, session, label):
+    def use(cls, session, label, namespace=api_pb2.ShareNamespace.ACCOUNT):
         """Use an object published with :py:meth:`modal.session.Session.share`"""
         # TODO: session should be a 2nd optional arg
         obj = Object.__new__(cls)
-        obj._init_attributes(share_label=label)
+        obj._init_attributes(share_label=label, share_namespace=namespace)
         if session:
             session.register_object(obj)
         return obj

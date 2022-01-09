@@ -152,8 +152,8 @@ def debian_slim(extra_commands=None, python_packages=None, python_version=None):
     commands or python packages.
     """
     python_version = _dockerhub_python_version(python_version)
-    base_image = Image.use(None, f"python-{python_version}-slim-buster-base")
-    builder_image = Image.use(None, f"python-{python_version}-slim-buster-builder")
+    base_image = Image.use(None, f"python-{python_version}-slim-buster-base", api_pb2.ShareNamespace.GLOBAL)
+    builder_image = Image.use(None, f"python-{python_version}-slim-buster-builder", api_pb2.ShareNamespace.GLOBAL)
 
     if extra_commands is None and python_packages is None:
         return base_image

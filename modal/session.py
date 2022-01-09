@@ -143,7 +143,7 @@ class Session:
                 raise Exception(f"Existing tagged object of type {type(obj)} has object_id is None")
         elif obj.share_label:
             # This is a reference to a persistent object
-            object_id = await self._use_object(obj.share_label)
+            object_id = await self._use_object(obj.share_label, obj.share_namespace)
             if object_id is None:
                 raise Exception(f"Could not find shared object {obj.share_label} of type {type(obj)}")
         else:
@@ -176,16 +176,21 @@ class Session:
                 logger.debug(f"Creating object {obj}")
                 await self.create_object(obj)
 
-    async def share(self, obj, label):
+    async def share(self, obj, label, namespace=api_pb2.ShareNamespace.ACCOUNT):
         object_id = await self.create_object(obj)
         request = api_pb2.SessionShareObjectRequest(
-            session_id=self.session_id, object_id=object_id, label=label, namespace=api_pb2.ShareNamespace.ACCOUNT
+            session_id=self.session_id,
+            object_id=object_id,
+            label=label,
+            namespace=namespace,
         )
         await self.client.stub.SessionShareObject(request)
 
-    async def _use_object(self, label):
+    async def _use_object(self, label, namespace=api_pb2.ShareNamespace.ACCOUNT):
         request = api_pb2.SessionUseObjectRequest(
-            session_id=self.session_id, label=label, namespace=api_pb2.ShareNamespace.ACCOUNT
+            session_id=self.session_id,
+            label=label,
+            namespace=namespace,
         )
         response = await self.client.stub.SessionUseObject(request)
         if not response.found:
