@@ -79,14 +79,14 @@ except ImportError:
     pass
 
 
-_user_config_path = os.environ.get("MODAL_CONFIG_PATH")
-if _user_config_path is None:
-    _user_config_path = os.path.expanduser("~/.modal.toml")
+user_config_path = os.environ.get("MODAL_CONFIG_PATH")
+if user_config_path is None:
+    user_config_path = os.path.expanduser("~/.modal.toml")
 
 
 def _read_user_config():
-    if os.path.exists(_user_config_path):
-        return toml.load(open(_user_config_path))
+    if os.path.exists(user_config_path):
+        return toml.load(open(user_config_path))
     else:
         return {}
 
@@ -160,5 +160,5 @@ def store_user_config(new_settings, env=None):
         env = _env
     user_config = _read_user_config()
     user_config.setdefault(env, {}).update(**new_settings)
-    with open(_user_config_path, "w") as f:
+    with open(user_config_path, "w") as f:
         toml.dump(user_config, f)
