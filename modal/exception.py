@@ -12,3 +12,7 @@ class ConnectionError(Exception):
 
 class InvalidError(Exception):
     pass
+
+
+class VersionError(Exception):
+    pass

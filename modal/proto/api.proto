@@ -76,6 +76,7 @@ enum ClientType {
 
 message ClientCreateRequest {
   ClientType client_type = 1;
+  string version = 2;
 }
 
 message ClientCreateResponse {

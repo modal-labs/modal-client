@@ -1,3 +1,5 @@
 from setuptools import setup
 
-setup(name="modal", version="0.0.0")
+from modal.config import VERSION
+
+setup(name="modal", version=VERSION)

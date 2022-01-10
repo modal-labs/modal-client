@@ -79,6 +79,18 @@ except ImportError:
     pass
 
 
+# Define the version of this package
+# This is used by:
+# * setup.py: defines a package version (will later affect PyPI)
+# * client connection: it sends the version to the server
+# * web: set the URL for the package
+# * base image builder: use this as the path for package
+
+VERSION = "0.0.1"
+WHEEL_FILENAME = f"modal-{VERSION}-py3-none-any.whl"
+
+# Locate config file and read it
+
 user_config_path = os.environ.get("MODAL_CONFIG_PATH")
 if user_config_path is None:
     user_config_path = os.path.expanduser("~/.modal.toml")
@@ -93,6 +105,8 @@ def _read_user_config():
 
 _user_config = _read_user_config()
 _env = os.environ.get("MODAL_ENV", "default")
+
+# Define settings
 
 
 class _Setting(typing.NamedTuple):
@@ -148,10 +162,14 @@ class Config:
 
 config = Config()
 
+# Logging
+
 logging.basicConfig(
     level=config["loglevel"], format="%(threadName)s %(asctime)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%S%z"
 )
 logger = logging.getLogger()
+
+# Util to write config
 
 
 def store_user_config(new_settings, env=None):

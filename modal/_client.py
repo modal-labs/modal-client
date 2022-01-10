@@ -8,8 +8,8 @@ import grpc.aio
 from ._async_utils import TaskContext, retry, synchronizer
 from ._grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT, ChannelPool
 from ._server_connection import GRPCConnectionFactory
-from .config import config, logger
-from .exception import AuthError, ConnectionError, InvalidError
+from .config import VERSION, config, logger
+from .exception import AuthError, ConnectionError, InvalidError, VersionError
 from .proto import api_pb2, api_pb2_grpc
 
 CLIENT_CREATE_TIMEOUT = 5.0
@@ -22,10 +22,12 @@ class Client:
         server_url,
         client_type,
         credentials,
+        version=VERSION,
     ):
         self.server_url = server_url
         self.client_type = client_type
         self.credentials = credentials
+        self.version = version
         self._task_context = None
         self._channel_pool = None
 
@@ -44,7 +46,10 @@ class Client:
         self.stub = api_pb2_grpc.ModalClientStub(self._channel_pool)
         try:
             t0 = time.time()
-            req = api_pb2.ClientCreateRequest(client_type=self.client_type)
+            req = api_pb2.ClientCreateRequest(
+                client_type=self.client_type,
+                version=self.version,
+            )
             resp = await self.stub.ClientCreate(req, timeout=CLIENT_CREATE_TIMEOUT)
             self.client_id = resp.client_id
         except grpc.aio._call.AioRpcError as exc:
@@ -53,6 +58,9 @@ class Client:
                 raise AuthError(f"Connecting to {self.server_url}: {exc.details()} (after {ms} ms)")
             elif exc.code() in [grpc.StatusCode.UNAVAILABLE, grpc.StatusCode.DEADLINE_EXCEEDED]:
                 raise ConnectionError(f"Connecting to {self.server_url}: {exc.details()} (after {ms} ms)")
+            elif exc.code() == grpc.StatusCode.FAILED_PRECONDITION:
+                # TODO: include a link to the latest package
+                raise VersionError(f"The client version {VERSION} is too old. Please update to the latest package.")
             else:
                 raise
         if not self.client_id:

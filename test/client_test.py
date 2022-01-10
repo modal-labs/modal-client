@@ -3,7 +3,7 @@ import asyncio
 import pytest
 
 from modal._client import Client
-from modal.exception import ConnectionError
+from modal.exception import ConnectionError, VersionError
 from modal.proto import api_pb2
 
 
@@ -29,4 +29,13 @@ async def test_container_client(servicer, container_client):
 async def test_client_connection_failure():
     with pytest.raises(ConnectionError) as exc:
         async with Client("https://xyz.invalid", api_pb2.ClientType.CLIENT, None) as client:
+            pass
+
+
+@pytest.mark.asyncio
+async def test_client_old_version(servicer):
+    with pytest.raises(VersionError) as exc:
+        async with Client(
+            servicer.remote_addr, api_pb2.ClientType.CLIENT, ("foo-id", "foo-secret"), version="0.0.0"
+        ) as client:
             pass
