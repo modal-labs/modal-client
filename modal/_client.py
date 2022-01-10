@@ -8,9 +8,10 @@ import grpc.aio
 from ._async_utils import TaskContext, retry, synchronizer
 from ._grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT, ChannelPool
 from ._server_connection import GRPCConnectionFactory
-from .config import VERSION, config, logger
+from .config import config, logger
 from .exception import AuthError, ConnectionError, InvalidError, VersionError
 from .proto import api_pb2, api_pb2_grpc
+from .version import __version__
 
 CLIENT_CREATE_TIMEOUT = 5.0
 
@@ -22,7 +23,7 @@ class Client:
         server_url,
         client_type,
         credentials,
-        version=VERSION,
+        version=__version__,
     ):
         self.server_url = server_url
         self.client_type = client_type
@@ -60,7 +61,9 @@ class Client:
                 raise ConnectionError(f"Connecting to {self.server_url}: {exc.details()} (after {ms} ms)")
             elif exc.code() == grpc.StatusCode.FAILED_PRECONDITION:
                 # TODO: include a link to the latest package
-                raise VersionError(f"The client version {VERSION} is too old. Please update to the latest package.")
+                raise VersionError(
+                    f"The client version {self.version} is too old. Please update to the latest package."
+                )
             else:
                 raise
         if not self.client_id:

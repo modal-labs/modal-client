@@ -11,8 +11,8 @@ from modal._session_singleton import (
     set_default_session,
     set_running_session,
 )
-from modal.config import VERSION
 from modal.proto import api_pb2, api_pb2_grpc
+from modal.version import __version__
 
 
 def _parse_version(v):
@@ -35,7 +35,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     ) -> api_pb2.ClientCreateResponse:
         self.requests.append(request)
         client_id = "cl-123"
-        if _parse_version(request.version) < _parse_version(VERSION):
+        if _parse_version(request.version) < _parse_version(__version__):
             await context.abort(grpc.StatusCode.FAILED_PRECONDITION, "Old client")
             return
         return api_pb2.ClientCreateResponse(client_id=client_id)

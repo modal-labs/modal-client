@@ -71,6 +71,8 @@ import typing
 
 import toml
 
+from .version import __version__
+
 try:
     import icecream
 
@@ -78,16 +80,7 @@ try:
 except ImportError:
     pass
 
-
-# Define the version of this package
-# This is used by:
-# * setup.py: defines a package version (will later affect PyPI)
-# * client connection: it sends the version to the server
-# * web: set the URL for the package
-# * base image builder: use this as the path for package
-
-VERSION = "0.0.1"
-WHEEL_FILENAME = f"modal-{VERSION}-py3-none-any.whl"
+WHEEL_FILENAME = f"modal-{__version__}-py3-none-any.whl"
 
 # Locate config file and read it
 
