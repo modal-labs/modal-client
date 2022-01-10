@@ -2,6 +2,7 @@ import asyncio
 import typing
 
 import grpc
+import pkg_resources
 import pytest
 
 from modal import Session
@@ -13,10 +14,6 @@ from modal._session_singleton import (
 )
 from modal.proto import api_pb2, api_pb2_grpc
 from modal.version import __version__
-
-
-def _parse_version(v):
-    return tuple(int(z) for z in v.split("."))
 
 
 class GRPCClientServicer(api_pb2_grpc.ModalClient):
@@ -35,7 +32,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     ) -> api_pb2.ClientCreateResponse:
         self.requests.append(request)
         client_id = "cl-123"
-        if _parse_version(request.version) < _parse_version(__version__):
+        if pkg_resources.parse_version(request.version) < pkg_resources.parse_version(__version__):
             await context.abort(grpc.StatusCode.FAILED_PRECONDITION, "Old client")
             return
         return api_pb2.ClientCreateResponse(client_id=client_id)
