@@ -15,7 +15,7 @@ class Queue(Object):
     """
 
     def __init__(self, session=None):
-        super().__init__(session=session)
+        super()._init_dynamic(session=session)
 
     async def _create_impl(self, session):
         """This creates a queue on the server and returns its id."""

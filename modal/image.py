@@ -26,7 +26,7 @@ class Image(Object):
     """
 
     def __init__(self, session):
-        super().__init__(session=session)
+        super()._init_dynamic(session=session)
 
     def is_inside(self):
         """Returns whether this container is active or not.
@@ -38,9 +38,6 @@ class Image(Object):
         image_id = self.object_id
         logger.debug(f"Is image inside? env {env_image_id} image {image_id}")
         return image_id is not None and env_image_id == image_id
-
-    def _should_default_register(self):
-        return False
 
 
 class CustomImage(Image):

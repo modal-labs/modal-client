@@ -210,7 +210,7 @@ class Function(Object):
         self.info = FunctionInfo(raw_f)
         # This is the only place besides object factory that sets tags
         tag = self.info.get_tag(None)
-        super()._init_tagged(session=session, tag=tag)
+        super()._init_static(session=session, tag=tag, register_on_default_session=True)
         self.raw_f = raw_f
         self.image = image
         self.env_dict = env_dict

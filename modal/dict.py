@@ -17,7 +17,7 @@ class Dict(Object):
     """
 
     def __init__(self, session=None, data={}):
-        super().__init__(session=session)
+        super()._init_dynamic(session=session)
         self.data = data
 
     def _serialize_dict(self, session, data):

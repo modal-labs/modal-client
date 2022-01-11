@@ -44,9 +44,16 @@ class Object(metaclass=ObjectMeta):
     used directly.
     """
 
-    # A bit ugly to leverage implemenation inheritance here, but I guess you could
-    # roughly think of this class as a mixin
-    def __init__(self, session=None):
+    def _init_attributes(self, tag=None, share_label=None, share_namespace=None):
+        """Initialize attributes"""
+        self.share_label = share_label
+        self.share_namespace = share_namespace
+        self.tag = tag
+        self._object_id = None
+        self._session_id = None
+        self._session = None
+
+    def _init_dynamic(self, session=None):
         """Create an object, and optionally register it on a session.
 
         If no session is specified, the object is registered on the default
@@ -57,25 +64,18 @@ class Object(metaclass=ObjectMeta):
         self._init_attributes()
 
         session = session or get_container_session()
-        if not session and self._should_default_register():
+        if not session:
             session = get_default_session()
 
-        if session:
-            session.register_object(self)
+        # TODO: this one should simply create the object asynchronously
+        session.register_object(self)
 
-    def _init_attributes(self, tag=None, share_label=None, share_namespace=None):
-        """Initialize attributes"""
-        self.share_label = share_label
-        self.share_namespace = share_namespace
-        self.tag = tag
-        self._object_id = None
-        self._session_id = None
-        self._session = None
-
-    def _init_tagged(self, session, tag):
+    def _init_static(self, session, tag, register_on_default_session=False):
         """Create a new tagged object.
 
         This is only used by the Factory or Function constructors
+
+        register_on_default_session is set to True for Functions
         """
 
         assert tag is not None
@@ -91,24 +91,11 @@ class Object(metaclass=ObjectMeta):
             if object_id is not None:
                 self.set_object_id(object_id, session)
         else:
-            if not session and self._should_default_register():
+            if not session and register_on_default_session:
                 session = get_default_session()
 
             if session:
                 session.register_object(self)
-
-    def _should_default_register(self):
-        """Whether to register this object on the default session (by default).
-
-        This should return false for "session-independent objects" like Images
-        or EnvDicts; they're always depended on by the function that uses them,
-        so there's no need to register them eagerly.
-
-        If possible, try to use some other dependency tracking mechanism and
-        return False so that we do not register objects which don't eventually
-        get used.
-        """
-        return True
 
     async def _create_impl(self, session):
         # Overloaded in subclasses to do the actual logic
@@ -171,7 +158,7 @@ class Object(metaclass=ObjectMeta):
                     # This is the only place where tags are being set on objects,
                     # besides Function
                     tag = self.function_info.get_tag(args_and_kwargs)
-                    Object._init_tagged(self, session=session, tag=tag)
+                    Object._init_static(self, session=session, tag=tag)
 
                 async def _create_impl(self, session):
                     if get_container_session() is not None:
@@ -197,11 +184,6 @@ class Object(metaclass=ObjectMeta):
                 def __repr__(self):
                     return "<{}.{} {!r}>".format(
                         type(self).__module__, type(self).__qualname__, getattr(self, "tag", None)
-                    )
-
-                def _should_default_register(self):
-                    return super()._should_default_register() and (
-                        self._args_and_kwargs is not None or self.function_info.is_nullary()
                     )
 
             Factory.__module__ = cls.__module__
