@@ -9,9 +9,12 @@ import traceback
 from collections import namedtuple
 from typing import Dict, Sequence
 
-import modal
 import synchronicity
 from aiostream import stream
+
+import modal
+
+from ..proto import api_pb2
 
 synchronizer = synchronicity.Synchronizer()
 
@@ -30,7 +33,7 @@ def pymc_image():
         "&& conda list \ ",
         "&& conda install theano-pymc==1.1.2 pymc3==3.11.2 scikit-learn --yes ",
     ]
-    conda_image = modal.Image.use(None, "conda")
+    conda_image = modal.Image.use(None, "conda", api_pb2.ShareNamespace.GLOBAL)
 
     return modal.extend_image(conda_image, dockerfile_commands)
 
