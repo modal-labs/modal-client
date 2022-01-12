@@ -294,5 +294,5 @@ def run_coro_blocking(coro):
     moving the whole thing to a separate thread.
     """
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        fut = executor.submit(asyncio.run, coro)
+        fut = executor.submit(asyncio_run, coro)
         return fut.result()
