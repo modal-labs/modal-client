@@ -221,9 +221,6 @@ def requires_create_generator(method):
         if not running_session:
             raise Exception("Can only run this method with a running session")
 
-        # Flush all objects to the session
-        await running_session.flush_objects()
-
         if not self._session:
             raise Exception("Can only run this method when registered on the running session")
 
@@ -239,9 +236,6 @@ def requires_create(method):
         running_session = get_running_session()
         if not running_session:
             raise Exception("Can only run this method with a running session")
-
-        # Flush all objects to the session
-        await running_session.flush_objects()
 
         if not self._session:
             raise Exception("Can only run this method when registered on the running session")

@@ -91,10 +91,6 @@ class FunctionContext:
         return fun.get_raw_f()
 
     async def serialize(self, obj: typing.Any) -> bytes:
-        # Call session.flush first. We need this because the function might have defined new objects
-        # that have not been created on the server-side, but are part of the return value of the function.
-        await self.session.flush_objects()
-
         return self.session.serialize(obj)
 
     def deserialize(self, data: bytes) -> typing.Any:

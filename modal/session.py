@@ -49,7 +49,6 @@ class Session:
         if hasattr(self, "_initialized"):
             return  # Prevent re-initialization with the singleton
         self._initialized = True
-        self._flush_lock = None
         self.client = None
         self.state = SessionState.NONE
         self._pending_create_objects = []  # list of objects that haven't been created
@@ -67,11 +66,11 @@ class Session:
     def register_object(self, obj):
         """Registers an object to be created by the session so that it's available in modal.
 
-        This is invoked by the constructor in Object."""
-        if self.state == SessionState.NONE and obj.tag is None and obj.share_label is None:
-            raise Exception(
-                f"{obj}: Only objects with tags or persistent objects can be created prior to the session running"
-            )
+        This is only used by factories and functions."""
+        if self.state != SessionState.NONE:
+            raise Exception("Can only register objects on a session that's not running")
+        if obj.tag is None and obj.share_label is None:
+            raise Exception("Can only register objects with tags or persistent objects")
         self._pending_create_objects.append(obj)
 
     async def _get_logs(self, stdout, stderr, draining=False, timeout=BLOCKING_REQUEST_TIMEOUT):
@@ -110,9 +109,6 @@ class Session:
         """Used by the container to bootstrap the session and all its objects."""
         self.session_id = session_id
         self.client = client
-
-        if self._flush_lock is None:
-            self._flush_lock = asyncio.Lock()
 
         req = api_pb2.SessionGetObjectsRequest(session_id=session_id, task_id=task_id)
         resp = await self.client.stub.SessionGetObjects(req)
@@ -165,20 +161,19 @@ class Session:
             self._created_tagged_objects[obj.tag] = object_id
         return object_id
 
-    async def flush_objects(self):
+    async def _flush_objects(self):
         "Create objects that have been defined but not created on the server."
 
-        async with self._flush_lock:
-            while len(self._pending_create_objects) > 0:
-                obj = self._pending_create_objects.pop()
+        while len(self._pending_create_objects) > 0:
+            obj = self._pending_create_objects.pop()
 
-                if obj.object_id is not None:
-                    # object is already created (happens due to object re-initialization in the container).
-                    # TODO: we should check that the object id isn't old
-                    continue
+            if obj.object_id is not None:
+                # object is already created (happens due to object re-initialization in the container).
+                # TODO: we should check that the object id isn't old
+                continue
 
-                logger.debug(f"Creating object {obj}")
-                await self.create_object(obj)
+            logger.debug(f"Creating object {obj}")
+            await self.create_object(obj)
 
     async def share(self, obj, label, namespace=api_pb2.ShareNamespace.ACCOUNT):
         object_id = await self.create_object(obj)
@@ -205,10 +200,6 @@ class Session:
     async def run(self, client=None, stdout=None, stderr=None, logs_timeout=None):
         set_running_session(self)
         try:
-            # HACK because Lock needs to be created on the synchronizer thread
-            if self._flush_lock is None:
-                self._flush_lock = asyncio.Lock()
-
             if client is None:
                 client = await Client.from_env()
                 async with client:
@@ -248,7 +239,7 @@ class Session:
 
                 self._progress.step("Creating objects...", "Created objects.")
                 # Create all members
-                await self.flush_objects()
+                await self._flush_objects()
                 self._progress.step("Running session...", "Session completed.")
 
                 # Create the session (and send a list of all tagged obs)
