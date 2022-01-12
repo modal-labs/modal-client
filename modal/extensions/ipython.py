@@ -3,6 +3,7 @@ import logging
 import sys
 
 from IPython.core.magic import register_cell_magic
+
 from modal import Session
 from modal.config import config, logger
 
@@ -15,7 +16,7 @@ def load_ipython_extension(ipython):
     logger.setLevel(config["loglevel"])
 
     # Create a session and provide it in the IPython session
-    session = Session()
+    session = Session(blocking_late_creation_ok=True)
     ipython.push({"session": session})
 
     session_ctx = session.run()

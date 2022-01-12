@@ -2,7 +2,7 @@ import asyncio
 import functools
 import io
 
-from ._async_utils import TaskContext, synchronizer
+from ._async_utils import TaskContext, run_coro_blocking, synchronizer
 from ._client import Client
 from ._grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIME_BUFFER
 from ._object_meta import ObjectMeta
@@ -35,7 +35,7 @@ class Session:
     def initialize_container_session(cls):
         set_container_session(super().__new__(cls))
 
-    def __new__(cls):
+    def __new__(cls, *args, **kwargs):
         singleton = get_container_session()
         if singleton is not None:
             # If there's a singleton session, just return it for everything
@@ -45,7 +45,7 @@ class Session:
             session = super().__new__(cls)
             return session
 
-    def __init__(self, show_progress=True):
+    def __init__(self, show_progress=True, blocking_late_creation_ok=False):
         if hasattr(self, "_initialized"):
             return  # Prevent re-initialization with the singleton
         self._initialized = True
@@ -55,6 +55,11 @@ class Session:
         self._created_tagged_objects = {}  # tag -> object id
         self._show_progress = show_progress
         self._last_log_batch_entry_id = ""
+        # TODO: this is a very hacky thing for notebooks. The problem is that
+        # (a) notebooks require creating functions "late"
+        # (b) notebooks run with an event loop, which makes synchronizer confused
+        # We will have to rethink this soon.
+        self._blocking_late_creation_ok = blocking_late_creation_ok
         super().__init__()
 
     def get_object_id_by_tag(self, tag):
@@ -67,11 +72,16 @@ class Session:
         """Registers an object to be created by the session so that it's available in modal.
 
         This is only used by factories and functions."""
-        if self.state != SessionState.NONE:
-            raise Exception("Can only register objects on a session that's not running")
         if obj.tag is None and obj.share_label is None:
             raise Exception("Can only register objects with tags or persistent objects")
-        self._pending_create_objects.append(obj)
+        if self.state == SessionState.NONE:
+            self._pending_create_objects.append(obj)
+        elif self._blocking_late_creation_ok:
+            # See comment in constructor. This is a hacky hack to get notebooks working.
+            # Let's revisit this shortly
+            run_coro_blocking(self.create_object(obj))
+        else:
+            raise Exception("Can only register objects on a session that's not running")
 
     async def _get_logs(self, stdout, stderr, draining=False, timeout=BLOCKING_REQUEST_TIMEOUT):
         # control flow-wise, there should only be one _get_logs running for each session

@@ -1,4 +1,5 @@
 import asyncio
+import concurrent.futures
 import functools
 import inspect
 import sys
@@ -283,3 +284,15 @@ class TaskContext:
                 task.result()  # Raise exception if needed
                 if task in unfinished_tasks:
                     unfinished_tasks.remove(task)
+
+
+def run_coro_blocking(coro):
+    """Fairly hacky thing that's needed in some extreme cases.
+
+    It's basically works like asyncio.run but unlike asyncio.run it also works
+    with in the case an event loop is already running. It does this by basically
+    moving the whole thing to a separate thread.
+    """
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        fut = executor.submit(asyncio.run, coro)
+        return fut.result()
