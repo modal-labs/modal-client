@@ -127,6 +127,11 @@ class Session:
 
         Will write the object id to the object
         """
+        # TODO: this method is fairly useless at this point
+        # For factories/functions, this checks if the tag already exists, otherwise creates it
+        # For persistent objects, it tries to load it, but this should really be done through a factory
+        # For "dynamic" objects, it doesn't really do anything besides calling _create_impl and then
+        # writing the result back to the object.
 
         if obj._session is self and obj._session_id == self.session_id:
             assert obj.object_id is not None

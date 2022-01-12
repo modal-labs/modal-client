@@ -29,7 +29,7 @@ def test_common_session(reset_global_sessions):
 async def test_create_object(servicer, client):
     session = Session()
     async with session.run(client=client):
-        q = Queue(session=session)
+        q = await Queue.create(session=session)
         await q.put("foo")
         await q.put("bar")
         assert await q.get() == "foo"

@@ -14,8 +14,8 @@ class Queue(Object):
     The contents of the Queue can be any serializable object.
     """
 
-    def __init__(self, session=None):
-        super()._init_dynamic(session=session)
+    def _init(self):
+        pass
 
     async def _create_impl(self, session):
         """This creates a queue on the server and returns its id."""

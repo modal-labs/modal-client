@@ -25,8 +25,8 @@ class Image(Object):
     :py:func:`modal.image.extend_image`.
     """
 
-    def __init__(self, session):
-        super()._init_dynamic(session=session)
+    def _init(self):
+        pass
 
     def is_inside(self):
         """Returns whether this container is active or not.
@@ -50,7 +50,7 @@ class CustomImage(Image):
 
     Needed to rewrite all the other subclasses to use composition instead of inheritance."""
 
-    def __init__(
+    def _init(
         self,
         base_images={},
         context_files={},
@@ -63,9 +63,6 @@ class CustomImage(Image):
         self._dockerfile_commands = dockerfile_commands
         self._local_image_python_executable = local_image_python_executable
         self._version = version
-        # Note that these objects have neither sessions nor tags
-        # They rely on the factories for this
-        super().__init__(session=None)
 
     async def _create_impl(self, session):
         # Recursively build base images
@@ -116,9 +113,9 @@ class CustomImage(Image):
 
 
 @Image.factory
-def local_image(python_executable):
+async def local_image(python_executable):
     """Only used for various integration tests."""
-    return CustomImage(local_image_python_executable=python_executable)
+    return await CustomImage.create(local_image_python_executable=python_executable)
 
 
 def _dockerhub_python_version(python_version=None):
@@ -142,7 +139,7 @@ def _dockerhub_python_version(python_version=None):
 
 
 @Image.factory
-def debian_slim(extra_commands=None, python_packages=None, python_version=None):
+async def debian_slim(extra_commands=None, python_packages=None, python_version=None):
     """A default base image, built on the official python:<version>-slim-buster Docker hub images
 
     Can also be called as a function to build a new image with additional bash
@@ -171,12 +168,14 @@ def debian_slim(extra_commands=None, python_packages=None, python_version=None):
             "RUN rm -rf /tmp/wheels",
         ]
 
-    return CustomImage(
+    return await CustomImage.create(
         dockerfile_commands=dockerfile_commands,
         base_images=base_images,
     )
 
 
-def extend_image(base_image, extra_dockerfile_commands):
+async def extend_image(base_image, extra_dockerfile_commands):
     """Extend an image with arbitrary dockerfile commands"""
-    return CustomImage(base_images={"base": base_image}, dockerfile_commands=["FROM base"] + extra_dockerfile_commands)
+    return await CustomImage.create(
+        base_images={"base": base_image}, dockerfile_commands=["FROM base"] + extra_dockerfile_commands
+    )

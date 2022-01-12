@@ -44,6 +44,9 @@ class Object(metaclass=ObjectMeta):
     used directly.
     """
 
+    def __init__(self, *args, **kwargs):
+        raise Exception("Direct construction of Object is not possible! Use factories or .create(...)!")
+
     def _init_attributes(self, tag=None, share_label=None, share_namespace=None):
         """Initialize attributes"""
         self.share_label = share_label
@@ -53,22 +56,36 @@ class Object(metaclass=ObjectMeta):
         self._session_id = None
         self._session = None
 
-    def _init_dynamic(self, session=None):
-        """Create an object, and optionally register it on a session.
+    @classmethod
+    async def create(cls, *args, **kwargs):
+        """Creates an object.
 
-        If no session is specified, the object is registered on the default
-        session if possible.
+        If no session is specified, the object is registered on the default session.
         """
-        logger.debug(f"Creating object {self}")
+        session = kwargs.pop("session", None)
 
-        self._init_attributes()
+        # Create object and initialize it
+        # TODO(erikbern): I'm trying to minimize code changes in order to get the async
+        # constructors working, so I'm simply just reusing existing constructors for now.
+        # It's probably much better to get rid of this dumb layer of indirection since
+        # pretty much all the constructors do is to save a bunch of values to the object
+        # that's only ever used by _create_impl anyway. Let's revisit shortly
+        obj = Object.__new__(cls)
+        obj._init_attributes()
+        obj._init(*args, **kwargs)
 
-        session = session or get_container_session()
+        if not session:
+            session = get_container_session()
         if not session:
             session = get_default_session()
 
-        # TODO: this one should simply create the object asynchronously
-        session.register_object(self)
+        # Now, create the object on the server
+        object_id = await obj._create_impl(session)
+        if object_id is None:
+            raise Exception(f"object_id for object of type {type(obj)} is None")
+
+        obj.set_object_id(object_id, session)
+        return obj
 
     def _init_static(self, session, tag, register_on_default_session=False):
         """Create a new tagged object.
@@ -166,11 +183,14 @@ class Object(metaclass=ObjectMeta):
 
                     if self._args_and_kwargs is not None:
                         args, kwargs = self._args_and_kwargs
-                        object = self._fun(*args, **kwargs)
+                        obj = self._fun(*args, **kwargs)
                     else:
-                        object = self._fun()
-                    assert isinstance(object, cls)
-                    object_id = await session.create_object(object)
+                        obj = self._fun()
+                    if inspect.iscoroutine(obj):
+                        obj = await obj
+                    if not isinstance(obj, cls):
+                        raise TypeError(f"expected {obj} to have type {cls}")
+                    object_id = await session.create_object(obj)
                     # Note that we can "steal" the object id from the other object
                     # and set it on this object. This is a general trick we can do
                     # to other objects too.

@@ -46,8 +46,7 @@ async def _get_files(local_dir, condition, recursive):
 
 
 class Mount(Object):
-    def __init__(self, local_dir, remote_dir, condition, session=None, recursive=True):
-        super()._init_dynamic(session=session)
+    def _init(self, local_dir, remote_dir, condition, session=None, recursive=True):
         self.local_dir = local_dir
         self.remote_dir = remote_dir
         self.condition = condition
@@ -106,6 +105,6 @@ class Mount(Object):
         return mount_id
 
 
-def create_package_mounts(package_name):
+async def create_package_mounts(package_name):
     mount_infos = get_package_deps_mount_info(package_name)
-    return [Mount(path, f"/pkg/{name}", condition) for (name, path, condition) in mount_infos]
+    return [await Mount.create(path, f"/pkg/{name}", condition) for (name, path, condition) in mount_infos]

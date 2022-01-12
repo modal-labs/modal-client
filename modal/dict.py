@@ -16,8 +16,7 @@ class Dict(Object):
     serialized by cloudpickle, including Modal objects.
     """
 
-    def __init__(self, session=None, data={}):
-        super()._init_dynamic(session=session)
+    def _init(self, data={}):
         self.data = data
 
     def _serialize_dict(self, session, data):

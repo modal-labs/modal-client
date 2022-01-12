@@ -219,7 +219,7 @@ class Function(Object):
 
     async def _create_impl(self, session):
         mounts = [
-            Mount(
+            await Mount.create(
                 local_dir=self.info.package_path,
                 remote_dir=self.info.remote_dir,
                 recursive=self.info.recursive,
@@ -227,7 +227,7 @@ class Function(Object):
             )
         ]
         if config["sync_entrypoint"]:
-            mounts.extend(create_package_mounts("modal"))
+            mounts.extend(await create_package_mounts("modal"))
         # TODO(erikbern): couldn't we just create one single mount with all packages instead of multiple?
 
         # Wait for image and mounts to finish
