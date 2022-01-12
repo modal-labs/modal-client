@@ -35,7 +35,7 @@ class ProgressSpinner:
         max_state = max(all_states)
 
         def tasks_at_state(state):
-            return len([x == state for x in all_states])
+            return sum(x == state for x in all_states)
 
         if max_state == api_pb2.TaskState.CREATED:
             msg = f"Tasks created..."
