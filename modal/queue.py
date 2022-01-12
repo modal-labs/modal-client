@@ -4,7 +4,7 @@ from typing import Any, List
 
 from ._async_utils import retry
 from .config import logger
-from .object import Object, requires_create
+from .object import Object
 from .proto import api_pb2
 
 
@@ -43,18 +43,15 @@ class Queue(Object):
             logger.debug("Queue get for %s had empty results, trying again" % self.object_id)
         raise queue.Empty()
 
-    @requires_create
     async def get(self, block=True, timeout=None):
         """Get and pop the next object"""
         values = await self._get(block, timeout, 1)
         return values[0]
 
-    @requires_create
     async def get_many(self, n_values, block=True, timeout=None):
         """Get up to n_values multiple objects"""
         return await self._get(block, timeout, n_values)
 
-    @requires_create
     async def put_many(self, vs: List[Any]):
         """Put several objects"""
         vs_encoded = [self._session.serialize(v) for v in vs]
@@ -65,7 +62,6 @@ class Queue(Object):
         )
         return await retry(self._session.client.stub.QueuePut)(request, timeout=5.0)
 
-    @requires_create
     async def put(self, v):
         """Put an object"""
         return await self.put_many([v])

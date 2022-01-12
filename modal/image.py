@@ -8,7 +8,7 @@ from ._async_utils import retry
 from ._grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .config import config, logger
 from .exception import RemoteError
-from .object import Object, requires_create
+from .object import Object
 from .proto import api_pb2
 
 

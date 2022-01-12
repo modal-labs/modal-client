@@ -212,34 +212,3 @@ class Object(metaclass=ObjectMeta):
             cls._factory_class = Factory
 
         return cls._factory_class(fun, session)
-
-
-def requires_create_generator(method):
-    @functools.wraps(method)
-    async def wrapped_method(self, *args, **kwargs):
-        running_session = get_running_session()
-        if not running_session:
-            raise Exception("Can only run this method with a running session")
-
-        if not self._session:
-            raise Exception("Can only run this method when registered on the running session")
-
-        async for ret in method(self, *args, **kwargs):
-            yield ret
-
-    return wrapped_method
-
-
-def requires_create(method):
-    @functools.wraps(method)
-    async def wrapped_method(self, *args, **kwargs):
-        running_session = get_running_session()
-        if not running_session:
-            raise Exception("Can only run this method with a running session")
-
-        if not self._session:
-            raise Exception("Can only run this method when registered on the running session")
-
-        return await method(self, *args, **kwargs)
-
-    return wrapped_method

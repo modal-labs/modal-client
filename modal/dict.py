@@ -5,7 +5,7 @@ from typing import Any, List
 from ._async_utils import retry
 from ._client import Client
 from .config import logger
-from .object import Object, requires_create
+from .object import Object
 from .proto import api_pb2
 
 
@@ -29,7 +29,6 @@ class Dict(Object):
         logger.debug("Created dict with id %s" % response.dict_id)
         return response.dict_id
 
-    @requires_create
     async def get(self, key):
         """Get the value associated with the key
 
@@ -42,26 +41,22 @@ class Dict(Object):
             raise KeyError(f"KeyError: {key} not in dict {self.object_id}")
         return self._session.deserialize(resp.value)
 
-    @requires_create
     async def contains(self, key):
         """Check if the key exists"""
         req = api_pb2.DictContainsRequest(dict_id=self.object_id, key=self._session.serialize(key))
         resp = await self._session.client.stub.DictContains(req)
         return resp.found
 
-    @requires_create
     async def len(self):
         """The length of the dictionary"""
         req = api_pb2.DictLenRequest(dict_id=self.object_id)
         resp = await self._session.client.stub.DictLen(req)
         return resp.len
 
-    @requires_create
     async def __getitem__(self, key):
         """Get an item from the dictionary"""
         return await self.get(key)
 
-    @requires_create
     async def update(self, **kwargs):
         """Update the dictionary with items
 
@@ -71,7 +66,6 @@ class Dict(Object):
         req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized)
         await self._session.client.stub.DictUpdate(req)
 
-    @requires_create
     async def put(self, key, value):
         """Set the specific key/value pair in the dictionary"""
         updates = {key: value}
@@ -80,7 +74,6 @@ class Dict(Object):
         await self._session.client.stub.DictUpdate(req)
 
     # NOTE: setitem only works in a synchronous context.
-    @requires_create
     async def __setitem__(self, key, value):
         """Set the specific key/value pair in the dictionary
 
@@ -88,7 +81,6 @@ class Dict(Object):
         """
         return await self.put(key, value)
 
-    @requires_create
     async def pop(self, key):
         """Remove the specific key from the dictionary"""
         req = api_pb2.DictPopRequest(dict_id=self.object_id, key=self._session.serialize(key))
@@ -97,7 +89,6 @@ class Dict(Object):
             raise KeyError(f"KeyError: {key} not in dict {self.object_id}")
         return self._session.deserialize(resp.value)
 
-    @requires_create
     async def __delitem__(self, key):
         """Delete the specific key from the dictionary
 

@@ -15,7 +15,7 @@ from .config import config, logger
 from .exception import RemoteError
 from .image import debian_slim
 from .mount import Mount, create_package_mounts
-from .object import Object, requires_create, requires_create_generator
+from .object import Object
 from .proto import api_pb2
 
 
@@ -266,7 +266,6 @@ class Function(Object):
         response = await session.client.stub.FunctionGetOrCreate(request)
         return response.function_id
 
-    @requires_create_generator
     async def map(self, inputs, window=100, kwargs={}):
         input_stream = stream.iterate(inputs) | pipe.map(lambda arg: (arg,))
         async for item in await _MapInvocation.create(
@@ -274,18 +273,15 @@ class Function(Object):
         ):
             yield item
 
-    @requires_create
     async def call_function(self, args, kwargs):
         invocation = await _Invocation.create(self.object_id, args, kwargs, self._session)
         return await invocation.run_function()
 
-    @requires_create
     async def invoke_function(self, args, kwargs):
         """Returns a future rather than the result directly"""
         invocation = await _Invocation.create(self.object_id, args, kwargs, self._session)
         return invocation.run_function()
 
-    @requires_create_generator
     async def call_generator(self, args, kwargs):
         invocation = await _Invocation.create(self.object_id, args, kwargs, self._session)
         async for res in invocation.run_generator():
