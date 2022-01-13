@@ -46,63 +46,61 @@ async def _get_files(local_dir, condition, recursive):
 
 
 class Mount(Object):
-    def _init(self, local_dir, remote_dir, condition, session=None, recursive=True):
-        self.local_dir = local_dir
-        self.remote_dir = remote_dir
-        self.condition = condition
-        self.recursive = recursive
+    @classmethod
+    async def create(cls, local_dir, remote_dir, condition, session=None, recursive=True):
+        # Run a threadpool to compute hash values, and use n coroutines to put files
+        session = cls.get_session(session)
 
-    async def _put_file(self, client, mount_id, filename, rel_filename, sha256_hex):
-        remote_filename = os.path.join(self.remote_dir, rel_filename)  # won't work on windows
-        request = api_pb2.MountRegisterFileRequest(filename=remote_filename, sha256_hex=sha256_hex, mount_id=mount_id)
-        response = await client.stub.MountRegisterFile(request)
-        self.n_files += 1
-        if not response.exists:
-            # TODO: this will be moved to S3 soon
-            data = open(filename, "rb").read()
-            self.n_missing_files += 1
-            self.total_bytes += len(data)
-            logger.debug(f"Uploading file {filename} to {remote_filename} ({len(data)} bytes)")
-            request = api_pb2.MountUploadFileRequest(
-                data=data, sha256_hex=sha256_hex, size=len(data), mount_id=mount_id
+        n_files = 0
+        n_missing_files = 0
+        total_bytes = 0
+        t0 = time.time()
+        n_concurrent_uploads = 16
+
+        async def _put_file(client, mount_id, filename, rel_filename, sha256_hex):
+            nonlocal n_files, n_missing_files, total_bytes
+            remote_filename = os.path.join(remote_dir, rel_filename)  # won't work on windows
+            request = api_pb2.MountRegisterFileRequest(
+                filename=remote_filename, sha256_hex=sha256_hex, mount_id=mount_id
             )
-            response = await client.stub.MountUploadFile(request)
+            response = await client.stub.MountRegisterFile(request)
+            n_files += 1
+            if not response.exists:
+                # TODO: this will be moved to S3 soon
+                data = open(filename, "rb").read()
+                n_missing_files += 1
+                total_bytes += len(data)
+                logger.debug(f"Uploading file {filename} to {remote_filename} ({len(data)} bytes)")
+                request = api_pb2.MountUploadFileRequest(
+                    data=data, sha256_hex=sha256_hex, size=len(data), mount_id=mount_id
+                )
+                response = await client.stub.MountUploadFile(request)
 
-    async def _create_impl(self, session):
         req = api_pb2.MountCreateRequest(session_id=session.session_id)
         resp = await session.client.stub.MountCreate(req)
         mount_id = resp.mount_id
 
-        # Run a threadpool to compute hash values, and use n coroutines to put files
-        self.n_files = 0
-        self.n_missing_files = 0
-        self.total_bytes = 0
-        t0 = time.time()
-        n_concurrent_uploads = 16
-
         logger.debug(f"Uploading mount {mount_id} using {n_concurrent_uploads} uploads")
 
         # Create async generator
-        files = _get_files(self.local_dir, self.condition, self.recursive)
+        files = _get_files(local_dir, condition, recursive)
         files_stream = aiostream.stream.iterate(files)
 
         async def put_file_tupled(tup):
             filename, rel_filename, sha256_hex = tup
-            await self._put_file(session.client, mount_id, filename, rel_filename, sha256_hex)
+            await _put_file(session.client, mount_id, filename, rel_filename, sha256_hex)
 
         # Upload files
         uploads_stream = aiostream.stream.map(files_stream, put_file_tupled, task_limit=n_concurrent_uploads)
         await uploads_stream
 
-        logger.debug(
-            f"Uploaded {self.n_missing_files}/{self.n_files} files and {self.total_bytes} bytes in {time.time() - t0}s"
-        )
+        logger.debug(f"Uploaded {n_missing_files}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
 
         # Set the mount to done
         req = api_pb2.MountDoneRequest(mount_id=mount_id)
         await session.client.stub.MountDone(req)
 
-        return mount_id
+        return cls.create_object_instance(mount_id, session)
 
 
 async def create_package_mounts(package_name):

@@ -218,7 +218,7 @@ class Function(Object, Factory):
         self.gpu = gpu
         super()._init_static(session=session, tag=tag, register_on_default_session=True)
 
-    async def _create_impl(self, session):
+    async def load(self, session):
         mounts = [
             await Mount.create(
                 local_dir=self.info.package_path,

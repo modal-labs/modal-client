@@ -16,18 +16,18 @@ class Dict(Object):
     serialized by cloudpickle, including Modal objects.
     """
 
-    def _init(self, data={}):
-        self.data = data
-
+    @classmethod
     def _serialize_dict(self, session, data):
         return [api_pb2.DictEntry(key=session.serialize(k), value=session.serialize(v)) for k, v in data.items()]
 
-    async def _create_impl(self, session):
-        serialized = self._serialize_dict(session, self.data)
+    @classmethod
+    async def create(cls, data={}, session=None):
+        session = cls.get_session(session)
+        serialized = cls._serialize_dict(session, data)
         req = api_pb2.DictCreateRequest(session_id=session.session_id, data=serialized)
         response = await session.client.stub.DictCreate(req)
         logger.debug("Created dict with id %s" % response.dict_id)
-        return response.dict_id
+        return cls.create_object_instance(response.dict_id, session)
 
     async def get(self, key):
         """Get the value associated with the key

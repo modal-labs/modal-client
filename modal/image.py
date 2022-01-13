@@ -50,39 +50,36 @@ class CustomImage(Image):
 
     Needed to rewrite all the other subclasses to use composition instead of inheritance."""
 
-    def _init(
-        self,
+    @classmethod
+    async def create(
+        cls,
         base_images={},
         context_files={},
         dockerfile_commands=[],
         local_image_python_executable=None,
         version=None,
+        session=None,
     ):
-        self._base_images = base_images
-        self._context_files = context_files
-        self._dockerfile_commands = dockerfile_commands
-        self._local_image_python_executable = local_image_python_executable
-        self._version = version
+        session = cls.get_session(session)
 
-    async def _create_impl(self, session):
         # Recursively build base images
-        base_image_ids = await asyncio.gather(*(session.create_object(image) for image in self._base_images.values()))
+        base_image_ids = await asyncio.gather(*(session.create_object(image) for image in base_images.values()))
         base_images_pb2s = [
             api_pb2.BaseImage(docker_tag=docker_tag, image_id=image_id)
-            for docker_tag, image_id in zip(self._base_images.keys(), base_image_ids)
+            for docker_tag, image_id in zip(base_images.keys(), base_image_ids)
         ]
 
         context_file_pb2s = [
-            api_pb2.ImageContextFile(filename=filename, data=data) for filename, data in self._context_files.items()
+            api_pb2.ImageContextFile(filename=filename, data=data) for filename, data in context_files.items()
         ]
 
-        dockerfile_commands = [_make_bytes(s) for s in self._dockerfile_commands]
+        dockerfile_commands = [_make_bytes(s) for s in dockerfile_commands]
         image_definition = api_pb2.Image(
             base_images=base_images_pb2s,
             dockerfile_commands=dockerfile_commands,
             context_files=context_file_pb2s,
-            local_image_python_executable=self._local_image_python_executable,
-            version=self._version,
+            local_image_python_executable=local_image_python_executable,
+            version=version,
         )
 
         req = api_pb2.ImageGetOrCreateRequest(
@@ -109,7 +106,7 @@ class CustomImage(Image):
             else:
                 raise RemoteError("Unknown status %s!" % response.result.status)
 
-        return image_id
+        return cls.create_object_instance(image_id, session)
 
 
 @Image.factory

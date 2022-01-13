@@ -14,15 +14,13 @@ class Queue(Object):
     The contents of the Queue can be any serializable object.
     """
 
-    def _init(self):
-        pass
-
-    async def _create_impl(self, session):
-        """This creates a queue on the server and returns its id."""
+    @classmethod
+    async def create(cls, session=None):
+        session = cls.get_session(session)
         request = api_pb2.QueueCreateRequest(session_id=session.session_id)
         response = await session.client.stub.QueueCreate(request)
         logger.debug("Created queue with id %s" % response.queue_id)
-        return response.queue_id
+        return cls.create_object_instance(response.queue_id, session)
 
     async def _get(self, block, timeout, n_values):
         while timeout is None or timeout > 0:

@@ -41,6 +41,10 @@ class Object(metaclass=ObjectMeta):
     def __init__(self, *args, **kwargs):
         raise Exception("Direct construction of Object is not possible! Use factories or .create(...)!")
 
+    @classmethod
+    async def create(cls, *args, **kwargs):
+        raise NotImplementedError("Class {cls} does not implement a .create(...) constructor!")
+
     def _init_attributes(self, tag=None):
         """Initialize attributes"""
         self.tag = tag
@@ -49,30 +53,20 @@ class Object(metaclass=ObjectMeta):
         self._session = None
 
     @classmethod
-    async def create(cls, *args, **kwargs):
-        """Creates an object.
-
-        If no session is specified, the object is registered on the default session.
-        """
-        session = kwargs.pop("session", None)
-
-        # Create object and initialize it
-        # TODO(erikbern): I'm trying to minimize code changes in order to get the async
-        # constructors working, so I'm simply just reusing existing constructors for now.
-        # It's probably much better to get rid of this dumb layer of indirection since
-        # pretty much all the constructors do is to save a bunch of values to the object
-        # that's only ever used by _create_impl anyway. Let's revisit shortly
-        obj = Object.__new__(cls)
-        obj._init_attributes()
-        obj._init(*args, **kwargs)
-
+    def get_session(cls, session=None):
+        """Helper method for subclasses."""
         if not session:
             session = get_container_session()
         if not session:
             session = get_default_session()
+        return session
 
-        # Now, create the object on the server
-        object_id = await obj._create_impl(session)
+    @classmethod
+    def create_object_instance(cls, object_id, session):
+        """Helper method for subclass constructors."""
+        obj = Object.__new__(cls)
+        obj._init_attributes()
+
         if object_id is None:
             raise Exception(f"object_id for object of type {type(obj)} is None")
 

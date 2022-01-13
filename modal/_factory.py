@@ -10,8 +10,8 @@ from ._session_singleton import (
 
 
 class Factory:
-    # Abstract base class
-    pass
+    async def load(self, session):
+        raise NotImplementedError(f"Object factory of class {type(self)} has no load method")
 
 
 def make_user_factory(cls):
@@ -33,7 +33,7 @@ def make_user_factory(cls):
             tag = self.function_info.get_tag(args_and_kwargs)
             cls._init_static(self, session=session, tag=tag)
 
-        async def _create_impl(self, session):
+        async def load(self, session):
             if get_container_session() is not None:
                 assert False
 
@@ -71,7 +71,7 @@ def make_shared_object_factory_class(cls):
             tag = f"SHARE({label}, {namespace})"  # TODO: use functioninfo later
             cls._init_static(self, session=session, tag=tag)
 
-        async def _create_impl(self, session):
+        async def load(self, session):
             object_id = await session.use_object(self.label, self.namespace)
             return object_id
 

@@ -150,7 +150,7 @@ class Session:
             return self._created_tagged_objects[obj.tag]
 
         # Create object
-        object_id = await obj._create_impl(self)
+        object_id = await obj.load(self)
         if object_id is None:
             raise Exception(f"object_id for object of type {type(obj)} is None")
 
