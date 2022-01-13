@@ -1,4 +1,5 @@
 from ._decorator_utils import decorator_with_options
+from ._factory import Factory
 from ._object_meta import ObjectMeta
 from ._session_singleton import (
     get_container_session,
@@ -85,6 +86,7 @@ class Object(metaclass=ObjectMeta):
 
         register_on_default_session is set to True for Functions
         """
+        # TODO: move this into Factory?
 
         assert tag is not None
         self._init_attributes(tag=tag)
@@ -105,9 +107,8 @@ class Object(metaclass=ObjectMeta):
             if session:
                 session.register_object(self)
 
-    async def _create_impl(self, session):
-        # Overloaded in subclasses to do the actual logic
-        raise NotImplementedError(f"Object of class {type(self)} has no _create_impl method")
+    def is_factory(self):
+        return isinstance(self, Factory)
 
     def set_object_id(self, object_id, session):
         """Set the Modal internal object id"""
@@ -152,7 +153,7 @@ class Object(metaclass=ObjectMeta):
                await q.put(initial_value)
                return q
         """
-        return cls._factory_class(fun, session)
+        return cls._user_factory_class(fun, session)
 
     @classmethod
     def use(cls, session, label, namespace=api_pb2.ShareNamespace.ACCOUNT):

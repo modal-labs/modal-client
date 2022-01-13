@@ -9,12 +9,13 @@ from ._session_singleton import (
 )
 
 
-class BaseFactory:
+class Factory:
+    # Abstract base class
     pass
 
 
-def make_factory(cls):
-    class Factory(cls, BaseFactory):
+def make_user_factory(cls):
+    class UserFactory(cls, Factory):
         """Acts as a wrapper for a transient Object.
 
         Puts a tag and optionally a session on it. Otherwise just "steals" the object id from the
@@ -54,16 +55,16 @@ def make_factory(cls):
         def __call__(self, *args, **kwargs):
             """Binds arguments to this object."""
             assert self._args_and_kwargs is None
-            return Factory(self._fun, self._session, args_and_kwargs=(args, kwargs))
+            return UserFactory(self._fun, self._session, args_and_kwargs=(args, kwargs))
 
-    Factory.__module__ = cls.__module__
-    Factory.__qualname__ = cls.__qualname__ + ".Factory"
-    Factory.__doc__ = "\n\n".join(filter(None, [Factory.__doc__, cls.__doc__]))
-    return Factory
+    UserFactory.__module__ = cls.__module__
+    UserFactory.__qualname__ = cls.__qualname__ + ".UserFactory"
+    UserFactory.__doc__ = "\n\n".join(filter(None, [UserFactory.__doc__, cls.__doc__]))
+    return UserFactory
 
 
 def make_shared_object_factory_class(cls):
-    class SharedObjectFactory(cls, BaseFactory):
+    class SharedObjectFactory(cls, Factory):
         def __init__(self, session, label, namespace):
             self.label = label
             self.namespace = namespace

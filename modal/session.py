@@ -129,41 +129,28 @@ class Session:
         set_running_session(self)
 
     async def create_object(self, obj):
-        """Takes an object as input, Returns an object id.
+        """Takes an object as input, returns an object id.
 
-        Will write the object id to the object
+        This is a noop for any object that's not a factory.
         """
-        # TODO: this method is fairly useless at this point
-        # For factories/functions, this checks if the tag already exists, otherwise creates it
-        # For persistent objects, it tries to load it, but this should really be done through a factory
-        # For "dynamic" objects, it doesn't really do anything besides calling _create_impl and then
-        # writing the result back to the object.
-
-        if obj._session is self and obj._session_id == self.session_id:
-            assert obj.object_id is not None
+        if not obj.is_factory():
+            # This object is already created, just return the id
             return obj.object_id
 
-        if obj.tag:
-            self._progress.set_substep_text(f"Creating {obj.tag}...", obj.tag)
+        assert obj.tag
+        self._progress.set_substep_text(f"Creating {obj.tag}...", obj.tag)
 
-        if obj.tag is not None and obj.tag in self._created_tagged_objects:
-            # This is an already created tagged object, so just use the cached tag
-            object_id = self._created_tagged_objects[obj.tag]
-            if object_id is None:
-                raise Exception(f"Existing tagged object of type {type(obj)} has object_id is None")
-        else:
-            # This is something to be created
+        # Already created
+        if obj.tag in self._created_tagged_objects:
+            return self._created_tagged_objects[obj.tag]
 
-            # TODO: We may want to raise an exception her if we're trying to invoke
-            # a Factory but are in the container
-
-            object_id = await obj._create_impl(self)
-            if object_id is None:
-                raise Exception(f"object_id for object of type {type(obj)} is None")
+        # Create object
+        object_id = await obj._create_impl(self)
+        if object_id is None:
+            raise Exception(f"object_id for object of type {type(obj)} is None")
 
         obj.set_object_id(object_id, self)
-        if obj.tag:
-            self._created_tagged_objects[obj.tag] = object_id
+        self._created_tagged_objects[obj.tag] = object_id
         return object_id
 
     async def _flush_objects(self):

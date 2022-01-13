@@ -1,5 +1,5 @@
 from ._async_utils import synchronizer
-from ._factory import BaseFactory, make_factory, make_shared_object_factory_class
+from ._factory import Factory, make_shared_object_factory_class, make_user_factory
 from .config import logger
 
 
@@ -16,8 +16,8 @@ class ObjectMeta(type):
         ObjectMeta.name_to_type[name] = new_cls
 
         # Create factory class and shared object class
-        if not issubclass(new_cls, BaseFactory):
-            new_cls._factory_class = make_factory(new_cls)
+        if not issubclass(new_cls, Factory):
+            new_cls._user_factory_class = make_user_factory(new_cls)
             new_cls._shared_object_factory_class = make_shared_object_factory_class(new_cls)
 
         logger.debug(f"Created Object class {name}")

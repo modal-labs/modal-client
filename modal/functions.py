@@ -10,6 +10,7 @@ from google.protobuf.any_pb2 import Any
 from ._async_utils import retry
 from ._buffer_utils import buffered_rpc_read, buffered_rpc_write
 from ._decorator_utils import decorator_with_options
+from ._factory import Factory
 from ._function_utils import FunctionInfo
 from .config import config, logger
 from .exception import RemoteError
@@ -204,7 +205,7 @@ class _MapInvocation:
                         break
 
 
-class Function(Object):
+class Function(Object, Factory):
     def __init__(self, session, raw_f, image=None, env_dict=None, is_generator=False, gpu=False):
         assert callable(raw_f)
         self.info = FunctionInfo(raw_f)
