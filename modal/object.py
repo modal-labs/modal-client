@@ -191,7 +191,7 @@ class Object(metaclass=ObjectMeta):
                     # This is the only place where tags are being set on objects,
                     # besides Function
                     tag = self.function_info.get_tag(args_and_kwargs)
-                    Object._init_static(self, session=session, tag=tag)
+                    cls._init_static(self, session=session, tag=tag)
 
                 async def _create_impl(self, session):
                     if get_container_session() is not None:
