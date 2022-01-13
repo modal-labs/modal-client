@@ -72,8 +72,8 @@ class Session:
         """Registers an object to be created by the session so that it's available in modal.
 
         This is only used by factories and functions."""
-        if obj.tag is None and obj.share_label is None:
-            raise Exception("Can only register objects with tags or persistent objects")
+        if obj.tag is None:
+            raise Exception("Can only register named objects")
         if self.state == SessionState.NONE:
             self._pending_create_objects.append(obj)
         elif self._blocking_late_creation_ok:
@@ -151,11 +151,6 @@ class Session:
             object_id = self._created_tagged_objects[obj.tag]
             if object_id is None:
                 raise Exception(f"Existing tagged object of type {type(obj)} has object_id is None")
-        elif obj.share_label:
-            # This is a reference to a persistent object
-            object_id = await self._use_object(obj.share_label, obj.share_namespace)
-            if object_id is None:
-                raise Exception(f"Could not find shared object {obj.share_label} of type {type(obj)}")
         else:
             # This is something to be created
 
@@ -195,7 +190,7 @@ class Session:
         )
         await self.client.stub.SessionShareObject(request)
 
-    async def _use_object(self, label, namespace=api_pb2.ShareNamespace.ACCOUNT):
+    async def use_object(self, label, namespace):
         request = api_pb2.SessionUseObjectRequest(
             session_id=self.session_id,
             label=label,

@@ -60,3 +60,19 @@ def make_factory(cls):
     Factory.__qualname__ = cls.__qualname__ + ".Factory"
     Factory.__doc__ = "\n\n".join(filter(None, [Factory.__doc__, cls.__doc__]))
     return Factory
+
+
+def make_shared_object_factory_class(cls):
+    class SharedObjectFactory(cls, BaseFactory):
+        def __init__(self, session, label, namespace):
+            self.label = label
+            self.namespace = namespace
+            tag = f"SHARE({label}, {namespace})"  # TODO: use functioninfo later
+            cls._init_static(self, session=session, tag=tag)
+
+        async def _create_impl(self, session):
+            object_id = await session.use_object(self.label, self.namespace)
+            return object_id
+
+    # TODO: set a bunch of stuff
+    return SharedObjectFactory

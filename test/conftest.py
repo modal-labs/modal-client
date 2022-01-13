@@ -102,6 +102,11 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     ) -> api_pb2.QueueGetResponse:
         return api_pb2.QueueGetResponse(values=[self.queue.pop(0)])
 
+    async def SessionUseObject(
+        self, request: api_pb2.SessionUseObjectRequest, context: grpc.aio.ServicerContext
+    ) -> api_pb2.SessionUseObjectResponse:
+        return api_pb2.SessionUseObjectResponse(found=True, object_id="qu-98765")
+
 
 @pytest.fixture(scope="function")
 async def servicer():

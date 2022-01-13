@@ -40,10 +40,8 @@ class Object(metaclass=ObjectMeta):
     def __init__(self, *args, **kwargs):
         raise Exception("Direct construction of Object is not possible! Use factories or .create(...)!")
 
-    def _init_attributes(self, tag=None, share_label=None, share_namespace=None):
+    def _init_attributes(self, tag=None):
         """Initialize attributes"""
-        self.share_label = share_label
-        self.share_namespace = share_namespace
         self.tag = tag
         self._object_id = None
         self._session_id = None
@@ -124,16 +122,6 @@ class Object(metaclass=ObjectMeta):
             return self._object_id
 
     @classmethod
-    def use(cls, session, label, namespace=api_pb2.ShareNamespace.ACCOUNT):
-        """Use an object published with :py:meth:`modal.session.Session.share`"""
-        # TODO: session should be a 2nd optional arg
-        obj = Object.__new__(cls)
-        obj._init_attributes(share_label=label, share_namespace=namespace)
-        if session:
-            session.register_object(obj)
-        return obj
-
-    @classmethod
     @decorator_with_options
     def factory(cls, fun, session=None):
         """Decorator to mark a "factory function".
@@ -165,3 +153,8 @@ class Object(metaclass=ObjectMeta):
                return q
         """
         return cls._factory_class(fun, session)
+
+    @classmethod
+    def use(cls, session, label, namespace=api_pb2.ShareNamespace.ACCOUNT):
+        """Use an object published with :py:meth:`modal.session.Session.share`"""
+        return cls._shared_object_factory_class(session, label, namespace)
