@@ -4,8 +4,8 @@ from modal import Queue, Session
 
 
 @Queue.factory
-async def my_factory(session, initial_value=42):
-    q = Queue(session=session)
+async def my_factory(initial_value=42):
+    q = await Queue.create()
     await q.put(initial_value)
     return q
 
