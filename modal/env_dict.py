@@ -7,7 +7,7 @@ class EnvDict(Object):
 
     @classmethod
     async def create(cls, env_dict={}, session=None):
-        session = cls.get_session(session)
+        session = cls._get_session(session)
         req = api_pb2.EnvDictCreateRequest(session_id=session.session_id, env_dict=env_dict)
         resp = await session.client.stub.EnvDictCreate(req)
-        return cls.create_object_instance(resp.env_dict_id, session)
+        return cls._create_object_instance(resp.env_dict_id, session)

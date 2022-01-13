@@ -60,7 +60,7 @@ class CustomImage(Image):
         version=None,
         session=None,
     ):
-        session = cls.get_session(session)
+        session = cls._get_session(session)
 
         # Recursively build base images
         base_image_ids = await asyncio.gather(*(session.create_object(image) for image in base_images.values()))
@@ -106,7 +106,7 @@ class CustomImage(Image):
             else:
                 raise RemoteError("Unknown status %s!" % response.result.status)
 
-        return cls.create_object_instance(image_id, session)
+        return cls._create_object_instance(image_id, session)
 
 
 @Image.factory

@@ -49,7 +49,7 @@ class Mount(Object):
     @classmethod
     async def create(cls, local_dir, remote_dir, condition, session=None, recursive=True):
         # Run a threadpool to compute hash values, and use n coroutines to put files
-        session = cls.get_session(session)
+        session = cls._get_session(session)
 
         n_files = 0
         n_missing_files = 0
@@ -100,7 +100,7 @@ class Mount(Object):
         req = api_pb2.MountDoneRequest(mount_id=mount_id)
         await session.client.stub.MountDone(req)
 
-        return cls.create_object_instance(mount_id, session)
+        return cls._create_object_instance(mount_id, session)
 
 
 async def create_package_mounts(package_name):

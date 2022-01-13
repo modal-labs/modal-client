@@ -10,8 +10,7 @@ from ._session_singleton import (
 
 
 class Factory:
-    async def load(self, session):
-        raise NotImplementedError(f"Object factory of class {type(self)} has no load method")
+    pass
 
 
 def make_user_factory(cls):

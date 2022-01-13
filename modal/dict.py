@@ -22,12 +22,12 @@ class Dict(Object):
 
     @classmethod
     async def create(cls, data={}, session=None):
-        session = cls.get_session(session)
+        session = cls._get_session(session)
         serialized = cls._serialize_dict(session, data)
         req = api_pb2.DictCreateRequest(session_id=session.session_id, data=serialized)
         response = await session.client.stub.DictCreate(req)
         logger.debug("Created dict with id %s" % response.dict_id)
-        return cls.create_object_instance(response.dict_id, session)
+        return cls._create_object_instance(response.dict_id, session)
 
     async def get(self, key):
         """Get the value associated with the key

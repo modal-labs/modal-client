@@ -45,6 +45,9 @@ class Object(metaclass=ObjectMeta):
     async def create(cls, *args, **kwargs):
         raise NotImplementedError("Class {cls} does not implement a .create(...) constructor!")
 
+    async def load(self, session):
+        raise NotImplementedError(f"Object factory of class {type(self)} has no load method")
+
     def _init_attributes(self, tag=None):
         """Initialize attributes"""
         self.tag = tag
@@ -53,7 +56,7 @@ class Object(metaclass=ObjectMeta):
         self._session = None
 
     @classmethod
-    def get_session(cls, session=None):
+    def _get_session(cls, session=None):
         """Helper method for subclasses."""
         if not session:
             session = get_container_session()
@@ -62,7 +65,7 @@ class Object(metaclass=ObjectMeta):
         return session
 
     @classmethod
-    def create_object_instance(cls, object_id, session):
+    def _create_object_instance(cls, object_id, session):
         """Helper method for subclass constructors."""
         obj = Object.__new__(cls)
         obj._init_attributes()
