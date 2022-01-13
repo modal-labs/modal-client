@@ -90,6 +90,7 @@ message ClientHeartbeatRequest {
 
 message SessionCreateRequest {
   string client_id = 1;
+  string name = 2;
 }
 
 message SessionCreateResponse {

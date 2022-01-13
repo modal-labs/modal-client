@@ -1,6 +1,7 @@
 import asyncio
 import functools
 import io
+import sys
 
 from ._async_utils import TaskContext, run_coro_blocking, synchronizer
 from ._client import Client
@@ -45,11 +46,12 @@ class Session:
             session = super().__new__(cls)
             return session
 
-    def __init__(self, show_progress=True, blocking_late_creation_ok=False):
+    def __init__(self, show_progress=True, blocking_late_creation_ok=False, name=None):
         if hasattr(self, "_initialized"):
             return  # Prevent re-initialization with the singleton
         self._initialized = True
         self.client = None
+        self.name = name or self._infer_session_name()
         self.state = SessionState.NONE
         self._pending_create_objects = []  # list of objects that haven't been created
         self._created_tagged_objects = {}  # tag -> object id
@@ -61,6 +63,9 @@ class Session:
         # We will have to rethink this soon.
         self._blocking_late_creation_ok = blocking_late_creation_ok
         super().__init__()
+
+    def _infer_session_name(self):
+        return " ".join([arg.split("/")[-1] for arg in sys.argv])
 
     def get_object_id_by_tag(self, tag):
         """Assigns an id to the object if there is already one set.
@@ -217,7 +222,7 @@ class Session:
 
         try:
             # Start session
-            req = api_pb2.SessionCreateRequest(client_id=client.client_id)
+            req = api_pb2.SessionCreateRequest(client_id=client.client_id, name=self.name)
             resp = await client.stub.SessionCreate(req)
             self.session_id = resp.session_id
 
