@@ -1,6 +1,7 @@
 import asyncio
 import functools
 import io
+import os
 import sys
 
 from ._async_utils import TaskContext, run_coro_blocking, synchronizer
@@ -65,7 +66,9 @@ class Session:
         super().__init__()
 
     def _infer_session_name(self):
-        return " ".join([arg.split("/")[-1] for arg in sys.argv])
+        script_filename = os.path.split(sys.argv[0])[-1]
+        args = [script_filename] + sys.argv[1:]
+        return " ".join(args)
 
     def get_object_id_by_tag(self, tag):
         """Assigns an id to the object if there is already one set.
