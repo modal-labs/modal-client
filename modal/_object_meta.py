@@ -4,17 +4,16 @@ from .config import logger
 
 
 class ObjectMeta(type):
-    type_to_prefix = {}
     prefix_to_type = {}
 
-    def __new__(metacls, name, bases, dct, modal_prefix=None):
+    def __new__(metacls, name, bases, dct, type_prefix=None):
         # Synchronize class
         new_cls = synchronizer.create_class(metacls, name, bases, dct)
 
         # Needed for serialization, also for loading objects dynamically
-        if modal_prefix is not None:
-            ObjectMeta.type_to_prefix[new_cls] = modal_prefix
-            ObjectMeta.prefix_to_type[modal_prefix] = new_cls
+        if type_prefix is not None:
+            new_cls._type_prefix = type_prefix
+            metacls.prefix_to_type[type_prefix] = new_cls
 
         # Create factory class and shared object class
         if not issubclass(new_cls, Factory):

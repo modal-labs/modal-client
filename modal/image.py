@@ -17,7 +17,7 @@ def _make_bytes(s):
     return s.encode("ascii") if type(s) is str else s
 
 
-class Image(Object, modal_prefix="im"):
+class Image(Object, type_prefix="im"):
     """Base class for container images to run functions in.
 
     Do not construct this class directly; instead use

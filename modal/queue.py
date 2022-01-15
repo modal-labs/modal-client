@@ -8,7 +8,7 @@ from .object import Object
 from .proto import api_pb2
 
 
-class Queue(Object, modal_prefix="qu"):
+class Queue(Object, type_prefix="qu"):
     """A distributed FIFO Queue.
 
     The contents of the Queue can be any serializable object.

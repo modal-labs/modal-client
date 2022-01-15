@@ -45,7 +45,7 @@ async def _get_files(local_dir, condition, recursive):
             yield filename, rel_filename, sha256_hex
 
 
-class Mount(Object, modal_prefix="mo"):
+class Mount(Object, type_prefix="mo"):
     @classmethod
     async def create(cls, local_dir, remote_dir, condition, session=None, recursive=True):
         # Run a threadpool to compute hash values, and use n coroutines to put files

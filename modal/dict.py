@@ -9,7 +9,7 @@ from .object import Object
 from .proto import api_pb2
 
 
-class Dict(Object, modal_prefix="di"):
+class Dict(Object, type_prefix="di"):
     """A distributed dictionary.
 
     Keys and values can be essentially any object, so long as it can be

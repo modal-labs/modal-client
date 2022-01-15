@@ -278,7 +278,7 @@ class Session:
     def serialize(self, obj):
         """Serializes object and replaces all references to the client class by a placeholder."""
         buf = io.BytesIO()
-        Pickler(self, ObjectMeta.type_to_prefix, buf).dump(obj)
+        Pickler(self, buf).dump(obj)
         return buf.getvalue()
 
     def deserialize(self, s: bytes):

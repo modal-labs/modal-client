@@ -10,18 +10,17 @@ PICKLE_PROTOCOL = 4  # Support older Python versions.
 
 
 class Pickler(cloudpickle.Pickler):
-    def __init__(self, session, type_to_prefix, buf):
+    def __init__(self, session, buf):
         self.session = session
-        self.type_to_prefix = type_to_prefix
         super().__init__(buf, protocol=PICKLE_PROTOCOL)
 
     def persistent_id(self, obj):
         if not isinstance(obj, Object):
             return
-        class_prefix = self.type_to_prefix[type(obj)]
+        type_prefix = obj._type_prefix
         if not obj.object_id:
             raise Exception(f"Can't serialize object {obj} which hasn't been created")
-        return (class_prefix, obj.object_id)
+        return (type_prefix, obj.object_id)
 
 
 class Unpickler(pickle.Unpickler):
