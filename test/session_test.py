@@ -34,3 +34,18 @@ async def test_create_object(servicer, client):
         await q.put("bar")
         assert await q.get() == "foo"
         assert await q.get() == "bar"
+
+
+@pytest.mark.asyncio
+async def test_persistent_object(servicer, client):
+    session_1 = Session()
+    async with session_1.run(client=client):
+        q_1 = await Queue.create(session=session_1)
+        assert q_1.object_id == "qu-1"
+        await session_1.share(q_1, "my-queue")
+
+    session_2 = Session()
+    async with session_2.run(client=client):
+        q_2 = await session_2.use("my-queue")
+        assert isinstance(q_2, Queue)
+        assert q_2.object_id == "qu-1"

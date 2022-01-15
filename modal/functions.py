@@ -205,7 +205,7 @@ class _MapInvocation:
                         break
 
 
-class Function(Object, Factory):
+class Function(Object, Factory, modal_prefix="fu"):
     def __init__(self, session, raw_f, image=None, env_dict=None, is_generator=False, gpu=False):
         assert callable(raw_f)
         self.info = FunctionInfo(raw_f)

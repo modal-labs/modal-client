@@ -71,8 +71,8 @@ def make_shared_object_factory_class(cls):
             cls._init_static(self, session=session, tag=tag)
 
         async def load(self, session):
-            object_id = await session.use_object(self.label, self.namespace)
-            return object_id
+            obj = await session.use(self.label, self.namespace)
+            return obj.object_id
 
     # TODO: set a bunch of stuff
     return SharedObjectFactory

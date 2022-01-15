@@ -24,6 +24,8 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.outputs = []
         self.object_ids = {}
         self.queue = []
+        self.shares = {"foo-queue": "qu-foo"}
+        self.n_queues = 0
 
     async def ClientCreate(
         self,
@@ -91,7 +93,8 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     async def QueueCreate(
         self, request: api_pb2.QueueCreateRequest, context: grpc.aio.ServicerContext
     ) -> api_pb2.QueueCreateResponse:
-        return api_pb2.QueueCreateResponse(queue_id="qu-123456")
+        self.n_queues += 1
+        return api_pb2.QueueCreateResponse(queue_id=f"qu-{self.n_queues}")
 
     async def QueuePut(self, request: api_pb2.QueuePutRequest, context: grpc.aio.ServicerContext) -> api_pb2.Empty:
         self.queue += request.values
@@ -102,10 +105,18 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     ) -> api_pb2.QueueGetResponse:
         return api_pb2.QueueGetResponse(values=[self.queue.pop(0)])
 
+    async def SessionShareObject(
+        self, request: api_pb2.SessionShareObjectRequest, context: grpc.aio.ServicerContext
+    ) -> api_pb2.Empty:
+        self.shares[request.label] = request.object_id
+        return api_pb2.Empty()
+
     async def SessionUseObject(
         self, request: api_pb2.SessionUseObjectRequest, context: grpc.aio.ServicerContext
     ) -> api_pb2.SessionUseObjectResponse:
-        return api_pb2.SessionUseObjectResponse(found=True, object_id="qu-98765")
+        return api_pb2.SessionUseObjectResponse(
+            found=bool(self.shares.get(request.label)), object_id=self.shares.get(request.label)
+        )
 
 
 @pytest.fixture(scope="function")

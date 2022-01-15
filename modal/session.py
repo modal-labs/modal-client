@@ -19,6 +19,7 @@ from ._session_singleton import (
 from ._session_state import SessionState
 from ._utils import print_logs
 from .config import config, logger
+from .object import Object
 from .proto import api_pb2
 
 
@@ -176,16 +177,16 @@ class Session:
             await self.create_object(obj)
 
     async def share(self, obj, label, namespace=api_pb2.ShareNamespace.ACCOUNT):
-        object_id = await self.create_object(obj)
+        assert obj.object_id
         request = api_pb2.SessionShareObjectRequest(
             session_id=self.session_id,
-            object_id=object_id,
+            object_id=obj.object_id,
             label=label,
             namespace=namespace,
         )
         await self.client.stub.SessionShareObject(request)
 
-    async def use_object(self, label, namespace):
+    async def use(self, label, namespace=api_pb2.ShareNamespace.ACCOUNT):
         request = api_pb2.SessionUseObjectRequest(
             session_id=self.session_id,
             label=label,
@@ -194,7 +195,7 @@ class Session:
         response = await self.client.stub.SessionUseObject(request)
         if not response.found:
             return None
-        return response.object_id
+        return Object._init_share(response.object_id, self)
 
     @synchronizer.asynccontextmanager
     async def run(self, client=None, stdout=None, stderr=None, logs_timeout=None):
@@ -277,12 +278,12 @@ class Session:
     def serialize(self, obj):
         """Serializes object and replaces all references to the client class by a placeholder."""
         buf = io.BytesIO()
-        Pickler(self, ObjectMeta.type_to_name, buf).dump(obj)
+        Pickler(self, ObjectMeta.type_to_prefix, buf).dump(obj)
         return buf.getvalue()
 
     def deserialize(self, s: bytes):
         """Deserializes object and replaces all client placeholders by self."""
-        return Unpickler(self, ObjectMeta.name_to_type, io.BytesIO(s)).load()
+        return Unpickler(self, ObjectMeta.prefix_to_type, io.BytesIO(s)).load()
 
 
 @synchronizer.asynccontextmanager

@@ -16,7 +16,7 @@ async def test_async_factory(servicer, client):
     session = Session()
     async with session.run(client=client):
         q_id = await session.create_object(q)
-        assert q_id == "qu-123456"
+        assert q_id == "qu-1"
 
 
 @pytest.mark.asyncio
@@ -26,4 +26,4 @@ async def test_use_object(servicer, client):
     q = Queue.use(session, "foo-queue")
     async with session.run(client=client):
         q_id = await session.create_object(q)
-        assert q_id == "qu-98765"
+        assert q_id == "qu-foo"

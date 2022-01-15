@@ -10,31 +10,31 @@ PICKLE_PROTOCOL = 4  # Support older Python versions.
 
 
 class Pickler(cloudpickle.Pickler):
-    def __init__(self, session, type_to_name, buf):
+    def __init__(self, session, type_to_prefix, buf):
         self.session = session
-        self.type_to_name = type_to_name
+        self.type_to_prefix = type_to_prefix
         super().__init__(buf, protocol=PICKLE_PROTOCOL)
 
     def persistent_id(self, obj):
         if not isinstance(obj, Object):
             return
-        class_name = self.type_to_name[type(obj)]
+        class_prefix = self.type_to_prefix[type(obj)]
         if not obj.object_id:
             raise Exception(f"Can't serialize object {obj} which hasn't been created")
-        return (class_name, obj.object_id)
+        return (class_prefix, obj.object_id)
 
 
 class Unpickler(pickle.Unpickler):
-    def __init__(self, session, name_to_type, buf):
+    def __init__(self, session, prefix_to_type, buf):
         self.session = session
-        self.name_to_type = name_to_type
+        self.prefix_to_type = prefix_to_type
         super().__init__(buf)
 
     def persistent_load(self, pid):
-        type_tag, object_id = pid
-        if type_tag not in self.name_to_type:
-            raise Exception(f"Unknown tag {type_tag}")
-        cls = self.name_to_type[type_tag]
+        type_prefix, object_id = pid
+        if type_prefix not in self.prefix_to_type:
+            raise Exception(f"Unknown prefix {type_prefix}")
+        cls = self.prefix_to_type[type_prefix]
         obj = Object.__new__(cls)
         obj._init_attributes()
         obj.set_object_id(object_id, self.session)

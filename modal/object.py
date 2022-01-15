@@ -104,6 +104,12 @@ class Object(metaclass=ObjectMeta):
             if session:
                 session.register_object(self)
 
+    @classmethod
+    def _init_share(cls, object_id, session):
+        prefix, _ = object_id.split("-")  # TODO: util method
+        object_cls = ObjectMeta.prefix_to_type[prefix]
+        return object_cls._create_object_instance(object_id, session)
+
     def is_factory(self):
         return isinstance(self, Factory)
 

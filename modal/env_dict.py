@@ -2,7 +2,7 @@ from .object import Object
 from .proto import api_pb2
 
 
-class EnvDict(Object):
+class EnvDict(Object, modal_prefix="ed"):
     """A dictionary of environment variables for images"""
 
     @classmethod
