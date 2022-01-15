@@ -237,14 +237,16 @@ class TaskContext:
             loop = asyncio.get_event_loop()
             task = loop.create_task(coro_or_task)
         else:
-            raise Exception(f"{coro_or_task} is not a coroutine or Task")
+            raise Exception(f"Object of type {type(coro_or_task)} is not a coroutine or Task")
         self._tasks.add(task)
         task.add_done_callback(self._mark_finished)
         return task
 
     def infinite_loop(self, async_f, timeout=90, sleep=10):
+        function_name = async_f.__qualname__
+
         async def loop_coro():
-            logger.debug(f"Starting infinite loop {async_f}")
+            logger.debug(f"Starting infinite loop {function_name}")
             while True:
                 try:
                     await asyncio.wait_for(async_f(), timeout=timeout)
@@ -252,17 +254,17 @@ class TaskContext:
                 except asyncio.CancelledError:
                     break
                 except Exception:
-                    logger.exception(f"Loop attempt failed for {async_f}")
+                    logger.exception(f"Loop attempt failed for {function_name}")
                 try:
                     await asyncio.wait_for(self._exited.wait(), timeout=sleep)
                 except asyncio.TimeoutError:
                     continue
-                logger.debug(f"Exiting infinite loop for {async_f}")
+                logger.debug(f"Exiting infinite loop for {function_name}")
                 break
 
         t = self.create_task(loop_coro())
         if hasattr(t, "set_name"):  # Was added in Python 3.8:
-            t.set_name(f"{async_f.__name__} loop")
+            t.set_name(f"{function_name} loop")
         self._loops.add(t)
         return t
 
