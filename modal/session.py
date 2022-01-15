@@ -19,6 +19,7 @@ from ._session_singleton import (
 from ._session_state import SessionState
 from ._utils import print_logs
 from .config import config, logger
+from .exception import NotFoundError
 from .object import Object
 from .proto import api_pb2
 
@@ -194,7 +195,7 @@ class Session:
         )
         response = await self.client.stub.SessionUseObject(request)
         if not response.found:
-            return None
+            raise NotFoundError(f"Could not find object {label} (namespace {namespace})")
         return Object._init_share(response.object_id, self)
 
     @synchronizer.asynccontextmanager

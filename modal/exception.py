@@ -16,3 +16,7 @@ class InvalidError(Exception):
 
 class VersionError(Exception):
     pass
+
+
+class NotFoundError(Exception):
+    pass

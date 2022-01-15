@@ -3,6 +3,7 @@ import pytest
 from modal import Queue, Session
 from modal._session_singleton import get_default_session
 from modal._session_state import SessionState
+from modal.exception import NotFoundError
 
 
 def test_session(reset_global_sessions):
@@ -49,3 +50,6 @@ async def test_persistent_object(servicer, client):
         q_2 = await session_2.use("my-queue")
         assert isinstance(q_2, Queue)
         assert q_2.object_id == "qu-1"
+
+        with pytest.raises(NotFoundError):
+            await session_2.use("bazbazbaz")
