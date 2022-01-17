@@ -293,6 +293,9 @@ def call_function(
 
 
 def main(container_args, client):
+    # TODO: if there's an exception in this scope (in particular when we import code dynamically),
+    # we could catch that exception and set it properly serialized to the client. Right now the
+    # whole container fails with a non-zero exit code and we send back a more opaque error message.
     function_type = container_args.function_def.function_type
 
     function_context = FunctionContext(container_args, client)
