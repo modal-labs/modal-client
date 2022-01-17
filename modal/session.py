@@ -19,7 +19,7 @@ from ._session_singleton import (
 from ._session_state import SessionState
 from ._utils import print_logs
 from .config import config, logger
-from .exception import NotFoundError
+from .exception import ExecutionError, NotFoundError
 from .object import Object
 from .proto import api_pb2
 
@@ -287,9 +287,10 @@ class Session:
         return Unpickler(self, ObjectMeta.prefix_to_type, io.BytesIO(s)).load()
 
 
-@synchronizer.asynccontextmanager
-async def run(**kwargs):
+def run(*args, **kwargs):
     """Start up the default modal session"""
+    if get_container_session() is not None:
+        # TODO: we could probably capture whether this happens during an import
+        raise ExecutionError("Cannot run modal.run() inside a container!" " You might have global code that does this.")
     session = get_default_session()
-    async with session.run(**kwargs) as it:
-        yield it
+    return session.run(*args, **kwargs)

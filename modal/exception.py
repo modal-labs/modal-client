@@ -20,3 +20,7 @@ class VersionError(Exception):
 
 class NotFoundError(Exception):
     pass
+
+
+class ExecutionError(Exception):
+    pass

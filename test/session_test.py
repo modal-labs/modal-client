@@ -1,9 +1,9 @@
 import pytest
 
-from modal import Queue, Session
+from modal import Queue, Session, run
 from modal._session_singleton import get_default_session
 from modal._session_state import SessionState
-from modal.exception import NotFoundError
+from modal.exception import ExecutionError, NotFoundError
 
 
 def test_session(reset_global_sessions):
@@ -53,3 +53,16 @@ async def test_persistent_object(servicer, client):
 
         with pytest.raises(NotFoundError):
             await session_2.use("bazbazbaz")
+
+
+def test_global_run(reset_global_sessions, servicer, client):
+    with run(client=client):
+        q = Queue.create()
+        assert q.object_id == "qu-1"
+
+
+def test_run_inside_container(reset_global_sessions, servicer, client):
+    Session.initialize_container_session()
+    with pytest.raises(ExecutionError):
+        with run(client=client):
+            pass
