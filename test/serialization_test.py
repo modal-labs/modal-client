@@ -5,7 +5,7 @@ from modal import Queue, Session
 session = Session()
 
 
-@Queue.factory(session=session)
+@Queue.factory
 async def qf():
     return await Queue.create()
 
@@ -21,6 +21,7 @@ async def test_persistent_object(servicer, client):
         assert q.object_id == q_roundtrip.object_id
 
         # Serialize factory object and deserialize
+        await session.create_object(qf)
         data = session.serialize(qf)
         qf_roundtrip = session.deserialize(data)
         assert isinstance(qf_roundtrip, Queue)

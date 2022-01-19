@@ -76,7 +76,7 @@ class Object(metaclass=ObjectMeta):
         obj.set_object_id(object_id, session)
         return obj
 
-    def _init_static(self, session, tag, register_on_default_session=False):
+    def _init_static(self, tag):
         """Create a new tagged object.
 
         This is only used by the Factory or Function constructors
@@ -97,12 +97,6 @@ class Object(metaclass=ObjectMeta):
             object_id = session.get_object_id_by_tag(tag)
             if object_id is not None:
                 self.set_object_id(object_id, session)
-        else:
-            if not session and register_on_default_session:
-                session = get_default_session()
-
-            if session:
-                session.register_object(self)
 
     @classmethod
     def _init_share(cls, object_id, session):
@@ -127,7 +121,7 @@ class Object(metaclass=ObjectMeta):
 
     @classmethod
     @decorator_with_options
-    def factory(cls, fun, session=None):
+    def factory(cls, fun):
         """Decorator to mark a "factory function".
 
         Factory functions work like "named promises" for Objects, they are
@@ -156,9 +150,9 @@ class Object(metaclass=ObjectMeta):
                await q.put(initial_value)
                return q
         """
-        return cls._user_factory_class(fun, session)
+        return cls._user_factory_class(fun)
 
     @classmethod
-    def use(cls, session, label, namespace=api_pb2.ShareNamespace.ACCOUNT):
+    def use(cls, label, namespace=api_pb2.ShareNamespace.ACCOUNT):
         """Use an object published with :py:meth:`modal.session.Session.share`"""
-        return cls._shared_object_factory_class(session, label, namespace)
+        return cls._shared_object_factory_class(label, namespace)

@@ -17,11 +17,11 @@ def make_user_factory(cls):
     class UserFactory(cls, Factory):
         """Acts as a wrapper for a transient Object.
 
-        Puts a tag and optionally a session on it. Otherwise just "steals" the object id from the
+        Conceptually a factory "steals" the object id from the
         underlying object at construction time.
         """
 
-        def __init__(self, fun, session, args_and_kwargs=None):  # TODO: session?
+        def __init__(self, fun, args_and_kwargs=None):
             functools.update_wrapper(self, fun)
             self._fun = fun
             self._args_and_kwargs = args_and_kwargs
@@ -30,7 +30,7 @@ def make_user_factory(cls):
             # This is the only place where tags are being set on objects,
             # besides Function
             tag = self.function_info.get_tag(args_and_kwargs)
-            cls._init_static(self, session=session, tag=tag)
+            cls._init_static(self, tag=tag)
 
         async def load(self, session):
             if get_container_session() is not None:
@@ -54,7 +54,7 @@ def make_user_factory(cls):
         def __call__(self, *args, **kwargs):
             """Binds arguments to this object."""
             assert self._args_and_kwargs is None
-            return UserFactory(self._fun, self._session, args_and_kwargs=(args, kwargs))
+            return UserFactory(self._fun, args_and_kwargs=(args, kwargs))
 
     UserFactory.__module__ = cls.__module__
     UserFactory.__qualname__ = cls.__qualname__ + ".UserFactory"
@@ -64,11 +64,11 @@ def make_user_factory(cls):
 
 def make_shared_object_factory_class(cls):
     class SharedObjectFactory(cls, Factory):
-        def __init__(self, session, label, namespace):
+        def __init__(self, label, namespace):
             self.label = label
             self.namespace = namespace
             tag = f"SHARE({label}, {namespace})"  # TODO: use functioninfo later
-            cls._init_static(self, session=session, tag=tag)
+            cls._init_static(self, tag=tag)
 
         async def load(self, session):
             obj = await session.use(self.label, self.namespace)

@@ -23,7 +23,7 @@ async def test_async_factory(servicer, client):
 async def test_use_object(servicer, client):
     # Object reuse is conceptually also done through factories
     session = Session()
-    q = Queue.use(session, "foo-queue")
+    q = Queue.use("foo-queue")
     async with session.run(client=client):
         q_id = await session.create_object(q)
         assert q_id == "qu-foo"
