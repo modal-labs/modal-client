@@ -305,8 +305,16 @@ class Function(Object, Factory, type_prefix="fu"):
         return self.raw_f
 
 
+def _register_function(function, session):
+    if get_container_session() is None:
+        if session is None:
+            session = get_default_session()
+        if session is not None:
+            session.register_object(function)
+
+
 @decorator_with_options
-def function(raw_f=None, session=None, image=debian_slim, env_dict=None, gpu=False, is_generator=False):
+def function(raw_f=None, session=None, image=debian_slim, env_dict=None, gpu=False):
     """Decorator to create Modal functions
 
     Args:
@@ -315,19 +323,21 @@ def function(raw_f=None, session=None, image=debian_slim, env_dict=None, gpu=Fal
         env_dict (:py:class:`modal.env_dict.EnvDict`): Dictionary of environment variables
         gpu (bool): Whether a GPU is required
     """
-    function = Function(raw_f, image=image, env_dict=env_dict, is_generator=is_generator, gpu=gpu)
-    if get_container_session() is None:
-        if session is None:
-            session = get_default_session()
-        if session is not None:
-            session.register_object(function)
+    function = Function(raw_f, image=image, env_dict=env_dict, is_generator=False, gpu=gpu)
+    _register_function(function, session)
     return function
 
 
-def generator(*args, **kwargs):
-    """Decorator to create Modal generators.
+@decorator_with_options
+def generator(raw_f=None, session=None, image=debian_slim, env_dict=None, gpu=False):
+    """Decorator to create Modal generators
 
-    Has the exact same arguments as :py:func:`function`.
+    Args:
+        session (:py:class:`modal.session.Session`): The session
+        image (:py:class:`modal.image.Image`): The image to run the function in
+        env_dict (:py:class:`modal.env_dict.EnvDict`): Dictionary of environment variables
+        gpu (bool): Whether a GPU is required
     """
-    kwargs = dict(kwargs, is_generator=True)
-    return function(*args, **kwargs)
+    function = Function(raw_f, image=image, env_dict=env_dict, is_generator=True, gpu=gpu)
+    _register_function(function, session)
+    return function
