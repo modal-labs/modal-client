@@ -136,7 +136,7 @@ def _dockerhub_python_version(python_version=None):
 
 
 @Image.factory
-async def debian_slim(extra_commands=None, python_packages=None, python_version=None):
+async def debian_slim(extra_commands=None, python_packages=None, python_version=None, pip_find_links=None):
     """A default base image, built on the official python:<version>-slim-buster Docker hub images
 
     Can also be called as a function to build a new image with additional bash
@@ -156,9 +156,10 @@ async def debian_slim(extra_commands=None, python_packages=None, python_version=
 
     if python_packages is not None:
         base_images["builder"] = builder_image
+        find_links_arg = f"-f {pip_find_links}" if pip_find_links else ""
         dockerfile_commands += [
             "FROM builder as builder-vehicle",
-            f"RUN pip wheel {' '.join(python_packages)} -w /tmp/wheels",
+            f"RUN pip wheel {' '.join(python_packages)} -w /tmp/wheels {find_links_arg}",
             "FROM target",
             "COPY --from=builder-vehicle /tmp/wheels /tmp/wheels",
             "RUN pip install /tmp/wheels/*",
