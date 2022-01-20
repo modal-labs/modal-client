@@ -82,7 +82,7 @@ class FunctionContext:
 
             # Create a function dynamically
             # Function object is already created, so we need to associate the correct object ID.
-            fun = Function(self.session, raw_f)
+            fun = Function(raw_f)
             fun.set_object_id(self.function_id, self.session)
         else:
             fun = _path_to_function(self.function_def.module_name, self.function_def.function_name)
