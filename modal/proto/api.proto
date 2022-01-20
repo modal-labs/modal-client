@@ -381,6 +381,25 @@ message FunctionOutputRequest {
   string task_id = 9;
 }
 
+message ScheduleCreateRequest {
+  string session_id = 1;
+  double period = 2;
+}
+
+message ScheduleCreateResponse {
+  string schedule_id = 1;
+}
+
+message ScheduleGetPingsRequest {
+  string schedule_id = 1;
+  float timeout = 2;
+  string last_entry_id = 3;
+}
+
+message SchedulePing {
+  double timestamp = 1;
+}
+
 message MountCreateRequest {
   string session_id = 2;
 }
@@ -415,6 +434,11 @@ service ModalClient {
   // Clients
   rpc ClientCreate(ClientCreateRequest) returns (ClientCreateResponse);
   rpc ClientHeartbeat(ClientHeartbeatRequest) returns (Empty);
+
+  // Schedules
+  rpc ScheduleCreate(ScheduleCreateRequest) returns (ScheduleCreateResponse);
+  rpc ScheduleGetPings(ScheduleGetPingsRequest) returns (stream SchedulePing);
+
 
   // Sessions
   rpc SessionCreate(SessionCreateRequest) returns (SessionCreateResponse);
