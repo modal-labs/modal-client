@@ -275,7 +275,10 @@ class TaskContext:
         # If any of the task context's task raises, throw that exception
         # This is probably O(n^2) sadly but I guess it's fine
         unfinished_tasks = set(tasks)
-        while unfinished_tasks:
+        while True:
+            unfinished_tasks &= self._tasks
+            if not unfinished_tasks:
+                break
             try:
                 done, pending = await asyncio.wait_for(
                     asyncio.wait(self._tasks, return_when=asyncio.FIRST_COMPLETED), timeout=30.0
