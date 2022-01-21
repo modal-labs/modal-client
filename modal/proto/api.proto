@@ -67,11 +67,11 @@ message BufferReadResponse {
 }
 
 enum ClientType {
-  UNKNOWN = 0;
-  CLIENT = 1;
-  WORKER = 2;
-  CONTAINER = 3;
-  SERVER = 4;
+  CT_UNKNOWN = 0;
+  CT_CLIENT = 1;
+  CT_WORKER = 2;
+  CT_CONTAINER = 3;
+  CT_SERVER = 4;
 }
 
 message ClientCreateRequest {

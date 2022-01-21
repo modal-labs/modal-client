@@ -133,13 +133,13 @@ async def servicer():
 
 @pytest.fixture(scope="function")
 async def client(servicer):
-    async with Client(servicer.remote_addr, api_pb2.ClientType.CLIENT, ("foo-id", "foo-secret")) as client:
+    async with Client(servicer.remote_addr, api_pb2.ClientType.CT_CLIENT, ("foo-id", "foo-secret")) as client:
         yield client
 
 
 @pytest.fixture(scope="function")
 async def container_client(servicer):
-    async with Client(servicer.remote_addr, api_pb2.ClientType.CONTAINER, ("ta-123", "task-secret")) as client:
+    async with Client(servicer.remote_addr, api_pb2.ClientType.CT_CONTAINER, ("ta-123", "task-secret")) as client:
         yield client
 
 

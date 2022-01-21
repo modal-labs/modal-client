@@ -28,7 +28,7 @@ def set(token_id: str = "-", token_secret: str = "-", env: str = None, no_verify
     if not no_verify:
         server_url = config.get("server_url", env=env)
         print(f"Verifying token against {server_url}...")
-        client = Client(server_url, api_pb2.ClientType.CLIENT, (token_id, token_secret))
+        client = Client(server_url, api_pb2.ClientType.CT_CLIENT, (token_id, token_secret))
         client.verify()
         print(f"Token verified successfully")
 

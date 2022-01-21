@@ -2,6 +2,7 @@ import asyncio
 import time
 
 import pytest
+
 from modal import Session, debian_slim
 from modal._client import Client
 from modal._container_entrypoint import main
@@ -35,7 +36,7 @@ def _get_output(function_output_req: api_pb2.FunctionOutputRequest) -> api_pb2.G
 
 
 async def _run_container(servicer, module_name, function_name):
-    async with Client(servicer.remote_addr, api_pb2.ClientType.CONTAINER, ("ta-123", "task-secret")) as client:
+    async with Client(servicer.remote_addr, api_pb2.ClientType.CT_CONTAINER, ("ta-123", "task-secret")) as client:
         servicer.inputs = _get_inputs(client)
 
         function_def = api_pb2.Function(
