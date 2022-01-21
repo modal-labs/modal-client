@@ -207,14 +207,17 @@ class _MapInvocation:
 
 
 class Function(Object, Factory, type_prefix="fu"):
-    def __init__(self, raw_f, image=None, env_dict=None, is_generator=False, gpu=False):
+    def __init__(self, raw_f, image=None, env_dict=None, schedule=None, is_generator=False, gpu=False):
         assert callable(raw_f)
         self.info = FunctionInfo(raw_f)
+        if schedule is not None:
+            assert self.info.is_nullary()
         # This is the only place besides object factory that sets tags
         tag = self.info.get_tag(None)
         self.raw_f = raw_f
         self.image = image
         self.env_dict = env_dict
+        self.schedule = schedule
         self.is_generator = is_generator
         self.gpu = gpu
         super()._init_static(tag=tag)
@@ -244,6 +247,12 @@ class Function(Object, Factory, type_prefix="fu"):
             env_dict_id = None
         mount_ids = await asyncio.gather(*(session.create_object(mount) for mount in mounts))
 
+        if self.schedule is not None:
+            # Ensure that the function does not require any input arguments
+            schedule_id = await session.create_object(self.schedule)
+        else:
+            schedule_id = None
+
         if self.is_generator:
             function_type = api_pb2.Function.FunctionType.GENERATOR
         else:
@@ -263,9 +272,11 @@ class Function(Object, Factory, type_prefix="fu"):
         )
         request = api_pb2.FunctionGetOrCreateRequest(
             session_id=session.session_id,
+            schedule_id=schedule_id,
             function=function_definition,
         )
         response = await session.client.stub.FunctionGetOrCreate(request)
+
         return response.function_id
 
     async def map(self, inputs, window=100, kwargs={}):
@@ -314,7 +325,7 @@ def _register_function(function, session):
 
 
 @decorator_with_options
-def function(raw_f=None, session=None, image=debian_slim, env_dict=None, gpu=False):
+def function(raw_f=None, session=None, image=debian_slim, schedule=None, env_dict=None, gpu=False):
     """Decorator to create Modal functions
 
     Args:
@@ -323,7 +334,7 @@ def function(raw_f=None, session=None, image=debian_slim, env_dict=None, gpu=Fal
         env_dict (:py:class:`modal.env_dict.EnvDict`): Dictionary of environment variables
         gpu (bool): Whether a GPU is required
     """
-    function = Function(raw_f, image=image, env_dict=env_dict, is_generator=False, gpu=gpu)
+    function = Function(raw_f, image=image, env_dict=env_dict, schedule=schedule, is_generator=False, gpu=gpu)
     _register_function(function, session)
     return function
 
