@@ -107,7 +107,7 @@ class Client:
             pass
 
     @classmethod
-    async def from_env(cls):
+    def from_env(cls):
         server_url = config["server_url"]
         token_id = config["token_id"]
         token_secret = config["token_secret"]

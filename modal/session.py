@@ -199,21 +199,6 @@ class Session:
         return Object._init_share(response.object_id, self)
 
     @synchronizer.asynccontextmanager
-    async def run(self, client=None, stdout=None, stderr=None, logs_timeout=None):
-        set_running_session(self)
-        try:
-            if client is None:
-                client = await Client.from_env()
-                async with client:
-                    async with self._run(client, stdout, stderr, logs_timeout) as it:
-                        yield it  # ctx mgr
-            else:
-                async with self._run(client, stdout, stderr, logs_timeout) as it:
-                    yield it  # ctx mgr
-        finally:
-            set_running_session(None)
-
-    @synchronizer.asynccontextmanager
     async def _run(self, client, stdout, stderr, logs_timeout):
         # TOOD: use something smarter than checking for the .client to exists in order to prevent
         # race conditions here!
@@ -275,6 +260,24 @@ class Session:
             self.state = SessionState.NONE
             self._pending_create_objects = initial_objects
             self._created_tagged_objects = {}
+
+    @synchronizer.asynccontextmanager
+    async def _get_client(self, client=None):
+        if client is None:
+            async with Client.from_env() as client:
+                yield client
+        else:
+            yield client
+
+    @synchronizer.asynccontextmanager
+    async def run(self, client=None, stdout=None, stderr=None, logs_timeout=None):
+        set_running_session(self)
+        try:
+            async with self._get_client(client) as client:
+                async with self._run(client, stdout, stderr, logs_timeout) as it:
+                    yield it  # ctx mgr
+        finally:
+            set_running_session(None)
 
     def serialize(self, obj):
         """Serializes object and replaces all references to the client class by a placeholder."""
