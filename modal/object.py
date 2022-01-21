@@ -153,6 +153,6 @@ class Object(metaclass=ObjectMeta):
         return cls._user_factory_class(fun)
 
     @classmethod
-    def use(cls, label, namespace=api_pb2.ShareNamespace.ACCOUNT):
+    def use(cls, label, namespace=api_pb2.ShareNamespace.SN_ACCOUNT):
         """Use an object published with :py:meth:`modal.session.Session.share`"""
         return cls._shared_object_factory_class(label, namespace)

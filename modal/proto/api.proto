@@ -126,10 +126,10 @@ message SessionGetObjectsResponse {
 }
 
 enum ShareNamespace {
-  ERROR = 0;  // Reserve this in order to force this to be set
-  ACCOUNT = 1;
-  ORGANIZATION = 2; // Not used at this point
-  GLOBAL = 3;
+  SN_ERROR = 0;  // Reserve this in order to force this to be set
+  SN_ACCOUNT = 1;
+  SN_ORGANIZATION = 2; // Not used at this point
+  SN_GLOBAL = 3;
 }
 
 message SessionShareObjectRequest {
@@ -151,12 +151,12 @@ message SessionUseObjectResponse {
 }
 
 enum TaskState {
-  CREATED = 0;
-  QUEUED = 1;
-  WORKER_ASSIGNED = 2;
-  LOADING_IMAGE = 3;
-  RUNNING = 4;
-  COMPLETED = 5;
+  TS_CREATED = 0;
+  TS_QUEUED = 1;
+  TS_WORKER_ASSIGNED = 2;
+  TS_LOADING_IMAGE = 3;
+  TS_RUNNING = 4;
+  TS_COMPLETED = 5;
 }
 
 message TaskLogs {

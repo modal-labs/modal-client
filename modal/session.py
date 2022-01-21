@@ -177,7 +177,7 @@ class Session:
             logger.debug(f"Creating object {obj}")
             await self.create_object(obj)
 
-    async def share(self, obj, label, namespace=api_pb2.ShareNamespace.ACCOUNT):
+    async def share(self, obj, label, namespace=api_pb2.ShareNamespace.SN_ACCOUNT):
         assert obj.object_id
         request = api_pb2.SessionShareObjectRequest(
             session_id=self.session_id,
@@ -187,7 +187,7 @@ class Session:
         )
         await self.client.stub.SessionShareObject(request)
 
-    async def use(self, label, namespace=api_pb2.ShareNamespace.ACCOUNT):
+    async def use(self, label, namespace=api_pb2.ShareNamespace.SN_ACCOUNT):
         request = api_pb2.SessionUseObjectRequest(
             session_id=self.session_id,
             label=label,
