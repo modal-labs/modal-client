@@ -178,6 +178,7 @@ class Session:
             await self.create_object(obj)
 
     async def share(self, obj, label, namespace=api_pb2.ShareNamespace.SN_ACCOUNT):
+        # TODO: deprecated!!
         assert obj.object_id
         request = api_pb2.SessionShareObjectRequest(
             session_id=self.session_id,
@@ -278,6 +279,25 @@ class Session:
                     yield it  # ctx mgr
         finally:
             set_running_session(None)
+
+    async def deploy(self, name, obj_or_objs=None, namespace=api_pb2.ShareNamespace.SN_ACCOUNT):
+        object_id = object_ids = None
+        if isinstance(obj_or_objs, Object):
+            object_id = obj_or_objs
+        elif isinstance(obj_or_objs, dict):
+            object_ids = obj_or_objs
+        elif obj_or_objs is None:
+            pass
+        else:
+            raise Exception(f"{obj_or_objs} must be None or an Object or a dict")
+        request = api_pb2.SessionDeployRequest(
+            session_id=self.session_id,
+            object_id=object_id,
+            object_ids=object_ids,
+            name=name,
+            namespace=namespace,
+        )
+        await self.client.stub.SessionDeploy(request)
 
     def serialize(self, obj):
         """Serializes object and replaces all references to the client class by a placeholder."""

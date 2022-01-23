@@ -88,9 +88,17 @@ message ClientHeartbeatRequest {
   string client_id = 1;
 }
 
+enum SessionType {
+  ST_UNKNOWN = 0;
+  ST_EPHEMERAL = 1;   // Will be stopped when the client disconnects
+  ST_DETACHABLE = 2;  // Will be stopped when there's no more functions
+  ST_DEPLOYED = 3;    // Will be stopped when overwritten
+  ST_STOPPED = 4;     // Stopped!
+}
+
 message SessionCreateRequest {
   string client_id = 1;
-  string name = 2;
+  string name = 2;    // Human readable label for the website
 }
 
 message SessionCreateResponse {
@@ -148,6 +156,14 @@ message SessionUseObjectRequest {
 message SessionUseObjectResponse {
   string object_id = 1;
   bool found = 2;
+}
+
+message SessionDeployRequest {
+  string session_id = 1;
+  ShareNamespace namespace = 2;
+  string name = 3;
+  string object_id = 4;
+  map<string, string> object_ids = 5;
 }
 
 enum TaskState {
@@ -451,6 +467,7 @@ service ModalClient {
   rpc SessionGetObjects(SessionGetObjectsRequest) returns (SessionGetObjectsResponse);
   rpc SessionShareObject(SessionShareObjectRequest) returns (Empty);
   rpc SessionUseObject(SessionUseObjectRequest) returns (SessionUseObjectResponse);
+  rpc SessionDeploy(SessionDeployRequest) returns (Empty);
 
   // Queues
   rpc QueueCreate(QueueCreateRequest) returns (QueueCreateResponse);
