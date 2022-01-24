@@ -10,6 +10,11 @@ from ._async_utils import synchronizer
 
 
 @synchronizer.asynccontextmanager
+async def nullcapture(stream: io.IOBase):
+    yield stream
+
+
+@synchronizer.asynccontextmanager
 async def thread_capture(stream: io.IOBase, callback: Callable[[str, io.TextIOBase], None]):
     """Intercept writes on a stream (typically stderr or stdout)"""
     fd = stream.fileno()

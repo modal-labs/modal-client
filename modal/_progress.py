@@ -1,125 +1,202 @@
+import asyncio
 import contextlib
+import io
 import sys
 
 import colorama
-from yaspin import yaspin
 
-from .proto import api_pb2
+from modal._async_utils import TaskContext, synchronizer
+from modal._output_capture import nullcapture, thread_capture
+
+default_frames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
 
-# contextlib.nullcontext is not present in 3.6
-@contextlib.contextmanager
-def nullcontext():
-    yield
+class Symbols:
+    DONE = "✓"
+    ONGOING = "-"
+
+
+class NoProgress:
+    def step(self, status, completion_status):
+        pass
+
+    def set_substep_text(self, status):
+        pass
+
+    @contextlib.contextmanager
+    def suspend(self):
+        yield
 
 
 class ProgressSpinner:
-    def __init__(self, visible):
-        self._spinner = None
-        self._last_tag = None
-        self._substeps = {}
-        self._task_states = {}
+    looptime = 1.0  # seconds
 
-        if not sys.stdout.isatty():
-            visible = False
+    def __init__(self, stdout: io.TextIOBase, frames=default_frames, use_color=True):
+        self._stdout = stdout
 
-        self._visible = visible
+        self._frames = frames
+        self._frame_i = 0
 
-    # TODO: move this somewhere else?
-    def update_task_state(self, task_id, state):
-        self._task_states[task_id] = state
+        self._stopped = True
+        self._suspended = 0
+        self._time_per_frame = self.looptime / len(self._frames)
+        self._status_message = ""
 
-        # Recompute task status string.
+        self.colors = {
+            "status": colorama.Fore.BLUE,
+            "success": colorama.Fore.GREEN,
+            "reset": colorama.Style.RESET_ALL,
+        }
+        if not use_color:
+            self.colors = {k: "" for k in self.colors.keys()}
 
-        all_states = self._task_states.values()
-        max_state = max(all_states)
+        self._active_step = None
+        self._step_progress_persisted = False
 
-        def tasks_at_state(state):
-            return sum(x == state for x in all_states)
+    def _step(self):
+        self._frame_i = (self._frame_i + 1) % len(self._frames)
 
-        if max_state == api_pb2.TaskState.TS_CREATED:
-            msg = f"Tasks created..."
-        if max_state == api_pb2.TaskState.TS_QUEUED:
-            msg = f"Tasks queued..."
-        elif max_state == api_pb2.TaskState.TS_WORKER_ASSIGNED:
-            msg = f"Worker assigned..."
-        elif max_state == api_pb2.TaskState.TS_LOADING_IMAGE:
-            tasks_loading = tasks_at_state(api_pb2.TaskState.TS_LOADING_IMAGE)
-            msg = f"Loading images ({tasks_loading} containers initializing)..."
-        else:
-            tasks_running = tasks_at_state(api_pb2.TaskState.TS_RUNNING)
-            tasks_loading = tasks_at_state(api_pb2.TaskState.TS_LOADING_IMAGE)
-            msg = f"Running ({tasks_running}/{tasks_running + tasks_loading} containers in use)..."
-        self.set_substep_text("task", msg)
+    def _print(self):
+        frame = self._frames[self._frame_i]
+        self._clear_line()
+        self._stdout.write(f"{frame} {self._status_message}\r")
+        self._stdout.flush()
 
-    def set_substep_text(self, tag, text):
-        if not self._visible:
-            return
+    def _set_status_message(self, status_message):
+        self._status_message = self.colors["status"] + status_message + self.colors["reset"]
 
-        text = colorama.Fore.BLUE + "\t" + text + colorama.Style.RESET_ALL
+    def _persist_done(self, final_message):
+        self._clear_line()
+        self._stdout.write(f"{self.colors['success']}{Symbols.DONE}{self.colors['reset']} {final_message}\n")
+        self._active_step = None
 
-        if not tag in self._substeps:
-            self._create_substep(tag, text)
-        else:
-            self._substeps[tag].text = text
+    def _persist_inprogress(self, final_message):
+        self._clear_line()
+        self._stdout.write(f"{Symbols.ONGOING} {final_message}\n")
+        self._step_progress_persisted = True
 
-    def set_step_text(self, text):
-        if not self._visible:
-            return
+    # borrowed control sequences from yaspin
+    def _hide_cursor(self):
+        self._stdout.write("\033[?25l")
+        self._stdout.flush()
 
-        self._spinner.text = colorama.Fore.WHITE + text + colorama.Style.RESET_ALL
+    def _show_cursor(self):
+        self._stdout.write("\033[?25h")
+        self._stdout.flush()
 
-    def _ok_prev(self):
-        num_lines = len(self._substeps)
-        if num_lines:
-            # Clear multiple lines if there are substeps.
-            sys.stdout.write(f"\r\033[{num_lines}A")
-            sys.stdout.write("\033[J")
+    def _clear_line(self):
+        self._stdout.write("\033[K")
 
-        if self._done_text:
-            self.set_step_text(self._done_text)
+    # end yaspin
 
-        self._spinner.ok("✓")
-        for substep in self._substeps.values():
-            substep.stop()
+    def _tick(self):
+        self._print()
+        self._step()
 
-    def _create_substep(self, tag, text):
-        if self._substeps:
-            prev_substep = self._substeps[self._last_tag]
-            prev_substep.ok(" ")
-        else:
-            self._spinner.ok("✓")
-        substep = yaspin(color="blue")
+    async def _loop(self):
+        try:
+            self._hide_cursor()
+            self._stopped = False
+            self._suspended = 0
+            while not self._stopped:
+                if not self._suspended:
+                    self._tick()
+                await asyncio.sleep(self._time_per_frame)
+        finally:
+            self._show_cursor()
 
-        self._last_tag = tag
-        self._substeps[tag] = substep
-        self._substeps[tag].text = text
-        substep.start()
+    def _stop(self):
+        self._stopped = True
+        if self._active_step:
+            self._persist_done(self._active_step[1])
 
-    def step(self, text, done_text=None):
-        """OK the previous stage of the spinner and start a new one."""
-        if not self._visible:
-            return
+    def step(self, status, completion_status):
+        if self._active_step:
+            self._persist_done(self._active_step[1])
 
-        if self._spinner:
-            self._ok_prev()
-            self._last_tag = None
-            self._substeps = {}
-        self._done_text = done_text
-        self._spinner = yaspin(color="white")
-        self._spinner.start()
-        self.set_step_text(text)
+        self._set_status_message(status)
+        self._active_step = [status, completion_status]
+        self._step_progress_persisted = False
 
-    def hidden(self):
-        if not self._visible:
-            return nullcontext()
+    def set_substep_text(self, status):
+        if self._active_step and not self._step_progress_persisted:
+            self._persist_inprogress(self._active_step[0])
 
-        if self._last_tag:
-            return self._substeps[self._last_tag].hidden()
-        return self._spinner.hidden()
+        self._set_status_message(status)
 
-    def stop(self):
-        if not self._visible:
-            return
+    @contextlib.contextmanager
+    def suspend(self):
+        self._suspended += 1
+        self._clear_line()
+        self._stdout.flush()
+        yield
+        self._suspended -= 1
 
-        self._ok_prev()
+
+@synchronizer.asynccontextmanager
+async def safe_progress(task_context, stdout, stderr, visible=True):
+    if not visible:
+        yield NoProgress(), stdout, stderr
+        return
+
+    progress = None
+
+    def write_callback(line, out):
+        nonlocal progress
+
+        if not line.endswith("\n"):
+            line += "\n"  # only write full lines
+        if progress:
+            with progress.suspend():
+                out.write(line)
+
+    # capture stdout/err unless they have been customized
+    if stdout is None or stdout == sys.stdout:
+        capstdout = thread_capture(sys.stdout, write_callback)
+    else:
+        capstdout = nullcapture(stdout)
+
+    if stderr is None or stderr == sys.stderr:
+        capstderr = thread_capture(sys.stderr, write_callback)
+    else:
+        capstderr = nullcapture(stderr)
+
+    async with capstdout as stdout:
+        async with capstderr as stderr:
+            progress = ProgressSpinner(stdout)
+            t = task_context.create_task(progress._loop())
+            try:
+                yield progress, stdout, stderr
+            finally:
+                progress._stop()
+                await t
+
+
+if __name__ == "__main__":
+
+    async def printstuff():
+        async with TaskContext(grace=1.0) as tc:
+            async with safe_progress(tc, sys.stdout, sys.stderr) as (p, stdout, stderr):
+                p.step("Making pastaz", "Pasta done")
+                p.set_substep_text("boiling water.............")
+                await asyncio.sleep(1)
+                print("kids start to shout")
+                await asyncio.sleep(1)
+                print("grandpa slips", file=sys.stderr)
+                with p.suspend():
+                    await asyncio.sleep(1)
+                p.set_substep_text("putting pasta in water")
+                await asyncio.sleep(1)
+                p.set_substep_text("rinsing pasta")
+                await asyncio.sleep(1)
+                p.step("Making sauce", "Sauce done")
+                await asyncio.sleep(1)
+                p.set_substep_text("frying onions")
+                await asyncio.sleep(1)
+                p.set_substep_text("adding tomatoes")
+                await asyncio.sleep(1)
+                p.step("Eating", "Ate")
+                await asyncio.sleep(1)
+
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(printstuff())

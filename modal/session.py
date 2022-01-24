@@ -1,14 +1,16 @@
-import asyncio
 import functools
 import io
 import os
 import sys
 
+import colorama
+
+from modal._progress import safe_progress
+
 from ._async_utils import TaskContext, run_coro_blocking, synchronizer
 from ._client import Client
 from ._grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIME_BUFFER
 from ._object_meta import ObjectMeta
-from ._progress import ProgressSpinner
 from ._serialization import Pickler, Unpickler
 from ._session_singleton import (
     get_container_session,
@@ -17,7 +19,6 @@ from ._session_singleton import (
     set_running_session,
 )
 from ._session_state import SessionState
-from ._utils import print_logs
 from .config import config, logger
 from .exception import ExecutionError, NotFoundError
 from .object import Object
@@ -49,17 +50,21 @@ class Session:
             session = super().__new__(cls)
             return session
 
-    def __init__(self, show_progress=True, blocking_late_creation_ok=False, name=None):
+    def __init__(self, show_progress=None, blocking_late_creation_ok=False, name=None):
         if hasattr(self, "_initialized"):
             return  # Prevent re-initialization with the singleton
+
         self._initialized = True
         self.client = None
         self.name = name or self._infer_session_name()
         self.state = SessionState.NONE
         self._pending_create_objects = []  # list of objects that haven't been created
         self._created_tagged_objects = {}  # tag -> object id
-        self._show_progress = show_progress
+        self._show_progress = show_progress  # None = use sys.stdout.isatty()
         self._last_log_batch_entry_id = ""
+        self._task_states = {}
+        self._progress = None
+
         # TODO: this is a very hacky thing for notebooks. The problem is that
         # (a) notebooks require creating functions "late"
         # (b) notebooks run with an event loop, which makes synchronizer confused
@@ -93,6 +98,32 @@ class Session:
         else:
             raise Exception("Can only register objects on a session that's not running")
 
+    def _update_task_state(self, task_id, state):
+        self._task_states[task_id] = state
+
+        # Recompute task status string.
+
+        all_states = self._task_states.values()
+        max_state = max(all_states)
+
+        def tasks_at_state(state):
+            return sum(x == state for x in all_states)
+
+        if max_state == api_pb2.TaskState.TS_CREATED:
+            msg = f"Tasks created..."
+        elif max_state == api_pb2.TaskState.TS_QUEUED:
+            msg = f"Tasks queued..."
+        elif max_state == api_pb2.TaskState.TS_WORKER_ASSIGNED:
+            msg = f"Worker assigned..."
+        elif max_state == api_pb2.TaskState.TS_LOADING_IMAGE:
+            tasks_loading = tasks_at_state(api_pb2.TaskState.TS_LOADING_IMAGE)
+            msg = f"Loading images ({tasks_loading} containers initializing)..."
+        else:
+            tasks_running = tasks_at_state(api_pb2.TaskState.TS_RUNNING)
+            tasks_loading = tasks_at_state(api_pb2.TaskState.TS_LOADING_IMAGE)
+            msg = f"Running ({tasks_running}/{tasks_running + tasks_loading} containers in use)..."
+        self._progress.set_substep_text(msg)
+
     async def _get_logs(self, stdout, stderr, draining=False, timeout=BLOCKING_REQUEST_TIMEOUT):
         # control flow-wise, there should only be one _get_logs running for each session
         # i.e. maintain only one active SessionGetLogs grpc for each session
@@ -115,10 +146,11 @@ class Session:
                     # log_batch entry_id is empty for fd="server" messages from SessionGetLogs
                     self._last_log_batch_entry_id = log_batch.entry_id
                 for log in log_batch.state_updates:
-                    self._progress.update_task_state(log.task_id, log.task_state)
-                for log in log_batch.items:
-                    assert not log.task_state
-                    with self._progress.hidden():
+                    self._update_task_state(log.task_id, log.task_state)
+
+                with self._progress.suspend():
+                    for log in log_batch.items:
+                        assert not log.task_state
                         print_logs(log.data, log.fd, stdout, stderr)
         if draining:
             raise Exception(
@@ -148,7 +180,7 @@ class Session:
             return obj.object_id
 
         assert obj.tag
-        self._progress.set_substep_text(f"Creating {obj.tag}...", obj.tag)
+        self._progress.set_substep_text(f"Creating {obj.tag}...")
 
         # Already created
         if obj.tag in self._created_tagged_objects:
@@ -188,6 +220,7 @@ class Session:
 
         # We need to re-initialize all these objects. Needed if a session is reused.
         initial_objects = list(self._pending_create_objects)
+        visible_progress = sys.stdout.isatty() if self._show_progress is None else self._show_progress
 
         try:
             # Start session
@@ -197,39 +230,40 @@ class Session:
 
             # Start tracking logs and yield context
             async with TaskContext(grace=1.0) as tc:
-                self._progress = ProgressSpinner(visible=self._show_progress)
-                self._progress.step("Initializing...", "Initialized.")
-                get_logs_closure = functools.partial(self._get_logs, stdout, stderr)
-                functools.update_wrapper(get_logs_closure, self._get_logs)  # Needed for debugging tasks
-                tc.infinite_loop(get_logs_closure)
+                async with safe_progress(tc, stdout, stderr, visible_progress) as (progress_handler, stdout, stderr):
+                    self._progress = progress_handler
+                    self._progress.step("Initializing...", "Initialized.")
+                    get_logs_closure = functools.partial(self._get_logs, stdout, stderr)
+                    functools.update_wrapper(get_logs_closure, self._get_logs)  # Needed for debugging tasks
+                    tc.infinite_loop(get_logs_closure)
 
-                self._progress.step("Creating objects...", "Created objects.")
-                # Create all members
-                await self._flush_objects()
-                self._progress.step("Running session...", "Session completed.")
+                    self._progress.step("Creating objects...", "Created objects.")
+                    # Create all members
+                    await self._flush_objects()
+                    self._progress.step("Running session...", "Session completed.")
 
-                # Create the session (and send a list of all tagged obs)
-                req = api_pb2.SessionSetObjectsRequest(
-                    session_id=self.session_id,
-                    object_ids=self._created_tagged_objects,
-                )
-                await self.client.stub.SessionSetObjects(req)
+                    # Create the session (and send a list of all tagged obs)
+                    req = api_pb2.SessionSetObjectsRequest(
+                        session_id=self.session_id,
+                        object_ids=self._created_tagged_objects,
+                    )
+                    await self.client.stub.SessionSetObjects(req)
 
-                self.state = SessionState.RUNNING
-                yield self  # yield context manager to block
-                self.state = SessionState.STOPPING
+                    self.state = SessionState.RUNNING
+                    yield self  # yield context manager to block
+                    self.state = SessionState.STOPPING
 
-            # Stop session (this causes the server to kill any running task)
-            logger.debug("Stopping the session server-side")
-            req = api_pb2.SessionStopRequest(session_id=self.session_id)
-            await self.client.stub.SessionStop(req)
-            self._progress.step("Draining logs...", "Finished draining logs.")
+                    # Stop session (this causes the server to kill any running task)
+                    logger.debug("Stopping the session server-side")
+                    req = api_pb2.SessionStopRequest(session_id=self.session_id)
+                    await self.client.stub.SessionStop(req)
+                    self._progress.step("Draining logs...", "Finished draining logs.")
 
-            # Fetch any straggling logs
-            logger.debug("Draining logs")
-            logs_timeout = logs_timeout or config["logs_timeout"]
-            await self._get_logs(stdout, stderr, draining=True, timeout=logs_timeout)
-            self._progress.stop()
+                    # Fetch any straggling logs
+                    logger.debug("Draining logs")
+                    logs_timeout = logs_timeout or config["logs_timeout"]
+                    await self._get_logs(stdout, stderr, draining=True, timeout=logs_timeout)
+                self._progress = None
         finally:
             if self.state == SessionState.RUNNING:
                 logger.warn("Stopping running session...")
@@ -318,3 +352,35 @@ def run(*args, **kwargs):
         raise ExecutionError("Cannot run modal.run() inside a container!" " You might have global code that does this.")
     session = get_default_session()
     return session.run(*args, **kwargs)
+
+
+def get_buffer(handle):
+    # HACK: Jupyter notebooks have sys.stdout point to an OutStream object,
+    # which doesn't have a buffer attribute.
+    if hasattr(handle, "buffer"):
+        return handle.buffer
+    else:
+        return handle
+
+
+def print_logs(output: bytes, fd: str, stdout=None, stderr=None):
+    if fd == "stdout":
+        buf = get_buffer(stdout or sys.stdout)
+        color = colorama.Fore.BLUE
+    elif fd == "stderr":
+        buf = get_buffer(stderr or sys.stderr)
+        color = colorama.Fore.RED
+    elif fd == "server":
+        buf = get_buffer(stderr or sys.stderr)
+        color = colorama.Fore.YELLOW
+    else:
+        raise Exception(f"weird fd {fd} for log output")
+
+    if buf.isatty():
+        buf.write(color.encode("utf8"))
+
+    buf.write(output)
+
+    if buf.isatty():
+        buf.write(colorama.Style.RESET_ALL.encode("utf8"))
+        buf.flush()
