@@ -291,6 +291,10 @@ class Session:
         finally:
             set_running_session(None)
 
+    async def detach(self):
+        request = api_pb2.SessionDetachRequest(session_id=self.session_id)
+        await self.client.stub.SessionDetach(request)
+
     async def deploy(self, name, obj_or_objs, namespace=api_pb2.ShareNamespace.SN_ACCOUNT):
         object_id = None
         object_ids = None  # name -> object_id

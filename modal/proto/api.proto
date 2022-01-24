@@ -91,7 +91,7 @@ message ClientHeartbeatRequest {
 enum SessionState {
   SS_UNKNOWN = 0;
   SS_EPHEMERAL = 1;    // Will be discharged when the client disconnects
-  SS_DETACHABLE = 2;   // Will be discharged when there's no more functions
+  SS_DETACHED = 2;   // Will be discharged when there's no more functions
   SS_DEPLOYED = 3;     // Will be discharged when overwritten
   SS_DRAINING = 4;     // Will be stopped once there are no dependencies
   SS_STOPPED = 5;      // Stopped
@@ -158,6 +158,10 @@ message SessionIncludeObjectRequest {
 
 message SessionIncludeObjectResponse {
   string object_id = 1;
+}
+
+message SessionDetachRequest {
+  string session_id = 1;
 }
 
 enum TaskState {
@@ -461,6 +465,7 @@ service ModalClient {
   rpc SessionGetObjects(SessionGetObjectsRequest) returns (SessionGetObjectsResponse);
   rpc SessionIncludeObject(SessionIncludeObjectRequest) returns (SessionIncludeObjectResponse);
   rpc SessionDeploy(SessionDeployRequest) returns (Empty);
+  rpc SessionDetach(SessionDetachRequest) returns (Empty);
 
   // Queues
   rpc QueueCreate(QueueCreateRequest) returns (QueueCreateResponse);
