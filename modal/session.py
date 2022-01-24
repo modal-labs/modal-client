@@ -313,7 +313,7 @@ class Session:
         response = await self.client.stub.SessionUseObject(request)
         if not response.found:
             raise NotFoundError(f"Could not find object {label} (namespace {namespace})")
-        return Object._init_share(response.object_id, self)
+        return Object._init_persisted(response.object_id, self)
 
     async def deploy(self, name, obj_or_objs, namespace=api_pb2.ShareNamespace.SN_ACCOUNT):
         object_id = None
@@ -346,7 +346,7 @@ class Session:
         if not response.object_id:
             # TODO: disambiguate between session not found and object not found?
             raise NotFoundError(f"Could not find object {name}.{object_label} (namespace {namespace})")
-        return Object._init_share(response.object_id, self)
+        return Object._init_persisted(response.object_id, self)
 
     def serialize(self, obj):
         """Serializes object and replaces all references to the client class by a placeholder."""

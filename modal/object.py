@@ -99,7 +99,7 @@ class Object(metaclass=ObjectMeta):
                 self.set_object_id(object_id, session)
 
     @classmethod
-    def _init_share(cls, object_id, session):
+    def _init_persisted(cls, object_id, session):
         prefix, _ = object_id.split("-")  # TODO: util method
         object_cls = ObjectMeta.prefix_to_type[prefix]
         return object_cls._create_object_instance(object_id, session)

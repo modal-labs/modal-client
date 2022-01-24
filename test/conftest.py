@@ -25,7 +25,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.object_ids = {}
         self.queue = []
         self.shares = {"foo-queue": "qu-foo"}
-        self.deployments = {}
+        self.deployments = {"foo-queue": "qu-foo"}
         self.n_queues = 0
 
     async def ClientCreate(
