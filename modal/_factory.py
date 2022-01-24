@@ -64,14 +64,15 @@ def make_user_factory(cls):
 
 def make_shared_object_factory_class(cls):
     class SharedObjectFactory(cls, Factory):
-        def __init__(self, label, namespace):
-            self.label = label
+        def __init__(self, session_name, object_label, namespace):
+            self.session_name = session_name
+            self.object_label = object_label
             self.namespace = namespace
-            tag = f"SHARE({label}, {namespace})"  # TODO: use functioninfo later
+            tag = f"#SHARE({session_name}, {object_label}, {namespace})"  # TODO: use functioninfo later
             cls._init_static(self, tag=tag)
 
         async def load(self, session):
-            obj = await session.use(self.label, self.namespace)
+            obj = await session.include(self.session_name, self.object_label, self.namespace)
             return obj.object_id
 
     # TODO: set a bunch of stuff

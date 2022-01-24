@@ -143,8 +143,8 @@ async def debian_slim(extra_commands=None, python_packages=None, python_version=
     commands or python packages.
     """
     python_version = _dockerhub_python_version(python_version)
-    base_image = Image.use(f"python-{python_version}-slim-buster-base", api_pb2.ShareNamespace.SN_GLOBAL)
-    builder_image = Image.use(f"python-{python_version}-slim-buster-builder", api_pb2.ShareNamespace.SN_GLOBAL)
+    base_image = Image.include(f"debian-slim-{python_version}", "base", api_pb2.ShareNamespace.SN_GLOBAL)
+    builder_image = Image.include(f"debian-slim-{python_version}", "builder", api_pb2.ShareNamespace.SN_GLOBAL)
 
     if extra_commands is None and python_packages is None:
         return base_image
