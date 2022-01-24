@@ -90,10 +90,11 @@ message ClientHeartbeatRequest {
 
 enum SessionType {
   ST_UNKNOWN = 0;
-  ST_EPHEMERAL = 1;   // Will be stopped when the client disconnects
-  ST_DETACHABLE = 2;  // Will be stopped when there's no more functions
-  ST_DEPLOYED = 3;    // Will be stopped when overwritten
-  ST_STOPPED = 4;     // Stopped!
+  ST_EPHEMERAL = 1;    // Will be discharged when the client disconnects
+  ST_DETACHABLE = 2;   // Will be discharged when there's no more functions
+  ST_DEPLOYED = 3;     // Will be discharged when overwritten
+  ST_DRAINING = 4;     // Will be stopped once there are no dependencies
+  ST_STOPPED = 5;      // Stopped
 }
 
 message SessionCreateRequest {
@@ -134,7 +135,7 @@ message SessionGetObjectsResponse {
 }
 
 enum ShareNamespace {
-  SN_ERROR = 0;  // Reserve this in order to force this to be set
+  SN_NONE = 0;  // Reserve this in order to force this to be set
   SN_ACCOUNT = 1;
   SN_ORGANIZATION = 2; // Not used at this point
   SN_GLOBAL = 3;
