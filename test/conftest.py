@@ -129,14 +129,14 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
             found=bool(self.shares.get(request.label)), object_id=self.shares.get(request.label)
         )
 
-    async def SessionUseObject2(
-        self, request: api_pb2.SessionUseObject2Request, context: grpc.aio.ServicerContext
-    ) -> api_pb2.SessionUseObject2Response:
+    async def SessionIncludeObject(
+        self, request: api_pb2.SessionIncludeObjectRequest, context: grpc.aio.ServicerContext
+    ) -> api_pb2.SessionIncludeObjectResponse:
         if request.object_label:
             object_id = self.deployments.get((request.name, request.object_label))
         else:
             object_id = self.deployments.get(request.name)
-        return api_pb2.SessionUseObject2Response(object_id=object_id)
+        return api_pb2.SessionIncludeObjectResponse(object_id=object_id)
 
 
 @pytest.fixture(scope="function")
