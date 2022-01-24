@@ -88,13 +88,13 @@ message ClientHeartbeatRequest {
   string client_id = 1;
 }
 
-enum SessionType {
-  ST_UNKNOWN = 0;
-  ST_EPHEMERAL = 1;    // Will be discharged when the client disconnects
-  ST_DETACHABLE = 2;   // Will be discharged when there's no more functions
-  ST_DEPLOYED = 3;     // Will be discharged when overwritten
-  ST_DRAINING = 4;     // Will be stopped once there are no dependencies
-  ST_STOPPED = 5;      // Stopped
+enum SessionState {
+  SS_UNKNOWN = 0;
+  SS_EPHEMERAL = 1;    // Will be discharged when the client disconnects
+  SS_DETACHABLE = 2;   // Will be discharged when there's no more functions
+  SS_DEPLOYED = 3;     // Will be discharged when overwritten
+  SS_DRAINING = 4;     // Will be stopped once there are no dependencies
+  SS_STOPPED = 5;      // Stopped
 }
 
 message SessionCreateRequest {
