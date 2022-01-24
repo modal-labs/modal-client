@@ -105,6 +105,11 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     ) -> api_pb2.QueueGetResponse:
         return api_pb2.QueueGetResponse(values=[self.queue.pop(0)])
 
+    async def SessionDeploy(
+        self, request: api_pb2.SessionDeployRequest, context: grpc.aio.ServicerContext
+    ) -> api_pb2.Empty:
+        return api_pb2.Empty()
+
     async def SessionShareObject(
         self, request: api_pb2.SessionShareObjectRequest, context: grpc.aio.ServicerContext
     ) -> api_pb2.Empty:

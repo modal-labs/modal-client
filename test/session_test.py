@@ -55,6 +55,16 @@ async def test_persistent_object(servicer, client):
             await session_2.use("bazbazbaz")
 
 
+@pytest.mark.asyncio
+async def test_persistent_object_2(servicer, client):
+    # .deploy supersedes .share, so this test will take over the previous one
+    session_1 = Session()
+    async with session_1.run(client=client):
+        q_1 = await Queue.create(session=session_1)
+        assert q_1.object_id == "qu-1"
+        await session_1.deploy("my-queue", q_1)
+
+
 def test_global_run(reset_global_sessions, servicer, client):
     with run(client=client):
         q = Queue.create()

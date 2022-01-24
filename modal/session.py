@@ -177,28 +177,6 @@ class Session:
             logger.debug(f"Creating object {obj}")
             await self.create_object(obj)
 
-    async def share(self, obj, label, namespace=api_pb2.ShareNamespace.SN_ACCOUNT):
-        # TODO: deprecated!!
-        assert obj.object_id
-        request = api_pb2.SessionShareObjectRequest(
-            session_id=self.session_id,
-            object_id=obj.object_id,
-            label=label,
-            namespace=namespace,
-        )
-        await self.client.stub.SessionShareObject(request)
-
-    async def use(self, label, namespace=api_pb2.ShareNamespace.SN_ACCOUNT):
-        request = api_pb2.SessionUseObjectRequest(
-            session_id=self.session_id,
-            label=label,
-            namespace=namespace,
-        )
-        response = await self.client.stub.SessionUseObject(request)
-        if not response.found:
-            raise NotFoundError(f"Could not find object {label} (namespace {namespace})")
-        return Object._init_share(response.object_id, self)
-
     @synchronizer.asynccontextmanager
     async def _run(self, client, stdout, stderr, logs_timeout):
         # TOOD: use something smarter than checking for the .client to exists in order to prevent
@@ -280,22 +258,45 @@ class Session:
         finally:
             set_running_session(None)
 
-    async def deploy(self, name, obj_or_objs=None, namespace=api_pb2.ShareNamespace.SN_ACCOUNT):
-        object_id = object_ids = None
+    async def share(self, obj, label, namespace=api_pb2.ShareNamespace.SN_ACCOUNT):
+        # TODO: deprecated, use .deploy instead
+        assert obj.object_id
+        request = api_pb2.SessionShareObjectRequest(
+            session_id=self.session_id,
+            object_id=obj.object_id,
+            label=label,
+            namespace=namespace,
+        )
+        await self.client.stub.SessionShareObject(request)
+
+    async def use(self, label, namespace=api_pb2.ShareNamespace.SN_ACCOUNT):
+        request = api_pb2.SessionUseObjectRequest(
+            session_id=self.session_id,
+            label=label,
+            namespace=namespace,
+        )
+        response = await self.client.stub.SessionUseObject(request)
+        if not response.found:
+            raise NotFoundError(f"Could not find object {label} (namespace {namespace})")
+        return Object._init_share(response.object_id, self)
+
+    async def deploy(self, name, obj_or_objs, namespace=api_pb2.ShareNamespace.SN_ACCOUNT):
+        object_id = None
+        object_ids = None  # name -> object_id
         if isinstance(obj_or_objs, Object):
-            object_id = obj_or_objs
+            object_id = obj_or_objs.object_id
         elif isinstance(obj_or_objs, dict):
-            object_ids = obj_or_objs
+            object_ids = {label: obj.object_id for label, obj in obj_or_objs.items()}
         elif obj_or_objs is None:
             pass
         else:
-            raise Exception(f"{obj_or_objs} must be None or an Object or a dict")
+            raise InvalidError(f"{obj_or_objs} not an Object or dict or None")
         request = api_pb2.SessionDeployRequest(
             session_id=self.session_id,
-            object_id=object_id,
-            object_ids=object_ids,
             name=name,
             namespace=namespace,
+            object_id=object_id,
+            object_ids=object_ids,
         )
         await self.client.stub.SessionDeploy(request)
 
