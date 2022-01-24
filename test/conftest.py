@@ -24,7 +24,6 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.outputs = []
         self.object_ids = {}
         self.queue = []
-        self.shares = {"foo-queue": "qu-foo"}
         self.deployments = {"foo-queue": "qu-foo"}
         self.n_queues = 0
 
@@ -115,19 +114,6 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
             for label, object_id in request.object_ids.items():
                 self.deployments[(request.name, label)] = object_id
         return api_pb2.Empty()
-
-    async def SessionShareObject(
-        self, request: api_pb2.SessionShareObjectRequest, context: grpc.aio.ServicerContext
-    ) -> api_pb2.Empty:
-        self.shares[request.label] = request.object_id
-        return api_pb2.Empty()
-
-    async def SessionUseObject(
-        self, request: api_pb2.SessionUseObjectRequest, context: grpc.aio.ServicerContext
-    ) -> api_pb2.SessionUseObjectResponse:
-        return api_pb2.SessionUseObjectResponse(
-            found=bool(self.shares.get(request.label)), object_id=self.shares.get(request.label)
-        )
 
     async def SessionIncludeObject(
         self, request: api_pb2.SessionIncludeObjectRequest, context: grpc.aio.ServicerContext

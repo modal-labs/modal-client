@@ -292,29 +292,6 @@ class Session:
         finally:
             set_running_session(None)
 
-    async def share(self, obj, label, namespace=api_pb2.ShareNamespace.SN_ACCOUNT):
-        # TODO: deprecated, use .deploy instead
-        assert obj.object_id
-        request = api_pb2.SessionShareObjectRequest(
-            session_id=self.session_id,
-            object_id=obj.object_id,
-            label=label,
-            namespace=namespace,
-        )
-        await self.client.stub.SessionShareObject(request)
-
-    async def use(self, label, namespace=api_pb2.ShareNamespace.SN_ACCOUNT):
-        # TODO: deprecated, use .include instead
-        request = api_pb2.SessionUseObjectRequest(
-            session_id=self.session_id,
-            label=label,
-            namespace=namespace,
-        )
-        response = await self.client.stub.SessionUseObject(request)
-        if not response.found:
-            raise NotFoundError(f"Could not find object {label} (namespace {namespace})")
-        return Object._init_persisted(response.object_id, self)
-
     async def deploy(self, name, obj_or_objs, namespace=api_pb2.ShareNamespace.SN_ACCOUNT):
         object_id = None
         object_ids = None  # name -> object_id

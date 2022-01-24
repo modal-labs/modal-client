@@ -43,25 +43,6 @@ async def test_persistent_object(servicer, client):
     async with session_1.run(client=client):
         q_1 = await Queue.create(session=session_1)
         assert q_1.object_id == "qu-1"
-        await session_1.share(q_1, "my-queue")
-
-    session_2 = Session()
-    async with session_2.run(client=client):
-        q_2 = await session_2.use("my-queue")
-        assert isinstance(q_2, Queue)
-        assert q_2.object_id == "qu-1"
-
-        with pytest.raises(NotFoundError):
-            await session_2.use("bazbazbaz")
-
-
-@pytest.mark.asyncio
-async def test_persistent_object_2(servicer, client):
-    # .deploy supersedes .share, so this test will take over the previous one
-    session_1 = Session()
-    async with session_1.run(client=client):
-        q_1 = await Queue.create(session=session_1)
-        assert q_1.object_id == "qu-1"
         await session_1.deploy("my-queue", q_1)
 
     session_2 = Session()

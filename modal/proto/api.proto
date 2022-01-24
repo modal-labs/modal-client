@@ -134,29 +134,11 @@ message SessionGetObjectsResponse {
   map<string, string> object_ids = 1;
 }
 
-enum ShareNamespace {
+enum ShareNamespace {  // TODO: rename this to something else?
   SN_NONE = 0;  // Reserve this in order to force this to be set
   SN_ACCOUNT = 1;
   SN_ORGANIZATION = 2; // Not used at this point
   SN_GLOBAL = 3;
-}
-
-message SessionShareObjectRequest {
-  string session_id = 1;
-  string object_id = 2;
-  string label = 3;
-  ShareNamespace namespace = 4;
-}
-
-message SessionUseObjectRequest {
-  string session_id = 1;
-  string label = 2;
-  ShareNamespace namespace = 3;
-}
-
-message SessionUseObjectResponse {
-  string object_id = 1;
-  bool found = 2;
 }
 
 message SessionDeployRequest {
@@ -477,8 +459,6 @@ service ModalClient {
   rpc SessionGetLogs(SessionGetLogsRequest) returns (stream TaskLogsBatch);
   rpc SessionSetObjects(SessionSetObjectsRequest) returns (Empty);
   rpc SessionGetObjects(SessionGetObjectsRequest) returns (SessionGetObjectsResponse);
-  rpc SessionShareObject(SessionShareObjectRequest) returns (Empty);
-  rpc SessionUseObject(SessionUseObjectRequest) returns (SessionUseObjectResponse);
   rpc SessionIncludeObject(SessionIncludeObjectRequest) returns (SessionIncludeObjectResponse);
   rpc SessionDeploy(SessionDeployRequest) returns (Empty);
 
