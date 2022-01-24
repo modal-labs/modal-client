@@ -304,6 +304,7 @@ class Session:
         await self.client.stub.SessionShareObject(request)
 
     async def use(self, label, namespace=api_pb2.ShareNamespace.SN_ACCOUNT):
+        # TODO: deprecated, use .use2 instead
         request = api_pb2.SessionUseObjectRequest(
             session_id=self.session_id,
             label=label,
@@ -333,6 +334,20 @@ class Session:
             object_ids=object_ids,
         )
         await self.client.stub.SessionDeploy(request)
+
+    async def use2(self, name, object_label=None, namespace=api_pb2.ShareNamespace.SN_ACCOUNT):
+        # TODO: this has a terrible name right now, will rename it to "use" shortly
+        request = api_pb2.SessionUseObject2Request(
+            session_id=self.session_id,
+            name=name,
+            object_label=object_label,
+            namespace=namespace,
+        )
+        response = await self.client.stub.SessionUseObject2(request)
+        if not response.object_id:
+            # TODO: disambiguate between session not found and object not found?
+            raise NotFoundError(f"Could not find object {name}.{object_label} (namespace {namespace})")
+        return Object._init_share(response.object_id, self)
 
     def serialize(self, obj):
         """Serializes object and replaces all references to the client class by a placeholder."""

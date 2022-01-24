@@ -64,6 +64,15 @@ async def test_persistent_object_2(servicer, client):
         assert q_1.object_id == "qu-1"
         await session_1.deploy("my-queue", q_1)
 
+    session_2 = Session()
+    async with session_2.run(client=client):
+        q_2 = await session_2.use2("my-queue")
+        assert isinstance(q_2, Queue)
+        assert q_2.object_id == "qu-1"
+
+        with pytest.raises(NotFoundError):
+            await session_2.use2("bazbazbaz")
+
 
 def test_global_run(reset_global_sessions, servicer, client):
     with run(client=client):

@@ -167,6 +167,17 @@ message SessionDeployRequest {
   map<string, string> object_ids = 5;
 }
 
+message SessionUseObject2Request {
+  string session_id = 1;
+  ShareNamespace namespace = 2;
+  string name = 3;
+  string object_label = 4;
+}
+
+message SessionUseObject2Response {
+  string object_id = 1;
+}
+
 enum TaskState {
   TS_CREATED = 0;
   TS_QUEUED = 1;
@@ -468,6 +479,7 @@ service ModalClient {
   rpc SessionGetObjects(SessionGetObjectsRequest) returns (SessionGetObjectsResponse);
   rpc SessionShareObject(SessionShareObjectRequest) returns (Empty);
   rpc SessionUseObject(SessionUseObjectRequest) returns (SessionUseObjectResponse);
+  rpc SessionUseObject2(SessionUseObject2Request) returns (SessionUseObject2Response);
   rpc SessionDeploy(SessionDeployRequest) returns (Empty);
 
   // Queues
