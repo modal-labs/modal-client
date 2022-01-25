@@ -4,7 +4,6 @@ import typing
 import grpc
 import pkg_resources
 import pytest
-
 from modal import Session
 from modal._client import Client
 from modal._session_singleton import (
@@ -66,7 +65,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     ) -> typing.AsyncIterator[api_pb2.TaskLogsBatch]:
         await asyncio.sleep(1.0)
         if self.done:
-            yield api_pb2.TaskLogsBatch(done=True)
+            yield api_pb2.TaskLogsBatch(session_done=True)
 
     async def FunctionGetNextInput(
         self, request: api_pb2.FunctionGetNextInputRequest, context: grpc.aio.ServicerContext

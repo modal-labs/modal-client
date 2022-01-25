@@ -184,10 +184,11 @@ message TaskLogs {
 message TaskLogsBatch {
   string task_id = 1;
   repeated TaskLogs items = 2;
-  bool done = 3;
   repeated TaskLogs state_updates = 4;
   string entry_id = 5;
   int64 n_running = 6;
+  bool task_done = 7;
+  bool session_done = 8;
 }
 
 message QueueCreateRequest {
