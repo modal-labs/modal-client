@@ -4,7 +4,6 @@ import os
 import sys
 
 import colorama
-
 from modal._progress import safe_progress
 
 from ._async_utils import TaskContext, run_coro_blocking, synchronizer
@@ -263,7 +262,6 @@ class Session:
                     logger.debug("Draining logs")
                     logs_timeout = logs_timeout or config["logs_timeout"]
                     await self._get_logs(stdout, stderr, draining=True, timeout=logs_timeout)
-                self._progress = None
         finally:
             if self.state == SessionState.RUNNING:
                 logger.warn("Stopping running session...")
@@ -271,6 +269,7 @@ class Session:
                 await self.client.stub.SessionStop(req)
             self.client = None
             self.state = SessionState.NONE
+            self._progress = None
             self._pending_create_objects = initial_objects
             self._created_tagged_objects = {}
 
