@@ -106,7 +106,7 @@ message SessionCreateResponse {
   string session_id = 1;
 }
 
-message SessionStopRequest {
+message SessionClientDisconnectRequest {
   string session_id = 1;
 }
 
@@ -460,7 +460,7 @@ service ModalClient {
 
   // Sessions
   rpc SessionCreate(SessionCreateRequest) returns (SessionCreateResponse);
-  rpc SessionStop(SessionStopRequest) returns (Empty);
+  rpc SessionClientDisconnect(SessionClientDisconnectRequest) returns (Empty);
   rpc SessionGetLogs(SessionGetLogsRequest) returns (stream TaskLogsBatch);
   rpc SessionSetObjects(SessionSetObjectsRequest) returns (Empty);
   rpc SessionGetObjects(SessionGetObjectsRequest) returns (SessionGetObjectsResponse);

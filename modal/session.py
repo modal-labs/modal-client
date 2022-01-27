@@ -254,8 +254,8 @@ class Session:
 
                     # Stop session (this causes the server to kill any running task)
                     logger.debug("Stopping the session server-side")
-                    req = api_pb2.SessionStopRequest(session_id=self.session_id)
-                    await self.client.stub.SessionStop(req)
+                    req = api_pb2.SessionClientDisconnectRequest(session_id=self.session_id)
+                    await self.client.stub.SessionClientDisconnect(req)
                     self._progress.step("Draining logs...", "Finished draining logs.")
 
                     # Fetch any straggling logs
@@ -265,8 +265,8 @@ class Session:
         finally:
             if self.state == SessionState.RUNNING:
                 logger.warn("Stopping running session...")
-                req = api_pb2.SessionStopRequest(session_id=self.session_id)
-                await self.client.stub.SessionStop(req)
+                req = api_pb2.SessionClientDisconnectRequest(session_id=self.session_id)
+                await self.client.stub.SessionClientDisconnect(req)
             self.client = None
             self.state = SessionState.NONE
             self._progress = None

@@ -47,8 +47,8 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         session_id = "se-123"
         return api_pb2.SessionCreateResponse(session_id=session_id)
 
-    async def SessionStop(
-        self, request: api_pb2.SessionStopRequest, context: grpc.aio.ServicerContext
+    async def SessionClientDisconnect(
+        self, request: api_pb2.SessionClientDisconnectRequest, context: grpc.aio.ServicerContext
     ) -> api_pb2.Empty:
         self.requests.append(request)
         self.done = True
