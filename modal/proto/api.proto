@@ -402,6 +402,7 @@ message ScheduleCreateRequest {
   double period = 2;
   bytes args = 3;
   bytes kwargs = 4;
+  string cron_string = 5;
 }
 
 message ScheduleCreateResponse {
