@@ -407,6 +407,7 @@ message ScheduleCreateRequest {
 
 message ScheduleCreateResponse {
   string schedule_id = 1;
+  string error_message = 2;
 }
 
 message ScheduleGetPingsRequest {
