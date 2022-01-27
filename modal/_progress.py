@@ -39,6 +39,7 @@ class ProgressSpinner:
 
         self._stopped = True
         self._suspended = 0
+        self._lines_printed = 0
         self._time_per_frame = self.looptime / len(self._frames)
         self._status_message = ""
 
@@ -51,29 +52,33 @@ class ProgressSpinner:
             self.colors = {k: "" for k in self.colors.keys()}
 
         self._active_step = None
-        self._step_progress_persisted = False
+        self._ongoing_parent_step = None
 
     def _step(self):
         self._frame_i = (self._frame_i + 1) % len(self._frames)
 
     def _print(self):
+        if self._lines_printed > 0:
+            return
+
         frame = self._frames[self._frame_i]
-        self._clear_line()
+        if self._ongoing_parent_step:
+            self._lines_printed += 1
+            self._stdout.write(f"{Symbols.ONGOING} {self._ongoing_parent_step}\n")
+
         self._stdout.write(f"{frame} {self._status_message}\r")
+        self._lines_printed += 1
+
         self._stdout.flush()
 
     def _set_status_message(self, status_message):
         self._status_message = self.colors["status"] + status_message + self.colors["reset"]
 
     def _persist_done(self, final_message):
-        self._clear_line()
+        self._clear()
         self._stdout.write(f"{self.colors['success']}{Symbols.DONE}{self.colors['reset']} {final_message}\n")
         self._active_step = None
-
-    def _persist_inprogress(self, final_message):
-        self._clear_line()
-        self._stdout.write(f"{Symbols.ONGOING} {final_message}\n")
-        self._step_progress_persisted = True
+        self._ongoing_parent_step = None
 
     # borrowed control sequences from yaspin
     def _hide_cursor(self):
@@ -84,12 +89,19 @@ class ProgressSpinner:
         self._stdout.write("\033[?25h")
         self._stdout.flush()
 
-    def _clear_line(self):
-        self._stdout.write("\033[K")
+    def _clear(self):
+        if self._lines_printed == 1:
+            self._stdout.write("\033[K")
+        elif self._lines_printed > 1:
+            self._stdout.write(f"\r\033[{self._lines_printed - 1}A")
+            self._stdout.write("\033[J")
+
+        self._lines_printed = 0
 
     # end yaspin
 
     def _tick(self):
+        self._clear()
         self._print()
         self._step()
 
@@ -116,21 +128,23 @@ class ProgressSpinner:
 
         self._set_status_message(status)
         self._active_step = [status, completion_status]
-        self._step_progress_persisted = False
 
     def set_substep_text(self, status):
-        if self._active_step and not self._step_progress_persisted:
-            self._persist_inprogress(self._active_step[0])
+        if self._active_step and not self._ongoing_parent_step:
+            self._ongoing_parent_step = self._active_step[0]
 
         self._set_status_message(status)
 
     @contextlib.contextmanager
     def suspend(self):
+        if self._suspended == 0:
+            self._clear()
+            self._stdout.flush()
         self._suspended += 1
-        self._clear_line()
-        self._stdout.flush()
         yield
         self._suspended -= 1
+        if self._suspended == 0:
+            self._print()
 
 
 @synchronizer.asynccontextmanager
