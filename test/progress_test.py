@@ -2,10 +2,12 @@ import io
 
 from modal._progress import ProgressSpinner, Symbols
 
+FRAMES = range(1, 10)
+
 
 def get_test_spinner():
     buf = io.StringIO()
-    return buf, ProgressSpinner(buf, frames="#", use_color=False)
+    return buf, ProgressSpinner(buf, frames=FRAMES, use_color=False)
 
 
 def text_between(source, substr1, substr2):
@@ -13,12 +15,15 @@ def text_between(source, substr1, substr2):
 
 
 CLEAR = "\033[K"
+CLEAR_TWO_LINES = "\r\033[1A\033[J"
 
 
-def test_single_tick():
+def test_tick():
     buf, p = get_test_spinner()
     p._tick()
-    assert f"{CLEAR}# \r" == buf.getvalue()
+    assert f"{FRAMES[0]} \r" == buf.getvalue()
+    p._tick()
+    assert f"{FRAMES[0]} \r{CLEAR}{FRAMES[1]} \r" == buf.getvalue()
 
 
 def test_state_subtext():
@@ -26,7 +31,12 @@ def test_state_subtext():
     p.step("foo", "done")
     p.set_substep_text("sub")
     p._tick()
-    assert f"{CLEAR}{Symbols.ONGOING} foo\n{CLEAR}# sub\r" == buf.getvalue()
+    assert f"{Symbols.ONGOING} foo\n{FRAMES[0]} sub\r" == buf.getvalue()
+    p._tick()
+    assert (
+        f"{Symbols.ONGOING} foo\n{FRAMES[0]} sub\r{CLEAR_TWO_LINES}{Symbols.ONGOING} foo\n{FRAMES[1]} sub\r"
+        == buf.getvalue()
+    )
 
 
 def test_overwrite():
