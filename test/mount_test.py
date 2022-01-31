@@ -1,7 +1,7 @@
-import asyncio
 import os
 
 import pytest
+
 from modal.mount import _get_files
 
 

@@ -1,7 +1,4 @@
 import asyncio
-import os
-import sys
-import uuid
 import warnings
 
 from aiostream import pipe, stream

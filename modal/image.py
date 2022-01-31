@@ -1,8 +1,5 @@
 import asyncio
-import functools
-import os
 import sys
-from typing import Dict
 
 from ._async_utils import retry
 from ._grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT

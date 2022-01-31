@@ -3,10 +3,8 @@ import importlib
 import inspect
 import os
 import sys
-import threading
 import traceback
 import typing
-import uuid
 
 import aiostream
 import cloudpickle

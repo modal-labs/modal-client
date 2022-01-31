@@ -1,13 +1,7 @@
-import asyncio
 import ctypes
-import logging
-import multiprocessing
 import multiprocessing.sharedctypes
-import platform
-import time
 import traceback
 from collections import namedtuple
-from typing import Dict, Sequence
 
 import synchronicity
 from aiostream import stream
