@@ -6,6 +6,7 @@ from .image import Image, debian_slim, extend_image
 from .queue import Queue
 from .schedule import Schedule
 from .session import Session, run
+from .version import __version__
 
 __all__ = [
     "Dict",
@@ -20,4 +21,5 @@ __all__ = [
     "Schedule",
     "Session",
     "run",
+    "__version__",
 ]
