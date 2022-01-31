@@ -4,8 +4,8 @@ import time
 import grpc
 import grpc.aio
 
-from ._async_utils import TaskContext, retry, synchronizer
-from ._grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT, ChannelPool
+from ._async_utils import TaskContext, synchronizer
+from ._grpc_utils import ChannelPool
 from ._server_connection import GRPCConnectionFactory
 from .config import config, logger
 from .exception import AuthError, ConnectionError, InvalidError, VersionError

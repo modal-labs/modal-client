@@ -6,10 +6,8 @@ import time
 
 import aiostream
 
-from ._async_utils import retry
-from ._grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from ._package_utils import get_package_deps_mount_info
-from .config import config, logger
+from .config import logger
 from .object import Object
 from .proto import api_pb2
 

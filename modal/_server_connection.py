@@ -3,8 +3,7 @@ import urllib.parse
 import grpc
 from grpc.aio._channel import Channel
 
-from ._async_utils import retry
-from .config import config, logger
+from .config import logger
 from .proto import api_pb2
 
 

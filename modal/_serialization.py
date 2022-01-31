@@ -2,7 +2,6 @@ import pickle
 
 import cloudpickle
 
-from .config import logger
 from .object import Object
 
 PICKLE_PROTOCOL = 4  # Support older Python versions.

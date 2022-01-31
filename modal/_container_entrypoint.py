@@ -6,18 +6,16 @@ import sys
 import traceback
 import typing
 
-import aiostream
 import cloudpickle
 import google.protobuf.json_format
 
 from ._async_utils import TaskContext, asyncio_run, synchronizer
 from ._buffer_utils import buffered_rpc_read, buffered_rpc_write
 from ._client import Client
-from ._grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
+from ._grpc_utils import GRPC_REQUEST_TIMEOUT
 from .config import logger
 from .exception import InvalidError
 from .functions import Function, _pack_output_buffer_item, _unpack_input_buffer_item
-from .object import Object
 from .proto import api_pb2
 from .session import Session
 

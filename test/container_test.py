@@ -7,7 +7,7 @@ from modal import Session, debian_slim
 from modal._client import Client
 from modal._container_entrypoint import main
 from modal._test_support import SLEEP_DELAY
-from modal.functions import Function, _pack_input_buffer_item
+from modal.functions import _pack_input_buffer_item
 from modal.proto import api_pb2
 
 EXTRA_TOLERANCE_DELAY = 0.08

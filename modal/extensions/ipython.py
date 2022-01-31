@@ -2,8 +2,6 @@ import atexit
 import logging
 import sys
 
-from IPython.core.magic import register_cell_magic
-
 from modal import Session
 from modal._async_utils import run_coro_blocking
 from modal._session_singleton import set_default_session

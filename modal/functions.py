@@ -10,7 +10,7 @@ from ._decorator_utils import decorator_with_options
 from ._factory import Factory
 from ._function_utils import FunctionInfo
 from ._session_singleton import get_container_session, get_default_session
-from .config import config, logger
+from .config import config
 from .exception import RemoteError
 from .image import debian_slim
 from .mount import Mount, create_package_mounts

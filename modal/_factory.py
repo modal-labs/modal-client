@@ -2,11 +2,7 @@ import functools
 import inspect
 
 from ._function_utils import FunctionInfo
-from ._session_singleton import (
-    get_container_session,
-    get_default_session,
-    get_running_session,
-)
+from ._session_singleton import get_container_session
 
 
 class Factory:

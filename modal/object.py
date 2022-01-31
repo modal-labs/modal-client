@@ -1,11 +1,7 @@
 from ._decorator_utils import decorator_with_options
 from ._factory import Factory
 from ._object_meta import ObjectMeta
-from ._session_singleton import (
-    get_container_session,
-    get_default_session,
-    get_running_session,
-)
+from ._session_singleton import get_container_session, get_default_session
 from .proto import api_pb2
 
 

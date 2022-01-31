@@ -3,8 +3,6 @@ import enum
 import re
 import time
 
-import grpc.aio
-
 from ._async_utils import add_traceback, chunk_generator
 from .config import logger
 

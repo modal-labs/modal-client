@@ -4,6 +4,7 @@ import os
 import sys
 
 import colorama
+
 from modal._progress import safe_progress
 
 from ._async_utils import TaskContext, run_coro_blocking, synchronizer

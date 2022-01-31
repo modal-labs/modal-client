@@ -1,5 +1,3 @@
-from ._async_utils import retry
-from ._client import Client
 from .config import logger
 from .object import Object
 from .proto import api_pb2

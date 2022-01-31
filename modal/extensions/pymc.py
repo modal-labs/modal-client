@@ -1,5 +1,4 @@
 import ctypes
-import multiprocessing.sharedctypes
 import traceback
 from collections import namedtuple
 
@@ -37,7 +36,6 @@ if pymc_image.is_inside():
     from fastprogress.fastprogress import progress_bar
     from pymc3 import theanof
     from pymc3.exceptions import SamplingError
-    from sklearn import datasets, linear_model
 
 
 class ParallelSamplingError(Exception):
