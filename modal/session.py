@@ -220,7 +220,10 @@ class Session:
 
         # We need to re-initialize all these objects. Needed if a session is reused.
         initial_objects = list(self._pending_create_objects)
-        visible_progress = sys.stdout.isatty() if self._show_progress is None else self._show_progress
+        if self._show_progress is None:
+            visible_progress = (stdout or sys.stdout).isatty()
+        else:
+            visible_progress = self._show_progress
 
         try:
             # Start session
