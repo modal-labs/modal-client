@@ -132,19 +132,19 @@ class Object(metaclass=ObjectMeta):
         first argument. Factories can be synchronous or asynchronous. however,
         synchronous factories may cause issues if they operate on Modal objects.
 
-        .. code-block:: python
-
+        ```python
            @Image.factory
            def factory():
                return OtherImage()
+        ```
 
-        .. code-block:: python
-
+        ```python
            @Queue.factory
            async def factory(session, initial_value=42):
                q = Queue(session)
                await q.put(initial_value)
                return q
+        ```
         """
         return cls._user_factory_class(fun)
 
