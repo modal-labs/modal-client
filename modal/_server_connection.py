@@ -12,19 +12,15 @@ class BasicAuth(grpc.AuthMetadataPlugin):
     def __init__(self, client_type, credentials):
         if credentials and client_type == api_pb2.ClientType.CT_CLIENT:
             token_id, token_secret = credentials
-            self._metadata = tuple(
-                [
-                    ("x-modal-token-id", token_id),
-                    ("x-modal-token-secret", token_secret),
-                ]
+            self._metadata = (
+                ("x-modal-token-id", token_id),
+                ("x-modal-token-secret", token_secret),
             )
         elif credentials and client_type == api_pb2.ClientType.CT_CONTAINER:
             task_id, task_secret = credentials
-            self._metadata = tuple(
-                [
-                    ("x-modal-task-id", task_id),
-                    ("x-modal-task-secret", task_secret),
-                ]
+            self._metadata = (
+                ("x-modal-task-id", task_id),
+                ("x-modal-task-secret", task_secret),
             )
         else:
             self._metadata = tuple()

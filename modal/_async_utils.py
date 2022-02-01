@@ -27,7 +27,27 @@ def asyncio_run(coro):
         asyncio.set_event_loop(None)
 
 
-def retry(direct_fn=None, n_attempts=3, base_delay=0, delay_factor=2, timeout=90):
+def retry(direct_fn=None, *, n_attempts=3, base_delay=0, delay_factor=2, timeout=90):
+    """Decorator that calls an async function multiple times, with a given timeout.
+
+    If a `base_delay` is provided, the function is given an exponentially
+    increasing delay on each run, up until the maximum number of attempts.
+
+    Usage:
+
+    ```
+    @retry
+    async def may_fail_default():
+        # ...
+        pass
+
+    @retry(n_attempts=5, base_delay=1)
+    async def may_fail_delay():
+        # ...
+        pass
+    ```
+    """
+
     def decorator(fn):
         @functools.wraps(fn)
         async def f_wrapped(*args, **kwargs):
@@ -53,10 +73,10 @@ def retry(direct_fn=None, n_attempts=3, base_delay=0, delay_factor=2, timeout=90
         return f_wrapped
 
     if direct_fn is not None:
-        # It's invoked like @retry\ndef f(...)
+        # It's invoked like @retry
         return decorator(direct_fn)
     else:
-        # It's invoked like @retry(n_attempts=...)\ndef f(...)
+        # It's invoked like @retry(n_attempts=...)
         return decorator
 
 

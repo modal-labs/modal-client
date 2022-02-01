@@ -18,10 +18,6 @@ BLOCKING_REQUEST_TIMEOUT = (
 MAX_CHANNEL_LIFETIME = 180
 
 
-def not_implemented_callable(*args, **kwargs):
-    raise NotImplementedError
-
-
 class RPCType(enum.Enum):
     UNARY_UNARY = 1
     UNARY_STREAM = 2

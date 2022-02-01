@@ -134,7 +134,11 @@ def _dockerhub_python_version(python_version=None):
 
 @Image.factory
 async def debian_slim(
-    extra_commands=None, python_packages=None, python_version=None, pip_find_links=None, builder_extra_commands=None
+    extra_commands=None,
+    python_packages=None,
+    python_version=None,
+    pip_find_links=None,
+    builder_extra_commands=None,
 ):
     """A default base image, built on the official python:<version>-slim-buster Docker hub images
 
