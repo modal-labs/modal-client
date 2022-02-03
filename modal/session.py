@@ -328,8 +328,13 @@ class Session:
         )
         response = await self.client.stub.SessionIncludeObject(request)
         if not response.object_id:
+            err_msg = f"Could not find object {name}"
+            if object_label is not None:
+                err_msg += f".{object_label}"
+            if namespace != api_pb2.ShareNamespace.SN_ACCOUNT:
+                err_msg += f" (namespace {api_pb2.ShareNamespace.Name(namespace)})"
             # TODO: disambiguate between session not found and object not found?
-            raise NotFoundError(f"Could not find object {name}.{object_label} (namespace {namespace})")
+            raise NotFoundError(err_msg)
         return Object._init_persisted(response.object_id, self)
 
     def serialize(self, obj):
