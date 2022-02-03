@@ -344,6 +344,7 @@ message Function {
 }
 
 message FunctionGetOrCreateRequest {
+  // TODO(erikbern): rename this FunctionCreate
   Function function = 8;
   string session_id = 9;
   string schedule_id = 10;

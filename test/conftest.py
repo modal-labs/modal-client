@@ -11,6 +11,8 @@ from modal._session_singleton import (
     set_default_session,
     set_running_session,
 )
+from modal.functions import _unpack_input_buffer_item
+from modal.image import _dockerhub_python_version
 from modal.proto import api_pb2, api_pb2_grpc
 from modal.version import __version__
 
@@ -19,14 +21,19 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     def __init__(self):
         self.requests = []
         self.done = False
-        self.inputs = []
-        self.outputs = []
+        self.container_inputs = []
+        self.container_outputs = []
         self.object_ids = {}
         self.queue = []
-        self.deployments = {"foo-queue": "qu-foo"}
+        self.deployments = {
+            "foo-queue": "qu-foo",
+            (f"debian-slim-{_dockerhub_python_version()}", "base"): "im-123",
+            (f"debian-slim-{_dockerhub_python_version()}", "builder"): "im-321",
+        }
         self.n_queues = 0
         self.files_name2sha = {}
         self.files_sha2data = {}
+        self.client_calls = []
 
     async def ClientCreate(
         self,
@@ -72,12 +79,12 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     async def FunctionGetNextInput(
         self, request: api_pb2.FunctionGetNextInputRequest, context: grpc.aio.ServicerContext
     ) -> api_pb2.BufferReadResponse:
-        return self.inputs.pop(0)
+        return self.container_inputs.pop(0)
 
     async def FunctionOutput(
         self, request: api_pb2.FunctionOutputRequest, context: grpc.aio.ServicerContext
     ) -> api_pb2.BufferWriteResponse:
-        self.outputs.append(request)
+        self.container_outputs.append(request)
         return api_pb2.BufferWriteResponse(status=api_pb2.BufferWriteResponse.BufferWriteStatus.SUCCESS)
 
     async def SessionGetObjects(
@@ -154,6 +161,31 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         context: grpc.aio.ServicerContext,
     ) -> api_pb2.Empty:
         return api_pb2.Empty()
+
+    async def FunctionGetOrCreate(
+        self,
+        request: api_pb2.FunctionGetOrCreateRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> api_pb2.FunctionGetOrCreateResponse:
+        return api_pb2.FunctionGetOrCreateResponse(function_id="fu-123")
+
+    async def FunctionMap(
+        self,
+        request: api_pb2.FunctionMapRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> api_pb2.FunctionMapResponse:
+        return api_pb2.FunctionMapResponse(input_buffer_id="bu-in", output_buffer_id="bu-out")
+
+    async def FunctionCall(
+        self,
+        request: api_pb2.FunctionCallRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> api_pb2.BufferWriteResponse:
+        for item in request.buffer_req.items:
+            function_input = _unpack_input_buffer_item(item)
+            print(function_input)
+            # self.client_calls.append(cloudpickle.loads(item.data))
+        return api_pb2.BufferWriteResponse(status=api_pb2.BufferWriteResponse.SUCCESS)
 
 
 @pytest.fixture(scope="function")
