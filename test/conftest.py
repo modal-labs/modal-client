@@ -1,6 +1,7 @@
 import asyncio
 import typing
 
+import cloudpickle
 import grpc
 import pkg_resources
 import pytest
@@ -11,7 +12,7 @@ from modal._session_singleton import (
     set_default_session,
     set_running_session,
 )
-from modal.functions import _unpack_input_buffer_item
+from modal.functions import _pack_output_buffer_item, _unpack_input_buffer_item
 from modal.image import _dockerhub_python_version
 from modal.proto import api_pb2, api_pb2_grpc
 from modal.version import __version__
@@ -183,9 +184,31 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     ) -> api_pb2.BufferWriteResponse:
         for item in request.buffer_req.items:
             function_input = _unpack_input_buffer_item(item)
-            print(function_input)
-            # self.client_calls.append(cloudpickle.loads(item.data))
+            args = cloudpickle.loads(function_input.args)
+            kwargs = cloudpickle.loads(function_input.kwargs)
+            self.client_calls.append((args, kwargs))
         return api_pb2.BufferWriteResponse(status=api_pb2.BufferWriteResponse.SUCCESS)
+
+    async def FunctionGetNextOutput(
+        self,
+        request: api_pb2.FunctionGetNextOutputRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> api_pb2.BufferReadResponse:
+        if self.client_calls:
+            args, kwargs = self.client_calls.pop(0)
+            # Just return the sum of squares of all args
+            res = sum(arg**2 for arg in args) + sum(value**2 for key, value in kwargs.items())
+            result = api_pb2.GenericResult(
+                status=api_pb2.GenericResult.SUCCESS,
+                data=cloudpickle.dumps(res),
+            )
+            item = _pack_output_buffer_item(result)
+        else:
+            item = api_pb2.BufferItem(EOF=True)
+        return api_pb2.BufferReadResponse(
+            status=api_pb2.BufferReadResponse.SUCCESS,
+            items=[item],
+        )
 
 
 @pytest.fixture(scope="function")

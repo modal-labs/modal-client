@@ -1,5 +1,4 @@
 import asyncio
-import warnings
 
 from aiostream import pipe, stream
 from google.protobuf.any_pb2 import Any
@@ -11,7 +10,7 @@ from ._factory import Factory
 from ._function_utils import FunctionInfo
 from ._session_singleton import get_container_session, get_default_session
 from .config import config
-from .exception import RemoteError
+from .exception import ExecutionError, RemoteError
 from .image import debian_slim
 from .mount import Mount, create_package_mounts
 from .object import Object
@@ -49,12 +48,12 @@ def _process_result(session, result):
         if result.data:
             try:
                 exc = session.deserialize(result.data)
-            except Exception:
-                exc = None
-                warnings.warn("Could not deserialize remote exception!")
-            if exc is not None:
-                print(result.traceback)
-                raise exc
+            except Exception as deser_exc:
+                raise ExecutionError(f"Could not deserialize remote exception: {deser_exc}")
+            if not isinstance(exc, BaseException):
+                raise ExecutionError(f"Got remote exception of incorrect type {type(exc)}")
+            print(result.traceback)
+            raise exc
         raise RemoteError(result.exception)
 
     return session.deserialize(result.data)
