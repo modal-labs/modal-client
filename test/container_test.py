@@ -37,7 +37,7 @@ def _get_output(function_output_req: api_pb2.FunctionOutputRequest) -> api_pb2.G
 
 async def _run_container(servicer, module_name, function_name):
     async with Client(servicer.remote_addr, api_pb2.ClientType.CT_CONTAINER, ("ta-123", "task-secret")) as client:
-        servicer.inputs = _get_inputs(client)
+        servicer.container_inputs = _get_inputs(client)
 
         function_def = api_pb2.Function(
             module_name=module_name,
@@ -63,7 +63,7 @@ async def _run_container(servicer, module_name, function_name):
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, main, container_args, client)
 
-        return client, servicer.outputs
+        return client, servicer.container_outputs
 
 
 @pytest.mark.asyncio
@@ -78,7 +78,7 @@ async def test_container_entrypoint_success(servicer, reset_global_sessions, eve
     output = _get_output(outputs[0])
     assert output.status == api_pb2.GenericResult.Status.SUCCESS
     session = Session()
-    assert output.data == session.serialize(42 ** 2)
+    assert output.data == session.serialize(42**2)
 
 
 @pytest.mark.asyncio
@@ -93,7 +93,7 @@ async def test_container_entrypoint_async(servicer, reset_global_sessions):
 
     output = _get_output(outputs[0])
     assert output.status == api_pb2.GenericResult.Status.SUCCESS
-    assert output.data == session.serialize(42 ** 2)
+    assert output.data == session.serialize(42**2)
 
 
 @pytest.mark.asyncio
@@ -107,7 +107,7 @@ async def test_container_entrypoint_sync_returning_async(servicer, reset_global_
 
     output = _get_output(outputs[0])
     assert output.status == api_pb2.GenericResult.Status.SUCCESS
-    assert output.data == session.serialize(42 ** 2)
+    assert output.data == session.serialize(42**2)
 
 
 @pytest.mark.asyncio
