@@ -10,7 +10,7 @@ from ._factory import Factory
 from ._function_utils import FunctionInfo
 from ._session_singleton import get_container_session, get_default_session
 from .config import config
-from .exception import ExecutionError, RemoteError
+from .exception import ExecutionError, InvalidError, RemoteError
 from .image import debian_slim
 from .mount import Mount, create_package_mounts
 from .object import Object
@@ -207,7 +207,10 @@ class Function(Object, Factory, type_prefix="fu"):
         assert callable(raw_f)
         self.info = FunctionInfo(raw_f)
         if schedule is not None:
-            assert self.info.is_nullary()
+            if not self.info.is_nullary():
+                raise InvalidError(
+                    f"Function {raw_f} has a schedule, so it needs to support calling it with no arguments"
+                )
         # This is the only place besides object factory that sets tags
         tag = self.info.get_tag(None)
         self.raw_f = raw_f

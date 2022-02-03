@@ -35,6 +35,9 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.files_name2sha = {}
         self.files_sha2data = {}
         self.client_calls = []
+        self.n_functions = 0
+        self.n_schedules = 0
+        self.function2schedule = {}
 
     async def ClientCreate(
         self,
@@ -168,7 +171,11 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         request: api_pb2.FunctionGetOrCreateRequest,
         context: grpc.aio.ServicerContext,
     ) -> api_pb2.FunctionGetOrCreateResponse:
-        return api_pb2.FunctionGetOrCreateResponse(function_id="fu-123")
+        self.n_functions += 1
+        function_id = f"fu-{self.n_functions}"
+        if request.schedule_id:
+            self.function2schedule[function_id] = request.schedule_id
+        return api_pb2.FunctionGetOrCreateResponse(function_id=function_id)
 
     async def FunctionMap(
         self,
@@ -209,6 +216,14 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
             status=api_pb2.BufferReadResponse.SUCCESS,
             items=[item],
         )
+
+    async def ScheduleCreate(
+        self,
+        request: api_pb2.ScheduleCreateRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> api_pb2.ScheduleCreateResponse:
+        self.n_schedules += 1
+        return api_pb2.ScheduleCreateResponse(schedule_id=f"sc-{self.n_schedules}")
 
 
 @pytest.fixture(scope="function")
