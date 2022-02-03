@@ -269,12 +269,12 @@ class Function(Object, Factory, type_prefix="fu"):
             function_type=function_type,
             resources=api_pb2.Resources(gpu=self.gpu),
         )
-        request = api_pb2.FunctionGetOrCreateRequest(
+        request = api_pb2.FunctionCreateRequest(
             session_id=session.session_id,
             schedule_id=schedule_id,
             function=function_definition,
         )
-        response = await session.client.stub.FunctionGetOrCreate(request)
+        response = await session.client.stub.FunctionCreate(request)
 
         return response.function_id
 

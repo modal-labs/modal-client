@@ -166,16 +166,16 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     ) -> api_pb2.Empty:
         return api_pb2.Empty()
 
-    async def FunctionGetOrCreate(
+    async def FunctionCreate(
         self,
-        request: api_pb2.FunctionGetOrCreateRequest,
+        request: api_pb2.FunctionCreateRequest,
         context: grpc.aio.ServicerContext,
-    ) -> api_pb2.FunctionGetOrCreateResponse:
+    ) -> api_pb2.FunctionCreateResponse:
         self.n_functions += 1
         function_id = f"fu-{self.n_functions}"
         if request.schedule_id:
             self.function2schedule[function_id] = request.schedule_id
-        return api_pb2.FunctionGetOrCreateResponse(function_id=function_id)
+        return api_pb2.FunctionCreateResponse(function_id=function_id)
 
     async def FunctionMap(
         self,

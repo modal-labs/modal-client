@@ -343,14 +343,13 @@ message Function {
   Resources resources = 9;
 }
 
-message FunctionGetOrCreateRequest {
-  // TODO(erikbern): rename this FunctionCreate
-  Function function = 8;
-  string session_id = 9;
-  string schedule_id = 10;
+message FunctionCreateRequest {
+  Function function = 1;
+  string session_id = 2;
+  string schedule_id = 3;
 }
 
-message FunctionGetOrCreateResponse {
+message FunctionCreateResponse {
   string function_id = 1;
 }
 
@@ -498,7 +497,7 @@ service ModalClient {
   rpc EnvDictCreate(EnvDictCreateRequest) returns (EnvDictCreateResponse);
 
   // Functions
-  rpc FunctionGetOrCreate(FunctionGetOrCreateRequest) returns (FunctionGetOrCreateResponse);
+  rpc FunctionCreate(FunctionCreateRequest) returns (FunctionCreateResponse);
   rpc FunctionGetSerialized(FunctionGetSerializedRequest) returns (FunctionGetSerializedResponse);
   rpc FunctionMap(FunctionMapRequest) returns (FunctionMapResponse);
   rpc FunctionCall(FunctionCallRequest) returns (BufferWriteResponse);
