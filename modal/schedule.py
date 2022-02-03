@@ -6,10 +6,11 @@ class Schedule(Object, type_prefix="sc"):
     """A schedule of specific times at which registered functions are triggered"""
 
     @classmethod
-    async def create(cls, period="", cron_string="", session=None):
+    async def create(cls, period=None, cron_string=None, session=None):
         session = cls._get_session(session)
 
         if period:
+            # TODO: should we just take a timedelta object?
             seconds = None
             try:
                 if period[-1] == "d":
@@ -48,3 +49,26 @@ class Schedule(Object, type_prefix="sc"):
 
         schedule_id = resp.schedule_id
         return cls._create_object_instance(schedule_id, session)
+
+    @classmethod
+    def period(cls, period):
+        return _period(period)
+
+    @classmethod
+    def cron(cls, cron_string):
+        return _cron(cron_string)
+
+
+# TODO(erikbern): methods below seem like a bit unnecessary layer of indirection
+# We need them because we can't create factories on the class itself since the
+# class doesn't exist at that point. This seems like a solvable problem.
+
+
+@Schedule.factory
+async def _period(period):
+    return await Schedule.create(period=period)
+
+
+@Schedule.factory
+async def _cron(cron_string):
+    return await Schedule.create(cron_string=cron_string)

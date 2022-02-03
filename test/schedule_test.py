@@ -3,12 +3,7 @@ from modal import Schedule, Session, function
 session = Session()
 
 
-@Schedule.factory
-def my_schedule_1():
-    return Schedule.create(period="5s", session=session)
-
-
-@function(session=session, schedule=my_schedule_1)
+@function(session=session, schedule=Schedule.period("5s"))
 def f():
     pass
 
