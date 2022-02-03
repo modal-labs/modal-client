@@ -26,7 +26,7 @@ def pymc_image():
         "&& conda list \ ",
         "&& conda install theano-pymc==1.1.2 pymc3==3.11.2 scikit-learn --yes ",
     ]
-    conda_image = modal.Image.include("conda", api_pb2.ShareNamespace.SN_GLOBAL)
+    conda_image = modal.Image.include("conda", "conda", api_pb2.ShareNamespace.SN_GLOBAL)
 
     return modal.extend_image(conda_image, dockerfile_commands)
 
