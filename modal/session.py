@@ -153,6 +153,9 @@ class Session:
                     # HACK: to make partial line outputs (like when using a progress bar that uses
                     # ANSI escape chars) work. If the last log line doesn't end with a newline,
                     # add one manually, and take it back the next time we print something.
+                    # TODO: this can cause problems if there are partial lines being printed as logs, and the user is also
+                    # printing to stdout directly. Can be solved if we can print directly here and rely on the redirection
+                    # (without calling suspend()), and then add the newline logic to `write_callback`.
                     last_item = log_batch.items[-1]
                     if add_newline:
                         print_logs(b"\033[A\r", "stdout", stdout, stderr)
