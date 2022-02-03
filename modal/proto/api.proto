@@ -435,7 +435,7 @@ message MountRegisterFileRequest {
 }
 
 message MountRegisterFileResponse {
-  string filename = 1;
+  string filename = 1;  // TODO(erikbern): don't think this one is needed?
   bool exists = 2;
 }
 

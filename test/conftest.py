@@ -25,6 +25,8 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.queue = []
         self.deployments = {"foo-queue": "qu-foo"}
         self.n_queues = 0
+        self.files_name2sha = {}
+        self.files_sha2data = {}
 
     async def ClientCreate(
         self,
@@ -122,6 +124,36 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         else:
             object_id = self.deployments.get(request.name)
         return api_pb2.SessionIncludeObjectResponse(object_id=object_id)
+
+    async def MountCreate(
+        self,
+        request: api_pb2.MountCreateRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> api_pb2.MountCreateResponse:
+        return api_pb2.MountCreateResponse(mount_id="mo-123")
+
+    async def MountRegisterFile(
+        self,
+        request: api_pb2.MountRegisterFileRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> api_pb2.MountRegisterFileResponse:
+        self.files_name2sha[request.filename] = request.sha256_hex
+        return api_pb2.MountRegisterFileResponse(filename=request.filename, exists=False)
+
+    async def MountUploadFile(
+        self,
+        request: api_pb2.MountUploadFileRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> api_pb2.Empty:
+        self.files_sha2data[request.sha256_hex] = request.data
+        return api_pb2.Empty()
+
+    async def MountDone(
+        self,
+        request: api_pb2.MountDoneRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> api_pb2.Empty:
+        return api_pb2.Empty()
 
 
 @pytest.fixture(scope="function")
