@@ -161,7 +161,6 @@ class FunctionContext:
                 break
 
             output_buffer_changed = cur_output_buffer_id is not None and output_buffer_id != cur_output_buffer_id
-            cur_output_buffer_id = output_buffer_id
 
             # Send what we have so far for this output buffer and switch tracks
             if output_buffer_changed or len(items) >= MAX_OUTPUT_BATCH_SIZE:
@@ -169,6 +168,8 @@ class FunctionContext:
                 items = [item]
             else:
                 items.append(item)
+
+            cur_output_buffer_id = output_buffer_id
 
     async def enqueue_output(self, input_id, output_buffer_id, idx, **kwargs):
         result = api_pb2.GenericResult(**kwargs)
