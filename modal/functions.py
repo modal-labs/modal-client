@@ -109,97 +109,97 @@ MAP_INVOCATION_CHUNK_SIZE = 100
 
 class _MapInvocation:
     # TODO: should this be an object?
-    def __init__(self, session, response_gen):
+    def __init__(self, function_id, input_stream, kwargs, session, is_generator):
+        self.function_id = function_id
+        self.input_stream = input_stream
+        self.kwargs = kwargs
         self.session = session
-        self.response_gen = response_gen
+        self.is_generator = is_generator
 
-    @staticmethod
-    async def create(function_id, input_stream, kwargs, session, is_generator):
-        request = api_pb2.FunctionMapRequest(function_id=function_id)
-        response = await retry(session.client.stub.FunctionMap)(request)
+    async def __aiter__(self):
+        request = api_pb2.FunctionMapRequest(function_id=self.function_id)
+        response = await retry(self.session.client.stub.FunctionMap)(request)
 
         input_buffer_id = response.input_buffer_id
         output_buffer_id = response.output_buffer_id
 
+        have_all_inputs = False
+        num_outputs = 0
+        num_inputs = 0
+
         async def pump_inputs():
-            chunked_input_stream = input_stream | pipe.chunks(MAP_INVOCATION_CHUNK_SIZE)
-            last_idx_sent = -1
+            nonlocal num_inputs, have_all_inputs
+
+            chunked_input_stream = self.input_stream | pipe.chunks(MAP_INVOCATION_CHUNK_SIZE)
             async with chunked_input_stream.stream() as streamer:
                 async for chunk in streamer:
                     items = []
                     for arg in chunk:
-                        last_idx_sent += 1
                         item = _pack_input_buffer_item(
-                            session.serialize(arg), session.serialize(kwargs), output_buffer_id, idx=last_idx_sent
+                            self.session.serialize(arg),
+                            self.session.serialize(self.kwargs),
+                            output_buffer_id,
+                            idx=num_inputs,
                         )
+                        num_inputs += 1
                         items.append(item)
                     buffer_req = api_pb2.BufferWriteRequest(items=items, buffer_id=input_buffer_id)
-                    request = api_pb2.FunctionCallRequest(function_id=function_id, buffer_req=buffer_req)
+                    request = api_pb2.FunctionCallRequest(function_id=self.function_id, buffer_req=buffer_req)
 
-                    response = await buffered_rpc_write(session.client.stub.FunctionCall, request)
-                    yield len(items)
+                    response = await buffered_rpc_write(self.session.client.stub.FunctionCall, request)
+
+            have_all_inputs = True
             yield
 
         async def poll_outputs():
-            """Keep trying to dequeue outputs."""
+            nonlocal num_inputs, num_outputs, have_all_inputs
 
-            next_idx = 0
             # map to store out-of-order outputs received
             pending_outputs = {}
 
             while True:
-                request = api_pb2.FunctionGetNextOutputRequest(function_id=function_id)
+                request = api_pb2.FunctionGetNextOutputRequest(function_id=self.function_id)
                 response = await buffered_rpc_read(
-                    session.client.stub.FunctionGetNextOutput, request, output_buffer_id, timeout=None
+                    self.session.client.stub.FunctionGetNextOutput, request, output_buffer_id, timeout=None
                 )
                 for item in response.items:
-                    assert item.idx >= next_idx
+                    result = _unpack_output_buffer_item(item)
 
-                    # yield output directly for generators.
-                    if is_generator:
-                        yield item
-                    # hold on to outputs for function maps, so we can reorder them correctly.
+                    if self.is_generator:
+                        if result.gen_status == api_pb2.GenericResult.GeneratorStatus.COMPLETE:
+                            num_outputs += 1
+                        else:
+                            output = _process_result(self.session, result)
+                            # yield output directly for generators.
+                            yield output
                     else:
-                        pending_outputs[item.idx] = item
+                        # hold on to outputs for function maps, so we can reorder them correctly.
+                        pending_outputs[item.idx] = _process_result(self.session, result)
 
                 # send outputs sequentially while we can
-                while next_idx in pending_outputs:
-                    item = pending_outputs.pop(next_idx)
-                    yield item
-                    next_idx += 1
-
-            assert len(pending_outputs) == 0
-
-        response_gen = stream.merge(pump_inputs(), poll_outputs())
-
-        return _MapInvocation(session, response_gen)
-
-    async def __aiter__(self):
-        num_inputs = 0
-        have_all_inputs = False
-        num_outputs = 0
-        async with self.response_gen.stream() as streamer:
-            async for response in streamer:
-                if response is None:
-                    have_all_inputs = True
-                elif isinstance(response, int):
-                    assert not have_all_inputs
-                    num_inputs += response
-                elif isinstance(response, api_pb2.BufferItem):
-                    result = _unpack_output_buffer_item(response)
-
-                    if result.gen_status != api_pb2.GenericResult.GeneratorStatus.INCOMPLETE:
-                        num_outputs += 1
-
-                    if result.gen_status != api_pb2.GenericResult.GeneratorStatus.COMPLETE:
-                        yield _process_result(self.session, result)
-                else:
-                    assert False, f"Got unknown type in invocation stream: {type(response)}"
+                while num_outputs in pending_outputs:
+                    output = pending_outputs.pop(num_outputs)
+                    yield output
+                    num_outputs += 1
 
                 if have_all_inputs:
                     assert num_outputs <= num_inputs
                     if num_outputs == num_inputs:
                         break
+
+            assert len(pending_outputs) == 0
+
+        response_gen = stream.merge(pump_inputs(), poll_outputs())
+
+        async with response_gen.stream() as streamer:
+            async for response in streamer:
+                # Handle yield at the end of pump_inputs, in case
+                # that finishes after all outputs have been polled.
+                if response is None:
+                    if num_outputs == num_inputs:
+                        break
+                    continue
+                yield response
 
 
 class Function(Object, Factory, type_prefix="fu"):
@@ -280,9 +280,7 @@ class Function(Object, Factory, type_prefix="fu"):
 
     async def map(self, inputs, window=100, kwargs={}):
         input_stream = stream.iterate(inputs) | pipe.map(lambda arg: (arg,))
-        async for item in await _MapInvocation.create(
-            self.object_id, input_stream, kwargs, self._session, self.is_generator
-        ):
+        async for item in _MapInvocation(self.object_id, input_stream, kwargs, self._session, self.is_generator):
             yield item
 
     async def call_function(self, args, kwargs):
