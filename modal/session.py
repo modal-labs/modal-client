@@ -254,7 +254,7 @@ class Session:
                     self._progress.step("Initializing...", "Initialized.")
                     get_logs_closure = functools.partial(self._get_logs, stdout, stderr)
                     functools.update_wrapper(get_logs_closure, self._get_logs)  # Needed for debugging tasks
-                    tc.infinite_loop(get_logs_closure)
+                    logs_task = tc.infinite_loop(get_logs_closure)
 
                     self._progress.step("Creating objects...", "Created objects.")
                     # Create all members
@@ -282,6 +282,10 @@ class Session:
                     logger.debug("Draining logs")
                     logs_timeout = logs_timeout or config["logs_timeout"]
                     await self._get_logs(stdout, stderr, draining=True, timeout=logs_timeout)
+                    # Cancel original infinite loop if draining has finished.
+                    # TODO: it's weird that we have two get_logs tasks running at the same time while draining.
+                    # We should consolidate the two, and have "draining" be triggered by a session state change.
+                    logs_task.cancel()
         finally:
             if self.state == SessionState.RUNNING:
                 logger.warn("Stopping running session...")
