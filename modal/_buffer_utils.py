@@ -28,7 +28,7 @@ async def buffered_rpc_write(fn, request):
         await asyncio.sleep(1)
 
 
-async def buffered_rpc_read(fn, request, buffer_id, timeout=None):
+async def buffered_rpc_read(fn, request, buffer_id, timeout=None, warn_on_cancel=True):
     """Reads from buffered method."""
     request.buffer_req.buffer_id = buffer_id
 
@@ -43,7 +43,9 @@ async def buffered_rpc_read(fn, request, buffer_id, timeout=None):
             next_timeout = min(next_timeout, time_remaining)
 
         request.buffer_req.timeout = next_timeout
-        response = await retry(fn)(request, timeout=next_timeout + GRPC_REQUEST_TIME_BUFFER)
+        response = await retry(fn, warn_on_cancel=warn_on_cancel)(
+            request, timeout=next_timeout + GRPC_REQUEST_TIME_BUFFER
+        )
 
         if response.status == api_pb2.BufferReadResponse.BufferReadStatus.SUCCESS:
             return response

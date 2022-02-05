@@ -27,7 +27,7 @@ def asyncio_run(coro):
         asyncio.set_event_loop(None)
 
 
-def retry(direct_fn=None, *, n_attempts=3, base_delay=0, delay_factor=2, timeout=90):
+def retry(direct_fn=None, *, n_attempts=3, base_delay=0, delay_factor=2, timeout=90, warn_on_cancel=True):
     """Decorator that calls an async function multiple times, with a given timeout.
 
     If a `base_delay` is provided, the function is given an exponentially
@@ -57,7 +57,8 @@ def retry(direct_fn=None, *, n_attempts=3, base_delay=0, delay_factor=2, timeout
                     t0 = time.time()
                     return await asyncio.wait_for(fn(*args, **kwargs), timeout=timeout)
                 except asyncio.CancelledError:
-                    logger.warning(f"Function {fn} was cancelled")
+                    if warn_on_cancel:
+                        logger.warning(f"Function {fn} was cancelled")
                     raise
                 except Exception as e:
                     if i >= n_attempts - 1:

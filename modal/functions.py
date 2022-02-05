@@ -160,7 +160,11 @@ class _MapInvocation:
             while True:
                 request = api_pb2.FunctionGetNextOutputRequest(function_id=self.function_id)
                 response = await buffered_rpc_read(
-                    self.session.client.stub.FunctionGetNextOutput, request, output_buffer_id, timeout=None
+                    self.session.client.stub.FunctionGetNextOutput,
+                    request,
+                    output_buffer_id,
+                    timeout=None,
+                    warn_on_cancel=False,
                 )
                 for item in response.items:
                     result = _unpack_output_buffer_item(item)
