@@ -19,7 +19,7 @@ from ._session_singleton import (
     set_running_session,
 )
 from ._session_state import SessionState
-from .config import config, logger
+from .config import logger
 from .exception import ExecutionError, NotFoundError
 from .object import Object
 from .proto import api_pb2
@@ -124,13 +124,12 @@ class Session:
             msg = f"Running ({tasks_running}/{tasks_running + tasks_loading} containers in use)..."
         self._progress.set_substep_text(msg)
 
-    async def _get_logs(self, stdout, stderr, draining=False, timeout=BLOCKING_REQUEST_TIMEOUT):
+    async def _get_logs(self, stdout, stderr, timeout=BLOCKING_REQUEST_TIMEOUT):
         # control flow-wise, there should only be one _get_logs running for each session
         # i.e. maintain only one active SessionGetLogs grpc for each session
         request = api_pb2.SessionGetLogsRequest(
             session_id=self.session_id,
             timeout=timeout,
-            draining=draining,
             last_entry_id=self._last_log_batch_entry_id,
         )
         n_running = None
@@ -167,11 +166,6 @@ class Session:
                             print_logs(log.data.decode("utf8"), log.fd, stdout, stderr)
                         if add_newline:
                             print_logs("\n", "stdout", stdout, stderr)
-
-        if draining:
-            raise Exception(
-                f"Failed waiting for all logs to finish. There are still {n_running} tasks the server will kill."
-            )
 
     async def initialize_container(self, session_id, client, task_id):
         """Used by the container to bootstrap the session and all its objects."""
@@ -276,16 +270,6 @@ class Session:
                     logger.debug("Stopping the session server-side")
                     req = api_pb2.SessionClientDisconnectRequest(session_id=self.session_id)
                     await self.client.stub.SessionClientDisconnect(req)
-                    self._progress.step("Draining logs...", "Finished draining logs.")
-
-                    # Fetch any straggling logs
-                    logger.debug("Draining logs")
-                    logs_timeout = logs_timeout or config["logs_timeout"]
-                    await self._get_logs(stdout, stderr, draining=True, timeout=logs_timeout)
-                    # Cancel original infinite loop if draining has finished.
-                    # TODO: it's weird that we have two get_logs tasks running at the same time while draining.
-                    # We should consolidate the two, and have "draining" be triggered by a session state change.
-                    logs_task.cancel()
         finally:
             if self.state == SessionState.RUNNING:
                 logger.warn("Stopping running session...")

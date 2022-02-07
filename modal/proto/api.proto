@@ -113,7 +113,6 @@ message SessionClientDisconnectRequest {
 message SessionGetLogsRequest {
   string session_id = 1;
   float timeout = 2;
-  bool draining = 3;
   string last_entry_id = 4;
 }
 
