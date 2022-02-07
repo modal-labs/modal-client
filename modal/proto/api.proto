@@ -23,7 +23,7 @@ message ContainerArguments{  // This is used to pass data from the worker to the
 }
 
 message GenericResult {  // Used for both tasks and function outputs
-  enum Status {UNKNOWN = 0; SUCCESS = 1; FAILURE = 2;}
+  enum Status {UNSPECIFIED = 0; SUCCESS = 1; FAILURE = 2;}
   Status status = 1;
   string exception = 2;
   int32 exitcode = 3;
@@ -50,7 +50,7 @@ message BufferWriteRequest {
 }
 
 message BufferWriteResponse {
-  enum BufferWriteStatus {UNKNOWN = 0; SUCCESS = 1; BUFFER_FULL = 2;}
+  enum BufferWriteStatus {UNSPECIFIED = 0; SUCCESS = 1; BUFFER_FULL = 2;}
   BufferWriteStatus status = 1;
 }
 
@@ -61,13 +61,13 @@ message BufferReadRequest {
 }
 
 message BufferReadResponse {
-  enum BufferReadStatus {UNKNOWN = 0; SUCCESS = 1; TIMEOUT = 2;}
+  enum BufferReadStatus {UNSPECIFIED = 0; SUCCESS = 1; TIMEOUT = 2;}
   BufferReadStatus status = 2;
   repeated BufferItem items = 3;
 }
 
 enum ClientType {
-  CT_UNKNOWN = 0;
+  CT_UNSPECIFIED = 0;
   CT_CLIENT = 1;
   CT_WORKER = 2;
   CT_CONTAINER = 3;
@@ -89,7 +89,7 @@ message ClientHeartbeatRequest {
 }
 
 enum SessionState {
-  SS_UNKNOWN = 0;
+  SS_UNSPECIFIED = 0;
   SS_EPHEMERAL = 1;    // Will be discharged when the client disconnects
   SS_DETACHED = 2;   // Will be discharged when there's no more functions
   SS_DEPLOYED = 3;     // Will be discharged when overwritten
@@ -135,7 +135,7 @@ message SessionGetObjectsResponse {
 }
 
 enum ShareNamespace {  // TODO: rename this to something else?
-  SN_NONE = 0;  // Reserve this in order to force this to be set
+  SN_UNSPECIFIED = 0;
   SN_ACCOUNT = 1;
   SN_ORGANIZATION = 2; // Not used at this point
   SN_GLOBAL = 3;
@@ -165,7 +165,7 @@ message SessionDetachRequest {
 }
 
 enum TaskState {
-  TS_UKNOWN = 0;
+  TS_UNSPECIFIED = 0;
   TS_CREATED = 1;
   TS_QUEUED = 2;
   TS_WORKER_ASSIGNED = 3;
