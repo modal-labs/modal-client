@@ -188,7 +188,7 @@ message TaskLogsBatch {
   string entry_id = 5;
   int64 n_running = 6;
   bool task_done = 7;
-  bool session_done = 8;
+  SessionState session_state = 9;
 }
 
 message QueueCreateRequest {
