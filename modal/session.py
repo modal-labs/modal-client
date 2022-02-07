@@ -158,15 +158,15 @@ class Session:
                     # (without calling suspend()), and then add the newline logic to `write_callback`.
                     last_item = log_batch.items[-1]
                     if add_newline:
-                        print_logs(b"\033[A\r", "stdout", stdout, stderr)
+                        print_logs("\033[A\r", "stdout", stdout, stderr)
                     add_newline = not last_item.data.endswith(b"\n")
 
                     with self._progress.suspend():
                         for log in log_batch.items:
                             assert not log.task_state
-                            print_logs(log.data, log.fd, stdout, stderr)
+                            print_logs(log.data.decode("utf8"), log.fd, stdout, stderr)
                         if add_newline:
-                            print_logs(b"\n", "stdout", stdout, stderr)
+                            print_logs("\n", "stdout", stdout, stderr)
 
         if draining:
             raise Exception(
@@ -377,33 +377,24 @@ def run(*args, **kwargs):
     return session.run(*args, **kwargs)
 
 
-def get_buffer(handle):
-    # HACK: Jupyter notebooks have sys.stdout point to an OutStream object,
-    # which doesn't have a buffer attribute.
-    if hasattr(handle, "buffer"):
-        return handle.buffer
-    else:
-        return handle
-
-
-def print_logs(output: bytes, fd: str, stdout=None, stderr=None):
+def print_logs(output: str, fd: str, stdout=None, stderr=None):
     if fd == "stdout":
-        buf = get_buffer(stdout or sys.stdout)
+        buf = stdout or sys.stdout
         color = colorama.Fore.BLUE
     elif fd == "stderr":
-        buf = get_buffer(stderr or sys.stderr)
+        buf = stderr or sys.stderr
         color = colorama.Fore.RED
     elif fd == "server":
-        buf = get_buffer(stderr or sys.stderr)
+        buf = stderr or sys.stderr
         color = colorama.Fore.YELLOW
     else:
         raise Exception(f"weird fd {fd} for log output")
 
     if buf.isatty():
-        buf.write(color.encode("utf8"))
+        buf.write(color)
 
     buf.write(output)
 
     if buf.isatty():
-        buf.write(colorama.Style.RESET_ALL.encode("utf8"))
+        buf.write(colorama.Style.RESET_ALL)
         buf.flush()
