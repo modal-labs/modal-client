@@ -166,12 +166,12 @@ message SessionDetachRequest {
 
 enum TaskState {
   TS_UNSPECIFIED = 0;
-  TS_CREATED = 1;
-  TS_QUEUED = 2;
-  TS_WORKER_ASSIGNED = 3;
-  TS_LOADING_IMAGE = 4;
-  TS_RUNNING = 5;
-  TS_COMPLETED = 6;
+  TS_CREATED = 6;
+  TS_QUEUED = 1;
+  TS_WORKER_ASSIGNED = 2;
+  TS_LOADING_IMAGE = 3;
+  TS_RUNNING = 4;
+  TS_COMPLETED = 5;
 }
 
 message TaskLogs {
