@@ -90,11 +90,12 @@ message ClientHeartbeatRequest {
 
 enum SessionState {
   SS_UNSPECIFIED = 0;
-  SS_EPHEMERAL = 1;    // Will be discharged when the client disconnects
-  SS_DETACHED = 2;     // Will be discharged when there's no more functions
-  SS_DEPLOYED = 3;     // Will be discharged when overwritten
-  SS_DRAINING = 4;     // Will be stopped once there are no dependencies
-  SS_STOPPED = 5;      // Stopped
+  SS_EPHEMERAL = 1;             // Will be discharged when the client disconnects
+  SS_DETACHED = 2;              // Will be discharged when there's no more functions
+  SS_DEPLOYED = 3;              // Will be discharged when overwritten
+  SS_DRAINING_LOGS = 4;         // Will be stopped once there are no dependencies
+  SS_DRAINING_DEPENDENCIES = 6; // Will be stopped once there are no dependencies
+  SS_STOPPED = 5;               // Stopped
 }
 
 message SessionCreateRequest {
