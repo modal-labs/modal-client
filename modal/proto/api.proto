@@ -186,7 +186,6 @@ message TaskLogsBatch {
   repeated TaskLogs items = 2;
   repeated TaskLogs state_updates = 4;
   string entry_id = 5;
-  int64 n_running = 6;
   bool task_done = 7;
   SessionState session_state = 9;
 }
