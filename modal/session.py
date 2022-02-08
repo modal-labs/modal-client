@@ -143,7 +143,7 @@ class Session:
                     # log_batch entry_id is empty for fd="server" messages from SessionGetLogs
                     self._last_log_batch_entry_id = log_batch.entry_id
                 for log in log_batch.state_updates:
-                    self._update_task_state(log.task_id, log.task_state)
+                    self._update_task_state(log_batch.task_id, log.task_state)
 
                 if log_batch.items:
                     # HACK: to make partial line outputs (like when using a progress bar that uses
