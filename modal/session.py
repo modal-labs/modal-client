@@ -19,7 +19,7 @@ from ._session_singleton import (
     set_running_session,
 )
 from ._session_state import SessionState
-from .config import logger
+from .config import config, logger
 from .exception import ExecutionError, NotFoundError
 from .object import Object
 from .proto import api_pb2
@@ -61,7 +61,6 @@ class Session:
         self._pending_create_objects = []  # list of objects that haven't been created
         self._created_tagged_objects = {}  # tag -> object id
         self._show_progress = show_progress  # None = use sys.stdout.isatty()
-        self._last_log_batch_entry_id = ""
         self._task_states = {}
         self._progress = None
 
@@ -124,24 +123,22 @@ class Session:
             msg = f"Running ({tasks_running}/{tasks_running + tasks_loading} containers in use)..."
         self._progress.set_substep_text(msg)
 
-    async def _get_logs(self, stdout, stderr, timeout=BLOCKING_REQUEST_TIMEOUT):
-        # control flow-wise, there should only be one _get_logs running for each session
-        # i.e. maintain only one active SessionGetLogs grpc for each session
+    async def _get_logs(self, stdout, stderr, last_log_batch_entry_id, timeout=BLOCKING_REQUEST_TIMEOUT):
         request = api_pb2.SessionGetLogsRequest(
             session_id=self.session_id,
             timeout=timeout,
-            last_entry_id=self._last_log_batch_entry_id,
+            last_entry_id=last_log_batch_entry_id,
         )
         add_newline = None
         async for log_batch in self.client.stub.SessionGetLogs(request, timeout=timeout + GRPC_REQUEST_TIME_BUFFER):
             if log_batch.session_state:
                 logger.info(f"Session state now {api_pb2.SessionState.Name(log_batch.session_state)}")
-                if api_pb2.SessionState == api_pb2.SessionState.SS_STOPPED:
-                    return
+                if log_batch.session_state == api_pb2.SessionState.SS_STOPPED:
+                    return None
             else:
                 if log_batch.entry_id != "":
                     # log_batch entry_id is empty for fd="server" messages from SessionGetLogs
-                    self._last_log_batch_entry_id = log_batch.entry_id
+                    last_log_batch_entry_id = log_batch.entry_id
                 for log in log_batch.state_updates:
                     self._update_task_state(log_batch.task_id, log.task_state)
 
@@ -163,6 +160,20 @@ class Session:
                             print_logs(log.data.decode("utf8"), log.fd, stdout, stderr)
                         if add_newline:
                             print_logs("\n", "stdout", stdout, stderr)
+        return last_log_batch_entry_id
+
+    async def _get_logs_loop(self, stdout, stderr):
+        last_log_batch_entry_id = ""
+        while True:
+            try:
+                last_log_batch_entry_id = await self._get_logs(stdout, stderr, last_log_batch_entry_id)
+            except asyncio.CancelledError:
+                logger.info("Logging cancelled")
+                raise
+            if last_log_batch_entry_id is None:
+                break
+            # TODO: catch errors, sleep, and retry?
+        logger.info("Logging exited gracefully")
 
     async def initialize_container(self, session_id, client, task_id):
         """Used by the container to bootstrap the session and all its objects."""
@@ -239,19 +250,12 @@ class Session:
             self.session_id = resp.session_id
 
             # Start tracking logs and yield context
-            async with TaskContext(grace=1.0) as tc:
+            async with TaskContext(grace=config["logs_timeout"]) as tc:
                 async with safe_progress(tc, stdout, stderr, visible_progress) as (progress_handler, stdout, stderr):
                     self._progress = progress_handler
                     self._progress.step("Initializing...", "Initialized.")
 
-                    async def get_logs():
-                        try:
-                            await self._get_logs(stdout, stderr)
-                        except asyncio.CancelledError:
-                            logger.info("Logging cancelled")
-                            raise
-
-                    logs_task = tc.infinite_loop(get_logs, sleep=0)
+                    logs_task = tc.create_task(self._get_logs_loop(stdout, stderr))
 
                     self._progress.step("Creating objects...", "Created objects.")
                     # Create all members
