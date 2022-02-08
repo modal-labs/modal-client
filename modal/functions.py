@@ -49,7 +49,13 @@ def _process_result(session, result):
             try:
                 exc = session.deserialize(result.data)
             except Exception as deser_exc:
-                raise ExecutionError(f"Could not deserialize remote exception: {deser_exc}")
+                raise ExecutionError(
+                    f"Could not deserialize remote exception due to local error:\n"
+                    + f"{deser_exc}\n"
+                    + f"This can happen if your local environment does not have the remote exception definitions.\n"
+                    + f"Here is the remote traceback:\n"
+                    + f"{result.traceback}"
+                )
             if not isinstance(exc, BaseException):
                 raise ExecutionError(f"Got remote exception of incorrect type {type(exc)}")
             print(result.traceback)
