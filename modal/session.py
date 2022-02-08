@@ -1,4 +1,4 @@
-import functools
+import asyncio
 import io
 import os
 import sys
@@ -247,9 +247,15 @@ class Session:
                 async with safe_progress(tc, stdout, stderr, visible_progress) as (progress_handler, stdout, stderr):
                     self._progress = progress_handler
                     self._progress.step("Initializing...", "Initialized.")
-                    get_logs_closure = functools.partial(self._get_logs, stdout, stderr)
-                    functools.update_wrapper(get_logs_closure, self._get_logs)  # Needed for debugging tasks
-                    logs_task = tc.infinite_loop(get_logs_closure)
+
+                    async def get_logs():
+                        try:
+                            await self._get_logs(stdout, stderr)
+                        except asyncio.CancelledError:
+                            logger.info("Logging cancelled")
+                            raise
+
+                    logs_task = tc.infinite_loop(get_logs, sleep=0)
 
                     self._progress.step("Creating objects...", "Created objects.")
                     # Create all members
