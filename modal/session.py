@@ -133,7 +133,10 @@ class Session:
         async for log_batch in self.client.stub.SessionGetLogs(request, timeout=timeout + GRPC_REQUEST_TIME_BUFFER):
             if log_batch.session_state:
                 logger.info(f"Session state now {api_pb2.SessionState.Name(log_batch.session_state)}")
-                if log_batch.session_state == api_pb2.SessionState.SS_STOPPED:
+                if log_batch.session_state not in (
+                    api_pb2.SessionState.SS_EPHEMERAL,
+                    api_pb2.SessionState.SS_DRAINING_LOGS,
+                ):
                     return None
             else:
                 if log_batch.entry_id != "":
