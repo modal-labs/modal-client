@@ -272,19 +272,18 @@ class Session:
                     )
                     await self.client.stub.SessionSetObjects(req)
 
-                    self.state = SessionState.RUNNING
-                    yield self  # yield context manager to block
-                    self.state = SessionState.STOPPING
-
-                    # Stop session (this causes the server to kill any running task)
-                    logger.debug("Stopping the session server-side")
-                    req = api_pb2.SessionClientDisconnectRequest(session_id=self.session_id)
-                    await self.client.stub.SessionClientDisconnect(req)
+                    try:
+                        self.state = SessionState.RUNNING
+                        yield self  # yield context manager to block
+                        self.state = SessionState.STOPPING
+                    finally:
+                        # Stop session server-side. This causes:
+                        # 1. Server to kill any running task
+                        # 2. Logs to drain (stopping the _get_logs_loop coroutine)
+                        logger.debug("Stopping the session server-side")
+                        req = api_pb2.SessionClientDisconnectRequest(session_id=self.session_id)
+                        await self.client.stub.SessionClientDisconnect(req)
         finally:
-            if self.state == SessionState.RUNNING:
-                logger.warn("Stopping running session...")
-                req = api_pb2.SessionClientDisconnectRequest(session_id=self.session_id)
-                await self.client.stub.SessionClientDisconnect(req)
             self.client = None
             self.state = SessionState.NONE
             self._progress = None
