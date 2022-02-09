@@ -103,24 +103,25 @@ class Session:
         # Recompute task status string.
 
         all_states = self._task_states.values()
-        max_state = max(all_states)
+        states_set = set(all_states)
 
         def tasks_at_state(state):
             return sum(x == state for x in all_states)
 
-        if max_state == api_pb2.TaskState.TS_CREATED:
-            msg = f"Tasks created..."
-        elif max_state == api_pb2.TaskState.TS_QUEUED:
-            msg = f"Tasks queued..."
-        elif max_state == api_pb2.TaskState.TS_WORKER_ASSIGNED:
-            msg = f"Worker assigned..."
-        elif max_state == api_pb2.TaskState.TS_LOADING_IMAGE:
-            tasks_loading = tasks_at_state(api_pb2.TaskState.TS_LOADING_IMAGE)
-            msg = f"Loading images ({tasks_loading} containers initializing)..."
-        else:
+        # The most advanced state that's present informs the message.
+        if api_pb2.TaskState.TS_RUNNING in states_set:
             tasks_running = tasks_at_state(api_pb2.TaskState.TS_RUNNING)
             tasks_loading = tasks_at_state(api_pb2.TaskState.TS_LOADING_IMAGE)
             msg = f"Running ({tasks_running}/{tasks_running + tasks_loading} containers in use)..."
+        elif api_pb2.TaskState.TS_LOADING_IMAGE in states_set:
+            tasks_loading = tasks_at_state(api_pb2.TaskState.TS_LOADING_IMAGE)
+            msg = f"Loading images ({tasks_loading} containers initializing)..."
+        elif api_pb2.TaskState.TS_WORKER_ASSIGNED in states_set:
+            msg = f"Worker assigned..."
+        elif api_pb2.TaskState.TS_QUEUED in states_set:
+            msg = f"Tasks queued..."
+        else:
+            msg = f"Tasks created..."
         self._progress.set_substep_text(msg)
 
     async def _get_logs(self, stdout, stderr, last_log_batch_entry_id, timeout=BLOCKING_REQUEST_TIMEOUT):
