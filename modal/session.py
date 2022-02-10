@@ -50,7 +50,7 @@ class Session:
             session = super().__new__(cls)
             return session
 
-    def __init__(self, show_progress=None, blocking_late_creation_ok=False, name=None):
+    def __init__(self, show_progress=None, blocking_late_creation_ok=False, name=None, raise_background_errors=False):
         if hasattr(self, "_initialized"):
             return  # Prevent re-initialization with the singleton
 
@@ -69,6 +69,7 @@ class Session:
         # (b) notebooks run with an event loop, which makes synchronizer confused
         # We will have to rethink this soon.
         self._blocking_late_creation_ok = blocking_late_creation_ok
+        self._raise_background_errors = raise_background_errors
         super().__init__()
 
     def _infer_session_name(self):
@@ -254,7 +255,9 @@ class Session:
             self.session_id = resp.session_id
 
             # Start tracking logs and yield context
-            async with TaskContext(grace=config["logs_timeout"]) as tc:
+            async with TaskContext(
+                grace=config["logs_timeout"], raise_background_errors=self._raise_background_errors
+            ) as tc:
                 async with safe_progress(tc, stdout, stderr, visible_progress) as (progress_handler, stdout, stderr):
                     self._progress = progress_handler
                     self._progress.step("Initializing...", "Initialized.")

@@ -198,8 +198,9 @@ class TaskContext:
         task = task_context.create(coro())
     """
 
-    def __init__(self, grace=None):
+    def __init__(self, grace=None, raise_background_errors=False):
         self._grace = grace
+        self._raise_background_errors = raise_background_errors
         self._loops = set()
 
     async def start(self):
@@ -224,6 +225,9 @@ class TaskContext:
             pass
         finally:
             for task in self._tasks:
+                if self._raise_background_errors and task.done():
+                    # Raise any exceptions if they happened.
+                    task.result()
                 if task.done() or task in self._loops:
                     continue
 
@@ -247,6 +251,9 @@ class TaskContext:
     def _mark_finished(self, task):
         assert task.done()
         assert task in self._tasks
+        if self._raise_background_errors:
+            # Wait for stop() to raise errors in foreground.
+            return
         self._tasks.remove(task)
         if not task.cancelled():
             task.result()  # Show exception if it happened
