@@ -251,9 +251,6 @@ class TaskContext:
     def _mark_finished(self, task):
         assert task.done()
         assert task in self._tasks
-        if self._raise_background_errors:
-            # Wait for stop() to raise errors in foreground.
-            return
         self._tasks.remove(task)
         if not task.cancelled():
             task.result()  # Show exception if it happened
@@ -267,7 +264,9 @@ class TaskContext:
         else:
             raise Exception(f"Object of type {type(coro_or_task)} is not a coroutine or Task")
         self._tasks.add(task)
-        task.add_done_callback(self._mark_finished)
+        if not self._raise_background_errors:
+            # Wait for stop() to raise errors in foreground.
+            task.add_done_callback(self._mark_finished)
         return task
 
     def infinite_loop(self, async_f, timeout=90, sleep=10):

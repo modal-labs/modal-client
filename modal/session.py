@@ -157,12 +157,12 @@ class Session:
                     last_item = log_batch.items[-1]
                     if add_newline:
                         print_logs("\033[A\r", "stdout", stdout, stderr)
-                    add_newline = not last_item.data.endswith(b"\n")
+                    add_newline = not last_item.data.endswith("\n")
 
                     with self._progress.suspend():
                         for log in log_batch.items:
                             assert not log.task_state
-                            print_logs(log.data.decode("utf8"), log.fd, stdout, stderr)
+                            print_logs(log.data, log.fd, stdout, stderr)
                         if add_newline:
                             print_logs("\n", "stdout", stdout, stderr)
         return last_log_batch_entry_id

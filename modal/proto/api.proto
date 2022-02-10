@@ -175,7 +175,7 @@ enum TaskState {
 }
 
 message TaskLogs {
-  bytes data = 1;
+  string data = 1;
   string fd = 2;
   TaskState task_state = 6;
   double timestamp = 7;
