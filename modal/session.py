@@ -255,14 +255,14 @@ class Session:
             self.session_id = resp.session_id
 
             # Start tracking logs and yield context
-            async with TaskContext(
-                grace=config["logs_timeout"], raise_background_errors=self._raise_background_errors
-            ) as tc:
+            async with TaskContext(grace=config["logs_timeout"]) as tc:
                 async with safe_progress(tc, stdout, stderr, visible_progress) as (progress_handler, stdout, stderr):
                     self._progress = progress_handler
                     self._progress.step("Initializing...", "Initialized.")
 
-                    logs_task = tc.create_task(self._get_logs_loop(stdout, stderr))
+                    logs_task = tc.create_task(
+                        self._get_logs_loop(stdout, stderr), raise_background_errors=self._raise_background_errors
+                    )
 
                     self._progress.step("Creating objects...", "Created objects.")
                     # Create all members

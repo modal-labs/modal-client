@@ -225,9 +225,11 @@ class TaskContext:
             pass
         finally:
             for task in self._tasks:
-                if self._raise_background_errors and task.done():
+                if task.done() and not task.cancelled():
                     # Raise any exceptions if they happened.
+                    # Only tasks without a done_callback will still be present in self._tasks
                     task.result()
+
                 if task.done() or task in self._loops:
                     continue
 
@@ -255,7 +257,7 @@ class TaskContext:
         if not task.cancelled():
             task.result()  # Show exception if it happened
 
-    def create_task(self, coro_or_task):
+    def create_task(self, coro_or_task, raise_background_errors=False):
         if isinstance(coro_or_task, asyncio.Task):
             task = coro_or_task
         elif asyncio.iscoroutine(coro_or_task):
@@ -264,7 +266,7 @@ class TaskContext:
         else:
             raise Exception(f"Object of type {type(coro_or_task)} is not a coroutine or Task")
         self._tasks.add(task)
-        if not self._raise_background_errors:
+        if not raise_background_errors:
             # Wait for stop() to raise errors in foreground.
             task.add_done_callback(self._mark_finished)
         return task
