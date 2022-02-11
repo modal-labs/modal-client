@@ -31,9 +31,9 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.object_ids = {}
         self.queue = []
         self.deployments = {
+            MODAL_CLIENT_MOUNT_NAME: "mo-123",
             "foo-queue": "qu-foo",
             (f"debian-slim-{_dockerhub_python_version()}", "base"): "im-123",
-            (f"debian-slim-{_dockerhub_python_version()}", "builder"): "im-321",
         }
         self.n_queues = 0
         self.files_name2sha = {}
@@ -260,10 +260,3 @@ def reset_global_sessions():
     set_default_session(None)
     set_running_session(None)
     set_container_session(None)
-
-
-@pytest.fixture
-async def client_package_mount(servicer):
-    req = api_pb2.SessionDeployRequest(object_id="mo-123", name=MODAL_CLIENT_MOUNT_NAME)
-    await servicer.SessionDeploy(req, None)
-    yield

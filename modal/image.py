@@ -138,7 +138,6 @@ async def debian_slim(
     python_packages=None,
     python_version=None,
     pip_find_links=None,
-    builder_extra_commands=None,
 ):
     """A default base image, built on the official python:<version>-slim-buster Docker hub images
 
@@ -146,8 +145,7 @@ async def debian_slim(
     commands or python packages.
     """
     python_version = _dockerhub_python_version(python_version)
-    base_image = Image.include(f"debian-slim-{python_version}", "base", api_pb2.ShareNamespace.SN_GLOBAL)
-    builder_image = Image.include(f"debian-slim-{python_version}", "builder", api_pb2.ShareNamespace.SN_GLOBAL)
+    base_image = Image.include(f"debian-slim-{python_version}", namespace=api_pb2.ShareNamespace.SN_GLOBAL)
 
     if extra_commands is None and python_packages is None:
         return base_image
@@ -158,17 +156,10 @@ async def debian_slim(
         dockerfile_commands += [f"RUN {cmd}" for cmd in extra_commands]
 
     if python_packages is not None:
-        base_images["builder"] = builder_image
         find_links_arg = f"-f {pip_find_links}" if pip_find_links else ""
-        dockerfile_commands.append("FROM builder as builder-vehicle")
-        if builder_extra_commands is not None:
-            dockerfile_commands += [f"RUN {cmd}" for cmd in builder_extra_commands]
+
         dockerfile_commands += [
-            f"RUN pip wheel {' '.join(python_packages)} -w /tmp/wheels {find_links_arg}",
-            "FROM target",
-            "COPY --from=builder-vehicle /tmp/wheels /tmp/wheels",
-            "RUN pip install /tmp/wheels/*",
-            "RUN rm -rf /tmp/wheels",
+            f"RUN pip install {' '.join(python_packages)} {find_links_arg}",
         ]
 
     return await CustomImage.create(
