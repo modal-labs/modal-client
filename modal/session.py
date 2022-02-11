@@ -20,7 +20,7 @@ from ._session_singleton import (
 )
 from ._session_state import SessionState
 from .config import config, logger
-from .exception import ExecutionError, NotFoundError
+from .exception import ExecutionError, InvalidError, NotFoundError
 from .object import Object
 from .proto import api_pb2
 
