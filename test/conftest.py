@@ -33,7 +33,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.deployments = {
             MODAL_CLIENT_MOUNT_NAME: "mo-123",
             "foo-queue": "qu-foo",
-            (f"debian-slim-{_dockerhub_python_version()}", "base"): "im-123",
+            f"debian-slim-{_dockerhub_python_version()}": "im-123",
         }
         self.n_queues = 0
         self.files_name2sha = {}
