@@ -16,6 +16,7 @@ from .mount import Mount, create_package_mounts
 from .object import Object
 from .proto import api_pb2
 
+MODAL_CLIENT_MOUNT_NAME = "modal-client-mount"
 
 # TODO: maybe we can create a special Buffer class in the ORM that keeps track of the protobuf type
 # of the bytes stored, so the packing/unpacking can happen automatically.
@@ -244,7 +245,7 @@ class Function(Object, Factory, type_prefix="fu"):
         if config["sync_entrypoint"]:
             mounts.extend(await create_package_mounts("modal"))
         else:
-            client_mount = Mount.include("modal-client-mount", namespace=api_pb2.ShareNamespace.SN_GLOBAL)
+            client_mount = Mount.include(MODAL_CLIENT_MOUNT_NAME, namespace=api_pb2.ShareNamespace.SN_GLOBAL)
             mounts.append(client_mount)
 
         # Wait for image and mounts to finish

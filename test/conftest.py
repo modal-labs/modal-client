@@ -12,7 +12,11 @@ from modal._session_singleton import (
     set_default_session,
     set_running_session,
 )
-from modal.functions import _pack_output_buffer_item, _unpack_input_buffer_item
+from modal.functions import (
+    MODAL_CLIENT_MOUNT_NAME,
+    _pack_output_buffer_item,
+    _unpack_input_buffer_item,
+)
 from modal.image import _dockerhub_python_version
 from modal.proto import api_pb2, api_pb2_grpc
 from modal.version import __version__
@@ -256,3 +260,10 @@ def reset_global_sessions():
     set_default_session(None)
     set_running_session(None)
     set_container_session(None)
+
+
+@pytest.fixture
+async def client_package_mount(servicer):
+    req = api_pb2.SessionDeployRequest(object_id="mo-123", name=MODAL_CLIENT_MOUNT_NAME)
+    await servicer.SessionDeploy(req, None)
+    yield
