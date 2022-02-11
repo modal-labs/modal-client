@@ -240,9 +240,12 @@ class Function(Object, Factory, type_prefix="fu"):
                 condition=self.info.condition,
             )
         ]
+        # TODO(erikbern): couldn't we just create one single mount with all packages instead of multiple?
         if config["sync_entrypoint"]:
             mounts.extend(await create_package_mounts("modal"))
-        # TODO(erikbern): couldn't we just create one single mount with all packages instead of multiple?
+        else:
+            client_mount = Mount.include("modal-client-mount", namespace=api_pb2.ShareNamespace.SN_GLOBAL)
+            mounts.append(client_mount)
 
         # Wait for image and mounts to finish
         # TODO: should we really join recursively here? Maybe it's better to move this logic to the session class?
