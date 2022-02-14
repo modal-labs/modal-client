@@ -13,8 +13,6 @@ class ConnectionError(Exception):
 class InvalidError(Exception):
     """Used when user does something invalid."""
 
-    pass
-
 
 class VersionError(Exception):
     pass

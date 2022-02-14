@@ -23,7 +23,7 @@ class Schedule(Object, type_prefix="sc"):
                     seconds = int(period[:-1])
                 else:
                     raise
-            except:
+            except Exception:
                 raise Exception(f"Failed to parse period while creating Schedule: {period}")
             req = api_pb2.ScheduleCreateRequest(
                 session_id=session.session_id,

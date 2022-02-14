@@ -30,7 +30,7 @@ def set(token_id: str = "-", token_secret: str = "-", env: str = None, no_verify
         print(f"Verifying token against {server_url}...")
         client = Client(server_url, api_pb2.ClientType.CT_CLIENT, (token_id, token_secret))
         client.verify()
-        print(f"Token verified successfully")
+        print("Token verified successfully")
 
     store_user_config({"token_id": token_id, "token_secret": token_secret}, env=env)
     print(f"Token written to {user_config_path} {Symbols.PARTY_POPPER}")

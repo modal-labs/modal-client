@@ -118,11 +118,11 @@ class Session:
             tasks_loading = tasks_at_state(api_pb2.TaskState.TS_LOADING_IMAGE)
             msg = f"Loading images ({tasks_loading} containers initializing)..."
         elif api_pb2.TaskState.TS_WORKER_ASSIGNED in states_set:
-            msg = f"Worker assigned..."
+            msg = "Worker assigned..."
         elif api_pb2.TaskState.TS_QUEUED in states_set:
-            msg = f"Tasks queued..."
+            msg = "Tasks queued..."
         else:
-            msg = f"Tasks created..."
+            msg = "Tasks created..."
         self._progress.set_substep_text(msg)
 
     async def _get_logs(self, stdout, stderr, last_log_batch_entry_id, timeout=BLOCKING_REQUEST_TIMEOUT):
@@ -260,7 +260,7 @@ class Session:
                     self._progress = progress_handler
                     self._progress.step("Initializing...", "Initialized.")
 
-                    logs_task = tc.create_task(
+                    tc.create_task(
                         self._get_logs_loop(stdout, stderr), raise_background_errors=self._raise_background_errors
                     )
 

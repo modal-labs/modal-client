@@ -18,6 +18,7 @@ from .proto import api_pb2
 
 MODAL_CLIENT_MOUNT_NAME = "modal-client-mount"
 
+
 # TODO: maybe we can create a special Buffer class in the ORM that keeps track of the protobuf type
 # of the bytes stored, so the packing/unpacking can happen automatically.
 def _pack_input_buffer_item(args: bytes, kwargs: bytes, output_buffer_id: str, idx=None) -> api_pb2.BufferItem:
@@ -51,10 +52,10 @@ def _process_result(session, result):
                 exc = session.deserialize(result.data)
             except Exception as deser_exc:
                 raise ExecutionError(
-                    f"Could not deserialize remote exception due to local error:\n"
+                    "Could not deserialize remote exception due to local error:\n"
                     + f"{deser_exc}\n"
-                    + f"This can happen if your local environment does not have the remote exception definitions.\n"
-                    + f"Here is the remote traceback:\n"
+                    + "This can happen if your local environment does not have the remote exception definitions.\n"
+                    + "Here is the remote traceback:\n"
                     + f"{result.traceback}"
                 )
             if not isinstance(exc, BaseException):
@@ -153,7 +154,7 @@ class _MapInvocation:
                     buffer_req = api_pb2.BufferWriteRequest(items=items, buffer_id=input_buffer_id)
                     request = api_pb2.FunctionCallRequest(function_id=self.function_id, buffer_req=buffer_req)
 
-                    response = await buffered_rpc_write(self.session.client.stub.FunctionCall, request)
+                    await buffered_rpc_write(self.session.client.stub.FunctionCall, request)
 
             have_all_inputs = True
             yield

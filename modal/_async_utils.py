@@ -53,8 +53,8 @@ def retry(direct_fn=None, *, n_attempts=3, base_delay=0, delay_factor=2, timeout
         async def f_wrapped(*args, **kwargs):
             delay = base_delay
             for i in range(n_attempts):
+                t0 = time.time()
                 try:
-                    t0 = time.time()
                     return await asyncio.wait_for(fn(*args, **kwargs), timeout=timeout)
                 except asyncio.CancelledError:
                     if warn_on_cancel:
@@ -170,7 +170,7 @@ def asyncify_generator(generator_fn):
             nonlocal done
             try:
                 return next(it)
-            except StopIteration as exc:
+            except StopIteration:
                 done = True
 
         while True:

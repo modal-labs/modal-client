@@ -92,7 +92,7 @@ class Client:
     async def __aenter__(self):
         try:
             await self._start()
-        except:
+        except BaseException:
             await self._stop()
             raise
         return self

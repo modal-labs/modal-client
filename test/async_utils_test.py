@@ -89,7 +89,7 @@ async def test_asyncify_generator():
     @asyncify_generator
     def f(x, n):
         for i in range(n):
-            yield x ** i
+            yield x**i
 
     ret = []
     async for x in f(42, 3):
@@ -101,21 +101,21 @@ async def test_asyncify_generator():
 async def test_asyncify_generator_raises():
     @asyncify_generator
     def g(x):
-        yield x ** 2
+        yield x**2
         raise SampleException("banana")
 
     ret = []
-    with pytest.raises(SampleException) as exc:
+    with pytest.raises(SampleException):
         async for x in g(99):
             ret.append(x)
-    assert ret == [99 ** 2]
+    assert ret == [99**2]
 
 
 @pytest.mark.asyncio
 async def test_asyncify_function():
     @asyncify_function
     def f(x):
-        return x ** 3
+        return x**3
 
     assert await f(77) == 77 * 77 * 77
 

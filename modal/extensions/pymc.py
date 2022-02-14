@@ -19,11 +19,11 @@ def pymc_image():
     dockerfile_commands = [
         'SHELL ["/bin/bash", "-c"]',
         "RUN conda info",
-        "RUN echo $0 \ ",
-        "&& . /root/.bashrc \ ",
-        "&& conda activate base \ ",
-        "&& conda info \ ",
-        "&& conda list \ ",
+        "RUN echo $0 \\ ",
+        "&& . /root/.bashrc \\ ",
+        "&& conda activate base \\ ",
+        "&& conda info \\ ",
+        "&& conda list \\ ",
         "&& conda install theano-pymc==1.1.2 pymc3==3.11.2 scikit-learn --yes ",
     ]
     conda_image = modal.Image.include("conda", namespace=api_pb2.ShareNamespace.SN_GLOBAL)

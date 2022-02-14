@@ -27,15 +27,15 @@ async def test_container_client(servicer, container_client):
 
 @pytest.mark.asyncio
 async def test_client_connection_failure():
-    with pytest.raises(ConnectionError) as exc:
-        async with Client("https://xyz.invalid", api_pb2.ClientType.CT_CLIENT, None) as client:
+    with pytest.raises(ConnectionError):
+        async with Client("https://xyz.invalid", api_pb2.ClientType.CT_CLIENT, None):
             pass
 
 
 @pytest.mark.asyncio
 async def test_client_old_version(servicer):
-    with pytest.raises(VersionError) as exc:
+    with pytest.raises(VersionError):
         async with Client(
             servicer.remote_addr, api_pb2.ClientType.CT_CLIENT, ("foo-id", "foo-secret"), version="0.0.0"
-        ) as client:
+        ):
             pass
