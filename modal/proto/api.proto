@@ -312,13 +312,13 @@ message DictPopResponse {
   optional bytes value = 2;
 }
 
-message EnvDictCreateRequest {
+message SecretCreateRequest {
   map<string, string> env_dict = 1;
   string session_id = 2;
 }
 
-message EnvDictCreateResponse {
-  string env_dict_id = 1;
+message SecretCreateResponse {
+  string secret_id = 1;
 }
 
 message Resources {
@@ -330,7 +330,7 @@ message Function {
   string function_name = 2;
   repeated string mount_ids = 3;
   string image_id = 4;
-  string env_dict_id = 5;
+  string secret_id = 5;
   bytes function_serialized = 6;
 
   enum DefinitionType {FILE = 0; SERIALIZED = 1;}
@@ -493,7 +493,7 @@ service ModalClient {
   rpc DictLen(DictLenRequest) returns (DictLenResponse);
 
   // Env Dicts
-  rpc EnvDictCreate(EnvDictCreateRequest) returns (EnvDictCreateResponse);
+  rpc SecretCreate(SecretCreateRequest) returns (SecretCreateResponse);
 
   // Functions
   rpc FunctionCreate(FunctionCreateRequest) returns (FunctionCreateResponse);

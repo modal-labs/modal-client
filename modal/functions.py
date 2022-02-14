@@ -256,9 +256,9 @@ class Function(Object, Factory, type_prefix="fu"):
         else:
             image_id = None  # Happens if it's a notebook function
         if self.env_dict is not None:
-            env_dict_id = await session.create_object(self.env_dict)
+            secret_id = await session.create_object(self.env_dict)
         else:
-            env_dict_id = None
+            secret_id = None
         mount_ids = await asyncio.gather(*(session.create_object(mount) for mount in mounts))
 
         if self.schedule is not None:
@@ -277,7 +277,7 @@ class Function(Object, Factory, type_prefix="fu"):
             module_name=self.info.module_name,
             function_name=self.info.function_name,
             mount_ids=mount_ids,
-            env_dict_id=env_dict_id,
+            secret_id=secret_id,
             image_id=image_id,
             definition_type=self.info.definition_type,
             function_serialized=self.info.function_serialized,
