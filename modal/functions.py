@@ -215,7 +215,7 @@ class _MapInvocation:
 
 
 class Function(Object, Factory, type_prefix="fu"):
-    def __init__(self, raw_f, image=None, env_dict=None, schedule=None, is_generator=False, gpu=False):
+    def __init__(self, raw_f, image=None, secret=None, schedule=None, is_generator=False, gpu=False):
         assert callable(raw_f)
         self.info = FunctionInfo(raw_f)
         if schedule is not None:
@@ -227,7 +227,7 @@ class Function(Object, Factory, type_prefix="fu"):
         tag = self.info.get_tag(None)
         self.raw_f = raw_f
         self.image = image
-        self.env_dict = env_dict
+        self.secret = secret
         self.schedule = schedule
         self.is_generator = is_generator
         self.gpu = gpu
@@ -255,8 +255,8 @@ class Function(Object, Factory, type_prefix="fu"):
             image_id = await session.create_object(self.image)
         else:
             image_id = None  # Happens if it's a notebook function
-        if self.env_dict is not None:
-            secret_id = await session.create_object(self.env_dict)
+        if self.secret is not None:
+            secret_id = await session.create_object(self.secret)
         else:
             secret_id = None
         mount_ids = await asyncio.gather(*(session.create_object(mount) for mount in mounts))
@@ -337,30 +337,30 @@ def _register_function(function, session):
 
 
 @decorator_with_options
-def function(raw_f=None, session=None, image=debian_slim, schedule=None, env_dict=None, gpu=False):
+def function(raw_f=None, session=None, image=debian_slim, schedule=None, secret=None, gpu=False):
     """Decorator to create Modal functions
 
     Args:
         session (:py:class:`modal.session.Session`): The session
         image (:py:class:`modal.image.Image`): The image to run the function in
-        env_dict (:py:class:`modal.env_dict.EnvDict`): Dictionary of environment variables
+        secret (:py:class:`modal.secret.Secret`): Dictionary of environment variables
         gpu (bool): Whether a GPU is required
     """
-    function = Function(raw_f, image=image, env_dict=env_dict, schedule=schedule, is_generator=False, gpu=gpu)
+    function = Function(raw_f, image=image, secret=secret, schedule=schedule, is_generator=False, gpu=gpu)
     _register_function(function, session)
     return function
 
 
 @decorator_with_options
-def generator(raw_f=None, session=None, image=debian_slim, env_dict=None, gpu=False):
+def generator(raw_f=None, session=None, image=debian_slim, secret=None, gpu=False):
     """Decorator to create Modal generators
 
     Args:
         session (:py:class:`modal.session.Session`): The session
         image (:py:class:`modal.image.Image`): The image to run the function in
-        env_dict (:py:class:`modal.env_dict.EnvDict`): Dictionary of environment variables
+        secret (:py:class:`modal.secret.Secret`): Dictionary of environment variables
         gpu (bool): Whether a GPU is required
     """
-    function = Function(raw_f, image=image, env_dict=env_dict, is_generator=True, gpu=gpu)
+    function = Function(raw_f, image=image, secret=secret, is_generator=True, gpu=gpu)
     _register_function(function, session)
     return function

@@ -229,6 +229,13 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.n_schedules += 1
         return api_pb2.ScheduleCreateResponse(schedule_id=f"sc-{self.n_schedules}")
 
+    async def SecretCreate(
+        self,
+        request: api_pb2.SecretCreateRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> api_pb2.SecretCreateResponse:
+        return api_pb2.SecretCreateResponse(secret_id="st-123")
+
 
 @pytest.fixture(scope="function")
 async def servicer():
