@@ -267,6 +267,9 @@ def call_function(
             raise InvalidError(f"Unknown function type {function_type}")
 
     except Exception as exc:
+        # print exception so it's logged
+        traceback.print_exc()
+
         try:
             serialized_exc = function_context.serialize(exc)
         except Exception:
