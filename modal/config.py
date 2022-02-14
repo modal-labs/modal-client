@@ -1,8 +1,5 @@
-"""
-Configuration
-=============
+"""Modal intentionally keeps configurability to a minimum.
 
-Polyester intentionally keeps configurability to a minimum.
 The main configuration options are the API tokens: the token id and the token secret.
 These can be configured in two ways:
 
