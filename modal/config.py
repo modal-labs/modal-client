@@ -17,9 +17,11 @@ These can be configured in two ways:
 The ``.modal.toml`` file is generally stored in your home directory.
 It should look like this::
 
-    [default]
-    token_id = "ak-12345..."
-    token_secret = "as-12345..."
+```toml
+[default]
+token_id = "ak-12345..."
+token_secret = "as-12345..."
+```
 
 You can create this file manually, or you can run the ``modal token set ...``
 command (see below).
@@ -29,9 +31,11 @@ Setting tokens using the CLI
 
 You can set a token by running the command::
 
-    modal token set \\
-      --token-id <token id> \\
-      --token-secret <token secret>
+```bash
+modal token set \
+  --token-id <token id> \
+  --token-secret <token secret>
+```
 
 This will write the token id and secret to ``.modal.toml``.
 
