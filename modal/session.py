@@ -369,7 +369,7 @@ def run(*args, **kwargs):
     """Start up the default modal session"""
     if get_container_session() is not None:
         # TODO: we could probably capture whether this happens during an import
-        raise ExecutionError("Cannot run modal.run() inside a container!" " You might have global code that does this.")
+        raise ExecutionError("Cannot run modal.run() inside a container! You might have global code that does this.")
     session = get_default_session()
     return session.run(*args, **kwargs)
 
