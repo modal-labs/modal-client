@@ -1,7 +1,6 @@
 import asyncio
-import time
-
 import pytest
+import time
 
 from modal import Session, debian_slim
 from modal._client import Client

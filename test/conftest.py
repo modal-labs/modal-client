@@ -1,10 +1,10 @@
 import asyncio
+import pytest
 import typing
 
 import cloudpickle
 import grpc
 import pkg_resources
-import pytest
 
 from modal._client import Client
 from modal._session_singleton import (

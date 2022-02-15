@@ -1,5 +1,4 @@
 import asyncio
-
 import pytest
 
 from modal._client import Client
