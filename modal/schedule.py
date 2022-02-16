@@ -26,14 +26,14 @@ class Schedule(Object, type_prefix="sc"):
             except Exception:
                 raise Exception(f"Failed to parse period while creating Schedule: {period}")
             req = api_pb2.ScheduleCreateRequest(
-                session_id=session.session_id,
+                app_id=session.session_id,
                 period=seconds,
                 args=session.serialize([]),
                 kwargs=session.serialize({}),
             )
         elif cron_string:
             req = api_pb2.ScheduleCreateRequest(
-                session_id=session.session_id,
+                app_id=session.session_id,
                 cron_string=cron_string,
                 args=session.serialize([]),
                 kwargs=session.serialize({}),

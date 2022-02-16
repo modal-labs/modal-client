@@ -285,7 +285,7 @@ class Function(Object, Factory, type_prefix="fu"):
             resources=api_pb2.Resources(gpu=self.gpu),
         )
         request = api_pb2.FunctionCreateRequest(
-            session_id=session.session_id,
+            app_id=session.session_id,
             schedule_id=schedule_id,
             function=function_definition,
         )

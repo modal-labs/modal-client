@@ -18,7 +18,7 @@ message ContainerArguments{  // This is used to pass data from the worker to the
   string task_id = 1;
   string function_id = 2;
   string input_buffer_id = 3;
-  string session_id = 4;
+  string app_id = 4;
   Function function_def = 7;
 }
 
@@ -88,7 +88,7 @@ message ClientHeartbeatRequest {
   string client_id = 1;
 }
 
-enum SessionState {
+enum AppState {
   SS_UNSPECIFIED = 0;
   SS_EPHEMERAL = 1;             // Will be discharged when the client disconnects
   SS_DETACHED = 2;              // Will be discharged when there's no more functions
@@ -98,39 +98,39 @@ enum SessionState {
   SS_STOPPED = 5;               // Stopped
 }
 
-message SessionCreateRequest {
+message AppCreateRequest {
   string client_id = 1;
   string name = 2;    // Human readable label for the website
 }
 
-message SessionCreateResponse {
-  string session_id = 1;
+message AppCreateResponse {
+  string app_id = 1;
 }
 
-message SessionClientDisconnectRequest {
-  string session_id = 1;
+message AppClientDisconnectRequest {
+  string app_id = 1;
 }
 
-message SessionGetLogsRequest {
-  string session_id = 1;
+message AppGetLogsRequest {
+  string app_id = 1;
   float timeout = 2;
   string last_entry_id = 4;
 }
 
-message SessionSetObjectsRequest {
+message AppSetObjectsRequest {
   // TODO: this is a bit of a hacky request meant to be somewhat temporary
-  // At some point, every object should be assigned to a session/namespace when created,
+  // At some point, every object should be assigned to a app/namespace when created,
   // so this method won't be necessary.
-  string session_id = 1;
+  string app_id = 1;
   map<string, string> object_ids = 2;
 }
 
-message SessionGetObjectsRequest {
-  string session_id = 1;
+message AppGetObjectsRequest {
+  string app_id = 1;
   string task_id = 2;
 }
 
-message SessionGetObjectsResponse {
+message AppGetObjectsResponse {
   map<string, string> object_ids = 1;
 }
 
@@ -141,27 +141,27 @@ enum ShareNamespace {  // TODO: rename this to something else?
   SN_GLOBAL = 3;
 }
 
-message SessionDeployRequest {
-  string session_id = 1;
+message AppDeployRequest {
+  string app_id = 1;
   ShareNamespace namespace = 2;
   string name = 3;
   string object_id = 4;
   map<string, string> object_ids = 5;
 }
 
-message SessionIncludeObjectRequest {
-  string session_id = 1;
+message AppIncludeObjectRequest {
+  string app_id = 1;
   ShareNamespace namespace = 2;
   string name = 3;
   string object_label = 4;
 }
 
-message SessionIncludeObjectResponse {
+message AppIncludeObjectResponse {
   string object_id = 1;
 }
 
-message SessionDetachRequest {
-  string session_id = 1;
+message AppDetachRequest {
+  string app_id = 1;
 }
 
 enum TaskState {
@@ -187,11 +187,11 @@ message TaskLogsBatch {
   repeated TaskLogs state_updates = 4;
   string entry_id = 5;
   bool task_done = 7;
-  SessionState session_state = 9;
+  AppState app_state = 9;
 }
 
 message QueueCreateRequest {
-  string session_id = 1;
+  string app_id = 1;
 }
 
 message QueueCreateResponse {
@@ -236,7 +236,7 @@ message Image {
 
 message ImageGetOrCreateRequest {
   Image image = 2;
-  string session_id = 4;
+  string app_id = 4;
 }
 
 message ImageGetOrCreateResponse {
@@ -246,7 +246,7 @@ message ImageGetOrCreateResponse {
 message ImageJoinRequest {
   string image_id = 1;
   float timeout = 2;
-  string session_id = 3;
+  string app_id = 3;
 }
 
 message ImageJoinResponse {
@@ -260,7 +260,7 @@ message DictEntry {
 
 message DictCreateRequest {
   repeated DictEntry data = 1;
-  string session_id = 2;
+  string app_id = 2;
 }
 
 message DictCreateResponse {
@@ -314,7 +314,7 @@ message DictPopResponse {
 
 message SecretCreateRequest {
   map<string, string> env_dict = 1;
-  string session_id = 2;
+  string app_id = 2;
 }
 
 message SecretCreateResponse {
@@ -344,7 +344,7 @@ message Function {
 
 message FunctionCreateRequest {
   Function function = 1;
-  string session_id = 2;
+  string app_id = 2;
   string schedule_id = 3;
 }
 
@@ -397,7 +397,7 @@ message FunctionOutputRequest {
 }
 
 message ScheduleCreateRequest {
-  string session_id = 1;
+  string app_id = 1;
   double period = 2;
   bytes args = 3;
   bytes kwargs = 4;
@@ -420,7 +420,7 @@ message SchedulePing {
 }
 
 message MountCreateRequest {
-  string session_id = 2;
+  string app_id = 2;
 }
 
 message MountCreateResponse {
@@ -459,15 +459,15 @@ service ModalClient {
   rpc ScheduleGetPings(ScheduleGetPingsRequest) returns (stream SchedulePing);
 
 
-  // Sessions
-  rpc SessionCreate(SessionCreateRequest) returns (SessionCreateResponse);
-  rpc SessionClientDisconnect(SessionClientDisconnectRequest) returns (Empty);
-  rpc SessionGetLogs(SessionGetLogsRequest) returns (stream TaskLogsBatch);
-  rpc SessionSetObjects(SessionSetObjectsRequest) returns (Empty);
-  rpc SessionGetObjects(SessionGetObjectsRequest) returns (SessionGetObjectsResponse);
-  rpc SessionIncludeObject(SessionIncludeObjectRequest) returns (SessionIncludeObjectResponse);
-  rpc SessionDeploy(SessionDeployRequest) returns (Empty);
-  rpc SessionDetach(SessionDetachRequest) returns (Empty);
+  // Apps
+  rpc AppCreate(AppCreateRequest) returns (AppCreateResponse);
+  rpc AppClientDisconnect(AppClientDisconnectRequest) returns (Empty);
+  rpc AppGetLogs(AppGetLogsRequest) returns (stream TaskLogsBatch);
+  rpc AppSetObjects(AppSetObjectsRequest) returns (Empty);
+  rpc AppGetObjects(AppGetObjectsRequest) returns (AppGetObjectsResponse);
+  rpc AppIncludeObject(AppIncludeObjectRequest) returns (AppIncludeObjectResponse);
+  rpc AppDeploy(AppDeployRequest) returns (Empty);
+  rpc AppDetach(AppDetachRequest) returns (Empty);
 
   // Queues
   rpc QueueCreate(QueueCreateRequest) returns (QueueCreateResponse);

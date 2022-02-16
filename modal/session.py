@@ -126,23 +126,23 @@ class Session:
         self._progress.set_substep_text(msg)
 
     async def _get_logs(self, stdout, stderr, last_log_batch_entry_id, timeout=BLOCKING_REQUEST_TIMEOUT):
-        request = api_pb2.SessionGetLogsRequest(
-            session_id=self.session_id,
+        request = api_pb2.AppGetLogsRequest(
+            app_id=self.session_id,
             timeout=timeout,
             last_entry_id=last_log_batch_entry_id,
         )
         add_newline = None
-        async for log_batch in self.client.stub.SessionGetLogs(request, timeout=timeout + GRPC_REQUEST_TIME_BUFFER):
-            if log_batch.session_state:
-                logger.info(f"Session state now {api_pb2.SessionState.Name(log_batch.session_state)}")
-                if log_batch.session_state not in (
-                    api_pb2.SessionState.SS_EPHEMERAL,
-                    api_pb2.SessionState.SS_DRAINING_LOGS,
+        async for log_batch in self.client.stub.AppGetLogs(request, timeout=timeout + GRPC_REQUEST_TIME_BUFFER):
+            if log_batch.app_state:
+                logger.info(f"Session state now {api_pb2.AppState.Name(log_batch.app_state)}")
+                if log_batch.app_state not in (
+                    api_pb2.AppState.SS_EPHEMERAL,
+                    api_pb2.AppState.SS_DRAINING_LOGS,
                 ):
                     return None
             else:
                 if log_batch.entry_id != "":
-                    # log_batch entry_id is empty for fd="server" messages from SessionGetLogs
+                    # log_batch entry_id is empty for fd="server" messages from AppGetLogs
                     last_log_batch_entry_id = log_batch.entry_id
                 for log in log_batch.state_updates:
                     self._update_task_state(log_batch.task_id, log.task_state)
@@ -185,8 +185,8 @@ class Session:
         self.session_id = session_id
         self.client = client
 
-        req = api_pb2.SessionGetObjectsRequest(session_id=session_id, task_id=task_id)
-        resp = await self.client.stub.SessionGetObjects(req)
+        req = api_pb2.AppGetObjectsRequest(app_id=session_id, task_id=task_id)
+        resp = await self.client.stub.AppGetObjects(req)
         self._created_tagged_objects = dict(resp.object_ids)
 
         # In the container, run forever
@@ -250,9 +250,9 @@ class Session:
 
         try:
             # Start session
-            req = api_pb2.SessionCreateRequest(client_id=client.client_id, name=self.name)
-            resp = await client.stub.SessionCreate(req)
-            self.session_id = resp.session_id
+            req = api_pb2.AppCreateRequest(client_id=client.client_id, name=self.name)
+            resp = await client.stub.AppCreate(req)
+            self.session_id = resp.app_id
 
             # Start tracking logs and yield context
             async with TaskContext(grace=config["logs_timeout"]) as tc:
@@ -270,11 +270,11 @@ class Session:
                     self._progress.step("Running session...", "Session completed.")
 
                     # Create the session (and send a list of all tagged obs)
-                    req = api_pb2.SessionSetObjectsRequest(
-                        session_id=self.session_id,
+                    req = api_pb2.AppSetObjectsRequest(
+                        app_id=self.session_id,
                         object_ids=self._created_tagged_objects,
                     )
-                    await self.client.stub.SessionSetObjects(req)
+                    await self.client.stub.AppSetObjects(req)
 
                     try:
                         self.state = SessionState.RUNNING
@@ -285,8 +285,8 @@ class Session:
                         # 1. Server to kill any running task
                         # 2. Logs to drain (stopping the _get_logs_loop coroutine)
                         logger.debug("Stopping the session server-side")
-                        req = api_pb2.SessionClientDisconnectRequest(session_id=self.session_id)
-                        await self.client.stub.SessionClientDisconnect(req)
+                        req = api_pb2.AppClientDisconnectRequest(app_id=self.session_id)
+                        await self.client.stub.AppClientDisconnect(req)
         finally:
             self.client = None
             self.state = SessionState.NONE
@@ -313,8 +313,8 @@ class Session:
             set_running_session(None)
 
     async def detach(self):
-        request = api_pb2.SessionDetachRequest(session_id=self.session_id)
-        await self.client.stub.SessionDetach(request)
+        request = api_pb2.AppDetachRequest(app_id=self.session_id)
+        await self.client.stub.AppDetach(request)
 
     async def deploy(self, name, obj_or_objs=None, namespace=api_pb2.ShareNamespace.SN_ACCOUNT):
         object_id = None
@@ -327,23 +327,23 @@ class Session:
             pass
         else:
             raise InvalidError(f"{obj_or_objs} not an Object or dict or None")
-        request = api_pb2.SessionDeployRequest(
-            session_id=self.session_id,
+        request = api_pb2.AppDeployRequest(
+            app_id=self.session_id,
             name=name,
             namespace=namespace,
             object_id=object_id,
             object_ids=object_ids,
         )
-        await self.client.stub.SessionDeploy(request)
+        await self.client.stub.AppDeploy(request)
 
     async def include(self, name, object_label=None, namespace=api_pb2.ShareNamespace.SN_ACCOUNT):
-        request = api_pb2.SessionIncludeObjectRequest(
-            session_id=self.session_id,
+        request = api_pb2.AppIncludeObjectRequest(
+            app_id=self.session_id,
             name=name,
             object_label=object_label,
             namespace=namespace,
         )
-        response = await self.client.stub.SessionIncludeObject(request)
+        response = await self.client.stub.AppIncludeObject(request)
         if not response.object_id:
             err_msg = f"Could not find object {name}"
             if object_label is not None:

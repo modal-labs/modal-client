@@ -18,7 +18,7 @@ class Dict(Object, type_prefix="di"):
     async def create(cls, data={}, session=None):
         session = cls._get_session(session)
         serialized = cls._serialize_dict(session, data)
-        req = api_pb2.DictCreateRequest(session_id=session.session_id, data=serialized)
+        req = api_pb2.DictCreateRequest(app_id=session.session_id, data=serialized)
         response = await session.client.stub.DictCreate(req)
         logger.debug("Created dict with id %s" % response.dict_id)
         return cls._create_object_instance(response.dict_id, session)

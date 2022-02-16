@@ -55,17 +55,17 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
             return
         return api_pb2.ClientCreateResponse(client_id=client_id)
 
-    async def SessionCreate(
+    async def AppCreate(
         self,
-        request: api_pb2.SessionCreateRequest,
+        request: api_pb2.AppCreateRequest,
         context: grpc.aio.ServicerContext,
-    ) -> api_pb2.SessionCreateResponse:
+    ) -> api_pb2.AppCreateResponse:
         self.requests.append(request)
-        session_id = "se-123"
-        return api_pb2.SessionCreateResponse(session_id=session_id)
+        app_id = "se-123"
+        return api_pb2.AppCreateResponse(app_id=app_id)
 
-    async def SessionClientDisconnect(
-        self, request: api_pb2.SessionClientDisconnectRequest, context: grpc.aio.ServicerContext
+    async def AppClientDisconnect(
+        self, request: api_pb2.AppClientDisconnectRequest, context: grpc.aio.ServicerContext
     ) -> api_pb2.Empty:
         self.requests.append(request)
         self.done = True
@@ -77,12 +77,12 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.requests.append(request)
         return api_pb2.Empty()
 
-    async def SessionGetLogs(
-        self, request: api_pb2.SessionGetLogsRequest, context: grpc.aio.ServicerContext
+    async def AppGetLogs(
+        self, request: api_pb2.AppGetLogsRequest, context: grpc.aio.ServicerContext
     ) -> typing.AsyncIterator[api_pb2.TaskLogsBatch]:
         await asyncio.sleep(1.0)
         if self.done:
-            yield api_pb2.TaskLogsBatch(session_state=api_pb2.SS_STOPPED)
+            yield api_pb2.TaskLogsBatch(app_state=api_pb2.SS_STOPPED)
 
     async def FunctionGetNextInput(
         self, request: api_pb2.FunctionGetNextInputRequest, context: grpc.aio.ServicerContext
@@ -95,13 +95,13 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.container_outputs.append(request)
         return api_pb2.BufferWriteResponse(status=api_pb2.BufferWriteResponse.BufferWriteStatus.SUCCESS)
 
-    async def SessionGetObjects(
-        self, request: api_pb2.SessionGetObjectsRequest, context: grpc.aio.ServicerContext
-    ) -> api_pb2.SessionGetObjectsResponse:
-        return api_pb2.SessionGetObjectsResponse(object_ids=self.object_ids)
+    async def AppGetObjects(
+        self, request: api_pb2.AppGetObjectsRequest, context: grpc.aio.ServicerContext
+    ) -> api_pb2.AppGetObjectsResponse:
+        return api_pb2.AppGetObjectsResponse(object_ids=self.object_ids)
 
-    async def SessionSetObjects(
-        self, request: api_pb2.SessionSetObjectsRequest, context: grpc.aio.ServicerContext
+    async def AppSetObjects(
+        self, request: api_pb2.AppSetObjectsRequest, context: grpc.aio.ServicerContext
     ) -> api_pb2.Empty:
         self.objects = dict(request.object_ids)
         return api_pb2.Empty()
@@ -121,9 +121,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     ) -> api_pb2.QueueGetResponse:
         return api_pb2.QueueGetResponse(values=[self.queue.pop(0)])
 
-    async def SessionDeploy(
-        self, request: api_pb2.SessionDeployRequest, context: grpc.aio.ServicerContext
-    ) -> api_pb2.Empty:
+    async def AppDeploy(self, request: api_pb2.AppDeployRequest, context: grpc.aio.ServicerContext) -> api_pb2.Empty:
         if request.object_id:
             self.deployments[request.name] = request.object_id
         elif request.object_ids:
@@ -131,14 +129,14 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
                 self.deployments[(request.name, label)] = object_id
         return api_pb2.Empty()
 
-    async def SessionIncludeObject(
-        self, request: api_pb2.SessionIncludeObjectRequest, context: grpc.aio.ServicerContext
-    ) -> api_pb2.SessionIncludeObjectResponse:
+    async def AppIncludeObject(
+        self, request: api_pb2.AppIncludeObjectRequest, context: grpc.aio.ServicerContext
+    ) -> api_pb2.AppIncludeObjectResponse:
         if request.object_label:
             object_id = self.deployments.get((request.name, request.object_label))
         else:
             object_id = self.deployments.get(request.name)
-        return api_pb2.SessionIncludeObjectResponse(object_id=object_id)
+        return api_pb2.AppIncludeObjectResponse(object_id=object_id)
 
     async def MountCreate(
         self,

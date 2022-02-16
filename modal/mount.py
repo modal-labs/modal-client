@@ -74,7 +74,7 @@ class Mount(Object, type_prefix="mo"):
                 )
                 response = await client.stub.MountUploadFile(request)
 
-        req = api_pb2.MountCreateRequest(session_id=session.session_id)
+        req = api_pb2.MountCreateRequest(app_id=session.session_id)
         resp = await session.client.stub.MountCreate(req)
         mount_id = resp.mount_id
 

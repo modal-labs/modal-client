@@ -48,7 +48,7 @@ async def _run_container(servicer, module_name, function_name):
             task_id="ta-123",
             function_id="fu-123",
             input_buffer_id=INPUT_BUFFER,
-            session_id="se-123",
+            app_id="se-123",
             function_def=function_def,
         )
 

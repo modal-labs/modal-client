@@ -47,7 +47,7 @@ class FunctionContext:
         self.task_id = container_args.task_id
         self.function_id = container_args.function_id
         self.input_buffer_id = container_args.input_buffer_id
-        self.session_id = container_args.session_id
+        self.session_id = container_args.app_id
         self.function_def = container_args.function_def
         self.client = client
 

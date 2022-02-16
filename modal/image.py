@@ -80,7 +80,7 @@ class CustomImage(Image):
         )
 
         req = api_pb2.ImageGetOrCreateRequest(
-            session_id=session.session_id,
+            app_id=session.session_id,
             image=image_definition,
         )
         resp = await session.client.stub.ImageGetOrCreate(req)
@@ -91,7 +91,7 @@ class CustomImage(Image):
             request = api_pb2.ImageJoinRequest(
                 image_id=image_id,
                 timeout=BLOCKING_REQUEST_TIMEOUT,
-                session_id=session.session_id,
+                app_id=session.session_id,
             )
             response = await retry(session.client.stub.ImageJoin)(request, timeout=GRPC_REQUEST_TIMEOUT)
             if not response.result.status:

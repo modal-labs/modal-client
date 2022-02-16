@@ -17,7 +17,7 @@ class Queue(Object, type_prefix="qu"):
     @classmethod
     async def create(cls, session=None):
         session = cls._get_session(session)
-        request = api_pb2.QueueCreateRequest(session_id=session.session_id)
+        request = api_pb2.QueueCreateRequest(app_id=session.session_id)
         response = await session.client.stub.QueueCreate(request)
         logger.debug("Created queue with id %s" % response.queue_id)
         return cls._create_object_instance(response.queue_id, session)
