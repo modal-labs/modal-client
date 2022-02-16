@@ -1,7 +1,7 @@
 from modal._server_connection import GRPCConnectionFactory
 
 
-async def test_create_factory():
+def test_create_factory():
     cf = GRPCConnectionFactory("http://localhost:1234")
     assert cf.target == "localhost:1234"
     assert cf.credentials is None
