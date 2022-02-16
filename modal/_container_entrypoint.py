@@ -233,8 +233,8 @@ def call_function(
     output_buffer_id = input.output_buffer_id
 
     input_id = buffer_item.item_id
-    args = function_context.deserialize(input.args)
-    kwargs = function_context.deserialize(input.kwargs)
+    args = function_context.deserialize(input.args) if input.args else ()
+    kwargs = function_context.deserialize(input.kwargs) if input.kwargs else ()
     idx = buffer_item.idx
 
     try:

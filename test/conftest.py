@@ -188,8 +188,8 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     ) -> api_pb2.BufferWriteResponse:
         for item in request.buffer_req.items:
             function_input = _unpack_input_buffer_item(item)
-            args = cloudpickle.loads(function_input.args)
-            kwargs = cloudpickle.loads(function_input.kwargs)
+            args = cloudpickle.loads(function_input.args) if function_input.args else ()
+            kwargs = cloudpickle.loads(function_input.kwargs) if function_input.kwargs else {}
             self.client_calls.append((args, kwargs))
         return api_pb2.BufferWriteResponse(status=api_pb2.BufferWriteResponse.BUFFER_WRITE_STATUS_SUCCESS)
 
@@ -213,14 +213,6 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
             status=api_pb2.BufferReadResponse.BUFFER_READ_STATUS_SUCCESS,
             items=[item],
         )
-
-    async def ScheduleCreate(
-        self,
-        request: api_pb2.ScheduleCreateRequest,
-        context: grpc.aio.ServicerContext,
-    ) -> api_pb2.ScheduleCreateResponse:
-        self.n_schedules += 1
-        return api_pb2.ScheduleCreateResponse(schedule_id=f"sc-{self.n_schedules}")
 
     async def SecretCreate(
         self,

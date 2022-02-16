@@ -366,7 +366,10 @@ message Function {
 message FunctionCreateRequest {
   Function function = 1;
   string app_id = 2;
-  string schedule_id = 3;
+  oneof schedule_oneof {
+    float period = 4;
+    string cron_string = 5;
+  }
 }
 
 message FunctionCreateResponse {
@@ -417,29 +420,6 @@ message FunctionOutputRequest {
   string task_id = 9;
 }
 
-message ScheduleCreateRequest {
-  string app_id = 1;
-  double period = 2;
-  bytes args = 3;
-  bytes kwargs = 4;
-  string cron_string = 5;
-}
-
-message ScheduleCreateResponse {
-  string schedule_id = 1;
-  string error_message = 2;
-}
-
-message ScheduleGetPingsRequest {
-  string schedule_id = 1;
-  float timeout = 2;
-  string last_entry_id = 3;
-}
-
-message SchedulePing {
-  double timestamp = 1;
-}
-
 message MountCreateRequest {
   string app_id = 2;
 }
@@ -474,11 +454,6 @@ service ModalClient {
   // Clients
   rpc ClientCreate(ClientCreateRequest) returns (ClientCreateResponse);
   rpc ClientHeartbeat(ClientHeartbeatRequest) returns (google.protobuf.Empty);
-
-  // Schedules
-  rpc ScheduleCreate(ScheduleCreateRequest) returns (ScheduleCreateResponse);
-  rpc ScheduleGetPings(ScheduleGetPingsRequest) returns (stream SchedulePing);
-
 
   // Apps
   rpc AppCreate(AppCreateRequest) returns (AppCreateResponse);
