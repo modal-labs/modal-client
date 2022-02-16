@@ -16,6 +16,7 @@ from .image import debian_slim
 from .mount import Mount, create_package_mounts
 from .object import Object
 from .proto import api_pb2
+from .schedule import Schedule
 
 MODAL_CLIENT_MOUNT_NAME = "modal-client-mount"
 
@@ -218,7 +219,15 @@ class _MapInvocation:
 
 
 class Function(Object, Factory, type_prefix="fu"):
-    def __init__(self, raw_f, image=None, secret=None, schedule=None, is_generator=False, gpu=False):
+    def __init__(
+        self,
+        raw_f,
+        image=None,
+        secret=None,
+        schedule: Optional[Schedule] = None,
+        is_generator=False,
+        gpu: bool = False,
+    ):
         assert callable(raw_f)
         self.info = FunctionInfo(raw_f)
         if schedule is not None:
@@ -264,12 +273,6 @@ class Function(Object, Factory, type_prefix="fu"):
             secret_id = None
         mount_ids = await asyncio.gather(*(app.create_object(mount) for mount in mounts))
 
-        if self.schedule is not None:
-            # Ensure that the function does not require any input arguments
-            schedule_id = await app.create_object(self.schedule)
-        else:
-            schedule_id = None
-
         if self.is_generator:
             function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
         else:
@@ -289,8 +292,9 @@ class Function(Object, Factory, type_prefix="fu"):
         )
         request = api_pb2.FunctionCreateRequest(
             app_id=app.app_id,
-            schedule_id=schedule_id,
             function=function_definition,
+            cron_string=self.schedule._cron_string if self.schedule else None,
+            period=self.schedule._period if self.schedule else None,
         )
         response = await app.client.stub.FunctionCreate(request)
 
@@ -340,7 +344,14 @@ def _register_function(function, app):
 
 
 @decorator_with_options
-def function(raw_f=None, app=None, image=debian_slim, schedule=None, secret=None, gpu=False):
+def function(
+    raw_f=None,
+    app=None,
+    image=debian_slim,
+    schedule: Optional[Schedule] = None,
+    secret=None,
+    gpu: bool = False,
+):
     """Decorator to create Modal functions
 
     Args:

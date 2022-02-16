@@ -10,4 +10,4 @@ def f():
 
 def test_schedule(servicer, client):
     with app.run(client=client):
-        assert servicer.function2schedule == {"fu-1": "sc-1"}
+        assert servicer.function2schedule == {"fu-1": ("", 5.0)}

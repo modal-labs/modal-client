@@ -1,74 +1,63 @@
-from .object import Object
-from .proto import api_pb2
+from dataclasses import dataclass
+from typing import Optional, Union
 
 
-class Schedule(Object, type_prefix="sc"):
-    """A schedule of specific times at which registered functions are triggered"""
+@dataclass
+class Schedule:
+    """Schedules represent a time frame to repeatedly run a Modal function.
+
+    There are two types of schedules, _cron_ and _period_. Cron jobs are specified
+    using a syntax similar to [Unix cron tabs](https://crontab.guru/), while functions
+    that have a period schedule are run according to a fixed time interval.
+    """
+
+    _cron_string: Optional[str] = None
+    _period: Optional[float] = None
 
     @classmethod
-    async def create(cls, period=None, cron_string=None, app=None):
-        app = cls._get_app(app)
+    def cron(cls, cron_string: str):
+        """Create a schedule with a specified cron string.
 
-        if period:
-            # TODO: should we just take a timedelta object?
-            seconds = None
+        # Usage
+
+        ```python
+        import modal
+
+        modal.Schedule.cron("* * * * *")  # runs every minute
+        modal.Schedule.cron("5 4 * * *")  # runs at 4:05
+        ```
+        """
+        return Schedule(_cron_string=cron_string)
+
+    @classmethod
+    def period(cls, period: Union[float, str]):
+        """Create a schedule that runs every given time interval.
+
+        # Usage
+
+        ```python
+        import modal
+
+        modal.Schedule.period("1d")   # runs every day
+        modal.Schedule.period("4h")   # runs every 4 hours
+        modal.Schedule.period("15m")  # runs every 15 minutes
+        modal.Schedule.period("30s")  # runs every 30 seconds
+
+        modal.Schedule.period(0.456)  # runs every 456 ms
+        ```
+        """
+        if isinstance(period, str):
             try:
                 if period[-1] == "d":
-                    seconds = int(period[:-1]) * 24 * 3600
+                    period = int(period[:-1]) * 24 * 3600
                 elif period[-1] == "h":
-                    seconds = int(period[:-1]) * 3600
+                    period = int(period[:-1]) * 3600
                 elif period[-1] == "m":
-                    seconds = int(period[:-1]) * 60
+                    period = int(period[:-1]) * 60
                 elif period[-1] == "s":
-                    seconds = int(period[:-1])
+                    period = int(period[:-1])
                 else:
                     raise
             except Exception:
-                raise Exception(f"Failed to parse period while creating Schedule: {period}")
-            req = api_pb2.ScheduleCreateRequest(
-                app_id=app.app_id,
-                period=seconds,
-                args=app.serialize([]),
-                kwargs=app.serialize({}),
-            )
-        elif cron_string:
-            req = api_pb2.ScheduleCreateRequest(
-                app_id=app.app_id,
-                cron_string=cron_string,
-                args=app.serialize([]),
-                kwargs=app.serialize({}),
-            )
-
-        # TODO: remove args/kwargs placeholders, which represent arguments to scheduled function
-        # This would involve requesting an output buffer here similar to _Invocation
-
-        resp = await app.client.stub.ScheduleCreate(req)
-
-        if resp.error_message:
-            raise Exception(f"Failed to create Schedule: {resp.error_message}")
-
-        schedule_id = resp.schedule_id
-        return cls._create_object_instance(schedule_id, app)
-
-    @classmethod
-    def period(cls, period):
-        return _period(period)
-
-    @classmethod
-    def cron(cls, cron_string):
-        return _cron(cron_string)
-
-
-# TODO(erikbern): methods below seem like a bit unnecessary layer of indirection
-# We need them because we can't create factories on the class itself since the
-# class doesn't exist at that point. This seems like a solvable problem.
-
-
-@Schedule.factory
-async def _period(period):
-    return await Schedule.create(period=period)
-
-
-@Schedule.factory
-async def _cron(cron_string):
-    return await Schedule.create(cron_string=cron_string)
+                raise ValueError(f"Failed to parse period while creating Schedule: {period}")
+        return Schedule(_period=period)
