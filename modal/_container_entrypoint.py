@@ -70,7 +70,7 @@ class FunctionContext:
         self.session = Session()
         await self.session.initialize_container(self.session_id, self.client, self.task_id)
 
-        if self.function_def.definition_type == api_pb2.Function.DefinitionType.SERIALIZED:
+        if self.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
             # Fetch the serialized function definition
             request = api_pb2.FunctionGetSerializedRequest(function_id=self.function_id)
             response = await self.client.stub.FunctionGetSerialized(request)
@@ -105,7 +105,7 @@ class FunctionContext:
                 self.client.stub.FunctionGetNextInput, request, self.input_buffer_id, timeout=GRPC_REQUEST_TIMEOUT
             )
 
-            if response.status == api_pb2.BufferReadResponse.BufferReadStatus.TIMEOUT:
+            if response.status == api_pb2.BufferReadResponse.BUFFER_READ_STATUS_TIMEOUT:
                 logger.info(f"Task {self.task_id} input request timed out.")
                 break
 
@@ -184,9 +184,9 @@ def _call_function_generator(function_context, input_id, output_buffer_id, res, 
             input_id,
             output_buffer_id,
             idx,
-            status=api_pb2.GenericResult.Status.SUCCESS,
+            status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
             data=function_context.serialize(value),
-            gen_status=api_pb2.GenericResult.GeneratorStatus.INCOMPLETE,
+            gen_status=api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE,
         )
 
     # send EOF
@@ -194,8 +194,8 @@ def _call_function_generator(function_context, input_id, output_buffer_id, res, 
         input_id,
         output_buffer_id,
         idx,
-        status=api_pb2.GenericResult.Status.SUCCESS,
-        gen_status=api_pb2.GenericResult.GeneratorStatus.COMPLETE,
+        status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
+        gen_status=api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE,
     )
 
 
@@ -206,9 +206,9 @@ def _call_function_asyncgen(function_context, input_id, output_buffer_id, res, i
                 input_id,
                 output_buffer_id,
                 idx,
-                status=api_pb2.GenericResult.Status.SUCCESS,
+                status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
                 data=await function_context.serialize(value),
-                gen_status=api_pb2.GenericResult.GeneratorStatus.INCOMPLETE,
+                gen_status=api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE,
             )
 
         # send EOF
@@ -216,8 +216,8 @@ def _call_function_asyncgen(function_context, input_id, output_buffer_id, res, i
             input_id,
             output_buffer_id,
             idx,
-            status=api_pb2.GenericResult.Status.SUCCESS,
-            gen_status=api_pb2.GenericResult.GeneratorStatus.COMPLETE,
+            status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
+            gen_status=api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE,
         )
 
     asyncio_run(run_asyncgen())
@@ -240,7 +240,7 @@ def call_function(
     try:
         res = function(*args, **kwargs)
 
-        if function_type == api_pb2.Function.FunctionType.GENERATOR:
+        if function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR:
             if inspect.isgenerator(res):
                 _call_function_generator(function_context, input_id, output_buffer_id, res, idx)
             elif inspect.isasyncgen(res):
@@ -248,7 +248,7 @@ def call_function(
             else:
                 raise InvalidError("Function of type generator returned a non-generator output")
 
-        elif function_type == api_pb2.Function.FunctionType.FUNCTION:
+        elif function_type == api_pb2.Function.FUNCTION_TYPE_FUNCTION:
             if inspect.iscoroutine(res):
                 res = asyncio_run(res)
 
@@ -259,7 +259,7 @@ def call_function(
                 input_id,
                 output_buffer_id,
                 idx,
-                status=api_pb2.GenericResult.Status.SUCCESS,
+                status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
                 data=function_context.serialize(res),
             )
 
@@ -285,7 +285,7 @@ def call_function(
             input_id,
             output_buffer_id,
             idx,
-            status=api_pb2.GenericResult.Status.FAILURE,
+            status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
             data=serialized_exc,
             exception=repr(exc),
             traceback=traceback.format_exc(),

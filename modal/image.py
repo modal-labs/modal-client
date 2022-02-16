@@ -96,9 +96,9 @@ class CustomImage(Image):
             response = await retry(session.client.stub.ImageJoin)(request, timeout=GRPC_REQUEST_TIMEOUT)
             if not response.result.status:
                 continue
-            elif response.result.status == api_pb2.GenericResult.Status.FAILURE:
+            elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
                 raise RemoteError(response.result.exception)
-            elif response.result.status == api_pb2.GenericResult.Status.SUCCESS:
+            elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
                 break
             else:
                 raise RemoteError("Unknown status %s!" % response.result.status)
@@ -145,7 +145,7 @@ async def debian_slim(
     commands or python packages.
     """
     python_version = _dockerhub_python_version(python_version)
-    base_image = Image.include(f"debian-slim-{python_version}", namespace=api_pb2.ShareNamespace.SN_GLOBAL)
+    base_image = Image.include(f"debian-slim-{python_version}", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
 
     if extra_commands is None and python_packages is None:
         return base_image

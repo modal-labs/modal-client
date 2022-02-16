@@ -149,6 +149,6 @@ class Object(metaclass=ObjectMeta):
         return cls._user_factory_class(fun)
 
     @classmethod
-    def include(cls, session_name, object_label=None, namespace=api_pb2.ShareNamespace.SN_ACCOUNT):
+    def include(cls, session_name, object_label=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
         """Use an object published with :py:meth:`modal.session.Session.deploy`"""
         return cls._shared_object_factory_class(session_name, object_label, namespace)

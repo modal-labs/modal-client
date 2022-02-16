@@ -82,7 +82,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     ) -> typing.AsyncIterator[api_pb2.TaskLogsBatch]:
         await asyncio.sleep(1.0)
         if self.done:
-            yield api_pb2.TaskLogsBatch(app_state=api_pb2.SS_STOPPED)
+            yield api_pb2.TaskLogsBatch(app_state=api_pb2.APP_STATE_STOPPED)
 
     async def FunctionGetNextInput(
         self, request: api_pb2.FunctionGetNextInputRequest, context: grpc.aio.ServicerContext
@@ -93,7 +93,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self, request: api_pb2.FunctionOutputRequest, context: grpc.aio.ServicerContext
     ) -> api_pb2.BufferWriteResponse:
         self.container_outputs.append(request)
-        return api_pb2.BufferWriteResponse(status=api_pb2.BufferWriteResponse.BufferWriteStatus.SUCCESS)
+        return api_pb2.BufferWriteResponse(status=api_pb2.BufferWriteResponse.BUFFER_WRITE_STATUS_SUCCESS)
 
     async def AppGetObjects(
         self, request: api_pb2.AppGetObjectsRequest, context: grpc.aio.ServicerContext
@@ -196,7 +196,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
             args = cloudpickle.loads(function_input.args)
             kwargs = cloudpickle.loads(function_input.kwargs)
             self.client_calls.append((args, kwargs))
-        return api_pb2.BufferWriteResponse(status=api_pb2.BufferWriteResponse.SUCCESS)
+        return api_pb2.BufferWriteResponse(status=api_pb2.BufferWriteResponse.BUFFER_WRITE_STATUS_SUCCESS)
 
     async def FunctionGetNextOutput(
         self,
@@ -208,14 +208,14 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
             # Just return the sum of squares of all args
             res = sum(arg**2 for arg in args) + sum(value**2 for key, value in kwargs.items())
             result = api_pb2.GenericResult(
-                status=api_pb2.GenericResult.SUCCESS,
+                status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
                 data=cloudpickle.dumps(res),
             )
             item = _pack_output_buffer_item(result)
         else:
             item = api_pb2.BufferItem(EOF=True)
         return api_pb2.BufferReadResponse(
-            status=api_pb2.BufferReadResponse.SUCCESS,
+            status=api_pb2.BufferReadResponse.BUFFER_READ_STATUS_SUCCESS,
             items=[item],
         )
 
@@ -249,13 +249,13 @@ async def servicer():
 
 @pytest.fixture(scope="function")
 async def client(servicer):
-    async with Client(servicer.remote_addr, api_pb2.ClientType.CT_CLIENT, ("foo-id", "foo-secret")) as client:
+    async with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
         yield client
 
 
 @pytest.fixture(scope="function")
 async def container_client(servicer):
-    async with Client(servicer.remote_addr, api_pb2.ClientType.CT_CONTAINER, ("ta-123", "task-secret")) as client:
+    async with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         yield client
 
 

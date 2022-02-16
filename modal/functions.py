@@ -46,7 +46,7 @@ def _unpack_output_buffer_item(buffer_item: api_pb2.BufferItem) -> api_pb2.Gener
 
 
 def _process_result(session, result):
-    if result.status != api_pb2.GenericResult.Status.SUCCESS:
+    if result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
         if result.data:
             try:
                 exc = session.deserialize(result.data)
@@ -99,14 +99,14 @@ class _Invocation:
 
     async def run_function(self):
         result = (await stream.list(self.get_items()))[0]
-        assert result.gen_status == api_pb2.GenericResult.GeneratorStatus.NOT_GENERATOR
+        assert not result.gen_status
         return _process_result(self.session, result)
 
     async def run_generator(self):
         completed = False
         while not completed:
             async for result in self.get_items():
-                if result.gen_status == api_pb2.GenericResult.GeneratorStatus.COMPLETE:
+                if result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
                     completed = True
                     break
                 yield _process_result(self.session, result)
@@ -178,7 +178,7 @@ class _MapInvocation:
                     result = _unpack_output_buffer_item(item)
 
                     if self.is_generator:
-                        if result.gen_status == api_pb2.GenericResult.GeneratorStatus.COMPLETE:
+                        if result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
                             num_outputs += 1
                         else:
                             output = _process_result(self.session, result)
@@ -246,7 +246,7 @@ class Function(Object, Factory, type_prefix="fu"):
         if config["sync_entrypoint"]:
             mounts.extend(await create_package_mounts("modal"))
         else:
-            client_mount = Mount.include(MODAL_CLIENT_MOUNT_NAME, namespace=api_pb2.ShareNamespace.SN_GLOBAL)
+            client_mount = Mount.include(MODAL_CLIENT_MOUNT_NAME, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
             mounts.append(client_mount)
 
         # Wait for image and mounts to finish
@@ -268,9 +268,9 @@ class Function(Object, Factory, type_prefix="fu"):
             schedule_id = None
 
         if self.is_generator:
-            function_type = api_pb2.Function.FunctionType.GENERATOR
+            function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
         else:
-            function_type = api_pb2.Function.FunctionType.FUNCTION
+            function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
 
         # Create function remotely
         function_definition = api_pb2.Function(

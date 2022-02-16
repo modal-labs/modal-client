@@ -23,16 +23,24 @@ message ContainerArguments{  // This is used to pass data from the worker to the
 }
 
 message GenericResult {  // Used for both tasks and function outputs
-  enum Status {UNSPECIFIED = 0; SUCCESS = 1; FAILURE = 2;}
-  Status status = 1;
+  enum GenericStatus {
+    GENERIC_STATUS_UNSPECIFIED = 0;
+    GENERIC_STATUS_SUCCESS = 1;
+    GENERIC_STATUS_FAILURE = 2;
+  }
+
+  GenericStatus status = 1;
   string exception = 2;
   int32 exitcode = 3;
   string traceback = 4;
   bytes data = 5;
 
-  enum GeneratorStatus {NOT_GENERATOR = 0; INCOMPLETE = 1; COMPLETE = 2;}
+  enum GeneratorStatus {
+    GENERATOR_STATUS_UNSPECIFIED = 0;
+    GENERATOR_STATUS_INCOMPLETE = 1;
+    GENERATOR_STATUS_COMPLETE = 2;
+  }
   GeneratorStatus gen_status = 7;
-
   string input_id = 8;
 }
 
@@ -50,7 +58,11 @@ message BufferWriteRequest {
 }
 
 message BufferWriteResponse {
-  enum BufferWriteStatus {UNSPECIFIED = 0; SUCCESS = 1; BUFFER_FULL = 2;}
+  enum BufferWriteStatus {
+    BUFFER_WRITE_STATUS_UNSPECIFIED = 0;
+    BUFFER_WRITE_STATUS_SUCCESS = 1;
+    BUFFER_WRITE_STATUS_FULL = 2;
+  }
   BufferWriteStatus status = 1;
 }
 
@@ -61,17 +73,21 @@ message BufferReadRequest {
 }
 
 message BufferReadResponse {
-  enum BufferReadStatus {UNSPECIFIED = 0; SUCCESS = 1; TIMEOUT = 2;}
+  enum BufferReadStatus {
+    BUFFER_READ_STATUS_UNSPECIFIED = 0;
+    BUFFER_READ_STATUS_SUCCESS = 1;
+    BUFFER_READ_STATUS_TIMEOUT = 2;
+  }
   BufferReadStatus status = 2;
   repeated BufferItem items = 3;
 }
 
 enum ClientType {
-  CT_UNSPECIFIED = 0;
-  CT_CLIENT = 1;
-  CT_WORKER = 2;
-  CT_CONTAINER = 3;
-  CT_SERVER = 4;
+  CLIENT_TYPE_UNSPECIFIED = 0;
+  CLIENT_TYPE_CLIENT = 1;
+  CLIENT_TYPE_WORKER = 2;
+  CLIENT_TYPE_CONTAINER = 3;
+  CLIENT_TYPE_SERVER = 4;
 }
 
 message ClientCreateRequest {
@@ -134,16 +150,16 @@ message AppGetObjectsResponse {
   map<string, string> object_ids = 1;
 }
 
-enum ShareNamespace {  // TODO: rename this to something else?
-  SN_UNSPECIFIED = 0;
-  SN_ACCOUNT = 1;
-  SN_ORGANIZATION = 2; // Not used at this point
-  SN_GLOBAL = 3;
+enum DeploymentNamespace {  // TODO: rename this to something else?
+  DEPLOYMENT_NAMESPACE_UNSPECIFIED = 0;
+  DEPLOYMENT_NAMESPACE_ACCOUNT = 1;
+  DEPLOYMENT_NAMESPACE_ORGANIZATION = 2; // Not used at this point
+  DEPLOYMENT_NAMESPACE_GLOBAL = 3;
 }
 
 message AppDeployRequest {
   string app_id = 1;
-  ShareNamespace namespace = 2;
+  DeploymentNamespace namespace = 2;
   string name = 3;
   string object_id = 4;
   map<string, string> object_ids = 5;
@@ -151,7 +167,7 @@ message AppDeployRequest {
 
 message AppIncludeObjectRequest {
   string app_id = 1;
-  ShareNamespace namespace = 2;
+  DeploymentNamespace namespace = 2;
   string name = 3;
   string object_label = 4;
 }
@@ -165,13 +181,13 @@ message AppDetachRequest {
 }
 
 enum TaskState {
-  TS_UNSPECIFIED = 0;
-  TS_CREATED = 6;
-  TS_QUEUED = 1;
-  TS_WORKER_ASSIGNED = 2;
-  TS_LOADING_IMAGE = 3;
-  TS_RUNNING = 4;
-  TS_COMPLETED = 5;
+  TASK_STATE_UNSPECIFIED = 0;
+  TASK_STATE_CREATED = 6;
+  TASK_STATE_QUEUED = 1;
+  TASK_STATE_WORKER_ASSIGNED = 2;
+  TASK_STATE_LOADING_IMAGE = 3;
+  TASK_STATE_RUNNING = 4;
+  TASK_STATE_COMPLETED = 5;
 }
 
 message TaskLogs {
@@ -333,10 +349,16 @@ message Function {
   string secret_id = 5;
   bytes function_serialized = 6;
 
-  enum DefinitionType {FILE = 0; SERIALIZED = 1;}
+  enum DefinitionType {
+    DEFINITION_TYPE_FILE = 0;
+    DEFINITION_TYPE_SERIALIZED = 1;
+  }
   DefinitionType definition_type = 7;
 
-  enum FunctionType {FUNCTION = 0; GENERATOR = 1;}
+  enum FunctionType {
+    FUNCTION_TYPE_FUNCTION = 0;
+    FUNCTION_TYPE_GENERATOR = 1;
+  }
   FunctionType function_type = 8;
 
   Resources resources = 9;

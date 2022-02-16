@@ -20,9 +20,9 @@ def _get_inputs(client):
     item = _pack_input_buffer_item(session.serialize((42,)), session.serialize({}), OUTPUT_BUFFER)
 
     return [
-        api_pb2.BufferReadResponse(items=[item], status=api_pb2.BufferReadResponse.BufferReadStatus.SUCCESS),
+        api_pb2.BufferReadResponse(items=[item], status=api_pb2.BufferReadResponse.BUFFER_READ_STATUS_SUCCESS),
         api_pb2.BufferReadResponse(
-            items=[api_pb2.BufferItem(EOF=True)], status=api_pb2.BufferReadResponse.BufferReadStatus.SUCCESS
+            items=[api_pb2.BufferItem(EOF=True)], status=api_pb2.BufferReadResponse.BUFFER_READ_STATUS_SUCCESS
         ),
     ]
 
@@ -35,7 +35,7 @@ def _get_output(function_output_req: api_pb2.FunctionOutputRequest) -> api_pb2.G
 
 
 async def _run_container(servicer, module_name, function_name):
-    async with Client(servicer.remote_addr, api_pb2.ClientType.CT_CONTAINER, ("ta-123", "task-secret")) as client:
+    async with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         servicer.container_inputs = _get_inputs(client)
 
         function_def = api_pb2.Function(
@@ -75,7 +75,7 @@ async def test_container_entrypoint_success(servicer, reset_global_sessions, eve
     assert isinstance(outputs[0], api_pb2.FunctionOutputRequest)
 
     output = _get_output(outputs[0])
-    assert output.status == api_pb2.GenericResult.Status.SUCCESS
+    assert output.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     session = Session()
     assert output.data == session.serialize(42**2)
 
@@ -91,7 +91,7 @@ async def test_container_entrypoint_async(servicer, reset_global_sessions):
     assert isinstance(outputs[0], api_pb2.FunctionOutputRequest)
 
     output = _get_output(outputs[0])
-    assert output.status == api_pb2.GenericResult.Status.SUCCESS
+    assert output.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     assert output.data == session.serialize(42**2)
 
 
@@ -105,7 +105,7 @@ async def test_container_entrypoint_sync_returning_async(servicer, reset_global_
     assert isinstance(outputs[0], api_pb2.FunctionOutputRequest)
 
     output = _get_output(outputs[0])
-    assert output.status == api_pb2.GenericResult.Status.SUCCESS
+    assert output.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     assert output.data == session.serialize(42**2)
 
 
@@ -117,6 +117,6 @@ async def test_container_entrypoint_failure(servicer, reset_global_sessions):
     assert isinstance(outputs[0], api_pb2.FunctionOutputRequest)
 
     output = _get_output(outputs[0])
-    assert output.status == api_pb2.GenericResult.Status.FAILURE
+    assert output.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
     assert output.exception in ["Exception('Failure!')", "Exception('Failure!',)"]  # The 2nd is 3.6
     assert "Traceback" in output.traceback

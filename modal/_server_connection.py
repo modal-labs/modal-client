@@ -10,13 +10,13 @@ from .proto import api_pb2
 class BasicAuth(grpc.AuthMetadataPlugin):
     # See https://www.grpc.io/docs/guides/auth/
     def __init__(self, client_type, credentials):
-        if credentials and client_type == api_pb2.ClientType.CT_CLIENT:
+        if credentials and client_type == api_pb2.CLIENT_TYPE_CLIENT:
             token_id, token_secret = credentials
             self._metadata = (
                 ("x-modal-token-id", token_id),
                 ("x-modal-token-secret", token_secret),
             )
-        elif credentials and client_type == api_pb2.ClientType.CT_CONTAINER:
+        elif credentials and client_type == api_pb2.CLIENT_TYPE_CONTAINER:
             task_id, task_secret = credentials
             self._metadata = (
                 ("x-modal-task-id", task_id),

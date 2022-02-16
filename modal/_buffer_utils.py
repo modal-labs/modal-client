@@ -20,7 +20,7 @@ async def buffered_rpc_write(fn, request):
     while True:
         response = await retry(fn)(request)
 
-        if response.status == api_pb2.BufferWriteResponse.BufferWriteStatus.SUCCESS:
+        if response.status == api_pb2.BufferWriteResponse.BUFFER_WRITE_STATUS_SUCCESS:
             return response
 
         logger.debug(f"{fn_name}: no space left in buffer. Sleeping.")
@@ -47,7 +47,7 @@ async def buffered_rpc_read(fn, request, buffer_id, timeout=None, warn_on_cancel
             request, timeout=next_timeout + GRPC_REQUEST_TIME_BUFFER
         )
 
-        if response.status == api_pb2.BufferReadResponse.BufferReadStatus.SUCCESS:
+        if response.status == api_pb2.BufferReadResponse.BUFFER_READ_STATUS_SUCCESS:
             return response
 
         if timeout is not None and (time.time() - t0) > timeout:

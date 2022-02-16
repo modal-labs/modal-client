@@ -29,7 +29,7 @@ class FunctionInfo:
             self.module_name = module.__spec__.name
             self.recursive = True
             self.remote_dir = "/root/" + module.__package__.split(".")[0]  # TODO: don't hardcode /root
-            self.definition_type = api_pb2.Function.DefinitionType.FILE
+            self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
         elif hasattr(module, "__file__"):
             # This generally covers the case where it's invoked with
             # python foo/bar/baz.py
@@ -38,7 +38,7 @@ class FunctionInfo:
             self.package_path = os.path.dirname(module_fn)
             self.recursive = False  # Just pick out files in the same directory
             self.remote_dir = "/root"  # TODO: don't hardcore /root
-            self.definition_type = api_pb2.Function.DefinitionType.FILE
+            self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
         else:
             # Use cloudpickle. Used when working w/ Jupyter notebooks.
             self.function_serialized = cloudpickle.dumps(f)
@@ -47,7 +47,7 @@ class FunctionInfo:
             self.package_path = os.path.abspath("")  # get current dir
             self.recursive = False  # Just pick out files in the same directory
             self.remote_dir = "/root"  # TODO: don't hardcore /root
-            self.definition_type = api_pb2.Function.DefinitionType.SERIALIZED
+            self.definition_type = api_pb2.Function.DEFINITION_TYPE_SERIALIZED
 
         self.condition = lambda filename: os.path.splitext(filename)[1] in [".py", ".ipynb"]
 

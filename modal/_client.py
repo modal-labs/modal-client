@@ -114,13 +114,13 @@ class Client:
         task_secret = config["task_secret"]
 
         if task_id and task_secret:
-            client_type = api_pb2.ClientType.CT_CONTAINER
+            client_type = api_pb2.CLIENT_TYPE_CONTAINER
             credentials = (task_id, task_secret)
         elif token_id and token_secret:
-            client_type = api_pb2.ClientType.CT_CLIENT
+            client_type = api_pb2.CLIENT_TYPE_CLIENT
             credentials = (token_id, token_secret)
         else:
-            client_type = api_pb2.ClientType.CT_CLIENT
+            client_type = api_pb2.CLIENT_TYPE_CLIENT
             credentials = None
 
         client = Client(server_url, client_type, credentials)

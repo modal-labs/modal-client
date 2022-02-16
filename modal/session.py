@@ -110,16 +110,16 @@ class Session:
             return sum(x == state for x in all_states)
 
         # The most advanced state that's present informs the message.
-        if api_pb2.TaskState.TS_RUNNING in states_set:
-            tasks_running = tasks_at_state(api_pb2.TaskState.TS_RUNNING)
-            tasks_loading = tasks_at_state(api_pb2.TaskState.TS_LOADING_IMAGE)
+        if api_pb2.TASK_STATE_RUNNING in states_set:
+            tasks_running = tasks_at_state(api_pb2.TASK_STATE_RUNNING)
+            tasks_loading = tasks_at_state(api_pb2.TASK_STATE_LOADING_IMAGE)
             msg = f"Running ({tasks_running}/{tasks_running + tasks_loading} containers in use)..."
-        elif api_pb2.TaskState.TS_LOADING_IMAGE in states_set:
-            tasks_loading = tasks_at_state(api_pb2.TaskState.TS_LOADING_IMAGE)
+        elif api_pb2.TASK_STATE_LOADING_IMAGE in states_set:
+            tasks_loading = tasks_at_state(api_pb2.TASK_STATE_LOADING_IMAGE)
             msg = f"Loading images ({tasks_loading} containers initializing)..."
-        elif api_pb2.TaskState.TS_WORKER_ASSIGNED in states_set:
+        elif api_pb2.TASK_STATE_WORKER_ASSIGNED in states_set:
             msg = "Worker assigned..."
-        elif api_pb2.TaskState.TS_QUEUED in states_set:
+        elif api_pb2.TASK_STATE_QUEUED in states_set:
             msg = "Tasks queued..."
         else:
             msg = "Tasks created..."
@@ -316,7 +316,7 @@ class Session:
         request = api_pb2.AppDetachRequest(app_id=self.session_id)
         await self.client.stub.AppDetach(request)
 
-    async def deploy(self, name, obj_or_objs=None, namespace=api_pb2.ShareNamespace.SN_ACCOUNT):
+    async def deploy(self, name, obj_or_objs=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
         object_id = None
         object_ids = None  # name -> object_id
         if isinstance(obj_or_objs, Object):
@@ -336,7 +336,7 @@ class Session:
         )
         await self.client.stub.AppDeploy(request)
 
-    async def include(self, name, object_label=None, namespace=api_pb2.ShareNamespace.SN_ACCOUNT):
+    async def include(self, name, object_label=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
         request = api_pb2.AppIncludeObjectRequest(
             app_id=self.session_id,
             name=name,
@@ -348,7 +348,7 @@ class Session:
             err_msg = f"Could not find object {name}"
             if object_label is not None:
                 err_msg += f".{object_label}"
-            if namespace != api_pb2.ShareNamespace.SN_ACCOUNT:
+            if namespace != api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT:
                 err_msg += f" (namespace {api_pb2.ShareNamespace.Name(namespace)})"
             # TODO: disambiguate between session not found and object not found?
             raise NotFoundError(err_msg)
