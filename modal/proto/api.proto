@@ -8,7 +8,6 @@ syntax = "proto3";
 
 package modal.client;
 
-import "google/protobuf/any.proto";
 import "google/protobuf/empty.proto";
 
 message ContainerArguments{  // This is used to pass data from the worker to the container
@@ -39,44 +38,7 @@ message GenericResult {  // Used for both tasks and function outputs
   }
   GeneratorStatus gen_status = 7;
   string input_id = 8;
-}
-
-message BufferItem {
-  google.protobuf.Any data = 1;
-  bool EOF = 2;
-  string item_id = 3; // Each element is given an ID by the server.
-  int32 idx = 4;
-}
-
-message BufferWriteRequest {
-  string buffer_id = 1;
-  repeated BufferItem items = 5;
-  string idempotency_key = 4;
-}
-
-message BufferWriteResponse {
-  enum BufferWriteStatus {
-    BUFFER_WRITE_STATUS_UNSPECIFIED = 0;
-    BUFFER_WRITE_STATUS_SUCCESS = 1;
-    BUFFER_WRITE_STATUS_FULL = 2;
-  }
-  BufferWriteStatus status = 1;
-}
-
-message BufferReadRequest {
-  string buffer_id = 1;
-  int32 max_values = 2;
-  float timeout = 3;
-}
-
-message BufferReadResponse {
-  enum BufferReadStatus {
-    BUFFER_READ_STATUS_UNSPECIFIED = 0;
-    BUFFER_READ_STATUS_SUCCESS = 1;
-    BUFFER_READ_STATUS_TIMEOUT = 2;
-  }
-  BufferReadStatus status = 2;
-  repeated BufferItem items = 3;
+  string idx = 9; // TODO
 }
 
 enum ClientType {
@@ -393,31 +355,63 @@ message FunctionMapResponse {
   string output_buffer_id = 2;
 }
 
-message FunctionCallRequest {
-  string function_id = 1;
-  BufferWriteRequest buffer_req = 6;
+enum WriteStatus {
+  WRITE_STATUS_UNSPECIFIED = 0;
+  WRITE_STATUS_SUCCESS = 1;
+  WRITE_STATUS_BUFFER_FULL = 2;
 }
 
-message FunctionGetNextOutputRequest {
-  string function_id = 1;
-  BufferReadRequest buffer_req = 2;
+enum ReadStatus {
+  READ_STATUS_UNSPECIFIED = 0;
+  READ_STATUS_SUCCESS = 1;
+  READ_STATUS_TIMEOUT = 2;
 }
 
 message FunctionInput {
   bytes args = 1;
   bytes kwargs = 2;
-  string output_buffer_id = 3;
+  string function_call_id = 3;
+  bool kill_signal = 4;
 }
 
-message FunctionGetNextInputRequest {
+message FunctionPutInputsRequest {
   string function_id = 1;
-  string task_id = 4;
-  BufferReadRequest buffer_req = 6;
+  repeated FunctionInput inputs = 2;
 }
 
-message FunctionOutputRequest {
-  BufferWriteRequest buffer_req = 8;
-  string task_id = 9;
+message FunctionPutInputsResponse {
+  WriteStatus status = 1;
+}
+
+message FunctionGetInputsRequest {
+  string function_id = 1;
+  int32 max_values = 2;
+  float timeout = 3;
+}
+
+message FunctionGetInputsResponse {
+  ReadStatus status = 1;
+  repeated FunctionInput inputs = 2;
+}
+
+message FunctionPutOutputsRequest {
+  string task_id = 1;
+  repeated GenericResult outputs = 2;
+}
+
+message FunctionPutOutputsResponse {
+  WriteStatus status = 1;
+}
+
+message FunctionGetOutputsRequest {
+  string function_call_id = 1;
+  int32 max_values = 2;
+  float timeout = 3;
+}
+
+message FunctionGetOutputsResponse {
+  ReadStatus status = 1;
+  repeated GenericResult outputs = 2;
 }
 
 message MountCreateRequest {
@@ -495,8 +489,8 @@ service ModalClient {
   rpc FunctionCreate(FunctionCreateRequest) returns (FunctionCreateResponse);
   rpc FunctionGetSerialized(FunctionGetSerializedRequest) returns (FunctionGetSerializedResponse);
   rpc FunctionMap(FunctionMapRequest) returns (FunctionMapResponse);
-  rpc FunctionCall(FunctionCallRequest) returns (BufferWriteResponse);
-  rpc FunctionGetNextOutput(FunctionGetNextOutputRequest) returns (BufferReadResponse);  // Returns the next result
-  rpc FunctionGetNextInput(FunctionGetNextInputRequest) returns (BufferReadResponse);  // For containers to request next call
-  rpc FunctionOutput(FunctionOutputRequest) returns (BufferWriteResponse);  // For containers to return result
+  rpc FunctionPutInputs(FunctionPutInputsRequest) returns (FunctionPutInputsResponse);
+  rpc FunctionPutOutputs(FunctionPutOutputsRequest) returns (FunctionPutOutputsResponse);  // For containers to return result
+  rpc FunctionGetInputs(FunctionGetInputsRequest) returns (FunctionGetInputsResponse);  // For containers to request next call
+  rpc FunctionGetOutputs(FunctionGetOutputsRequest) returns (FunctionGetOutputsResponse);  // Returns the next result
 }
