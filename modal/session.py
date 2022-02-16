@@ -136,8 +136,8 @@ class Session:
             if log_batch.app_state:
                 logger.info(f"Session state now {api_pb2.AppState.Name(log_batch.app_state)}")
                 if log_batch.app_state not in (
-                    api_pb2.AppState.SS_EPHEMERAL,
-                    api_pb2.AppState.SS_DRAINING_LOGS,
+                    api_pb2.APP_STATE_EPHEMERAL,
+                    api_pb2.APP_STATE_DRAINING_LOGS,
                 ):
                     return None
             else:

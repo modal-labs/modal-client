@@ -89,13 +89,13 @@ message ClientHeartbeatRequest {
 }
 
 enum AppState {
-  SS_UNSPECIFIED = 0;
-  SS_EPHEMERAL = 1;             // Will be discharged when the client disconnects
-  SS_DETACHED = 2;              // Will be discharged when there's no more functions
-  SS_DEPLOYED = 3;              // Will be discharged when overwritten
-  SS_DRAINING_LOGS = 4;         // Will be stopped once there are no dependencies
-  SS_DRAINING_DEPENDENCIES = 6; // Will be stopped once there are no dependencies
-  SS_STOPPED = 5;               // Stopped
+  APP_STATE_UNSPECIFIED = 0;
+  APP_STATE_EPHEMERAL = 1;             // Will be discharged when the client disconnects
+  APP_STATE_DETACHED = 2;              // Will be discharged when there's no more functions
+  APP_STATE_DEPLOYED = 3;              // Will be discharged when overwritten
+  APP_STATE_DRAINING_LOGS = 4;         // Will be stopped once there are no dependencies
+  APP_STATE_DRAINING_DEPENDENCIES = 6; // Will be stopped once there are no dependencies
+  APP_STATE_STOPPED = 5;               // Stopped
 }
 
 message AppCreateRequest {
