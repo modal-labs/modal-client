@@ -350,14 +350,16 @@ message Function {
   bytes function_serialized = 6;
 
   enum DefinitionType {
-    DEFINITION_TYPE_FILE = 0;
+    DEFINITION_TYPE_UNSPECIFIED = 0;
     DEFINITION_TYPE_SERIALIZED = 1;
+    DEFINITION_TYPE_FILE = 2;
   }
   DefinitionType definition_type = 7;
 
   enum FunctionType {
-    FUNCTION_TYPE_FUNCTION = 0;
+    FUNCTION_TYPE_UNSPECIFIED = 0;
     FUNCTION_TYPE_GENERATOR = 1;
+    FUNCTION_TYPE_FUNCTION = 2;
   }
   FunctionType function_type = 8;
 

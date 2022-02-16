@@ -248,7 +248,7 @@ def call_function(
             else:
                 raise InvalidError("Function of type generator returned a non-generator output")
 
-        elif function_type == api_pb2.Function.FUNCTION_TYPE_FUNCTION:
+        else:
             if inspect.iscoroutine(res):
                 res = asyncio_run(res)
 
@@ -262,9 +262,6 @@ def call_function(
                 status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
                 data=function_context.serialize(res),
             )
-
-        else:
-            raise InvalidError(f"Unknown function type {function_type}")
 
     except Exception as exc:
         # print exception so it's logged
