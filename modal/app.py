@@ -347,7 +347,7 @@ class App:
             if object_label is not None:
                 err_msg += f".{object_label}"
             if namespace != api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT:
-                err_msg += f" (namespace {api_pb2.ShareNamespace.Name(namespace)})"
+                err_msg += f" (namespace {api_pb2.DeploymentNamespace.Name(namespace)})"
             # TODO: disambiguate between app not found and object not found?
             raise NotFoundError(err_msg)
         return Object._init_persisted(response.object_id, self)
