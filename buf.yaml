@@ -1,0 +1,8 @@
+version: v1
+breaking:
+  use:
+    - FILE
+lint:
+  use:
+    - DEFAULT
+  rpc_allow_google_protobuf_empty_responses: true
