@@ -1,11 +1,5 @@
 syntax = "proto3";
 
-/*
-  Compile by running (in the "client" directory of the repo):
-
-  python -m grpc_tools.protoc -I . --python_out=. --grpc_python_out=. polyester/proto/api.proto --experimental_allow_proto3_optional
-*/
-
 package modal.client;
 
 import "google/protobuf/empty.proto";
