@@ -77,16 +77,16 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         if self.done:
             yield api_pb2.TaskLogsBatch(app_state=api_pb2.APP_STATE_STOPPED)
 
-    async def FunctionGetNextInput(
-        self, request: api_pb2.FunctionGetNextInputRequest, context: grpc.aio.ServicerContext
-    ) -> api_pb2.BufferReadResponse:
+    async def FunctionGetInputs(
+        self, request: api_pb2.FunctionGetInputsRequest, context: grpc.aio.ServicerContext
+    ) -> api_pb2.FunctionGetInputsResponse:
         return self.container_inputs.pop(0)
 
-    async def FunctionOutput(
-        self, request: api_pb2.FunctionOutputRequest, context: grpc.aio.ServicerContext
-    ) -> api_pb2.BufferWriteResponse:
+    async def FunctionPutOutputs(
+        self, request: api_pb2.FunctionPutOutputsRequest, context: grpc.aio.ServicerContext
+    ) -> api_pb2.FunctionPutOutputsResponse:
         self.container_outputs.append(request)
-        return api_pb2.BufferWriteResponse(status=api_pb2.BufferWriteResponse.BUFFER_WRITE_STATUS_SUCCESS)
+        return api_pb2.FunctionPutOutputsResponse(status=api_pb2.WRITE_STATUS_SUCCESS)
 
     async def AppGetObjects(
         self, request: api_pb2.AppGetObjectsRequest, context: grpc.aio.ServicerContext
@@ -177,23 +177,22 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     ) -> api_pb2.FunctionMapResponse:
         return api_pb2.FunctionMapResponse(function_call_id="fc-out")
 
-    async def FunctionCall(
+    async def FunctionPutInputs(
         self,
-        request: api_pb2.FunctionCallRequest,
+        request: api_pb2.FunctionPutInputsRequest,
         context: grpc.aio.ServicerContext,
-    ) -> api_pb2.BufferWriteResponse:
-        for item in request.buffer_req.items:
-            function_input = _unpack_input_buffer_item(item)
+    ) -> api_pb2.FunctionPutInputsResponse:
+        for function_input in request.inputs:
             args = cloudpickle.loads(function_input.args) if function_input.args else ()
             kwargs = cloudpickle.loads(function_input.kwargs) if function_input.kwargs else {}
             self.client_calls.append((args, kwargs))
-        return api_pb2.BufferWriteResponse(status=api_pb2.BufferWriteResponse.BUFFER_WRITE_STATUS_SUCCESS)
+        return api_pb2.FunctionPutInputsResponse(status=api_pb2.WRITE_STATUS_SUCCESS)
 
-    async def FunctionGetNextOutput(
+    async def FunctionGetOutputs(
         self,
-        request: api_pb2.FunctionGetNextOutputRequest,
+        request: api_pb2.FunctionGetOutputsRequest,
         context: grpc.aio.ServicerContext,
-    ) -> api_pb2.BufferReadResponse:
+    ) -> api_pb2.FunctionGetOutputsResponse:
         if self.client_calls:
             args, kwargs = self.client_calls.pop(0)
             # Just return the sum of squares of all args
@@ -202,13 +201,12 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
                 status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
                 data=cloudpickle.dumps(res),
             )
-            item = _pack_output_buffer_item(result)
+            return api_pb2.FunctionGetOutputsResponse(
+                status=api_pb2.READ_STATUS_SUCCESS,
+                outputs=[result],
+            )
         else:
-            item = api_pb2.BufferItem(EOF=True)
-        return api_pb2.BufferReadResponse(
-            status=api_pb2.BufferReadResponse.BUFFER_READ_STATUS_SUCCESS,
-            items=[item],
-        )
+            return api_pb2.FunctionGetOutputsResponse(status=api_pb2.READ_STATUS_TIMEOUT)
 
     async def SecretCreate(
         self,
