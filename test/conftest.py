@@ -9,11 +9,7 @@ from google.protobuf.empty_pb2 import Empty
 
 from modal._app_singleton import set_container_app, set_default_app, set_running_app
 from modal._client import Client
-from modal.functions import (
-    MODAL_CLIENT_MOUNT_NAME,
-    _pack_output_buffer_item,
-    _unpack_input_buffer_item,
-)
+from modal.functions import MODAL_CLIENT_MOUNT_NAME
 from modal.image import _dockerhub_python_version
 from modal.proto import api_pb2, api_pb2_grpc
 from modal.version import __version__
