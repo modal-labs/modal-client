@@ -9,10 +9,7 @@ syntax = "proto3";
 package modal.client;
 
 import "google/protobuf/any.proto";
-
-message Empty {
-
-}
+import "google/protobuf/empty.proto";
 
 message ContainerArguments{  // This is used to pass data from the worker to the container
   string task_id = 1;
@@ -476,7 +473,7 @@ message MountDoneRequest {
 service ModalClient {
   // Clients
   rpc ClientCreate(ClientCreateRequest) returns (ClientCreateResponse);
-  rpc ClientHeartbeat(ClientHeartbeatRequest) returns (Empty);
+  rpc ClientHeartbeat(ClientHeartbeatRequest) returns (google.protobuf.Empty);
 
   // Schedules
   rpc ScheduleCreate(ScheduleCreateRequest) returns (ScheduleCreateResponse);
@@ -485,24 +482,24 @@ service ModalClient {
 
   // Apps
   rpc AppCreate(AppCreateRequest) returns (AppCreateResponse);
-  rpc AppClientDisconnect(AppClientDisconnectRequest) returns (Empty);
+  rpc AppClientDisconnect(AppClientDisconnectRequest) returns (google.protobuf.Empty);
   rpc AppGetLogs(AppGetLogsRequest) returns (stream TaskLogsBatch);
-  rpc AppSetObjects(AppSetObjectsRequest) returns (Empty);
+  rpc AppSetObjects(AppSetObjectsRequest) returns (google.protobuf.Empty);
   rpc AppGetObjects(AppGetObjectsRequest) returns (AppGetObjectsResponse);
   rpc AppIncludeObject(AppIncludeObjectRequest) returns (AppIncludeObjectResponse);
-  rpc AppDeploy(AppDeployRequest) returns (Empty);
-  rpc AppDetach(AppDetachRequest) returns (Empty);
+  rpc AppDeploy(AppDeployRequest) returns (google.protobuf.Empty);
+  rpc AppDetach(AppDetachRequest) returns (google.protobuf.Empty);
 
   // Queues
   rpc QueueCreate(QueueCreateRequest) returns (QueueCreateResponse);
   rpc QueueGet(QueueGetRequest) returns (QueueGetResponse);
-  rpc QueuePut(QueuePutRequest) returns (Empty);
+  rpc QueuePut(QueuePutRequest) returns (google.protobuf.Empty);
 
   // Mounts
   rpc MountCreate(MountCreateRequest) returns (MountCreateResponse);
   rpc MountRegisterFile(MountRegisterFileRequest) returns (MountRegisterFileResponse);
-  rpc MountUploadFile(MountUploadFileRequest) returns (Empty);  // TODO: return something?
-  rpc MountDone(MountDoneRequest) returns (Empty);
+  rpc MountUploadFile(MountUploadFileRequest) returns (google.protobuf.Empty);  // TODO: return something?
+  rpc MountDone(MountDoneRequest) returns (google.protobuf.Empty);
 
   // Images
   rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);

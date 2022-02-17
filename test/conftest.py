@@ -5,6 +5,7 @@ import typing
 import cloudpickle
 import grpc
 import pkg_resources
+from google.protobuf.empty_pb2 import Empty
 
 from modal._client import Client
 from modal._session_singleton import (
@@ -66,16 +67,16 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
 
     async def AppClientDisconnect(
         self, request: api_pb2.AppClientDisconnectRequest, context: grpc.aio.ServicerContext
-    ) -> api_pb2.Empty:
+    ) -> Empty:
         self.requests.append(request)
         self.done = True
-        return api_pb2.Empty()
+        return Empty()
 
     async def ClientHeartbeat(
         self, request: api_pb2.ClientHeartbeatRequest, context: grpc.aio.ServicerContext
-    ) -> api_pb2.Empty:
+    ) -> Empty:
         self.requests.append(request)
-        return api_pb2.Empty()
+        return Empty()
 
     async def AppGetLogs(
         self, request: api_pb2.AppGetLogsRequest, context: grpc.aio.ServicerContext
@@ -100,11 +101,9 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     ) -> api_pb2.AppGetObjectsResponse:
         return api_pb2.AppGetObjectsResponse(object_ids=self.object_ids)
 
-    async def AppSetObjects(
-        self, request: api_pb2.AppSetObjectsRequest, context: grpc.aio.ServicerContext
-    ) -> api_pb2.Empty:
+    async def AppSetObjects(self, request: api_pb2.AppSetObjectsRequest, context: grpc.aio.ServicerContext) -> Empty:
         self.objects = dict(request.object_ids)
-        return api_pb2.Empty()
+        return Empty()
 
     async def QueueCreate(
         self, request: api_pb2.QueueCreateRequest, context: grpc.aio.ServicerContext
@@ -112,22 +111,22 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.n_queues += 1
         return api_pb2.QueueCreateResponse(queue_id=f"qu-{self.n_queues}")
 
-    async def QueuePut(self, request: api_pb2.QueuePutRequest, context: grpc.aio.ServicerContext) -> api_pb2.Empty:
+    async def QueuePut(self, request: api_pb2.QueuePutRequest, context: grpc.aio.ServicerContext) -> Empty:
         self.queue += request.values
-        return api_pb2.Empty()
+        return Empty()
 
     async def QueueGet(
         self, request: api_pb2.QueueGetRequest, context: grpc.aio.ServicerContext
     ) -> api_pb2.QueueGetResponse:
         return api_pb2.QueueGetResponse(values=[self.queue.pop(0)])
 
-    async def AppDeploy(self, request: api_pb2.AppDeployRequest, context: grpc.aio.ServicerContext) -> api_pb2.Empty:
+    async def AppDeploy(self, request: api_pb2.AppDeployRequest, context: grpc.aio.ServicerContext) -> Empty:
         if request.object_id:
             self.deployments[request.name] = request.object_id
         elif request.object_ids:
             for label, object_id in request.object_ids.items():
                 self.deployments[(request.name, label)] = object_id
-        return api_pb2.Empty()
+        return Empty()
 
     async def AppIncludeObject(
         self, request: api_pb2.AppIncludeObjectRequest, context: grpc.aio.ServicerContext
@@ -157,16 +156,16 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self,
         request: api_pb2.MountUploadFileRequest,
         context: grpc.aio.ServicerContext,
-    ) -> api_pb2.Empty:
+    ) -> Empty:
         self.files_sha2data[request.sha256_hex] = request.data
-        return api_pb2.Empty()
+        return Empty()
 
     async def MountDone(
         self,
         request: api_pb2.MountDoneRequest,
         context: grpc.aio.ServicerContext,
-    ) -> api_pb2.Empty:
-        return api_pb2.Empty()
+    ) -> Empty:
+        return Empty()
 
     async def FunctionCreate(
         self,
