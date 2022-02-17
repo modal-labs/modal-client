@@ -38,7 +38,7 @@ message GenericResult {  // Used for both tasks and function outputs
   }
   GeneratorStatus gen_status = 7;
   string input_id = 8;
-  string idx = 9; // TODO
+  int32 idx = 9; // TODO
 }
 
 enum ClientType {
@@ -351,8 +351,7 @@ message FunctionMapRequest {
 }
 
 message FunctionMapResponse {
-  string input_buffer_id = 1;
-  string output_buffer_id = 2;
+  string function_call_id = 1;
 }
 
 enum WriteStatus {
@@ -371,7 +370,9 @@ message FunctionInput {
   bytes args = 1;
   bytes kwargs = 2;
   string function_call_id = 3;
-  bool kill_signal = 4;
+  string input_id = 4;
+  int32 idx = 5;
+  bool EOF = 6;
 }
 
 message FunctionPutInputsRequest {
@@ -385,9 +386,11 @@ message FunctionPutInputsResponse {
 
 message FunctionGetInputsRequest {
   string function_id = 1;
-  int32 max_values = 2;
-  float timeout = 3;
+  string task_id = 2;
+  int32 max_values = 3;
+  float timeout = 4;
 }
+
 
 message FunctionGetInputsResponse {
   ReadStatus status = 1;
@@ -395,8 +398,9 @@ message FunctionGetInputsResponse {
 }
 
 message FunctionPutOutputsRequest {
-  string task_id = 1;
-  repeated GenericResult outputs = 2;
+  string function_call_id = 1;
+  string task_id = 2;
+  repeated GenericResult outputs = 3;
 }
 
 message FunctionPutOutputsResponse {

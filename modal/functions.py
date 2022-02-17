@@ -23,9 +23,7 @@ MODAL_CLIENT_MOUNT_NAME = "modal-client-mount"
 
 # TODO: maybe we can create a special Buffer class in the ORM that keeps track of the protobuf type
 # of the bytes stored, so the packing/unpacking can happen automatically.
-def _pack_input_buffer_item(args: bytes, kwargs: bytes, output_buffer_id: str, idx=None) -> api_pb2.BufferItem:
-    data = Any()
-    data.Pack(api_pb2.FunctionInput(args=args, kwargs=kwargs, output_buffer_id=output_buffer_id))
+def _pack_input_buffer_item(args: bytes, kwargs: bytes, function_call_id: str, idx=None) -> api_pb2.BufferItem:
     return api_pb2.BufferItem(data=data, idx=idx)
 
 
@@ -70,10 +68,10 @@ def _process_result(app, result):
 
 
 class _Invocation:
-    def __init__(self, app, function_id, output_buffer_id):
+    def __init__(self, session, function_id, function_call_id):
         self.app = app
         self.function_id = function_id
-        self.output_buffer_id = output_buffer_id
+        self.function_call_id = function_call_id
 
     @staticmethod
     async def create(function_id, args, kwargs, app):
@@ -81,23 +79,21 @@ class _Invocation:
         request = api_pb2.FunctionMapRequest(function_id=function_id)
         response = await retry(app.client.stub.FunctionMap)(request)
 
-        input_buffer_id = response.input_buffer_id
-        output_buffer_id = response.output_buffer_id
+        function_call_id = response.function_call_id
 
-        item = _pack_input_buffer_item(app.serialize(args), app.serialize(kwargs), output_buffer_id)
-        buffer_req = api_pb2.BufferWriteRequest(items=[item], buffer_id=input_buffer_id)
-        request = api_pb2.FunctionCallRequest(function_id=function_id, buffer_req=buffer_req)
-        await buffered_rpc_write(app.client.stub.FunctionCall, request)
+        inp = api_pb2.FunctionInput(
+            args=app.serialize(args), kwargs=app.serialize(kwargs), function_call_id=function_call_id
+        )
+        request = api_pb2.FunctionPutInputsRequest(function_id=function_id, inputs=[inp])
+        await buffered_rpc_write(app.client.stub.FunctionPutInputs, request)
 
-        return _Invocation(app, function_id, output_buffer_id)
+        return _Invocation(app, function_id, function_call_id)
 
     async def get_items(self):
-        request = api_pb2.FunctionGetNextOutputRequest(function_id=self.function_id)
-        response = await buffered_rpc_read(
-            self.app.client.stub.FunctionGetNextOutput, request, self.output_buffer_id, timeout=None
-        )
-        for item in response.items:
-            yield _unpack_output_buffer_item(item)
+        request = api_pb2.FunctionGetOutputsRequest(function_call_id=self.function_call_id)
+        response = await buffered_rpc_read(self.app.client.stub.FunctionGetOutputs, request, timeout=None)
+        for output in response.outputs:
+            yield output
 
     async def run_function(self):
         result = (await stream.list(self.get_items()))[0]
@@ -130,8 +126,7 @@ class _MapInvocation:
         request = api_pb2.FunctionMapRequest(function_id=self.function_id)
         response = await retry(self.app.client.stub.FunctionMap)(request)
 
-        input_buffer_id = response.input_buffer_id
-        output_buffer_id = response.output_buffer_id
+        function_call_id = response.function_call_id
 
         have_all_inputs = False
         num_outputs = 0
@@ -143,20 +138,20 @@ class _MapInvocation:
             chunked_input_stream = self.input_stream | pipe.chunks(MAP_INVOCATION_CHUNK_SIZE)
             async with chunked_input_stream.stream() as streamer:
                 async for chunk in streamer:
-                    items = []
+                    inputs = []
                     for arg in chunk:
-                        item = _pack_input_buffer_item(
-                            self.app.serialize(arg),
-                            self.app.serialize(self.kwargs),
-                            output_buffer_id,
+                        function_input = api_pb2.FunctionInput(
+                            args=self.app.serialize(arg),
+                            kwargs=self.app.serialize(self.kwargs),
+                            function_call_id=function_call_id,
                             idx=num_inputs,
                         )
                         num_inputs += 1
-                        items.append(item)
-                    buffer_req = api_pb2.BufferWriteRequest(items=items, buffer_id=input_buffer_id)
-                    request = api_pb2.FunctionCallRequest(function_id=self.function_id, buffer_req=buffer_req)
+                        inputs.append(function_input)
 
-                    await buffered_rpc_write(self.app.client.stub.FunctionCall, request)
+                    request = api_pb2.FunctionPutInputsRequest(function_id=self.function_id, inputs=inputs)
+
+                    await buffered_rpc_write(self.app.client.stub.FunctionPutInputs, request)
 
             have_all_inputs = True
             yield
@@ -168,17 +163,12 @@ class _MapInvocation:
             pending_outputs = {}
 
             while True:
-                request = api_pb2.FunctionGetNextOutputRequest(function_id=self.function_id)
+                request = api_pb2.FunctionGetOutputsRequest(function_call_id=function_call_id)
                 response = await buffered_rpc_read(
-                    self.app.client.stub.FunctionGetNextOutput,
-                    request,
-                    output_buffer_id,
-                    timeout=None,
-                    warn_on_cancel=False,
+                    self.app.client.stub.FunctionGetOutputs, request, timeout=None, warn_on_cancel=False
                 )
-                for item in response.items:
-                    result = _unpack_output_buffer_item(item)
 
+                for result in response.outputs:
                     if self.is_generator:
                         if result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
                             num_outputs += 1
@@ -188,7 +178,7 @@ class _MapInvocation:
                             yield output
                     else:
                         # hold on to outputs for function maps, so we can reorder them correctly.
-                        pending_outputs[item.idx] = _process_result(self.app, result)
+                        pending_outputs[result.idx] = _process_result(self.app, result)
 
                 # send outputs sequentially while we can
                 while num_outputs in pending_outputs:
