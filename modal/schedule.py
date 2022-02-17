@@ -27,7 +27,7 @@ class Schedule:
         modal.Schedule.cron("5 4 * * *")  # runs at 4:05
         ```
         """
-        return Schedule(_cron_string=cron_string)
+        return cls(_cron_string=cron_string)
 
     @classmethod
     def period(cls, period: Union[float, str]):
@@ -60,4 +60,4 @@ class Schedule:
                     raise
             except Exception:
                 raise ValueError(f"Failed to parse period while creating Schedule: {period}")
-        return Schedule(_period=period)
+        return cls(_period=period)
