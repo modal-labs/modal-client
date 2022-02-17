@@ -4,7 +4,7 @@ package modal.client;
 
 import "google/protobuf/empty.proto";
 
-message ContainerArguments{  // This is used to pass data from the worker to the container
+message ContainerArguments {  // This is used to pass data from the worker to the container
   string task_id = 1;
   string function_id = 2;
   string app_id = 4;
@@ -241,7 +241,7 @@ message DictGetRequest {
 }
 
 message DictGetResponse {
-  bool found = 1 ;
+  bool found = 1;
   optional bytes value = 2;
 }
 
@@ -276,7 +276,7 @@ message DictPopRequest {
 }
 
 message DictPopResponse {
-  bool found = 1 ;
+  bool found = 1;
   optional bytes value = 2;
 }
 
