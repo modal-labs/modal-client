@@ -2,7 +2,7 @@ import asyncio
 import pytest
 import time
 
-from modal import Session, debian_slim
+from modal import App, debian_slim
 from modal._client import Client
 from modal._container_entrypoint import main
 from modal._test_support import SLEEP_DELAY
@@ -13,11 +13,11 @@ EXTRA_TOLERANCE_DELAY = 0.08
 OUTPUT_BUFFER = "output_buffer_id"
 INPUT_BUFFER = "input_buffer_id"
 
-session = Session()  # Just used for (de)serialization
+app = App()  # Just used for (de)serialization
 
 
 def _get_inputs(client):
-    item = _pack_input_buffer_item(session.serialize((42,)), session.serialize({}), OUTPUT_BUFFER)
+    item = _pack_input_buffer_item(app.serialize((42,)), app.serialize({}), OUTPUT_BUFFER)
 
     return [
         api_pb2.BufferReadResponse(items=[item], status=api_pb2.BufferReadResponse.BUFFER_READ_STATUS_SUCCESS),
@@ -66,7 +66,7 @@ async def _run_container(servicer, module_name, function_name):
 
 
 @pytest.mark.asyncio
-async def test_container_entrypoint_success(servicer, reset_global_sessions, event_loop):
+async def test_container_entrypoint_success(servicer, reset_global_apps, event_loop):
     t0 = time.time()
     client, outputs = await _run_container(servicer, "modal._test_support", "square")
     assert 0 <= time.time() - t0 < EXTRA_TOLERANCE_DELAY
@@ -76,12 +76,12 @@ async def test_container_entrypoint_success(servicer, reset_global_sessions, eve
 
     output = _get_output(outputs[0])
     assert output.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    session = Session()
-    assert output.data == session.serialize(42**2)
+    app = App()
+    assert output.data == app.serialize(42**2)
 
 
 @pytest.mark.asyncio
-async def test_container_entrypoint_async(servicer, reset_global_sessions):
+async def test_container_entrypoint_async(servicer, reset_global_apps):
     t0 = time.time()
     client, outputs = await _run_container(servicer, "modal._test_support", "square_async")
     print(time.time() - t0, outputs)
@@ -92,11 +92,11 @@ async def test_container_entrypoint_async(servicer, reset_global_sessions):
 
     output = _get_output(outputs[0])
     assert output.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert output.data == session.serialize(42**2)
+    assert output.data == app.serialize(42**2)
 
 
 @pytest.mark.asyncio
-async def test_container_entrypoint_sync_returning_async(servicer, reset_global_sessions):
+async def test_container_entrypoint_sync_returning_async(servicer, reset_global_apps):
     t0 = time.time()
     client, outputs = await _run_container(servicer, "modal._test_support", "square_sync_returning_async")
     assert SLEEP_DELAY <= time.time() - t0 < SLEEP_DELAY + EXTRA_TOLERANCE_DELAY
@@ -106,11 +106,11 @@ async def test_container_entrypoint_sync_returning_async(servicer, reset_global_
 
     output = _get_output(outputs[0])
     assert output.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert output.data == session.serialize(42**2)
+    assert output.data == app.serialize(42**2)
 
 
 @pytest.mark.asyncio
-async def test_container_entrypoint_failure(servicer, reset_global_sessions):
+async def test_container_entrypoint_failure(servicer, reset_global_apps):
     client, outputs = await _run_container(servicer, "modal._test_support", "raises")
 
     assert len(outputs) == 1

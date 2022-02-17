@@ -3,12 +3,12 @@ import asyncio
 from aiostream import pipe, stream
 from google.protobuf.any_pb2 import Any
 
+from ._app_singleton import get_container_app, get_default_app
 from ._async_utils import retry
 from ._buffer_utils import buffered_rpc_read, buffered_rpc_write
 from ._decorator_utils import decorator_with_options
 from ._factory import Factory
 from ._function_utils import FunctionInfo
-from ._session_singleton import get_container_session, get_default_session
 from .config import config
 from .exception import ExecutionError, InvalidError, RemoteError
 from .image import debian_slim
@@ -45,11 +45,11 @@ def _unpack_output_buffer_item(buffer_item: api_pb2.BufferItem) -> api_pb2.Gener
     return output
 
 
-def _process_result(session, result):
+def _process_result(app, result):
     if result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
         if result.data:
             try:
-                exc = session.deserialize(result.data)
+                exc = app.deserialize(result.data)
             except Exception as deser_exc:
                 raise ExecutionError(
                     "Could not deserialize remote exception due to local error:\n"
@@ -64,35 +64,35 @@ def _process_result(session, result):
             raise exc
         raise RemoteError(result.exception)
 
-    return session.deserialize(result.data)
+    return app.deserialize(result.data)
 
 
 class _Invocation:
-    def __init__(self, session, function_id, output_buffer_id):
-        self.session = session
+    def __init__(self, app, function_id, output_buffer_id):
+        self.app = app
         self.function_id = function_id
         self.output_buffer_id = output_buffer_id
 
     @staticmethod
-    async def create(function_id, args, kwargs, session):
+    async def create(function_id, args, kwargs, app):
         assert function_id
         request = api_pb2.FunctionMapRequest(function_id=function_id)
-        response = await retry(session.client.stub.FunctionMap)(request)
+        response = await retry(app.client.stub.FunctionMap)(request)
 
         input_buffer_id = response.input_buffer_id
         output_buffer_id = response.output_buffer_id
 
-        item = _pack_input_buffer_item(session.serialize(args), session.serialize(kwargs), output_buffer_id)
+        item = _pack_input_buffer_item(app.serialize(args), app.serialize(kwargs), output_buffer_id)
         buffer_req = api_pb2.BufferWriteRequest(items=[item], buffer_id=input_buffer_id)
         request = api_pb2.FunctionCallRequest(function_id=function_id, buffer_req=buffer_req)
-        await buffered_rpc_write(session.client.stub.FunctionCall, request)
+        await buffered_rpc_write(app.client.stub.FunctionCall, request)
 
-        return _Invocation(session, function_id, output_buffer_id)
+        return _Invocation(app, function_id, output_buffer_id)
 
     async def get_items(self):
         request = api_pb2.FunctionGetNextOutputRequest(function_id=self.function_id)
         response = await buffered_rpc_read(
-            self.session.client.stub.FunctionGetNextOutput, request, self.output_buffer_id, timeout=None
+            self.app.client.stub.FunctionGetNextOutput, request, self.output_buffer_id, timeout=None
         )
         for item in response.items:
             yield _unpack_output_buffer_item(item)
@@ -100,7 +100,7 @@ class _Invocation:
     async def run_function(self):
         result = (await stream.list(self.get_items()))[0]
         assert not result.gen_status
-        return _process_result(self.session, result)
+        return _process_result(self.app, result)
 
     async def run_generator(self):
         completed = False
@@ -109,7 +109,7 @@ class _Invocation:
                 if result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
                     completed = True
                     break
-                yield _process_result(self.session, result)
+                yield _process_result(self.app, result)
 
 
 MAP_INVOCATION_CHUNK_SIZE = 100
@@ -117,16 +117,16 @@ MAP_INVOCATION_CHUNK_SIZE = 100
 
 class _MapInvocation:
     # TODO: should this be an object?
-    def __init__(self, function_id, input_stream, kwargs, session, is_generator):
+    def __init__(self, function_id, input_stream, kwargs, app, is_generator):
         self.function_id = function_id
         self.input_stream = input_stream
         self.kwargs = kwargs
-        self.session = session
+        self.app = app
         self.is_generator = is_generator
 
     async def __aiter__(self):
         request = api_pb2.FunctionMapRequest(function_id=self.function_id)
-        response = await retry(self.session.client.stub.FunctionMap)(request)
+        response = await retry(self.app.client.stub.FunctionMap)(request)
 
         input_buffer_id = response.input_buffer_id
         output_buffer_id = response.output_buffer_id
@@ -144,8 +144,8 @@ class _MapInvocation:
                     items = []
                     for arg in chunk:
                         item = _pack_input_buffer_item(
-                            self.session.serialize(arg),
-                            self.session.serialize(self.kwargs),
+                            self.app.serialize(arg),
+                            self.app.serialize(self.kwargs),
                             output_buffer_id,
                             idx=num_inputs,
                         )
@@ -154,7 +154,7 @@ class _MapInvocation:
                     buffer_req = api_pb2.BufferWriteRequest(items=items, buffer_id=input_buffer_id)
                     request = api_pb2.FunctionCallRequest(function_id=self.function_id, buffer_req=buffer_req)
 
-                    await buffered_rpc_write(self.session.client.stub.FunctionCall, request)
+                    await buffered_rpc_write(self.app.client.stub.FunctionCall, request)
 
             have_all_inputs = True
             yield
@@ -168,7 +168,7 @@ class _MapInvocation:
             while True:
                 request = api_pb2.FunctionGetNextOutputRequest(function_id=self.function_id)
                 response = await buffered_rpc_read(
-                    self.session.client.stub.FunctionGetNextOutput,
+                    self.app.client.stub.FunctionGetNextOutput,
                     request,
                     output_buffer_id,
                     timeout=None,
@@ -181,12 +181,12 @@ class _MapInvocation:
                         if result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
                             num_outputs += 1
                         else:
-                            output = _process_result(self.session, result)
+                            output = _process_result(self.app, result)
                             # yield output directly for generators.
                             yield output
                     else:
                         # hold on to outputs for function maps, so we can reorder them correctly.
-                        pending_outputs[item.idx] = _process_result(self.session, result)
+                        pending_outputs[item.idx] = _process_result(self.app, result)
 
                 # send outputs sequentially while we can
                 while num_outputs in pending_outputs:
@@ -233,7 +233,7 @@ class Function(Object, Factory, type_prefix="fu"):
         self.gpu = gpu
         super()._init_static(tag=tag)
 
-    async def load(self, session):
+    async def load(self, app):
         mounts = [
             await Mount.create(
                 local_dir=self.info.package_path,
@@ -250,20 +250,20 @@ class Function(Object, Factory, type_prefix="fu"):
             mounts.append(client_mount)
 
         # Wait for image and mounts to finish
-        # TODO: should we really join recursively here? Maybe it's better to move this logic to the session class?
+        # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
         if self.image is not None:
-            image_id = await session.create_object(self.image)
+            image_id = await app.create_object(self.image)
         else:
             image_id = None  # Happens if it's a notebook function
         if self.secret is not None:
-            secret_id = await session.create_object(self.secret)
+            secret_id = await app.create_object(self.secret)
         else:
             secret_id = None
-        mount_ids = await asyncio.gather(*(session.create_object(mount) for mount in mounts))
+        mount_ids = await asyncio.gather(*(app.create_object(mount) for mount in mounts))
 
         if self.schedule is not None:
             # Ensure that the function does not require any input arguments
-            schedule_id = await session.create_object(self.schedule)
+            schedule_id = await app.create_object(self.schedule)
         else:
             schedule_id = None
 
@@ -285,30 +285,30 @@ class Function(Object, Factory, type_prefix="fu"):
             resources=api_pb2.Resources(gpu=self.gpu),
         )
         request = api_pb2.FunctionCreateRequest(
-            app_id=session.session_id,
+            app_id=app.app_id,
             schedule_id=schedule_id,
             function=function_definition,
         )
-        response = await session.client.stub.FunctionCreate(request)
+        response = await app.client.stub.FunctionCreate(request)
 
         return response.function_id
 
     async def map(self, inputs, window=100, kwargs={}):
         input_stream = stream.iterate(inputs) | pipe.map(lambda arg: (arg,))
-        async for item in _MapInvocation(self.object_id, input_stream, kwargs, self._session, self.is_generator):
+        async for item in _MapInvocation(self.object_id, input_stream, kwargs, self._app, self.is_generator):
             yield item
 
     async def call_function(self, args, kwargs):
-        invocation = await _Invocation.create(self.object_id, args, kwargs, self._session)
+        invocation = await _Invocation.create(self.object_id, args, kwargs, self._app)
         return await invocation.run_function()
 
     async def invoke_function(self, args, kwargs):
         """Returns a future rather than the result directly"""
-        invocation = await _Invocation.create(self.object_id, args, kwargs, self._session)
+        invocation = await _Invocation.create(self.object_id, args, kwargs, self._app)
         return invocation.run_function()
 
     async def call_generator(self, args, kwargs):
-        invocation = await _Invocation.create(self.object_id, args, kwargs, self._session)
+        invocation = await _Invocation.create(self.object_id, args, kwargs, self._app)
         async for res in invocation.run_generator():
             yield res
 
@@ -328,39 +328,39 @@ class Function(Object, Factory, type_prefix="fu"):
         return self.raw_f
 
 
-def _register_function(function, session):
-    if get_container_session() is None:
-        if session is None:
-            session = get_default_session()
-        if session is not None:
-            session.register_object(function)
+def _register_function(function, app):
+    if get_container_app() is None:
+        if app is None:
+            app = get_default_app()
+        if app is not None:
+            app.register_object(function)
 
 
 @decorator_with_options
-def function(raw_f=None, session=None, image=debian_slim, schedule=None, secret=None, gpu=False):
+def function(raw_f=None, app=None, image=debian_slim, schedule=None, secret=None, gpu=False):
     """Decorator to create Modal functions
 
     Args:
-        session (:py:class:`modal.session.Session`): The session
+        app (:py:class:`modal.app.App`): The app
         image (:py:class:`modal.image.Image`): The image to run the function in
         secret (:py:class:`modal.secret.Secret`): Dictionary of environment variables
         gpu (bool): Whether a GPU is required
     """
     function = Function(raw_f, image=image, secret=secret, schedule=schedule, is_generator=False, gpu=gpu)
-    _register_function(function, session)
+    _register_function(function, app)
     return function
 
 
 @decorator_with_options
-def generator(raw_f=None, session=None, image=debian_slim, secret=None, gpu=False):
+def generator(raw_f=None, app=None, image=debian_slim, secret=None, gpu=False):
     """Decorator to create Modal generators
 
     Args:
-        session (:py:class:`modal.session.Session`): The session
+        app (:py:class:`modal.app.App`): The app
         image (:py:class:`modal.image.Image`): The image to run the function in
         secret (:py:class:`modal.secret.Secret`): Dictionary of environment variables
         gpu (bool): Whether a GPU is required
     """
     function = Function(raw_f, image=image, secret=secret, is_generator=True, gpu=gpu)
-    _register_function(function, session)
+    _register_function(function, app)
     return function

@@ -55,12 +55,12 @@ class CustomImage(Image):
         dockerfile_commands=[],
         local_image_python_executable=None,
         version=None,
-        session=None,
+        app=None,
     ):
-        session = cls._get_session(session)
+        app = cls._get_app(app)
 
         # Recursively build base images
-        base_image_ids = await asyncio.gather(*(session.create_object(image) for image in base_images.values()))
+        base_image_ids = await asyncio.gather(*(app.create_object(image) for image in base_images.values()))
         base_images_pb2s = [
             api_pb2.BaseImage(docker_tag=docker_tag, image_id=image_id)
             for docker_tag, image_id in zip(base_images.keys(), base_image_ids)
@@ -80,10 +80,10 @@ class CustomImage(Image):
         )
 
         req = api_pb2.ImageGetOrCreateRequest(
-            app_id=session.session_id,
+            app_id=app.app_id,
             image=image_definition,
         )
-        resp = await session.client.stub.ImageGetOrCreate(req)
+        resp = await app.client.stub.ImageGetOrCreate(req)
         image_id = resp.image_id
 
         logger.debug("Waiting for image %s" % image_id)
@@ -91,9 +91,9 @@ class CustomImage(Image):
             request = api_pb2.ImageJoinRequest(
                 image_id=image_id,
                 timeout=BLOCKING_REQUEST_TIMEOUT,
-                app_id=session.session_id,
+                app_id=app.app_id,
             )
-            response = await retry(session.client.stub.ImageJoin)(request, timeout=GRPC_REQUEST_TIMEOUT)
+            response = await retry(app.client.stub.ImageJoin)(request, timeout=GRPC_REQUEST_TIMEOUT)
             if not response.result.status:
                 continue
             elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
@@ -103,7 +103,7 @@ class CustomImage(Image):
             else:
                 raise RemoteError("Unknown status %s!" % response.result.status)
 
-        return cls._create_object_instance(image_id, session)
+        return cls._create_object_instance(image_id, app)
 
 
 @Image.factory

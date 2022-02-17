@@ -7,18 +7,18 @@ import colorama
 
 from modal._progress import safe_progress
 
+from ._app_singleton import (
+    get_container_app,
+    get_default_app,
+    set_container_app,
+    set_running_app,
+)
+from ._app_state import AppState
 from ._async_utils import TaskContext, run_coro_blocking, synchronizer
 from ._client import Client
 from ._grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIME_BUFFER
 from ._object_meta import ObjectMeta
 from ._serialization import Pickler, Unpickler
-from ._session_singleton import (
-    get_container_session,
-    get_default_session,
-    set_container_session,
-    set_running_session,
-)
-from ._session_state import SessionState
 from .config import config, logger
 from .exception import ExecutionError, InvalidError, NotFoundError
 from .object import Object
@@ -26,29 +26,27 @@ from .proto import api_pb2
 
 
 @synchronizer
-class Session:
-    """The Session manages objects in a few ways
+class App:
+    """The App manages objects in a few ways
 
-    1. Every object belongs to a session
-    2. Sessions are responsible for syncing object identities across processes
-    3. Sessions manage all log collection for ephemeral functions
-
-    "session" isn't a great name, a better name is probably "scope".
+    1. Every object belongs to a app
+    2. Apps are responsible for syncing object identities across processes
+    3. Apps manage all log collection for ephemeral functions
     """
 
     @classmethod
-    def initialize_container_session(cls):
-        set_container_session(super().__new__(cls))
+    def initialize_container_app(cls):
+        set_container_app(super().__new__(cls))
 
     def __new__(cls, *args, **kwargs):
-        singleton = get_container_session()
+        singleton = get_container_app()
         if singleton is not None:
-            # If there's a singleton session, just return it for everything
+            # If there's a singleton app, just return it for everything
             return singleton
         else:
             # Refer to the normal constructor
-            session = super().__new__(cls)
-            return session
+            app = super().__new__(cls)
+            return app
 
     def __init__(self, show_progress=None, blocking_late_creation_ok=False, name=None, raise_background_errors=False):
         if hasattr(self, "_initialized"):
@@ -56,8 +54,8 @@ class Session:
 
         self._initialized = True
         self.client = None
-        self.name = name or self._infer_session_name()
-        self.state = SessionState.NONE
+        self.name = name or self._infer_app_name()
+        self.state = AppState.NONE
         self._pending_create_objects = []  # list of objects that haven't been created
         self._created_tagged_objects = {}  # tag -> object id
         self._show_progress = show_progress  # None = use sys.stdout.isatty()
@@ -72,7 +70,7 @@ class Session:
         self._raise_background_errors = raise_background_errors
         super().__init__()
 
-    def _infer_session_name(self):
+    def _infer_app_name(self):
         script_filename = os.path.split(sys.argv[0])[-1]
         args = [script_filename] + sys.argv[1:]
         return " ".join(args)
@@ -84,19 +82,19 @@ class Session:
         return self._created_tagged_objects.get(tag)
 
     def register_object(self, obj):
-        """Registers an object to be created by the session so that it's available in modal.
+        """Registers an object to be created by the app so that it's available in modal.
 
         This is only used by factories and functions."""
         if obj.tag is None:
             raise Exception("Can only register named objects")
-        if self.state == SessionState.NONE:
+        if self.state == AppState.NONE:
             self._pending_create_objects.append(obj)
         elif self._blocking_late_creation_ok:
             # See comment in constructor. This is a hacky hack to get notebooks working.
             # Let's revisit this shortly
             run_coro_blocking(self.create_object(obj))
         else:
-            raise Exception("Can only register objects on a session that's not running")
+            raise Exception("Can only register objects on a app that's not running")
 
     def _update_task_state(self, task_id, state):
         self._task_states[task_id] = state
@@ -127,14 +125,14 @@ class Session:
 
     async def _get_logs(self, stdout, stderr, last_log_batch_entry_id, timeout=BLOCKING_REQUEST_TIMEOUT):
         request = api_pb2.AppGetLogsRequest(
-            app_id=self.session_id,
+            app_id=self.app_id,
             timeout=timeout,
             last_entry_id=last_log_batch_entry_id,
         )
         add_newline = None
         async for log_batch in self.client.stub.AppGetLogs(request, timeout=timeout + GRPC_REQUEST_TIME_BUFFER):
             if log_batch.app_state:
-                logger.info(f"Session state now {api_pb2.AppState.Name(log_batch.app_state)}")
+                logger.info(f"App state now {api_pb2.AppState.Name(log_batch.app_state)}")
                 if log_batch.app_state not in (
                     api_pb2.APP_STATE_EPHEMERAL,
                     api_pb2.APP_STATE_DRAINING_LOGS,
@@ -180,18 +178,18 @@ class Session:
             # TODO: catch errors, sleep, and retry?
         logger.info("Logging exited gracefully")
 
-    async def initialize_container(self, session_id, client, task_id):
-        """Used by the container to bootstrap the session and all its objects."""
-        self.session_id = session_id
+    async def initialize_container(self, app_id, client, task_id):
+        """Used by the container to bootstrap the app and all its objects."""
+        self.app_id = app_id
         self.client = client
 
-        req = api_pb2.AppGetObjectsRequest(app_id=session_id, task_id=task_id)
+        req = api_pb2.AppGetObjectsRequest(app_id=app_id, task_id=task_id)
         resp = await self.client.stub.AppGetObjects(req)
         self._created_tagged_objects = dict(resp.object_ids)
 
         # In the container, run forever
-        self.state = SessionState.RUNNING
-        set_running_session(self)
+        self.state = AppState.RUNNING
+        set_running_app(self)
 
     async def create_object(self, obj):
         """Takes an object as input, returns an object id.
@@ -236,12 +234,12 @@ class Session:
     async def _run(self, client, stdout, stderr, logs_timeout):
         # TOOD: use something smarter than checking for the .client to exists in order to prevent
         # race conditions here!
-        if self.state != SessionState.NONE:
-            raise Exception(f"Can't start a session that's already in state {self.state}")
-        self.state = SessionState.STARTING
+        if self.state != AppState.NONE:
+            raise Exception(f"Can't start a app that's already in state {self.state}")
+        self.state = AppState.STARTING
         self.client = client
 
-        # We need to re-initialize all these objects. Needed if a session is reused.
+        # We need to re-initialize all these objects. Needed if a app is reused.
         initial_objects = list(self._pending_create_objects)
         if self._show_progress is None:
             visible_progress = (stdout or sys.stdout).isatty()
@@ -249,10 +247,10 @@ class Session:
             visible_progress = self._show_progress
 
         try:
-            # Start session
+            # Start app
             req = api_pb2.AppCreateRequest(client_id=client.client_id, name=self.name)
             resp = await client.stub.AppCreate(req)
-            self.session_id = resp.app_id
+            self.app_id = resp.app_id
 
             # Start tracking logs and yield context
             async with TaskContext(grace=config["logs_timeout"]) as tc:
@@ -267,29 +265,29 @@ class Session:
                     self._progress.step("Creating objects...", "Created objects.")
                     # Create all members
                     await self._flush_objects()
-                    self._progress.step("Running session...", "Session completed.")
+                    self._progress.step("Running app...", "App completed.")
 
-                    # Create the session (and send a list of all tagged obs)
+                    # Create the app (and send a list of all tagged obs)
                     req = api_pb2.AppSetObjectsRequest(
-                        app_id=self.session_id,
+                        app_id=self.app_id,
                         object_ids=self._created_tagged_objects,
                     )
                     await self.client.stub.AppSetObjects(req)
 
                     try:
-                        self.state = SessionState.RUNNING
+                        self.state = AppState.RUNNING
                         yield self  # yield context manager to block
-                        self.state = SessionState.STOPPING
+                        self.state = AppState.STOPPING
                     finally:
-                        # Stop session server-side. This causes:
+                        # Stop app server-side. This causes:
                         # 1. Server to kill any running task
                         # 2. Logs to drain (stopping the _get_logs_loop coroutine)
-                        logger.debug("Stopping the session server-side")
-                        req = api_pb2.AppClientDisconnectRequest(app_id=self.session_id)
+                        logger.debug("Stopping the app server-side")
+                        req = api_pb2.AppClientDisconnectRequest(app_id=self.app_id)
                         await self.client.stub.AppClientDisconnect(req)
         finally:
             self.client = None
-            self.state = SessionState.NONE
+            self.state = AppState.NONE
             self._progress = None
             self._pending_create_objects = initial_objects
             self._created_tagged_objects = {}
@@ -304,16 +302,16 @@ class Session:
 
     @synchronizer.asynccontextmanager
     async def run(self, client=None, stdout=None, stderr=None, logs_timeout=None):
-        set_running_session(self)
+        set_running_app(self)
         try:
             async with self._get_client(client) as client:
                 async with self._run(client, stdout, stderr, logs_timeout) as it:
                     yield it  # ctx mgr
         finally:
-            set_running_session(None)
+            set_running_app(None)
 
     async def detach(self):
-        request = api_pb2.AppDetachRequest(app_id=self.session_id)
+        request = api_pb2.AppDetachRequest(app_id=self.app_id)
         await self.client.stub.AppDetach(request)
 
     async def deploy(self, name, obj_or_objs=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
@@ -328,7 +326,7 @@ class Session:
         else:
             raise InvalidError(f"{obj_or_objs} not an Object or dict or None")
         request = api_pb2.AppDeployRequest(
-            app_id=self.session_id,
+            app_id=self.app_id,
             name=name,
             namespace=namespace,
             object_id=object_id,
@@ -338,7 +336,7 @@ class Session:
 
     async def include(self, name, object_label=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
         request = api_pb2.AppIncludeObjectRequest(
-            app_id=self.session_id,
+            app_id=self.app_id,
             name=name,
             object_label=object_label,
             namespace=namespace,
@@ -350,7 +348,7 @@ class Session:
                 err_msg += f".{object_label}"
             if namespace != api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT:
                 err_msg += f" (namespace {api_pb2.ShareNamespace.Name(namespace)})"
-            # TODO: disambiguate between session not found and object not found?
+            # TODO: disambiguate between app not found and object not found?
             raise NotFoundError(err_msg)
         return Object._init_persisted(response.object_id, self)
 
@@ -366,12 +364,12 @@ class Session:
 
 
 def run(*args, **kwargs):
-    """Start up the default modal session"""
-    if get_container_session() is not None:
+    """Start up the default modal app"""
+    if get_container_app() is not None:
         # TODO: we could probably capture whether this happens during an import
         raise ExecutionError("Cannot run modal.run() inside a container! You might have global code that does this.")
-    session = get_default_session()
-    return session.run(*args, **kwargs)
+    app = get_default_app()
+    return app.run(*args, **kwargs)
 
 
 def print_logs(output: str, fd: str, stdout=None, stderr=None):

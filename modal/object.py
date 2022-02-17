@@ -1,7 +1,7 @@
+from ._app_singleton import get_container_app, get_default_app
 from ._decorator_utils import decorator_with_options
 from ._factory import Factory
 from ._object_meta import ObjectMeta
-from ._session_singleton import get_container_session, get_default_session
 from .proto import api_pb2
 
 
@@ -41,27 +41,27 @@ class Object(metaclass=ObjectMeta):
     async def create(cls, *args, **kwargs):
         raise NotImplementedError("Class {cls} does not implement a .create(...) constructor!")
 
-    async def load(self, session):
+    async def load(self, app):
         raise NotImplementedError(f"Object factory of class {type(self)} has no load method")
 
     def _init_attributes(self, tag=None):
         """Initialize attributes"""
         self.tag = tag
         self._object_id = None
-        self._session_id = None
-        self._session = None
+        self._app_id = None
+        self._app = None
 
     @classmethod
-    def _get_session(cls, session=None):
+    def _get_app(cls, app=None):
         """Helper method for subclasses."""
-        if not session:
-            session = get_container_session()
-        if not session:
-            session = get_default_session()
-        return session
+        if not app:
+            app = get_container_app()
+        if not app:
+            app = get_default_app()
+        return app
 
     @classmethod
-    def _create_object_instance(cls, object_id, session):
+    def _create_object_instance(cls, object_id, app):
         """Helper method for subclass constructors."""
         obj = Object.__new__(cls)
         obj._init_attributes()
@@ -69,7 +69,7 @@ class Object(metaclass=ObjectMeta):
         if object_id is None:
             raise Exception(f"object_id for object of type {type(obj)} is None")
 
-        obj.set_object_id(object_id, session)
+        obj.set_object_id(object_id, app)
         return obj
 
     def _init_static(self, tag):
@@ -77,42 +77,42 @@ class Object(metaclass=ObjectMeta):
 
         This is only used by the Factory or Function constructors
 
-        register_on_default_session is set to True for Functions
+        register_on_default_app is set to True for Functions
         """
         # TODO: move this into Factory?
 
         assert tag is not None
         self._init_attributes(tag=tag)
 
-        container_session = get_container_session()
-        if container_session is not None:
+        container_app = get_container_app()
+        if container_app is not None:
             # If we're inside the container, then just lookup the tag and use
             # it if possible.
 
-            session = container_session
-            object_id = session.get_object_id_by_tag(tag)
+            app = container_app
+            object_id = app.get_object_id_by_tag(tag)
             if object_id is not None:
-                self.set_object_id(object_id, session)
+                self.set_object_id(object_id, app)
 
     @classmethod
-    def _init_persisted(cls, object_id, session):
+    def _init_persisted(cls, object_id, app):
         prefix, _ = object_id.split("-")  # TODO: util method
         object_cls = ObjectMeta.prefix_to_type[prefix]
-        return object_cls._create_object_instance(object_id, session)
+        return object_cls._create_object_instance(object_id, app)
 
     def is_factory(self):
         return isinstance(self, Factory)
 
-    def set_object_id(self, object_id, session):
+    def set_object_id(self, object_id, app):
         """Set the Modal internal object id"""
         self._object_id = object_id
-        self._session = session
-        self._session_id = session.session_id
+        self._app = app
+        self._app_id = app.app_id
 
     @property
     def object_id(self):
         """The Modal internal object id"""
-        if self._session_id is not None and self._session is not None and self._session_id == self._session.session_id:
+        if self._app_id is not None and self._app is not None and self._app_id == self._app.app_id:
             return self._object_id
 
     @classmethod
@@ -128,7 +128,7 @@ class Object(metaclass=ObjectMeta):
 
         The decorated function can be used directly as a proxy object (if no
         parameters are needed), or can be called with arguments and will return
-        a proxy object. In the latter case, the session will be passed as the
+        a proxy object. In the latter case, the app will be passed as the
         first argument. Factories can be synchronous or asynchronous. however,
         synchronous factories may cause issues if they operate on Modal objects.
 
@@ -140,8 +140,8 @@ class Object(metaclass=ObjectMeta):
 
         ```python
            @Queue.factory
-           async def factory(session, initial_value=42):
-               q = Queue(session)
+           async def factory(app, initial_value=42):
+               q = Queue(app)
                await q.put(initial_value)
                return q
         ```
@@ -149,6 +149,6 @@ class Object(metaclass=ObjectMeta):
         return cls._user_factory_class(fun)
 
     @classmethod
-    def include(cls, session_name, object_label=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
-        """Use an object published with :py:meth:`modal.session.Session.deploy`"""
-        return cls._shared_object_factory_class(session_name, object_label, namespace)
+    def include(cls, app_name, object_label=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
+        """Use an object published with :py:meth:`modal.app.App.deploy`"""
+        return cls._shared_object_factory_class(app_name, object_label, namespace)

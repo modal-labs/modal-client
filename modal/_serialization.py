@@ -8,8 +8,8 @@ PICKLE_PROTOCOL = 4  # Support older Python versions.
 
 
 class Pickler(cloudpickle.Pickler):
-    def __init__(self, session, buf):
-        self.session = session
+    def __init__(self, app, buf):
+        self.app = app
         super().__init__(buf, protocol=PICKLE_PROTOCOL)
 
     def persistent_id(self, obj):
@@ -22,8 +22,8 @@ class Pickler(cloudpickle.Pickler):
 
 
 class Unpickler(pickle.Unpickler):
-    def __init__(self, session, prefix_to_type, buf):
-        self.session = session
+    def __init__(self, app, prefix_to_type, buf):
+        self.app = app
         self.prefix_to_type = prefix_to_type
         super().__init__(buf)
 
@@ -34,5 +34,5 @@ class Unpickler(pickle.Unpickler):
         cls = self.prefix_to_type[type_prefix]
         obj = Object.__new__(cls)
         obj._init_attributes()
-        obj.set_object_id(object_id, self.session)
+        obj.set_object_id(object_id, self.app)
         return obj

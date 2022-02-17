@@ -1,7 +1,7 @@
 import os
 import pytest
 
-from modal import Session
+from modal import App
 from modal.mount import Mount, _get_files
 
 
@@ -16,15 +16,15 @@ async def test_get_files():
 
 
 def test_create_mount(servicer, client):
-    session = Session()
-    with session.run(client=client):
+    app = App()
+    with app.run(client=client):
         local_dir, cur_filename = os.path.split(__file__)
         remote_dir = "/foo"
 
         def condition(fn):
             return fn.endswith(".py")
 
-        m = Mount.create(local_dir, remote_dir, condition, session=session)
+        m = Mount.create(local_dir, remote_dir, condition, app=app)
         assert m.object_id == "mo-123"
         assert f"/foo/{cur_filename}" in servicer.files_name2sha
         sha256_hex = servicer.files_name2sha[f"/foo/{cur_filename}"]

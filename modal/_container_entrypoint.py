@@ -13,11 +13,11 @@ from ._async_utils import TaskContext, asyncio_run, synchronizer
 from ._buffer_utils import buffered_rpc_read, buffered_rpc_write
 from ._client import Client
 from ._grpc_utils import GRPC_REQUEST_TIMEOUT
+from .app import App
 from .config import logger
 from .exception import InvalidError
 from .functions import Function, _pack_output_buffer_item, _unpack_input_buffer_item
 from .proto import api_pb2
-from .session import Session
 
 
 def _path_to_function(module_name, function_name):
@@ -47,7 +47,7 @@ class FunctionContext:
         self.task_id = container_args.task_id
         self.function_id = container_args.function_id
         self.input_buffer_id = container_args.input_buffer_id
-        self.session_id = container_args.app_id
+        self.app_id = container_args.app_id
         self.function_def = container_args.function_def
         self.client = client
 
@@ -61,14 +61,14 @@ class FunctionContext:
             await self.output_queue.put((None, None))
 
     async def get_function(self) -> typing.Callable:
-        """Note that this also initializes the session."""
+        """Note that this also initializes the app."""
 
-        # On the container, we know we're inside a session, so we initialize all Session
+        # On the container, we know we're inside a app, so we initialize all App
         # objects with the same singleton object. This then lets us pull the lookup
         # table of all the named objects
-        Session.initialize_container_session()
-        self.session = Session()
-        await self.session.initialize_container(self.session_id, self.client, self.task_id)
+        App.initialize_container_app()
+        self.app = App()
+        await self.app.initialize_container(self.app_id, self.client, self.task_id)
 
         if self.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
             # Fetch the serialized function definition
@@ -79,7 +79,7 @@ class FunctionContext:
             # Create a function dynamically
             # Function object is already created, so we need to associate the correct object ID.
             fun = Function(raw_f)
-            fun.set_object_id(self.function_id, self.session)
+            fun.set_object_id(self.function_id, self.app)
         else:
             fun = _path_to_function(self.function_def.module_name, self.function_def.function_name)
             assert isinstance(fun, Function)
@@ -87,10 +87,10 @@ class FunctionContext:
         return fun.get_raw_f()
 
     async def serialize(self, obj: typing.Any) -> bytes:
-        return self.session.serialize(obj)
+        return self.app.serialize(obj)
 
     def deserialize(self, data: bytes) -> typing.Any:
-        return self.session.deserialize(data)
+        return self.app.deserialize(data)
 
     async def generate_inputs(
         self,

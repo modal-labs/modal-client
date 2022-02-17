@@ -1,3 +1,4 @@
+from .app import App, run
 from .dict import Dict
 from .exception import RemoteError
 from .functions import function, generator
@@ -5,7 +6,6 @@ from .image import Image, debian_slim, extend_image
 from .queue import Queue
 from .schedule import Schedule
 from .secret import Secret
-from .session import Session, run
 from .version import __version__
 
 __all__ = [
@@ -19,7 +19,7 @@ __all__ = [
     "extend_image",
     "Queue",
     "Schedule",
-    "Session",
+    "App",
     "run",
     "__version__",
 ]

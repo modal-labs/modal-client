@@ -1,8 +1,8 @@
 import functools
 import inspect
 
+from ._app_singleton import get_container_app
 from ._function_utils import FunctionInfo
-from ._session_singleton import get_container_session
 
 
 class Factory:
@@ -28,8 +28,8 @@ def make_user_factory(cls):
             tag = self.function_info.get_tag(args_and_kwargs)
             cls._init_static(self, tag=tag)
 
-        async def load(self, session):
-            if get_container_session() is not None:
+        async def load(self, app):
+            if get_container_app() is not None:
                 assert False
 
             if self._args_and_kwargs is not None:
@@ -41,7 +41,7 @@ def make_user_factory(cls):
                 obj = await obj
             if not isinstance(obj, cls):
                 raise TypeError(f"expected {obj} to have type {cls}")
-            object_id = await session.create_object(obj)
+            object_id = await app.create_object(obj)
             # Note that we can "steal" the object id from the other object
             # and set it on this object. This is a general trick we can do
             # to other objects too.
@@ -60,15 +60,15 @@ def make_user_factory(cls):
 
 def make_shared_object_factory_class(cls):
     class SharedObjectFactory(cls, Factory):
-        def __init__(self, session_name, object_label, namespace):
-            self.session_name = session_name
+        def __init__(self, app_name, object_label, namespace):
+            self.app_name = app_name
             self.object_label = object_label
             self.namespace = namespace
-            tag = f"#SHARE({session_name}, {object_label}, {namespace})"  # TODO: use functioninfo later
+            tag = f"#SHARE({app_name}, {object_label}, {namespace})"  # TODO: use functioninfo later
             cls._init_static(self, tag=tag)
 
-        async def load(self, session):
-            obj = await session.include(self.session_name, self.object_label, self.namespace)
+        async def load(self, app):
+            obj = await app.include(self.app_name, self.object_label, self.namespace)
             return obj.object_id
 
     # TODO: set a bunch of stuff

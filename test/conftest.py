@@ -7,12 +7,8 @@ import grpc
 import pkg_resources
 from google.protobuf.empty_pb2 import Empty
 
+from modal._app_singleton import set_container_app, set_default_app, set_running_app
 from modal._client import Client
-from modal._session_singleton import (
-    set_container_session,
-    set_default_session,
-    set_running_session,
-)
 from modal.functions import (
     MODAL_CLIENT_MOUNT_NAME,
     _pack_output_buffer_item,
@@ -259,8 +255,8 @@ async def container_client(servicer):
 
 
 @pytest.fixture
-def reset_global_sessions():
+def reset_global_apps():
     yield
-    set_default_session(None)
-    set_running_session(None)
-    set_container_session(None)
+    set_default_app(None)
+    set_running_app(None)
+    set_container_app(None)

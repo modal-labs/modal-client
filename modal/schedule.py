@@ -6,8 +6,8 @@ class Schedule(Object, type_prefix="sc"):
     """A schedule of specific times at which registered functions are triggered"""
 
     @classmethod
-    async def create(cls, period=None, cron_string=None, session=None):
-        session = cls._get_session(session)
+    async def create(cls, period=None, cron_string=None, app=None):
+        app = cls._get_app(app)
 
         if period:
             # TODO: should we just take a timedelta object?
@@ -26,29 +26,29 @@ class Schedule(Object, type_prefix="sc"):
             except Exception:
                 raise Exception(f"Failed to parse period while creating Schedule: {period}")
             req = api_pb2.ScheduleCreateRequest(
-                app_id=session.session_id,
+                app_id=app.app_id,
                 period=seconds,
-                args=session.serialize([]),
-                kwargs=session.serialize({}),
+                args=app.serialize([]),
+                kwargs=app.serialize({}),
             )
         elif cron_string:
             req = api_pb2.ScheduleCreateRequest(
-                app_id=session.session_id,
+                app_id=app.app_id,
                 cron_string=cron_string,
-                args=session.serialize([]),
-                kwargs=session.serialize({}),
+                args=app.serialize([]),
+                kwargs=app.serialize({}),
             )
 
         # TODO: remove args/kwargs placeholders, which represent arguments to scheduled function
         # This would involve requesting an output buffer here similar to _Invocation
 
-        resp = await session.client.stub.ScheduleCreate(req)
+        resp = await app.client.stub.ScheduleCreate(req)
 
         if resp.error_message:
             raise Exception(f"Failed to create Schedule: {resp.error_message}")
 
         schedule_id = resp.schedule_id
-        return cls._create_object_instance(schedule_id, session)
+        return cls._create_object_instance(schedule_id, app)
 
     @classmethod
     def period(cls, period):

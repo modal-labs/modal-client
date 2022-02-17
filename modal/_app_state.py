@@ -1,10 +1,10 @@
 import enum
 
-# This is needed by object.py, but session.py imports object.py
+# This is needed by object.py, but app.py imports object.py
 # To break the circular import, this is its own tiny module
 
 
-class SessionState(enum.Enum):
+class AppState(enum.Enum):
     NONE = "none"
     STARTING = "starting"
     RUNNING = "running"

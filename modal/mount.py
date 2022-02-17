@@ -45,9 +45,9 @@ async def _get_files(local_dir, condition, recursive):
 
 class Mount(Object, type_prefix="mo"):
     @classmethod
-    async def create(cls, local_dir, remote_dir, condition, session=None, recursive=True):
+    async def create(cls, local_dir, remote_dir, condition, app=None, recursive=True):
         # Run a threadpool to compute hash values, and use n coroutines to put files
-        session = cls._get_session(session)
+        app = cls._get_app(app)
 
         n_files = 0
         n_missing_files = 0
@@ -74,8 +74,8 @@ class Mount(Object, type_prefix="mo"):
                 )
                 response = await client.stub.MountUploadFile(request)
 
-        req = api_pb2.MountCreateRequest(app_id=session.session_id)
-        resp = await session.client.stub.MountCreate(req)
+        req = api_pb2.MountCreateRequest(app_id=app.app_id)
+        resp = await app.client.stub.MountCreate(req)
         mount_id = resp.mount_id
 
         logger.debug(f"Uploading mount {mount_id} using {n_concurrent_uploads} uploads")
@@ -86,7 +86,7 @@ class Mount(Object, type_prefix="mo"):
 
         async def put_file_tupled(tup):
             filename, rel_filename, sha256_hex = tup
-            await _put_file(session.client, mount_id, filename, rel_filename, sha256_hex)
+            await _put_file(app.client, mount_id, filename, rel_filename, sha256_hex)
 
         # Upload files
         uploads_stream = aiostream.stream.map(files_stream, put_file_tupled, task_limit=n_concurrent_uploads)
@@ -96,9 +96,9 @@ class Mount(Object, type_prefix="mo"):
 
         # Set the mount to done
         req = api_pb2.MountDoneRequest(mount_id=mount_id)
-        await session.client.stub.MountDone(req)
+        await app.client.stub.MountDone(req)
 
-        return cls._create_object_instance(mount_id, session)
+        return cls._create_object_instance(mount_id, app)
 
 
 async def create_package_mounts(package_name):
