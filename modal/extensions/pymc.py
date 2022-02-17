@@ -11,7 +11,7 @@ from ..proto import api_pb2
 
 synchronizer = synchronicity.Synchronizer()
 
-session = modal.Session()
+app = modal.App()
 
 
 @modal.Image.factory
@@ -72,7 +72,7 @@ def rebuild_exc(exc, tb):
     return exc
 
 
-@modal.generator(session=session, image=pymc_image)
+@modal.generator(app=app, image=pymc_image)
 def sample_process(
     draws: int,
     tune: int,
