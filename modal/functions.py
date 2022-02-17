@@ -23,9 +23,7 @@ MODAL_CLIENT_MOUNT_NAME = "modal-client-mount"
 
 # TODO: maybe we can create a special Buffer class in the ORM that keeps track of the protobuf type
 # of the bytes stored, so the packing/unpacking can happen automatically.
-def _pack_input_buffer_item(
-    args: Optional[bytes], kwargs: Optional[bytes], output_buffer_id: str, idx=None
-) -> api_pb2.BufferItem:
+def _pack_input_buffer_item(args: bytes, kwargs: bytes, output_buffer_id: str, idx=None) -> api_pb2.BufferItem:
     data = Any()
     data.Pack(api_pb2.FunctionInput(args=args, kwargs=kwargs, output_buffer_id=output_buffer_id))
     return api_pb2.BufferItem(data=data, idx=idx)
