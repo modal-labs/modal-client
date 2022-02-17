@@ -46,7 +46,6 @@ class FunctionContext:
     def __init__(self, container_args, client):
         self.task_id = container_args.task_id
         self.function_id = container_args.function_id
-        self.input_buffer_id = container_args.input_buffer_id
         self.app_id = container_args.app_id
         self.function_def = container_args.function_def
         self.client = client
@@ -229,8 +228,8 @@ def call_function(
     function_input: api_pb2.FunctionInput,
 ):
     input_id = function_input.input_id
-    args = function_context.deserialize(input.args) if input.args else ()
-    kwargs = function_context.deserialize(input.kwargs) if input.kwargs else {}
+    args = function_context.deserialize(function_input.args) if function_input.args else ()
+    kwargs = function_context.deserialize(function_input.kwargs) if function_input.kwargs else {}
     idx = function_input.idx
     function_call_id = function_input.function_call_id
 

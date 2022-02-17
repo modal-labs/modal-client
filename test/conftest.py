@@ -179,7 +179,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         request: api_pb2.FunctionMapRequest,
         context: grpc.aio.ServicerContext,
     ) -> api_pb2.FunctionMapResponse:
-        return api_pb2.FunctionMapResponse(input_buffer_id="bu-in", output_buffer_id="bu-out")
+        return api_pb2.FunctionMapResponse(function_call_id="fc-out")
 
     async def FunctionCall(
         self,

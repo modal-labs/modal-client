@@ -2,7 +2,6 @@ import asyncio
 from typing import Optional
 
 from aiostream import pipe, stream
-from google.protobuf.any_pb2 import Any
 
 from ._app_singleton import get_container_app, get_default_app
 from ._async_utils import retry
@@ -19,30 +18,6 @@ from .proto import api_pb2
 from .schedule import Schedule
 
 MODAL_CLIENT_MOUNT_NAME = "modal-client-mount"
-
-
-# TODO: maybe we can create a special Buffer class in the ORM that keeps track of the protobuf type
-# of the bytes stored, so the packing/unpacking can happen automatically.
-def _pack_input_buffer_item(args: bytes, kwargs: bytes, function_call_id: str, idx=None) -> api_pb2.BufferItem:
-    return api_pb2.BufferItem(data=data, idx=idx)
-
-
-def _pack_output_buffer_item(result: api_pb2.GenericResult, idx=None) -> api_pb2.BufferItem:
-    data = Any()
-    data.Pack(result)
-    return api_pb2.BufferItem(data=data, idx=idx)
-
-
-def _unpack_input_buffer_item(buffer_item: api_pb2.BufferItem) -> api_pb2.FunctionInput:
-    input = api_pb2.FunctionInput()
-    buffer_item.data.Unpack(input)
-    return input
-
-
-def _unpack_output_buffer_item(buffer_item: api_pb2.BufferItem) -> api_pb2.GenericResult:
-    output = api_pb2.GenericResult()
-    buffer_item.data.Unpack(output)
-    return output
 
 
 def _process_result(app, result):
@@ -68,7 +43,7 @@ def _process_result(app, result):
 
 
 class _Invocation:
-    def __init__(self, session, function_id, function_call_id):
+    def __init__(self, app, function_id, function_call_id):
         self.app = app
         self.function_id = function_id
         self.function_call_id = function_call_id

@@ -13,7 +13,6 @@ import "google/protobuf/empty.proto";
 message ContainerArguments{  // This is used to pass data from the worker to the container
   string task_id = 1;
   string function_id = 2;
-  string input_buffer_id = 3;
   string app_id = 4;
   Function function_def = 7;
 }
