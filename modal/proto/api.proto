@@ -40,6 +40,7 @@ enum ClientType {
   CLIENT_TYPE_WORKER = 2;
   CLIENT_TYPE_CONTAINER = 3;
   CLIENT_TYPE_SERVER = 4;
+  CLIENT_TYPE_WEB_SERVER = 5;
 }
 
 message ClientCreateRequest {

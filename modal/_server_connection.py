@@ -10,7 +10,7 @@ from .proto import api_pb2
 class BasicAuth(grpc.AuthMetadataPlugin):
     # See https://www.grpc.io/docs/guides/auth/
     def __init__(self, client_type, credentials):
-        if credentials and client_type == api_pb2.CLIENT_TYPE_CLIENT:
+        if credentials and (client_type == api_pb2.CLIENT_TYPE_CLIENT or client_type == api_pb2.CLIENT_TYPE_WEB_SERVER):
             token_id, token_secret = credentials
             self._metadata = (
                 ("x-modal-token-id", token_id),
