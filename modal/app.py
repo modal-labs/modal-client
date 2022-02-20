@@ -254,12 +254,17 @@ class App:
 
             # Start tracking logs and yield context
             async with TaskContext(grace=config["logs_timeout"]) as tc:
-                async with safe_progress(tc, stdout, stderr, visible_progress) as (progress_handler, stdout, stderr):
+                async with safe_progress(tc, stdout, stderr, visible_progress) as (
+                    progress_handler,
+                    real_stdout,
+                    real_stderr,
+                ):
                     self._progress = progress_handler
                     self._progress.step("Initializing...", "Initialized.")
 
                     tc.create_task(
-                        self._get_logs_loop(stdout, stderr), raise_background_errors=self._raise_background_errors
+                        self._get_logs_loop(real_stdout, real_stderr),
+                        raise_background_errors=self._raise_background_errors,
                     )
 
                     self._progress.step("Creating objects...", "Created objects.")
@@ -285,6 +290,10 @@ class App:
                         logger.debug("Stopping the app server-side")
                         req = api_pb2.AppClientDisconnectRequest(app_id=self.app_id)
                         await self.client.stub.AppClientDisconnect(req)
+                    if real_stdout:
+                        real_stdout.flush()
+                    if real_stderr:
+                        real_stderr.flush()
         finally:
             self.client = None
             self.state = AppState.NONE
