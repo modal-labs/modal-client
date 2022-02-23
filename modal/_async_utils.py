@@ -224,6 +224,17 @@ class TaskContext:
         except asyncio.TimeoutError:
             pass
         finally:
+            await asyncio.sleep(0)  # Needed in 3.6 to make any just-cancelled tasks actually cancel
+            # asyncio.wait_for cancels the future, but the CancelledError
+            # still needs to be handled
+            # (https://stackoverflow.com/a/63356323/2475114)
+            if gather_future:
+                try:
+                    await gather_future
+                # pre Python3.8, CancelledErrors were a subclass of exception
+                except asyncio.CancelledError:
+                    pass
+
             for task in self._tasks:
                 if task.done() and not task.cancelled():
                     # Raise any exceptions if they happened.
@@ -235,17 +246,6 @@ class TaskContext:
 
                 logger.warning(f"Canceling unfinished task {task}")
                 task.cancel()
-        await asyncio.sleep(0)  # Needed in 3.6 to make any just-cancelled tasks actually cancel
-
-        # asyncio.wait_for cancels the future, but the CancelledError
-        # still needs to be handled
-        # (https://stackoverflow.com/a/63356323/2475114)
-        if gather_future:
-            try:
-                await gather_future
-            # pre Python3.8, CancelledErrors were a subclass of exception
-            except asyncio.CancelledError:
-                pass
 
     async def __aexit__(self, exc_type, value, tb):
         await self.stop()
