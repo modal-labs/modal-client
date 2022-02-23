@@ -48,7 +48,7 @@ class App:
             app = super().__new__(cls)
             return app
 
-    def __init__(self, show_progress=None, blocking_late_creation_ok=False, name=None, raise_background_errors=False):
+    def __init__(self, show_progress=None, blocking_late_creation_ok=False, name=None):
         if hasattr(self, "_initialized"):
             return  # Prevent re-initialization with the singleton
 
@@ -67,7 +67,6 @@ class App:
         # (b) notebooks run with an event loop, which makes synchronizer confused
         # We will have to rethink this soon.
         self._blocking_late_creation_ok = blocking_late_creation_ok
-        self._raise_background_errors = raise_background_errors
         super().__init__()
 
     def _infer_app_name(self):
@@ -262,10 +261,7 @@ class App:
                     self._progress = progress_handler
                     self._progress.step("Initializing...", "Initialized.")
 
-                    tc.create_task(
-                        self._get_logs_loop(real_stdout, real_stderr),
-                        raise_background_errors=self._raise_background_errors,
-                    )
+                    tc.create_task(self._get_logs_loop(real_stdout, real_stderr))
 
                     self._progress.step("Creating objects...", "Created objects.")
                     # Create all members

@@ -198,9 +198,8 @@ class TaskContext:
         task = task_context.create(coro())
     """
 
-    def __init__(self, grace=None, raise_background_errors=False):
+    def __init__(self, grace=None):
         self._grace = grace
-        self._raise_background_errors = raise_background_errors
         self._loops = set()
 
     async def start(self):
@@ -250,14 +249,7 @@ class TaskContext:
     async def __aexit__(self, exc_type, value, tb):
         await self.stop()
 
-    def _mark_finished(self, task):
-        assert task.done()
-        assert task in self._tasks
-        self._tasks.remove(task)
-        if not task.cancelled():
-            task.result()  # Show exception if it happened
-
-    def create_task(self, coro_or_task, raise_background_errors=False):
+    def create_task(self, coro_or_task):
         if isinstance(coro_or_task, asyncio.Task):
             task = coro_or_task
         elif asyncio.iscoroutine(coro_or_task):
@@ -266,9 +258,6 @@ class TaskContext:
         else:
             raise Exception(f"Object of type {type(coro_or_task)} is not a coroutine or Task")
         self._tasks.add(task)
-        if not raise_background_errors:
-            # Wait for stop() to raise errors in foreground.
-            task.add_done_callback(self._mark_finished)
         return task
 
     def infinite_loop(self, async_f, timeout=90, sleep=10):
@@ -318,6 +307,8 @@ class TaskContext:
                 task.result()  # Raise exception if needed
                 if task in unfinished_tasks:
                     unfinished_tasks.remove(task)
+                if task in self._tasks:
+                    self._tasks.remove(task)
 
 
 def run_coro_blocking(coro):
