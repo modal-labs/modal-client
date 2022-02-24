@@ -1,4 +1,5 @@
 import asyncio
+import os
 import sys
 
 from ._async_utils import retry
@@ -172,4 +173,32 @@ async def extend_image(base_image, extra_dockerfile_commands):
     """Extend an image with arbitrary dockerfile commands"""
     return await CustomImage.create(
         base_images={"base": base_image}, dockerfile_commands=["FROM base"] + extra_dockerfile_commands
+    )
+
+
+def get_client_requirements():
+    # Locate Modal client requirements.txt
+    import modal
+
+    modal_path = modal.__path__[0]
+    requirements_fn = os.path.join(modal_path, "requirements.txt")
+
+    requirements_data = open(requirements_fn, "rb").read()
+
+    return requirements_fn, requirements_data
+
+
+async def dockerhub_image(tag):
+    requirements_fn, requirements_data = get_client_requirements()
+
+    dockerfile_commands = [
+        f"FROM {tag}",
+        f"COPY {requirements_fn} {requirements_fn}",
+        "RUN pip install --upgrade pip",
+        f"RUN pip install -r {requirements_fn}",
+    ]
+
+    return await CustomImage.create(
+        dockerfile_commands=dockerfile_commands,
+        context_files={requirements_fn: requirements_data},
     )
