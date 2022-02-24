@@ -189,6 +189,15 @@ def get_client_requirements():
 
 
 async def dockerhub_image(tag):
+    """
+    Build a modal image from a pre-existing image on DockerHub.
+
+    This assumes the following about the image:
+    - Python 3.6 or above is present, and is available as `python`
+    - `pip` is installed correctly
+    - The image is built for the `linux/amd64` platform
+    """
+
     requirements_fn, requirements_data = get_client_requirements()
 
     dockerfile_commands = [
