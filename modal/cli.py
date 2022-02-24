@@ -3,7 +3,7 @@ import getpass
 import typer
 
 from ._client import Client
-from .config import config, store_user_config, user_config_path
+from .config import _store_user_config, config, user_config_path
 from .proto import api_pb2
 
 app = typer.Typer()
@@ -32,7 +32,7 @@ def set(token_id: str = "-", token_secret: str = "-", env: str = None, no_verify
         client.verify()
         print("Token verified successfully")
 
-    store_user_config({"token_id": token_id, "token_secret": token_secret}, env=env)
+    _store_user_config({"token_id": token_id, "token_secret": token_secret}, env=env)
     print(f"Token written to {user_config_path} {Symbols.PARTY_POPPER}")
 
 

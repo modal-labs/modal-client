@@ -166,7 +166,7 @@ logger = logging.getLogger()
 # Util to write config
 
 
-def store_user_config(new_settings, env=None):
+def _store_user_config(new_settings, env=None):
     """Internal method, used by the CLI to set tokens."""
     if env is None:
         env = _env

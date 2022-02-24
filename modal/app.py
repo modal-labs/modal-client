@@ -29,7 +29,7 @@ from .proto import api_pb2
 class App:
     """The App manages objects in a few ways
 
-    1. Every object belongs to a app
+    1. Every object belongs to an app
     2. Apps are responsible for syncing object identities across processes
     3. Apps manage all log collection for ephemeral functions
     """
