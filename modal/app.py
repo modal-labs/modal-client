@@ -352,13 +352,14 @@ class App:
         )
         response = await self.client.stub.AppIncludeObject(request)
         if not response.object_id:
-            err_msg = f"Could not find object {name}"
+            obj_repr = name
             if object_label is not None:
-                err_msg += f".{object_label}"
+                obj_repr += f".{object_label}"
             if namespace != api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT:
-                err_msg += f" (namespace {api_pb2.DeploymentNamespace.Name(namespace)})"
+                obj_repr += f" (namespace {api_pb2.DeploymentNamespace.Name(namespace)})"
             # TODO: disambiguate between app not found and object not found?
-            raise NotFoundError(err_msg)
+            err_msg = f"Could not find object {obj_repr}"
+            raise NotFoundError(err_msg, obj_repr)
         return Object._init_persisted(response.object_id, self)
 
     def serialize(self, obj):

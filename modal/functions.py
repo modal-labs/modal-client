@@ -10,7 +10,7 @@ from ._decorator_utils import decorator_with_options
 from ._factory import Factory
 from ._function_utils import FunctionInfo
 from .config import config
-from .exception import ExecutionError, InvalidError, RemoteError
+from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError
 from .image import debian_slim
 from .mount import Mount, create_package_mounts
 from .object import Object
@@ -231,7 +231,14 @@ class Function(Object, Factory, type_prefix="fu"):
         else:
             image_id = None  # Happens if it's a notebook function
         if self.secret is not None:
-            secret_id = await app.create_object(self.secret)
+            try:
+                secret_id = await app.create_object(self.secret)
+            except NotFoundError as ex:
+                raise NotFoundError(
+                    f"Could not find secret {ex.obj_repr}\n"
+                    + "You can add secrets to your account at https://modal.com/secrets",
+                    ex.obj_repr,
+                )
         else:
             secret_id = None
         mount_ids = await asyncio.gather(*(app.create_object(mount) for mount in mounts))
