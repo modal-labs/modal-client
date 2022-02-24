@@ -1,6 +1,6 @@
 import pytest
 
-from modal import App, Queue, run
+from modal import App, Queue, function, run
 from modal._app_singleton import get_default_app
 from modal._app_state import AppState
 from modal.exception import ExecutionError, NotFoundError
@@ -65,4 +65,20 @@ def test_run_inside_container(reset_global_apps, servicer, client):
     App.initialize_container_app()
     with pytest.raises(ExecutionError):
         with run(client=client):
+            pass
+
+
+# Should exit without waiting for the logs grace period.
+@pytest.mark.timeout(1)
+def test_create_object_exception(servicer, client):
+    servicer.function_create_error = True
+
+    app = App()
+
+    @function(app=app)
+    def f():
+        pass
+
+    with pytest.raises(Exception):
+        with app.run(client=client):
             pass

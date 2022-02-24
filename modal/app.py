@@ -261,19 +261,23 @@ class App:
                     self._progress = progress_handler
                     self._progress.step("Initializing...", "Initialized.")
 
-                    tc.create_task(self._get_logs_loop(real_stdout, real_stderr))
+                    logs_task = tc.create_task(self._get_logs_loop(real_stdout, real_stderr))
 
-                    self._progress.step("Creating objects...", "Created objects.")
-                    # Create all members
-                    await self._flush_objects()
-                    self._progress.step("Running app...", "App completed.")
+                    try:
+                        self._progress.step("Creating objects...", "Created objects.")
+                        # Create all members
+                        await self._flush_objects()
+                        self._progress.step("Running app...", "App completed.")
 
-                    # Create the app (and send a list of all tagged obs)
-                    req = api_pb2.AppSetObjectsRequest(
-                        app_id=self.app_id,
-                        object_ids=self._created_tagged_objects,
-                    )
-                    await self.client.stub.AppSetObjects(req)
+                        # Create the app (and send a list of all tagged obs)
+                        req = api_pb2.AppSetObjectsRequest(
+                            app_id=self.app_id,
+                            object_ids=self._created_tagged_objects,
+                        )
+                        await self.client.stub.AppSetObjects(req)
+                    except Exception:
+                        logs_task.cancel()
+                        raise
 
                     try:
                         self.state = AppState.RUNNING

@@ -35,6 +35,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.n_functions = 0
         self.n_schedules = 0
         self.function2schedule = {}
+        self.function_create_error = False
 
     async def ClientCreate(
         self,
@@ -164,6 +165,8 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         request: api_pb2.FunctionCreateRequest,
         context: grpc.aio.ServicerContext,
     ) -> api_pb2.FunctionCreateResponse:
+        if self.function_create_error:
+            raise Exception("Function create failed")
         self.n_functions += 1
         function_id = f"fu-{self.n_functions}"
         if request.cron_string or request.period:
