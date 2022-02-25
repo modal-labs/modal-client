@@ -261,7 +261,7 @@ class App:
                     self._progress = progress_handler
                     self._progress.step("Initializing...", "Initialized.")
 
-                    logs_task = tc.create_task(self._get_logs_loop(real_stdout, real_stderr))
+                    tc.create_task(self._get_logs_loop(real_stdout, real_stderr))
 
                     try:
                         self._progress.step("Creating objects...", "Created objects.")
