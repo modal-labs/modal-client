@@ -1,5 +1,5 @@
 import asyncio
-from typing import Optional
+from typing import Collection, Optional
 
 from aiostream import pipe, stream
 
@@ -16,6 +16,7 @@ from .mount import Mount, create_package_mounts
 from .object import Object
 from .proto import api_pb2
 from .schedule import Schedule
+from .secret import Secret
 
 MODAL_CLIENT_MOUNT_NAME = "modal-client-mount"
 
@@ -186,7 +187,8 @@ class Function(Object, Factory, type_prefix="fu"):
         self,
         raw_f,
         image=None,
-        secret=None,
+        secret: Optional[Secret] = None,
+        secrets: Collection[Secret] = (),
         schedule: Optional[Schedule] = None,
         is_generator=False,
         gpu: bool = False,
@@ -202,7 +204,12 @@ class Function(Object, Factory, type_prefix="fu"):
         tag = self.info.get_tag(None)
         self.raw_f = raw_f
         self.image = image
-        self.secret = secret
+        if secret and secrets:
+            raise InvalidError(f"Function {raw_f} has both singular `secret` and plural `secrets` attached")
+        if secret:
+            self.secrets = [secret]
+        else:
+            self.secrets = secrets
         self.schedule = schedule
         self.is_generator = is_generator
         self.gpu = gpu
@@ -230,17 +237,18 @@ class Function(Object, Factory, type_prefix="fu"):
             image_id = await app.create_object(self.image)
         else:
             image_id = None  # Happens if it's a notebook function
-        if self.secret is not None:
+        secret_ids = []
+        for secret in self.secrets:
             try:
-                secret_id = await app.create_object(self.secret)
+                secret_id = await app.create_object(secret)
             except NotFoundError as ex:
                 raise NotFoundError(
                     f"Could not find secret {ex.obj_repr}\n"
                     + "You can add secrets to your account at https://modal.com/secrets",
                     ex.obj_repr,
                 )
-        else:
-            secret_id = None
+            secret_ids.append(secret_id)
+
         mount_ids = await asyncio.gather(*(app.create_object(mount) for mount in mounts))
 
         if self.is_generator:
@@ -253,7 +261,7 @@ class Function(Object, Factory, type_prefix="fu"):
             module_name=self.info.module_name,
             function_name=self.info.function_name,
             mount_ids=mount_ids,
-            secret_id=secret_id,
+            secret_ids=secret_ids,
             image_id=image_id,
             definition_type=self.info.definition_type,
             function_serialized=self.info.function_serialized,
@@ -319,7 +327,8 @@ def function(
     app=None,
     image=debian_slim,
     schedule: Optional[Schedule] = None,
-    secret=None,
+    secret: Optional[Secret] = None,
+    secrets: Collection[Secret] = (),
     gpu: bool = False,
 ):
     """Decorator to create Modal functions
@@ -330,13 +339,22 @@ def function(
         secret (:py:class:`modal.secret.Secret`): Dictionary of environment variables
         gpu (bool): Whether a GPU is required
     """
-    function = Function(raw_f, image=image, secret=secret, schedule=schedule, is_generator=False, gpu=gpu)
+    function = Function(
+        raw_f, image=image, secret=secret, secrets=secrets, schedule=schedule, is_generator=False, gpu=gpu
+    )
     _register_function(function, app)
     return function
 
 
 @decorator_with_options
-def generator(raw_f=None, app=None, image=debian_slim, secret=None, gpu=False):
+def generator(
+    raw_f=None,
+    app=None,
+    image=debian_slim,
+    secret: Optional[Secret] = None,
+    secrets: Collection[Secret] = (),
+    gpu: bool = False,
+):
     """Decorator to create Modal generators
 
     Args:
@@ -345,6 +363,6 @@ def generator(raw_f=None, app=None, image=debian_slim, secret=None, gpu=False):
         secret (:py:class:`modal.secret.Secret`): Dictionary of environment variables
         gpu (bool): Whether a GPU is required
     """
-    function = Function(raw_f, image=image, secret=secret, is_generator=True, gpu=gpu)
+    function = Function(raw_f, image=image, secret=secret, secrets=secrets, is_generator=True, gpu=gpu)
     _register_function(function, app)
     return function

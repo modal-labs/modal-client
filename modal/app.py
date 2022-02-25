@@ -373,7 +373,7 @@ class App:
         return Unpickler(self, ObjectMeta.prefix_to_type, io.BytesIO(s)).load()
 
 
-def run(*args, **kwargs):
+def run(*args, **kwargs) -> App:
     """Start up the default modal app"""
     if get_container_app() is not None:
         # TODO: we could probably capture whether this happens during an import

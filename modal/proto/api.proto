@@ -299,7 +299,7 @@ message Function {
   string function_name = 2;
   repeated string mount_ids = 3;
   string image_id = 4;
-  string secret_id = 5;
+  string secret_id = 5 [deprecated=true];
   bytes function_serialized = 6;
 
   enum DefinitionType {
@@ -317,6 +317,7 @@ message Function {
   FunctionType function_type = 8;
 
   Resources resources = 9;
+  repeated string secret_ids = 10;
 }
 
 message FunctionCreateRequest {
