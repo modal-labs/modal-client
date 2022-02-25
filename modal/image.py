@@ -188,6 +188,7 @@ def get_client_requirements():
     return requirements_fn, requirements_data
 
 
+@Image.factory
 async def dockerhub_image(tag):
     """
     Build a modal image from a pre-existing image on DockerHub.

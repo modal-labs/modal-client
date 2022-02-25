@@ -2,7 +2,7 @@ from .app import App, run
 from .dict import Dict
 from .exception import RemoteError
 from .functions import function, generator
-from .image import Image, debian_slim, extend_image
+from .image import Image, debian_slim, dockerhub_image, extend_image
 from .queue import Queue
 from .schedule import Schedule
 from .secret import Secret
@@ -16,6 +16,7 @@ __all__ = [
     "generator",
     "Image",
     "debian_slim",
+    "dockerhub_image",
     "extend_image",
     "Queue",
     "Schedule",
