@@ -275,11 +275,7 @@ class App:
                             object_ids=self._created_tagged_objects,
                         )
                         await self.client.stub.AppSetObjects(req)
-                    except Exception:
-                        logs_task.cancel()
-                        raise
 
-                    try:
                         self.state = AppState.RUNNING
                         yield self  # yield context manager to block
                         self.state = AppState.STOPPING

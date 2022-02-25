@@ -74,7 +74,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     async def AppGetLogs(
         self, request: api_pb2.AppGetLogsRequest, context: grpc.aio.ServicerContext
     ) -> typing.AsyncIterator[api_pb2.TaskLogsBatch]:
-        await asyncio.sleep(1.0)
+        await asyncio.sleep(0.1)
         if self.done:
             yield api_pb2.TaskLogsBatch(app_state=api_pb2.APP_STATE_STOPPED)
 
