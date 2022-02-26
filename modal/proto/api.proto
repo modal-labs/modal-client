@@ -143,17 +143,23 @@ enum TaskState {
   TASK_STATE_COMPLETED = 5;
 }
 
+enum FileDescriptor {
+  FILE_DESCRIPTOR_UNSPECIFIED = 0;
+  FILE_DESCRIPTOR_STDOUT = 1;
+  FILE_DESCRIPTOR_STDERR = 2;
+  FILE_DESCRIPTOR_INFO = 3;
+}
+
 message TaskLogs {
   string data = 1;
-  string fd = 2;
   TaskState task_state = 6;
   double timestamp = 7;
+  FileDescriptor file_descriptor = 8;
 }
 
 message TaskLogsBatch {
   string task_id = 1;
   repeated TaskLogs items = 2;
-  repeated TaskLogs state_updates = 4;
   string entry_id = 5;
   bool task_done = 7;
   AppState app_state = 9;

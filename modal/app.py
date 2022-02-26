@@ -141,27 +141,30 @@ class App:
                 if log_batch.entry_id != "":
                     # log_batch entry_id is empty for fd="server" messages from AppGetLogs
                     last_log_batch_entry_id = log_batch.entry_id
-                for log in log_batch.state_updates:
-                    self._update_task_state(log_batch.task_id, log.task_state)
 
-                if log_batch.items:
+                for log in log_batch.items:
+                    if log.task_state:
+                        self._update_task_state(log_batch.task_id, log.task_state)
+
+                data = [log for log in log_batch.items if log.data]
+
+                if data:
                     # HACK: to make partial line outputs (like when using a progress bar that uses
                     # ANSI escape chars) work. If the last log line doesn't end with a newline,
                     # add one manually, and take it back the next time we print something.
                     # TODO: this can cause problems if there are partial lines being printed as logs, and the user is also
                     # printing to stdout directly. Can be solved if we can print directly here and rely on the redirection
                     # (without calling suspend()), and then add the newline logic to `write_callback`.
-                    last_item = log_batch.items[-1]
+                    last_item = data[-1]
                     if add_newline:
-                        print_logs("\033[A\r", "stdout", stdout, stderr)
+                        print_logs("\033[A\r", api_pb2.FILE_DESCRIPTOR_STDOUT, stdout, stderr)
                     add_newline = not last_item.data.endswith("\n")
 
                     with self._progress.suspend():
-                        for log in log_batch.items:
-                            assert not log.task_state
-                            print_logs(log.data, log.fd, stdout, stderr)
+                        for log in data:
+                            print_logs(log.data, log.file_descriptor, stdout, stderr)
                         if add_newline:
-                            print_logs("\n", "stdout", stdout, stderr)
+                            print_logs("\n", api_pb2.FILE_DESCRIPTOR_STDOUT, stdout, stderr)
         return last_log_batch_entry_id
 
     async def _get_logs_loop(self, stdout, stderr):
@@ -378,14 +381,14 @@ def run(*args, **kwargs) -> App:
     return app.run(*args, **kwargs)
 
 
-def print_logs(output: str, fd: str, stdout=None, stderr=None):
-    if fd == "stdout":
+def print_logs(output: str, fd, stdout=None, stderr=None):
+    if fd == api_pb2.FILE_DESCRIPTOR_STDOUT:
         buf = stdout or sys.stdout
         color = colorama.Fore.BLUE
-    elif fd == "stderr":
+    elif fd == api_pb2.FILE_DESCRIPTOR_STDERR:
         buf = stderr or sys.stderr
         color = colorama.Fore.RED
-    elif fd == "server":
+    elif fd == api_pb2.FILE_DESCRIPTOR_INFO:
         buf = stderr or sys.stderr
         color = colorama.Fore.YELLOW
     else:
