@@ -6,7 +6,7 @@ import time
 
 import aiostream
 
-from ._package_utils import get_package_deps_mount_info
+from ._package_utils import get_module_mount_info
 from .config import logger
 from .object import Object
 from .proto import api_pb2
@@ -102,5 +102,5 @@ class Mount(Object, type_prefix="mo"):
 
 
 async def create_package_mounts(package_name):
-    mount_infos = get_package_deps_mount_info(package_name)
+    mount_infos = get_module_mount_info(package_name)
     return [await Mount.create(path, f"/pkg/{name}", condition) for (name, path, condition) in mount_infos]
