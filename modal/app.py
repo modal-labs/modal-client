@@ -15,7 +15,7 @@ from ._app_state import AppState
 from ._async_utils import TaskContext, run_coro_blocking, synchronizer
 from ._client import Client
 from ._grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIME_BUFFER
-from ._logging import print_logs
+from ._logging import LogPrinter
 from ._object_meta import ObjectMeta
 from ._serialization import Pickler, Unpickler
 from .config import config, logger
@@ -60,6 +60,7 @@ class App:
         self._show_progress = show_progress  # None = use sys.stdout.isatty()
         self._task_states = {}
         self._progress = None
+        self._log_printer = LogPrinter()
 
         # TODO: this is a very hacky thing for notebooks. The problem is that
         # (a) notebooks require creating functions "late"
@@ -127,7 +128,6 @@ class App:
             timeout=timeout,
             last_entry_id=last_log_batch_entry_id,
         )
-        add_newline = None
         async for log_batch in self.client.stub.AppGetLogs(request, timeout=timeout + GRPC_REQUEST_TIME_BUFFER):
             if log_batch.app_state:
                 logger.info(f"App state now {api_pb2.AppState.Name(log_batch.app_state)}")
@@ -141,29 +141,13 @@ class App:
                     # log_batch entry_id is empty for fd="server" messages from AppGetLogs
                     last_log_batch_entry_id = log_batch.entry_id
 
-                for log in log_batch.items:
-                    if log.task_state:
-                        self._update_task_state(log_batch.task_id, log.task_state)
+                with self._progress.suspend():
+                    for log in log_batch.items:
+                        if log.task_state:
+                            self._update_task_state(log_batch.task_id, log.task_state)
+                        if log.data:
+                            self._log_printer.feed(log, stdout, stderr)
 
-                data = [log for log in log_batch.items if log.data]
-
-                if data:
-                    # HACK: to make partial line outputs (like when using a progress bar that uses
-                    # ANSI escape chars) work. If the last log line doesn't end with a newline,
-                    # add one manually, and take it back the next time we print something.
-                    # TODO: this can cause problems if there are partial lines being printed as logs, and the user is also
-                    # printing to stdout directly. Can be solved if we can print directly here and rely on the redirection
-                    # (without calling suspend()), and then add the newline logic to `write_callback`.
-                    last_item = data[-1]
-                    if add_newline:
-                        print_logs("\033[A\r", api_pb2.FILE_DESCRIPTOR_STDOUT, stdout, stderr)
-                    add_newline = not last_item.data.endswith("\n")
-
-                    with self._progress.suspend():
-                        for log in data:
-                            print_logs(log.data, log.file_descriptor, stdout, stderr)
-                        if add_newline:
-                            print_logs("\n", api_pb2.FILE_DESCRIPTOR_STDOUT, stdout, stderr)
         return last_log_batch_entry_id
 
     async def _get_logs_loop(self, stdout, stderr):
