@@ -16,7 +16,7 @@ class LogPrinter:
             buf = stdout_buf
             color = colorama.Fore.BLUE
         elif log.file_descriptor == api_pb2.FILE_DESCRIPTOR_STDERR:
-            buf = stderr or sys.stderr
+            buf = stderr_buf
             color = colorama.Fore.RED
         elif log.file_descriptor == api_pb2.FILE_DESCRIPTOR_INFO:
             buf = stderr_buf
