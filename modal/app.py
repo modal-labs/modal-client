@@ -3,8 +3,6 @@ import io
 import os
 import sys
 
-import colorama
-
 from modal._progress import safe_progress
 
 from ._app_singleton import (
@@ -17,6 +15,7 @@ from ._app_state import AppState
 from ._async_utils import TaskContext, run_coro_blocking, synchronizer
 from ._client import Client
 from ._grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIME_BUFFER
+from ._logging import print_logs
 from ._object_meta import ObjectMeta
 from ._serialization import Pickler, Unpickler
 from .config import config, logger
@@ -379,26 +378,3 @@ def run(*args, **kwargs) -> App:
         raise ExecutionError("Cannot run modal.run() inside a container! You might have global code that does this.")
     app = get_default_app()
     return app.run(*args, **kwargs)
-
-
-def print_logs(output: str, fd, stdout=None, stderr=None):
-    if fd == api_pb2.FILE_DESCRIPTOR_STDOUT:
-        buf = stdout or sys.stdout
-        color = colorama.Fore.BLUE
-    elif fd == api_pb2.FILE_DESCRIPTOR_STDERR:
-        buf = stderr or sys.stderr
-        color = colorama.Fore.RED
-    elif fd == api_pb2.FILE_DESCRIPTOR_INFO:
-        buf = stderr or sys.stderr
-        color = colorama.Fore.YELLOW
-    else:
-        raise Exception(f"weird fd {fd} for log output")
-
-    if buf.isatty():
-        buf.write(color)
-
-    buf.write(output)
-
-    if buf.isatty():
-        buf.write(colorama.Style.RESET_ALL)
-        buf.flush()
