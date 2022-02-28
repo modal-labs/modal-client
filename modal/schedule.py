@@ -1,65 +1,62 @@
-from dataclasses import dataclass
-from typing import Optional, Union
+import abc
+
+import dateutil.relativedelta
 
 from modal.exception import InvalidError
 
 
-@dataclass
 class Schedule:
-    """Schedules represent a time frame to repeatedly run a Modal function.
+    """Schedules represent a time frame to repeatedly run a Modal function."""
 
-    There are two types of schedules, _cron_ and _period_. Cron jobs are specified
-    using a syntax similar to [Unix cron tabs](https://crontab.guru/), while functions
-    that have a period schedule are run according to a fixed time interval.
+    @abc.abstractmethod
+    def protobuf_representation(self):
+        pass
+
+
+class Cron(Schedule):
+    """Cron jobs are specified using the standard
+    [Unix cron tabs](https://crontab.guru/)
+
+    # Usage
+
+    ```python
+    import modal
+
+    @modal.function(schedule=modal.Cron("* * * * *"))
+    def f():
+        print("This function will run every minute")
+
+    modal.Cron("5 4 * * *")  # run at 4:05am every night
+    modal.Cron("0 9 * * 4")  # runs every Thursday 9am
+    ```
     """
 
-    _cron_string: Optional[str] = None
-    _period: Optional[float] = None
+    def __init__(self, cron_string: str):
+        self._cron_string = cron_string
 
-    @classmethod
-    def cron(cls, cron_string: str):
-        """Create a schedule with a specified cron string.
 
-        # Usage
+class Period(Schedule):
+    """Create a schedule that runs every given time interval.
 
-        ```python
-        import modal
+    This is based on the
+    [dateutil](https://dateutil.readthedocs.io/en/latest/relativedelta.html)
+    package.
 
-        modal.Schedule.cron("* * * * *")  # runs every minute
-        modal.Schedule.cron("5 4 * * *")  # runs at 4:05
-        ```
-        """
-        return cls(_cron_string=cron_string)
+    # Usage
 
-    @classmethod
-    def period(cls, period: Union[float, str]):
-        """Create a schedule that runs every given time interval.
+    ```python
+    import modal
 
-        # Usage
+    @modal.function(schedule=modal.Period(days=1))
+    def f():
+        print("This function will run every day")
 
-        ```python
-        import modal
+    modal.Period(hours=4)    # runs every 4 hours
+    modal.Period(minutes=15) # runs every 15 minutes
+    modal.Period(seconds=30) # runs every 30 seconds
+    ```
+    """
 
-        modal.Schedule.period("1d")   # runs every day
-        modal.Schedule.period("4h")   # runs every 4 hours
-        modal.Schedule.period("15m")  # runs every 15 minutes
-        modal.Schedule.period("30s")  # runs every 30 seconds
-
-        modal.Schedule.period(0.456)  # runs every 456 ms
-        ```
-        """
-        if isinstance(period, str):
-            try:
-                if period[-1] == "d":
-                    period = int(period[:-1]) * 24 * 3600
-                elif period[-1] == "h":
-                    period = int(period[:-1]) * 3600
-                elif period[-1] == "m":
-                    period = int(period[:-1]) * 60
-                elif period[-1] == "s":
-                    period = int(period[:-1])
-                else:
-                    raise
-            except Exception:
-                raise InvalidError(f"Failed to parse period while creating Schedule: {period}")
-        return cls(_period=period)
+    # TODO: figure out if we can copy the argument list from relativedelta
+    def __init__(self, **kwargs):
+        self._delta = dateutil.relativedelta.relativedelta(**kwargs)
