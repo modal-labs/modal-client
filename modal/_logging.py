@@ -3,6 +3,7 @@ import sys
 import colorama
 
 from modal_proto import api_pb2
+from ._terminfo import term_seq
 
 
 class LogPrinter:

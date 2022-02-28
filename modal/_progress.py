@@ -4,10 +4,11 @@ import io
 import sys
 from typing import Optional, Tuple
 
-import colorama
+import colorama  # TODO: maybe use _terminfo for this
 
 from modal._output_capture import nullcapture, thread_capture
 from modal_utils.async_utils import TaskContext, synchronizer
+from ._terminfo import term_seq_str
 
 default_frames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
@@ -83,25 +84,23 @@ class ProgressSpinner:
         self._active_step = None
         self._ongoing_parent_step = None
 
-    # borrowed control sequences from yaspin
     def _hide_cursor(self):
-        self._stdout.write("\033[?25l")
+        self._stdout.write(term_seq_str("civis"))
         self._stdout.flush()
 
     def _show_cursor(self):
-        self._stdout.write("\033[?25h")
+        self._stdout.write(term_seq_str("civvis"))
         self._stdout.flush()
 
     def _clear(self):
         if self._lines_printed == 1:
-            self._stdout.write("\033[K")
+            self._stdout.write(term_seq_str("el"))
         elif self._lines_printed > 1:
-            self._stdout.write(f"\r\033[{self._lines_printed - 1}A")
-            self._stdout.write("\033[J")
+            self._stdout.write(term_seq_str("cr"))
+            self._stdout.write(term_seq_str("cuu", self._lines_printed - 1))
+            self._stdout.write(term_seq_str("ed"))
 
         self._lines_printed = 0
-
-    # end yaspin
 
     def _tick(self):
         self._clear()
