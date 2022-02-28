@@ -119,6 +119,7 @@ _SETTINGS = {
     "logs_timeout": _Setting(10, float),
     "image_python_version": _Setting(),
     "image_id": _Setting(),
+    "container_input_timeout": _Setting(50, float),
 }
 
 

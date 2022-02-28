@@ -12,9 +12,8 @@ import google.protobuf.json_format
 from ._async_utils import TaskContext, asyncio_run, synchronizer
 from ._buffer_utils import buffered_rpc_read, buffered_rpc_write
 from ._client import Client
-from ._grpc_utils import GRPC_REQUEST_TIMEOUT
 from .app import App
-from .config import logger
+from .config import config, logger
 from .exception import InvalidError
 from .functions import Function
 from .proto import api_pb2
@@ -101,7 +100,7 @@ class FunctionContext:
         eof_received = False
         while not eof_received:
             response = await buffered_rpc_read(
-                self.client.stub.FunctionGetInputs, request, timeout=GRPC_REQUEST_TIMEOUT
+                self.client.stub.FunctionGetInputs, request, timeout=config["container_input_timeout"]
             )
 
             if response.status == api_pb2.READ_STATUS_TIMEOUT:
