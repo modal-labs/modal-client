@@ -3,16 +3,17 @@ from .proto import api_pb2
 
 
 class Secret(Object, type_prefix="st"):
-    """A dictionary of environment variables for images
+    """Secrets provide a dictionary of environment variables for images.
 
-    Secrets are a good and secure way to add credentials and other sensitive information
-    to the containers your functions run in. You can create and edit secrets from [modal.com/secrets](https://modal.com/secrets)
-    or programatically from your Python code.
+    Secrets are a secure way to add credentials and other sensitive information
+    to the containers your functions run in. You can create and edit secrets on
+    [the dashboard](https://modal.com/secrets), or programatically from Python code.
 
-    ## Using secrets
+    ### Using secrets
     To inject secrets into the container running your function, you add the `secret=` or `secrets=[...]` argument
-    to your `modal.function` annotation. For deployed secrets (e.g. secrets defined on the Modal website) you
+    to your `modal.function` annotation. For deployed secrets (e.g., secrets defined on the Modal website) you
     can refer to your secrets using `Secret.include(secret_name)`:
+
     ```python
     import modal
 
@@ -27,7 +28,8 @@ class Secret(Object, type_prefix="st"):
     def other_function():
         ...
     ```
-    ## Programmatic creation of secrets
+
+    ### Programmatic creation of secrets
     You can programatically create a secret and send it along to your function using `Secret.create`:
 
     ```python
@@ -43,7 +45,7 @@ class Secret(Object, type_prefix="st"):
         print(os.environ["FOO"])
     ```
 
-    ## Deploying secrets
+    ### Deploying secrets
     Sometimes, it can be convenient to not have to go through the website to save or update secrets.
     You can then *deploy* secrets similar to how you deploy other objects to Modal, which has the
     same effect as publishing a secret on the web page:
@@ -54,8 +56,9 @@ class Secret(Object, type_prefix="st"):
     if __name__ == "__main__":
         with modal.run() as app:
             app.deploy("my-secret-name", Secret.create({"FOO": "BAR"}))
+    ```
 
-    The secrets deployed this way will also show up on [modal.com/secrets](https://modal.com/secrets)
+    The secrets deployed this way will also show up on [the dashboard](https://modal.com/secrets).
     """
 
     @classmethod
