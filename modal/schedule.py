@@ -49,21 +49,29 @@ class Period(Schedule):
     def f():
         print("This function will run every day")
 
-    modal.Period(hours=4)    # runs every 4 hours
-    modal.Period(minutes=15) # runs every 15 minutes
-    modal.Period(seconds=30) # runs every 30 seconds
+    modal.Period(hours=4)          # runs every 4 hours
+    modal.Period(minutes=15)       # runs every 15 minutes
+    modal.Period(seconds=math.pi)  # runs every 3.141592653589793 seconds
     ```
+
+    Only `seconds` can be a float. All other arguments are integers.
     """
 
-    def __init__(self, years=0, months=0, weeks=0, days=0, hours=0, minutes=0, seconds=0, microseconds=0):
+    def __init__(
+        self,
+        years: int = 0,
+        months: int = 0,
+        weeks: int = 0,
+        days: int = 0,
+        hours: int = 0,
+        minutes: int = 0,
+        seconds: float = 0,
+    ):
         period = api_pb2.Schedule.Period(
             years=years,
             months=months,
-            weeks=weeks,
-            days=days,
-            hours=hours,
-            minutes=minutes,
+            days=(7 * weeks + days),
+            minutes=(60 * hours + minutes),
             seconds=seconds,
-            microseconds=microseconds,
         )
         super().__init__(api_pb2.Schedule(period=period))
