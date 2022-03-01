@@ -1,7 +1,6 @@
 aiostream==0.4.4
 cloudpickle==2.0.0
 colorama==0.4.3
-dataclasses==0.8; python_version == '3.6'
 fastprogress==1.0.0
 grpcio==1.43.0
 importlib_metadata==4.8.1
