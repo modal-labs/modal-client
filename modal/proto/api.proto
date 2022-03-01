@@ -4,6 +4,8 @@ package modal.client;
 
 import "google/protobuf/empty.proto";
 
+import "modal/proto/web.proto";
+
 message ContainerArguments {  // This is used to pass data from the worker to the container
   string task_id = 1;
   string function_id = 2;
