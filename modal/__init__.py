@@ -5,17 +5,21 @@ from .functions import function, generator
 from .image import Image, debian_slim, dockerhub_image, extend_image
 from .queue import Queue
 from .rate_limit import RateLimit
-from .schedule import Schedule
+from .schedule import Cron, Period
 from .secret import Secret
 from .version import __version__
 
 __all__ = [
+    "__version__",
+    "App",
+    "Cron",
     "Dict",
-    "Secret",
-    "RemoteError",
-    "function",
-    "generator",
     "Image",
+    "Period",
+    "Queue",
+    "RemoteError",
+    "Secret",
+    "function",
     "debian_slim",
     "dockerhub_image",
     "extend_image",
@@ -23,6 +27,6 @@ __all__ = [
     "RateLimit",
     "Schedule",
     "App",
+    "generator",
     "run",
-    "__version__",
 ]

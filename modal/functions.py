@@ -277,8 +277,7 @@ class Function(Object, Factory, type_prefix="fu"):
         request = api_pb2.FunctionCreateRequest(
             app_id=app.app_id,
             function=function_definition,
-            cron_string=self.schedule._cron_string if self.schedule else None,
-            period=self.schedule._period if self.schedule else None,
+            schedule=self.schedule.proto_message,
         )
         response = await app.client.stub.FunctionCreate(request)
 

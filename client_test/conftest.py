@@ -168,8 +168,8 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
             raise Exception("Function create failed")
         self.n_functions += 1
         function_id = f"fu-{self.n_functions}"
-        if request.cron_string or request.period:
-            self.function2schedule[function_id] = (request.cron_string, request.period)
+        if request.schedule:
+            self.function2schedule[function_id] = request.schedule
         return api_pb2.FunctionCreateResponse(function_id=function_id)
 
     async def FunctionMap(
