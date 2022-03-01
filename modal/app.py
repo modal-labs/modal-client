@@ -21,7 +21,7 @@ from ._serialization import Pickler, Unpickler
 from .config import config, logger
 from .exception import ExecutionError, InvalidError, NotFoundError
 from .object import Object
-from .proto import api_pb2
+from .proto import api_pb2, web_pb2
 
 
 @synchronizer
@@ -107,16 +107,16 @@ class App:
             return sum(x == state for x in all_states)
 
         # The most advanced state that's present informs the message.
-        if api_pb2.TASK_STATE_RUNNING in states_set:
-            tasks_running = tasks_at_state(api_pb2.TASK_STATE_RUNNING)
-            tasks_loading = tasks_at_state(api_pb2.TASK_STATE_LOADING_IMAGE)
+        if web_pb2.TASK_STATE_RUNNING in states_set:
+            tasks_running = tasks_at_state(web_pb2.TASK_STATE_RUNNING)
+            tasks_loading = tasks_at_state(web_pb2.TASK_STATE_LOADING_IMAGE)
             msg = f"Running ({tasks_running}/{tasks_running + tasks_loading} containers in use)..."
-        elif api_pb2.TASK_STATE_LOADING_IMAGE in states_set:
-            tasks_loading = tasks_at_state(api_pb2.TASK_STATE_LOADING_IMAGE)
+        elif web_pb2.TASK_STATE_LOADING_IMAGE in states_set:
+            tasks_loading = tasks_at_state(web_pb2.TASK_STATE_LOADING_IMAGE)
             msg = f"Loading images ({tasks_loading} containers initializing)..."
-        elif api_pb2.TASK_STATE_WORKER_ASSIGNED in states_set:
+        elif web_pb2.TASK_STATE_WORKER_ASSIGNED in states_set:
             msg = "Worker assigned..."
-        elif api_pb2.TASK_STATE_QUEUED in states_set:
+        elif web_pb2.TASK_STATE_QUEUED in states_set:
             msg = "Tasks queued..."
         else:
             msg = "Tasks created..."
@@ -130,10 +130,10 @@ class App:
         )
         async for log_batch in self.client.stub.AppGetLogs(request, timeout=timeout + GRPC_REQUEST_TIME_BUFFER):
             if log_batch.app_state:
-                logger.info(f"App state now {api_pb2.AppState.Name(log_batch.app_state)}")
+                logger.info(f"App state now {web_pb2.AppState.Name(log_batch.app_state)}")
                 if log_batch.app_state not in (
-                    api_pb2.APP_STATE_EPHEMERAL,
-                    api_pb2.APP_STATE_DRAINING_LOGS,
+                    web_pb2.APP_STATE_EPHEMERAL,
+                    web_pb2.APP_STATE_DRAINING_LOGS,
                 ):
                     return None
             else:
