@@ -1,6 +1,7 @@
 import ctypes
 import traceback
 from collections import namedtuple
+from typing import Any, List
 
 import synchronicity
 from aiostream import stream
@@ -168,8 +169,8 @@ class ModalSampler:
         if any(len(arg) != chains for arg in [seeds, start_points]):
             raise ValueError("Number of seeds and start_points must be %s." % chains)
 
-        self._finished = []
-        self._active = []
+        self._finished: List[Any] = []
+        self._active: List[Any] = []
         self._max_active = cores
 
         self._in_context = False

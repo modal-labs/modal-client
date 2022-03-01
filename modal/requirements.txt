@@ -9,3 +9,4 @@ protobuf==3.19.4
 synchronicity==0.1.4
 toml==0.10.2
 typer==0.4.0
+types-toml==0.10.4

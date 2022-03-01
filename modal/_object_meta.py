@@ -1,10 +1,12 @@
+from typing import Dict
+
 from ._async_utils import synchronizer
 from ._factory import Factory, make_shared_object_factory_class, make_user_factory
 from .config import logger
 
 
 class ObjectMeta(type):
-    prefix_to_type = {}
+    prefix_to_type: Dict[str, type] = {}
 
     def __new__(metacls, name, bases, dct, type_prefix=None):
         # Synchronize class

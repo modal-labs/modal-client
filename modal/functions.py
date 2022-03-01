@@ -209,7 +209,7 @@ class Function(Object, Factory, type_prefix="fu"):
         if secret and secrets:
             raise InvalidError(f"Function {raw_f} has both singular `secret` and plural `secrets` attached")
         if secret:
-            self.secrets = [secret]
+            self.secrets: Collection[Secret] = [secret]
         else:
             self.secrets = secrets
         self.schedule = schedule
