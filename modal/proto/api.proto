@@ -300,13 +300,30 @@ message Function {
   RateLimit rate_limit = 11;
 }
 
+message Schedule {
+  message Cron {
+    string cron_string = 1;
+  }
+  message Period {
+    float years = 1;
+    float months = 2;
+    float weeks = 3;
+    float days = 4;
+    float hours = 5;
+    float minutes = 6;
+    float seconds = 7;
+    float microseconds = 8;
+  }
+  oneof schedule_oneof {
+    Cron cron = 1;
+    Period period = 2;
+  }
+}
+
 message FunctionCreateRequest {
   Function function = 1;
   string app_id = 2;
-  oneof schedule_oneof {
-    float period = 4;
-    string cron_string = 5;
-  }
+  Schedule schedule = 6;
 }
 
 message FunctionCreateResponse {

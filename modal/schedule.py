@@ -1,6 +1,4 @@
-import abc
-
-import dateutil.relativedelta
+from .proto import api_pb2
 
 from modal.exception import InvalidError
 
@@ -8,9 +6,8 @@ from modal.exception import InvalidError
 class Schedule:
     """Schedules represent a time frame to repeatedly run a Modal function."""
 
-    @abc.abstractmethod
-    def protobuf_representation(self):
-        pass
+    def __init__(self, proto_message):
+        self.proto_message = proto_message
 
 
 class Cron(Schedule):
@@ -32,13 +29,14 @@ class Cron(Schedule):
     """
 
     def __init__(self, cron_string: str):
-        self._cron_string = cron_string
+        cron = api_pb2.Schedule.Cron(cron_string=cron_string)
+        super().__init__(api_pb2.Schedule(cron=cron))
 
 
 class Period(Schedule):
     """Create a schedule that runs every given time interval.
 
-    This is based on the
+    This behaves similar to the
     [dateutil](https://dateutil.readthedocs.io/en/latest/relativedelta.html)
     package.
 
@@ -57,6 +55,15 @@ class Period(Schedule):
     ```
     """
 
-    # TODO: figure out if we can copy the argument list from relativedelta
-    def __init__(self, **kwargs):
-        self._delta = dateutil.relativedelta.relativedelta(**kwargs)
+    def __init__(self, years=0, months=0, weeks=0, days=0, hours=0, minutes=0, seconds=0, microseconds=0):
+        period = api_pb2.Schedule.Period(
+            years=years,
+            months=months,
+            weeks=weeks,
+            days=days,
+            hours=hours,
+            minutes=minutes,
+            seconds=seconds,
+            microseconds=microseconds,
+        )
+        super().__init__(api_pb2.Schedule(period=period))
