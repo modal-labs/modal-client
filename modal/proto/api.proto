@@ -250,6 +250,7 @@ message DictPopResponse {
 message SecretCreateRequest {
   map<string, string> env_dict = 1;
   string app_id = 2;
+  string template_type = 3;
 }
 
 message SecretCreateResponse {

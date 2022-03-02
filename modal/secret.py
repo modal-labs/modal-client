@@ -59,8 +59,8 @@ class Secret(Object, type_prefix="st"):
     """
 
     @classmethod
-    async def create(cls, env_dict={}, app=None):
+    async def create(cls, env_dict={}, template_type: str = None, app=None):
         app = cls._get_app(app)
-        req = api_pb2.SecretCreateRequest(app_id=app.app_id, env_dict=env_dict)
+        req = api_pb2.SecretCreateRequest(app_id=app.app_id, env_dict=env_dict, template_type=template_type)
         resp = await app.client.stub.SecretCreate(req)
         return cls._create_object_instance(resp.secret_id, app)
