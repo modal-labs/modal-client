@@ -25,7 +25,7 @@ class RateLimit:
     """
 
     def __init__(self, *, per_second: Optional[int] = None, per_minute: Optional[int] = None):
-        if per_second is None != per_minute is None:
+        if (per_second is None) != (per_minute is None):
             raise InvalidError("Must specify excatly one of per_second and per_minute.")
 
         self.per_second = per_second
