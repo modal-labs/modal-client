@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Optional, Union
 
+from modal.exception import InvalidError
+
 
 @dataclass
 class Schedule:
@@ -59,5 +61,5 @@ class Schedule:
                 else:
                     raise
             except Exception:
-                raise ValueError(f"Failed to parse period while creating Schedule: {period}")
+                raise InvalidError(f"Failed to parse period while creating Schedule: {period}")
         return cls(_period=period)
