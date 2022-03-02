@@ -46,7 +46,6 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         client_id = "cl-123"
         if pkg_resources.parse_version(request.version) < pkg_resources.parse_version(__version__):
             await context.abort(grpc.StatusCode.FAILED_PRECONDITION, "Old client")
-            return
         return api_pb2.ClientCreateResponse(client_id=client_id)
 
     async def AppCreate(
