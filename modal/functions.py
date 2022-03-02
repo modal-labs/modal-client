@@ -15,6 +15,7 @@ from .image import debian_slim
 from .mount import Mount, create_package_mounts
 from .object import Object
 from .proto import api_pb2
+from .rate_limit import RateLimit
 from .schedule import Schedule
 from .secret import Secret
 
@@ -192,6 +193,7 @@ class Function(Object, Factory, type_prefix="fu"):
         schedule: Optional[Schedule] = None,
         is_generator=False,
         gpu: bool = False,
+        rate_limit: Optional[RateLimit] = None,
     ):
         assert callable(raw_f)
         self.info = FunctionInfo(raw_f)
@@ -213,6 +215,7 @@ class Function(Object, Factory, type_prefix="fu"):
         self.schedule = schedule
         self.is_generator = is_generator
         self.gpu = gpu
+        self.rate_limit = rate_limit
         super()._init_static(tag=tag)
 
     async def load(self, app):
@@ -256,6 +259,8 @@ class Function(Object, Factory, type_prefix="fu"):
         else:
             function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
 
+        rate_limit = self.rate_limit.to_proto() if self.rate_limit else None
+
         # Create function remotely
         function_definition = api_pb2.Function(
             module_name=self.info.module_name,
@@ -267,6 +272,7 @@ class Function(Object, Factory, type_prefix="fu"):
             function_serialized=self.info.function_serialized,
             function_type=function_type,
             resources=api_pb2.Resources(gpu=self.gpu),
+            rate_limit=rate_limit,
         )
         request = api_pb2.FunctionCreateRequest(
             app_id=app.app_id,
@@ -332,6 +338,7 @@ def function(
     secret: Optional[Secret] = None,
     secrets: Collection[Secret] = (),
     gpu: bool = False,
+    rate_limit: Optional[RateLimit] = None,
 ):
     """Decorator to create Modal functions
 
@@ -342,7 +349,14 @@ def function(
         gpu (bool): Whether a GPU is required
     """
     function = Function(
-        raw_f, image=image, secret=secret, secrets=secrets, schedule=schedule, is_generator=False, gpu=gpu
+        raw_f,
+        image=image,
+        secret=secret,
+        secrets=secrets,
+        schedule=schedule,
+        is_generator=False,
+        gpu=gpu,
+        rate_limit=rate_limit,
     )
     _register_function(function, app)
     return function
@@ -356,6 +370,7 @@ def generator(
     secret: Optional[Secret] = None,
     secrets: Collection[Secret] = (),
     gpu: bool = False,
+    rate_limit: Optional[RateLimit] = None,
 ):
     """Decorator to create Modal generators
 
@@ -365,6 +380,8 @@ def generator(
         secret (:py:class:`modal.secret.Secret`): Dictionary of environment variables
         gpu (bool): Whether a GPU is required
     """
-    function = Function(raw_f, image=image, secret=secret, secrets=secrets, is_generator=True, gpu=gpu)
+    function = Function(
+        raw_f, image=image, secret=secret, secrets=secrets, is_generator=True, gpu=gpu, rate_limit=rate_limit
+    )
     _register_function(function, app)
     return function

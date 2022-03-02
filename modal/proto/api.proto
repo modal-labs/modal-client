@@ -261,6 +261,17 @@ message Resources {
   bool gpu = 1;
 }
 
+enum RateLimitInterval {
+  RATE_LIMIT_INTERVAL_UNSPECIFIED = 0;
+  RATE_LIMIT_INTERVAL_SECOND = 1;
+  RATE_LIMIT_INTERVAL_MINUTE = 2;
+}
+
+message RateLimit {
+  int32 limit = 1;
+  RateLimitInterval interval = 2;
+}
+
 message Function {
   string module_name = 1;
   string function_name = 2;
@@ -285,6 +296,8 @@ message Function {
 
   Resources resources = 9;
   repeated string secret_ids = 10;
+
+  RateLimit rate_limit = 11;
 }
 
 message FunctionCreateRequest {
@@ -326,6 +339,7 @@ enum ReadStatus {
   READ_STATUS_UNSPECIFIED = 0;
   READ_STATUS_SUCCESS = 1;
   READ_STATUS_TIMEOUT = 2;
+  READ_STATUS_RATE_LIMIT_EXCEEDED = 3;
 }
 
 message FunctionInput {
