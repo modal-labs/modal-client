@@ -1,7 +1,5 @@
 from .proto import web_pb2
 
-from modal.exception import InvalidError
-
 
 class Schedule:
     """Schedules represent a time frame to repeatedly run a Modal function."""
