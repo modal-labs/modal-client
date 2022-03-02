@@ -61,8 +61,8 @@ class _Invocation:
         inp = api_pb2.FunctionInput(
             args=app.serialize(args), kwargs=app.serialize(kwargs), function_call_id=function_call_id
         )
-        request = api_pb2.FunctionPutInputsRequest(function_id=function_id, inputs=[inp])
-        await buffered_rpc_write(app.client.stub.FunctionPutInputs, request)
+        request_put = api_pb2.FunctionPutInputsRequest(function_id=function_id, inputs=[inp])
+        await buffered_rpc_write(app.client.stub.FunctionPutInputs, request_put)
 
         return _Invocation(app, function_id, function_call_id)
 

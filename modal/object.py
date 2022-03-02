@@ -146,9 +146,9 @@ class Object(metaclass=ObjectMeta):
                return q
         ```
         """
-        return cls._user_factory_class(fun)
+        return cls._user_factory_class(fun)  # type: ignore
 
     @classmethod
     def include(cls, app_name, object_label=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
         """Use an object published with :py:meth:`modal.app.App.deploy`"""
-        return cls._shared_object_factory_class(app_name, object_label, namespace)
+        return cls._shared_object_factory_class(app_name, object_label, namespace)  # type: ignore

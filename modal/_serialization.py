@@ -15,7 +15,7 @@ class Pickler(cloudpickle.Pickler):
     def persistent_id(self, obj):
         if not isinstance(obj, Object):
             return
-        type_prefix = obj._type_prefix
+        type_prefix = obj._type_prefix  # type: ignore
         if not obj.object_id:
             raise Exception(f"Can't serialize object {obj} which hasn't been created")
         return (type_prefix, obj.object_id)

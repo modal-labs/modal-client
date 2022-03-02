@@ -69,10 +69,11 @@ class Mount(Object, type_prefix="mo"):
                 n_missing_files += 1
                 total_bytes += len(data)
                 logger.debug(f"Uploading file {filename} to {remote_filename} ({len(data)} bytes)")
-                request = api_pb2.MountUploadFileRequest(
+
+                request2 = api_pb2.MountUploadFileRequest(
                     data=data, sha256_hex=sha256_hex, size=len(data), mount_id=mount_id
                 )
-                response = await client.stub.MountUploadFile(request)
+                await client.stub.MountUploadFile(request2)
 
         req = api_pb2.MountCreateRequest(app_id=app.app_id)
         resp = await app.client.stub.MountCreate(req)
@@ -95,8 +96,8 @@ class Mount(Object, type_prefix="mo"):
         logger.debug(f"Uploaded {n_missing_files}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
 
         # Set the mount to done
-        req = api_pb2.MountDoneRequest(mount_id=mount_id)
-        await app.client.stub.MountDone(req)
+        req_done = api_pb2.MountDoneRequest(mount_id=mount_id)
+        await app.client.stub.MountDone(req_done)
 
         return cls._create_object_instance(mount_id, app)
 

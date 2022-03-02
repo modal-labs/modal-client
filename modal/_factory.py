@@ -10,7 +10,7 @@ class Factory:
 
 
 def make_user_factory(cls):
-    class UserFactory(cls, Factory):
+    class UserFactory(cls, Factory):  # type: ignore
         """Acts as a wrapper for a transient Object.
 
         Conceptually a factory "steals" the object id from the
@@ -59,7 +59,7 @@ def make_user_factory(cls):
 
 
 def make_shared_object_factory_class(cls):
-    class SharedObjectFactory(cls, Factory):
+    class SharedObjectFactory(cls, Factory):  # type: ignore
         def __init__(self, app_name, object_label, namespace):
             self.app_name = app_name
             self.object_label = object_label

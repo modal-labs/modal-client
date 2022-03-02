@@ -4,7 +4,7 @@ import inspect
 import os
 import sys
 import traceback
-import typing
+from typing import Any, AsyncIterator, Callable, List
 
 import cloudpickle
 import google.protobuf.json_format
@@ -51,14 +51,14 @@ class FunctionContext:
 
     @synchronizer.asynccontextmanager
     async def send_outputs(self):
-        self.output_queue = asyncio.Queue()
+        self.output_queue: asyncio.Queue = asyncio.Queue()
 
         async with TaskContext(grace=10) as tc:
             tc.create_task(self._send_outputs())
             yield
             await self.output_queue.put((None, None))
 
-    async def get_function(self) -> typing.Callable:
+    async def get_function(self) -> Callable:
         """Note that this also initializes the app."""
 
         # On the container, we know we're inside a app, so we initialize all App
@@ -84,15 +84,15 @@ class FunctionContext:
 
         return fun.get_raw_f()
 
-    async def serialize(self, obj: typing.Any) -> bytes:
+    async def serialize(self, obj: Any) -> bytes:
         return self.app.serialize(obj)
 
-    def deserialize(self, data: bytes) -> typing.Any:
+    def deserialize(self, data: bytes) -> Any:
         return self.app.deserialize(data)
 
     async def generate_inputs(
         self,
-    ) -> typing.AsyncIterator[api_pb2.FunctionInput]:
+    ) -> AsyncIterator[api_pb2.FunctionInput]:
         request = api_pb2.FunctionGetInputsRequest(
             function_id=self.function_id,
             task_id=self.task_id,
@@ -125,7 +125,7 @@ class FunctionContext:
         or the output buffer changes, and then sends the entire batch in one request.
         """
         cur_function_call_id = None
-        outputs = []
+        outputs: List[Any] = []
 
         async def _send():
             nonlocal outputs, cur_function_call_id
@@ -227,7 +227,7 @@ def _call_function_asyncgen(function_context, function_call_id, input_id, res, i
 
 def call_function(
     function_context: FunctionContext,
-    function: typing.Callable,
+    function: Callable,
     function_type: api_pb2.Function.FunctionType,
     function_input: api_pb2.FunctionInput,
 ):
@@ -299,10 +299,10 @@ def main(container_args, client):
     function = function_context.get_function()
 
     with function_context.send_outputs():
-        for function_input in function_context.generate_inputs():
+        for function_input in function_context.generate_inputs():  # type: ignore
             # Note: this blocks the call_function as well. In the future we might want to stream outputs
             # back asynchronously, but then block the call_function if there is back-pressure.
-            call_function(function_context, function, function_type, function_input)
+            call_function(function_context, function, function_type, function_input)  # type: ignore
 
 
 if __name__ == "__main__":

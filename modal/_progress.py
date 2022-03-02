@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import io
 import sys
+from typing import Optional, Tuple
 
 import colorama
 
@@ -51,8 +52,8 @@ class ProgressSpinner:
         if not use_color:
             self.colors = {k: "" for k in self.colors.keys()}
 
-        self._active_step = None
-        self._ongoing_parent_step = None
+        self._active_step: Optional[Tuple[str, str]] = None
+        self._ongoing_parent_step: Optional[str] = None
 
     def _step(self):
         self._frame_i = (self._frame_i + 1) % len(self._frames)
@@ -122,12 +123,12 @@ class ProgressSpinner:
         if self._active_step:
             self._persist_done(self._active_step[1])
 
-    def step(self, status, completion_status):
+    def step(self, status: str, completion_status: str):
         if self._active_step:
             self._persist_done(self._active_step[1])
 
         self._set_status_message(status)
-        self._active_step = [status, completion_status]
+        self._active_step = (status, completion_status)
 
     def set_substep_text(self, status):
         if self._active_step and not self._ongoing_parent_step:

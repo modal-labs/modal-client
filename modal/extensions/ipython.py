@@ -1,11 +1,14 @@
 import atexit
 import logging
 import sys
+from typing import Any
 
 from modal import App
 from modal._app_singleton import set_default_app
 from modal._async_utils import run_coro_blocking
 from modal.config import config, logger
+
+app_ctx: Any
 
 
 def load_ipython_extension(ipython):
@@ -26,7 +29,7 @@ def load_ipython_extension(ipython):
     # to be blocking. This is fairly hacky.
     run_coro_blocking(app_ctx.__aenter__())
 
-    def exit_app(self):
+    def exit_app():
         print("Exiting modal app")
         run_coro_blocking(app_ctx.__aexit__(None, None, None))
 

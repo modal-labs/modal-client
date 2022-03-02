@@ -256,11 +256,11 @@ class App:
                         self._progress.step("Running app...", "App completed.")
 
                         # Create the app (and send a list of all tagged obs)
-                        req = api_pb2.AppSetObjectsRequest(
+                        req_set = api_pb2.AppSetObjectsRequest(
                             app_id=self.app_id,
                             object_ids=self._created_tagged_objects,
                         )
-                        await self.client.stub.AppSetObjects(req)
+                        await self.client.stub.AppSetObjects(req_set)
 
                         self.state = AppState.RUNNING
                         yield self  # yield context manager to block
@@ -270,8 +270,8 @@ class App:
                         # 1. Server to kill any running task
                         # 2. Logs to drain (stopping the _get_logs_loop coroutine)
                         logger.debug("Stopping the app server-side")
-                        req = api_pb2.AppClientDisconnectRequest(app_id=self.app_id)
-                        await self.client.stub.AppClientDisconnect(req)
+                        req_disconnect = api_pb2.AppClientDisconnectRequest(app_id=self.app_id)
+                        await self.client.stub.AppClientDisconnect(req_disconnect)
                     if real_stdout:
                         real_stdout.flush()
                     if real_stderr:

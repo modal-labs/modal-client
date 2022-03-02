@@ -85,9 +85,7 @@ WHEEL_FILENAME = f"modal-{__version__}-py3-none-any.whl"
 
 # Locate config file and read it
 
-user_config_path = os.environ.get("MODAL_CONFIG_PATH")
-if user_config_path is None:
-    user_config_path = os.path.expanduser("~/.modal.toml")
+user_config_path: str = os.environ.get("MODAL_CONFIG_PATH") or os.path.expanduser("~/.modal.toml")
 
 
 def _read_user_config():

@@ -25,17 +25,16 @@ class RateLimit:
     """
 
     def __init__(self, *, per_second: Optional[int] = None, per_minute: Optional[int] = None):
-        if per_second is not None and per_minute is not None:
+        if per_second is None != per_minute is None:
             raise InvalidError("Must specify excatly one of per_second and per_minute.")
-
-        if per_second is None and per_minute is None:
-            raise InvalidError("Must specify exactly one of per_second and per_minute.")
 
         self.per_second = per_second
         self.per_minute = per_minute
 
-    def to_proto(self):
+    def to_proto(self) -> api_pb2.RateLimit:
         if self.per_second:
             return api_pb2.RateLimit(limit=self.per_second, interval=api_pb2.RATE_LIMIT_INTERVAL_SECOND)
-        else:
+        elif self.per_minute:
             return api_pb2.RateLimit(limit=self.per_minute, interval=api_pb2.RATE_LIMIT_INTERVAL_MINUTE)
+        else:
+            raise ValueError("No valid protobuf definition")
