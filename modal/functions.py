@@ -287,15 +287,16 @@ class Function(Object, Factory, type_prefix="fu"):
         invocation = await _Invocation.create(self.object_id, args, kwargs, self._app)
         return await invocation.run_function()
 
-    async def invoke_function(self, args, kwargs):
-        """Returns a future rather than the result directly"""
-        invocation = await _Invocation.create(self.object_id, args, kwargs, self._app)
-        return invocation.run_function()
+    async def call_function_nowait(self, args, kwargs):
+        await _Invocation.create(self.object_id, args, kwargs, self._app)
 
     async def call_generator(self, args, kwargs):
         invocation = await _Invocation.create(self.object_id, args, kwargs, self._app)
         async for res in invocation.run_generator():
             yield res
+
+    async def call_generator_nowait(self, args, kwargs):
+        await _Invocation.create(self.object_id, args, kwargs, self._app)
 
     def __call__(self, *args, **kwargs):
         if self.is_generator:
@@ -303,11 +304,12 @@ class Function(Object, Factory, type_prefix="fu"):
         else:
             return self.call_function(args, kwargs)
 
-    def invoke(self, *args, **kwargs):
+    async def enqueue(self, *args, **kwargs):
+        """Calls the function with the given arguments without waiting for the results"""
         if self.is_generator:
-            return self.call_generator(args, kwargs)
+            await self.call_generator_nowait(args, kwargs)
         else:
-            return self.invoke_function(args, kwargs)
+            await self.call_function_nowait(args, kwargs)
 
     def get_raw_f(self):
         return self.raw_f
