@@ -103,6 +103,11 @@ class FunctionContext:
                 self.client.stub.FunctionGetInputs, request, timeout=config["container_input_timeout"]
             )
 
+            if response.status == api_pb2.READ_STATUS_RATE_LIMIT_EXCEEDED:
+                logger.info(f"Task {self.task_id} exceeded rate limit.")
+                await asyncio.sleep(1)
+                continue
+
             if response.status == api_pb2.READ_STATUS_TIMEOUT:
                 logger.info(f"Task {self.task_id} input request timed out.")
                 break
