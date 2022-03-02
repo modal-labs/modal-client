@@ -4,7 +4,7 @@ from .exception import RemoteError
 from .functions import function, generator
 from .image import Image, debian_slim, dockerhub_image, extend_image
 from .queue import Queue
-from .rate_limit import RateLimit, RateLimitInterval
+from .rate_limit import RateLimit
 from .schedule import Schedule
 from .secret import Secret
 from .version import __version__
@@ -21,7 +21,6 @@ __all__ = [
     "extend_image",
     "Queue",
     "RateLimit",
-    "RateLimitInterval",
     "Schedule",
     "App",
     "run",
