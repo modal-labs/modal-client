@@ -55,6 +55,23 @@ enum DeploymentObjectType {
   DEPLOYMENT_OBJECT_TYPE_MOUNT = 6;
 }
 
+message Schedule {
+  message Cron {
+    string cron_string = 1;
+  }
+  message Period {
+    int32 years = 1;
+    int32 months = 2;
+    int32 days = 3;
+    int32 minutes = 4;
+    float seconds = 5;
+  }
+  oneof schedule_oneof {
+    Cron cron = 1;
+    Period period = 2;
+  }
+}
+
 message ScheduleInvocationInfo {
   string call_id = 1;
   double created_at = 2; // when the inputs were enqueued.
@@ -62,10 +79,7 @@ message ScheduleInvocationInfo {
 
 message ScheduleInfo {
   repeated ScheduleInvocationInfo invocations = 1;
-  oneof schedule_oneof {
-    float period = 2;
-    string cron_string = 3;
-  }
+  Schedule schedule = 4;
 }
 
 message FunctionInfo {

@@ -300,27 +300,10 @@ message Function {
   RateLimit rate_limit = 11;
 }
 
-message Schedule {
-  message Cron {
-    string cron_string = 1;
-  }
-  message Period {
-    int32 years = 1;
-    int32 months = 2;
-    int32 days = 3;
-    int32 minutes = 4;
-    float seconds = 5;
-  }
-  oneof schedule_oneof {
-    Cron cron = 1;
-    Period period = 2;
-  }
-}
-
 message FunctionCreateRequest {
   Function function = 1;
   string app_id = 2;
-  Schedule schedule = 6;
+  modal.web.Schedule schedule = 6;
 }
 
 message FunctionCreateResponse {

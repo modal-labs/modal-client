@@ -1,4 +1,4 @@
-from .proto import api_pb2
+from .proto import web_pb2
 
 from modal.exception import InvalidError
 
@@ -29,16 +29,12 @@ class Cron(Schedule):
     """
 
     def __init__(self, cron_string: str):
-        cron = api_pb2.Schedule.Cron(cron_string=cron_string)
-        super().__init__(api_pb2.Schedule(cron=cron))
+        cron = web_pb2.Schedule.Cron(cron_string=cron_string)
+        super().__init__(web_pb2.Schedule(cron=cron))
 
 
 class Period(Schedule):
     """Create a schedule that runs every given time interval.
-
-    This behaves similar to the
-    [dateutil](https://dateutil.readthedocs.io/en/latest/relativedelta.html)
-    package.
 
     # Usage
 
@@ -55,6 +51,15 @@ class Period(Schedule):
     ```
 
     Only `seconds` can be a float. All other arguments are integers.
+
+    Note that `days=1` will trigger the function the same time every day.
+    This is not have the same behavior as `seconds=84000` since days have
+    different lengths due to daylight savings and leap seconds. imilarly,
+    using `months=1` will trigger the function on the same day each month.
+
+    This behaves similar to the
+    [dateutil](https://dateutil.readthedocs.io/en/latest/relativedelta.html)
+    package.
     """
 
     def __init__(
@@ -67,11 +72,11 @@ class Period(Schedule):
         minutes: int = 0,
         seconds: float = 0,
     ):
-        period = api_pb2.Schedule.Period(
+        period = web_pb2.Schedule.Period(
             years=years,
             months=months,
             days=(7 * weeks + days),
             minutes=(60 * hours + minutes),
             seconds=seconds,
         )
-        super().__init__(api_pb2.Schedule(period=period))
+        super().__init__(web_pb2.Schedule(period=period))
