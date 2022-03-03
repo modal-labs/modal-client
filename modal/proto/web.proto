@@ -77,13 +77,13 @@ message Schedule {
 message ScheduleInvocationInfo {
   string call_id = 1;
   double created_at = 2; // when the inputs were enqueued.
-  double call_time = 3; // when the cron job was scheduled for
+  double scheduled_at = 3; // when the cron job was scheduled for
 }
 
 message ScheduleInfo {
   repeated ScheduleInvocationInfo invocations = 1;
   Schedule schedule = 4;
-  double next_call_time = 5;
+  double next_scheduled_at = 5;
 }
 
 message FunctionInfo {
