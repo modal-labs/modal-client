@@ -73,8 +73,10 @@ class Period(Schedule):
         period = web_pb2.Schedule.Period(
             years=years,
             months=months,
-            days=(7 * weeks + days),
-            minutes=(60 * hours + minutes),
+            weeks=weeks,
+            days=days,
+            hours=hours,
+            minutes=minutes,
             seconds=seconds,
         )
         super().__init__(web_pb2.Schedule(period=period))
