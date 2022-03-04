@@ -321,3 +321,29 @@ def run_coro_blocking(coro):
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         fut = executor.submit(asyncio_run, coro)
         return fut.result()
+
+
+async def queue_batch_iterator(q, max_batch_size=100, debounce_time=0.015):
+    """
+    Read from a queue but return lists of items when queue is large
+    """
+    item_list = []
+
+    while True:
+        if q.empty() and len(item_list) > 0:
+            yield item_list
+            item_list = []
+            print("sleeping")
+            await asyncio.sleep(debounce_time)
+            print("slept")
+
+        res = await q.get()
+
+        if len(item_list) >= max_batch_size:
+            yield item_list
+            item_list = []
+
+        if res is None:
+            yield item_list
+            break
+        item_list.append(res)

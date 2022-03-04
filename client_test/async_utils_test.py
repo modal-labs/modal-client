@@ -6,6 +6,7 @@ from modal._async_utils import (
     asyncify_function,
     asyncify_generator,
     chunk_generator,
+    queue_batch_iterator,
     retry,
 )
 
@@ -182,3 +183,34 @@ async def test_task_context_infinite_loop():
     assert not t.cancelled()
     assert t.done()
     assert counter == 4  # should be exited immediately
+
+
+DEBOUNCE_TIME = 0.1
+
+
+@pytest.mark.asyncio
+async def test_queue_batch_iterator():
+    queue = asyncio.Queue()
+    await queue.put(1)
+    drained_items = []
+
+    async def drain_queue(logs_queue):
+        async for batch in queue_batch_iterator(logs_queue, debounce_time=DEBOUNCE_TIME):
+            drained_items.extend(batch)
+
+    async with TaskContext(grace=0.0) as tc:
+        tc.create_task(drain_queue(queue))
+
+        # Make sure the queue gets drained.
+        await asyncio.sleep(0.001)
+
+        assert len(drained_items) == 1
+
+        # Add items to the queue and a sentinel while it's still waiting for DEBOUNCE_TIME.
+        await queue.put(2)
+        await queue.put(3)
+        await queue.put(None)
+
+        await asyncio.sleep(DEBOUNCE_TIME + 0.001)
+
+        assert len(drained_items) == 3
