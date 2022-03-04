@@ -7,7 +7,7 @@ from .proto import api_pb2
 
 # Max size for function inputs and outputs.
 # SERIALIZED_SIZE_THRESHOLD = 64 * 1024 # 64 kb
-SERIALIZED_SIZE_THRESHOLD = 0
+MAX_OBJECT_SIZE_BYTES = 0
 
 
 def base64_md5(value) -> str:

@@ -5,7 +5,7 @@ from aiostream import pipe, stream
 
 from ._app_singleton import get_container_app, get_default_app
 from ._async_utils import retry
-from ._blob_utils import SERIALIZED_SIZE_THRESHOLD, blob_upload
+from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_upload
 from ._buffer_utils import buffered_rpc_read, buffered_rpc_write
 from ._decorator_utils import decorator_with_options
 from ._factory import Factory
@@ -45,6 +45,36 @@ def _process_result(app, result):
     return app.deserialize(result.data)
 
 
+async def _create_input(args, kwargs, app, function_call_id, idx=None) -> api_pb2.FunctionInput:
+    """Serialize function arguments and create a FunctionInput protobuf,
+    uploading to blob storage if needed.
+    """
+
+    args_serialized = app.serialize(args)
+    kwargs_serialized = app.serialize(kwargs)
+    total_bytes = len(args_serialized) + len(kwargs_serialized)
+
+    if total_bytes > MAX_OBJECT_SIZE_BYTES:
+        args_blob_id, kwargs_blob_id = await asyncio.gather(
+            blob_upload(args_serialized, app.client),
+            blob_upload(kwargs_serialized, app.client),
+        )
+
+        return api_pb2.FunctionInput(
+            args_blob_id=args_blob_id,
+            kwargs_blob_id=kwargs_blob_id,
+            function_call_id=function_call_id,
+            idx=idx,
+        )
+    else:
+        return api_pb2.FunctionInput(
+            args=args_serialized,
+            kwargs=kwargs_serialized,
+            function_call_id=function_call_id,
+            idx=idx,
+        )
+
+
 class _Invocation:
     def __init__(self, app, function_id, function_call_id):
         self.app = app
@@ -59,9 +89,7 @@ class _Invocation:
 
         function_call_id = response.function_call_id
 
-        inp = api_pb2.FunctionInput(
-            args=app.serialize(args), kwargs=app.serialize(kwargs), function_call_id=function_call_id
-        )
+        inp = await _create_input(args, kwargs, app, function_call_id)
         request_put = api_pb2.FunctionPutInputsRequest(function_id=function_id, inputs=[inp])
         await buffered_rpc_write(app.client.stub.FunctionPutInputs, request_put)
 
@@ -118,29 +146,9 @@ class _MapInvocation:
                 async for chunk in streamer:
                     inputs = []
                     for arg in chunk:
-                        args_serialized = self.app.serialize(arg)
-                        kwargs_serialized = self.app.serialize(self.kwargs)
-                        total_bytes = len(args_serialized) + len(kwargs_serialized)
-
-                        if total_bytes > SERIALIZED_SIZE_THRESHOLD:
-                            args_blob_id, kwargs_blob_id = await asyncio.gather(
-                                blob_upload(args_serialized, self.app.client),
-                                blob_upload(kwargs_serialized, self.app.client),
-                            )
-
-                            function_input = api_pb2.FunctionInput(
-                                args_blob_id=args_blob_id,
-                                kwargs_blob_id=kwargs_blob_id,
-                                function_call_id=function_call_id,
-                                idx=num_inputs,
-                            )
-                        else:
-                            function_input = api_pb2.FunctionInput(
-                                args=args_serialized,
-                                kwargs=kwargs_serialized,
-                                function_call_id=function_call_id,
-                                idx=num_inputs,
-                            )
+                        function_input = await _create_input(
+                            arg, self.kwargs, self.app, function_call_id, idx=num_inputs
+                        )
                         num_inputs += 1
                         inputs.append(function_input)
 
