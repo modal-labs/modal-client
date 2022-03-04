@@ -5,6 +5,7 @@ from aiostream import pipe, stream
 
 from ._app_singleton import get_container_app, get_default_app
 from ._async_utils import retry
+from ._blob_utils import SERIALIZED_SIZE_THRESHOLD, blob_upload
 from ._buffer_utils import buffered_rpc_read, buffered_rpc_write
 from ._decorator_utils import decorator_with_options
 from ._factory import Factory
@@ -117,12 +118,29 @@ class _MapInvocation:
                 async for chunk in streamer:
                     inputs = []
                     for arg in chunk:
-                        function_input = api_pb2.FunctionInput(
-                            args=self.app.serialize(arg),
-                            kwargs=self.app.serialize(self.kwargs),
-                            function_call_id=function_call_id,
-                            idx=num_inputs,
-                        )
+                        args_serialized = self.app.serialize(arg)
+                        kwargs_serialized = self.app.serialize(self.kwargs)
+                        total_bytes = len(args_serialized) + len(kwargs_serialized)
+
+                        if total_bytes > SERIALIZED_SIZE_THRESHOLD:
+                            args_blob_id, kwargs_blob_id = await asyncio.gather(
+                                blob_upload(args_serialized, self.app.client),
+                                blob_upload(kwargs_serialized, self.app.client),
+                            )
+
+                            function_input = api_pb2.FunctionInput(
+                                args_blob_id=args_blob_id,
+                                kwargs_blob_id=kwargs_blob_id,
+                                function_call_id=function_call_id,
+                                idx=num_inputs,
+                            )
+                        else:
+                            function_input = api_pb2.FunctionInput(
+                                args=args_serialized,
+                                kwargs=kwargs_serialized,
+                                function_call_id=function_call_id,
+                                idx=num_inputs,
+                            )
                         num_inputs += 1
                         inputs.append(function_input)
 

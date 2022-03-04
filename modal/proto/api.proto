@@ -346,6 +346,8 @@ message FunctionInput {
   string input_id = 4;
   int32 idx = 5;
   bool EOF = 6;
+  string args_blob_id = 7;
+  string kwargs_blob_id = 8;
 }
 
 message FunctionPutInputsRequest {
@@ -389,6 +391,14 @@ message FunctionGetOutputsRequest {
 message FunctionGetOutputsResponse {
   ReadStatus status = 1;
   repeated GenericResult outputs = 2;
+}
+
+message BlobCreateRequest {
+  string content_md5 = 1;
+}
+
+message BlobCreateResponse {
+  string presigned_url = 1;
 }
 
 message MountCreateRequest {
@@ -440,6 +450,9 @@ service ModalClient {
   rpc QueueCreate(QueueCreateRequest) returns (QueueCreateResponse);
   rpc QueueGet(QueueGetRequest) returns (QueueGetResponse);
   rpc QueuePut(QueuePutRequest) returns (google.protobuf.Empty);
+
+  // Blobs
+  rpc BlobCreate(BlobCreateRequest) returns (BlobCreateResponse);
 
   // Mounts
   rpc MountCreate(MountCreateRequest) returns (MountCreateResponse);
