@@ -10,6 +10,7 @@ import cloudpickle
 import google.protobuf.json_format
 
 from ._async_utils import TaskContext, asyncio_run, synchronizer
+from ._blob_utils import blob_download
 from ._buffer_utils import buffered_rpc_read, buffered_rpc_write
 from ._client import Client
 from .app import App
@@ -90,6 +91,21 @@ class FunctionContext:
     def deserialize(self, data: bytes) -> Any:
         return self.app.deserialize(data)
 
+    async def populate_input_blobs(self, item):
+        assert item.kwargs_blob_id
+
+        args, kwargs = await asyncio.gather(
+            blob_download(item.args_blob_id, self.client),
+            blob_download(item.kwargs_blob_id, self.client),
+        )
+
+        # Mutating
+        item.ClearField("args_blob_id")
+        item.ClearField("kwargs_blob_id")
+        item.args = args
+        item.kwargs = kwargs
+        return item
+
     async def generate_inputs(
         self,
     ) -> AsyncIterator[api_pb2.FunctionInput]:
@@ -118,7 +134,11 @@ class FunctionContext:
                     eof_received = True
                     break
 
-                yield item
+                # If we got a pointer to a blob, download it from S3.
+                if item.WhichOneof("args_oneof") == "args_blob_id":
+                    yield await self.populate_input_blobs(item)
+                else:
+                    yield item
 
     async def _send_outputs(self):
         """Background task that tries to drain output queue until it's empty,
