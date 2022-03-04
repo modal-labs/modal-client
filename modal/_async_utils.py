@@ -333,9 +333,7 @@ async def queue_batch_iterator(q, max_batch_size=100, debounce_time=0.015):
         if q.empty() and len(item_list) > 0:
             yield item_list
             item_list = []
-            print("sleeping")
             await asyncio.sleep(debounce_time)
-            print("slept")
 
         res = await q.get()
 

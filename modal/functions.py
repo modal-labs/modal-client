@@ -4,7 +4,7 @@ from typing import Collection, Optional
 from aiostream import pipe, stream
 
 from ._app_singleton import get_container_app, get_default_app
-from ._async_utils import retry
+from ._async_utils import queue_batch_iterator, retry
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_upload
 from ._buffer_utils import buffered_rpc_read, buffered_rpc_write
 from ._decorator_utils import decorator_with_options
@@ -138,23 +138,23 @@ class _MapInvocation:
         num_outputs = 0
         num_inputs = 0
 
+        input_queue = asyncio.Queue()
+
+        async def drain_input_generator():
+            nonlocal num_inputs, input_queue
+            async with self.input_stream.stream() as streamer:
+                async for arg in streamer:
+                    function_input = await _create_input(arg, self.kwargs, self.app, function_call_id, idx=num_inputs)
+                    num_inputs += 1
+                    await input_queue.put(function_input)
+            yield
+
         async def pump_inputs():
-            nonlocal num_inputs, have_all_inputs
+            nonlocal num_inputs, have_all_inputs, input_queue
 
-            chunked_input_stream = self.input_stream | pipe.chunks(MAP_INVOCATION_CHUNK_SIZE)
-            async with chunked_input_stream.stream() as streamer:
-                async for chunk in streamer:
-                    inputs = []
-                    for arg in chunk:
-                        function_input = await _create_input(
-                            arg, self.kwargs, self.app, function_call_id, idx=num_inputs
-                        )
-                        num_inputs += 1
-                        inputs.append(function_input)
-
-                    request = api_pb2.FunctionPutInputsRequest(function_id=self.function_id, inputs=inputs)
-
-                    await buffered_rpc_write(self.app.client.stub.FunctionPutInputs, request)
+            async for inputs in queue_batch_iterator(input_queue, MAP_INVOCATION_CHUNK_SIZE):
+                request = api_pb2.FunctionPutInputsRequest(function_id=self.function_id, inputs=inputs)
+                await buffered_rpc_write(self.app.client.stub.FunctionPutInputs, request)
 
             have_all_inputs = True
             yield
@@ -196,14 +196,14 @@ class _MapInvocation:
 
             assert len(pending_outputs) == 0
 
-        response_gen = stream.merge(pump_inputs(), poll_outputs())
+        response_gen = stream.merge(drain_input_generator(), pump_inputs(), poll_outputs())
 
         async with response_gen.stream() as streamer:
             async for response in streamer:
                 # Handle yield at the end of pump_inputs, in case
                 # that finishes after all outputs have been polled.
                 if response is None:
-                    if num_outputs == num_inputs:
+                    if have_all_inputs and num_outputs == num_inputs:
                         break
                     continue
                 yield response
