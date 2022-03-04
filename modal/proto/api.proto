@@ -340,14 +340,18 @@ enum ReadStatus {
 }
 
 message FunctionInput {
-  bytes args = 1;
-  bytes kwargs = 2;
   string function_call_id = 3;
   string input_id = 4;
   int32 idx = 5;
   bool EOF = 6;
-  string args_blob_id = 7;
-  string kwargs_blob_id = 8;
+  oneof args_oneof {
+    bytes args = 1;
+    string args_blob_id = 7;
+  }
+  oneof kwargs_oneof {
+    bytes kwargs = 2;
+    string kwargs_blob_id = 8;
+  }
 }
 
 message FunctionPutInputsRequest {
@@ -398,6 +402,15 @@ message BlobCreateRequest {
 }
 
 message BlobCreateResponse {
+  string presigned_url = 1;
+  string blob_id = 2;
+}
+
+message BlobGetRequest {
+  string blob_id = 1;
+}
+
+message BlobGetResponse {
   string presigned_url = 1;
 }
 
@@ -453,6 +466,7 @@ service ModalClient {
 
   // Blobs
   rpc BlobCreate(BlobCreateRequest) returns (BlobCreateResponse);
+  rpc BlobGet(BlobGetRequest) returns (BlobGetResponse);
 
   // Mounts
   rpc MountCreate(MountCreateRequest) returns (MountCreateResponse);
