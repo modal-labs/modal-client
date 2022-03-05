@@ -402,7 +402,7 @@ message BlobCreateRequest {
 }
 
 message BlobCreateResponse {
-  string presigned_url = 1;
+  string upload_url = 1;
   string blob_id = 2;
 }
 
@@ -411,7 +411,7 @@ message BlobGetRequest {
 }
 
 message BlobGetResponse {
-  string presigned_url = 1;
+  string download_url = 1;
 }
 
 message MountCreateRequest {

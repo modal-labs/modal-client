@@ -6,8 +6,7 @@ import aiohttp
 from .proto import api_pb2
 
 # Max size for function inputs and outputs.
-# SERIALIZED_SIZE_THRESHOLD = 64 * 1024 # 64 kb
-MAX_OBJECT_SIZE_BYTES = 0
+MAX_OBJECT_SIZE_BYTES = 64 * 1024  # 64 kb
 
 
 def base64_md5(value) -> str:
@@ -23,7 +22,7 @@ async def blob_upload(payload, client):
     resp = await client.stub.BlobCreate(req)
 
     blob_id = resp.blob_id
-    target = resp.presigned_url
+    target = resp.upload_url
 
     async with aiohttp.ClientSession() as session:
         async with session.put(
@@ -39,7 +38,7 @@ async def blob_upload(payload, client):
 async def blob_download(blob_id, client):
     req = api_pb2.BlobGetRequest(blob_id=blob_id)
     resp = await client.stub.BlobGet(req)
-    target = resp.presigned_url
+    target = resp.download_url
 
     async with aiohttp.ClientSession() as session:
         async with session.get(target) as resp:
