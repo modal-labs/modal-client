@@ -5,7 +5,7 @@ from aiostream import pipe, stream
 
 from ._app_singleton import get_container_app, get_default_app
 from ._async_utils import queue_batch_iterator, retry
-from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_upload
+from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._buffer_utils import buffered_rpc_read, buffered_rpc_write
 from ._decorator_utils import decorator_with_options
 from ._factory import Factory
@@ -23,11 +23,16 @@ from .secret import Secret
 MODAL_CLIENT_MOUNT_NAME = "modal-client-mount"
 
 
-def _process_result(app, result):
+async def _process_result(app, result):
+    if result.WhichOneof("data_oneof") == "data_blob_id":
+        data = await blob_download(result.data_blob_id, app.client)
+    else:
+        data = result.data
+
     if result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
-        if result.data:
+        if data:
             try:
-                exc = app.deserialize(result.data)
+                exc = app.deserialize(data)
             except Exception as deser_exc:
                 raise ExecutionError(
                     "Could not deserialize remote exception due to local error:\n"
@@ -42,7 +47,7 @@ def _process_result(app, result):
             raise exc
         raise RemoteError(result.exception)
 
-    return app.deserialize(result.data)
+    return app.deserialize(data)
 
 
 async def _create_input(args, kwargs, app, function_call_id, idx=None) -> api_pb2.FunctionInput:
@@ -97,7 +102,7 @@ class _Invocation:
     async def run_function(self):
         result = (await stream.list(self.get_items()))[0]
         assert not result.gen_status
-        return _process_result(self.app, result)
+        return await _process_result(self.app, result)
 
     async def run_generator(self):
         completed = False
@@ -106,7 +111,7 @@ class _Invocation:
                 if result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
                     completed = True
                     break
-                yield _process_result(self.app, result)
+                yield await _process_result(self.app, result)
 
 
 MAP_INVOCATION_CHUNK_SIZE = 100
@@ -171,12 +176,12 @@ class _MapInvocation:
                         if result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
                             num_outputs += 1
                         else:
-                            output = _process_result(self.app, result)
+                            output = await _process_result(self.app, result)
                             # yield output directly for generators.
                             yield output
                     else:
                         # hold on to outputs for function maps, so we can reorder them correctly.
-                        pending_outputs[result.idx] = _process_result(self.app, result)
+                        pending_outputs[result.idx] = await _process_result(self.app, result)
 
                 # send outputs sequentially while we can
                 while num_outputs in pending_outputs:

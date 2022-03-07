@@ -10,7 +10,7 @@ import cloudpickle
 import google.protobuf.json_format
 
 from ._async_utils import TaskContext, asyncio_run, synchronizer
-from ._blob_utils import blob_download
+from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._buffer_utils import buffered_rpc_read, buffered_rpc_write
 from ._client import Client
 from .app import App
@@ -189,6 +189,13 @@ class FunctionContext:
             cur_function_call_id = function_call_id
 
     async def enqueue_output(self, function_call_id, input_id, idx, **kwargs):
+        # upload data to S3 if too big.
+        if kwargs["data"] and len(kwargs["data"]) > MAX_OBJECT_SIZE_BYTES:
+            data_blob_id = await blob_upload(kwargs["data"], self.client)
+            # mutating kwargs.
+            kwargs.pop("data")
+            kwargs["data_blob_id"] = data_blob_id
+
         result = api_pb2.GenericResult(input_id=input_id, idx=idx, **kwargs)
         await self.output_queue.put((result, function_call_id))
 

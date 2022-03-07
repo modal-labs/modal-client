@@ -24,7 +24,11 @@ message GenericResult {  // Used for both tasks and function outputs
   string exception = 2;
   int32 exitcode = 3;
   string traceback = 4;
-  bytes data = 5;
+
+  oneof data_oneof {
+    bytes data = 5;
+    string data_blob_id = 10;
+  }
 
   enum GeneratorStatus {
     GENERATOR_STATUS_UNSPECIFIED = 0;
