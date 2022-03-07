@@ -190,7 +190,7 @@ class FunctionContext:
 
     async def enqueue_output(self, function_call_id, input_id, idx, **kwargs):
         # upload data to S3 if too big.
-        if kwargs["data"] and len(kwargs["data"]) > MAX_OBJECT_SIZE_BYTES:
+        if "data" in kwargs and kwargs["data"] and len(kwargs["data"]) > MAX_OBJECT_SIZE_BYTES:
             data_blob_id = await blob_upload(kwargs["data"], self.client)
             # mutating kwargs.
             kwargs.pop("data")
