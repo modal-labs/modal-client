@@ -138,7 +138,7 @@ class _MapInvocation:
         num_outputs = 0
         num_inputs = 0
 
-        input_queue = asyncio.Queue()
+        input_queue: asyncio.Queue = asyncio.Queue()
 
         async def drain_input_generator():
             nonlocal num_inputs, input_queue
@@ -147,6 +147,8 @@ class _MapInvocation:
                     function_input = await _create_input(arg, self.kwargs, self.app, function_call_id, idx=num_inputs)
                     num_inputs += 1
                     await input_queue.put(function_input)
+            # close queue iterator
+            await input_queue.put(None)
             yield
 
         async def pump_inputs():

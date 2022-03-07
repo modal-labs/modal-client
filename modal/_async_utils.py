@@ -4,6 +4,7 @@ import functools
 import inspect
 import sys
 import time
+from typing import Any, List
 
 import synchronicity
 
@@ -323,11 +324,11 @@ def run_coro_blocking(coro):
         return fut.result()
 
 
-async def queue_batch_iterator(q, max_batch_size=100, debounce_time=0.015):
+async def queue_batch_iterator(q: asyncio.Queue, max_batch_size=100, debounce_time=0.015):
     """
     Read from a queue but return lists of items when queue is large
     """
-    item_list = []
+    item_list: List[Any] = []
 
     while True:
         if q.empty() and len(item_list) > 0:
