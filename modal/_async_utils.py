@@ -4,7 +4,7 @@ import functools
 import inspect
 import sys
 import time
-from typing import Any, List
+from typing import Any, Coroutine, List
 
 import synchronicity
 
@@ -261,10 +261,10 @@ class TaskContext:
         self._tasks.add(task)
         return task
 
-    def infinite_loop(self, async_f, timeout=90, sleep=10):
+    def infinite_loop(self, async_f, timeout=90, sleep=10) -> Coroutine[Any, Any, None]:
         function_name = async_f.__qualname__
 
-        async def loop_coro():
+        async def loop_coro() -> None:
             logger.debug(f"Starting infinite loop {function_name}")
             while True:
                 try:
