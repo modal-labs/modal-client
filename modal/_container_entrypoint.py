@@ -1,8 +1,10 @@
 import asyncio
 import importlib
 import inspect
+import math
 import os
 import sys
+import time
 import traceback
 from typing import Any, AsyncIterator, Callable, List
 
@@ -33,6 +35,7 @@ def _path_to_function(module_name, function_name):
 
 
 MAX_OUTPUT_BATCH_SIZE = 100
+RTT_S = 0.5  # conservative estimate of RTT in seconds.
 
 
 @synchronizer
@@ -49,6 +52,8 @@ class FunctionContext:
         self.app_id = container_args.app_id
         self.function_def = container_args.function_def
         self.client = client
+        self.start_time = time.time()
+        self.calls_completed = 0
 
     @synchronizer.asynccontextmanager
     async def send_outputs(self):
@@ -99,6 +104,15 @@ class FunctionContext:
         item.args = args
         return item
 
+    def get_max_inputs_to_fetch(self):
+        if self.calls_completed == 0:
+            return 1
+
+        time_elapsed = time.time() - self.start_time
+        average_handling_time = time_elapsed / self.calls_completed
+
+        return math.ceil(RTT_S / average_handling_time)
+
     async def generate_inputs(
         self,
     ) -> AsyncIterator[api_pb2.FunctionInput]:
@@ -108,6 +122,7 @@ class FunctionContext:
         )
         eof_received = False
         while not eof_received:
+            request.max_values = self.get_max_inputs_to_fetch()
             response = await buffered_rpc_read(
                 self.client.stub.FunctionGetInputs, request, timeout=config["container_input_timeout"]
             )
@@ -198,6 +213,8 @@ class FunctionContext:
 
         result = api_pb2.GenericResult(input_id=input_id, idx=idx, **kwargs)
         await self.output_queue.put((result, function_call_id))
+
+        self.calls_completed += 1
 
 
 def _call_function_generator(function_context, function_call_id, input_id, res, idx):
