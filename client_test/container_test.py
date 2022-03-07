@@ -15,9 +15,7 @@ app = App()  # Just used for (de)serialization
 
 
 def _get_inputs(client):
-    function_input = api_pb2.FunctionInput(
-        args=app.serialize((42,)), kwargs=app.serialize({}), function_call_id=FUNCTION_CALL_ID
-    )
+    function_input = api_pb2.FunctionInput(args=app.serialize(((42,), {})), function_call_id=FUNCTION_CALL_ID)
 
     return [
         api_pb2.FunctionGetInputsResponse(inputs=[function_input], status=api_pb2.READ_STATUS_SUCCESS),

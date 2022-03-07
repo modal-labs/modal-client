@@ -185,8 +185,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         context: grpc.aio.ServicerContext,
     ) -> api_pb2.FunctionPutInputsResponse:
         for function_input in request.inputs:
-            args = cloudpickle.loads(function_input.args) if function_input.args else ()
-            kwargs = cloudpickle.loads(function_input.kwargs) if function_input.kwargs else {}
+            args, kwargs = cloudpickle.loads(function_input.args) if function_input.args else ((), {})
             self.client_calls.append((args, kwargs))
         return api_pb2.FunctionPutInputsResponse(status=api_pb2.WRITE_STATUS_SUCCESS)
 

@@ -92,7 +92,7 @@ class FunctionContext:
         return self.app.deserialize(data)
 
     async def populate_input_blobs(self, item):
-        args = (await blob_download(item.args_blob_id, self.client),)
+        args = await blob_download(item.args_blob_id, self.client)
 
         # Mutating
         item.ClearField("args_blob_id")
@@ -245,7 +245,7 @@ def call_function(
     function_input: api_pb2.FunctionInput,
 ):
     input_id = function_input.input_id
-    (args, kwargs) = function_context.deserialize(function_input.args) if function_input.args else ()
+    args, kwargs = function_context.deserialize(function_input.args) if function_input.args else ((), {})
     idx = function_input.idx
     function_call_id = function_input.function_call_id
 
