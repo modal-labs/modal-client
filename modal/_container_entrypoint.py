@@ -92,18 +92,11 @@ class FunctionContext:
         return self.app.deserialize(data)
 
     async def populate_input_blobs(self, item):
-        assert item.kwargs_blob_id
-
-        args, kwargs = await asyncio.gather(
-            blob_download(item.args_blob_id, self.client),
-            blob_download(item.kwargs_blob_id, self.client),
-        )
+        args = (await blob_download(item.args_blob_id, self.client),)
 
         # Mutating
         item.ClearField("args_blob_id")
-        item.ClearField("kwargs_blob_id")
         item.args = args
-        item.kwargs = kwargs
         return item
 
     async def generate_inputs(
@@ -252,8 +245,7 @@ def call_function(
     function_input: api_pb2.FunctionInput,
 ):
     input_id = function_input.input_id
-    args = function_context.deserialize(function_input.args) if function_input.args else ()
-    kwargs = function_context.deserialize(function_input.kwargs) if function_input.kwargs else {}
+    (args, kwargs) = function_context.deserialize(function_input.args) if function_input.args else ()
     idx = function_input.idx
     function_call_id = function_input.function_call_id
 

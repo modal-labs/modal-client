@@ -50,26 +50,19 @@ async def _create_input(args, kwargs, app, function_call_id, idx=None) -> api_pb
     uploading to blob storage if needed.
     """
 
-    args_serialized = app.serialize(args)
-    kwargs_serialized = app.serialize(kwargs)
-    total_bytes = len(args_serialized) + len(kwargs_serialized)
+    args_serialized = app.serialize((args, kwargs))
 
-    if total_bytes > MAX_OBJECT_SIZE_BYTES:
-        args_blob_id, kwargs_blob_id = await asyncio.gather(
-            blob_upload(args_serialized, app.client),
-            blob_upload(kwargs_serialized, app.client),
-        )
+    if len(args_serialized) > MAX_OBJECT_SIZE_BYTES:
+        args_blob_id = await blob_upload(args_serialized, app.client)
 
         return api_pb2.FunctionInput(
             args_blob_id=args_blob_id,
-            kwargs_blob_id=kwargs_blob_id,
             function_call_id=function_call_id,
             idx=idx,
         )
     else:
         return api_pb2.FunctionInput(
             args=args_serialized,
-            kwargs=kwargs_serialized,
             function_call_id=function_call_id,
             idx=idx,
         )

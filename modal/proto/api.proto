@@ -344,13 +344,14 @@ message FunctionInput {
   string input_id = 4;
   int32 idx = 5;
   bool EOF = 6;
+  // serialized (args, kwargs).
   oneof args_oneof {
     bytes args = 1;
     string args_blob_id = 7;
   }
   oneof kwargs_oneof {
-    bytes kwargs = 2;
-    string kwargs_blob_id = 8;
+    bytes kwargs = 2 [deprecated=true];
+    string kwargs_blob_id = 8 [deprecated=true];
   }
 }
 
