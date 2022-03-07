@@ -7,6 +7,8 @@ from .proto import api_pb2
 
 # Max size for function inputs and outputs.
 MAX_OBJECT_SIZE_BYTES = 64 * 1024  # 64 kb
+# Turned off in tests because of an open issue in moto: https://github.com/spulec/moto/issues/816
+CHECK_MD5 = True
 
 
 def base64_md5(value) -> str:
@@ -25,9 +27,12 @@ async def blob_upload(payload, client):
     target = resp.upload_url
 
     async with aiohttp.ClientSession() as session:
-        async with session.put(
-            target, data=payload, headers={"content-type": "application/octet-stream", "Content-MD5": content_md5}
-        ) as resp:
+        headers = {"content-type": "application/octet-stream"}
+
+        if CHECK_MD5:
+            headers["Content-MD5"] = content_md5
+
+        async with session.put(target, data=payload, headers=headers) as resp:
             if resp.status != 200:
                 text = await resp.text()
                 raise Exception(f"Put to {target} failed with status {resp.status}: {text}")
