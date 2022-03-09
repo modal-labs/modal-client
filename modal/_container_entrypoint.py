@@ -64,9 +64,7 @@ class FunctionContext:
             yield
             await self.output_queue.put((None, None))
 
-    async def get_function(self) -> Callable:
-        """Note that this also initializes the app."""
-
+    async def initialize_app(self):
         # On the container, we know we're inside a app, so we initialize all App
         # objects with the same singleton object. This then lets us pull the lookup
         # table of all the named objects
@@ -74,20 +72,16 @@ class FunctionContext:
         self.app = App()
         await self.app.initialize_container(self.app_id, self.client, self.task_id)
 
-        if self.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
-            # Fetch the serialized function definition
-            request = api_pb2.FunctionGetSerializedRequest(function_id=self.function_id)
-            response = await self.client.stub.FunctionGetSerialized(request)
-            raw_f = cloudpickle.loads(response.function_serialized)
+    async def get_serialized_function(self) -> Callable:
+        # Fetch the serialized function definition
+        request = api_pb2.FunctionGetSerializedRequest(function_id=self.function_id)
+        response = await self.client.stub.FunctionGetSerialized(request)
+        raw_f = cloudpickle.loads(response.function_serialized)
 
-            # Create a function dynamically
-            # Function object is already created, so we need to associate the correct object ID.
-            fun = Function(raw_f)
-            fun.set_object_id(self.function_id, self.app)
-        else:
-            fun = _path_to_function(self.function_def.module_name, self.function_def.function_name)
-            assert isinstance(fun, Function)
-
+        # Create a function dynamically
+        # Function object is already created, so we need to associate the correct object ID.
+        fun = Function(raw_f)
+        fun.set_object_id(self.function_id, self.app)
         return fun.get_raw_f()
 
     async def serialize(self, obj: Any) -> bytes:
@@ -332,7 +326,18 @@ def main(container_args, client):
     function_type = container_args.function_def.function_type
 
     function_context = FunctionContext(container_args, client)
-    function = function_context.get_function()
+    function_context.initialize_app()
+
+    if function_context.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
+        function = function_context.get_serialized_function()
+    else:
+        # This is not in function_context, so that any global scope code that runs during import
+        # runs on the main thread.
+        modal_function = _path_to_function(
+            function_context.function_def.module_name, function_context.function_def.function_name
+        )
+        assert isinstance(modal_function, Function)
+        function = modal_function.get_raw_f()
 
     with function_context.send_outputs():
         for function_input in function_context.generate_inputs():  # type: ignore
