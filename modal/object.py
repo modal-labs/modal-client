@@ -2,6 +2,7 @@ from ._app_singleton import get_container_app, get_default_app
 from ._decorator_utils import decorator_with_options
 from ._factory import Factory
 from ._object_meta import ObjectMeta
+from .exception import InvalidError
 from .proto import api_pb2
 
 
@@ -59,6 +60,20 @@ class Object(metaclass=ObjectMeta):
         if not app:
             app = get_default_app()
         return app
+
+    @classmethod
+    def object_type_name(cls):
+        return ObjectMeta.prefix_to_type[cls._type_prefix].__name__  # type: ignore
+
+    def _existing_app(self):
+        if not self._app:
+            object_type = self.object_type_name()
+            raise InvalidError(
+                f"The used {object_type} is not linked to an app in this context.\n\n"
+                "This can occur if you refer directly to a module level object from within a Modal function`.\n"
+                "Try creating the object within a Modal function or passing it to your function as an argument instead"
+            )
+        return self._app
 
     @classmethod
     def _create_object_instance(cls, object_id, app):

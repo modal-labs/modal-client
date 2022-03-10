@@ -2,6 +2,7 @@ import pickle
 
 import cloudpickle
 
+from .exception import InvalidError
 from .object import Object
 
 PICKLE_PROTOCOL = 4  # Support older Python versions.
@@ -17,7 +18,11 @@ class Pickler(cloudpickle.Pickler):
             return
         type_prefix = obj._type_prefix  # type: ignore
         if not obj.object_id:
-            raise Exception(f"Can't serialize object {obj} which hasn't been created")
+            raise InvalidError(
+                f"Can't serialize object {obj} which hasn't been created.\n\n"
+                f"You need to call `app.create_object(obj)` on factory created objects\n"
+                f"before passing them to modal functions."
+            )
         return (type_prefix, obj.object_id)
 
 

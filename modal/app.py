@@ -52,6 +52,7 @@ class App:
             return  # Prevent re-initialization with the singleton
 
         self._initialized = True
+        self.app_id = None
         self.client = None
         self.name = name or self._infer_app_name()
         self.state = AppState.NONE

@@ -43,7 +43,7 @@ async def _process_result(app, result):
                 )
             if not isinstance(exc, BaseException):
                 raise ExecutionError(f"Got remote exception of incorrect type {type(exc)}")
-            print(result.traceback)
+
             raise exc
         raise RemoteError(result.exception)
 
