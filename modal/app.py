@@ -87,7 +87,12 @@ class App:
         This is only used by factories and functions."""
         if obj.tag is None:
             raise Exception("Can only register named objects")
-        if self.state == AppState.NONE:
+        if obj.tag in self._created_tagged_objects:
+            # in case of a double load of an object, which seems
+            # to happen sometimes when cloudpickle loads an object whose
+            # type is declared in a module with modal functions
+            pass
+        elif self.state == AppState.NONE:
             self._pending_create_objects.append(obj)
         elif self._blocking_late_creation_ok:
             # See comment in constructor. This is a hacky hack to get notebooks working.
