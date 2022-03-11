@@ -139,6 +139,7 @@ async def debian_slim(
     python_packages=None,
     python_version=None,
     pip_find_links=None,
+    version=None,
 ):
     """A default base image, built on the official python:<version>-slim-buster Docker hub images
 
@@ -166,6 +167,7 @@ async def debian_slim(
     return await CustomImage.create(
         dockerfile_commands=dockerfile_commands,
         base_images=base_images,
+        version=version,
     )
 
 
