@@ -1,5 +1,5 @@
 from modal import App, Period, function
-from modal.proto import web_pb2
+from modal.proto import api_pb2
 
 app = App()
 
@@ -11,4 +11,4 @@ def f():
 
 def test_schedule(servicer, client):
     with app.run(client=client):
-        assert servicer.function2schedule == {"fu-1": web_pb2.Schedule(period=web_pb2.Schedule.Period(seconds=5.0))}
+        assert servicer.function2schedule == {"fu-1": api_pb2.Schedule(period=api_pb2.Schedule.Period(seconds=5.0))}

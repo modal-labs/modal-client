@@ -4,7 +4,6 @@ package modal.client;
 
 import "google/protobuf/empty.proto";
 
-import "modal/proto/web.proto";
 
 message ContainerArguments {  // This is used to pass data from the worker to the container
   string task_id = 1;
@@ -307,7 +306,7 @@ message Function {
 message FunctionCreateRequest {
   Function function = 1;
   string app_id = 2;
-  modal.web.Schedule schedule = 6;
+  Schedule schedule = 6;
 }
 
 message FunctionCreateResponse {
@@ -449,6 +448,71 @@ message MountDoneRequest {
   string mount_id = 1;
 }
 
+message Schedule {
+  message Cron {
+    string cron_string = 1;
+  }
+  message Period {
+    int32 years = 1;
+    int32 months = 2;
+    int32 weeks = 3;
+    int32 days = 4;
+    int32 hours = 5;
+    int32 minutes = 6;
+    float seconds = 7;
+  }
+  oneof schedule_oneof {
+    Cron cron = 1;
+    Period period = 2;
+  }
+}
+
+enum AppState {
+  APP_STATE_UNSPECIFIED = 0;
+  APP_STATE_EPHEMERAL = 1;             // Will be discharged when the client disconnects
+  APP_STATE_DETACHED = 2;              // Will be discharged when there's no more functions
+  APP_STATE_DEPLOYED = 3;              // Will be discharged when overwritten
+  APP_STATE_DRAINING_LOGS = 4;         // Will be stopped once there are no dependencies
+  APP_STATE_DRAINING_DEPENDENCIES = 6; // Will be stopped once there are no dependencies
+  APP_STATE_STOPPED = 5;               // Stopped
+}
+
+
+enum FileDescriptor {
+  FILE_DESCRIPTOR_UNSPECIFIED = 0;
+  FILE_DESCRIPTOR_STDOUT = 1;
+  FILE_DESCRIPTOR_STDERR = 2;
+  FILE_DESCRIPTOR_INFO = 3;
+}
+
+
+enum TaskState {
+  TASK_STATE_UNSPECIFIED = 0;
+  TASK_STATE_CREATED = 6;
+  TASK_STATE_QUEUED = 1;
+  TASK_STATE_WORKER_ASSIGNED = 2;
+  TASK_STATE_LOADING_IMAGE = 3;
+  TASK_STATE_RUNNING = 4;
+  TASK_STATE_COMPLETED = 5;
+}
+
+
+message TaskLogs {
+  string data = 1;
+  TaskState task_state = 6;
+  double timestamp = 7;
+  FileDescriptor file_descriptor = 8;
+}
+
+message TaskLogsBatch {
+  string task_id = 1;
+  repeated TaskLogs items = 2;
+  string entry_id = 5;
+  bool task_done = 7;
+  AppState app_state = 9;
+}
+
+
 service ModalClient {
   // Clients
   rpc ClientCreate(ClientCreateRequest) returns (ClientCreateResponse);
@@ -457,7 +521,7 @@ service ModalClient {
   // Apps
   rpc AppCreate(AppCreateRequest) returns (AppCreateResponse);
   rpc AppClientDisconnect(AppClientDisconnectRequest) returns (google.protobuf.Empty);
-  rpc AppGetLogs(AppGetLogsRequest) returns (stream modal.web.TaskLogsBatch);
+  rpc AppGetLogs(AppGetLogsRequest) returns (stream TaskLogsBatch);
   rpc AppSetObjects(AppSetObjectsRequest) returns (google.protobuf.Empty);
   rpc AppGetObjects(AppGetObjectsRequest) returns (AppGetObjectsResponse);
   rpc AppIncludeObject(AppIncludeObjectRequest) returns (AppIncludeObjectResponse);

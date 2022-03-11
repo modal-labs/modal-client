@@ -1,4 +1,4 @@
-from .proto import web_pb2
+from .proto import api_pb2
 
 
 class Schedule:
@@ -27,8 +27,8 @@ class Cron(Schedule):
     """
 
     def __init__(self, cron_string: str):
-        cron = web_pb2.Schedule.Cron(cron_string=cron_string)
-        super().__init__(web_pb2.Schedule(cron=cron))
+        cron = api_pb2.Schedule.Cron(cron_string=cron_string)
+        super().__init__(api_pb2.Schedule(cron=cron))
 
 
 class Period(Schedule):
@@ -70,7 +70,7 @@ class Period(Schedule):
         minutes: int = 0,
         seconds: float = 0,
     ):
-        period = web_pb2.Schedule.Period(
+        period = api_pb2.Schedule.Period(
             years=years,
             months=months,
             weeks=weeks,
@@ -79,4 +79,4 @@ class Period(Schedule):
             minutes=minutes,
             seconds=seconds,
         )
-        super().__init__(web_pb2.Schedule(period=period))
+        super().__init__(api_pb2.Schedule(period=period))

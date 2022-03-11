@@ -11,7 +11,7 @@ from modal._app_singleton import set_container_app, set_default_app, set_running
 from modal._client import Client
 from modal.functions import MODAL_CLIENT_MOUNT_NAME
 from modal.image import _dockerhub_python_version
-from modal.proto import api_pb2, api_pb2_grpc, web_pb2
+from modal.proto import api_pb2, api_pb2_grpc
 from modal.version import __version__
 
 
@@ -72,10 +72,10 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
 
     async def AppGetLogs(
         self, request: api_pb2.AppGetLogsRequest, context: grpc.aio.ServicerContext
-    ) -> typing.AsyncIterator[web_pb2.TaskLogsBatch]:
+    ) -> typing.AsyncIterator[api_pb2.TaskLogsBatch]:
         await asyncio.sleep(0.1)
         if self.done:
-            yield web_pb2.TaskLogsBatch(app_state=web_pb2.APP_STATE_STOPPED)
+            yield api_pb2.TaskLogsBatch(app_state=api_pb2.APP_STATE_STOPPED)
 
     async def FunctionGetInputs(
         self, request: api_pb2.FunctionGetInputsRequest, context: grpc.aio.ServicerContext
