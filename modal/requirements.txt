@@ -6,7 +6,7 @@ fastprogress==1.0.0
 grpcio==1.43.0
 importlib_metadata==4.8.1
 protobuf==3.19.4
-synchronicity==0.1.4
+synchronicity==0.1.7
 toml==0.10.2
 typer==0.4.0
 types-toml==0.10.4
