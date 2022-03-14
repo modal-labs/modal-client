@@ -1,10 +1,9 @@
 import asyncio
 import pytest
 
-from modal_proto import api_pb2
-
 from modal._client import Client
 from modal.exception import ConnectionError, VersionError
+from modal_proto import api_pb2
 
 
 @pytest.mark.asyncio

@@ -2,6 +2,7 @@ import base64
 import hashlib
 
 import aiohttp
+
 from modal_proto import api_pb2
 
 # Max size for function inputs and outputs.

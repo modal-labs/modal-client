@@ -5,9 +5,9 @@ import sys
 from typing import Optional, Tuple
 
 import colorama
-from modal_utils.async_utils import TaskContext, synchronizer
 
 from modal._output_capture import nullcapture, thread_capture
+from modal_utils.async_utils import TaskContext, synchronizer
 
 default_frames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 

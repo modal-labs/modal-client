@@ -1,6 +1,5 @@
-from modal_proto import api_pb2
-
 from modal._logging import LogPrinter
+from modal_proto import api_pb2
 
 
 def test_print_logs(capsys):

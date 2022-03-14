@@ -1,6 +1,7 @@
 import getpass
 
 import typer
+
 from modal_proto import api_pb2
 
 from ._client import Client

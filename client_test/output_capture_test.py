@@ -4,9 +4,8 @@ import sys
 import time
 from contextlib import contextmanager
 
-from modal_utils.async_utils import synchronizer
-
 from modal._output_capture import thread_capture
+from modal_utils.async_utils import synchronizer
 
 
 @pytest.fixture(scope="class")

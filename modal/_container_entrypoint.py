@@ -10,6 +10,7 @@ from typing import Any, AsyncIterator, Callable, List
 
 import cloudpickle
 import google.protobuf.json_format
+
 from modal_proto import api_pb2
 from modal_utils.async_utils import TaskContext, asyncio_run, synchronizer
 

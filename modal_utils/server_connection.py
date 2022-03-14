@@ -3,6 +3,7 @@ from typing import Iterable, Tuple
 
 import grpc
 from grpc.aio._channel import Channel
+
 from modal_proto import api_pb2
 
 from .logger import logger

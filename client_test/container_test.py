@@ -2,12 +2,11 @@ import asyncio
 import pytest
 import time
 
-from modal_proto import api_pb2
-
 from modal import App, debian_slim
 from modal._client import Client
 from modal._container_entrypoint import main
 from modal._test_support import SLEEP_DELAY
+from modal_proto import api_pb2
 
 EXTRA_TOLERANCE_DELAY = 0.08
 FUNCTION_CALL_ID = "fc-123"

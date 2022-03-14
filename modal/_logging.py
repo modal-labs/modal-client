@@ -1,6 +1,7 @@
 import sys
 
 import colorama
+
 from modal_proto import api_pb2
 
 

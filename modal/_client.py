@@ -3,6 +3,7 @@ import time
 
 import grpc
 import grpc.aio
+
 from modal_proto import api_pb2, api_pb2_grpc
 from modal_utils.async_utils import TaskContext, synchronizer
 from modal_utils.grpc_utils import ChannelPool
