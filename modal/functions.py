@@ -32,7 +32,7 @@ async def _process_result(app, result):
     if result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
         if data:
             try:
-                exc = app.deserialize(data)
+                exc = app._deserialize(data)
             except Exception as deser_exc:
                 raise ExecutionError(
                     "Could not deserialize remote exception due to local error:\n"
@@ -47,7 +47,7 @@ async def _process_result(app, result):
             raise exc
         raise RemoteError(result.exception)
 
-    return app.deserialize(data)
+    return app._deserialize(data)
 
 
 async def _create_input(args, kwargs, app, function_call_id, idx=None) -> api_pb2.FunctionInput:
@@ -55,7 +55,7 @@ async def _create_input(args, kwargs, app, function_call_id, idx=None) -> api_pb
     uploading to blob storage if needed.
     """
 
-    args_serialized = app.serialize((args, kwargs))
+    args_serialized = app._serialize((args, kwargs))
 
     if len(args_serialized) > MAX_OBJECT_SIZE_BYTES:
         args_blob_id = await blob_upload(args_serialized, app.client)
@@ -351,7 +351,7 @@ def _register_function(function, app):
         if app is None:
             app = get_default_app()
         if app is not None:
-            app.register_object(function)
+            app._register_object(function)
 
 
 @decorator_with_options

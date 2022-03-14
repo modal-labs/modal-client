@@ -26,15 +26,46 @@ from .proto import api_pb2
 
 @synchronizer
 class App:
-    """The App manages objects in a few ways
+    """An App manages Objects (Functions, Images, Secrets, Schedules etc.) associated with your applications
 
-    1. Every object belongs to an app
-    2. Apps are responsible for syncing object identities across processes
-    3. Apps manage all log collection for ephemeral functions
+    The App has three main responsibilities:
+    * Syncing of identities across processes (your local Python interpreter and every Modal worker active in your application)
+    * Making Objects stay alive and not be garbage collected for as long as the app lives (see App lifetime below)
+    * Manage log collection for everything that happens inside your code
+
+    # The default app
+    When creating Modal Objects, the app is often an optional argument. When you don't specify an app for your objects,
+    they will be automatically associated with a global singleton app - *the default app*. For greater control, and in
+    more situations where you might make use of more than one App inside the same Python application, you can typically
+    specify the app when creating a Modal object.
+
+    Sometimes you need a reference to the active app instance. When you make use of the default app, you can still
+    access the app instance by assigning the context manager object from `modal.run()` to a variable:
+
+    ```python
+    with modal.run() as app:
+        # `app` refers to the default app in this block
+    ```
+
+    # Registering Functions with an app
+    The most common way to explicitly register an Object with an app is through the `modal.function()` decorator.
+    It both registers the annotated function itself and other passed objects like Schedules and Secrets with the
+    specified app:
+
+    ```python
+    import modal
+
+    app = modal.App()
+
+    @modal.function(app=app, secret=some_secret, schedule=some_schedule)
+    def foo():
+        ...
+    ```
+    In this example, both `foo`, `some_secret` and `some_schedule` are registered with the app.
     """
 
     @classmethod
-    def initialize_container_app(cls):
+    def _initialize_container_app(cls):
         set_container_app(super().__new__(cls))
 
     def __new__(cls, *args, **kwargs):
@@ -75,16 +106,18 @@ class App:
         args = [script_filename] + sys.argv[1:]
         return " ".join(args)
 
-    def get_object_id_by_tag(self, tag):
+    def _get_object_id_by_tag(self, tag):
         """Assigns an id to the object if there is already one set.
 
-        This happens inside a container in the global scope."""
+        This happens inside a container in the global scope.
+        """
         return self._created_tagged_objects.get(tag)
 
-    def register_object(self, obj):
+    def _register_object(self, obj):
         """Registers an object to be created by the app so that it's available in modal.
 
-        This is only used by factories and functions."""
+        This is only used by factories and functions.
+        """
         if obj.tag is None:
             raise Exception("Can only register named objects")
         if obj.tag in self._created_tagged_objects:
@@ -169,7 +202,7 @@ class App:
             # TODO: catch errors, sleep, and retry?
         logger.info("Logging exited gracefully")
 
-    async def initialize_container(self, app_id, client, task_id):
+    async def _initialize_container(self, app_id, client, task_id):
         """Used by the container to bootstrap the app and all its objects."""
         self.app_id = app_id
         self.client = client
@@ -350,13 +383,13 @@ class App:
             raise NotFoundError(err_msg, obj_repr)
         return Object._init_persisted(response.object_id, self)
 
-    def serialize(self, obj):
+    def _serialize(self, obj):
         """Serializes object and replaces all references to the client class by a placeholder."""
         buf = io.BytesIO()
         Pickler(self, buf).dump(obj)
         return buf.getvalue()
 
-    def deserialize(self, s: bytes):
+    def _deserialize(self, s: bytes):
         """Deserializes object and replaces all client placeholders by self."""
         return Unpickler(self, ObjectMeta.prefix_to_type, io.BytesIO(s)).load()
 

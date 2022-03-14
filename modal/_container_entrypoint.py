@@ -68,9 +68,9 @@ class FunctionContext:
         # On the container, we know we're inside a app, so we initialize all App
         # objects with the same singleton object. This then lets us pull the lookup
         # table of all the named objects
-        App.initialize_container_app()
+        App._initialize_container_app()
         self.app = App()
-        await self.app.initialize_container(self.app_id, self.client, self.task_id)
+        await self.app._initialize_container(self.app_id, self.client, self.task_id)
 
     async def get_serialized_function(self) -> Callable:
         # Fetch the serialized function definition
@@ -85,10 +85,10 @@ class FunctionContext:
         return fun.get_raw_f()
 
     async def serialize(self, obj: Any) -> bytes:
-        return self.app.serialize(obj)
+        return self.app._serialize(obj)
 
     def deserialize(self, data: bytes) -> Any:
-        return self.app.deserialize(data)
+        return self.app._deserialize(data)
 
     async def populate_input_blobs(self, item):
         args = await blob_download(item.args_blob_id, self.client)

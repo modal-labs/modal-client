@@ -16,7 +16,7 @@ def test_app(reset_global_apps):
 
 
 def test_common_app(reset_global_apps):
-    App.initialize_container_app()
+    App._initialize_container_app()
     app_a = App()
     app_a.state = AppState.RUNNING  # Dummy to make sure constructor isn't run twice
     app_b = App()
@@ -62,7 +62,7 @@ def test_global_run(reset_global_apps, servicer, client):
 
 
 def test_run_inside_container(reset_global_apps, servicer, client):
-    App.initialize_container_app()
+    App._initialize_container_app()
     with pytest.raises(ExecutionError):
         with run(client=client):
             pass

@@ -13,7 +13,7 @@ class Dict(Object, type_prefix="di"):
 
     @classmethod
     def _serialize_dict(self, app, data):
-        return [api_pb2.DictEntry(key=app.serialize(k), value=app.serialize(v)) for k, v in data.items()]
+        return [api_pb2.DictEntry(key=app._serialize(k), value=app._serialize(v)) for k, v in data.items()]
 
     @classmethod
     async def create(cls, data={}, app=None):
@@ -38,15 +38,15 @@ class Dict(Object, type_prefix="di"):
 
         Raises KeyError if the key does not exist.
         """
-        req = api_pb2.DictGetRequest(dict_id=self.object_id, key=self._existing_app().serialize(key))
+        req = api_pb2.DictGetRequest(dict_id=self.object_id, key=self._existing_app()._serialize(key))
         resp = await self._existing_app().client.stub.DictGet(req)
         if not resp.found:
             raise KeyError(f"KeyError: {key} not in dict {self.object_id}")
-        return self._existing_app().deserialize(resp.value)
+        return self._existing_app()._deserialize(resp.value)
 
     async def contains(self, key):
         """Check if the key exists"""
-        req = api_pb2.DictContainsRequest(dict_id=self.object_id, key=self._existing_app().serialize(key))
+        req = api_pb2.DictContainsRequest(dict_id=self.object_id, key=self._existing_app()._serialize(key))
         resp = await self._existing_app().client.stub.DictContains(req)
         return resp.found
 
@@ -86,11 +86,11 @@ class Dict(Object, type_prefix="di"):
 
     async def pop(self, key):
         """Remove the specific key from the dictionary"""
-        req = api_pb2.DictPopRequest(dict_id=self.object_id, key=self._existing_app().serialize(key))
+        req = api_pb2.DictPopRequest(dict_id=self.object_id, key=self._existing_app()._serialize(key))
         resp = await self._existing_app().client.stub.DictPop(req)
         if not resp.found:
             raise KeyError(f"KeyError: {key} not in dict {self.object_id}")
-        return self._existing_app().deserialize(resp.value)
+        return self._existing_app()._deserialize(resp.value)
 
     async def __delitem__(self, key):
         """Delete the specific key from the dictionary

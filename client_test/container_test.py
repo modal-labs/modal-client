@@ -15,7 +15,7 @@ app = App()  # Just used for (de)serialization
 
 
 def _get_inputs(client):
-    function_input = api_pb2.FunctionInput(args=app.serialize(((42,), {})), function_call_id=FUNCTION_CALL_ID)
+    function_input = api_pb2.FunctionInput(args=app._serialize(((42,), {})), function_call_id=FUNCTION_CALL_ID)
 
     return [
         api_pb2.FunctionGetInputsResponse(inputs=[function_input], status=api_pb2.READ_STATUS_SUCCESS),
@@ -70,7 +70,7 @@ async def test_container_entrypoint_success(servicer, reset_global_apps, event_l
     output = _get_output(outputs[0])
     assert output.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     app = App()
-    assert output.data == app.serialize(42**2)
+    assert output.data == app._serialize(42**2)
 
 
 @pytest.mark.asyncio
@@ -85,7 +85,7 @@ async def test_container_entrypoint_async(servicer, reset_global_apps):
 
     output = _get_output(outputs[0])
     assert output.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert output.data == app.serialize(42**2)
+    assert output.data == app._serialize(42**2)
 
 
 @pytest.mark.asyncio
@@ -99,7 +99,7 @@ async def test_container_entrypoint_sync_returning_async(servicer, reset_global_
 
     output = _get_output(outputs[0])
     assert output.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert output.data == app.serialize(42**2)
+    assert output.data == app._serialize(42**2)
 
 
 @pytest.mark.asyncio

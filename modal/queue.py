@@ -37,7 +37,7 @@ class Queue(Object, type_prefix="qu"):
             )
             response = await retry(self._app.client.stub.QueueGet)(request, timeout=60.0)
             if response.values:
-                return [self._app.deserialize(value) for value in response.values]
+                return [self._app._deserialize(value) for value in response.values]
             logger.debug("Queue get for %s had empty results, trying again" % self.object_id)
         raise queue.Empty()
 
@@ -52,7 +52,7 @@ class Queue(Object, type_prefix="qu"):
 
     async def put_many(self, vs: List[Any]):
         """Put several objects"""
-        vs_encoded = [self._app.serialize(v) for v in vs]
+        vs_encoded = [self._app._serialize(v) for v in vs]
         request = api_pb2.QueuePutRequest(
             queue_id=self.object_id,
             values=vs_encoded,
