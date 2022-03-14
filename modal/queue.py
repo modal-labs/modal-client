@@ -2,7 +2,8 @@ import queue  # The system library
 import uuid
 from typing import Any, List
 
-from ._async_utils import retry
+from modal_utils.async_utils import retry
+
 from .config import logger
 from .object import Object
 from .proto import api_pb2

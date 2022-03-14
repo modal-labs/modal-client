@@ -1,6 +1,7 @@
 from typing import Any, Dict
 
-from ._async_utils import synchronizer
+from modal_utils.async_utils import synchronizer
+
 from ._factory import Factory, make_shared_object_factory_class, make_user_factory
 from .config import logger
 

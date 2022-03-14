@@ -3,8 +3,8 @@ import time
 
 import grpc
 import grpc.aio
+from modal_utils.async_utils import TaskContext, synchronizer
 
-from ._async_utils import TaskContext, synchronizer
 from ._grpc_utils import ChannelPool
 from ._server_connection import GRPCConnectionFactory
 from .config import config, logger

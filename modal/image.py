@@ -2,7 +2,8 @@ import asyncio
 import os
 import sys
 
-from ._async_utils import retry
+from modal_utils.async_utils import retry
+
 from ._grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .config import config, logger
 from .exception import RemoteError

@@ -2,8 +2,8 @@ import asyncio
 from typing import Collection, Optional
 
 from aiostream import pipe, stream
+from modal_utils.async_utils import queue_batch_iterator, retry
 
-from ._async_utils import queue_batch_iterator, retry
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._buffer_utils import buffered_rpc_read, buffered_rpc_write
 from ._factory import Factory

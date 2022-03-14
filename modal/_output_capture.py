@@ -4,9 +4,9 @@ import os
 from asyncio import TimeoutError
 from typing import Callable
 
-from modal.config import logger
+from modal_utils.async_utils import synchronizer
 
-from ._async_utils import synchronizer
+from modal.config import logger
 
 
 @synchronizer.asynccontextmanager

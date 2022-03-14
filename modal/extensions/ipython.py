@@ -3,8 +3,9 @@ import logging
 import sys
 from typing import Any
 
+from modal_utils.async_utils import run_coro_blocking
+
 from modal import App
-from modal._async_utils import run_coro_blocking
 from modal.config import config, logger
 
 app_ctx: Any

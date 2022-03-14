@@ -1,7 +1,7 @@
 import asyncio
 import pytest
 
-from modal._async_utils import (
+from modal_utils.async_utils import (
     TaskContext,
     asyncify_function,
     asyncify_generator,
