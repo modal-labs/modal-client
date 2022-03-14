@@ -3,8 +3,8 @@ import os
 import sys
 
 from modal_utils.async_utils import retry
+from modal_utils.grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 
-from ._grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from .config import config, logger
 from .exception import RemoteError
 from .object import Object

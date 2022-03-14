@@ -4,8 +4,8 @@ import time
 import grpc
 import grpc.aio
 from modal_utils.async_utils import TaskContext, synchronizer
+from modal_utils.grpc_utils import ChannelPool
 
-from ._grpc_utils import ChannelPool
 from ._server_connection import GRPCConnectionFactory
 from .config import config, logger
 from .exception import AuthError, ConnectionError, InvalidError, VersionError
