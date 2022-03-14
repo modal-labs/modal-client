@@ -70,6 +70,7 @@ import logging
 import os
 import typing
 
+import sentry_sdk
 import toml
 
 from .version import __version__
@@ -118,6 +119,7 @@ _SETTINGS = {
     "image_python_version": _Setting(),
     "image_id": _Setting(),
     "container_input_timeout": _Setting(50, float),
+    "sentry_dsn": _Setting("https://1343216d5d8e443f9f43896ecab24fd3@o1108641.ingest.sentry.io/6255134"),
 }
 
 
@@ -173,3 +175,18 @@ def _store_user_config(new_settings, env=None):
     user_config.setdefault(env, {}).update(**new_settings)
     with open(user_config_path, "w") as f:
         toml.dump(user_config, f)
+
+
+# Initialize sentry
+
+if config["sentry_dsn"]:
+    # Check if already initialized.
+    if sentry_sdk.Hub.current.client:
+        logger.info(f"Skipping Sentry initialization, because Hub already exists.")
+    else:
+        logger.info(f"Initializing Sentry with sample rate 1.")
+        sentry_sdk.init(
+            config["sentry_dsn"],
+            # Sentry DSN for the client project; not secret.
+            traces_sample_rate=1,
+        )
