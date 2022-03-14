@@ -2,6 +2,7 @@ import asyncio
 from typing import Collection, Optional
 
 from aiostream import pipe, stream
+
 from modal_proto import api_pb2
 from modal_utils.async_utils import queue_batch_iterator, retry
 

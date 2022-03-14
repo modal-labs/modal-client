@@ -1,27 +1,18 @@
 import asyncio
 import concurrent.futures
-import hashlib
 import os
 import time
 
 import aiostream
 from modal_proto import api_pb2
+from modal_utils.package_utils import (
+    get_module_mount_info,
+    get_sha256_hex_from_filename,
+    module_mount_condition,
+)
 
-from ._package_utils import get_module_mount_info, module_mount_condition
 from .config import logger
 from .object import Object
-
-
-def _get_sha256_hex_from_content(content):
-    m = hashlib.sha256()
-    m.update(content)
-    return m.hexdigest()
-
-
-def get_sha256_hex_from_filename(filename, rel_filename):
-    # Somewhat CPU intensive, so we run it in a thread/process
-    content = open(filename, "rb").read()
-    return filename, rel_filename, _get_sha256_hex_from_content(content)
 
 
 async def _get_files(local_dir, condition, recursive):

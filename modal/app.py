@@ -4,16 +4,15 @@ import os
 import sys
 from typing import Collection, Optional
 
+from modal._progress import safe_progress
 from modal_proto import api_pb2
 from modal_utils.async_utils import TaskContext, run_coro_blocking, synchronizer
+from modal_utils.decorator_utils import decorator_with_options
 from modal_utils.grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIME_BUFFER
-
-from modal._progress import safe_progress
 
 from ._app_singleton import get_container_app, set_container_app, set_running_app
 from ._app_state import AppState
 from ._client import Client
-from ._decorator_utils import decorator_with_options
 from ._logging import LogPrinter
 from ._object_meta import ObjectMeta
 from ._serialization import Pickler, Unpickler
