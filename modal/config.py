@@ -72,6 +72,7 @@ import typing
 
 import sentry_sdk
 import toml
+from sentry_sdk.integrations.atexit import AtexitIntegration
 
 from .version import __version__
 
@@ -179,14 +180,20 @@ def _store_user_config(new_settings, env=None):
 
 # Initialize sentry
 
+# Needed to silence "Sentry is attempting to send..." message
+def sentry_exit_callback(pending, timeout):
+    pass
+
+
 if config["sentry_dsn"]:
     # Check if already initialized.
     if sentry_sdk.Hub.current.client:
-        logger.info(f"Skipping Sentry initialization, because Hub already exists.")
+        logger.info("Skipping Sentry initialization, because Hub already exists.")
     else:
-        logger.info(f"Initializing Sentry with sample rate 1.")
+        logger.info("Initializing Sentry with sample rate 1.")
         sentry_sdk.init(
             config["sentry_dsn"],
+            integrations=[AtexitIntegration(callback=sentry_exit_callback)],
             # Sentry DSN for the client project; not secret.
             traces_sample_rate=1,
         )
