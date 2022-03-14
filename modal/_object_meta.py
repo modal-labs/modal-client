@@ -1,7 +1,5 @@
 from typing import Any, Dict
 
-from modal_utils.async_utils import synchronizer
-
 from ._factory import Factory, make_shared_object_factory_class, make_user_factory
 from .config import logger
 
@@ -10,8 +8,7 @@ class ObjectMeta(type):
     prefix_to_type: Dict[str, Any] = {}
 
     def __new__(metacls, name, bases, dct, type_prefix=None):
-        # Synchronize class
-        new_cls = synchronizer.create_class(metacls, name, bases, dct)
+        new_cls = type.__new__(metacls, name, bases, dct)
 
         # Needed for serialization, also for loading objects dynamically
         if type_prefix is not None:

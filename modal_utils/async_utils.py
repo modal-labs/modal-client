@@ -14,6 +14,19 @@ synchronizer = synchronicity.Synchronizer()
 # atexit.register(synchronizer.close)
 
 
+def synchronize_apis(obj, blocking_name=None, async_name=None):
+    names = {
+        synchronicity.Interface.BLOCKING: blocking_name,
+        synchronicity.Interface.ASYNC: async_name,
+    }
+
+    interfaces = synchronizer.create(obj, names)
+    return (
+        interfaces[synchronicity.Interface.BLOCKING],
+        interfaces[synchronicity.Interface.ASYNC],
+    )
+
+
 def asyncio_run(coro):
     # 3.6 compatibility version of asyncio.run
     if sys.version_info >= (3, 7):

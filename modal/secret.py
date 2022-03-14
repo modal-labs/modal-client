@@ -1,9 +1,10 @@
 from modal_proto import api_pb2
+from modal_utils.async_utils import synchronize_apis
 
 from .object import Object
 
 
-class Secret(Object, type_prefix="st"):
+class _Secret(Object, type_prefix="st"):
     """Secrets provide a dictionary of environment variables for images.
 
     Secrets are a secure way to add credentials and other sensitive information
@@ -69,3 +70,6 @@ class Secret(Object, type_prefix="st"):
         req = api_pb2.SecretCreateRequest(app_id=app.app_id, env_dict=env_dict, template_type=template_type)
         resp = await app.client.stub.SecretCreate(req)
         return cls._create_object_instance(resp.secret_id, app)
+
+
+Secret, AioSecret = synchronize_apis(_Secret, "Secret", "AioSecret")

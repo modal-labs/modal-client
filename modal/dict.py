@@ -1,11 +1,12 @@
 from modal_proto import api_pb2
+from modal_utils.async_utils import synchronize_apis
 
 from .config import logger
 from .exception import InvalidError
 from .object import Object
 
 
-class Dict(Object, type_prefix="di"):
+class _Dict(Object, type_prefix="di"):
     """A distributed dictionary.
 
     Keys and values can be essentially any object, so long as it can be
@@ -99,3 +100,6 @@ class Dict(Object, type_prefix="di"):
         Only works in a synchronous context
         """
         return await self.pop(key)
+
+
+Dict, AioDict = synchronize_apis(_Dict, "Dict", "AioDict")

@@ -8,7 +8,12 @@ import grpc
 
 from modal._progress import safe_progress
 from modal_proto import api_pb2
-from modal_utils.async_utils import TaskContext, run_coro_blocking, synchronizer
+from modal_utils.async_utils import (
+    TaskContext,
+    run_coro_blocking,
+    synchronize_apis,
+    synchronizer,
+)
 from modal_utils.decorator_utils import decorator_with_options
 from modal_utils.grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIME_BUFFER
 
@@ -28,8 +33,7 @@ from .schedule import Schedule
 from .secret import Secret
 
 
-@synchronizer
-class App:
+class _App:
     """An App manages Objects (Functions, Images, Secrets, Schedules etc.) associated with your applications
 
     The App has three main responsibilities:
@@ -474,3 +478,6 @@ class App:
         if get_container_app() is None:
             self._register_object(function)
         return function
+
+
+App, AioApp = synchronize_apis(_App, "App", "AioApp")

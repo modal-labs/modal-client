@@ -3,13 +3,13 @@ import uuid
 from typing import Any, List
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import retry
+from modal_utils.async_utils import retry, synchronize_apis
 
 from .config import logger
 from .object import Object
 
 
-class Queue(Object, type_prefix="qu"):
+class _Queue(Object, type_prefix="qu"):
     """A distributed FIFO Queue.
 
     The contents of the Queue can be any serializable object.
@@ -64,3 +64,6 @@ class Queue(Object, type_prefix="qu"):
     async def put(self, v):
         """Put an object"""
         return await self.put_many([v])
+
+
+Queue, AioQueue = synchronize_apis(_Queue, "Queue", "AioQueue")

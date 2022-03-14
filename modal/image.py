@@ -3,7 +3,7 @@ import os
 import sys
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import retry
+from modal_utils.async_utils import retry, synchronize_apis
 from modal_utils.grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 
 from .config import config, logger
@@ -16,7 +16,7 @@ def _make_bytes(s):
     return s.encode("ascii") if type(s) is str else s
 
 
-class Image(Object, type_prefix="im"):
+class _Image(Object, type_prefix="im"):
     """Base class for container images to run functions in.
 
     Do not construct this class directly; instead use
@@ -39,7 +39,7 @@ class Image(Object, type_prefix="im"):
         return image_id is not None and env_image_id == image_id
 
 
-class CustomImage(Image):
+class _CustomImage(_Image):
     """A custom image built using docker commands.
 
     Generally, you should instead use :py:func:`modal.image.extend_image`
@@ -108,10 +108,10 @@ class CustomImage(Image):
         return cls._create_object_instance(image_id, app)
 
 
-@Image.factory
-async def local_image(python_executable):
+@_Image.factory
+async def _local_image(python_executable):
     """Only used for various integration tests."""
-    return await CustomImage.create(local_image_python_executable=python_executable)
+    return await _CustomImage.create(local_image_python_executable=python_executable)
 
 
 def _dockerhub_python_version(python_version=None):
@@ -134,8 +134,8 @@ def _dockerhub_python_version(python_version=None):
     return python_version
 
 
-@Image.factory
-async def debian_slim(
+@_Image.factory
+async def _debian_slim(
     extra_commands=None,
     python_packages=None,
     python_version=None,
@@ -172,7 +172,7 @@ async def debian_slim(
     )
 
 
-async def extend_image(base_image, extra_dockerfile_commands):
+async def _extend_image(base_image, extra_dockerfile_commands):
     """Extend an image with arbitrary dockerfile commands"""
     return await CustomImage.create(
         base_images={"base": base_image}, dockerfile_commands=["FROM base"] + extra_dockerfile_commands
@@ -191,8 +191,8 @@ def get_client_requirements():
     return requirements_fn, requirements_data
 
 
-@Image.factory
-async def dockerhub_image(tag):
+@_Image.factory
+async def _dockerhub_image(tag):
     """
     Build a modal image from a pre-existing image on DockerHub.
 
@@ -211,7 +211,14 @@ async def dockerhub_image(tag):
         f"RUN pip install -r {requirements_fn}",
     ]
 
-    return await CustomImage.create(
+    return await _CustomImage.create(
         dockerfile_commands=dockerfile_commands,
         context_files={requirements_fn: requirements_data},
     )
+
+
+Image, AioImage = synchronize_apis(_Image, "Image", "AioImage")
+CustomImage, AioCustomImage = synchronize_apis(_Image, "CustomImage", "AioCustomImage")
+debian_slim, aio_debian_slim = synchronize_apis(_debian_slim, "debian_slim", "aio_debian_slim")
+dockerhub_image, aio_dockerhub_image = synchronize_apis(_dockerhub_image, "dockerhub_image", "aio_dockerhub_image")
+extend_image, aio_extend_image = synchronize_apis(_extend_image, "extend_image", "aio_extend_image")

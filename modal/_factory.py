@@ -1,6 +1,8 @@
 import functools
 import inspect
 
+from modal_utils.async_utils import synchronize_apis
+
 from ._app_singleton import get_container_app
 from ._function_utils import FunctionInfo
 
@@ -52,6 +54,7 @@ def make_user_factory(cls):
             assert self._args_and_kwargs is None
             return UserFactory(self._fun, args_and_kwargs=(args, kwargs))
 
+    synchronize_apis(UserFactory)  # Needed to create interfaces
     UserFactory.__module__ = cls.__module__
     UserFactory.__qualname__ = cls.__qualname__ + ".UserFactory"
     UserFactory.__doc__ = "\n\n".join(filter(None, [UserFactory.__doc__, cls.__doc__]))
@@ -72,4 +75,5 @@ def make_shared_object_factory_class(cls):
             return obj.object_id
 
     # TODO: set a bunch of stuff
+    synchronize_apis(SharedObjectFactory)  # Needed to create interfaces
     return SharedObjectFactory
