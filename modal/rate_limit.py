@@ -1,7 +1,8 @@
 from typing import Optional
 
+from modal_proto.proto import api_pb2
+
 from .exception import InvalidError
-from .proto import api_pb2
 
 
 class RateLimit:

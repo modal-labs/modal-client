@@ -6,12 +6,12 @@ import cloudpickle
 import grpc
 import pkg_resources
 from google.protobuf.empty_pb2 import Empty
+from modal_proto.proto import api_pb2, api_pb2_grpc
 
 from modal._app_singleton import set_container_app, set_running_app
 from modal._client import Client
 from modal.functions import MODAL_CLIENT_MOUNT_NAME
 from modal.image import _dockerhub_python_version
-from modal.proto import api_pb2, api_pb2_grpc
 from modal.version import __version__
 
 

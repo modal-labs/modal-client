@@ -2,6 +2,7 @@ import asyncio
 from typing import Collection, Optional
 
 from aiostream import pipe, stream
+from modal_proto.proto import api_pb2
 from modal_utils.async_utils import queue_batch_iterator, retry
 
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
@@ -12,7 +13,6 @@ from .config import config
 from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError
 from .mount import Mount, create_package_mounts
 from .object import Object
-from .proto import api_pb2
 from .rate_limit import RateLimit
 from .schedule import Schedule
 from .secret import Secret

@@ -1,9 +1,9 @@
 from ._app_singleton import get_container_app, get_running_app
+from modal_proto.proto import api_pb2
 from ._decorator_utils import decorator_with_options
 from ._factory import Factory
 from ._object_meta import ObjectMeta
 from .exception import InvalidError
-from .proto import api_pb2
 
 
 class Object(metaclass=ObjectMeta):

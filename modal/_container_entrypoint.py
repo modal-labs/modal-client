@@ -10,6 +10,7 @@ from typing import Any, AsyncIterator, Callable, List
 
 import cloudpickle
 import google.protobuf.json_format
+from modal_proto.proto import api_pb2
 from modal_utils.async_utils import TaskContext, asyncio_run, synchronizer
 
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
@@ -19,7 +20,6 @@ from .app import App
 from .config import config, logger
 from .exception import InvalidError
 from .functions import Function
-from .proto import api_pb2
 
 
 def _path_to_function(module_name, function_name):

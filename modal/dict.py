@@ -1,7 +1,8 @@
+from modal_proto.proto import api_pb2
+
 from .config import logger
 from .exception import InvalidError
 from .object import Object
-from .proto import api_pb2
 
 
 class Dict(Object, type_prefix="di"):

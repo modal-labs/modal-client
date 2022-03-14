@@ -2,8 +2,7 @@ import base64
 import hashlib
 
 import aiohttp
-
-from .proto import api_pb2
+from modal_proto.proto import api_pb2
 
 # Max size for function inputs and outputs.
 MAX_OBJECT_SIZE_BYTES = 64 * 1024  # 64 kb

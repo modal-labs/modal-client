@@ -1,5 +1,6 @@
+from modal_proto.proto import api_pb2
+
 from modal import App, Period
-from modal.proto import api_pb2
 
 app = App()
 

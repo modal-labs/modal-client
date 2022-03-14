@@ -4,6 +4,7 @@ import os
 import sys
 from typing import Collection, Optional
 
+from modal_proto.proto import api_pb2
 from modal_utils.async_utils import TaskContext, run_coro_blocking, synchronizer
 from modal_utils.grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIME_BUFFER
 
@@ -21,7 +22,6 @@ from .exception import InvalidError, NotFoundError
 from .functions import Function
 from .image import debian_slim
 from .object import Object
-from .proto import api_pb2
 from .rate_limit import RateLimit
 from .schedule import Schedule
 from .secret import Secret

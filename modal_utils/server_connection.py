@@ -3,9 +3,9 @@ from typing import Iterable, Tuple
 
 import grpc
 from grpc.aio._channel import Channel
+from modal_proto.proto import api_pb2
 
 from .config import logger
-from .proto import api_pb2
 
 
 class BasicAuth(grpc.AuthMetadataPlugin):

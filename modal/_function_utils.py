@@ -3,9 +3,9 @@ import json
 import os
 
 import cloudpickle
+from modal_proto.proto import api_pb2
 
 from .config import logger
-from .proto import api_pb2
 
 
 class FunctionInfo:

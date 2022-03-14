@@ -1,0 +1,569 @@
+syntax = "proto3";
+
+package modal.client;
+
+import "google/protobuf/empty.proto";
+
+
+message ContainerArguments {  // This is used to pass data from the worker to the container
+  string task_id = 1;
+  string function_id = 2;
+  string app_id = 4;
+  Function function_def = 7;
+}
+
+message GenericResult {  // Used for both tasks and function outputs
+  enum GenericStatus {
+    GENERIC_STATUS_UNSPECIFIED = 0;
+    GENERIC_STATUS_SUCCESS = 1;
+    GENERIC_STATUS_FAILURE = 2;
+  }
+
+  GenericStatus status = 1;
+  string exception = 2;
+  int32 exitcode = 3;
+  string traceback = 4;
+
+  oneof data_oneof {
+    bytes data = 5;
+    string data_blob_id = 10;
+  }
+
+  enum GeneratorStatus {
+    GENERATOR_STATUS_UNSPECIFIED = 0;
+    GENERATOR_STATUS_INCOMPLETE = 1;
+    GENERATOR_STATUS_COMPLETE = 2;
+  }
+  GeneratorStatus gen_status = 7;
+  string input_id = 8;
+  int32 idx = 9; // TODO
+}
+
+enum ClientType {
+  CLIENT_TYPE_UNSPECIFIED = 0;
+  CLIENT_TYPE_CLIENT = 1;
+  CLIENT_TYPE_WORKER = 2;
+  CLIENT_TYPE_CONTAINER = 3;
+  CLIENT_TYPE_SERVER = 4;
+  CLIENT_TYPE_WEB_SERVER = 5;
+}
+
+message ClientCreateRequest {
+  ClientType client_type = 1;
+  string version = 2;
+}
+
+message ClientCreateResponse {
+  string client_id = 1;
+  string error = 2;
+}
+
+message ClientHeartbeatRequest {
+  string client_id = 1;
+}
+
+message AppCreateRequest {
+  string client_id = 1;
+  string name = 2;    // Human readable label for the website
+}
+
+message AppCreateResponse {
+  string app_id = 1;
+}
+
+message AppClientDisconnectRequest {
+  string app_id = 1;
+}
+
+message AppGetLogsRequest {
+  string app_id = 1;
+  float timeout = 2;
+  string last_entry_id = 4;
+}
+
+message AppSetObjectsRequest {
+  // TODO: this is a bit of a hacky request meant to be somewhat temporary
+  // At some point, every object should be assigned to a app/namespace when created,
+  // so this method won't be necessary.
+  string app_id = 1;
+  map<string, string> object_ids = 2;
+}
+
+message AppGetObjectsRequest {
+  string app_id = 1;
+  string task_id = 2;
+}
+
+message AppGetObjectsResponse {
+  map<string, string> object_ids = 1;
+}
+
+enum DeploymentNamespace {  // TODO: rename this to something else?
+  DEPLOYMENT_NAMESPACE_UNSPECIFIED = 0;
+  DEPLOYMENT_NAMESPACE_ACCOUNT = 1;
+  DEPLOYMENT_NAMESPACE_ORGANIZATION = 2; // Not used at this point
+  DEPLOYMENT_NAMESPACE_GLOBAL = 3;
+}
+
+message AppDeployRequest {
+  string app_id = 1;
+  DeploymentNamespace namespace = 2;
+  string name = 3;
+  string object_id = 4;
+  map<string, string> object_ids = 5;
+}
+
+message AppIncludeObjectRequest {
+  string app_id = 1;
+  DeploymentNamespace namespace = 2;
+  string name = 3;
+  string object_label = 4;
+}
+
+message AppIncludeObjectResponse {
+  string object_id = 1;
+}
+
+message AppDetachRequest {
+  string app_id = 1;
+}
+
+message QueueCreateRequest {
+  string app_id = 1;
+}
+
+message QueueCreateResponse {
+  string queue_id = 1;
+}
+
+message QueueGetRequest {
+  string queue_id = 1;
+  bool block = 2;
+  float timeout = 3;
+  int32 n_values = 4;
+  string idempotency_key = 5;
+}
+
+message QueueGetResponse {
+  repeated bytes values = 2;
+}
+
+message QueuePutRequest {
+  string queue_id = 1;
+  string idempotency_key = 3;
+  repeated bytes values = 4;
+}
+
+message BaseImage {
+  string image_id = 1;
+  string docker_tag = 2;
+}
+
+message ImageContextFile {
+  string filename = 1;
+  bytes data = 2;
+}
+
+message Image {
+  repeated BaseImage base_images = 5;
+  repeated string dockerfile_commands = 6;
+  repeated ImageContextFile context_files = 7;
+  string local_image_python_executable = 10;
+  string version = 11;
+}
+
+message ImageGetOrCreateRequest {
+  Image image = 2;
+  string app_id = 4;
+}
+
+message ImageGetOrCreateResponse {
+  string image_id = 1;
+}
+
+message ImageJoinRequest {
+  string image_id = 1;
+  float timeout = 2;
+  string app_id = 3;
+}
+
+message ImageJoinResponse {
+  GenericResult result = 1;
+}
+
+message DictEntry {
+  bytes key = 1;
+  bytes value = 2;
+}
+
+message DictCreateRequest {
+  repeated DictEntry data = 1;
+  string app_id = 2;
+}
+
+message DictCreateResponse {
+  string dict_id = 1;
+}
+
+message DictGetRequest {
+  string dict_id = 1;
+  bytes key = 2;
+}
+
+message DictGetResponse {
+  bool found = 1;
+  optional bytes value = 2;
+}
+
+message DictContainsRequest {
+  string dict_id = 1;
+  bytes key = 2;
+}
+
+message DictContainsResponse {
+  bool found = 1;
+}
+
+message DictLenRequest {
+  string dict_id = 1;
+}
+
+message DictLenResponse {
+  int32 len = 1;
+}
+
+message DictUpdateRequest {
+  string dict_id = 1;
+  repeated DictEntry updates = 2;
+}
+
+message DictUpdateResponse {
+}
+
+message DictPopRequest {
+  string dict_id = 1;
+  bytes key = 2;
+}
+
+message DictPopResponse {
+  bool found = 1;
+  optional bytes value = 2;
+}
+
+message SecretCreateRequest {
+  map<string, string> env_dict = 1;
+  string app_id = 2;
+  string template_type = 3;
+}
+
+message SecretCreateResponse {
+  string secret_id = 1;
+}
+
+message Resources {
+  bool gpu = 1;
+}
+
+enum RateLimitInterval {
+  RATE_LIMIT_INTERVAL_UNSPECIFIED = 0;
+  RATE_LIMIT_INTERVAL_SECOND = 1;
+  RATE_LIMIT_INTERVAL_MINUTE = 2;
+}
+
+message RateLimit {
+  int32 limit = 1;
+  RateLimitInterval interval = 2;
+}
+
+message Function {
+  string module_name = 1;
+  string function_name = 2;
+  repeated string mount_ids = 3;
+  string image_id = 4;
+  string secret_id = 5 [deprecated=true];
+  bytes function_serialized = 6;
+
+  enum DefinitionType {
+    DEFINITION_TYPE_UNSPECIFIED = 0;
+    DEFINITION_TYPE_SERIALIZED = 1;
+    DEFINITION_TYPE_FILE = 2;
+  }
+  DefinitionType definition_type = 7;
+
+  enum FunctionType {
+    FUNCTION_TYPE_UNSPECIFIED = 0;
+    FUNCTION_TYPE_GENERATOR = 1;
+    FUNCTION_TYPE_FUNCTION = 2;
+  }
+  FunctionType function_type = 8;
+
+  Resources resources = 9;
+  repeated string secret_ids = 10;
+
+  RateLimit rate_limit = 11;
+}
+
+message FunctionCreateRequest {
+  Function function = 1;
+  string app_id = 2;
+  Schedule schedule = 6;
+}
+
+message FunctionCreateResponse {
+  string function_id = 1;
+}
+
+message FunctionGetSerializedRequest {
+  string function_id = 1;
+}
+
+message FunctionGetSerializedResponse {
+  bytes function_serialized = 1;
+}
+
+message FunctionMapRequest {
+  string function_id = 1;
+}
+
+message FunctionMapResponse {
+  string function_call_id = 1;
+}
+
+enum WriteStatus {
+  WRITE_STATUS_UNSPECIFIED = 0;
+  WRITE_STATUS_SUCCESS = 1;
+  WRITE_STATUS_BUFFER_FULL = 2;
+}
+
+enum ReadStatus {
+  READ_STATUS_UNSPECIFIED = 0;
+  READ_STATUS_SUCCESS = 1;
+  READ_STATUS_TIMEOUT = 2;
+  READ_STATUS_RATE_LIMIT_EXCEEDED = 3;
+}
+
+message FunctionInput {
+  string function_call_id = 3;
+  string input_id = 4;
+  int32 idx = 5;
+  bool EOF = 6;
+  // serialized (args, kwargs).
+  oneof args_oneof {
+    bytes args = 1;
+    string args_blob_id = 7;
+  }
+  oneof kwargs_oneof {
+    bytes kwargs = 2 [deprecated=true];
+    string kwargs_blob_id = 8 [deprecated=true];
+  }
+}
+
+message FunctionPutInputsRequest {
+  string function_id = 1;
+  repeated FunctionInput inputs = 2;
+}
+
+message FunctionPutInputsResponse {
+  WriteStatus status = 1;
+}
+
+message FunctionGetInputsRequest {
+  string function_id = 1;
+  string task_id = 2;
+  int32 max_values = 3;
+  float timeout = 4;
+}
+
+
+message FunctionGetInputsResponse {
+  ReadStatus status = 1;
+  repeated FunctionInput inputs = 2;
+}
+
+message FunctionPutOutputsRequest {
+  string function_call_id = 1;
+  string task_id = 2;
+  repeated GenericResult outputs = 3;
+}
+
+message FunctionPutOutputsResponse {
+  WriteStatus status = 1;
+}
+
+message FunctionGetOutputsRequest {
+  string function_call_id = 1;
+  int32 max_values = 2;
+  float timeout = 3;
+}
+
+message FunctionGetOutputsResponse {
+  ReadStatus status = 1;
+  repeated GenericResult outputs = 2;
+}
+
+message BlobCreateRequest {
+  string content_md5 = 1;
+}
+
+message BlobCreateResponse {
+  string upload_url = 1;
+  string blob_id = 2;
+}
+
+message BlobGetRequest {
+  string blob_id = 1;
+}
+
+message BlobGetResponse {
+  string download_url = 1;
+}
+
+message MountCreateRequest {
+  string app_id = 2;
+}
+
+message MountCreateResponse {
+  string mount_id = 1;
+}
+
+message MountRegisterFileRequest {
+  string filename = 1;
+  string sha256_hex = 2;
+  string mount_id = 3;
+}
+
+message MountRegisterFileResponse {
+  string filename = 1;  // TODO(erikbern): don't think this one is needed?
+  bool exists = 2;
+}
+
+message MountUploadFileRequest {
+  string sha256_hex = 1;
+  int32 size = 2;
+  bytes data = 3;
+  string mount_id = 4;
+}
+
+message MountDoneRequest {
+  string mount_id = 1;
+}
+
+message Schedule {
+  message Cron {
+    string cron_string = 1;
+  }
+  message Period {
+    int32 years = 1;
+    int32 months = 2;
+    int32 weeks = 3;
+    int32 days = 4;
+    int32 hours = 5;
+    int32 minutes = 6;
+    float seconds = 7;
+  }
+  oneof schedule_oneof {
+    Cron cron = 1;
+    Period period = 2;
+  }
+}
+
+enum AppState {
+  APP_STATE_UNSPECIFIED = 0;
+  APP_STATE_EPHEMERAL = 1;             // Will be discharged when the client disconnects
+  APP_STATE_DETACHED = 2;              // Will be discharged when there's no more functions
+  APP_STATE_DEPLOYED = 3;              // Will be discharged when overwritten
+  APP_STATE_DRAINING_LOGS = 4;         // Will be stopped once there are no dependencies
+  APP_STATE_DRAINING_DEPENDENCIES = 6; // Will be stopped once there are no dependencies
+  APP_STATE_STOPPED = 5;               // Stopped
+}
+
+
+enum FileDescriptor {
+  FILE_DESCRIPTOR_UNSPECIFIED = 0;
+  FILE_DESCRIPTOR_STDOUT = 1;
+  FILE_DESCRIPTOR_STDERR = 2;
+  FILE_DESCRIPTOR_INFO = 3;
+}
+
+
+enum TaskState {
+  TASK_STATE_UNSPECIFIED = 0;
+  TASK_STATE_CREATED = 6;
+  TASK_STATE_QUEUED = 1;
+  TASK_STATE_WORKER_ASSIGNED = 2;
+  TASK_STATE_LOADING_IMAGE = 3;
+  TASK_STATE_RUNNING = 4;
+  TASK_STATE_COMPLETED = 5;
+}
+
+
+message TaskLogs {
+  string data = 1;
+  TaskState task_state = 6;
+  double timestamp = 7;
+  FileDescriptor file_descriptor = 8;
+}
+
+message TaskLogsBatch {
+  string task_id = 1;
+  repeated TaskLogs items = 2;
+  string entry_id = 5;
+  bool task_done = 7;
+  AppState app_state = 9;
+}
+
+
+service ModalClient {
+  // Clients
+  rpc ClientCreate(ClientCreateRequest) returns (ClientCreateResponse);
+  rpc ClientHeartbeat(ClientHeartbeatRequest) returns (google.protobuf.Empty);
+
+  // Apps
+  rpc AppCreate(AppCreateRequest) returns (AppCreateResponse);
+  rpc AppClientDisconnect(AppClientDisconnectRequest) returns (google.protobuf.Empty);
+  rpc AppGetLogs(AppGetLogsRequest) returns (stream TaskLogsBatch);
+  rpc AppSetObjects(AppSetObjectsRequest) returns (google.protobuf.Empty);
+  rpc AppGetObjects(AppGetObjectsRequest) returns (AppGetObjectsResponse);
+  rpc AppIncludeObject(AppIncludeObjectRequest) returns (AppIncludeObjectResponse);
+  rpc AppDeploy(AppDeployRequest) returns (google.protobuf.Empty);
+  rpc AppDetach(AppDetachRequest) returns (google.protobuf.Empty);
+
+  // Queues
+  rpc QueueCreate(QueueCreateRequest) returns (QueueCreateResponse);
+  rpc QueueGet(QueueGetRequest) returns (QueueGetResponse);
+  rpc QueuePut(QueuePutRequest) returns (google.protobuf.Empty);
+
+  // Blobs
+  rpc BlobCreate(BlobCreateRequest) returns (BlobCreateResponse);
+  rpc BlobGet(BlobGetRequest) returns (BlobGetResponse);
+
+  // Mounts
+  rpc MountCreate(MountCreateRequest) returns (MountCreateResponse);
+  rpc MountRegisterFile(MountRegisterFileRequest) returns (MountRegisterFileResponse);
+  rpc MountUploadFile(MountUploadFileRequest) returns (google.protobuf.Empty);  // TODO: return something?
+  rpc MountDone(MountDoneRequest) returns (google.protobuf.Empty);
+
+  // Images
+  rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);
+  rpc ImageJoin(ImageJoinRequest) returns (ImageJoinResponse);
+
+  // Dicts
+  rpc DictCreate(DictCreateRequest) returns (DictCreateResponse);
+  rpc DictUpdate(DictUpdateRequest) returns (DictUpdateResponse);
+  rpc DictGet(DictGetRequest) returns (DictGetResponse);
+  rpc DictPop(DictPopRequest) returns (DictPopResponse);
+  rpc DictContains(DictContainsRequest) returns (DictContainsResponse);
+  rpc DictLen(DictLenRequest) returns (DictLenResponse);
+
+  // Env Dicts
+  rpc SecretCreate(SecretCreateRequest) returns (SecretCreateResponse);
+
+  // Functions
+  rpc FunctionCreate(FunctionCreateRequest) returns (FunctionCreateResponse);
+  rpc FunctionGetSerialized(FunctionGetSerializedRequest) returns (FunctionGetSerializedResponse);
+  rpc FunctionMap(FunctionMapRequest) returns (FunctionMapResponse);
+  rpc FunctionPutInputs(FunctionPutInputsRequest) returns (FunctionPutInputsResponse);
+  rpc FunctionPutOutputs(FunctionPutOutputsRequest) returns (FunctionPutOutputsResponse);  // For containers to return result
+  rpc FunctionGetInputs(FunctionGetInputsRequest) returns (FunctionGetInputsResponse);  // For containers to request next call
+  rpc FunctionGetOutputs(FunctionGetOutputsRequest) returns (FunctionGetOutputsResponse);  // Returns the next result
+}

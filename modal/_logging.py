@@ -2,7 +2,7 @@ import sys
 
 import colorama
 
-from .proto import api_pb2
+from modal.proto import api_pb2
 
 
 class LogPrinter:

@@ -1,10 +1,10 @@
 import getpass
 
 import typer
+from modal_proto.proto import api_pb2
 
 from ._client import Client
 from .config import _store_user_config, config, user_config_path
-from .proto import api_pb2
 
 app = typer.Typer()
 

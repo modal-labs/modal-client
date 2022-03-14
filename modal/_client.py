@@ -3,13 +3,13 @@ import time
 
 import grpc
 import grpc.aio
+from modal_proto.proto import api_pb2, api_pb2_grpc
 from modal_utils.async_utils import TaskContext, synchronizer
 from modal_utils.grpc_utils import ChannelPool
 
 from ._server_connection import GRPCConnectionFactory
 from .config import config, logger
 from .exception import AuthError, ConnectionError, InvalidError, VersionError
-from .proto import api_pb2, api_pb2_grpc
 from .version import __version__
 
 CLIENT_CREATE_TIMEOUT = 5.0

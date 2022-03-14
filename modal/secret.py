@@ -1,5 +1,6 @@
+from modal_proto.proto import api_pb2
+
 from .object import Object
-from .proto import api_pb2
 
 
 class Secret(Object, type_prefix="st"):
