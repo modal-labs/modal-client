@@ -1,4 +1,4 @@
-from modal._server_connection import GRPCConnectionFactory
+from modal_utils.server_connection import GRPCConnectionFactory
 
 
 def test_create_factory():
