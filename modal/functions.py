@@ -11,7 +11,7 @@ from ._factory import Factory
 from ._function_utils import FunctionInfo
 from .config import config
 from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError
-from .mount import Mount, create_package_mounts
+from .mount import Mount, create_client_mount
 from .object import Object
 from .rate_limit import RateLimit
 from .schedule import Schedule
@@ -252,7 +252,7 @@ class Function(Object, Factory, type_prefix="fu"):
         ]
         # TODO(erikbern): couldn't we just create one single mount with all packages instead of multiple?
         if config["sync_entrypoint"]:
-            mounts.extend(await create_package_mounts("modal"))
+            mounts.append(await create_client_mount())
         else:
             client_mount = Mount.include(MODAL_CLIENT_MOUNT_NAME, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
             mounts.append(client_mount)

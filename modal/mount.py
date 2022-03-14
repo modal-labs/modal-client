@@ -7,7 +7,7 @@ import time
 import aiostream
 from modal_proto import api_pb2
 
-from ._package_utils import get_module_mount_info
+from ._package_utils import get_module_mount_info, module_mount_condition
 from .config import logger
 from .object import Object
 
@@ -105,3 +105,12 @@ class Mount(Object, type_prefix="mo"):
 async def create_package_mounts(package_name):
     mount_infos = get_module_mount_info(package_name)
     return [await Mount.create(path, f"/pkg/{name}", condition) for (name, path, condition) in mount_infos]
+
+
+async def create_client_mount():
+    import modal
+
+    # Get the base_path because it also contains `modal_utils` and `modal_proto`.
+    base_path, _ = os.path.split(modal.__path__[0])
+
+    return await Mount.create(base_path, "/pkg/", module_mount_condition, recursive=True)
