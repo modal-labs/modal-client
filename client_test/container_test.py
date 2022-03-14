@@ -2,7 +2,7 @@ import asyncio
 import pytest
 import time
 
-from modal_proto.proto import api_pb2
+from modal_proto import api_pb2
 
 from modal import App, debian_slim
 from modal._client import Client

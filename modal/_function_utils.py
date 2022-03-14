@@ -3,7 +3,7 @@ import json
 import os
 
 import cloudpickle
-from modal_proto.proto import api_pb2
+from modal_proto import api_pb2
 
 from .config import logger
 

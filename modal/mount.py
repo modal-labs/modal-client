@@ -5,7 +5,7 @@ import os
 import time
 
 import aiostream
-from modal_proto.proto import api_pb2
+from modal_proto import api_pb2
 
 from ._package_utils import get_module_mount_info
 from .config import logger

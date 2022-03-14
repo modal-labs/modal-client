@@ -2,7 +2,7 @@ import queue  # The system library
 import uuid
 from typing import Any, List
 
-from modal_proto.proto import api_pb2
+from modal_proto import api_pb2
 from modal_utils.async_utils import retry
 
 from .config import logger

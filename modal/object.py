@@ -1,5 +1,6 @@
-from ._app_singleton import get_container_app, get_running_app
-from modal_proto.proto import api_pb2
+from modal_proto import api_pb2
+
+from ._app_singleton import get_container_app, get_default_app
 from ._decorator_utils import decorator_with_options
 from ._factory import Factory
 from ._object_meta import ObjectMeta

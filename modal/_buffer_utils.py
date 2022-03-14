@@ -1,7 +1,7 @@
 import asyncio
 import time
 
-from modal_proto.proto import api_pb2
+from modal_proto import api_pb2
 from modal_utils.async_utils import retry
 from modal_utils.grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIME_BUFFER
 
