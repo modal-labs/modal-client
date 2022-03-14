@@ -17,11 +17,11 @@ class Secret(Object, type_prefix="st"):
     ```python
     import modal
 
-    @modal.function(secret=modal.Secret.include("my-secret-name"))
+    @app.function(secret=modal.Secret.include("my-secret-name"))
     def some_function():
         ...
 
-    @modal.function(secrets=[
+    @app.function(secrets=[
         modal.Secret.include("my-secret-name"),
         modal.Secret.include("other-secret"),
     ])
@@ -40,7 +40,7 @@ class Secret(Object, type_prefix="st"):
     def my_local_secret():
         return Secret.create({"FOO": os.environ["LOCAL_FOO"]})
 
-    @modal.function(secret=my_local_secret)
+    @app.function(secret=my_local_secret)
     def some_function():
         print(os.environ["FOO"])
     ```
@@ -52,9 +52,10 @@ class Secret(Object, type_prefix="st"):
 
     ```python
     import modal
+    app = modal.App()
 
     if __name__ == "__main__":
-        with modal.run() as app:
+        with app.run() as app:
             app.deploy("my-secret-name", Secret.create({"FOO": "BAR"}))
     ```
 

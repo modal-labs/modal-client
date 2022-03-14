@@ -1,10 +1,10 @@
-from modal import App, Period, function
+from modal import App, Period
 from modal.proto import api_pb2
 
 app = App()
 
 
-@function(app=app, schedule=Period(seconds=5))
+@app.function(schedule=Period(seconds=5))
 def f():
     pass
 

@@ -1,7 +1,6 @@
 import pytest
 
-from modal import App, Queue, function, run
-from modal._app_singleton import get_default_app
+from modal import App, Queue
 from modal._app_state import AppState
 from modal.exception import ExecutionError, NotFoundError
 
@@ -10,9 +9,6 @@ def test_app(reset_global_apps):
     app_a = App()
     app_b = App()
     assert app_a != app_b
-    app_default = get_default_app()
-    assert app_default != app_a
-    assert app_default != app_b
 
 
 def test_common_app(reset_global_apps):
@@ -22,8 +18,6 @@ def test_common_app(reset_global_apps):
     app_b = App()
     assert app_a == app_b
     assert app_b.state == AppState.RUNNING
-    app_default = get_default_app()
-    assert app_default == app_a
 
 
 @pytest.mark.asyncio
@@ -55,16 +49,12 @@ async def test_persistent_object(servicer, client):
             await app_2.include("bazbazbaz")
 
 
-def test_global_run(reset_global_apps, servicer, client):
-    with run(client=client):
-        q = Queue.create()
-        assert q.object_id == "qu-1"
-
-
+@pytest.mark.skip("TODO: how should this behave when we don't have global run?")
 def test_run_inside_container(reset_global_apps, servicer, client):
     App._initialize_container_app()
+    app = App()
     with pytest.raises(ExecutionError):
-        with run(client=client):
+        with app.run(client=client):
             pass
 
 
@@ -75,7 +65,7 @@ def test_create_object_exception(servicer, client):
 
     app = App()
 
-    @function(app=app)
+    @app.function
     def f():
         pass
 

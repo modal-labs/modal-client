@@ -3,16 +3,13 @@ from typing import Collection, Optional
 
 from aiostream import pipe, stream
 
-from ._app_singleton import get_container_app, get_default_app
 from ._async_utils import queue_batch_iterator, retry
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._buffer_utils import buffered_rpc_read, buffered_rpc_write
-from ._decorator_utils import decorator_with_options
 from ._factory import Factory
 from ._function_utils import FunctionInfo
 from .config import config
 from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError
-from .image import debian_slim
 from .mount import Mount, create_package_mounts
 from .object import Object
 from .proto import api_pb2
@@ -344,69 +341,3 @@ class Function(Object, Factory, type_prefix="fu"):
 
     def get_raw_f(self):
         return self.raw_f
-
-
-def _register_function(function, app):
-    if get_container_app() is None:
-        if app is None:
-            app = get_default_app()
-        if app is not None:
-            app._register_object(function)
-
-
-@decorator_with_options
-def function(
-    raw_f=None,
-    app=None,
-    image=debian_slim,
-    schedule: Optional[Schedule] = None,
-    secret: Optional[Secret] = None,
-    secrets: Collection[Secret] = (),
-    gpu: bool = False,
-    rate_limit: Optional[RateLimit] = None,
-):
-    """Decorator to create Modal functions
-
-    Args:
-        app (:py:class:`modal.app.App`): The app
-        image (:py:class:`modal.image.Image`): The image to run the function in
-        secret (:py:class:`modal.secret.Secret`): Dictionary of environment variables
-        gpu (bool): Whether a GPU is required
-    """
-    function = Function(
-        raw_f,
-        image=image,
-        secret=secret,
-        secrets=secrets,
-        schedule=schedule,
-        is_generator=False,
-        gpu=gpu,
-        rate_limit=rate_limit,
-    )
-    _register_function(function, app)
-    return function
-
-
-@decorator_with_options
-def generator(
-    raw_f=None,
-    app=None,
-    image=debian_slim,
-    secret: Optional[Secret] = None,
-    secrets: Collection[Secret] = (),
-    gpu: bool = False,
-    rate_limit: Optional[RateLimit] = None,
-):
-    """Decorator to create Modal generators
-
-    Args:
-        app (:py:class:`modal.app.App`): The app
-        image (:py:class:`modal.image.Image`): The image to run the function in
-        secret (:py:class:`modal.secret.Secret`): Dictionary of environment variables
-        gpu (bool): Whether a GPU is required
-    """
-    function = Function(
-        raw_f, image=image, secret=secret, secrets=secrets, is_generator=True, gpu=gpu, rate_limit=rate_limit
-    )
-    _register_function(function, app)
-    return function

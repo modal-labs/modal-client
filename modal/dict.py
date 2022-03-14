@@ -23,7 +23,7 @@ class Dict(Object, type_prefix="di"):
                 "No initialized app existed when creating Dict.\n\n"
                 "Try creating your Dict within either:\n"
                 "    * a `modal.function`\n"
-                "    * a `with app.run():` or `with modal.run():` block\n"
+                "    * a `with app.run():` or `with app.run():` block\n"
                 "    * a `@Dict.factory` decorated global function\n"
                 "See https://modal.com/docs/reference/dict"
             )

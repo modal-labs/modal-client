@@ -12,9 +12,10 @@ async def my_factory(initial_value=42):
 
 @pytest.mark.asyncio
 async def test_async_factory(servicer, client):
-    q = my_factory(43)
     app = App()
+
     async with app.run(client=client):
+        q = my_factory(43)
         q_id = await app.create_object(q)
         assert q_id == "qu-1"
 

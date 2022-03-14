@@ -11,14 +11,14 @@ class RateLimit:
 
     ```python
     import modal
-
+    app = modal.App()
     # runs at most twice a second.
-    @modal.function(rate_limit=modal.RateLimit(per_second=2))
+    @app.function(rate_limit=modal.RateLimit(per_second=2))
     def f():
         pass
 
     # runs at most once a minute.
-    @modal.function(rate_limit=modal.RateLimit(per_minute=1))
+    @app.function(rate_limit=modal.RateLimit(per_minute=1))
     def f():
         pass
     ```

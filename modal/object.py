@@ -1,4 +1,4 @@
-from ._app_singleton import get_container_app, get_default_app
+from ._app_singleton import get_container_app, get_running_app
 from ._decorator_utils import decorator_with_options
 from ._factory import Factory
 from ._object_meta import ObjectMeta
@@ -58,7 +58,13 @@ class Object(metaclass=ObjectMeta):
         if not app:
             app = get_container_app()
         if not app:
-            app = get_default_app()
+            app = get_running_app()
+        if not app:
+            raise InvalidError(
+                f"Modal {cls.object_type_name()}s need to be associated with a Modal app.\n"
+                f"Pass an app instance to the object when creating it."
+            )
+
         return app
 
     @classmethod
@@ -91,8 +97,6 @@ class Object(metaclass=ObjectMeta):
         """Create a new tagged object.
 
         This is only used by the Factory or Function constructors
-
-        register_on_default_app is set to True for Functions
         """
         # TODO: move this into Factory?
 

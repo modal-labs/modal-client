@@ -16,8 +16,9 @@ class Cron(Schedule):
 
     ```python
     import modal
+    app = modal.App()
 
-    @modal.function(schedule=modal.Cron("* * * * *"))
+    @app.function(schedule=modal.Cron("* * * * *"))
     def f():
         print("This function will run every minute")
 
@@ -38,8 +39,9 @@ class Period(Schedule):
 
     ```python
     import modal
+    app = modal.App()
 
-    @modal.function(schedule=modal.Period(days=1))
+    @app.function(schedule=modal.Period(days=1))
     def f():
         print("This function will run every day")
 

@@ -4,7 +4,6 @@ import sys
 from typing import Any
 
 from modal import App
-from modal._app_singleton import set_default_app
 from modal._async_utils import run_coro_blocking
 from modal.config import config, logger
 
@@ -21,7 +20,6 @@ def load_ipython_extension(ipython):
     # Create a app and provide it in the IPython app
     app = App(blocking_late_creation_ok=True)
     ipython.push({"app": app})
-    set_default_app(app)
 
     app_ctx = app.run()
 

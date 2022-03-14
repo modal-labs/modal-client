@@ -2,26 +2,28 @@ import asyncio
 import io
 import os
 import sys
+from typing import Collection, Optional
 
 from modal._progress import safe_progress
 
-from ._app_singleton import (
-    get_container_app,
-    get_default_app,
-    set_container_app,
-    set_running_app,
-)
+from ._app_singleton import get_container_app, set_container_app, set_running_app
 from ._app_state import AppState
 from ._async_utils import TaskContext, run_coro_blocking, synchronizer
 from ._client import Client
+from ._decorator_utils import decorator_with_options
 from ._grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIME_BUFFER
 from ._logging import LogPrinter
 from ._object_meta import ObjectMeta
 from ._serialization import Pickler, Unpickler
 from .config import config, logger
-from .exception import ExecutionError, InvalidError, NotFoundError
+from .exception import InvalidError, NotFoundError
+from .functions import Function
+from .image import debian_slim
 from .object import Object
 from .proto import api_pb2
+from .rate_limit import RateLimit
+from .schedule import Schedule
+from .secret import Secret
 
 
 @synchronizer
@@ -33,22 +35,8 @@ class App:
     * Making Objects stay alive and not be garbage collected for as long as the app lives (see App lifetime below)
     * Manage log collection for everything that happens inside your code
 
-    # The default app
-    When creating Modal Objects, the app is often an optional argument. When you don't specify an app for your objects,
-    they will be automatically associated with a global singleton app - *the default app*. For greater control, and in
-    more situations where you might make use of more than one App inside the same Python application, you can typically
-    specify the app when creating a Modal object.
-
-    Sometimes you need a reference to the active app instance. When you make use of the default app, you can still
-    access the app instance by assigning the context manager object from `modal.run()` to a variable:
-
-    ```python
-    with modal.run() as app:
-        # `app` refers to the default app in this block
-    ```
-
     # Registering Functions with an app
-    The most common way to explicitly register an Object with an app is through the `modal.function()` decorator.
+    The most common way to explicitly register an Object with an app is through the `app.function()` decorator.
     It both registers the annotated function itself and other passed objects like Schedules and Secrets with the
     specified app:
 
@@ -57,7 +45,7 @@ class App:
 
     app = modal.App()
 
-    @modal.function(app=app, secret=some_secret, schedule=some_schedule)
+    @app.function(secret=some_secret, schedule=some_schedule)
     def foo():
         ...
     ```
@@ -393,11 +381,59 @@ class App:
         """Deserializes object and replaces all client placeholders by self."""
         return Unpickler(self, ObjectMeta.prefix_to_type, io.BytesIO(s)).load()
 
+    @decorator_with_options
+    def function(
+        self,
+        raw_f=None,
+        image=debian_slim,
+        schedule: Optional[Schedule] = None,
+        secret: Optional[Secret] = None,
+        secrets: Collection[Secret] = (),
+        gpu: bool = False,
+        rate_limit: Optional[RateLimit] = None,
+    ):
+        """Decorator to create Modal functions
 
-def run(*args, **kwargs) -> App:
-    """Start up the default modal app"""
-    if get_container_app() is not None:
-        # TODO: we could probably capture whether this happens during an import
-        raise ExecutionError("Cannot run modal.run() inside a container! You might have global code that does this.")
-    app = get_default_app()
-    return app.run(*args, **kwargs)
+        Args:
+            app (:py:class:`modal.app.App`): The app
+            image (:py:class:`modal.image.Image`): The image to run the function in
+            secret (:py:class:`modal.secret.Secret`): Dictionary of environment variables
+            gpu (bool): Whether a GPU is required
+        """
+        function = Function(
+            raw_f,
+            image=image,
+            secret=secret,
+            secrets=secrets,
+            schedule=schedule,
+            is_generator=False,
+            gpu=gpu,
+            rate_limit=rate_limit,
+        )
+        if get_container_app() is None:
+            self._register_object(function)
+        return function
+
+    @decorator_with_options
+    def generator(
+        self,
+        raw_f=None,
+        image=debian_slim,
+        secret: Optional[Secret] = None,
+        secrets: Collection[Secret] = (),
+        gpu: bool = False,
+        rate_limit: Optional[RateLimit] = None,
+    ):
+        """Decorator to create Modal generators
+
+        Args:
+            image (:py:class:`modal.image.Image`): The image to run the function in
+            secret (:py:class:`modal.secret.Secret`): Dictionary of environment variables
+            gpu (bool): Whether a GPU is required
+        """
+        function = Function(
+            raw_f, image=image, secret=secret, secrets=secrets, is_generator=True, gpu=gpu, rate_limit=rate_limit
+        )
+        if get_container_app() is None:
+            self._register_object(function)
+        return function
