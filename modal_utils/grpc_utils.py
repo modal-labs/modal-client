@@ -4,7 +4,7 @@ import re
 import time
 
 from .async_utils import add_traceback, chunk_generator
-from .config import logger
+from .logger import logger
 
 HTTP_TIME_BUFFER = 5
 GRPC_REQUEST_TIME_BUFFER = 5

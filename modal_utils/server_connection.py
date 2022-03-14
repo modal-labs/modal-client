@@ -5,7 +5,7 @@ import grpc
 from grpc.aio._channel import Channel
 from modal_proto.proto import api_pb2
 
-from .config import logger
+from .logger import logger
 
 
 class BasicAuth(grpc.AuthMetadataPlugin):

@@ -8,7 +8,7 @@ from typing import Any, Coroutine, List
 
 import synchronicity
 
-from .config import logger
+from .logger import logger
 
 synchronizer = synchronicity.Synchronizer()
 # atexit.register(synchronizer.close)
