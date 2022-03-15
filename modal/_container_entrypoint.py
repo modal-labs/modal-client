@@ -22,7 +22,7 @@ from modal_utils.async_utils import (
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._buffer_utils import buffered_rpc_read, buffered_rpc_write
 from .app import App
-from .client import _Client
+from .client import Client
 from .config import config, logger
 from .exception import InvalidError
 from .functions import _Function
@@ -364,7 +364,7 @@ if __name__ == "__main__":
     # Note that we're creating the client in a synchronous context, but it will be running in a separate thread.
     # This is good because if the function is long running then we the client can still send heartbeats
     # The only caveat is a bunch of calls will now cross threads, which adds a bit of overhead?
-    with _Client.from_env() as client:
+    with Client.from_env() as client:
         main(container_args, client)
 
     logger.debug("Container: done")

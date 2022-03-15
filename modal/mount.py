@@ -109,4 +109,4 @@ async def create_client_mount():
     # Get the base_path because it also contains `modal_utils` and `modal_proto`.
     base_path, _ = os.path.split(modal.__path__[0])
 
-    return await Mount.create(base_path, "/pkg/", module_mount_condition, recursive=True)
+    return await AioMount.create(base_path, "/pkg/", module_mount_condition, recursive=True)

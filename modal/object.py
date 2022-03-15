@@ -41,7 +41,7 @@ class Object(metaclass=ObjectMeta):
 
     @classmethod
     async def create(cls, *args, **kwargs):
-        raise NotImplementedError("Class {cls} does not implement a .create(...) constructor!")
+        raise NotImplementedError(f"Class {cls} does not implement a .create(...) constructor!")
 
     async def load(self, app):
         raise NotImplementedError(f"Object factory of class {type(self)} has no load method")
