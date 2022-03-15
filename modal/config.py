@@ -197,3 +197,5 @@ if config["sentry_dsn"]:
             # Sentry DSN for the client project; not secret.
             traces_sample_rate=1,
         )
+
+        sentry_sdk.set_context("user", {"token_id": config["token_id"], "client_version": __version__})
