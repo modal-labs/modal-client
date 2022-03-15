@@ -86,20 +86,20 @@ class ProgressSpinner:
         self._ongoing_parent_step = None
 
     def _hide_cursor(self):
-        self._stdout.write(term_seq_str("civis"))
+        self._stdout.write(term_seq_str("civis"))  # cursor invisible.
         self._stdout.flush()
 
     def _show_cursor(self):
-        self._stdout.write(term_seq_str("cvvis"))
+        self._stdout.write(term_seq_str("cvvis"))  # cursor visible.
         self._stdout.flush()
 
     def _clear(self):
         if self._lines_printed == 1:
-            self._stdout.write(term_seq_str("el"))
+            self._stdout.write(term_seq_str("el"))  # erase line.
         elif self._lines_printed > 1:
-            self._stdout.write(term_seq_str("cr"))
-            self._stdout.write(term_seq_str("cuu", self._lines_printed - 1))
-            self._stdout.write(term_seq_str("ed"))
+            self._stdout.write(term_seq_str("cr"))  # carriage return.
+            self._stdout.write(term_seq_str("cuu", self._lines_printed - 1))  # move cursor up n lines.
+            self._stdout.write(term_seq_str("ed"))  # clear to end of display.
 
         self._lines_printed = 0
 
