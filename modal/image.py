@@ -219,6 +219,7 @@ async def _dockerhub_image(tag):
 
 Image, AioImage = synchronize_apis(_Image, "Image", "AioImage")
 CustomImage, AioCustomImage = synchronize_apis(_Image, "CustomImage", "AioCustomImage")
+local_image, aio_local_image = synchronize_apis(_local_image, "local_image", "aio_local_image")
 debian_slim, aio_debian_slim = synchronize_apis(_debian_slim, "debian_slim", "aio_debian_slim")
 dockerhub_image, aio_dockerhub_image = synchronize_apis(_dockerhub_image, "dockerhub_image", "aio_dockerhub_image")
 extend_image, aio_extend_image = synchronize_apis(_extend_image, "extend_image", "aio_extend_image")
