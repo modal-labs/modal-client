@@ -8,6 +8,7 @@ import colorama  # TODO: maybe use _terminfo for this
 
 from modal._output_capture import nullcapture, thread_capture
 from modal_utils.async_utils import TaskContext, synchronizer
+
 from ._terminfo import term_seq_str
 
 default_frames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
@@ -89,7 +90,7 @@ class ProgressSpinner:
         self._stdout.flush()
 
     def _show_cursor(self):
-        self._stdout.write(term_seq_str("civvis"))
+        self._stdout.write(term_seq_str("cvvis"))
         self._stdout.flush()
 
     def _clear(self):
