@@ -3,6 +3,7 @@ import pytest
 import modal.exception
 from modal import App, Queue
 from modal._app_state import AppState
+from modal.aio import AioApp, AioQueue
 from modal.exception import ExecutionError, NotFoundError
 
 
@@ -23,9 +24,9 @@ def test_common_app(reset_global_apps):
 
 @pytest.mark.asyncio
 async def test_create_object(servicer, client):
-    app = App()
+    app = AioApp()
     async with app.run(client=client):
-        q = await Queue.create(app=app)
+        q = await AioQueue.create(app=app)
         await q.put("foo")
         await q.put("bar")
         assert await q.get() == "foo"
@@ -34,16 +35,16 @@ async def test_create_object(servicer, client):
 
 @pytest.mark.asyncio
 async def test_persistent_object(servicer, client):
-    app_1 = App()
+    app_1 = AioApp()
     async with app_1.run(client=client):
-        q_1 = await Queue.create(app=app_1)
+        q_1 = await AioQueue.create(app=app_1)
         assert q_1.object_id == "qu-1"
         await app_1.deploy("my-queue", q_1)
 
-    app_2 = App()
+    app_2 = AioApp()
     async with app_2.run(client=client):
         q_2 = await app_2.include("my-queue")
-        assert isinstance(q_2, Queue)
+        assert isinstance(q_2, AioQueue)
         assert q_2.object_id == "qu-1"
 
         with pytest.raises(NotFoundError):

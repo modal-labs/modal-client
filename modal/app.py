@@ -25,8 +25,8 @@ from ._object_meta import ObjectMeta
 from ._serialization import Pickler, Unpickler
 from .config import config, logger
 from .exception import InvalidError, NotFoundError
-from .functions import Function
-from .image import debian_slim
+from .functions import _Function
+from .image import _debian_slim
 from .object import Object
 from .rate_limit import RateLimit
 from .schedule import Schedule
@@ -426,7 +426,7 @@ class _App:
     def function(
         self,
         raw_f=None,
-        image=debian_slim,
+        image=_debian_slim,
         schedule: Optional[Schedule] = None,
         secret: Optional[Secret] = None,
         secrets: Collection[Secret] = (),
@@ -441,7 +441,7 @@ class _App:
             secret (:py:class:`modal.secret.Secret`): Dictionary of environment variables
             gpu (bool): Whether a GPU is required
         """
-        function = Function(
+        function = _Function(
             raw_f,
             image=image,
             secret=secret,
@@ -459,7 +459,7 @@ class _App:
     def generator(
         self,
         raw_f=None,
-        image=debian_slim,
+        image=_debian_slim,
         secret: Optional[Secret] = None,
         secrets: Collection[Secret] = (),
         gpu: bool = False,
@@ -472,7 +472,7 @@ class _App:
             secret (:py:class:`modal.secret.Secret`): Dictionary of environment variables
             gpu (bool): Whether a GPU is required
         """
-        function = Function(
+        function = _Function(
             raw_f, image=image, secret=secret, secrets=secrets, is_generator=True, gpu=gpu, rate_limit=rate_limit
         )
         if get_container_app() is None:

@@ -4,7 +4,7 @@ from typing import Collection, Optional
 from aiostream import pipe, stream
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import queue_batch_iterator, retry
+from modal_utils.async_utils import queue_batch_iterator, retry, synchronize_apis
 
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._buffer_utils import buffered_rpc_read, buffered_rpc_write
@@ -207,7 +207,7 @@ class _MapInvocation:
                 yield response
 
 
-class Function(Object, Factory, type_prefix="fu"):
+class _Function(Object, Factory, type_prefix="fu"):
     def __init__(
         self,
         raw_f,
@@ -342,3 +342,6 @@ class Function(Object, Factory, type_prefix="fu"):
 
     def get_raw_f(self):
         return self.raw_f
+
+
+Function, AioFunction = synchronize_apis(_Function, "Function", "AioFunction")

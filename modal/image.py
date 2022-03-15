@@ -148,7 +148,7 @@ async def _debian_slim(
     commands or python packages.
     """
     python_version = _dockerhub_python_version(python_version)
-    base_image = Image.include(f"debian-slim-{python_version}", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
+    base_image = _Image.include(f"debian-slim-{python_version}", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
 
     if extra_commands is None and python_packages is None:
         return base_image
@@ -165,7 +165,7 @@ async def _debian_slim(
             f"RUN pip install {' '.join(python_packages)} {find_links_arg}",
         ]
 
-    return await CustomImage.create(
+    return await _CustomImage.create(
         dockerfile_commands=dockerfile_commands,
         base_images=base_images,
         version=version,
@@ -174,7 +174,7 @@ async def _debian_slim(
 
 async def _extend_image(base_image, extra_dockerfile_commands):
     """Extend an image with arbitrary dockerfile commands"""
-    return await CustomImage.create(
+    return await _CustomImage.create(
         base_images={"base": base_image}, dockerfile_commands=["FROM base"] + extra_dockerfile_commands
     )
 

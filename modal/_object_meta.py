@@ -1,5 +1,7 @@
 from typing import Any, Dict
 
+from modal_utils.async_utils import synchronizer
+
 from ._factory import Factory, make_shared_object_factory_class, make_user_factory
 from .config import logger
 
@@ -9,6 +11,10 @@ class ObjectMeta(type):
 
     def __new__(metacls, name, bases, dct, type_prefix=None):
         new_cls = type.__new__(metacls, name, bases, dct)
+
+        # If this is a synchronized wrapper, just return early
+        if synchronizer.is_synchronized(new_cls):
+            return new_cls
 
         # Needed for serialization, also for loading objects dynamically
         if type_prefix is not None:
