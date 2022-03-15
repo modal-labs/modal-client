@@ -22,12 +22,12 @@ async def thread_capture(stream: io.IOBase, callback: Callable[[str, io.TextIOBa
     dup_fd = os.dup(fd)
     orig_writer = os.fdopen(dup_fd, "w")
 
-    # pty doesn't work on Windows.
-    # TODO: this branch has not been tested.
-    if platform.system() == "Windows":
-        read_fd, write_fd = os.pipe()
-    else:
+    if platform.system() != "Windows" and stream.isatty():
         read_fd, write_fd = pty.openpty()
+    else:
+        # pty doesn't work on Windows.
+        # TODO: this branch has not been tested.
+        read_fd, write_fd = os.pipe()
 
     os.dup2(write_fd, fd)
     read_file = os.fdopen(read_fd, "r")
