@@ -6,6 +6,7 @@ import time
 import aiostream
 
 from modal_proto import api_pb2
+from modal_utils.async_utils import synchronize_apis
 from modal_utils.package_utils import (
     get_module_mount_info,
     get_sha256_hex_from_filename,
@@ -35,7 +36,7 @@ async def _get_files(local_dir, condition, recursive):
             yield filename, rel_filename, sha256_hex
 
 
-class Mount(Object, type_prefix="mo"):
+class _Mount(Object, type_prefix="mo"):
     @classmethod
     async def create(cls, local_dir, remote_dir, condition, app=None, recursive=True):
         # Run a threadpool to compute hash values, and use n coroutines to put files
@@ -92,6 +93,9 @@ class Mount(Object, type_prefix="mo"):
         await app.client.stub.MountDone(req_done)
 
         return cls._create_object_instance(mount_id, app)
+
+
+Mount, AioMount = synchronize_apis(_Mount, "Mount", "AioMount")
 
 
 async def create_package_mounts(package_name):

@@ -12,7 +12,7 @@ from ._factory import Factory
 from ._function_utils import FunctionInfo
 from .config import config
 from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError
-from .mount import Mount, create_client_mount
+from .mount import _Mount, create_client_mount
 from .object import Object
 from .rate_limit import RateLimit
 from .schedule import Schedule
@@ -244,7 +244,7 @@ class _Function(Object, Factory, type_prefix="fu"):
 
     async def load(self, app):
         mounts = [
-            await Mount.create(
+            await _Mount.create(
                 local_dir=self.info.package_path,
                 remote_dir=self.info.remote_dir,
                 recursive=self.info.recursive,
@@ -255,7 +255,7 @@ class _Function(Object, Factory, type_prefix="fu"):
         if config["sync_entrypoint"]:
             mounts.append(await create_client_mount())
         else:
-            client_mount = Mount.include(MODAL_CLIENT_MOUNT_NAME, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
+            client_mount = _Mount.include(MODAL_CLIENT_MOUNT_NAME, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
             mounts.append(client_mount)
 
         # Wait for image and mounts to finish
