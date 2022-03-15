@@ -3,9 +3,9 @@ import pytest
 import time
 
 from modal import App, debian_slim
-from modal._client import Client
 from modal._container_entrypoint import main
 from modal._test_support import SLEEP_DELAY
+from modal.client import _Client
 from modal_proto import api_pb2
 
 EXTRA_TOLERANCE_DELAY = 0.08
@@ -29,7 +29,7 @@ def _get_output(function_output_req: api_pb2.FunctionPutOutputsRequest) -> api_p
 
 
 async def _run_container(servicer, module_name, function_name):
-    async with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
+    async with _Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         servicer.container_inputs = _get_inputs(client)
 
         function_def = api_pb2.Function(

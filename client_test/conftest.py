@@ -11,7 +11,7 @@ import pkg_resources
 from google.protobuf.empty_pb2 import Empty
 
 from modal._app_singleton import set_container_app, set_running_app
-from modal._client import Client
+from modal.client import _Client
 from modal.functions import MODAL_CLIENT_MOUNT_NAME
 from modal.image import _dockerhub_python_version
 from modal.version import __version__
@@ -242,13 +242,13 @@ async def servicer():
 
 @pytest.fixture(scope="function")
 async def client(servicer):
-    async with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
+    async with _Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
         yield client
 
 
 @pytest.fixture(scope="function")
 async def container_client(servicer):
-    async with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
+    async with _Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         yield client
 
 

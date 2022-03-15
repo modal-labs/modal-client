@@ -19,10 +19,10 @@ from modal_utils.grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIME_B
 
 from ._app_singleton import get_container_app, set_container_app, set_running_app
 from ._app_state import AppState
-from ._client import Client
 from ._logging import LogPrinter
 from ._object_meta import ObjectMeta
 from ._serialization import Pickler, Unpickler
+from .client import _Client
 from .config import config, logger
 from .exception import InvalidError, NotFoundError
 from .functions import _Function
@@ -317,7 +317,7 @@ class _App:
     @synchronizer.asynccontextmanager
     async def _get_client(self, client=None):
         if client is None:
-            async with Client.from_env() as client:
+            async with _Client.from_env() as client:
                 yield client
         else:
             yield client

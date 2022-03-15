@@ -5,7 +5,7 @@ import typer
 from modal_proto import api_pb2
 from modal_utils.package_utils import import_app_by_ref
 
-from ._client import Client
+from .client import Client
 from .config import _store_user_config, config, user_config_path
 
 app = typer.Typer()

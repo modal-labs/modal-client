@@ -5,7 +5,7 @@ import grpc
 import grpc.aio
 
 from modal_proto import api_pb2, api_pb2_grpc
-from modal_utils.async_utils import TaskContext
+from modal_utils.async_utils import TaskContext, synchronize_apis
 from modal_utils.grpc_utils import ChannelPool
 from modal_utils.server_connection import GRPCConnectionFactory
 
@@ -17,7 +17,7 @@ CLIENT_CREATE_TIMEOUT = 5.0
 HEARTBEAT_INTERVAL = 3.0
 
 
-class Client:
+class _Client:
     def __init__(
         self,
         server_url,
@@ -140,5 +140,8 @@ class Client:
             client_type = api_pb2.CLIENT_TYPE_CLIENT
             credentials = None
 
-        client = Client(server_url, client_type, credentials)
+        client = _Client(server_url, client_type, credentials)
         return client
+
+
+Client, AioClient = synchronize_apis(_Client, "Client", "AioClient")
