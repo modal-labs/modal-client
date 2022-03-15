@@ -1,18 +1,18 @@
 import pytest
 
-from modal import App, Queue
+from modal.aio import AioApp, AioQueue
 
 
-@Queue.factory
+@AioQueue.factory
 async def my_factory(initial_value=42):
-    q = await Queue.create()
+    q = await AioQueue.create()
     await q.put(initial_value)
     return q
 
 
 @pytest.mark.asyncio
 async def test_async_factory(servicer, client):
-    app = App()
+    app = AioApp()
 
     async with app.run(client=client):
         q = my_factory(43)
@@ -23,8 +23,8 @@ async def test_async_factory(servicer, client):
 @pytest.mark.asyncio
 async def test_use_object(servicer, client):
     # Object reuse is conceptually also done through factories
-    app = App()
-    q = Queue.include("foo-queue")
+    app = AioApp()
+    q = AioQueue.include("foo-queue")
     async with app.run(client=client):
         q_id = await app.create_object(q)
         assert q_id == "qu-foo"
