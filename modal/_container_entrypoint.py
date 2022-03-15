@@ -12,7 +12,12 @@ import cloudpickle
 import google.protobuf.json_format
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import TaskContext, asyncio_run, synchronizer
+from modal_utils.async_utils import (
+    TaskContext,
+    asyncio_run,
+    synchronize_apis,
+    synchronizer,
+)
 
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._buffer_utils import buffered_rpc_read, buffered_rpc_write
@@ -20,7 +25,7 @@ from ._client import Client
 from .app import App
 from .config import config, logger
 from .exception import InvalidError
-from .functions import Function
+from .functions import _Function
 
 
 def _path_to_function(module_name, function_name):
@@ -39,8 +44,7 @@ MAX_OUTPUT_BATCH_SIZE = 100
 RTT_S = 0.5  # conservative estimate of RTT in seconds.
 
 
-@synchronizer
-class FunctionContext:
+class _FunctionContext:
     """This class isn't much more than a helper method for some gRPC calls.
 
     TODO: maybe we shouldn't synchronize the whole class.
@@ -212,6 +216,10 @@ class FunctionContext:
         self.calls_completed += 1
 
 
+# We actually don't use the aio one
+FunctionContext, AioFunctionContext = synchronize_apis(_FunctionContext, "FunctionContext", "AioFunctionContext")
+
+
 def _call_function_generator(function_context, function_call_id, input_id, res, idx):
     for value in res:
         function_context.enqueue_output(
@@ -337,7 +345,7 @@ def main(container_args, client):
         modal_function = _path_to_function(
             function_context.function_def.module_name, function_context.function_def.function_name
         )
-        assert isinstance(modal_function, Function)
+        assert isinstance(modal_function, _Function)
         function = modal_function.get_raw_f()
 
     with function_context.send_outputs():
