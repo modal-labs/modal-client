@@ -1,6 +1,8 @@
 import asyncio
 import io
 import os
+import platform
+import pty
 from asyncio import TimeoutError
 from typing import Callable
 
@@ -19,7 +21,14 @@ async def thread_capture(stream: io.IOBase, callback: Callable[[str, io.TextIOBa
     fd = stream.fileno()
     dup_fd = os.dup(fd)
     orig_writer = os.fdopen(dup_fd, "w")
-    read_fd, write_fd = os.pipe()
+
+    # pty doesn't work on Windows.
+    # TODO: this branch has not been tested.
+    if platform.system() == "Windows":
+        read_fd, write_fd = os.pipe()
+    else:
+        read_fd, write_fd = pty.openpty()
+
     os.dup2(write_fd, fd)
     read_file = os.fdopen(read_fd, "r")
 

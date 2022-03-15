@@ -108,3 +108,12 @@ async def test_capture_subprocess(capture_stdout_as_list):
         subprocess.call(["echo", "foo"])
 
     assert caps == ["foo\n"]
+
+
+@pytest.mark.asyncio
+async def test_capture_tty(capture_stdout_as_list):
+    async with capture_stdout_as_list() as caps:
+        assert sys.stdout.isatty()
+        print("foo", flush=True)
+
+    assert caps == ["foo\n"]
