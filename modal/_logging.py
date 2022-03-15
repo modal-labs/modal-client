@@ -6,12 +6,10 @@ from modal_proto import api_pb2
 
 
 class LogPrinter:
-    def __init__(self):
-        self.add_newline = False
-
     def feed(self, log: api_pb2.TaskLogs, stdout=None, stderr=None):
         stdout_buf = stdout or sys.stdout
         stderr_buf = stderr or sys.stderr
+
         if log.file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
             buf = stdout_buf
             color = colorama.Fore.BLUE
@@ -25,10 +23,9 @@ class LogPrinter:
             raise Exception(f"Weird file descriptor {log.file_descriptor} for log output")
 
         if buf.isatty():
-            buf.write(color)
+            output = color + log.data + colorama.Style.RESET_ALL
+        else:
+            output = log.data
 
-        buf.write(log.data)
-
-        if buf.isatty():
-            buf.write(colorama.Style.RESET_ALL)
-            buf.flush()
+        buf.write(output)
+        buf.flush()

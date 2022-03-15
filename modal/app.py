@@ -168,12 +168,11 @@ class App:
                     # log_batch entry_id is empty for fd="server" messages from AppGetLogs
                     last_log_batch_entry_id = log_batch.entry_id
 
-                with self._progress.suspend():
-                    for log in log_batch.items:
-                        if log.task_state:
-                            self._update_task_state(log_batch.task_id, log.task_state)
-                        if log.data:
-                            self._log_printer.feed(log, stdout, stderr)
+                for log in log_batch.items:
+                    if log.task_state:
+                        self._update_task_state(log_batch.task_id, log.task_state)
+                    if log.data:
+                        self._log_printer.feed(log, stdout, stderr)
 
         return last_log_batch_entry_id
 
@@ -266,15 +265,11 @@ class App:
 
             # Start tracking logs and yield context
             async with TaskContext(grace=config["logs_timeout"]) as tc:
-                async with safe_progress(tc, stdout, stderr, visible_progress) as (
-                    progress_handler,
-                    real_stdout,
-                    real_stderr,
-                ):
+                async with safe_progress(tc, stdout, stderr, visible_progress) as progress_handler:
                     self._progress = progress_handler
                     self._progress.step("Initializing...", "Initialized.")
 
-                    tc.create_task(self._get_logs_loop(real_stdout, real_stderr))
+                    tc.create_task(self._get_logs_loop(stdout, stderr))
 
                     try:
                         self._progress.step("Creating objects...", "Created objects.")
@@ -299,10 +294,6 @@ class App:
                         logger.debug("Stopping the app server-side")
                         req_disconnect = api_pb2.AppClientDisconnectRequest(app_id=self.app_id)
                         await self.client.stub.AppClientDisconnect(req_disconnect)
-                    if real_stdout:
-                        real_stdout.flush()
-                    if real_stderr:
-                        real_stderr.flush()
         finally:
             self.client = None
             self.state = AppState.NONE

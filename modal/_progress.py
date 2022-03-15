@@ -62,6 +62,8 @@ class ProgressSpinner:
         if self._lines_printed > 0:
             return
 
+        self._stdout.write(self.colors["reset"])
+
         frame = self._frames[self._frame_i]
         if self._ongoing_parent_step:
             self._lines_printed += 1
@@ -151,7 +153,7 @@ class ProgressSpinner:
 @synchronizer.asynccontextmanager
 async def safe_progress(task_context, stdout, stderr, visible=True):
     if not visible:
-        yield NoProgress(), stdout, stderr
+        yield NoProgress()
         return
 
     progress = None
@@ -181,7 +183,7 @@ async def safe_progress(task_context, stdout, stderr, visible=True):
             progress = ProgressSpinner(stdout)
             t = task_context.create_task(progress._loop())
             try:
-                yield progress, stdout, stderr
+                yield progress
             finally:
                 progress._stop()
                 await t
