@@ -39,7 +39,7 @@ async def thread_capture(stream: io.IOBase, callback: Callable[[str, io.TextIOBa
         buf = ""
 
         while 1:
-            raw_data = os.read(read_fd, 5)
+            raw_data = os.read(read_fd, 50)
             if not raw_data:
                 if buf:
                     callback(buf, orig_writer)
@@ -49,7 +49,10 @@ async def thread_capture(stream: io.IOBase, callback: Callable[[str, io.TextIOBa
             # Only send back lines that end in \n or \r.
             # This is needed to make progress bars and the like work well.
             # TODO: maybe write a custom IncrementalDecoder?
-            chunks = re.split("([\r\n])", buf + data)
+            # TODO: pty turns all \n into \r\n. On rare occasions, if the buffering separates the
+            # \r and \n into separate lines, and there are concurrent prints happening, this can cause
+            # some lines to be overwritten.
+            chunks = re.split("(\r\n|\r|\n)", buf + data)
 
             # chunks is guaranteed to be odd in length.
             for i in range(int(len(chunks) / 2)):

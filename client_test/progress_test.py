@@ -1,6 +1,7 @@
 import io
 
 from modal._progress import ProgressSpinner, Symbols
+from modal._terminfo import term_seq_str
 
 FRAMES = range(1, 10)
 
@@ -15,7 +16,7 @@ def text_between(source, substr1, substr2):
 
 
 CLEAR = "\033[K"
-CLEAR_TWO_LINES = "\r\033[1A\033[J"
+CLEAR_TWO_LINES = term_seq_str("cr") + term_seq_str("cuu", 1) + term_seq_str("ed") + term_seq_str("el")
 
 
 def test_tick():
@@ -31,11 +32,11 @@ def test_state_subtext():
     p.step("foo", "done")
     p.set_substep_text("sub")
     p._tick()
-    assert f"{Symbols.ONGOING} foo\n{FRAMES[0]} sub\r" == buf.getvalue()
+    assert f"{Symbols.ONGOING} foo\n{FRAMES[0]} sub\r" == buf.getvalue().replace("\r\n", "\n")
     p._tick()
     assert (
         f"{Symbols.ONGOING} foo\n{FRAMES[0]} sub\r{CLEAR_TWO_LINES}{Symbols.ONGOING} foo\n{FRAMES[1]} sub\r"
-        == buf.getvalue()
+        == buf.getvalue().replace("\r\n", "\n")
     )
 
 

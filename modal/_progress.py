@@ -63,30 +63,30 @@ class ProgressSpinner:
         self._frame_i = (self._frame_i + 1) % len(self._frames)
 
     def _print(self):
-        with self._lock:
-            if self._lines_printed > 0:
-                return
+        if self._lines_printed > 0:
+            return
 
-            self._stdout.write(self.colors["reset"])
+        self._stdout.write(self.colors["reset"])
 
-            frame = self._frames[self._frame_i]
-            if self._ongoing_parent_step:
-                self._lines_printed += 1
-                self._stdout.write(f"{Symbols.ONGOING} {self._ongoing_parent_step}\n")
-
-            self._stdout.write(f"{frame} {self._status_message}\r")
+        frame = self._frames[self._frame_i]
+        if self._ongoing_parent_step:
             self._lines_printed += 1
+            self._stdout.write(f"{Symbols.ONGOING} {self._ongoing_parent_step}\n")
 
-            self._stdout.flush()
+        self._stdout.write(f"{frame} {self._status_message}\r")
+        self._lines_printed += 1
+
+        self._stdout.flush()
 
     def _set_status_message(self, status_message):
         self._status_message = self.colors["status"] + status_message + self.colors["reset"]
 
     def _persist_done(self, final_message):
-        self._clear()
-        self._stdout.write(f"{self.colors['success']}{Symbols.DONE}{self.colors['reset']} {final_message}\n")
-        self._active_step = None
-        self._ongoing_parent_step = None
+        with self._lock:
+            self._clear()
+            self._stdout.write(f"{self.colors['success']}{Symbols.DONE}{self.colors['reset']} {final_message}\n")
+            self._active_step = None
+            self._ongoing_parent_step = None
 
     def _hide_cursor(self):
         self._stdout.write(term_seq_str("civis"))  # cursor invisible.
@@ -97,18 +97,21 @@ class ProgressSpinner:
         self._stdout.flush()
 
     def _clear(self):
-        with self._lock:
-            if self._lines_printed > 0:
-                self._stdout.write(term_seq_str("cr"))  # carriage return.
-                self._stdout.write(term_seq_str("cuu", self._lines_printed - 1))  # move cursor up n lines.
-                self._stdout.write(term_seq_str("ed"))  # clear to end of display.
+        if self._lines_printed > 1:
+            self._stdout.write(term_seq_str("cr"))  # carriage return.
+            self._stdout.write(term_seq_str("cuu", self._lines_printed - 1))  # move cursor up n lines.
+            self._stdout.write(term_seq_str("ed"))  # clear to end of display.
+        if self._lines_printed >= 1:
+            self._stdout.write(term_seq_str("el"))  # erase line.
+            self._stdout.flush()
 
-            self._lines_printed = 0
+        self._lines_printed = 0
 
     def _tick(self):
-        self._clear()
-        self._print()
-        self._step()
+        with self._lock:
+            self._clear()
+            self._print()
+            self._step()
 
     async def _loop(self):
         try:
@@ -142,14 +145,17 @@ class ProgressSpinner:
 
     @contextlib.contextmanager
     def suspend(self):
-        if self._suspended == 0:
-            self._clear()
-            self._stdout.flush()
-        self._suspended += 1
+        with self._lock:
+            if self._suspended == 0:
+                self._clear()
+            self._suspended += 1
+
         yield
-        self._suspended -= 1
-        if self._suspended == 0:
-            self._print()
+
+        with self._lock:
+            self._suspended -= 1
+            if self._suspended == 0:
+                self._print()
 
 
 @synchronizer.asynccontextmanager
@@ -207,7 +213,7 @@ if __name__ == "__main__":
 
     async def printstuff():
         async with TaskContext(grace=1.0) as tc:
-            async with safe_progress(tc, sys.stdout, sys.stderr) as (p, stdout, stderr):
+            async with safe_progress(tc, sys.stdout, sys.stderr) as p:
                 p.step("Making pastaz", "Pasta done")
                 p.set_substep_text("boiling water.............")
                 await asyncio.sleep(1)
