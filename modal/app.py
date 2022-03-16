@@ -66,7 +66,7 @@ class App:
             app = super().__new__(cls)
             return app
 
-    def __init__(self, show_progress=None, blocking_late_creation_ok=False, name=None):
+    def __init__(self, name=None, show_progress=None, blocking_late_creation_ok=False):
         if hasattr(self, "_initialized"):
             return  # Prevent re-initialization with the singleton
 
