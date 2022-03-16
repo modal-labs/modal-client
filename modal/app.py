@@ -4,6 +4,8 @@ import os
 import sys
 from typing import Collection, Optional
 
+import grpc
+
 from modal._progress import safe_progress
 from modal_proto import api_pb2
 from modal_utils.async_utils import TaskContext, run_coro_blocking, synchronizer
@@ -184,6 +186,13 @@ class App:
             except asyncio.CancelledError:
                 logger.info("Logging cancelled")
                 raise
+            except grpc.aio._call.AioRpcError as exc:
+                if exc.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
+                    # try again if we had a temporary connection drop, for example if computer went to sleep
+                    logger.info("Log fetching timed out - retrying")
+                    continue
+                raise
+
             if last_log_batch_entry_id is None:
                 break
             # TODO: catch errors, sleep, and retry?
