@@ -74,7 +74,7 @@ class ChannelPool:
             for ch in self._channels:
                 age = time.time() - ch.created_at
                 if ch.closed():
-                    logger.debug(f"Purging channel that's already closed.")
+                    logger.debug("Purging channel that's already closed.")
                     self._channels.remove(ch)
                 elif ch.n_concurrent_requests <= 0 and age >= self._max_channel_lifetime:
                     logger.debug(f"Closing old channel of age {age}s")
@@ -114,6 +114,9 @@ class ChannelPool:
         for ch in self._channels:
             await ch.channel.close()
         self._channels = []
+
+    def size(self):
+        return len(self._channels)
 
     def _update_kwargs(self, kwargs):
         # Override timeout (or set it if it's not set) and cap it to the channel lifetime

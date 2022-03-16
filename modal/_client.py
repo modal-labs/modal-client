@@ -100,7 +100,7 @@ class Client:
 
     async def _heartbeat(self):
         if self._stub is not None:
-            req = api_pb2.ClientHeartbeatRequest(client_id=self.client_id)
+            req = api_pb2.ClientHeartbeatRequest(client_id=self.client_id, num_connections=self._channel_pool.size())
             response: api_pb2.ClientHeartbeatResponse = await self.stub.ClientHeartbeat(req)
             if response.status == api_pb2.ClientHeartbeatResponse.CLIENT_HEARTBEAT_STATUS_GONE:
                 # server has deleted this client - perform graceful shutdown

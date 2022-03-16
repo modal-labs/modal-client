@@ -60,6 +60,7 @@ message ClientCreateResponse {
 
 message ClientHeartbeatRequest {
   string client_id = 1;
+  int32 num_connections = 2;
 }
 
 
