@@ -10,6 +10,7 @@ from typing import Any, AsyncIterator, Callable, List
 
 import cloudpickle
 import google.protobuf.json_format
+import synchronicity
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import (
@@ -216,7 +217,8 @@ class _FunctionContext:
         self.calls_completed += 1
 
 
-synchronize_apis(_FunctionContext)  # just to mark the class as synchronized, we don't care about the interfaces
+# just to mark the class as synchronized, we don't care about the interfaces
+synchronize_apis(_FunctionContext, "FunctionContext", "AioFunctionContext")
 
 
 def _call_function_generator(function_context, function_call_id, input_id, res, idx):
@@ -275,6 +277,21 @@ def call_function(
     args, kwargs = function_context.deserialize(function_input.args) if function_input.args else ((), {})
     idx = function_input.idx
     function_call_id = function_input.function_call_id
+
+    # TODO: this is somewhat hacky. We need to know whether the function is async or not in order to
+    # coerce the input arguments to the right type. The proper way to do is to call the function and
+    # see if you get a coroutine (or async generator) back. However at this point, it's too late to
+    # coerce the type. For now let's make a determination based on inspecting the function definition.
+    # This sometimes isn't correct, since a "vanilla" Python function can return a coroutine if it
+    # wraps async code or similar. Let's revisit this shortly.
+    if inspect.iscoroutinefunction(function) or inspect.isasyncgenfunction(function):
+        interface = synchronicity.Interface.ASYNC
+    elif inspect.isfunction(function) or inspect.isgeneratorfunction(function):
+        interface = synchronicity.Interface.BLOCKING
+    else:
+        raise RuntimeError(f"Function {function} is a strange type {type(function)}")
+    args = tuple(synchronizer._translate_out(arg, interface) for arg in args)
+    kwargs = {key: synchronizer._translate_out(arg, interface) for key, arg in kwargs.items()}
 
     try:
         res = function(*args, **kwargs)
