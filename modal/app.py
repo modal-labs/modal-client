@@ -64,8 +64,9 @@ class _App:
 
     def __new__(cls, *args, **kwargs):
         singleton = get_container_app()
-        if singleton is not None:
+        if singleton is not None and cls == _App:
             # If there's a singleton app, just return it for everything
+            assert isinstance(singleton, cls)
             return singleton
         else:
             # Refer to the normal constructor

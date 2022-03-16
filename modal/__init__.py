@@ -1,6 +1,7 @@
 from .app import App
 from .dict import Dict
 from .exception import RemoteError
+from .functions import Function
 from .image import Image, debian_slim, dockerhub_image, extend_image
 from .queue import Queue
 from .rate_limit import RateLimit
@@ -13,6 +14,7 @@ __all__ = [
     "App",
     "Cron",
     "Dict",
+    "Function",
     "Image",
     "Period",
     "Queue",
