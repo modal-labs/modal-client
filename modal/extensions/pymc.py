@@ -7,8 +7,7 @@ import synchronicity
 from aiostream import stream
 
 import modal
-
-from ..proto import api_pb2
+from modal_proto import api_pb2
 
 synchronizer = synchronicity.Synchronizer()
 
