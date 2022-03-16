@@ -198,4 +198,4 @@ if config["sentry_dsn"]:
             traces_sample_rate=1,
         )
 
-        sentry_sdk.set_context("user", {"token_id": config["token_id"], "client_version": __version__})
+        sentry_sdk.set_user({"token_id": config["token_id"], "client_version": __version__})
