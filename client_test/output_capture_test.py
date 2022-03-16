@@ -54,11 +54,11 @@ async def test_capture_prints(capture_stdout_as_list):
         print("foo", flush=True)
         time.sleep(0.1)  # TODO: can we remove this
         # test that we actually capture continually and not just at end of block
-        assert caps == ["foo\n"]
+        assert caps == ["foo\r", "\n"]
         print("bar")
 
     # intentionally no wait here - all results should be captured when capture block ends
-    assert caps == ["foo\n", "bar\n"]
+    assert caps == ["foo\r", "\n", "bar\r", "\n"]
 
 
 @pytest.mark.asyncio
@@ -78,7 +78,7 @@ async def test_capture_empty_line(capture_stdout_as_list):
         sys.stdout.write("\n")
 
     # intentionally no wait here - all results should be captured when capture block ends
-    assert caps == ["\n"]
+    assert caps == ["\r", "\n"]
 
 
 @pytest.mark.asyncio
@@ -109,7 +109,7 @@ async def test_capture_subprocess(capture_stdout_as_list):
     async with capture_stdout_as_list() as caps:
         subprocess.call(["echo", "foo"])
 
-    assert caps == ["foo\n"]
+    assert caps == ["foo\r", "\n"]
 
 
 @pytest.mark.skip("Fails in Github Actions runner; TODO: investigate")
@@ -124,3 +124,20 @@ async def test_capture_tty(suspend_capture):
     with suspend_capture:
         async with thread_capture(reader, callback):
             assert reader.isatty()
+
+
+@pytest.mark.asyncio
+async def test_capture_line_boundaries(capture_stdout_as_list):
+    async with capture_stdout_as_list() as caps:
+        sys.stdout.write("abc")
+        sys.stdout.flush()
+        time.sleep(0.01)
+        assert caps == []
+        sys.stdout.write("d\nx")
+        sys.stdout.flush()
+        time.sleep(0.01)
+        assert caps == ["abcd\r", "\n"]
+        sys.stdout.write("\ryz\r")
+        sys.stdout.flush()
+        time.sleep(0.01)
+        assert caps == ["abcd\r", "\n", "x\r", "yz\r"]

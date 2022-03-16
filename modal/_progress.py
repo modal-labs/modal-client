@@ -179,7 +179,6 @@ async def safe_progress(task_context, stdout, stderr, visible=True):
                     out.write("\n")
                     pending_cr = True
                 else:
-                    assert line.endswith("\n")
                     pending_cr = False
 
     # capture stdout/err unless they have been customized

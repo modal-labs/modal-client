@@ -41,6 +41,8 @@ async def thread_capture(stream: io.IOBase, callback: Callable[[str, io.TextIOBa
         while 1:
             raw_data = os.read(read_fd, 5)
             if not raw_data:
+                if buf:
+                    callback(buf, orig_writer)
                 return
             data = decoder.decode(raw_data)
 
