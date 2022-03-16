@@ -14,6 +14,7 @@ from .exception import AuthError, ConnectionError, InvalidError, VersionError
 from .version import __version__
 
 CLIENT_CREATE_TIMEOUT = 5.0
+HEARTBEAT_INTERVAL = 3.0
 
 
 @synchronizer
@@ -31,6 +32,13 @@ class Client:
         self.version = version
         self._task_context = None
         self._channel_pool = None
+        self._stub = None
+
+    @property
+    def stub(self):
+        if self._stub is None:
+            raise ConnectionError("The client is not connected to the modal server")
+        return self._stub
 
     async def _start(self):
         logger.debug("Client: Starting")
@@ -44,7 +52,7 @@ class Client:
         )
         self._channel_pool = ChannelPool(self._task_context, self._connection_factory)
         await self._channel_pool.start()
-        self.stub = api_pb2_grpc.ModalClientStub(self._channel_pool)
+        self._stub = api_pb2_grpc.ModalClientStub(self._channel_pool)
         try:
             t0 = time.time()
             req = api_pb2.ClientCreateRequest(
@@ -70,25 +78,34 @@ class Client:
             raise InvalidError("Did not get a client id from server")
 
         # Start heartbeats
-        self._task_context.infinite_loop(self._heartbeat, sleep=3.0)
+        self._task_context.infinite_loop(self._heartbeat, sleep=HEARTBEAT_INTERVAL)
 
         logger.debug("Client: Done starting")
 
     async def _stop(self):
         # TODO: we should trigger this using an exit handler
         logger.debug("Client: Shutting down")
+        self._stub = None  # prevent any additional calls
         if self._task_context:
             await self._task_context.stop()
+            self._task_context = None
         if self._channel_pool:
             await self._channel_pool.close()
+            self._channel_pool = None
         logger.debug("Client: Done shutting down")
         # Needed to catch straggling CancelledErrors and GeneratorExits that propagate
         # through our chains of async generators.
         await asyncio.sleep(0.01)
+        self.stopped.set()
 
     async def _heartbeat(self):
-        req = api_pb2.ClientHeartbeatRequest(client_id=self.client_id)
-        await self.stub.ClientHeartbeat(req)
+        if self._stub is not None:
+            req = api_pb2.ClientHeartbeatRequest(client_id=self.client_id)
+            response: api_pb2.ClientHeartbeatResponse = await self.stub.ClientHeartbeat(req)
+            if response.status == api_pb2.ClientHeartbeatResponse.CLIENT_HEARTBEAT_STATUS_GONE:
+                # server has deleted this client - perform graceful shutdown
+                # can't simply await self._stop here since it recursively wait for this task as well
+                asyncio.ensure_future(self._stop())
 
     async def __aenter__(self):
         try:

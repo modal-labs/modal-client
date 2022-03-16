@@ -36,6 +36,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.n_schedules = 0
         self.function2schedule = {}
         self.function_create_error = False
+        self.heartbeat_return_client_gone = False
 
     async def ClientCreate(
         self,
@@ -68,7 +69,12 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self, request: api_pb2.ClientHeartbeatRequest, context: grpc.aio.ServicerContext
     ) -> Empty:
         self.requests.append(request)
-        return Empty()
+        if self.heartbeat_return_client_gone:
+            return api_pb2.ClientHeartbeatResponse(status=api_pb2.ClientHeartbeatResponse.CLIENT_HEARTBEAT_STATUS_GONE)
+        return api_pb2.ClientHeartbeatResponse(
+            status=api_pb2.ClientHeartbeatResponse.CLIENT_HEARTBEAT_STATUS_ACTIVE,
+            seconds_since_last=1.0,
+        )
 
     async def AppGetLogs(
         self, request: api_pb2.AppGetLogsRequest, context: grpc.aio.ServicerContext
