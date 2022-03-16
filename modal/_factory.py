@@ -1,7 +1,7 @@
 import functools
 import inspect
 
-from modal_utils.async_utils import synchronize_apis
+from modal_utils.async_utils import synchronize_apis, synchronizer
 
 from ._app_singleton import get_container_app
 from ._function_utils import FunctionInfo
@@ -43,6 +43,12 @@ def make_user_factory(cls):
                 obj = await obj
             if not isinstance(obj, cls):
                 raise TypeError(f"expected {obj} to have type {cls}")
+            # This is super hacky, but self._fun arguably gets run on the
+            # _wrong_ event loop. It's "user code", but it gets executed
+            # inside synchronized code. Later, we need some special construct
+            # to run user code. For now, we do this dumb translation thing:
+            obj = synchronizer._translate_in(obj)
+            # Then let's create the object
             object_id = await app.create_object(obj)
             # Note that we can "steal" the object id from the other object
             # and set it on this object. This is a general trick we can do

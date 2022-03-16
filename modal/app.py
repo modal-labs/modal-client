@@ -220,6 +220,9 @@ class _App:
 
         This is a noop for any object that's not a factory.
         """
+        if synchronizer.is_synchronized(obj):
+            raise Exception(f"{obj} is synchronized")
+
         if not obj.is_factory():
             # This object is already created, just return the id
             return obj.object_id

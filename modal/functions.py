@@ -226,6 +226,8 @@ class _Function(Object, Factory, type_prefix="fu"):
                 raise InvalidError(
                     f"Function {raw_f} has a schedule, so it needs to support calling it with no arguments"
                 )
+        # assert not synchronizer.is_synchronized(image)
+
         # This is the only place besides object factory that sets tags
         tag = self.info.get_tag(None)
         self.raw_f = raw_f

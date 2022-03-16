@@ -216,8 +216,7 @@ class _FunctionContext:
         self.calls_completed += 1
 
 
-# We actually don't use the aio one
-FunctionContext, AioFunctionContext = synchronize_apis(_FunctionContext, "FunctionContext", "AioFunctionContext")
+synchronize_apis(_FunctionContext)  # just to mark the class as synchronized, we don't care about the interfaces
 
 
 def _call_function_generator(function_context, function_call_id, input_id, res, idx):
@@ -266,7 +265,8 @@ def _call_function_asyncgen(function_context, function_call_id, input_id, res, i
 
 
 def call_function(
-    function_context: FunctionContext,
+    function_context,  # : FunctionContext,
+    aio_function_context,  # : FunctionContext,
     function: Callable,
     function_type: api_pb2.Function.FunctionType,
     function_input: api_pb2.FunctionInput,
@@ -283,7 +283,7 @@ def call_function(
             if inspect.isgenerator(res):
                 _call_function_generator(function_context, function_call_id, input_id, res, idx)
             elif inspect.isasyncgen(res):
-                _call_function_asyncgen(function_context, function_call_id, input_id, res, idx)
+                _call_function_asyncgen(aio_function_context, function_call_id, input_id, res, idx)
             else:
                 raise InvalidError("Function of type generator returned a non-generator output")
 
@@ -334,7 +334,10 @@ def main(container_args, client):
     # whole container fails with a non-zero exit code and we send back a more opaque error message.
     function_type = container_args.function_def.function_type
 
-    function_context = FunctionContext(container_args, client)
+    # This is a bit weird but we need both the blocking and async versions of FunctionContext.
+    # At some point, we should fix that by having built-in support for running "user code"
+    _function_context = _FunctionContext(container_args, client)
+    function_context, aio_function_context = synchronize_apis(_function_context)
     function_context.initialize_app()
 
     if function_context.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
@@ -352,7 +355,7 @@ def main(container_args, client):
         for function_input in function_context.generate_inputs():  # type: ignore
             # Note: this blocks the call_function as well. In the future we might want to stream outputs
             # back asynchronously, but then block the call_function if there is back-pressure.
-            call_function(function_context, function, function_type, function_input)  # type: ignore
+            call_function(function_context, aio_function_context, function, function_type, function_input)  # type: ignore
 
 
 if __name__ == "__main__":
