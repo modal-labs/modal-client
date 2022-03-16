@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import io
 import sys
+import threading
 from typing import Optional, Tuple
 
 import colorama  # TODO: maybe use _terminfo for this
@@ -42,6 +43,7 @@ class ProgressSpinner:
 
         self._stopped = True
         self._suspended = 0
+        self._lock = threading.Lock()
         self._lines_printed = 0
         self._time_per_frame = self.looptime / len(self._frames)
         self._status_message = ""
@@ -61,20 +63,21 @@ class ProgressSpinner:
         self._frame_i = (self._frame_i + 1) % len(self._frames)
 
     def _print(self):
-        if self._lines_printed > 0:
-            return
+        with self._lock:
+            if self._lines_printed > 0:
+                return
 
-        self._stdout.write(self.colors["reset"])
+            self._stdout.write(self.colors["reset"])
 
-        frame = self._frames[self._frame_i]
-        if self._ongoing_parent_step:
+            frame = self._frames[self._frame_i]
+            if self._ongoing_parent_step:
+                self._lines_printed += 1
+                self._stdout.write(f"{Symbols.ONGOING} {self._ongoing_parent_step}\n")
+
+            self._stdout.write(f"{frame} {self._status_message}\r")
             self._lines_printed += 1
-            self._stdout.write(f"{Symbols.ONGOING} {self._ongoing_parent_step}\n")
 
-        self._stdout.write(f"{frame} {self._status_message}\r")
-        self._lines_printed += 1
-
-        self._stdout.flush()
+            self._stdout.flush()
 
     def _set_status_message(self, status_message):
         self._status_message = self.colors["status"] + status_message + self.colors["reset"]
@@ -94,14 +97,13 @@ class ProgressSpinner:
         self._stdout.flush()
 
     def _clear(self):
-        if self._lines_printed == 1:
-            self._stdout.write(term_seq_str("el"))  # erase line.
-        elif self._lines_printed > 1:
-            self._stdout.write(term_seq_str("cr"))  # carriage return.
-            self._stdout.write(term_seq_str("cuu", self._lines_printed - 1))  # move cursor up n lines.
-            self._stdout.write(term_seq_str("ed"))  # clear to end of display.
+        with self._lock:
+            if self._lines_printed > 0:
+                self._stdout.write(term_seq_str("cr"))  # carriage return.
+                self._stdout.write(term_seq_str("cuu", self._lines_printed - 1))  # move cursor up n lines.
+                self._stdout.write(term_seq_str("ed"))  # clear to end of display.
 
-        self._lines_printed = 0
+            self._lines_printed = 0
 
     def _tick(self):
         self._clear()
@@ -157,15 +159,28 @@ async def safe_progress(task_context, stdout, stderr, visible=True):
         return
 
     progress = None
+    pending_cr = False
 
     def write_callback(line, out):
-        nonlocal progress
+        nonlocal progress, pending_cr
 
-        if not line.endswith("\n"):
-            line += "\n"  # only write full lines
         if progress:
             with progress.suspend():
+                # `output_capture` guarantees `line` to end in `\r` or `\n`
+                # Without that guarantee, we would have to know the column position of the cursor,
+                # which basically requires you to emulate a terminal. (terminal save/restore doesn't work:
+                # https://unix.stackexchange.com/questions/278884/save-cursor-position-and-restore-it-in-terminal/278888#278888 )
+                if pending_cr:
+                    out.write(f"{term_seq_str('cuu1')}\r")
+
                 out.write(line)
+
+                if line.endswith("\r"):
+                    out.write("\n")
+                    pending_cr = True
+                else:
+                    assert line.endswith("\n")
+                    pending_cr = False
 
     # capture stdout/err unless they have been customized
     if stdout is None or stdout == sys.stdout:

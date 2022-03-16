@@ -1,8 +1,10 @@
 import asyncio
+import codecs
 import io
 import os
 import platform
 import pty
+import re
 from asyncio import TimeoutError
 from typing import Callable
 
@@ -30,14 +32,30 @@ async def thread_capture(stream: io.IOBase, callback: Callable[[str, io.TextIOBa
         read_fd, write_fd = os.pipe()
 
     os.dup2(write_fd, fd)
-    read_file = os.fdopen(read_fd, "r")
+
+    decoder = codecs.getincrementaldecoder("utf8")()
 
     def capture_thread():
+        buf = ""
+
         while 1:
-            line = read_file.readline()
-            if not line:
+            raw_data = os.read(read_fd, 5)
+            if not raw_data:
                 return
-            callback(line, orig_writer)
+            data = decoder.decode(raw_data)
+
+            # Only send back lines that end in \n or \r.
+            # This is needed to make progress bars and the like work well.
+            # TODO: maybe write a custom IncrementalDecoder?
+            chunks = re.split("([\r\n])", buf + data)
+
+            # chunks is guaranteed to be odd in length.
+            for i in range(int(len(chunks) / 2)):
+                # piece together chunk back with delimiter.
+                line = chunks[2 * i] + chunks[2 * i + 1]
+                callback(line, orig_writer)
+
+            buf = chunks[-1]
 
     # start thread but don't await it
     print_task = asyncio.get_event_loop().run_in_executor(None, capture_thread)
