@@ -1,3 +1,4 @@
+import re
 import sys
 
 import colorama
@@ -23,8 +24,8 @@ class LogPrinter:
             raise Exception(f"Weird file descriptor {log.file_descriptor} for log output")
 
         if buf.isatty():
-            colored_chunks = [color + chunk + colorama.Style.RESET_ALL for chunk in log.data.split("\n")]
-            output = "\n".join(colored_chunks)
+            colored_chunks = [color + chunk + colorama.Style.RESET_ALL for chunk in re.split("(\r\n|\r|\n)", log.data)]
+            output = "".join(colored_chunks)
         else:
             output = log.data
 

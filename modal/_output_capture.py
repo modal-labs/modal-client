@@ -54,9 +54,11 @@ async def thread_capture(stream: io.IOBase, callback: Callable[[str, io.TextIOBa
             # some lines to be overwritten.
             chunks = re.split("(\r\n|\r|\n)", buf + data)
 
-            # chunks is guaranteed to be odd in length.
+            # re.split("(<exp>)") returns the matched groups, and also the separators.
+            # e.g. re.split("(+)", "a+b") returns ["a", "+", "b"].
+            # This means that chunks is guaranteed to be odd in length.
             for i in range(int(len(chunks) / 2)):
-                # piece together chunk back with delimiter.
+                # piece together chunk back with separator.
                 line = chunks[2 * i] + chunks[2 * i + 1]
                 callback(line, orig_writer)
 
