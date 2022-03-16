@@ -12,7 +12,7 @@ class Factory:
 
 
 def make_user_factory(cls):
-    class UserFactory(cls, Factory):  # type: ignore
+    class _UserFactory(cls, Factory):  # type: ignore
         """Acts as a wrapper for a transient Object.
 
         Conceptually a factory "steals" the object id from the
@@ -58,17 +58,19 @@ def make_user_factory(cls):
         def __call__(self, *args, **kwargs):
             """Binds arguments to this object."""
             assert self._args_and_kwargs is None
-            return UserFactory(self._fun, args_and_kwargs=(args, kwargs))
+            return _UserFactory(self._fun, args_and_kwargs=(args, kwargs))
 
-    synchronize_apis(UserFactory)  # Needed to create interfaces
-    UserFactory.__module__ = cls.__module__
-    UserFactory.__qualname__ = cls.__qualname__ + ".UserFactory"
-    UserFactory.__doc__ = "\n\n".join(filter(None, [UserFactory.__doc__, cls.__doc__]))
-    return UserFactory
+    synchronize_apis(
+        _UserFactory, cls.__qualname__ + ".UserFactory", cls.__qualname__ + ".AioUserFactory"
+    )  # Needed to create interfaces
+    _UserFactory.__module__ = cls.__module__
+    _UserFactory.__qualname__ = cls.__qualname__ + "._UserFactory"
+    _UserFactory.__doc__ = "\n\n".join(filter(None, [_UserFactory.__doc__, cls.__doc__]))
+    return _UserFactory
 
 
 def make_shared_object_factory_class(cls):
-    class SharedObjectFactory(cls, Factory):  # type: ignore
+    class _SharedObjectFactory(cls, Factory):  # type: ignore
         def __init__(self, app_name, object_label, namespace):
             self.app_name = app_name
             self.object_label = object_label
@@ -81,5 +83,7 @@ def make_shared_object_factory_class(cls):
             return obj.object_id
 
     # TODO: set a bunch of stuff
-    synchronize_apis(SharedObjectFactory)  # Needed to create interfaces
-    return SharedObjectFactory
+    synchronize_apis(
+        _SharedObjectFactory, "SharedObjectFactory", "AioSharedObjectFactory"
+    )  # Needed to create interfaces
+    return _SharedObjectFactory

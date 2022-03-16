@@ -22,8 +22,8 @@ from modal_utils.async_utils import (
 
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._buffer_utils import buffered_rpc_read, buffered_rpc_write
-from .app import App
-from .client import Client
+from .app import _App
+from .client import Client, _Client
 from .config import config, logger
 from .exception import InvalidError
 from .functions import _Function
@@ -74,9 +74,11 @@ class _FunctionContext:
         # On the container, we know we're inside a app, so we initialize all App
         # objects with the same singleton object. This then lets us pull the lookup
         # table of all the named objects
-        App._initialize_container_app()
-        self.app = App()
-        await self.app._initialize_container(self.app_id, self.client, self.task_id)
+        _App._initialize_container_app()
+        self.app = _App()
+        _client = synchronizer._translate_in(self.client)  # make it a _Client object
+        assert isinstance(_client, _Client)
+        await self.app._initialize_container(self.app_id, _client, self.task_id)
 
     async def get_serialized_function(self) -> Callable:
         # Fetch the serialized function definition
