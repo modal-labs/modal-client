@@ -38,6 +38,9 @@ class ChannelStruct:
             RPCType.STREAM_STREAM: channel.stream_stream,
         }
 
+    def closed(self):
+        return self.channel._channel.closed()
+
     def get_method(self, rpc_type, method, request_serializer, response_deserializer):
         if (rpc_type, method) not in self._callables:
             self._callables[(rpc_type, method)] = self._constructors[rpc_type](
@@ -55,9 +58,6 @@ class ChannelPool:
 
     This also disconnects channels without concurrent requests, which is good because
     we won't get idle timeouts.
-
-    TODO: we should build in something that detects if a channel is closed and then
-    purges it.
     """
 
     def __init__(self, task_context, conn_factory, max_channel_lifetime=MAX_CHANNEL_LIFETIME):
@@ -73,7 +73,10 @@ class ChannelPool:
         async with self._lock:
             for ch in self._channels:
                 age = time.time() - ch.created_at
-                if ch.n_concurrent_requests <= 0 and age >= self._max_channel_lifetime:
+                if ch.closed():
+                    logger.debug(f"Purging channel that's already closed.")
+                    self._channels.remove(ch)
+                elif ch.n_concurrent_requests <= 0 and age >= self._max_channel_lifetime:
                     logger.debug(f"Closing old channel of age {age}s")
                     to_close.append(ch)
                 elif age >= 2 * self._max_channel_lifetime:
