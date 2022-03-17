@@ -10,7 +10,6 @@ from typing import Any, AsyncIterator, Callable, List
 
 import cloudpickle
 import google.protobuf.json_format
-import synchronicity
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import (
@@ -276,7 +275,6 @@ def call_function(
     function_input: api_pb2.FunctionInput,
 ):
     input_id = function_input.input_id
-    args, kwargs = function_context.deserialize(function_input.args) if function_input.args else ((), {})
     idx = function_input.idx
     function_call_id = function_input.function_call_id
 
@@ -287,13 +285,11 @@ def call_function(
     # This sometimes isn't correct, since a "vanilla" Python function can return a coroutine if it
     # wraps async code or similar. Let's revisit this shortly.
     if inspect.iscoroutinefunction(function) or inspect.isasyncgenfunction(function):
-        interface = synchronicity.Interface.ASYNC
+        args, kwargs = aio_function_context.deserialize(function_input.args) if function_input.args else ((), {})
     elif inspect.isfunction(function) or inspect.isgeneratorfunction(function):
-        interface = synchronicity.Interface.BLOCKING
+        args, kwargs = function_context.deserialize(function_input.args) if function_input.args else ((), {})
     else:
         raise RuntimeError(f"Function {function} is a strange type {type(function)}")
-    args = tuple(synchronizer._translate_out(arg, interface) for arg in args)
-    kwargs = {key: synchronizer._translate_out(arg, interface) for key, arg in kwargs.items()}
 
     try:
         res = function(*args, **kwargs)

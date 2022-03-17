@@ -129,9 +129,6 @@ class Object(metaclass=ObjectMeta):
         self._app = app
         self._app_id = app.app_id
 
-    def get_app(self):
-        return self._app
-
     @property
     def object_id(self):
         """The Modal internal object id"""
