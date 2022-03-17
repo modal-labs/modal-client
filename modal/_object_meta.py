@@ -18,13 +18,13 @@ class ObjectMeta(type):
 
         # Needed for serialization, also for loading objects dynamically
         if type_prefix is not None:
-            new_cls._type_prefix = type_prefix
+            new_cls._type_prefix = type_prefix  # type: ignore
             metacls.prefix_to_type[type_prefix] = new_cls
 
         # Create factory class and shared object class
         if not issubclass(new_cls, Factory):
-            new_cls._user_factory_class = make_user_factory(new_cls)
-            new_cls._shared_object_factory_class = make_shared_object_factory_class(new_cls)
+            new_cls._user_factory_class = make_user_factory(new_cls)  # type: ignore
+            new_cls._shared_object_factory_class = make_shared_object_factory_class(new_cls)  # type: ignore
 
         logger.debug(f"Created Object class {name}")
         return new_cls

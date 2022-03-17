@@ -268,8 +268,8 @@ def _call_function_asyncgen(function_context, function_call_id, input_id, res, i
 
 
 def call_function(
-    function_context: FunctionContext,
-    aio_function_context: AioFunctionContext,
+    function_context,  #: FunctionContext,  # TODO: this type is generated in runtime
+    aio_function_context,  #: AioFunctionContext,  # TODO: this one too
     function: Callable,
     function_type: api_pb2.Function.FunctionType,
     function_input: api_pb2.FunctionInput,
