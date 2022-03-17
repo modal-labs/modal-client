@@ -220,7 +220,7 @@ class _FunctionContext:
 
 
 # just to mark the class as synchronized, we don't care about the interfaces
-synchronize_apis(_FunctionContext, "FunctionContext", "AioFunctionContext")
+FunctionContext, AioFunctionContext = synchronize_apis(_FunctionContext, "FunctionContext", "AioFunctionContext")
 
 
 def _call_function_generator(function_context, function_call_id, input_id, res, idx):
@@ -269,8 +269,8 @@ def _call_function_asyncgen(function_context, function_call_id, input_id, res, i
 
 
 def call_function(
-    function_context,  # : FunctionContext,
-    aio_function_context,  # : FunctionContext,
+    function_context: FunctionContext,
+    aio_function_context: AioFunctionContext,
     function: Callable,
     function_type: api_pb2.Function.FunctionType,
     function_input: api_pb2.FunctionInput,
@@ -367,7 +367,9 @@ def main(container_args, client):
         modal_function = _path_to_function(
             function_context.function_def.module_name, function_context.function_def.function_name
         )
-        assert isinstance(modal_function, _Function)
+        # We want the internal type of this, not the external
+        modal_function = synchronizer._translate_in(modal_function)
+        assert modal_function.__class__ == _Function
         function = modal_function.get_raw_f()
 
     with function_context.send_outputs():
