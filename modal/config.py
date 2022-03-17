@@ -185,7 +185,7 @@ def sentry_exit_callback(pending, timeout):
     pass
 
 
-if config["sentry_dsn"]:
+if config["sentry_dsn"] and "localhost" not in config["server_url"]:
     # Check if already initialized.
     if sentry_sdk.Hub.current.client:
         logger.info("Skipping Sentry initialization, because Hub already exists.")
@@ -198,4 +198,9 @@ if config["sentry_dsn"]:
             traces_sample_rate=1,
         )
 
-        sentry_sdk.set_user({"token_id": config["token_id"], "client_version": __version__})
+        sentry_sdk.set_tag("token_id", config["token_id"])
+        sentry_sdk.set_user(
+            {"token_id": config["token_id"], "client_version": __version__, "task_id": config["task_id"]}
+        )
+
+x = 1 / 0
