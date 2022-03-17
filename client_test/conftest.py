@@ -1,5 +1,8 @@
 import asyncio
+import contextlib
+import os
 import pytest
+import tempfile
 import typing
 
 import cloudpickle
@@ -124,6 +127,8 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         elif request.object_ids:
             for label, object_id in request.object_ids.items():
                 self.deployments[(request.name, label)] = object_id
+        else:
+            self.deployments[request.name] = ""  # for stuff like schedules that don't require arguments to deploy
         return Empty()
 
     async def AppIncludeObject(
@@ -252,3 +257,37 @@ def reset_global_apps():
     yield
     set_running_app(None)
     set_container_app(None)
+
+
+@pytest.fixture(name="mock_dir", scope="session")
+def mock_dir_factory():
+    """Sets up a temp dir with content as specified in a nested dict
+
+    Example usage:
+    spec = {
+        "foo": {
+            "bar.txt": "some content"
+        },
+    }
+
+    with mock_dir(spec) as root_dir:
+        assert os.path.exists(os.path.join(root_dir, "foo", "bar.txt"))
+    """
+
+    @contextlib.contextmanager
+    def mock_dir(root_spec):
+        def rec_make(dir, dir_spec):
+            for filename, spec in dir_spec.items():
+                path = os.path.join(dir, filename)
+                if isinstance(spec, str):
+                    with open(path, "w") as f:
+                        f.write(spec)
+                else:
+                    os.mkdir(path)
+                    rec_make(path, spec)
+
+        with tempfile.TemporaryDirectory() as root_dir:
+            rec_make(root_dir, root_spec)
+            yield root_dir
+
+    return mock_dir

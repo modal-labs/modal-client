@@ -3,6 +3,7 @@ import getpass
 import typer
 
 from modal_proto import api_pb2
+from modal_utils.package_utils import import_app_by_ref
 
 from ._client import Client
 from .config import _store_user_config, config, user_config_path
@@ -13,6 +14,8 @@ token_app = typer.Typer()
 app.add_typer(token_app, name="token")
 config_app = typer.Typer()
 app.add_typer(config_app, name="config")
+app_app = typer.Typer()
+app.add_typer(app_app, name="app")
 
 
 class Symbols:
@@ -43,8 +46,16 @@ def show():
     print(config)
 
 
+@config_app.command()
 def main():
     app()
+
+
+@app_app.command()
+def deploy(app_ref: str, name: str = None):
+    app = import_app_by_ref(app_ref)
+    with app.run():
+        app.deploy(name=name)
 
 
 if __name__ == "__main__":

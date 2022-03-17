@@ -1,5 +1,7 @@
 import hashlib
+import importlib
 import os
+import sys
 from importlib import import_module
 
 from importlib_metadata import PackageNotFoundError, files
@@ -50,3 +52,34 @@ def get_module_mount_info(module):
         # Individual file
         filename = m.__file__
         return [(module, os.path.dirname(filename), lambda f: os.path.basename(f) == os.path.basename(filename))]
+
+
+def import_app_by_ref(app_ref: str):
+    root_dir = os.getcwd()
+    if ".py" in app_ref:
+        # walk to the closest python package in the path and add that to the path
+        # before importing, in case of imports etc. of other modules in that package
+        # are needed
+        file_path, var_part = app_ref.split(".py")
+        module_segments = file_path.split("/")
+        for path_segment in module_segments.copy()[:-1]:
+            if os.path.exists("__init__.py"):  # is package
+                break
+            root_dir += f"/{path_segment}"
+            module_segments = module_segments[1:]
+
+        import_path = ".".join(module_segments)
+        var_name = var_part.lstrip(":")
+    else:
+        if "::" in app_ref:
+            import_path, var_name = app_ref.split("::")
+        elif ":" in app_ref:
+            import_path, var_name = app_ref.split(":")
+        else:
+            import_path, var_name = app_ref, "app"
+
+    sys.path.append(root_dir)
+    var_name = var_name or "app"
+    module = importlib.import_module(import_path)
+    app = getattr(module, var_name)
+    return app

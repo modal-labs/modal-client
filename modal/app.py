@@ -332,7 +332,44 @@ class App:
         request = api_pb2.AppDetachRequest(app_id=self.app_id)
         await self.client.stub.AppDetach(request)
 
-    async def deploy(self, name, obj_or_objs=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
+    async def deploy(self, name=None, obj_or_objs=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
+        """
+        Deploys and exports objects in the app
+
+        Usage:
+        ```python
+        with app.run()
+            app.deploy()
+        ```
+
+        Deployment has two primary purposes:
+        * Persists all of the objects (Functions, Images, Schedules etc.) in the app, allowing them to live past the current app run
+          Notably for Schedules this enables headless "cron"-like functionality where scheduled functions continue to be invoked after
+          the client has closed.
+        * Allows for certain of these objects, *deployment objects*, to be referred to and used by other apps
+
+        :param name: Unique name of the deployment. Subsequent deploys with the same name overwrites previous ones. Falls back to the app name
+        :param obj_or_objs: A single Modal *Object* or a `dict[str, Object]` of labels -> Objects to be exported for use by other apps
+        """
+        if self.client is None:
+            raise InvalidError(
+                "The app needs to be running to be deployed.\n\n"
+                "Example usage:\n"
+                "with app.run():\n"
+                '    app.deploy("my_deployment")\n'
+            )
+
+        if name is None:
+            name = self.name
+        if name is None:
+            raise InvalidError(
+                "You need to either supply an explicit deployment name to the deploy command, or have a name set on the app.\n"
+                "\n"
+                "Examples:\n"
+                'app.deploy("some_name")\n\n'
+                "or\n"
+                'app = App("some name")'
+            )
         object_id = None
         object_ids = None  # name -> object_id
         if isinstance(obj_or_objs, Object):

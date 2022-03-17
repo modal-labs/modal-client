@@ -1,5 +1,6 @@
 import pytest
 
+import modal.exception
 from modal import App, Queue
 from modal._app_state import AppState
 from modal.exception import ExecutionError, NotFoundError
@@ -72,3 +73,24 @@ def test_create_object_exception(servicer, client):
     with pytest.raises(Exception):
         with app.run(client=client):
             pass
+
+
+def test_deploy_falls_back_to_app_name(servicer, client):
+    named_app = App(name="foo_app")
+    with named_app.run(client=client):
+        named_app.deploy()
+    assert "foo_app" in servicer.deployments
+
+
+def test_deploy_uses_deployment_name_if_specified(servicer, client):
+    named_app = App(name="foo_app")
+    with named_app.run(client=client):
+        named_app.deploy("bar_app")
+    assert "bar_app" in servicer.deployments
+    assert "foo_app" not in servicer.deployments
+
+
+def test_deploy_without_run_fails(servicer, client):
+    app = App()
+    with pytest.raises(modal.exception.InvalidError):
+        app.deploy(name="my_deployment")
