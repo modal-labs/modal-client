@@ -1,7 +1,7 @@
 import pytest
 
 import modal.exception
-from modal import App, Queue
+from modal import App
 from modal._app_state import AppState
 from modal.aio import AioApp, AioQueue
 from modal.exception import ExecutionError, NotFoundError
