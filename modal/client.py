@@ -59,7 +59,7 @@ class _Client:
                 version=self.version,
             )
             resp = await self.stub.ClientCreate(req, timeout=CLIENT_CREATE_TIMEOUT)
-            self.client_id = resp.client_id
+            self._client_id = resp.client_id
         except grpc.aio._call.AioRpcError as exc:
             ms = int(1000 * (time.time() - t0))
             if exc.code() == grpc.StatusCode.UNAUTHENTICATED:
@@ -73,7 +73,7 @@ class _Client:
                 )
             else:
                 raise
-        if not self.client_id:
+        if not self._client_id:
             raise InvalidError("Did not get a client id from server")
 
         # Start heartbeats
@@ -99,7 +99,7 @@ class _Client:
 
     async def _heartbeat(self):
         if self._stub is not None:
-            req = api_pb2.ClientHeartbeatRequest(client_id=self.client_id, num_connections=self._channel_pool.size())
+            req = api_pb2.ClientHeartbeatRequest(client_id=self._client_id, num_connections=self._channel_pool.size())
             response: api_pb2.ClientHeartbeatResponse = await self.stub.ClientHeartbeat(req)
             if response.status == api_pb2.ClientHeartbeatResponse.CLIENT_HEARTBEAT_STATUS_GONE:
                 # server has deleted this client - perform graceful shutdown
@@ -121,6 +121,10 @@ class _Client:
         async with self:
             # Just connect and disconnect
             pass
+
+    @property
+    def client_id(self):
+        return self._client_id
 
     @classmethod
     def from_env(cls):
@@ -144,4 +148,4 @@ class _Client:
         return client
 
 
-Client, AioClient = synchronize_apis(_Client, "Client", "AioClient")
+Client, AioClient = synchronize_apis(_Client)

@@ -346,4 +346,4 @@ class _Function(Object, Factory, type_prefix="fu"):
         return self.raw_f
 
 
-Function, AioFunction = synchronize_apis(_Function, "Function", "AioFunction")
+Function, AioFunction = synchronize_apis(_Function)

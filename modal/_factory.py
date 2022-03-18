@@ -12,8 +12,6 @@ class Factory:
 
 
 def make_user_factory(cls):
-    print("creating a factory inheriting from", cls)
-
     class _UserFactory(cls, Factory):  # type: ignore
         """Acts as a wrapper for a transient Object.
 
@@ -43,13 +41,13 @@ def make_user_factory(cls):
                 obj = self._fun()
             if inspect.iscoroutine(obj):
                 obj = await obj
-            if not isinstance(obj, cls):
-                raise TypeError(f"expected {obj} to have type {cls}")
             # This is super hacky, but self._fun arguably gets run on the
             # _wrong_ event loop. It's "user code", but it gets executed
             # inside synchronized code. Later, we need some special construct
             # to run user code. For now, we do this dumb translation thing:
             obj = synchronizer._translate_in(obj)
+            if not isinstance(obj, cls):
+                raise TypeError(f"expected {obj} to have type {cls}")
             # Then let's create the object
             object_id = await app.create_object(obj)
             # Note that we can "steal" the object id from the other object
@@ -62,12 +60,7 @@ def make_user_factory(cls):
             assert self._args_and_kwargs is None
             return _UserFactory(self._fun, args_and_kwargs=(args, kwargs))
 
-    synchronize_apis(
-        _UserFactory, cls.__qualname__ + ".UserFactory", cls.__qualname__ + ".AioUserFactory"
-    )  # Needed to create interfaces
-    _UserFactory.__module__ = cls.__module__
-    _UserFactory.__qualname__ = cls.__qualname__ + "._UserFactory"
-    _UserFactory.__doc__ = "\n\n".join(filter(None, [_UserFactory.__doc__, cls.__doc__]))
+    synchronize_apis(_UserFactory)
     return _UserFactory
 
 
@@ -85,7 +78,5 @@ def make_shared_object_factory_class(cls):
             return obj.object_id
 
     # TODO: set a bunch of stuff
-    synchronize_apis(
-        _SharedObjectFactory, "SharedObjectFactory", "AioSharedObjectFactory"
-    )  # Needed to create interfaces
+    synchronize_apis(_SharedObjectFactory)  # Needed to create interfaces
     return _SharedObjectFactory

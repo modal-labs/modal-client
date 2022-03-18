@@ -95,7 +95,7 @@ class _Mount(Object, type_prefix="mo"):
         return cls._create_object_instance(mount_id, app)
 
 
-Mount, AioMount = synchronize_apis(_Mount, "Mount", "AioMount")
+Mount, AioMount = synchronize_apis(_Mount)
 
 
 async def create_package_mounts(package_name):

@@ -66,4 +66,4 @@ class _Queue(Object, type_prefix="qu"):
         return await self.put_many([v])
 
 
-Queue, AioQueue = synchronize_apis(_Queue, "Queue", "AioQueue")
+Queue, AioQueue = synchronize_apis(_Queue)

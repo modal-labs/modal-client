@@ -72,4 +72,4 @@ class _Secret(Object, type_prefix="st"):
         return cls._create_object_instance(resp.secret_id, app)
 
 
-Secret, AioSecret = synchronize_apis(_Secret, "Secret", "AioSecret")
+Secret, AioSecret = synchronize_apis(_Secret)

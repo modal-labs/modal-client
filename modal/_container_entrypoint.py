@@ -219,7 +219,7 @@ class _FunctionContext:
 
 
 # just to mark the class as synchronized, we don't care about the interfaces
-FunctionContext, AioFunctionContext = synchronize_apis(_FunctionContext, "FunctionContext", "AioFunctionContext")
+FunctionContext, AioFunctionContext = synchronize_apis(_FunctionContext)
 
 
 def _call_function_generator(function_context, function_call_id, input_id, res, idx):

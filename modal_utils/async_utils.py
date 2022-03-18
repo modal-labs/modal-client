@@ -38,7 +38,7 @@ synchronizer = Synchronizer()
 # atexit.register(synchronizer.close)
 
 
-def synchronize_apis(obj, blocking_name=None, async_name=None):
+def synchronize_apis(obj):
     interfaces = synchronizer.create(obj)
     return (
         interfaces[synchronicity.Interface.BLOCKING],

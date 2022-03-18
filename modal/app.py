@@ -78,7 +78,7 @@ class _App:
             return  # Prevent re-initialization with the singleton
 
         self._initialized = True
-        self.app_id = None
+        self._app_id = None
         self.client = None
         self.name = name or self._infer_app_name()
         self.state = AppState.NONE
@@ -95,6 +95,10 @@ class _App:
         # We will have to rethink this soon.
         self._blocking_late_creation_ok = blocking_late_creation_ok
         super().__init__()
+
+    @property
+    def app_id(self):
+        return self._app_id
 
     def _infer_app_name(self):
         script_filename = os.path.split(sys.argv[0])[-1]
@@ -158,7 +162,7 @@ class _App:
 
     async def _get_logs(self, stdout, stderr, last_log_batch_entry_id, timeout=BLOCKING_REQUEST_TIMEOUT):
         request = api_pb2.AppGetLogsRequest(
-            app_id=self.app_id,
+            app_id=self._app_id,
             timeout=timeout,
             last_entry_id=last_log_batch_entry_id,
         )
@@ -205,7 +209,7 @@ class _App:
 
     async def _initialize_container(self, app_id, client, task_id):
         """Used by the container to bootstrap the app and all its objects."""
-        self.app_id = app_id
+        self._app_id = app_id
         self.client = client
 
         req = api_pb2.AppGetObjectsRequest(app_id=app_id, task_id=task_id)
@@ -278,7 +282,7 @@ class _App:
             # Start app
             req = api_pb2.AppCreateRequest(client_id=client.client_id, name=self.name)
             resp = await client.stub.AppCreate(req)
-            self.app_id = resp.app_id
+            self._app_id = resp.app_id
 
             # Start tracking logs and yield context
             async with TaskContext(grace=config["logs_timeout"]) as tc:
@@ -296,7 +300,7 @@ class _App:
 
                         # Create the app (and send a list of all tagged obs)
                         req_set = api_pb2.AppSetObjectsRequest(
-                            app_id=self.app_id,
+                            app_id=self._app_id,
                             object_ids=self._created_tagged_objects,
                         )
                         await self.client.stub.AppSetObjects(req_set)
@@ -309,7 +313,7 @@ class _App:
                         # 1. Server to kill any running task
                         # 2. Logs to drain (stopping the _get_logs_loop coroutine)
                         logger.debug("Stopping the app server-side")
-                        req_disconnect = api_pb2.AppClientDisconnectRequest(app_id=self.app_id)
+                        req_disconnect = api_pb2.AppClientDisconnectRequest(app_id=self._app_id)
                         await self.client.stub.AppClientDisconnect(req_disconnect)
         finally:
             self.client = None
@@ -337,7 +341,7 @@ class _App:
             set_running_app(None)
 
     async def detach(self):
-        request = api_pb2.AppDetachRequest(app_id=self.app_id)
+        request = api_pb2.AppDetachRequest(app_id=self._app_id)
         await self.client.stub.AppDetach(request)
 
     async def deploy(self, name=None, obj_or_objs=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
@@ -389,7 +393,7 @@ class _App:
         else:
             raise InvalidError(f"{obj_or_objs} not an Object or dict or None")
         request = api_pb2.AppDeployRequest(
-            app_id=self.app_id,
+            app_id=self._app_id,
             name=name,
             namespace=namespace,
             object_id=object_id,
@@ -399,7 +403,7 @@ class _App:
 
     async def include(self, name, object_label=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
         request = api_pb2.AppIncludeObjectRequest(
-            app_id=self.app_id,
+            app_id=self._app_id,
             name=name,
             object_label=object_label,
             namespace=namespace,
@@ -484,4 +488,4 @@ class _App:
         return function
 
 
-App, AioApp = synchronize_apis(_App, "App", "AioApp")
+App, AioApp = synchronize_apis(_App)

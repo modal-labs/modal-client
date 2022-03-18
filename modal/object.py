@@ -139,6 +139,10 @@ class Object(metaclass=ObjectMeta):
     def tag(self):
         return self._tag
 
+    @property
+    def app(self):
+        return self._app
+
     @classmethod
     @decorator_with_options
     def factory(cls, fun):

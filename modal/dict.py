@@ -102,4 +102,4 @@ class _Dict(Object, type_prefix="di"):
         return await self.pop(key)
 
 
-Dict, AioDict = synchronize_apis(_Dict, "Dict", "AioDict")
+Dict, AioDict = synchronize_apis(_Dict)
