@@ -5,6 +5,7 @@ import os
 import platform
 import pty
 import re
+import typing
 from asyncio import TimeoutError
 from typing import Callable
 
@@ -15,6 +16,14 @@ from modal_utils.async_utils import synchronizer
 @synchronizer.asynccontextmanager
 async def nullcapture(stream: io.IOBase):
     yield stream
+
+
+def can_capture(stream: typing.Union[io.IOBase, typing.TextIO]):
+    try:
+        stream.fileno()
+    except io.UnsupportedOperation:
+        return False
+    return True
 
 
 @synchronizer.asynccontextmanager

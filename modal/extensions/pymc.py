@@ -102,7 +102,7 @@ def sample_process(
 
         array_np = np.frombuffer(array, dtype).reshape(shape)
         array_np[...] = start[name]
-        point[name] = array_np
+        point[name] = array_np  # type: ignore
 
     def compute_point():
         nonlocal point, stats

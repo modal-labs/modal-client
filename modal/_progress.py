@@ -7,7 +7,7 @@ from typing import Optional, Tuple
 
 import colorama  # TODO: maybe use _terminfo for this
 
-from modal._output_capture import nullcapture, thread_capture
+from modal._output_capture import can_capture, nullcapture, thread_capture
 from modal_utils.async_utils import TaskContext, synchronizer
 
 from ._terminfo import term_seq_str
@@ -188,15 +188,15 @@ async def safe_progress(task_context, stdout, stderr, visible=True):
                     pending_cr = False
 
     # capture stdout/err unless they have been customized
-    if stdout is None or stdout == sys.stdout:
+    if (stdout is None or stdout == sys.stdout) and can_capture(sys.stdout):
         capstdout = thread_capture(sys.stdout, write_callback)
     else:
-        capstdout = nullcapture(stdout)
+        capstdout = nullcapture(stdout or sys.stdout)
 
-    if stderr is None or stderr == sys.stderr:
+    if (stderr is None or stderr == sys.stderr) and can_capture(sys.stderr):
         capstderr = thread_capture(sys.stderr, write_callback)
     else:
-        capstderr = nullcapture(stderr)
+        capstderr = nullcapture(stderr or sys.stderr)
 
     async with capstdout as stdout:
         async with capstderr as stderr:

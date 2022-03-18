@@ -1,4 +1,6 @@
 import getpass
+import sys
+import traceback
 
 import typer
 
@@ -52,8 +54,18 @@ def main():
 
 
 @app_app.command()
+def app_main():
+    app_app()
+
+
+@app_app.command("deploy")
 def deploy(app_ref: str, name: str = None):
-    app = import_app_by_ref(app_ref)
+    try:
+        app = import_app_by_ref(app_ref)
+    except Exception:
+        traceback.print_exc()
+        sys.exit(1)
+
     with app.run():
         app.deploy(name=name)
 

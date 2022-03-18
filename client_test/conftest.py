@@ -42,9 +42,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.heartbeat_return_client_gone = False
 
     async def ClientCreate(
-        self,
-        request: api_pb2.ClientCreateRequest,
-        context: grpc.aio.ServicerContext,
+        self, request: api_pb2.ClientCreateRequest, context: grpc.aio.ServicerContext = None, timeout=None
     ) -> api_pb2.ClientCreateResponse:
         self.requests.append(request)
         client_id = "cl-123"
@@ -55,21 +53,21 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     async def AppCreate(
         self,
         request: api_pb2.AppCreateRequest,
-        context: grpc.aio.ServicerContext,
+        context: grpc.aio.ServicerContext = None,
     ) -> api_pb2.AppCreateResponse:
         self.requests.append(request)
         app_id = "se-123"
         return api_pb2.AppCreateResponse(app_id=app_id)
 
     async def AppClientDisconnect(
-        self, request: api_pb2.AppClientDisconnectRequest, context: grpc.aio.ServicerContext
+        self, request: api_pb2.AppClientDisconnectRequest, context: grpc.aio.ServicerContext = None
     ) -> Empty:
         self.requests.append(request)
         self.done = True
         return Empty()
 
     async def ClientHeartbeat(
-        self, request: api_pb2.ClientHeartbeatRequest, context: grpc.aio.ServicerContext
+        self, request: api_pb2.ClientHeartbeatRequest, context: grpc.aio.ServicerContext = None
     ) -> Empty:
         self.requests.append(request)
         if self.heartbeat_return_client_gone:
@@ -80,48 +78,50 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         )
 
     async def AppGetLogs(
-        self, request: api_pb2.AppGetLogsRequest, context: grpc.aio.ServicerContext
+        self, request: api_pb2.AppGetLogsRequest, context: grpc.aio.ServicerContext = None, timeout=None
     ) -> typing.AsyncIterator[api_pb2.TaskLogsBatch]:
         await asyncio.sleep(0.1)
         if self.done:
             yield api_pb2.TaskLogsBatch(app_state=api_pb2.APP_STATE_STOPPED)
 
     async def FunctionGetInputs(
-        self, request: api_pb2.FunctionGetInputsRequest, context: grpc.aio.ServicerContext
+        self, request: api_pb2.FunctionGetInputsRequest, context: grpc.aio.ServicerContext = None
     ) -> api_pb2.FunctionGetInputsResponse:
         return self.container_inputs.pop(0)
 
     async def FunctionPutOutputs(
-        self, request: api_pb2.FunctionPutOutputsRequest, context: grpc.aio.ServicerContext
+        self, request: api_pb2.FunctionPutOutputsRequest, context: grpc.aio.ServicerContext = None
     ) -> api_pb2.FunctionPutOutputsResponse:
         self.container_outputs.append(request)
         return api_pb2.FunctionPutOutputsResponse(status=api_pb2.WRITE_STATUS_SUCCESS)
 
     async def AppGetObjects(
-        self, request: api_pb2.AppGetObjectsRequest, context: grpc.aio.ServicerContext
+        self, request: api_pb2.AppGetObjectsRequest, context: grpc.aio.ServicerContext = None
     ) -> api_pb2.AppGetObjectsResponse:
         return api_pb2.AppGetObjectsResponse(object_ids=self.object_ids)
 
-    async def AppSetObjects(self, request: api_pb2.AppSetObjectsRequest, context: grpc.aio.ServicerContext) -> Empty:
+    async def AppSetObjects(
+        self, request: api_pb2.AppSetObjectsRequest, context: grpc.aio.ServicerContext = None
+    ) -> Empty:
         self.objects = dict(request.object_ids)
         return Empty()
 
     async def QueueCreate(
-        self, request: api_pb2.QueueCreateRequest, context: grpc.aio.ServicerContext
+        self, request: api_pb2.QueueCreateRequest, context: grpc.aio.ServicerContext = None
     ) -> api_pb2.QueueCreateResponse:
         self.n_queues += 1
         return api_pb2.QueueCreateResponse(queue_id=f"qu-{self.n_queues}")
 
-    async def QueuePut(self, request: api_pb2.QueuePutRequest, context: grpc.aio.ServicerContext) -> Empty:
+    async def QueuePut(self, request: api_pb2.QueuePutRequest, context: grpc.aio.ServicerContext = None) -> Empty:
         self.queue += request.values
         return Empty()
 
     async def QueueGet(
-        self, request: api_pb2.QueueGetRequest, context: grpc.aio.ServicerContext
+        self, request: api_pb2.QueueGetRequest, context: grpc.aio.ServicerContext = None
     ) -> api_pb2.QueueGetResponse:
         return api_pb2.QueueGetResponse(values=[self.queue.pop(0)])
 
-    async def AppDeploy(self, request: api_pb2.AppDeployRequest, context: grpc.aio.ServicerContext) -> Empty:
+    async def AppDeploy(self, request: api_pb2.AppDeployRequest, context: grpc.aio.ServicerContext = None) -> Empty:
         if request.object_id:
             self.deployments[request.name] = request.object_id
         elif request.object_ids:
