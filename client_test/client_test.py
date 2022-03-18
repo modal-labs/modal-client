@@ -48,6 +48,5 @@ async def test_server_client_gone_disconnects_client(servicer):
         await client._heartbeat()
         await asyncio.sleep(0)  # let event loop take care of cleanup
 
-        assert client._stub is None
         with pytest.raises(modal.exception.ConnectionError):
             client.stub

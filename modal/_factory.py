@@ -12,6 +12,8 @@ class Factory:
 
 
 def make_user_factory(cls):
+    print("creating a factory inheriting from", cls)
+
     class _UserFactory(cls, Factory):  # type: ignore
         """Acts as a wrapper for a transient Object.
 

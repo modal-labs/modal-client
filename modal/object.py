@@ -48,7 +48,7 @@ class Object(metaclass=ObjectMeta):
 
     def _init_attributes(self, tag=None):
         """Initialize attributes"""
-        self.tag = tag
+        self._tag = tag
         self._object_id = None
         self._app_id = None
         self._app = None
@@ -134,6 +134,10 @@ class Object(metaclass=ObjectMeta):
         """The Modal internal object id"""
         if self._app_id is not None and self._app is not None and self._app_id == self._app.app_id:
             return self._object_id
+
+    @property
+    def tag(self):
+        return self._tag
 
     @classmethod
     @decorator_with_options

@@ -355,13 +355,13 @@ def main(container_args, client):
     function_context, aio_function_context = synchronize_apis(_function_context)
     function_context.initialize_app()
 
-    if function_context.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
+    if container_args.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
         function = function_context.get_serialized_function()
     else:
         # This is not in function_context, so that any global scope code that runs during import
         # runs on the main thread.
         modal_function = _path_to_function(
-            function_context.function_def.module_name, function_context.function_def.function_name
+            container_args.function_def.module_name, container_args.function_def.function_name
         )
         # We want the internal type of this, not the external
         modal_function = synchronizer._translate_in(modal_function)
