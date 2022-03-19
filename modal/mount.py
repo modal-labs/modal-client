@@ -103,10 +103,13 @@ async def create_package_mounts(package_name):
     return [await _Mount.create(path, f"/pkg/{name}", condition) for (name, path, condition) in mount_infos]
 
 
-async def create_client_mount():
+async def _create_client_mount():
     import modal
 
     # Get the base_path because it also contains `modal_utils` and `modal_proto`.
     base_path, _ = os.path.split(modal.__path__[0])
 
     return await _Mount.create(base_path, "/pkg/", module_mount_condition, recursive=True)
+
+
+_, aio_create_client_mount = synchronize_apis(_create_client_mount)
