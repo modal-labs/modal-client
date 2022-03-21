@@ -17,7 +17,7 @@ async def test_client(servicer, client):
 
 
 @pytest.mark.asyncio
-async def test_container_client(servicer, container_client):
+async def test_container_client(servicer, aio_container_client):
     await asyncio.sleep(0.1)  # wait for heartbeat
     assert len(servicer.requests) == 2
     assert isinstance(servicer.requests[0], api_pb2.ClientCreateRequest)

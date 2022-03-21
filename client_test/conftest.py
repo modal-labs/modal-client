@@ -11,11 +11,12 @@ import pkg_resources
 from google.protobuf.empty_pb2 import Empty
 
 from modal._app_singleton import set_container_app, set_running_app
-from modal.client import _Client
+from modal.client import AioClient, Client
 from modal.functions import MODAL_CLIENT_MOUNT_NAME
 from modal.image import _dockerhub_python_version
 from modal.version import __version__
 from modal_proto import api_pb2, api_pb2_grpc
+from modal_utils.async_utils import synchronize_apis
 
 
 class GRPCClientServicer(api_pb2_grpc.ModalClient):
@@ -231,24 +232,42 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
 @pytest.fixture(scope="function")
 async def servicer():
     servicer = GRPCClientServicer()
-    server = grpc.aio.server()
-    api_pb2_grpc.add_ModalClientServicer_to_server(servicer, server)
-    port = server.add_insecure_port("[::]:0")
-    servicer.remote_addr = "http://localhost:%d" % port
-    await server.start()
+    server = None
+
+    async def _start_servicer():
+        nonlocal server
+        server = grpc.aio.server()
+        api_pb2_grpc.add_ModalClientServicer_to_server(servicer, server)
+        port = server.add_insecure_port("[::]:0")
+        servicer.remote_addr = "http://localhost:%d" % port
+        await server.start()
+
+    async def _stop_servicer():
+        await server.stop(0)
+
+    _, aio_start_servicer = synchronize_apis(_start_servicer)
+    _, aio_stop_servicer = synchronize_apis(_stop_servicer)
+
+    await aio_start_servicer()
     yield servicer
-    await server.stop(0)
+    await aio_stop_servicer()
 
 
 @pytest.fixture(scope="function")
-async def client(servicer):
-    async with _Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
+async def aio_client(servicer):
+    async with AioClient(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
         yield client
 
 
 @pytest.fixture(scope="function")
-async def container_client(servicer):
-    async with _Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
+async def client(servicer):
+    with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
+        yield client
+
+
+@pytest.fixture(scope="function")
+async def aio_container_client(servicer):
+    async with AioClient(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         yield client
 
 

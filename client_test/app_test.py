@@ -24,9 +24,9 @@ def test_common_app(reset_global_apps):
 
 
 @pytest.mark.asyncio
-async def test_create_object(servicer, client):
+async def test_create_object(servicer, aio_client):
     app = AioApp()
-    async with app.run(client=client):
+    async with app.run(client=aio_client):
         q = await AioQueue.create(app=app)
         await q.put("foo")
         await q.put("bar")
@@ -35,15 +35,15 @@ async def test_create_object(servicer, client):
 
 
 @pytest.mark.asyncio
-async def test_persistent_object(servicer, client):
+async def test_persistent_object(servicer, aio_client):
     app_1 = AioApp()
-    async with app_1.run(client=client):
+    async with app_1.run(client=aio_client):
         q_1 = await AioQueue.create(app=app_1)
         assert q_1.object_id == "qu-1"
         await app_1.deploy("my-queue", q_1)
 
     app_2 = AioApp()
-    async with app_2.run(client=client):
+    async with app_2.run(client=aio_client):
         q_2 = await app_2.include("my-queue")
         assert isinstance(q_2, AioQueue)
         assert q_2.object_id == "qu-1"
@@ -53,11 +53,11 @@ async def test_persistent_object(servicer, client):
 
 
 @pytest.mark.skip("TODO: how should this behave when we don't have global run?")
-def test_run_inside_container(reset_global_apps, servicer, client):
+def test_run_inside_container(reset_global_apps, servicer, aio_client):
     App._initialize_container_app()
     app = App()
     with pytest.raises(ExecutionError):
-        with app.run(client=client):
+        with app.run(client=aio_client):
             pass
 
 
