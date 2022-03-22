@@ -22,9 +22,11 @@ def _local_construction_make(app, cls, fun):
         def __init__(self):
             # This is the only place where tags are being set on objects,
             # besides Function
-            tag = fun.__name__
+            tag = FunctionInfo(fun).get_tag(None)
             cls._init_static(self, tag=tag)
-            app._register_object(self)
+            if get_container_app() is None:
+                # Don't do anything inside the container
+                app._register_object(self)
 
         async def load(self, app):
             if get_container_app() is not None:

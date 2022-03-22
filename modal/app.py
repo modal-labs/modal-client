@@ -132,7 +132,7 @@ class _App:
             # Let's revisit this shortly
             run_coro_blocking(self.create_object(obj))
         else:
-            raise Exception("Can only register objects on a app that's not running")
+            raise Exception(f"Can only register objects on a app that's not running (state = {self.state}")
 
     def _update_task_state(self, task_id, state):
         self._task_states[task_id] = state
