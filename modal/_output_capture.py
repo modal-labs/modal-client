@@ -1,5 +1,6 @@
 import asyncio
 import codecs
+import errno
 import io
 import os
 import platform
@@ -48,7 +49,15 @@ async def thread_capture(stream: io.IOBase, callback: Callable[[str, io.TextIOBa
         buf = ""
 
         while 1:
-            raw_data = os.read(read_fd, 50)
+            try:
+                raw_data = os.read(read_fd, 50)
+            except OSError as err:
+                if err.errno == errno.EIO:
+                    # Input/Output error - triggered on linux when the write pipe is closed
+                    raw_data = b""
+                else:
+                    raise
+
             if not raw_data:
                 if buf:
                     callback(buf, orig_writer)
