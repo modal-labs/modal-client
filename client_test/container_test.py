@@ -17,7 +17,9 @@ def _get_inputs(client):
 
     return [
         api_pb2.FunctionGetInputsResponse(inputs=[function_input], status=api_pb2.READ_STATUS_SUCCESS),
-        api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionInput(EOF=True)], status=api_pb2.READ_STATUS_SUCCESS),
+        api_pb2.FunctionGetInputsResponse(
+            inputs=[api_pb2.FunctionInput(kill_switch=True)], status=api_pb2.READ_STATUS_SUCCESS
+        ),
     ]
 
 

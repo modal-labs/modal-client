@@ -138,8 +138,8 @@ class _FunctionContext:
                 break
 
             for item in response.inputs:
-                if item.EOF:
-                    logger.debug(f"Task {self.task_id} input got EOF.")
+                if item.kill_switch:
+                    logger.debug(f"Task {self.task_id} input received kill signal.")
                     eof_received = True
                     break
 
@@ -148,6 +148,10 @@ class _FunctionContext:
                     yield await self.populate_input_blobs(item)
                 else:
                     yield item
+
+                if item.final_input:
+                    eof_received = True
+                    break
 
     async def _send_outputs(self):
         """Background task that tries to drain output queue until it's empty,
