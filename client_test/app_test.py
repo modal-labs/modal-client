@@ -96,3 +96,14 @@ def test_deploy_without_run_fails(servicer, client):
     app = App()
     with pytest.raises(modal.exception.InvalidError):
         app.deploy(name="my_deployment")
+
+
+def test_run_function_without_app_error():
+    app = App()
+
+    @app.function()
+    def foo():
+        pass
+
+    with pytest.raises(modal.exception.InvalidError):
+        foo()

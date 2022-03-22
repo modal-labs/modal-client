@@ -79,7 +79,15 @@ class _Invocation:
 
     @staticmethod
     async def create(function_id, args, kwargs, app):
-        assert function_id
+        if not function_id:
+            raise InvalidError(
+                "The function has not been initialized.\n"
+                "\n"
+                "Modal functions can only be called within an app. "
+                "Try calling it from another running modal function or from an app run context:\n\n"
+                "with app.run():\n"
+                "    my_modal_function()\n"
+            )
         request = api_pb2.FunctionMapRequest(function_id=function_id)
         response = await retry(app.client.stub.FunctionMap)(request)
 
