@@ -83,6 +83,8 @@ def make_shared_object_factory_class(cls):
 
 
 def _factory_make(cls, fun):
+    # TODO: the FunctionInfo class is a bit overloaded
+    # and we should probably factor out the "get_tag" method
     function_info = FunctionInfo(fun)
 
     class _InternalFactory(cls, Factory):  # type: ignore
@@ -101,7 +103,6 @@ def _factory_make(cls, fun):
             object_id = await app.create_object(obj)
             return object_id
 
-    synchronize_apis(_InternalFactory)
     return _InternalFactory
 
 
