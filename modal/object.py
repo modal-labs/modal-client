@@ -1,5 +1,4 @@
 from modal_proto import api_pb2
-from modal_utils.decorator_utils import decorator_with_options
 
 from ._app_singleton import get_container_app, get_running_app
 from ._factory import Factory
@@ -142,39 +141,6 @@ class Object(metaclass=ObjectMeta):
     @property
     def app(self):
         return self._app
-
-    @classmethod
-    @decorator_with_options
-    def factory(cls, fun):
-        """Decorator to mark a "factory function".
-
-        Factory functions work like "named promises" for Objects, they are
-        automatically tagged by name/label so they will always refer to the same
-        underlying Object across machines. The function body should return the
-        desired initialized object. The body will only be run on the local
-        machine, so it may access local resources/files.
-
-        The decorated function can be used directly as a proxy object (if no
-        parameters are needed), or can be called with arguments and will return
-        a proxy object. In the latter case, the app will be passed as the
-        first argument. Factories can be synchronous or asynchronous. however,
-        synchronous factories may cause issues if they operate on Modal objects.
-
-        ```python
-           @Image.factory
-           def factory():
-               return OtherImage()
-        ```
-
-        ```python
-           @Queue.factory
-           async def factory(app, initial_value=42):
-               q = Queue(app)
-               await q.put(initial_value)
-               return q
-        ```
-        """
-        return cls._user_factory_class(fun)  # type: ignore
 
     @classmethod
     def include(cls, app_name, object_label=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):

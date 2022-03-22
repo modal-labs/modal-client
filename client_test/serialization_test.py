@@ -5,9 +5,9 @@ from modal.aio import AioApp, AioQueue
 app = AioApp()
 
 
-@AioQueue.factory
-async def qf():
-    return await AioQueue.create()
+@app.local_construction(AioQueue)
+async def qf(app):
+    return await AioQueue.create(app=app)
 
 
 @pytest.mark.asyncio
@@ -21,7 +21,7 @@ async def test_persistent_object(servicer, client):
         assert q.object_id == q_roundtrip.object_id
 
         # Serialize factory object and deserialize
-        await app.create_object(qf)
+        assert isinstance(qf, AioQueue)
         data = app._serialize(qf)
         qf_roundtrip = app._deserialize(data)
         assert isinstance(qf_roundtrip, AioQueue)

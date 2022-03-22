@@ -19,6 +19,7 @@ from modal_utils.grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIME_B
 
 from ._app_singleton import get_container_app, set_container_app, set_running_app
 from ._app_state import AppState
+from ._factory import _local_construction
 from ._logging import LogPrinter
 from ._object_meta import ObjectMeta
 from ._serialization import Pickler, Unpickler
@@ -486,6 +487,10 @@ class _App:
         if get_container_app() is None:
             self._register_object(function)
         return function
+
+    def local_construction(self, cls):
+        """Decorator."""
+        return _local_construction(self, cls)
 
 
 App, AioApp = synchronize_apis(_App)
