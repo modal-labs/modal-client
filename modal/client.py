@@ -42,7 +42,7 @@ class _Client:
     async def _start(self):
         logger.debug("Client: Starting")
         self.stopped = asyncio.Event()
-        self._task_context = TaskContext()
+        self._task_context = TaskContext(grace=1)
         await self._task_context.start()
         self._connection_factory = GRPCConnectionFactory(
             self.server_url,
