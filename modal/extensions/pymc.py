@@ -7,15 +7,16 @@ import synchronicity
 from aiostream import stream
 
 import modal
+from modal._factory import _factory
+from modal.image import _extend_image, _Image
 from modal_proto import api_pb2
-
-synchronizer = synchronicity.Synchronizer()
+from modal_utils.async_utils import synchronize_apis
 
 pymc_app = modal.App()
 
 
-@modal.Image.factory
-def pymc_image():
+@_factory(_Image)
+async def _PyMCImage():
     dockerfile_commands = [
         'SHELL ["/bin/bash", "-c"]',
         "RUN conda info",
@@ -26,9 +27,13 @@ def pymc_image():
         "&& conda list \\ ",
         "&& conda install theano-pymc==1.1.2 pymc3==3.11.2 scikit-learn --yes ",
     ]
-    conda_image = modal.Image.include("conda", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
+    conda_image = _Image.include("conda", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
+    return _extend_image(conda_image, dockerfile_commands)
 
-    return modal.extend_image(conda_image, dockerfile_commands)
+
+PyMCImage, AioPyMCImage = synchronize_apis(_PyMCImage)
+pymc_image = PyMCImage()
+aio_pymc_image = AioPyMCImage()
 
 
 if pymc_image.is_inside():
@@ -148,7 +153,7 @@ def sample_process(
 Draw = namedtuple("Draw", ["chain", "is_last", "draw_idx", "tuning", "stats", "point", "warnings"])
 
 
-@synchronizer
+@synchronicity.Synchronizer()  # TODO: uses the old deprecated API
 class ModalSampler:
     def __init__(
         self,
