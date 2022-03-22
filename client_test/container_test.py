@@ -1,6 +1,6 @@
 import time
 
-from modal import App, debian_slim
+from modal import App, DebianSlim
 from modal._container_entrypoint import main
 from modal._test_support import SLEEP_DELAY
 from modal.client import Client
@@ -46,7 +46,7 @@ def _run_container(servicer, module_name, function_name):
         )
 
         servicer.object_ids = {
-            debian_slim.tag: "1",
+            DebianSlim().tag: "1",
             "modal._test_support.square": "2",
             "modal._test_support.square_sync_returning_async": "3",
             "modal._test_support.square_async": "4",

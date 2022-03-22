@@ -1,7 +1,6 @@
-import pytest
 import sys
 
-from modal.image import CustomImage, Image, _dockerhub_python_version, debian_slim
+from modal.image import CustomImage, Image, _dockerhub_python_version
 
 
 def test_python_version():
@@ -26,9 +25,3 @@ def test_image_factory():
     # assert isinstance(my_image_2, Image)  # TODO: won't work because of new synchronization api
     assert isinstance(my_image_2.tag, str)
     assert my_image_2.tag == 'client_test.image_test.my_image("python-scipy")'
-
-
-@pytest.mark.skip(reason="TODO: won't work because of the new synchronicity API, will fix later")
-def test_debian_slim():
-    assert isinstance(debian_slim, Image)
-    assert isinstance(debian_slim(["numpy"]), Image)
