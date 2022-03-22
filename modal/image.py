@@ -110,7 +110,7 @@ class _CustomImage(_Image):
 
 
 @_factory(_Image)
-async def _local_image(python_executable):
+async def _LocalImage(python_executable):
     """Only used for various integration tests."""
     return await _CustomImage.create(local_image_python_executable=python_executable)
 
@@ -136,7 +136,7 @@ def _dockerhub_python_version(python_version=None):
 
 
 @_factory(_Image)
-async def _debian_slim(
+async def _DebianSlim(
     extra_commands=None,
     python_packages=None,
     python_version=None,
@@ -193,7 +193,7 @@ def get_client_requirements():
 
 
 @_factory(_Image)
-async def _dockerhub_image(tag):
+async def _DockerhubImage(tag):
     """
     Build a modal image from a pre-existing image on DockerHub.
 
@@ -220,7 +220,7 @@ async def _dockerhub_image(tag):
 
 Image, AioImage = synchronize_apis(_Image)
 CustomImage, AioCustomImage = synchronize_apis(_CustomImage)
-local_image, aio_local_image = synchronize_apis(_local_image)
-debian_slim, aio_debian_slim = synchronize_apis(_debian_slim)
-dockerhub_image, aio_dockerhub_image = synchronize_apis(_dockerhub_image)
+LocalImage, AioLocalImage = synchronize_apis(_LocalImage)
+DebianSlim, AioDebianSlim = synchronize_apis(_DebianSlim)
+DockerhubImage, AioDockerhubImage = synchronize_apis(_DockerhubImage)
 extend_image, aio_extend_image = synchronize_apis(_extend_image)

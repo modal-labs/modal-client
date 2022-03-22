@@ -2,7 +2,7 @@ from .app import App
 from .dict import Dict
 from .exception import RemoteError
 from .functions import Function
-from .image import Image, debian_slim, dockerhub_image, extend_image
+from .image import DebianSlim, DockerhubImage, Image
 from .queue import Queue
 from .rate_limit import RateLimit
 from .schedule import Cron, Period
@@ -20,9 +20,8 @@ __all__ = [
     "Queue",
     "RemoteError",
     "Secret",
-    "debian_slim",
-    "dockerhub_image",
-    "extend_image",
+    "DebianSlim",
+    "DockerhubImage",
     "Queue",
     "RateLimit",
     "App",

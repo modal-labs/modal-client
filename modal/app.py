@@ -26,7 +26,7 @@ from .client import _Client
 from .config import config, logger
 from .exception import InvalidError, NotFoundError
 from .functions import _Function
-from .image import _debian_slim
+from .image import _DebianSlim
 from .object import Object
 from .rate_limit import RateLimit
 from .schedule import Schedule
@@ -434,7 +434,7 @@ class _App:
     def function(
         self,
         raw_f=None,
-        image=_debian_slim,
+        image=_DebianSlim(),
         schedule: Optional[Schedule] = None,
         secret: Optional[Secret] = None,
         secrets: Collection[Secret] = (),
@@ -467,7 +467,7 @@ class _App:
     def generator(
         self,
         raw_f=None,
-        image=_debian_slim,
+        image=_DebianSlim(),
         secret: Optional[Secret] = None,
         secrets: Collection[Secret] = (),
         gpu: bool = False,
