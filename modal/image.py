@@ -6,6 +6,7 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import retry, synchronize_apis
 from modal_utils.grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 
+from ._factory import _factory
 from .config import config, logger
 from .exception import RemoteError
 from .object import Object
@@ -108,7 +109,7 @@ class _CustomImage(_Image):
         return cls._create_object_instance(image_id, app)
 
 
-@_Image.factory
+@_factory(_Image)
 async def _local_image(python_executable):
     """Only used for various integration tests."""
     return await _CustomImage.create(local_image_python_executable=python_executable)
@@ -134,7 +135,7 @@ def _dockerhub_python_version(python_version=None):
     return python_version
 
 
-@_Image.factory
+@_factory(_Image)
 async def _debian_slim(
     extra_commands=None,
     python_packages=None,
@@ -191,7 +192,7 @@ def get_client_requirements():
     return requirements_fn, requirements_data
 
 
-@_Image.factory
+@_factory(_Image)
 async def _dockerhub_image(tag):
     """
     Build a modal image from a pre-existing image on DockerHub.

@@ -80,3 +80,38 @@ def make_shared_object_factory_class(cls):
     # TODO: set a bunch of stuff
     synchronize_apis(_SharedObjectFactory)  # Needed to create interfaces
     return _SharedObjectFactory
+
+
+def _factory(cls):
+    class _InternalFactory(cls, Factory):  # type: ignore
+        def __init__(self, fun, args_and_kwargs=None):
+            functools.update_wrapper(self, fun)
+            self._fun = fun
+            self._args_and_kwargs = args_and_kwargs
+            self.function_info = FunctionInfo(fun)
+            tag = self.function_info.get_tag(args_and_kwargs)
+            cls._init_static(self, tag=tag)
+
+        async def load(self, app):
+            if get_container_app() is not None:
+                assert False
+
+            if self._args_and_kwargs is not None:
+                args, kwargs = self._args_and_kwargs
+                obj = await self._fun(*args, **kwargs)
+            else:
+                obj = await self._fun()
+            if inspect.iscoroutine(obj):
+                obj = await obj
+            if not isinstance(obj, cls):
+                raise TypeError(f"expected {obj} to have type {cls}")
+            object_id = await app.create_object(obj)
+            return object_id
+
+        def __call__(self, *args, **kwargs):
+            """Binds arguments to this object."""
+            assert self._args_and_kwargs is None
+            return _InternalFactory(self._fun, args_and_kwargs=(args, kwargs))
+
+    synchronize_apis(_InternalFactory)
+    return _InternalFactory
