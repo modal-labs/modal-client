@@ -18,11 +18,7 @@ class Pickler(cloudpickle.Pickler):
             return
         type_prefix = obj._type_prefix  # type: ignore
         if not obj.object_id:
-            raise InvalidError(
-                f"Can't serialize object {obj} which hasn't been created.\n\n"
-                f"You need to call `app.create_object(obj)` on factory created objects\n"
-                f"before passing them to modal functions."
-            )
+            raise InvalidError(f"Can't serialize object {obj} which hasn't been created.")
         return (type_prefix, obj.object_id)
 
 

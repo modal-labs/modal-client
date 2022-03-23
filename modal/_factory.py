@@ -1,6 +1,8 @@
 import functools
 import inspect
 
+import synchronicity
+
 from modal_utils.async_utils import synchronize_apis, synchronizer
 
 from ._app_singleton import get_container_app
@@ -11,7 +13,25 @@ class Factory:
     pass
 
 
+def _create_callback(fun):
+    # This is a bit of an ugly hack, but we need to know what interface the
+    # user function will use to return objects (eg it might return a sync
+    # version of some object, and we want to convert it to an internal type).
+    # We infer it from the function signature.
+    if inspect.iscoroutinefunction(fun):
+        interface = synchronicity.Interface.ASYNC
+    elif inspect.isfunction(fun):
+        interface = synchronicity.Interface.BLOCKING
+    else:
+        raise Exception(f"{fun}: expected function but got {type(fun)}")
+
+    # Create a coroutine we can use internally
+    return synchronizer.create_callback(fun, interface)
+
+
 def _local_construction_make(app, cls, fun):
+    callback = _create_callback(fun)
+
     class _UserFactory(cls, Factory):  # type: ignore
         """Acts as a wrapper for a transient Object.
 
@@ -31,14 +51,7 @@ def _local_construction_make(app, cls, fun):
         async def load(self, app):
             if get_container_app() is not None:
                 assert False
-            obj = fun()
-            if inspect.iscoroutine(obj):
-                obj = await obj
-            # This is super hacky, but self._fun arguably gets run on the
-            # _wrong_ event loop. It's "user code", but it gets executed
-            # inside synchronized code. Later, we need some special construct
-            # to run user code. For now, we do this dumb translation thing:
-            obj = synchronizer._translate_in(obj)
+            obj = await callback()
             if not isinstance(obj, cls):
                 raise TypeError(f"expected {obj} to have type {cls}")
             # Then let's create the object
@@ -80,6 +93,9 @@ def _factory_make(cls, fun):
     # TODO: the FunctionInfo class is a bit overloaded
     # and we should probably factor out the "get_tag" method
     function_info = FunctionInfo(fun)
+
+    # TODO: we should add support for user code:
+    # callback = _create_callback(fun)
 
     class _InternalFactory(cls, Factory):  # type: ignore
         def __init__(self, *args, **kwargs):
