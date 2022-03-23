@@ -6,7 +6,7 @@ app = AioApp()
 
 
 @app.local_construction(AioQueue)
-async def qf(app):
+async def qf():
     return await AioQueue.create(app=app)
 
 

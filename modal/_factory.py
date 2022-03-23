@@ -31,7 +31,7 @@ def _local_construction_make(app, cls, fun):
         async def load(self, app):
             if get_container_app() is not None:
                 assert False
-            obj = fun(app)
+            obj = fun()
             if inspect.iscoroutine(obj):
                 obj = await obj
             # This is super hacky, but self._fun arguably gets run on the

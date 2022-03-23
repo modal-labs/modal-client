@@ -6,7 +6,7 @@ app = AioApp()
 
 
 @app.local_construction(AioQueue)
-async def my_factory(app):
+async def my_factory():
     return await AioQueue.create(app=app)
 
 
