@@ -109,12 +109,6 @@ class _CustomImage(_Image):
         return cls._create_object_instance(image_id, app)
 
 
-@_factory(_Image)
-async def _LocalImage(python_executable):
-    """Only used for various integration tests."""
-    return await _CustomImage.create(local_image_python_executable=python_executable)
-
-
 def _dockerhub_python_version(python_version=None):
     if python_version is None:
         python_version = config["image_python_version"]
@@ -220,7 +214,6 @@ async def _DockerhubImage(tag):
 
 Image, AioImage = synchronize_apis(_Image)
 CustomImage, AioCustomImage = synchronize_apis(_CustomImage)
-LocalImage, AioLocalImage = synchronize_apis(_LocalImage)
 DebianSlim, AioDebianSlim = synchronize_apis(_DebianSlim)
 DockerhubImage, AioDockerhubImage = synchronize_apis(_DockerhubImage)
 extend_image, aio_extend_image = synchronize_apis(_extend_image)
