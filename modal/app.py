@@ -489,7 +489,22 @@ class _App:
         return function
 
     def local_construction(self, cls):
-        """Decorator."""
+        """Decorator to create a custom initialization function for something that runs on startup.
+
+        This is useful if you need to define some object globally, and defer its initialization until
+        later.
+
+        Example:
+        ```python
+            @app.local_construction(Secret)
+            def forward_local_secrets():
+                return Secret.create(os.environ)
+
+            @app.function(secrets=forward_local_secrets):
+            def editor():
+                return os.environ["EDITOR"]
+        ```
+        """
         return _local_construction(self, cls)
 
 
