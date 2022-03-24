@@ -38,7 +38,7 @@ async def _get_files(local_dir, condition, recursive):
 
 class _Mount(Object, type_prefix="mo"):
     @classmethod
-    async def create(cls, local_dir, remote_dir, condition, app=None, recursive=True):
+    async def create2(cls, local_dir, remote_dir, condition, app=None, recursive=True):
         # Run a threadpool to compute hash values, and use n coroutines to put files
         app = cls._get_app(app)
 
@@ -92,7 +92,7 @@ class _Mount(Object, type_prefix="mo"):
         req_done = api_pb2.MountDoneRequest(mount_id=mount_id)
         await app.client.stub.MountDone(req_done)
 
-        return cls._create_object_instance(mount_id, app)
+        return mount_id
 
 
 Mount, AioMount = synchronize_apis(_Mount)

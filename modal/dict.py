@@ -18,7 +18,7 @@ class _Dict(Object, type_prefix="di"):
         return [api_pb2.DictEntry(key=app._serialize(k), value=app._serialize(v)) for k, v in data.items()]
 
     @classmethod
-    async def create(cls, data={}, app=None):
+    async def create2(cls, data={}, app=None):
         app = cls._get_app(app)
         if app.app_id is None:
             raise InvalidError(
@@ -33,7 +33,7 @@ class _Dict(Object, type_prefix="di"):
         req = api_pb2.DictCreateRequest(app_id=app.app_id, data=serialized)
         response = await app.client.stub.DictCreate(req)
         logger.debug("Created dict with id %s" % response.dict_id)
-        return cls._create_object_instance(response.dict_id, app)
+        return response.dict_id
 
     async def get(self, key):
         """Get the value associated with the key

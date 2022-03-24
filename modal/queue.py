@@ -16,12 +16,12 @@ class _Queue(Object, type_prefix="qu"):
     """
 
     @classmethod
-    async def create(cls, app=None):
+    async def create2(cls, app=None):
         app = cls._get_app(app)
         request = api_pb2.QueueCreateRequest(app_id=app.app_id)
         response = await app.client.stub.QueueCreate(request)
         logger.debug("Created queue with id %s" % response.queue_id)
-        return cls._create_object_instance(response.queue_id, app)
+        return response.queue_id
 
     async def _get(self, block, timeout, n_values):
         while timeout is None or timeout > 0:

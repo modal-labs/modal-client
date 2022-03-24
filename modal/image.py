@@ -51,7 +51,7 @@ class _CustomImage(_Image):
     Needed to rewrite all the other subclasses to use composition instead of inheritance."""
 
     @classmethod
-    async def create(
+    async def create2(
         cls,
         base_images={},
         context_files={},
@@ -106,7 +106,7 @@ class _CustomImage(_Image):
             else:
                 raise RemoteError("Unknown status %s!" % response.result.status)
 
-        return cls._create_object_instance(image_id, app)
+        return image_id
 
 
 def _dockerhub_python_version(python_version=None):

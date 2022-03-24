@@ -65,11 +65,11 @@ class _Secret(Object, type_prefix="st"):
     """
 
     @classmethod
-    async def create(cls, env_dict={}, template_type="", app=None):
+    async def create2(cls, env_dict={}, template_type="", app=None):
         app = cls._get_app(app)
         req = api_pb2.SecretCreateRequest(app_id=app.app_id, env_dict=env_dict, template_type=template_type)
         resp = await app.client.stub.SecretCreate(req)
-        return cls._create_object_instance(resp.secret_id, app)
+        return resp.secret_id
 
 
 Secret, AioSecret = synchronize_apis(_Secret)

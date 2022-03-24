@@ -40,7 +40,10 @@ class Object(metaclass=ObjectMeta):
 
     @classmethod
     async def create(cls, *args, **kwargs):
-        raise NotImplementedError(f"Class {cls} does not implement a .create(...) constructor!")
+        # Temporary workaround to make the old API not break
+        object_id = await cls.create2(*args, **kwargs)  # super dumb lol
+        app = cls._get_app()
+        return cls._create_object_instance(object_id, app)
 
     async def load(self, app):
         raise NotImplementedError(f"Object factory of class {type(self)} has no load method")
