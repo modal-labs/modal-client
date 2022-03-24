@@ -39,9 +39,8 @@ class _Image(Object, type_prefix="im"):
         logger.debug(f"Is image inside? env {env_image_id} image {image_id}")
         return image_id is not None and env_image_id == image_id
 
-    @classmethod
     async def create2(
-        cls,
+        self,
         base_images={},
         context_files={},
         dockerfile_commands=[],
@@ -49,7 +48,7 @@ class _Image(Object, type_prefix="im"):
         version=None,
         app=None,
     ):
-        app = cls._get_app(app)
+        app = self._get_app(app)
 
         # Recursively build base images
         base_image_ids = await asyncio.gather(*(app.create_object(image) for image in base_images.values()))

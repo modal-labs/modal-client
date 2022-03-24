@@ -41,9 +41,12 @@ class Object(metaclass=ObjectMeta):
     @classmethod
     async def create(cls, *args, **kwargs):
         # Temporary workaround to make the old API not break
-        object_id = await cls.create2(*args, **kwargs)  # super dumb lol
+        obj = Object.__new__(cls)
+        obj._init_attributes()
+        object_id = await obj.create2(*args, **kwargs)  # super dumb lol
         app = cls._get_app()
-        return cls._create_object_instance(object_id, app)
+        obj.set_object_id(object_id, app)
+        return obj
 
     async def load(self, app):
         raise NotImplementedError(f"Object factory of class {type(self)} has no load method")
@@ -84,18 +87,6 @@ class Object(metaclass=ObjectMeta):
             )
         return self._app
 
-    @classmethod
-    def _create_object_instance(cls, object_id, app):
-        """Helper method for subclass constructors."""
-        obj = Object.__new__(cls)
-        obj._init_attributes()
-
-        if object_id is None:
-            raise Exception(f"object_id for object of type {type(obj)} is None")
-
-        obj.set_object_id(object_id, app)
-        return obj
-
     def _init_static(self, tag):
         """Create a new tagged object.
 
@@ -120,7 +111,10 @@ class Object(metaclass=ObjectMeta):
     def _init_persisted(cls, object_id, app):
         prefix, _ = object_id.split("-")  # TODO: util method
         object_cls = ObjectMeta.prefix_to_type[prefix]
-        return object_cls._create_object_instance(object_id, app)
+        obj = Object.__new__(object_cls)
+        obj._init_attributes()
+        obj.set_object_id(object_id, app)
+        return obj
 
     def is_factory(self):
         return isinstance(self, Factory)

@@ -17,9 +17,8 @@ class _Dict(Object, type_prefix="di"):
     def _serialize_dict(self, app, data):
         return [api_pb2.DictEntry(key=app._serialize(k), value=app._serialize(v)) for k, v in data.items()]
 
-    @classmethod
-    async def create2(cls, data={}, app=None):
-        app = cls._get_app(app)
+    async def create2(self, data={}, app=None):
+        app = self._get_app(app)
         if app.app_id is None:
             raise InvalidError(
                 "No initialized app existed when creating Dict.\n\n"
@@ -29,7 +28,7 @@ class _Dict(Object, type_prefix="di"):
                 "    * a `@Dict.factory` decorated global function\n"
                 "See https://modal.com/docs/reference/dict"
             )
-        serialized = cls._serialize_dict(app, data)
+        serialized = self._serialize_dict(app, data)
         req = api_pb2.DictCreateRequest(app_id=app.app_id, data=serialized)
         response = await app.client.stub.DictCreate(req)
         logger.debug("Created dict with id %s" % response.dict_id)

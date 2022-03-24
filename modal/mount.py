@@ -37,10 +37,9 @@ async def _get_files(local_dir, condition, recursive):
 
 
 class _Mount(Object, type_prefix="mo"):
-    @classmethod
-    async def create2(cls, local_dir, remote_dir, condition, app=None, recursive=True):
+    async def create2(self, local_dir, remote_dir, condition, app=None, recursive=True):
         # Run a threadpool to compute hash values, and use n coroutines to put files
-        app = cls._get_app(app)
+        app = self._get_app(app)
 
         n_files = 0
         n_missing_files = 0
