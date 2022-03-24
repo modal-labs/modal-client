@@ -39,17 +39,6 @@ class _Image(Object, type_prefix="im"):
         logger.debug(f"Is image inside? env {env_image_id} image {image_id}")
         return image_id is not None and env_image_id == image_id
 
-
-class _CustomImage(_Image):
-    """A custom image built using docker commands.
-
-    Generally, you should instead use `modal.image.extend_image`
-    """
-
-    """This might be a temporary thing until we can simplify other code.
-
-    Needed to rewrite all the other subclasses to use composition instead of inheritance."""
-
     @classmethod
     async def create2(
         cls,
@@ -160,7 +149,7 @@ async def _DebianSlim(
             f"RUN pip install {' '.join(python_packages)} {find_links_arg}",
         ]
 
-    return await _CustomImage.create(
+    return await _Image.create(
         dockerfile_commands=dockerfile_commands,
         base_images=base_images,
         version=version,
@@ -169,7 +158,7 @@ async def _DebianSlim(
 
 async def _extend_image(base_image, extra_dockerfile_commands):
     """Extend an image with arbitrary dockerfile commands"""
-    return await _CustomImage.create(
+    return await _Image.create(
         base_images={"base": base_image}, dockerfile_commands=["FROM base"] + extra_dockerfile_commands
     )
 
@@ -206,14 +195,13 @@ async def _DockerhubImage(tag):
         f"RUN pip install -r {requirements_fn}",
     ]
 
-    return await _CustomImage.create(
+    return await _Image.create(
         dockerfile_commands=dockerfile_commands,
         context_files={requirements_fn: requirements_data},
     )
 
 
 Image, AioImage = synchronize_apis(_Image)
-CustomImage, AioCustomImage = synchronize_apis(_CustomImage)
 DebianSlim, AioDebianSlim = synchronize_apis(_DebianSlim)
 DockerhubImage, AioDockerhubImage = synchronize_apis(_DockerhubImage)
 extend_image, aio_extend_image = synchronize_apis(_extend_image)
