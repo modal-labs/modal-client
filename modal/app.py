@@ -2,7 +2,8 @@ import asyncio
 import io
 import os
 import sys
-from typing import Collection, Optional
+import typing
+from typing import Collection, Optional, Union
 
 import grpc
 
@@ -27,7 +28,7 @@ from .client import _Client
 from .config import config, logger
 from .exception import InvalidError, NotFoundError
 from .functions import _Function
-from .image import _DebianSlim
+from .image import _DebianSlim, _Image
 from .object import Object
 from .rate_limit import RateLimit
 from .schedule import Schedule
@@ -345,9 +346,15 @@ class _App:
         request = api_pb2.AppDetachRequest(app_id=self._app_id)
         await self.client.stub.AppDetach(request)
 
-    async def deploy(self, name=None, obj_or_objs=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
-        """
-        Deploys and exports objects in the app
+    async def deploy(
+        self,
+        name: str = None,  # Unique name of the deployment. Subsequent deploys with the same name overwrites previous ones. Falls back to the app name
+        obj_or_objs: Union[
+            Object, typing.Dict[str, Object]
+        ] = None,  # A single Modal *Object* or a `dict[str, Object]` of labels -> Objects to be exported for use by other apps
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT,
+    ):
+        """Deploys and exports objects in the app
 
         Usage:
         ```python
@@ -360,9 +367,6 @@ class _App:
           Notably for Schedules this enables headless "cron"-like functionality where scheduled functions continue to be invoked after
           the client has closed.
         * Allows for certain of these objects, *deployment objects*, to be referred to and used by other apps
-
-        :param name: Unique name of the deployment. Subsequent deploys with the same name overwrites previous ones. Falls back to the app name
-        :param obj_or_objs: A single Modal *Object* or a `dict[str, Object]` of labels -> Objects to be exported for use by other apps
         """
         if self.client is None:
             raise InvalidError(
@@ -434,22 +438,15 @@ class _App:
     @decorator_with_options
     def function(
         self,
-        raw_f=None,
-        image=_DebianSlim(),
-        schedule: Optional[Schedule] = None,
-        secret: Optional[Secret] = None,
-        secrets: Collection[Secret] = (),
-        gpu: bool = False,
-        rate_limit: Optional[RateLimit] = None,
-    ):
-        """Decorator to create Modal functions
-
-        Args:
-            app (:py:class:`modal.app.App`): The app
-            image (:py:class:`modal.image.Image`): The image to run the function in
-            secret (:py:class:`modal.secret.Secret`): Dictionary of environment variables
-            gpu (bool): Whether a GPU is required
-        """
+        raw_f=None,  # The decorated function
+        image: _Image = _DebianSlim(),  # The image to run as the container for the function
+        schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
+        secret: Optional[Secret] = None,  # An optional Modal Secret with environment variables for the container
+        secrets: Collection[Secret] = (),  # Plural version of `secret` when multiple secrets are needed
+        gpu: bool = False,  # Whether a GPU is required
+        rate_limit: Optional[RateLimit] = None,  # Optional RateLimit for the function
+    ) -> _Function:  # Function object - callable as a regular function within a Modal app
+        """Decorator to create Modal functions"""
         function = _Function(
             raw_f,
             image=image,
@@ -467,20 +464,14 @@ class _App:
     @decorator_with_options
     def generator(
         self,
-        raw_f=None,
-        image=_DebianSlim(),
-        secret: Optional[Secret] = None,
-        secrets: Collection[Secret] = (),
-        gpu: bool = False,
-        rate_limit: Optional[RateLimit] = None,
-    ):
-        """Decorator to create Modal generators
-
-        Args:
-            image (:py:class:`modal.image.Image`): The image to run the function in
-            secret (:py:class:`modal.secret.Secret`): Dictionary of environment variables
-            gpu (bool): Whether a GPU is required
-        """
+        raw_f=None,  # The decorated function
+        image: _Image = _DebianSlim(),  # The image to run as the container for the function
+        secret: Optional[Secret] = None,  # An optional Modal Secret with environment variables for the container
+        secrets: Collection[Secret] = (),  # Plural version of `secret` when multiple secrets are needed
+        gpu: bool = False,  # Whether a GPU is required
+        rate_limit: Optional[RateLimit] = None,  # Optional RateLimit for the function
+    ) -> _Function:
+        """Decorator to create Modal generators"""
         function = _Function(
             raw_f, image=image, secret=secret, secrets=secrets, is_generator=True, gpu=gpu, rate_limit=rate_limit
         )

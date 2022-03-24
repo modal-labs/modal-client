@@ -21,8 +21,8 @@ class _Image(Object, type_prefix="im"):
     """Base class for container images to run functions in.
 
     Do not construct this class directly; instead use
-    :py:func:`modal.image.debian_slim` or
-    :py:func:`modal.image.extend_image`.
+    `modal.image.DebianSlim` or
+    `modal.image.extend_image`
     """
 
     def _init(self):
@@ -43,7 +43,7 @@ class _Image(Object, type_prefix="im"):
 class _CustomImage(_Image):
     """A custom image built using docker commands.
 
-    Generally, you should instead use :py:func:`modal.image.extend_image`
+    Generally, you should instead use `modal.image.extend_image`
     """
 
     """This might be a temporary thing until we can simplify other code.

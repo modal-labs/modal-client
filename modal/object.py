@@ -144,5 +144,5 @@ class Object(metaclass=ObjectMeta):
 
     @classmethod
     def include(cls, app_name, object_label=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
-        """Use an object published with :py:meth:`modal.app.App.deploy`"""
+        """Use an object published with `modal.App.deploy`"""
         return cls._shared_object_factory_class(app_name, object_label, namespace)  # type: ignore
