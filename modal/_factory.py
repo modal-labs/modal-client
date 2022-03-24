@@ -98,16 +98,15 @@ def _factory_make(cls, fun):
     # callback = _create_callback(fun)
 
     class _InternalFactory(cls, Factory):  # type: ignore
-        def __init__(self, *args, **kwargs):
-            self._args = args
+        def __init__(self, **kwargs):
             self._kwargs = kwargs
-            tag = function_info.get_tag((args, kwargs))
+            tag = function_info.get_tag(((), kwargs))
             cls._init_static(self, tag=tag)
 
         async def load(self, app):
             if get_container_app() is not None:
                 assert False
-            obj = await fun(*self._args, **self._kwargs)
+            obj = await fun(**self._kwargs)
             if not isinstance(obj, cls):
                 raise TypeError(f"expected {obj} to have type {cls}")
             object_id = await app.create_object(obj)
