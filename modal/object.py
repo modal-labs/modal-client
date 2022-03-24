@@ -35,16 +35,17 @@ class Object(metaclass=ObjectMeta):
     used directly.
     """
 
-    def __init__(self, *args, **kwargs):
-        raise Exception("Direct construction of Object is not possible! Use factories or .create(...)!")
+    def __init__(self, app=None):
+        self._app = app
 
     @classmethod
     async def create(cls, *args, **kwargs):
         # Temporary workaround to make the old API not break
         obj = Object.__new__(cls)
         obj._init_attributes()
-        object_id = await obj.create2(*args, **kwargs)  # super dumb lol
-        app = cls._get_app()
+        obj.__init__(*args, **kwargs)
+        app = cls._get_app(obj._app)
+        object_id = await obj.create2(app)
         obj.set_object_id(object_id, app)
         return obj
 

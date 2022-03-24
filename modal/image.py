@@ -25,21 +25,7 @@ class _Image(Object, type_prefix="im"):
     `modal.image.extend_image`
     """
 
-    def _init(self):
-        pass
-
-    def is_inside(self):
-        """Returns whether this container is active or not.
-
-        Useful for conditionally importing libraries when inside images.
-        """
-        # This is used from inside of containers to know whether this container is active or not
-        env_image_id = config.get("image_id")
-        image_id = self.object_id
-        logger.debug(f"Is image inside? env {env_image_id} image {image_id}")
-        return image_id is not None and env_image_id == image_id
-
-    async def create2(
+    def __init__(
         self,
         base_images={},
         context_files={},
@@ -48,26 +34,32 @@ class _Image(Object, type_prefix="im"):
         version=None,
         app=None,
     ):
-        app = self._get_app(app)
+        self._base_images = base_images
+        self._context_files = context_files
+        self._dockerfile_commands = dockerfile_commands
+        self._local_image_python_executable = local_image_python_executable
+        self._version = version
+        super().__init__(app=app)
 
+    async def create2(self, app):
         # Recursively build base images
-        base_image_ids = await asyncio.gather(*(app.create_object(image) for image in base_images.values()))
+        base_image_ids = await asyncio.gather(*(app.create_object(image) for image in self._base_images.values()))
         base_images_pb2s = [
             api_pb2.BaseImage(docker_tag=docker_tag, image_id=image_id)
-            for docker_tag, image_id in zip(base_images.keys(), base_image_ids)
+            for docker_tag, image_id in zip(self._base_images.keys(), base_image_ids)
         ]
 
         context_file_pb2s = [
-            api_pb2.ImageContextFile(filename=filename, data=data) for filename, data in context_files.items()
+            api_pb2.ImageContextFile(filename=filename, data=data) for filename, data in self._context_files.items()
         ]
 
-        dockerfile_commands = [_make_bytes(s) for s in dockerfile_commands]
+        dockerfile_commands = [_make_bytes(s) for s in self._dockerfile_commands]
         image_definition = api_pb2.Image(
             base_images=base_images_pb2s,
             dockerfile_commands=dockerfile_commands,
             context_files=context_file_pb2s,
-            local_image_python_executable=local_image_python_executable,
-            version=version,
+            local_image_python_executable=self._local_image_python_executable,
+            version=self._version,
         )
 
         req = api_pb2.ImageGetOrCreateRequest(
@@ -95,6 +87,17 @@ class _Image(Object, type_prefix="im"):
                 raise RemoteError("Unknown status %s!" % response.result.status)
 
         return image_id
+
+    def is_inside(self):
+        """Returns whether this container is active or not.
+
+        Useful for conditionally importing libraries when inside images.
+        """
+        # This is used from inside of containers to know whether this container is active or not
+        env_image_id = config.get("image_id")
+        image_id = self.object_id
+        logger.debug(f"Is image inside? env {env_image_id} image {image_id}")
+        return image_id is not None and env_image_id == image_id
 
 
 def _dockerhub_python_version(python_version=None):

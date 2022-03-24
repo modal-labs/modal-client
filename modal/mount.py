@@ -37,10 +37,15 @@ async def _get_files(local_dir, condition, recursive):
 
 
 class _Mount(Object, type_prefix="mo"):
-    async def create2(self, local_dir, remote_dir, condition, app=None, recursive=True):
-        # Run a threadpool to compute hash values, and use n coroutines to put files
-        app = self._get_app(app)
+    def __init__(self, local_dir, remote_dir, condition, recursive=True, app=None):
+        self._local_dir = local_dir
+        self._remote_dir = remote_dir
+        self._condition = condition
+        self._recursive = recursive
+        super().__init__(app=app)
 
+    async def create2(self, app):
+        # Run a threadpool to compute hash values, and use n coroutines to put files
         n_files = 0
         n_missing_files = 0
         total_bytes = 0
@@ -49,7 +54,7 @@ class _Mount(Object, type_prefix="mo"):
 
         async def _put_file(client, mount_id, filename, rel_filename, sha256_hex):
             nonlocal n_files, n_missing_files, total_bytes
-            remote_filename = os.path.join(remote_dir, rel_filename)  # won't work on windows
+            remote_filename = os.path.join(self._remote_dir, rel_filename)  # won't work on windows
             request = api_pb2.MountRegisterFileRequest(
                 filename=remote_filename, sha256_hex=sha256_hex, mount_id=mount_id
             )
@@ -74,7 +79,7 @@ class _Mount(Object, type_prefix="mo"):
         logger.debug(f"Uploading mount {mount_id} using {n_concurrent_uploads} uploads")
 
         # Create async generator
-        files = _get_files(local_dir, condition, recursive)
+        files = _get_files(self._local_dir, self._condition, self._recursive)
         files_stream = aiostream.stream.iterate(files)
 
         async def put_file_tupled(tup):

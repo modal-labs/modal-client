@@ -15,8 +15,10 @@ class _Queue(Object, type_prefix="qu"):
     The contents of the Queue can be any serializable object.
     """
 
-    async def create2(self, app=None):
-        app = self._get_app(app)
+    def __init__(self, app=None):
+        super().__init__(app=app)
+
+    async def create2(self, app):
         request = api_pb2.QueueCreateRequest(app_id=app.app_id)
         response = await app.client.stub.QueueCreate(request)
         logger.debug("Created queue with id %s" % response.queue_id)

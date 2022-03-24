@@ -64,9 +64,13 @@ class _Secret(Object, type_prefix="st"):
     The secrets deployed this way will also show up on [the dashboard](https://modal.com/secrets).
     """
 
-    async def create2(self, env_dict={}, template_type="", app=None):
-        app = self._get_app(app)
-        req = api_pb2.SecretCreateRequest(app_id=app.app_id, env_dict=env_dict, template_type=template_type)
+    def __init__(self, env_dict={}, template_type="", app=None):
+        self._env_dict = env_dict
+        self._template_type = template_type
+        super().__init__(app=app)
+
+    async def create2(self, app):
+        req = api_pb2.SecretCreateRequest(app_id=app.app_id, env_dict=self._env_dict, template_type=self._template_type)
         resp = await app.client.stub.SecretCreate(req)
         return resp.secret_id
 
