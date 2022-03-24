@@ -45,12 +45,9 @@ class Object(metaclass=ObjectMeta):
     async def create(cls, *args, **kwargs):
         # Temporary workaround to make the old API not break
         obj = cls(*args, **kwargs)
-        object_id = await obj.create2(obj._app)
+        object_id = await obj.load(obj._app)
         obj.set_object_id(object_id, obj._app)
         return obj
-
-    async def create2(self, app):
-        raise NotImplementedError(f"Object factory of class {type(self)} has no create2 method")
 
     async def load(self, app):
         raise NotImplementedError(f"Object factory of class {type(self)} has no load method")

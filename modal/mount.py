@@ -44,7 +44,7 @@ class _Mount(Object, type_prefix="mo"):
         self._recursive = recursive
         super().__init__(app=app)
 
-    async def create2(self, app):
+    async def load(self, app):
         # Run a threadpool to compute hash values, and use n coroutines to put files
         n_files = 0
         n_missing_files = 0

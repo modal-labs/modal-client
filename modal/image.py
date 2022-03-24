@@ -41,7 +41,7 @@ class _Image(Object, type_prefix="im"):
         self._version = version
         super().__init__(app=app)
 
-    async def create2(self, app):
+    async def load(self, app):
         # Recursively build base images
         base_image_ids = await asyncio.gather(*(app.create_object(image) for image in self._base_images.values()))
         base_images_pb2s = [

@@ -21,7 +21,7 @@ class _Dict(Object, type_prefix="di"):
         self._data = data
         super().__init__(app=app)
 
-    async def create2(self, app):
+    async def load(self, app):
         if app.app_id is None:
             raise InvalidError(
                 "No initialized app existed when creating Dict.\n\n"
