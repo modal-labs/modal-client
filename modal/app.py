@@ -84,7 +84,7 @@ class _App:
         self.client = None
         self.name = name or self._infer_app_name()
         self.state = AppState.NONE
-        self._pending_create_objects = []  # list of objects that haven't been created
+        self._pending_tagged_objects = []  # list of objects that haven't been created
         self._created_tagged_objects = {}  # tag -> object id
         self._show_progress = show_progress  # None = use sys.stdout.isatty()
         self._task_states = {}
@@ -127,7 +127,7 @@ class _App:
             # type is declared in a module with modal functions
             pass
         elif self.state == AppState.NONE:
-            self._pending_create_objects.append(obj)
+            self._pending_tagged_objects.append(obj)
         elif self._blocking_late_creation_ok:
             # See comment in constructor. This is a hacky hack to get notebooks working.
             # Let's revisit this shortly
@@ -253,8 +253,8 @@ class _App:
     async def _flush_objects(self):
         "Create objects that have been defined but not created on the server."
 
-        while len(self._pending_create_objects) > 0:
-            obj = self._pending_create_objects.pop()
+        while len(self._pending_tagged_objects) > 0:
+            obj = self._pending_tagged_objects.pop()
 
             if obj.object_id is not None:
                 # object is already created (happens due to object re-initialization in the container).
@@ -274,7 +274,7 @@ class _App:
         self.client = client
 
         # We need to re-initialize all these objects. Needed if a app is reused.
-        initial_objects = list(self._pending_create_objects)
+        initial_objects = list(self._pending_tagged_objects)
         if self._show_progress is None:
             visible_progress = (stdout or sys.stdout).isatty()
         else:
@@ -321,7 +321,7 @@ class _App:
             self.client = None
             self.state = AppState.NONE
             self._progress = None
-            self._pending_create_objects = initial_objects
+            self._pending_tagged_objects = initial_objects
             self._created_tagged_objects = {}
 
     @synchronizer.asynccontextmanager
