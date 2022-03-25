@@ -263,12 +263,10 @@ class _Function(Object, Factory, type_prefix="fu"):
         mounts = [mount]
         # TODO(erikbern): couldn't we just create one single mount with all packages instead of multiple?
         if config["sync_entrypoint"]:
-            mounts.append(_create_client_mount(app))
+            mounts.append(await _create_client_mount(app))
         else:
             client_mount = _Mount.include(app, MODAL_CLIENT_MOUNT_NAME, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
             mounts.append(client_mount)
-
-        print("mounts:", mounts)
 
         # Wait for image and mounts to finish
         # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
