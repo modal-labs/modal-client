@@ -1,6 +1,6 @@
 from modal_proto import api_pb2
 
-from ._app_singleton import get_container_app, get_running_app
+from ._app_singleton import get_container_app
 from ._factory import Factory
 from ._object_meta import ObjectMeta
 from .exception import InvalidError
@@ -62,33 +62,8 @@ class Object(metaclass=ObjectMeta):
         self._app = None
 
     @classmethod
-    def _get_app(cls, app=None):
-        """Helper method for subclasses."""
-        if not app:
-            app = get_container_app()
-        if not app:
-            app = get_running_app()
-        if not app:
-            raise InvalidError(
-                f"Modal {cls.object_type_name()}s need to be associated with a Modal app.\n"
-                f"Pass an app instance to the object when creating it."
-            )
-
-        return app
-
-    @classmethod
     def object_type_name(cls):
         return ObjectMeta.prefix_to_type[cls._type_prefix].__name__  # type: ignore
-
-    def _existing_app(self):
-        if not self._app:
-            object_type = self.object_type_name()
-            raise InvalidError(
-                f"The used {object_type} is not linked to an app in this context.\n\n"
-                "This can occur if you refer directly to a module level object from within a Modal function`.\n"
-                "Try creating the object within a Modal function or passing it to your function as an argument instead"
-            )
-        return self._app
 
     def _init_static(self, tag):
         """Create a new tagged object.
