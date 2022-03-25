@@ -163,7 +163,7 @@ async def _DebianSlim(
 async def _extend_image(base_image, extra_dockerfile_commands):
     """Extend an image with arbitrary dockerfile commands"""
     return await _Image.create(
-        app, base_images={"base": base_image}, dockerfile_commands=["FROM base"] + extra_dockerfile_commands
+        base_image.app, base_images={"base": base_image}, dockerfile_commands=["FROM base"] + extra_dockerfile_commands
     )
 
 

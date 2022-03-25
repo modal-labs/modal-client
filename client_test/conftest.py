@@ -10,7 +10,7 @@ import grpc
 import pkg_resources
 from google.protobuf.empty_pb2 import Empty
 
-from modal._app_singleton import set_container_app, set_running_app
+from modal._app_singleton import set_container_app
 from modal.client import AioClient, Client
 from modal.functions import MODAL_CLIENT_MOUNT_NAME
 from modal.image import _dockerhub_python_version
@@ -274,7 +274,6 @@ async def aio_container_client(servicer):
 @pytest.fixture
 def reset_global_apps():
     yield
-    set_running_app(None)
     set_container_app(None)
 
 

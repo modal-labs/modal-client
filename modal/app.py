@@ -18,7 +18,7 @@ from modal_utils.async_utils import (
 from modal_utils.decorator_utils import decorator_with_options
 from modal_utils.grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIME_BUFFER
 
-from ._app_singleton import get_container_app, set_container_app, set_running_app
+from ._app_singleton import get_container_app, set_container_app
 from ._app_state import AppState
 from ._factory import _local_construction
 from ._logging import LogPrinter
@@ -220,7 +220,6 @@ class _App:
 
         # In the container, run forever
         self.state = AppState.RUNNING
-        set_running_app(self)
 
     async def create_object(self, obj):
         """Takes an object as input, returns an object id.
@@ -334,13 +333,9 @@ class _App:
 
     @synchronizer.asynccontextmanager
     async def run(self, client=None, stdout=None, stderr=None, logs_timeout=None):
-        set_running_app(self)
-        try:
-            async with self._get_client(client) as client:
-                async with self._run(client, stdout, stderr, logs_timeout) as it:
-                    yield it  # ctx mgr
-        finally:
-            set_running_app(None)
+        async with self._get_client(client) as client:
+            async with self._run(client, stdout, stderr, logs_timeout) as it:
+                yield it  # ctx mgr
 
     async def detach(self):
         request = api_pb2.AppDetachRequest(app_id=self._app_id)
