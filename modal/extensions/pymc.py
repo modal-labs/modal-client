@@ -27,7 +27,7 @@ async def _PyMCImage():
         "&& conda list \\ ",
         "&& conda install theano-pymc==1.1.2 pymc3==3.11.2 scikit-learn --yes ",
     ]
-    conda_image = _Image.include("conda", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
+    conda_image = _Image.include(pymc_app, "conda", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
     return _extend_image(conda_image, dockerfile_commands)
 
 
