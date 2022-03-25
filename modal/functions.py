@@ -253,20 +253,22 @@ class _Function(Object, Factory, type_prefix="fu"):
         super()._init_static(tag=tag)
 
     async def load(self, app):
-        mounts = [
-            await _Mount.create(
-                local_dir=self.info.package_path,
-                remote_dir=self.info.remote_dir,
-                recursive=self.info.recursive,
-                condition=self.info.condition,
-            )
-        ]
+        mount = await _Mount.create(  # TODO: we shouldn't have to create it here
+            app=app,
+            local_dir=self.info.package_path,
+            remote_dir=self.info.remote_dir,
+            recursive=self.info.recursive,
+            condition=self.info.condition,
+        )
+        mounts = [mount]
         # TODO(erikbern): couldn't we just create one single mount with all packages instead of multiple?
         if config["sync_entrypoint"]:
-            mounts.append(await _create_client_mount())
+            mounts.append(_create_client_mount(app))
         else:
             client_mount = _Mount.include(app, MODAL_CLIENT_MOUNT_NAME, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
             mounts.append(client_mount)
+
+        print("mounts:", mounts)
 
         # Wait for image and mounts to finish
         # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?

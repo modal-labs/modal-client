@@ -37,7 +37,7 @@ async def _get_files(local_dir, condition, recursive):
 
 
 class _Mount(Object, type_prefix="mo"):
-    def __init__(self, local_dir, remote_dir, condition, recursive=True, app=None):
+    def __init__(self, app, local_dir, remote_dir, condition, recursive=True):
         self._local_dir = local_dir
         self._remote_dir = remote_dir
         self._condition = condition
@@ -107,13 +107,13 @@ async def create_package_mounts(package_name):
     return [await _Mount.create(path, f"/pkg/{name}", condition) for (name, path, condition) in mount_infos]
 
 
-async def _create_client_mount():
+def _create_client_mount(app):
     import modal
 
     # Get the base_path because it also contains `modal_utils` and `modal_proto`.
     base_path, _ = os.path.split(modal.__path__[0])
 
-    return await _Mount.create(base_path, "/pkg/", module_mount_condition, recursive=True)
+    return _Mount(app, base_path, "/pkg/", module_mount_condition, recursive=True)
 
 
 _, aio_create_client_mount = synchronize_apis(_create_client_mount)

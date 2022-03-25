@@ -15,7 +15,7 @@ class _Queue(Object, type_prefix="qu"):
     The contents of the Queue can be any serializable object.
     """
 
-    def __init__(self, app=None):
+    def __init__(self, app):
         super().__init__(app=app)
 
     async def load(self, app):

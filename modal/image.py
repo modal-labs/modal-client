@@ -27,12 +27,12 @@ class _Image(Object, type_prefix="im"):
 
     def __init__(
         self,
+        app,
         base_images={},
         context_files={},
         dockerfile_commands=[],
         local_image_python_executable=None,
         version=None,
-        app=None,
     ):
         self._base_images = base_images
         self._context_files = context_files

@@ -17,7 +17,7 @@ class _Dict(Object, type_prefix="di"):
     def _serialize_dict(self, app, data):
         return [api_pb2.DictEntry(key=app._serialize(k), value=app._serialize(v)) for k, v in data.items()]
 
-    def __init__(self, data={}, app=None):
+    def __init__(self, app, data={}):
         self._data = data
         super().__init__(app=app)
 

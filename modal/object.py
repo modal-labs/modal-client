@@ -35,11 +35,13 @@ class Object(metaclass=ObjectMeta):
     used directly.
     """
 
-    def __init__(self, app=None):
+    def __init__(self, app):
+        if app is None:
+            raise InvalidError(f"Object {self} created without an app")
         self._tag = None
-        self._app = self._get_app(app)
+        self._app = app
         self._object_id = None
-        self._app_id = app.app_id if app is not None else None
+        self._app_id = app.app_id
 
     @classmethod
     async def create(cls, *args, **kwargs):

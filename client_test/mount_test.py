@@ -24,7 +24,7 @@ def test_create_mount(servicer, client):
         def condition(fn):
             return fn.endswith(".py")
 
-        m = Mount.create(local_dir, remote_dir, condition, app=app)
+        m = Mount.create(app, local_dir, remote_dir, condition)
         assert m.object_id == "mo-123"
         assert f"/foo/{cur_filename}" in servicer.files_name2sha
         sha256_hex = servicer.files_name2sha[f"/foo/{cur_filename}"]
