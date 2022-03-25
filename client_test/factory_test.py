@@ -20,7 +20,7 @@ async def test_async_factory(servicer, client):
 @pytest.mark.asyncio
 async def test_use_object(servicer, client):
     # Object reuse is conceptually also done through factories
-    q = AioQueue.include("foo-queue")
+    q = AioQueue.include(app, "foo-queue")
     async with app.run(client=client):
         q_id = await app.create_object(q)
         assert q_id == "qu-foo"

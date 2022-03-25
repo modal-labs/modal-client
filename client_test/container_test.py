@@ -45,8 +45,12 @@ def _run_container(servicer, module_name, function_name):
             function_def=function_def,
         )
 
+        # Get the base image tag in an awkward way
+        image = DebianSlim(None)
+        image_tag = image.tag
+
         servicer.object_ids = {
-            DebianSlim().tag: "1",
+            image_tag: "1",
             "modal._test_support.square": "2",
             "modal._test_support.square_sync_returning_async": "3",
             "modal._test_support.square_async": "4",

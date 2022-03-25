@@ -122,6 +122,7 @@ def _dockerhub_python_version(python_version=None):
 
 @_factory(_Image)
 async def _DebianSlim(
+    app=None,
     extra_commands=None,
     python_packages=None,
     python_version=None,
@@ -134,7 +135,7 @@ async def _DebianSlim(
     commands or python packages.
     """
     python_version = _dockerhub_python_version(python_version)
-    base_image = _Image.include(f"debian-slim-{python_version}", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
+    base_image = _Image.include(app, f"debian-slim-{python_version}", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
 
     if extra_commands is None and python_packages is None:
         return base_image
@@ -178,7 +179,7 @@ def get_client_requirements():
 
 
 @_factory(_Image)
-async def _DockerhubImage(tag):
+async def _DockerhubImage(app, tag):
     """
     Build a modal image from a pre-existing image on DockerHub.
 

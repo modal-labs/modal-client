@@ -265,7 +265,7 @@ class _Function(Object, Factory, type_prefix="fu"):
         if config["sync_entrypoint"]:
             mounts.append(await _create_client_mount())
         else:
-            client_mount = _Mount.include(MODAL_CLIENT_MOUNT_NAME, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
+            client_mount = _Mount.include(app, MODAL_CLIENT_MOUNT_NAME, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
             mounts.append(client_mount)
 
         # Wait for image and mounts to finish

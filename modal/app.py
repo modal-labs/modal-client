@@ -439,7 +439,7 @@ class _App:
     def function(
         self,
         raw_f=None,  # The decorated function
-        image: _Image = _DebianSlim(),  # The image to run as the container for the function
+        image: _Image = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
         secret: Optional[Secret] = None,  # An optional Modal Secret with environment variables for the container
         secrets: Collection[Secret] = (),  # Plural version of `secret` when multiple secrets are needed
@@ -447,6 +447,8 @@ class _App:
         rate_limit: Optional[RateLimit] = None,  # Optional RateLimit for the function
     ) -> _Function:  # Function object - callable as a regular function within a Modal app
         """Decorator to create Modal functions"""
+        if image is None:
+            image = _DebianSlim(app=self)
         function = _Function(
             raw_f,
             image=image,
@@ -465,12 +467,14 @@ class _App:
     def generator(
         self,
         raw_f=None,  # The decorated function
-        image: _Image = _DebianSlim(),  # The image to run as the container for the function
+        image: _Image = None,  # The image to run as the container for the function
         secret: Optional[Secret] = None,  # An optional Modal Secret with environment variables for the container
         secrets: Collection[Secret] = (),  # Plural version of `secret` when multiple secrets are needed
         gpu: bool = False,  # Whether a GPU is required
         rate_limit: Optional[RateLimit] = None,  # Optional RateLimit for the function
     ) -> _Function:
+        if image is None:
+            image = _DebianSlim(app=self)
         """Decorator to create Modal generators"""
         function = _Function(
             raw_f, image=image, secret=secret, secrets=secrets, is_generator=True, gpu=gpu, rate_limit=rate_limit

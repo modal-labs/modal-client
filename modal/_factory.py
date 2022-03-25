@@ -73,7 +73,7 @@ def _local_construction(app, cls):
 def make_shared_object_factory_class(cls):
     # TODO: deprecated, replace this with some sort of special reference tag
     class _SharedObjectFactory(cls, Factory):  # type: ignore
-        def __init__(self, app_name, object_label, namespace):
+        def __init__(self, app, app_name, object_label, namespace):
             self.app_name = app_name
             self.object_label = object_label
             self.namespace = namespace
@@ -92,13 +92,16 @@ def make_shared_object_factory_class(cls):
 def _factory_make(cls, fun):
     # TODO: the FunctionInfo class is a bit overloaded
     # and we should probably factor out the "get_tag" method
-    function_info = FunctionInfo(fun)
+    fun_app_bound = functools.partial(fun, None)
+    fun_app_bound.__qualname__ = fun.__qualname__
+    fun_app_bound.__module__ = fun.__module__
+    function_info = FunctionInfo(fun_app_bound)
 
     # TODO: we should add support for user code:
     # callback = _create_callback(fun)
 
     class _InternalFactory(cls, Factory):  # type: ignore
-        def __init__(self, **kwargs):
+        def __init__(self, app, **kwargs):
             self._kwargs = kwargs
             tag = function_info.get_tag(((), kwargs))
             cls._init_static(self, tag=tag)
@@ -106,7 +109,7 @@ def _factory_make(cls, fun):
         async def load(self, app):
             if get_container_app() is not None:
                 assert False
-            obj = await fun(**self._kwargs)
+            obj = await fun(app, **self._kwargs)
             if not isinstance(obj, cls):
                 raise TypeError(f"expected {obj} to have type {cls}")
             object_id = await app.create_object(obj)
