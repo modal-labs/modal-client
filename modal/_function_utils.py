@@ -1,5 +1,4 @@
 import inspect
-import json
 import os
 
 import cloudpickle
@@ -52,19 +51,8 @@ class FunctionInfo:
 
         self.condition = lambda filename: os.path.splitext(filename)[1] in [".py", ".ipynb"]
 
-    def get_tag(self, args_and_kwargs):
-        # TODO: merge code with FunctionInfo, get module name too
-        # TODO: break this out into a utility function
-        if args_and_kwargs is not None:
-            args, kwargs = args_and_kwargs
-            args = self.signature.bind(*args, **kwargs)
-            args.apply_defaults()
-            args = list(args.arguments.values())
-            args = json.dumps(args)
-            args = args[1:-1]  # Shave off the outer []
-            return f"{self.module_name}.{self.function_name}({args})"
-        else:
-            return f"{self.module_name}.{self.function_name}"
+    def get_tag(self):
+        return f"{self.module_name}.{self.function_name}"
 
     def is_nullary(self):
         return all(param.default is not param.empty for param in self.signature.parameters.values())

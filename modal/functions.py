@@ -237,7 +237,7 @@ class _Function(Object, Factory, type_prefix="fu"):
         # assert not synchronizer.is_synchronized(image)
 
         # This is the only place besides object factory that sets tags
-        tag = self.info.get_tag(None)
+        tag = self.info.get_tag()
         self.raw_f = raw_f
         self.image = image
         if secret and secrets:

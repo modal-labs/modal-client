@@ -1,5 +1,6 @@
 import functools
 import inspect
+import json
 
 import synchronicity
 
@@ -42,7 +43,7 @@ def _local_construction_make(app, cls, fun):
         def __init__(self):
             # This is the only place where tags are being set on objects,
             # besides Function
-            tag = FunctionInfo(fun).get_tag(None)
+            tag = FunctionInfo(fun).get_tag()
             cls._init_static(self, tag=tag)
             if get_container_app() is None:
                 # Don't do anything inside the container
@@ -90,20 +91,24 @@ def make_shared_object_factory_class(cls):
 
 
 def _factory_make(cls, fun):
-    # TODO: the FunctionInfo class is a bit overloaded
-    # and we should probably factor out the "get_tag" method
-    fun_app_bound = functools.partial(fun, None)
-    fun_app_bound.__qualname__ = fun.__qualname__
-    fun_app_bound.__module__ = fun.__module__
-    function_info = FunctionInfo(fun_app_bound)
-
     # TODO: we should add support for user code:
     # callback = _create_callback(fun)
 
     class _InternalFactory(cls, Factory):  # type: ignore
         def __init__(self, app, **kwargs):
             self._kwargs = kwargs
-            tag = function_info.get_tag(((), kwargs))
+            tag = FunctionInfo(fun).get_tag()
+
+            # Append the arguments (but not the app) to the tag
+            fun_app_bound = functools.partial(fun, None)
+            signature = inspect.signature(fun_app_bound)
+            args = signature.bind(**kwargs)
+            args.apply_defaults()
+            args = list(args.arguments.values())[1:]  # remove app
+            args = json.dumps(args)
+            args = args[1:-1]
+            tag = f"{tag}({args})"
+
             cls._init_static(self, tag=tag)
 
         async def load(self, app):
