@@ -2,7 +2,7 @@ from typing import Any, Dict
 
 from modal_utils.async_utils import synchronizer
 
-from ._factory import Factory, make_shared_object_factory_class
+from ._factory import make_shared_object_factory_class
 from .config import logger
 
 
@@ -22,7 +22,7 @@ class ObjectMeta(type):
             metacls.prefix_to_type[type_prefix] = new_cls
 
         # Create factory class and shared object class
-        if not issubclass(new_cls, Factory):
+        if type_prefix is not None:
             new_cls._shared_object_factory_class = make_shared_object_factory_class(new_cls)  # type: ignore
 
         logger.debug(f"Created Object class {name}")

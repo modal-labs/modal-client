@@ -10,10 +10,6 @@ from ._app_singleton import get_container_app
 from ._function_utils import FunctionInfo
 
 
-class Factory:
-    pass
-
-
 def _create_callback(fun):
     # This is a bit of an ugly hack, but we need to know what interface the
     # user function will use to return objects (eg it might return a sync
@@ -33,7 +29,7 @@ def _create_callback(fun):
 def _local_construction_make(app, cls, fun):
     callback = _create_callback(fun)
 
-    class _UserFactory(cls, Factory):  # type: ignore
+    class _UserFactory(cls):  # type: ignore
         """Acts as a wrapper for a transient Object.
 
         Conceptually a factory "steals" the object id from the
@@ -73,7 +69,7 @@ def _local_construction(app, cls):
 
 def make_shared_object_factory_class(cls):
     # TODO: deprecated, replace this with some sort of special reference tag
-    class _SharedObjectFactory(cls, Factory):  # type: ignore
+    class _SharedObjectFactory(cls):  # type: ignore
         def __init__(self, app, app_name, object_label, namespace):
             self.app_name = app_name
             self.object_label = object_label
@@ -94,7 +90,7 @@ def _factory_make(cls, fun):
     # TODO: we should add support for user code:
     # callback = _create_callback(fun)
 
-    class _InternalFactory(cls, Factory):  # type: ignore
+    class _InternalFactory(cls):  # type: ignore
         def __init__(self, app, **kwargs):
             self._kwargs = kwargs
             tag = FunctionInfo(fun).get_tag()

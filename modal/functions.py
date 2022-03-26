@@ -8,7 +8,6 @@ from modal_utils.async_utils import queue_batch_iterator, retry, synchronize_api
 
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._buffer_utils import buffered_rpc_read, buffered_rpc_write
-from ._factory import Factory
 from ._function_utils import FunctionInfo
 from .config import config
 from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError
@@ -215,7 +214,7 @@ class _MapInvocation:
                 yield response
 
 
-class _Function(Object, Factory, type_prefix="fu"):
+class _Function(Object, type_prefix="fu"):
     def __init__(
         self,
         app,

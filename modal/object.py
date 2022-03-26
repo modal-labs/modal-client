@@ -1,7 +1,6 @@
 from modal_proto import api_pb2
 
 from ._app_singleton import get_container_app
-from ._factory import Factory
 from ._object_meta import ObjectMeta
 from .exception import InvalidError
 
@@ -93,9 +92,6 @@ class Object(metaclass=ObjectMeta):
         obj._init_attributes()
         obj.set_object_id(object_id, app)
         return obj
-
-    def is_factory(self):
-        return isinstance(self, Factory)
 
     def set_object_id(self, object_id, app):
         """Set the Modal internal object id"""
