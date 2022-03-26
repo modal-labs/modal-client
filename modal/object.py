@@ -53,12 +53,12 @@ class Object(metaclass=ObjectMeta):
     async def load(self, app):
         raise NotImplementedError(f"Object factory of class {type(self)} has no load method")
 
-    def _init_attributes(self, tag=None):
+    def _init_attributes(self, app=None, tag=None):
         """Initialize attributes"""
         self._tag = tag
         self._object_id = None
-        self._app_id = None
-        self._app = None
+        self._app_id = app.app_id
+        self._app = app
 
     @classmethod
     def object_type_name(cls):
@@ -69,17 +69,18 @@ class Object(metaclass=ObjectMeta):
 
         This is only used by the Factory or Function constructors
         """
-        # TODO: move this into Factory?
+        if app is None:
+            raise InvalidError(f"Object {self} created without an app")
 
         assert tag is not None
-        self._init_attributes(tag=tag)
+        self._init_attributes(app=app, tag=tag)
 
         container_app = get_container_app()
         if container_app is not None:
             # If we're inside the container, then just lookup the tag and use
             # it if possible.
 
-            app = container_app
+            assert app == container_app
             object_id = app._get_object_id_by_tag(tag)
             if object_id is not None:
                 self.set_object_id(object_id, app)
@@ -89,7 +90,7 @@ class Object(metaclass=ObjectMeta):
         prefix, _ = object_id.split("-")  # TODO: util method
         object_cls = ObjectMeta.prefix_to_type[prefix]
         obj = Object.__new__(object_cls)
-        obj._init_attributes()
+        obj._init_attributes(app=app)
         obj.set_object_id(object_id, app)
         return obj
 

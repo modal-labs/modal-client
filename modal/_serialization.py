@@ -34,6 +34,6 @@ class Unpickler(pickle.Unpickler):
             raise Exception(f"Unknown prefix {type_prefix}")
         cls = self.prefix_to_type[type_prefix]
         obj = Object.__new__(cls)
-        obj._init_attributes()
+        obj._init_attributes(app=self.app)
         obj.set_object_id(object_id, self.app)
         return obj

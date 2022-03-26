@@ -46,7 +46,8 @@ def _run_container(servicer, module_name, function_name):
         )
 
         # Get the base image tag in an awkward way
-        image = DebianSlim(None)
+        app = App()
+        image = DebianSlim(app)
         image_tag = image.tag
 
         servicer.object_ids = {
@@ -58,12 +59,12 @@ def _run_container(servicer, module_name, function_name):
         }
         main(container_args, client)
 
-        return client, servicer.container_outputs
+        return app, client, servicer.container_outputs
 
 
 def test_container_entrypoint_success(servicer, reset_global_apps, event_loop):
     t0 = time.time()
-    client, outputs = _run_container(servicer, "modal._test_support", "square")
+    app, client, outputs = _run_container(servicer, "modal._test_support", "square")
     assert 0 <= time.time() - t0 < EXTRA_TOLERANCE_DELAY
 
     assert len(outputs) == 1
@@ -71,13 +72,12 @@ def test_container_entrypoint_success(servicer, reset_global_apps, event_loop):
 
     output = _get_output(outputs[0])
     assert output.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    app = App()
     assert output.data == app._serialize(42**2)
 
 
 def test_container_entrypoint_async(servicer, reset_global_apps):
     t0 = time.time()
-    client, outputs = _run_container(servicer, "modal._test_support", "square_async")
+    app, client, outputs = _run_container(servicer, "modal._test_support", "square_async")
     assert SLEEP_DELAY <= time.time() - t0 < SLEEP_DELAY + EXTRA_TOLERANCE_DELAY
 
     assert len(outputs) == 1
@@ -90,7 +90,7 @@ def test_container_entrypoint_async(servicer, reset_global_apps):
 
 def test_container_entrypoint_sync_returning_async(servicer, reset_global_apps):
     t0 = time.time()
-    client, outputs = _run_container(servicer, "modal._test_support", "square_sync_returning_async")
+    app, client, outputs = _run_container(servicer, "modal._test_support", "square_sync_returning_async")
     assert SLEEP_DELAY <= time.time() - t0 < SLEEP_DELAY + EXTRA_TOLERANCE_DELAY
 
     assert len(outputs) == 1
@@ -102,7 +102,7 @@ def test_container_entrypoint_sync_returning_async(servicer, reset_global_apps):
 
 
 def test_container_entrypoint_failure(servicer, reset_global_apps):
-    client, outputs = _run_container(servicer, "modal._test_support", "raises")
+    app, client, outputs = _run_container(servicer, "modal._test_support", "raises")
 
     assert len(outputs) == 1
     assert isinstance(outputs[0], api_pb2.FunctionPutOutputsRequest)
