@@ -229,16 +229,18 @@ class _App:
         if synchronizer.is_synchronized(obj):
             raise Exception(f"{obj} is synchronized")
 
-        if not obj.is_factory():
+        if obj.object_id:
             # This object is already created, just return the id
             return obj.object_id
 
-        assert obj.tag
-        self._progress.set_substep_text(f"Creating {obj.tag}...")
-
         # Already created
-        if obj.tag in self._created_tagged_objects:
+        if obj.tag and obj.tag in self._created_tagged_objects:
             return self._created_tagged_objects[obj.tag]
+
+        if obj.tag:
+            self._progress.set_substep_text(f"Creating {obj.tag}...")
+        else:
+            self._progress.set_substep_text(f"Creating {type(obj)}...")
 
         # Create object
         object_id = await obj.load(self)
@@ -246,7 +248,8 @@ class _App:
             raise Exception(f"object_id for object of type {type(obj)} is None")
 
         obj.set_object_id(object_id, self)
-        self._created_tagged_objects[obj.tag] = object_id
+        if obj.tag:
+            self._created_tagged_objects[obj.tag] = object_id
         return object_id
 
     async def _flush_objects(self):
