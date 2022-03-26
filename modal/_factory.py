@@ -44,7 +44,7 @@ def _local_construction_make(app, cls, fun):
             # This is the only place where tags are being set on objects,
             # besides Function
             tag = FunctionInfo(fun).get_tag()
-            cls._init_static(self, tag=tag)
+            cls._init_static(self, app, tag=tag)
             if get_container_app() is None:
                 # Don't do anything inside the container
                 app._register_object(self)
@@ -79,7 +79,7 @@ def make_shared_object_factory_class(cls):
             self.object_label = object_label
             self.namespace = namespace
             tag = f"#SHARE({app_name}, {object_label}, {namespace})"  # TODO: use functioninfo later
-            cls._init_static(self, tag=tag)
+            cls._init_static(self, app, tag=tag)
 
         async def load(self, app):
             obj = await app.include(self.app_name, self.object_label, self.namespace)
@@ -108,7 +108,7 @@ def _factory_make(cls, fun):
             args_str = json.dumps(args_list)[1:-1]  # remove the enclosing []
             tag = f"{tag}({args_str})"
 
-            cls._init_static(self, tag=tag)
+            cls._init_static(self, app, tag=tag)
 
         async def load(self, app):
             if get_container_app() is not None:

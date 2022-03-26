@@ -218,6 +218,7 @@ class _MapInvocation:
 class _Function(Object, Factory, type_prefix="fu"):
     def __init__(
         self,
+        app,
         raw_f,
         image=None,
         secret: Optional[Secret] = None,
@@ -250,7 +251,7 @@ class _Function(Object, Factory, type_prefix="fu"):
         self.is_generator = is_generator
         self.gpu = gpu
         self.rate_limit = rate_limit
-        super()._init_static(tag=tag)
+        super()._init_static(app, tag=tag)
 
     async def load(self, app):
         mount = await _Mount.create(  # TODO: we shouldn't have to create it here

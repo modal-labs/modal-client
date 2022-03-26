@@ -65,7 +65,7 @@ class Object(metaclass=ObjectMeta):
     def object_type_name(cls):
         return ObjectMeta.prefix_to_type[cls._type_prefix].__name__  # type: ignore
 
-    def _init_static(self, tag):
+    def _init_static(self, app, tag):
         """Create a new tagged object.
 
         This is only used by the Factory or Function constructors

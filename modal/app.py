@@ -445,6 +445,7 @@ class _App:
         if image is None:
             image = _DebianSlim(app=self)
         function = _Function(
+            self,
             raw_f,
             image=image,
             secret=secret,
@@ -472,7 +473,7 @@ class _App:
             image = _DebianSlim(app=self)
         """Decorator to create Modal generators"""
         function = _Function(
-            raw_f, image=image, secret=secret, secrets=secrets, is_generator=True, gpu=gpu, rate_limit=rate_limit
+            self, raw_f, image=image, secret=secret, secrets=secrets, is_generator=True, gpu=gpu, rate_limit=rate_limit
         )
         if get_container_app() is None:
             self._register_object(function)
