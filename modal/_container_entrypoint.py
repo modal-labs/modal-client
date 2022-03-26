@@ -87,7 +87,7 @@ class _FunctionContext:
 
         # Create a function dynamically
         # Function object is already created, so we need to associate the correct object ID.
-        fun = _Function(raw_f)
+        fun = _Function(self.app, raw_f)
         fun.set_object_id(self.function_id, self.app)
         return fun.get_raw_f()
 
