@@ -79,8 +79,8 @@ class Object(metaclass=ObjectMeta):
         if container_app is not None:
             # If we're inside the container, then just lookup the tag and use
             # it if possible.
-
-            assert app == container_app
+            if app != container_app:
+                raise Exception(f"{app=} {container_app=}")
             object_id = app._get_object_id_by_tag(tag)
             if object_id is not None:
                 self.set_object_id(object_id, app)
