@@ -1,6 +1,7 @@
 from modal_proto import api_pb2
 
 from ._app_singleton import get_container_app
+from ._app_state import AppState
 from ._object_meta import ObjectMeta
 from .exception import InvalidError
 
@@ -84,6 +85,9 @@ class Object(metaclass=ObjectMeta):
             object_id = app._get_object_id_by_tag(tag)
             if object_id is not None:
                 self.set_object_id(object_id, app)
+        else:
+            if app.state == AppState.NONE:
+                app._register_object(self)
 
     @classmethod
     def _init_persisted(cls, object_id, app):

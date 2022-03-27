@@ -458,8 +458,6 @@ class _App:
             gpu=gpu,
             rate_limit=rate_limit,
         )
-        if get_container_app() is None:
-            self._register_object(function)
         return function
 
     @decorator_with_options
@@ -478,8 +476,6 @@ class _App:
         function = _Function(
             self, raw_f, image=image, secret=secret, secrets=secrets, is_generator=True, gpu=gpu, rate_limit=rate_limit
         )
-        if get_container_app() is None:
-            self._register_object(function)
         return function
 
     def local_construction(self, cls):
