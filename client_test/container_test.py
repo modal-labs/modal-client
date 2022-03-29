@@ -1,3 +1,5 @@
+import platform
+import pytest
 import time
 
 from modal import App, DebianSlim
@@ -62,6 +64,7 @@ def _run_container(servicer, module_name, function_name):
         return app, client, servicer.container_outputs
 
 
+@pytest.mark.skipif(platform.system() != "Linux", reason="sleep is inaccurate on GithubActions runners.")
 def test_container_entrypoint_success(servicer, reset_global_apps, event_loop):
     t0 = time.time()
     app, client, outputs = _run_container(servicer, "modal._test_support", "square")
@@ -75,6 +78,7 @@ def test_container_entrypoint_success(servicer, reset_global_apps, event_loop):
     assert output.data == app._serialize(42**2)
 
 
+@pytest.mark.skipif(platform.system() != "Linux", reason="sleep is inaccurate on GithubActions runners.")
 def test_container_entrypoint_async(servicer, reset_global_apps):
     t0 = time.time()
     app, client, outputs = _run_container(servicer, "modal._test_support", "square_async")
@@ -88,6 +92,7 @@ def test_container_entrypoint_async(servicer, reset_global_apps):
     assert output.data == app._serialize(42**2)
 
 
+@pytest.mark.skipif(platform.system() != "Linux", reason="sleep is inaccurate on GithubActions runners.")
 def test_container_entrypoint_sync_returning_async(servicer, reset_global_apps):
     t0 = time.time()
     app, client, outputs = _run_container(servicer, "modal._test_support", "square_sync_returning_async")
@@ -101,6 +106,7 @@ def test_container_entrypoint_sync_returning_async(servicer, reset_global_apps):
     assert output.data == app._serialize(42**2)
 
 
+@pytest.mark.skipif(platform.system() != "Linux", reason="sleep is inaccurate on GithubActions runners.")
 def test_container_entrypoint_failure(servicer, reset_global_apps):
     app, client, outputs = _run_container(servicer, "modal._test_support", "raises")
 
