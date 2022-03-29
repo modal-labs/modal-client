@@ -14,7 +14,7 @@ class _Secret(Object, type_prefix="st"):
     ### Using secrets
     To inject secrets into the container running your function, you add the `secret=` or `secrets=[...]` argument
     to your `modal.function` annotation. For deployed secrets (e.g., secrets defined on the Modal website) you
-    can refer to your secrets using `Secret.include(secret_name)`:
+    can refer to your secrets using `Secret.include(app, secret_name)`:
 
     ```python
     import modal
