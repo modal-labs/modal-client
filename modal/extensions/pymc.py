@@ -16,7 +16,7 @@ pymc_app = modal.App()
 
 
 @_factory(_Image)
-async def _PyMCImage():
+async def _PyMCImage(app):
     dockerfile_commands = [
         'SHELL ["/bin/bash", "-c"]',
         "RUN conda info",
@@ -27,13 +27,13 @@ async def _PyMCImage():
         "&& conda list \\ ",
         "&& conda install theano-pymc==1.1.2 pymc3==3.11.2 scikit-learn --yes ",
     ]
-    conda_image = _Image.include(pymc_app, "conda", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
-    return _extend_image(conda_image, dockerfile_commands)
+    conda_image = _Image.include(app, "conda", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
+    return await _extend_image(conda_image, dockerfile_commands)
 
 
 PyMCImage, AioPyMCImage = synchronize_apis(_PyMCImage)
-pymc_image = PyMCImage()
-aio_pymc_image = AioPyMCImage()
+pymc_image = PyMCImage(pymc_app)
+aio_pymc_image = AioPyMCImage(pymc_app)
 
 
 if pymc_image.is_inside():
