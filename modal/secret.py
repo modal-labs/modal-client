@@ -19,13 +19,13 @@ class _Secret(Object, type_prefix="st"):
     ```python
     import modal
 
-    @app.function(secret=modal.Secret.include("my-secret-name"))
+    @app.function(secret=modal.Secret.include(app, "my-secret-name"))
     def some_function():
         ...
 
     @app.function(secrets=[
-        modal.Secret.include("my-secret-name"),
-        modal.Secret.include("other-secret"),
+        modal.Secret.include(app, "my-secret-name"),
+        modal.Secret.include(app, "other-secret"),
     ])
     def other_function():
         ...
