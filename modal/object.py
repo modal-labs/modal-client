@@ -76,8 +76,9 @@ class Object(metaclass=ObjectMeta):
 
     @classmethod
     async def create(cls, *args, **kwargs):
-        # Temporary workaround to make the old API not break
         obj = cls(*args, **kwargs)
+        if obj._app.state != AppState.RUNNING:
+            raise InvalidError(f"{cls}.create(...): can only do this on a running app")
         object_id = await obj.load(obj._app)
         obj.set_object_id(object_id, obj._app)
         return obj

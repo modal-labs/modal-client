@@ -7,7 +7,7 @@ app = AioApp()
 
 @app.local_construction(AioQueue)
 async def qf():
-    return await AioQueue.create(app=app)
+    return AioQueue(app=app)
 
 
 @pytest.mark.asyncio
