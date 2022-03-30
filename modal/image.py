@@ -7,6 +7,7 @@ from modal_utils.async_utils import retry, synchronize_apis
 from modal_utils.grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 
 from ._factory import _factory
+from ._image_pty import image_pty
 from .config import config, logger
 from .exception import RemoteError
 from .object import Object
@@ -98,6 +99,9 @@ class _Image(Object, type_prefix="im"):
         image_id = self.object_id
         logger.debug(f"Is image inside? env {env_image_id} image {image_id}")
         return image_id is not None and env_image_id == image_id
+
+    async def run(self, cmd=None):
+        await image_pty(self, self.app, cmd)
 
 
 def _dockerhub_python_version(python_version=None):
