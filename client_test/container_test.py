@@ -13,6 +13,10 @@ FUNCTION_CALL_ID = "fc-123"
 
 app = App()  # Just used for (de)serialization
 
+skip_non_linux = pytest.mark.skipif(
+    platform.system() != "Linux", reason="sleep is inaccurate on Github Actions runners."
+)
+
 
 def _get_inputs(client):
     function_input = api_pb2.FunctionInput(args=app._serialize(((42,), {})), function_call_id=FUNCTION_CALL_ID)
@@ -64,7 +68,6 @@ def _run_container(servicer, module_name, function_name):
         return app, client, servicer.container_outputs
 
 
-@pytest.mark.skipif(platform.system() != "Linux", reason="sleep is inaccurate on GithubActions runners.")
 def test_container_entrypoint_success(servicer, reset_global_apps, event_loop):
     t0 = time.time()
     app, client, outputs = _run_container(servicer, "modal._test_support", "square")
@@ -78,7 +81,7 @@ def test_container_entrypoint_success(servicer, reset_global_apps, event_loop):
     assert output.data == app._serialize(42**2)
 
 
-@pytest.mark.skipif(platform.system() != "Linux", reason="sleep is inaccurate on GithubActions runners.")
+@skip_non_linux
 def test_container_entrypoint_async(servicer, reset_global_apps):
     t0 = time.time()
     app, client, outputs = _run_container(servicer, "modal._test_support", "square_async")
@@ -92,7 +95,7 @@ def test_container_entrypoint_async(servicer, reset_global_apps):
     assert output.data == app._serialize(42**2)
 
 
-@pytest.mark.skipif(platform.system() != "Linux", reason="sleep is inaccurate on GithubActions runners.")
+@skip_non_linux
 def test_container_entrypoint_sync_returning_async(servicer, reset_global_apps):
     t0 = time.time()
     app, client, outputs = _run_container(servicer, "modal._test_support", "square_sync_returning_async")
@@ -106,7 +109,7 @@ def test_container_entrypoint_sync_returning_async(servicer, reset_global_apps):
     assert output.data == app._serialize(42**2)
 
 
-@pytest.mark.skipif(platform.system() != "Linux", reason="sleep is inaccurate on GithubActions runners.")
+@skip_non_linux
 def test_container_entrypoint_failure(servicer, reset_global_apps):
     app, client, outputs = _run_container(servicer, "modal._test_support", "raises")
 

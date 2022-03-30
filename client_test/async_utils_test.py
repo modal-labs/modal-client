@@ -11,6 +11,10 @@ from modal_utils.async_utils import (
     retry,
 )
 
+skip_non_linux = pytest.mark.skipif(
+    platform.system() != "Linux", reason="sleep is inaccurate on Github Actions runners."
+)
+
 
 class SampleException(Exception):
     pass
@@ -60,7 +64,7 @@ async def unchunk_generator(generator):
     return ret
 
 
-@pytest.mark.skipif(platform.system() != "Linux", reason="sleep is inaccurate on GithubActions runners.")
+@skip_non_linux
 @pytest.mark.asyncio
 async def test_chunk_generator():
     async def generator():
@@ -148,7 +152,7 @@ async def raise_exception():
     raise SampleException("foo")
 
 
-@pytest.mark.skipif(platform.system() != "Linux", reason="sleep is inaccurate on GithubActions runners.")
+@skip_non_linux
 @pytest.mark.asyncio
 async def test_task_context_wait():
     async with TaskContext(grace=0.1) as task_context:
@@ -169,7 +173,7 @@ async def test_task_context_wait():
     assert v.done()
 
 
-@pytest.mark.skipif(platform.system() != "Linux", reason="sleep is inaccurate on GithubActions runners.")
+@skip_non_linux
 @pytest.mark.asyncio
 async def test_task_context_infinite_loop():
     async with TaskContext(grace=0.01) as task_context:
