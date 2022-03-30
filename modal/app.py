@@ -29,7 +29,7 @@ from .config import config, logger
 from .exception import InvalidError, NotFoundError
 from .functions import _Function
 from .image import _DebianSlim, _Image
-from .object import Object
+from .object import Object, Tag
 from .rate_limit import RateLimit
 from .schedule import Schedule
 from .secret import Secret
@@ -107,12 +107,12 @@ class _App:
         args = [script_filename] + sys.argv[1:]
         return " ".join(args)
 
-    def _get_object_id_by_tag(self, tag):
+    def _get_object_id_by_tag(self, tag: Tag):
         """Assigns an id to the object if there is already one set.
 
         This happens inside a container in the global scope.
         """
-        return self._created_tagged_objects.get(tag)
+        return self._created_tagged_objects.get(tag.tag)
 
     def _register_object(self, obj):
         """Registers an object to be created by the app so that it's available in modal.
@@ -226,7 +226,6 @@ class _App:
 
         This is a noop for any object that's not a factory.
         """
-        print("creating object", obj.tag)
         if synchronizer.is_synchronized(obj):
             raise Exception(f"{obj} is synchronized")
 
