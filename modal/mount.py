@@ -9,7 +9,6 @@ import aiostream
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 from modal_utils.package_utils import (
-    get_module_mount_info,
     get_sha256_hex_from_filename,
     module_mount_condition,
 )
@@ -103,11 +102,6 @@ class _Mount(Object, type_prefix="mo"):
 
 
 Mount, AioMount = synchronize_apis(_Mount)
-
-
-async def create_package_mounts(package_name):
-    mount_infos = get_module_mount_info(package_name)
-    return [_Mount(path, f"/pkg/{name}", condition) for (name, path, condition) in mount_infos]
 
 
 async def _create_client_mount(app):
