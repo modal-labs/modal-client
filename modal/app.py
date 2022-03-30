@@ -2,8 +2,7 @@ import asyncio
 import io
 import os
 import sys
-import typing
-from typing import Collection, Optional, Union
+from typing import Collection, Dict, List, Optional, Union
 
 import grpc
 
@@ -59,6 +58,9 @@ class _App:
     ```
     In this example, both `foo`, `some_secret` and `some_schedule` are registered with the app.
     """
+
+    _pending_tagged_objects: List[Object]
+    _created_tagged_objects: Dict[str, Object]
 
     @classmethod
     def _initialize_container_app(cls):
@@ -352,7 +354,7 @@ class _App:
         self,
         name: str = None,  # Unique name of the deployment. Subsequent deploys with the same name overwrites previous ones. Falls back to the app name
         obj_or_objs: Union[
-            Object, typing.Dict[str, Object]
+            Object, Dict[str, Object]
         ] = None,  # A single Modal *Object* or a `dict[str, Object]` of labels -> Objects to be exported for use by other apps
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT,
     ):
