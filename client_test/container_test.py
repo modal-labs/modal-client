@@ -54,7 +54,7 @@ def _run_container(servicer, module_name, function_name):
         # Get the base image tag in an awkward way
         app = App()
         image = DebianSlim(app)
-        image_tag = image.tag.tag
+        image_tag = image.tag
 
         servicer.object_ids = {
             image_tag: "1",

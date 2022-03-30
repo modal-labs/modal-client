@@ -8,9 +8,9 @@ from ._object_meta import ObjectMeta
 from .exception import InvalidError
 
 
-class Tag(NamedTuple):
+class ObjectLabel(NamedTuple):
     # Local to this app
-    tag: str
+    local_tag: str
 
     # Different app
     app_name: Optional[str] = None
@@ -50,7 +50,7 @@ class Object(metaclass=ObjectMeta):
     def __init__(self, app):
         if app is None:
             raise InvalidError(f"Object {self} created without an app")
-        self._tag = None
+        self._label = None
         self._app = app
         self._object_id = None
         self._app_id = app.app_id
@@ -66,9 +66,9 @@ class Object(metaclass=ObjectMeta):
     async def load(self, app):
         raise NotImplementedError(f"Object factory of class {type(self)} has no load method")
 
-    def _init_attributes(self, app=None, tag=None):
+    def _init_attributes(self, app=None, label=None):
         """Initialize attributes"""
-        self._tag = tag
+        self._label = label
         self._object_id = None
         self._app_id = app.app_id
         self._app = app
@@ -77,7 +77,7 @@ class Object(metaclass=ObjectMeta):
     def object_type_name(cls):
         return ObjectMeta.prefix_to_type[cls._type_prefix].__name__  # type: ignore
 
-    def _init_static(self, app, tag):
+    def _init_static(self, app, tag=None, label=None):
         """Create a new tagged object.
 
         This is only used by the Factory or Function constructors
@@ -85,12 +85,13 @@ class Object(metaclass=ObjectMeta):
         if app is None:
             raise InvalidError(f"Object {self} created without an app")
 
-        if isinstance(tag, str):
-            tag = Tag(tag=tag)
-        elif not isinstance(tag, Tag):
-            raise InvalidError("tag set to {tag}, must be str or Tag")
+        if tag is not None:
+            assert isinstance(tag, str)
+            label = ObjectLabel(tag)
+        else:
+            assert isinstance(label, ObjectLabel)
 
-        self._init_attributes(app=app, tag=tag)
+        self._init_attributes(app=app, label=label)
 
         container_app = get_container_app()
         if container_app is not None:
@@ -98,7 +99,7 @@ class Object(metaclass=ObjectMeta):
             # it if possible.
             if app != container_app:
                 raise Exception(f"app {app} is not container app {container_app}")
-            object_id = app._get_object_id_by_tag(tag)
+            object_id = app._get_object_id_by_tag(label.local_tag)
             if object_id is not None:
                 self.set_object_id(object_id, app)
         else:
@@ -127,8 +128,12 @@ class Object(metaclass=ObjectMeta):
             return self._object_id
 
     @property
+    def label(self):
+        return self._label
+
+    @property
     def tag(self):
-        return self._tag
+        return self._label.local_tag
 
     @property
     def app(self):
@@ -140,9 +145,9 @@ class Object(metaclass=ObjectMeta):
         # TODO: this is somewhat hacky
         # everything needs a local label right now, so let's contruct an artificial one
 
-        tag_str = f"#SHARE({app_name}, {object_label}, {namespace})"
-        tag = Tag(tag_str, app_name, object_label, namespace)
+        local_tag = f"#SHARE({app_name}, {object_label}, {namespace})"
+        label = ObjectLabel(local_tag, app_name, object_label, namespace)
 
         obj = Object.__new__(cls)
-        obj._init_static(app=app, tag=tag)
+        obj._init_static(app=app, label=label)
         return obj

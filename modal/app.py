@@ -28,7 +28,7 @@ from .config import config, logger
 from .exception import InvalidError, NotFoundError
 from .functions import _Function
 from .image import _DebianSlim, _Image
-from .object import Object, Tag
+from .object import Object
 from .rate_limit import RateLimit
 from .schedule import Schedule
 from .secret import Secret
@@ -109,12 +109,12 @@ class _App:
         args = [script_filename] + sys.argv[1:]
         return " ".join(args)
 
-    def _get_object_id_by_tag(self, tag: Tag):
+    def _get_object_id_by_tag(self, tag: str):
         """Assigns an id to the object if there is already one set.
 
         This happens inside a container in the global scope.
         """
-        return self._created_tagged_objects.get(tag.tag)
+        return self._created_tagged_objects.get(tag)
 
     def _register_object(self, obj):
         """Registers an object to be created by the app so that it's available in modal.
@@ -123,7 +123,7 @@ class _App:
         """
         if obj.tag is None:
             raise Exception("Can only register named objects")
-        if obj.tag.tag in self._created_tagged_objects:
+        if obj.tag in self._created_tagged_objects:
             # in case of a double load of an object, which seems
             # to happen sometimes when cloudpickle loads an object whose
             # type is declared in a module with modal functions
@@ -236,8 +236,8 @@ class _App:
             return obj.object_id
 
         # Already created
-        if obj.tag and obj.tag.tag in self._created_tagged_objects:
-            return self._created_tagged_objects[obj.tag.tag]
+        if obj.tag and obj.tag in self._created_tagged_objects:
+            return self._created_tagged_objects[obj.tag]
 
         if obj.tag:
             self._progress.set_substep_text(f"Creating {obj.tag}...")
@@ -245,9 +245,9 @@ class _App:
             self._progress.set_substep_text(f"Creating {type(obj)}...")
 
         # Create object
-        if obj.tag.app_name is not None:
+        if obj.label.app_name is not None:
             # TODO: this is a bit of a special case that we should clean up later
-            object_id = await self._include(obj.tag.app_name, obj.tag.object_label, obj.tag.namespace)
+            object_id = await self._include(obj.label.app_name, obj.label.object_label, obj.label.namespace)
         else:
             object_id = await obj.load(self)
         if object_id is None:
@@ -255,7 +255,7 @@ class _App:
 
         obj.set_object_id(object_id, self)
         if obj.tag:
-            self._created_tagged_objects[obj.tag.tag] = object_id
+            self._created_tagged_objects[obj.tag] = object_id
         return object_id
 
     async def _flush_objects(self):
