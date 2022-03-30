@@ -44,7 +44,7 @@ class FunctionInfo:
         else:
             # Use cloudpickle. Used when working w/ Jupyter notebooks.
             self.function_serialized = cloudpickle.dumps(f)
-            logger.info(f"Serializing {f.__qualname__}, size is {len(self.function_serialized)}")
+            logger.debug(f"Serializing {f.__qualname__}, size is {len(self.function_serialized)}")
             self.module_name = None
             self.package_path = os.path.abspath("")  # get current dir
             self.recursive = False  # Just pick out files in the same directory

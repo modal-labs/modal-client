@@ -1,3 +1,7 @@
+import asyncio
+import sys
+
+
 async def image_pty(image, app, cmd=None):
     initialized = False
     writer = None
@@ -9,7 +13,6 @@ async def image_pty(image, app, cmd=None):
         if not initialized:
             import os
             import pty
-            import sys
             import threading
 
             write_fd, read_fd = pty.openpty()
@@ -24,15 +27,11 @@ async def image_pty(image, app, cmd=None):
             initialized = True
 
         writer.write(line)
-        writer.write(b"\n")
         writer.flush()
 
     async with app.run():
         await send_line(b"")
-        try:
-            while True:
-                line = input()
-                await send_line(f"{line}".encode("ascii"))
-        except KeyboardInterrupt:
-            print("Exiting...")
-            return
+        while True:
+            loop = asyncio.get_event_loop()
+            line = await loop.run_in_executor(None, sys.stdin.readline)
+            await send_line(f"{line}".encode("ascii"))
