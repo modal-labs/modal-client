@@ -2,6 +2,7 @@ import asyncio
 import concurrent.futures
 import os
 import time
+from pathlib import Path
 
 import aiostream
 
@@ -54,7 +55,9 @@ class _Mount(Object, type_prefix="mo"):
 
         async def _put_file(client, mount_id, filename, rel_filename, sha256_hex):
             nonlocal n_files, n_missing_files, total_bytes
-            remote_filename = os.path.join(self._remote_dir, rel_filename)  # won't work on windows
+
+            remote_filename = (Path(self._remote_dir) / Path(rel_filename)).as_posix()
+
             request = api_pb2.MountRegisterFileRequest(
                 filename=remote_filename, sha256_hex=sha256_hex, mount_id=mount_id
             )
