@@ -304,8 +304,12 @@ def mock_dir_factory():
                     os.mkdir(path)
                     rec_make(path, spec)
 
-        with tempfile.TemporaryDirectory() as root_dir:
-            rec_make(root_dir, root_spec)
-            yield root_dir
+        try:
+            with tempfile.TemporaryDirectory() as root_dir:
+                rec_make(root_dir, root_spec)
+                yield root_dir
+        except PermissionError:
+            # Windows: https://www.scivision.dev/python-tempfile-permission-error-windows
+            pass
 
     return mock_dir

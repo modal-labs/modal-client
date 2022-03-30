@@ -1,3 +1,4 @@
+import os
 import pathlib
 import subprocess
 import sys
@@ -9,7 +10,13 @@ import modal
 def _cli(args, env={}):
     lib_dir = pathlib.Path(modal.__file__).parent.parent
     args = [sys.executable, "-m", "modal.cli"] + args
-    env = {"LC_ALL": "en_US.UTF-8", "LANG": "en_US.UTF-8", **env}  # This is a dumb Python 3.6 issue
+    env = {
+        **os.environ,
+        **env,
+        # This is a dumb Python 3.6 issue
+        "LC_ALL": "en_US.UTF-8",
+        "LANG": "en_US.UTF-8",
+    }
     ret = subprocess.run(args, cwd=lib_dir, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if ret.returncode != 0:
         raise Exception(f"Failed with {ret.returncode} stdout: {ret.stdout} stderr: {ret.stderr}")
