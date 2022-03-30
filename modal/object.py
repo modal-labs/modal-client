@@ -78,7 +78,7 @@ class Object(metaclass=ObjectMeta):
     async def create(cls, *args, **kwargs):
         obj = cls(*args, **kwargs)
         if obj._app.state != AppState.RUNNING:
-            raise InvalidError(f"{cls}.create(...): can only do this on a running app")
+            raise InvalidError(f"{cls.__name__}.create(...): can only do this on a running app")
         object_id = await obj.load(obj._app)
         obj.set_object_id(object_id, obj._app)
         return obj
