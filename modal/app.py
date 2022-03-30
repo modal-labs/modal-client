@@ -121,7 +121,7 @@ class _App:
         """
         if obj.tag is None:
             raise Exception("Can only register named objects")
-        if obj.tag in self._created_tagged_objects:
+        if obj.tag.tag in self._created_tagged_objects:
             # in case of a double load of an object, which seems
             # to happen sometimes when cloudpickle loads an object whose
             # type is declared in a module with modal functions
@@ -226,6 +226,7 @@ class _App:
 
         This is a noop for any object that's not a factory.
         """
+        print("creating object", obj.tag)
         if synchronizer.is_synchronized(obj):
             raise Exception(f"{obj} is synchronized")
 
@@ -234,8 +235,8 @@ class _App:
             return obj.object_id
 
         # Already created
-        if obj.tag and obj.tag in self._created_tagged_objects:
-            return self._created_tagged_objects[obj.tag]
+        if obj.tag and obj.tag.tag in self._created_tagged_objects:
+            return self._created_tagged_objects[obj.tag.tag]
 
         if obj.tag:
             self._progress.set_substep_text(f"Creating {obj.tag}...")
@@ -243,13 +244,17 @@ class _App:
             self._progress.set_substep_text(f"Creating {type(obj)}...")
 
         # Create object
-        object_id = await obj.load(self)
+        if obj.tag.app_name is not None:
+            # TODO: this is a bit of a special case that we should clean up later
+            object_id = await self._include(obj.tag.app_name, obj.tag.object_label, obj.tag.namespace)
+        else:
+            object_id = await obj.load(self)
         if object_id is None:
             raise Exception(f"object_id for object of type {type(obj)} is None")
 
         obj.set_object_id(object_id, self)
         if obj.tag:
-            self._created_tagged_objects[obj.tag] = object_id
+            self._created_tagged_objects[obj.tag.tag] = object_id
         return object_id
 
     async def _flush_objects(self):
@@ -404,7 +409,8 @@ class _App:
         )
         await self.client.stub.AppDeploy(request)
 
-    async def include(self, name, object_label=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
+    async def _include(self, name, object_label, namespace):
+        """Internal method to resolve to an object id."""
         request = api_pb2.AppIncludeObjectRequest(
             app_id=self._app_id,
             name=name,
@@ -421,7 +427,12 @@ class _App:
             # TODO: disambiguate between app not found and object not found?
             err_msg = f"Could not find object {obj_repr}"
             raise NotFoundError(err_msg, obj_repr)
-        return Object._init_persisted(response.object_id, self)
+        return response.object_id
+
+    async def include(self, name, object_label=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
+        """Looks up an object and return a newly constructed one."""
+        object_id = await self._include(name, object_label, namespace)
+        return Object._init_persisted(object_id, self)
 
     def _serialize(self, obj):
         """Serializes object and replaces all references to the client class by a placeholder."""

@@ -1,9 +1,21 @@
+from typing import NamedTuple, Optional
+
 from modal_proto import api_pb2
 
 from ._app_singleton import get_container_app
 from ._app_state import AppState
 from ._object_meta import ObjectMeta
 from .exception import InvalidError
+
+
+class Tag(NamedTuple):
+    # Local to this app
+    tag: str
+
+    # Different app
+    app_name: Optional[str] = None
+    object_label: Optional[str] = None
+    namespace: Optional[int] = None  # api_pb2.DEPLOYMENT_NAMESPACE
 
 
 class Object(metaclass=ObjectMeta):
@@ -73,7 +85,11 @@ class Object(metaclass=ObjectMeta):
         if app is None:
             raise InvalidError(f"Object {self} created without an app")
 
-        assert tag is not None
+        if isinstance(tag, str):
+            tag = Tag(tag=tag)
+        elif not isinstance(tag, Tag):
+            raise InvalidError("tag set to {tag}, must be str or Tag")
+
         self._init_attributes(app=app, tag=tag)
 
         container_app = get_container_app()
@@ -121,4 +137,12 @@ class Object(metaclass=ObjectMeta):
     @classmethod
     def include(cls, app, app_name, object_label=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
         """Use an object published with `modal.App.deploy`"""
-        return cls._shared_object_factory_class(app, app_name, object_label, namespace)  # type: ignore
+        # TODO: this is somewhat hacky
+        # everything needs a local label right now, so let's contruct an artificial one
+
+        tag_str = f"#SHARE({app_name}, {object_label}, {namespace})"
+        tag = Tag(tag_str, app_name, object_label, namespace)
+
+        obj = Object.__new__(cls)
+        obj._init_static(app=app, tag=tag)
+        return obj

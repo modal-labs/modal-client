@@ -64,25 +64,6 @@ def _local_construction(app, cls):
     return functools.partial(_local_construction_make, app, cls)
 
 
-def make_shared_object_factory_class(cls):
-    # TODO: deprecated, replace this with some sort of special reference tag
-    class _SharedObjectFactory(cls):  # type: ignore
-        def __init__(self, app, app_name, object_label, namespace):
-            self.app_name = app_name
-            self.object_label = object_label
-            self.namespace = namespace
-            tag = f"#SHARE({app_name}, {object_label}, {namespace})"  # TODO: use functioninfo later
-            cls._init_static(self, app, tag=tag)
-
-        async def load(self, app):
-            obj = await app.include(self.app_name, self.object_label, self.namespace)
-            return obj.object_id
-
-    # TODO: set a bunch of stuff
-    synchronize_apis(_SharedObjectFactory)  # Needed to create interfaces
-    return _SharedObjectFactory
-
-
 def _factory_make(cls, fun):
     # TODO: we should add support for user code:
     # callback = _create_callback(fun)
