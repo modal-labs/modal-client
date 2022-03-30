@@ -18,7 +18,9 @@ class FunctionInfo:
         self.function_serialized = None
         self.signature = inspect.signature(f)
         module = inspect.getmodule(f)
-        if module.__package__:
+        # TODO: is there a better way to do this?
+        local_function = "<locals>" in f.__qualname__
+        if module.__package__ and not local_function:
             # This is a "real" module, eg. examples.logs.f
             # Get the package path
             # Note: __import__ always returns the top-level package.
@@ -30,7 +32,7 @@ class FunctionInfo:
             self.recursive = True
             self.remote_dir = "/root/" + module.__package__.split(".")[0]  # TODO: don't hardcode /root
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
-        elif hasattr(module, "__file__"):
+        elif hasattr(module, "__file__") and not local_function:
             # This generally covers the case where it's invoked with
             # python foo/bar/baz.py
             module_fn = os.path.abspath(module.__file__)
