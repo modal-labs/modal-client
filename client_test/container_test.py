@@ -8,7 +8,7 @@ from modal._test_support import SLEEP_DELAY
 from modal.client import Client
 from modal_proto import api_pb2
 
-EXTRA_TOLERANCE_DELAY = 0.08
+EXTRA_TOLERANCE_DELAY = 0.15
 FUNCTION_CALL_ID = "fc-123"
 
 app = App()  # Just used for (de)serialization
