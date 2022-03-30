@@ -250,7 +250,7 @@ class _Function(Object, type_prefix="fu"):
         self.is_generator = is_generator
         self.gpu = gpu
         self.rate_limit = rate_limit
-        super()._init_static(app, tag=tag)
+        Object.__init__(self, app, tag)
 
     async def load(self, app):
         mount = await _Mount.create(  # TODO: we shouldn't have to create it here

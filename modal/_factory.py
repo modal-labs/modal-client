@@ -8,6 +8,7 @@ from modal_utils.async_utils import synchronize_apis, synchronizer
 
 from ._app_singleton import get_container_app
 from ._function_utils import FunctionInfo
+from .object import Object
 
 
 def _create_callback(fun):
@@ -40,7 +41,7 @@ def _local_construction_make(app, cls, fun):
             # This is the only place where tags are being set on objects,
             # besides Function
             tag = FunctionInfo(fun).get_tag()
-            cls._init_static(self, app, tag=tag)
+            Object.__init__(self, app, tag)
 
         async def load(self, app):
             if get_container_app() is not None:
@@ -82,7 +83,7 @@ def _factory_make(cls, fun):
             args_str = json.dumps(args_list)[1:-1]  # remove the enclosing []
             tag = f"{tag}({args_str})"
 
-            cls._init_static(self, app, tag=tag)
+            Object.__init__(self, app, tag)
 
         async def load(self, app):
             if get_container_app() is not None:

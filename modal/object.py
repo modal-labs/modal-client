@@ -47,13 +47,32 @@ class Object(metaclass=ObjectMeta):
     used directly.
     """
 
-    def __init__(self, app):
+    def __init__(self, app, tag=None, label=None):
         if app is None:
             raise InvalidError(f"Object {self} created without an app")
-        self._label = None
+        if tag is not None:
+            assert isinstance(tag, str)
+            label = ObjectLabel(tag)
+        self._label = label
         self._app = app
         self._object_id = None
         self._app_id = app.app_id
+
+        # A bunch of initialization specific to objects that are created
+        # prior to the app running (we should verify this)
+        if label is not None:
+            container_app = get_container_app()
+            if container_app is not None:
+                # If we're inside the container, then just lookup the tag and use
+                # it if possible.
+                if app != container_app:
+                    raise Exception(f"app {app} is not container app {container_app}")
+                object_id = app._get_object_id_by_tag(label.local_tag)
+                if object_id is not None:
+                    self.set_object_id(object_id, app)
+            else:
+                if app.state == AppState.NONE:
+                    app._register_object(self)
 
     @classmethod
     async def create(cls, *args, **kwargs):
@@ -76,35 +95,6 @@ class Object(metaclass=ObjectMeta):
     @classmethod
     def object_type_name(cls):
         return ObjectMeta.prefix_to_type[cls._type_prefix].__name__  # type: ignore
-
-    def _init_static(self, app, tag=None, label=None):
-        """Create a new tagged object.
-
-        This is only used by the Factory or Function constructors
-        """
-        if app is None:
-            raise InvalidError(f"Object {self} created without an app")
-
-        if tag is not None:
-            assert isinstance(tag, str)
-            label = ObjectLabel(tag)
-        else:
-            assert isinstance(label, ObjectLabel)
-
-        self._init_attributes(app=app, label=label)
-
-        container_app = get_container_app()
-        if container_app is not None:
-            # If we're inside the container, then just lookup the tag and use
-            # it if possible.
-            if app != container_app:
-                raise Exception(f"app {app} is not container app {container_app}")
-            object_id = app._get_object_id_by_tag(label.local_tag)
-            if object_id is not None:
-                self.set_object_id(object_id, app)
-        else:
-            if app.state == AppState.NONE:
-                app._register_object(self)
 
     @classmethod
     def _init_persisted(cls, object_id, app):
@@ -149,5 +139,5 @@ class Object(metaclass=ObjectMeta):
         label = ObjectLabel(local_tag, app_name, object_label, namespace)
 
         obj = Object.__new__(cls)
-        obj._init_static(app=app, label=label)
+        Object.__init__(obj, app, label=label)
         return obj
