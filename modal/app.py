@@ -245,7 +245,7 @@ class _App:
             self._progress.set_substep_text(f"Creating {type(obj)}...")
 
         # Create object
-        if obj.label.app_name is not None:
+        if obj.label is not None and obj.label.app_name is not None:
             # TODO: this is a bit of a special case that we should clean up later
             object_id = await self._include(obj.label.app_name, obj.label.object_label, obj.label.namespace)
         else:

@@ -152,7 +152,7 @@ async def _DebianSlim(
             f"RUN pip install {' '.join(python_packages)} {find_links_arg}",
         ]
 
-    return await _Image.create(
+    return _Image(
         app,
         dockerfile_commands=dockerfile_commands,
         base_images=base_images,
@@ -162,7 +162,7 @@ async def _DebianSlim(
 
 async def _extend_image(base_image, extra_dockerfile_commands):
     """Extend an image with arbitrary dockerfile commands"""
-    return await _Image.create(
+    return _Image(
         base_image.app, base_images={"base": base_image}, dockerfile_commands=["FROM base"] + extra_dockerfile_commands
     )
 
@@ -199,7 +199,7 @@ async def _DockerhubImage(app, tag):
         f"RUN pip install -r {requirements_fn}",
     ]
 
-    return await _Image.create(
+    return _Image(
         app,
         dockerfile_commands=dockerfile_commands,
         context_files={requirements_fn: requirements_data},

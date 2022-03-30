@@ -123,7 +123,10 @@ class Object(metaclass=ObjectMeta):
 
     @property
     def tag(self):
-        return self._label.local_tag
+        if self._label is not None:
+            return self._label.local_tag
+        else:
+            return None
 
     @property
     def app(self):
