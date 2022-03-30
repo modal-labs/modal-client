@@ -16,6 +16,8 @@ def _cli(args, env={}):
         # This is a dumb Python 3.6 issue
         "LC_ALL": "en_US.UTF-8",
         "LANG": "en_US.UTF-8",
+        # For windows
+        "PYTHONUTF8": "1",
     }
     ret = subprocess.run(args, cwd=lib_dir, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if ret.returncode != 0:
