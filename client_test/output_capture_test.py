@@ -1,5 +1,4 @@
 import os
-import pty
 import pytest
 import subprocess
 import sys
@@ -118,6 +117,8 @@ async def test_capture_subprocess(capture_stdout_as_list):
 @pytest.mark.skip("Fails in Github Actions runner; TODO: investigate")
 @pytest.mark.asyncio
 async def test_capture_tty(suspend_capture):
+    import pty
+
     _, s = pty.openpty()
     reader = os.fdopen(s, "r")
 
