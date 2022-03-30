@@ -60,7 +60,7 @@ class _App:
     """
 
     _pending_tagged_objects: List[Object]
-    _created_tagged_objects: Dict[str, Object]
+    _created_tagged_objects: Dict[str, str]  # tag -> id
 
     @classmethod
     def _initialize_container_app(cls):
