@@ -223,7 +223,7 @@ class _App:
         # In the container, run forever
         self.state = AppState.RUNNING
 
-    async def create_object(self, obj):
+    async def create_object(self, obj: Object) -> str:
         """Takes an object as input, returns an object id.
 
         This is a noop for any object that's not a factory.
@@ -500,7 +500,7 @@ class _App:
         ```python
             @app.local_construction(Secret)
             def forward_local_secrets():
-                return Secret.create(os.environ)
+                return Secret(os.environ)
 
             @app.function(secrets=forward_local_secrets):
             def editor():

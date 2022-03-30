@@ -107,7 +107,7 @@ Mount, AioMount = synchronize_apis(_Mount)
 
 async def create_package_mounts(package_name):
     mount_infos = get_module_mount_info(package_name)
-    return [await _Mount.create(path, f"/pkg/{name}", condition) for (name, path, condition) in mount_infos]
+    return [_Mount(path, f"/pkg/{name}", condition) for (name, path, condition) in mount_infos]
 
 
 async def _create_client_mount(app):
@@ -116,8 +116,9 @@ async def _create_client_mount(app):
     # Get the base_path because it also contains `modal_utils` and `modal_proto`.
     base_path, _ = os.path.split(modal.__path__[0])
 
-    # TODO: do we need to run .create here?
-    return await _Mount.create(app, base_path, "/pkg/", module_mount_condition, recursive=True)
+    mount = _Mount(app, base_path, "/pkg/", module_mount_condition, recursive=True)
+    await app.create_object(mount)
+    return mount
 
 
 _, aio_create_client_mount = synchronize_apis(_create_client_mount)

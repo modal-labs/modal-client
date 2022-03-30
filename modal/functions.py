@@ -253,7 +253,7 @@ class _Function(Object, type_prefix="fu"):
         Object.__init__(self, app, tag)
 
     async def load(self, app):
-        mount = await _Mount.create(  # TODO: we shouldn't have to create it here
+        mount = _Mount(
             app=app,
             local_dir=self.info.package_path,
             remote_dir=self.info.remote_dir,
