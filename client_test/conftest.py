@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import os
 import pytest
+import shutil
 import tempfile
 import typing
 
@@ -304,12 +305,11 @@ def mock_dir_factory():
                     os.mkdir(path)
                     rec_make(path, spec)
 
-        try:
-            with tempfile.TemporaryDirectory() as root_dir:
-                rec_make(root_dir, root_spec)
-                yield root_dir
-        except PermissionError:
-            # Windows: https://www.scivision.dev/python-tempfile-permission-error-windows
-            pass
+        # Windows has issues cleaning up TempDirectory: https://www.scivision.dev/python-tempfile-permission-error-windows
+        # Seems to have been fixed for some python versions in https://github.com/python/cpython/pull/10320.
+        root_dir = tempfile.mkdtemp()
+        rec_make(root_dir, root_spec)
+        yield root_dir
+        shutil.rmtree(root_dir, ignore_errors=True)
 
     return mock_dir

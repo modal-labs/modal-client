@@ -60,7 +60,7 @@ async def unchunk_generator(generator):
     return ret
 
 
-@pytest.mark.skipif(platform.system() == "Darwin", reason="sleep is inaccurate on GithubActions runners.")
+@pytest.mark.skipif(platform.system() != "Linux", reason="sleep is inaccurate on GithubActions runners.")
 @pytest.mark.asyncio
 async def test_chunk_generator():
     async def generator():
@@ -148,7 +148,7 @@ async def raise_exception():
     raise SampleException("foo")
 
 
-@pytest.mark.skipif(platform.system() == "Darwin", reason="sleep is inaccurate on GithubActions runners.")
+@pytest.mark.skipif(platform.system() != "Linux", reason="sleep is inaccurate on GithubActions runners.")
 @pytest.mark.asyncio
 async def test_task_context_wait():
     async with TaskContext(grace=0.1) as task_context:
@@ -169,7 +169,7 @@ async def test_task_context_wait():
     assert v.done()
 
 
-@pytest.mark.skipif(platform.system() == "Darwin", reason="sleep is inaccurate on GithubActions runners.")
+@pytest.mark.skipif(platform.system() != "Linux", reason="sleep is inaccurate on GithubActions runners.")
 @pytest.mark.asyncio
 async def test_task_context_infinite_loop():
     async with TaskContext(grace=0.01) as task_context:

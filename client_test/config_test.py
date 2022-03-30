@@ -39,41 +39,46 @@ def test_config_env_override():
 
 
 def test_config_store_user(servicer):
-    with tempfile.NamedTemporaryFile() as t:
-        env = {
-            "MODAL_CONFIG_PATH": t.name,
-            "MODAL_SERVER_URL": servicer.remote_addr,
-        }
+    # Can't reopen a TemporaryFile on windows if it's already open.
+    t = tempfile.NamedTemporaryFile(delete=False)
+    t.close()
 
-        # No token by default
-        config = _get_config(env=env)
-        assert config["token_id"] is None
+    env = {
+        "MODAL_CONFIG_PATH": t.name,
+        "MODAL_SERVER_URL": servicer.remote_addr,
+    }
 
-        # Set creds to abc / xyz
-        _cli(["token", "set", "--token-id", "abc", "--token-secret", "xyz"], env=env)
+    # No token by default
+    config = _get_config(env=env)
+    assert config["token_id"] is None
 
-        # Set creds to foo / bar1 for the prof_1 profile
-        _cli(["token", "set", "--token-id", "foo", "--token-secret", "bar1", "--env", "prof_1"], env=env)
+    # Set creds to abc / xyz
+    _cli(["token", "set", "--token-id", "abc", "--token-secret", "xyz"], env=env)
 
-        # Set creds to foo / bar2 for the prof_2 profile (given as an env var)
-        _cli(["token", "set", "--token-id", "foo", "--token-secret", "bar2"], env={"MODAL_ENV": "prof_2", **env})
+    # Set creds to foo / bar1 for the prof_1 profile
+    _cli(["token", "set", "--token-id", "foo", "--token-secret", "bar1", "--env", "prof_1"], env=env)
 
-        # Now these should be stored in the user's home directory
-        config = _get_config(env=env)
-        assert config["token_id"] == "abc"
-        assert config["token_secret"] == "xyz"
+    # Set creds to foo / bar2 for the prof_2 profile (given as an env var)
+    _cli(["token", "set", "--token-id", "foo", "--token-secret", "bar2"], env={"MODAL_ENV": "prof_2", **env})
 
-        # Make sure it can be overridden too
-        config = _get_config(env={"MODAL_TOKEN_ID": "foo", **env})
-        assert config["token_id"] == "foo"
-        assert config["token_secret"] == "xyz"
+    # Now these should be stored in the user's home directory
+    config = _get_config(env=env)
+    assert config["token_id"] == "abc"
+    assert config["token_secret"] == "xyz"
 
-        # Check that we can get the prof_1 env creds too
-        config = _get_config(env={"MODAL_ENV": "prof_1", **env})
-        assert config["token_id"] == "foo"
-        assert config["token_secret"] == "bar1"
+    # Make sure it can be overridden too
+    config = _get_config(env={"MODAL_TOKEN_ID": "foo", **env})
+    assert config["token_id"] == "foo"
+    assert config["token_secret"] == "xyz"
 
-        # Check that we can get the prof_1 env creds too
-        config = _get_config(env={"MODAL_ENV": "prof_2", **env})
-        assert config["token_id"] == "foo"
-        assert config["token_secret"] == "bar2"
+    # Check that we can get the prof_1 env creds too
+    config = _get_config(env={"MODAL_ENV": "prof_1", **env})
+    assert config["token_id"] == "foo"
+    assert config["token_secret"] == "bar1"
+
+    # Check that we can get the prof_1 env creds too
+    config = _get_config(env={"MODAL_ENV": "prof_2", **env})
+    assert config["token_id"] == "foo"
+    assert config["token_secret"] == "bar2"
+
+    os.remove(t.name)
