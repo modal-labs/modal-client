@@ -10,9 +10,7 @@ from .logger import logger
 
 
 def _get_sha256_hex_from_content(content):
-    m = hashlib.sha256()
-    m.update(content)
-    return m.hexdigest()
+    return hashlib.sha256(content).hexdigest()
 
 
 def get_sha256_hex_from_filename(filename, rel_filename):
