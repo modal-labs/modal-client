@@ -1,41 +1,44 @@
 import asyncio
 import sys
+from typing import Optional
 
 from modal.queue import AioQueue
 from modal_utils.async_utils import TaskContext
 
 
+async def _pty(cmd: Optional[str], queue: AioQueue):
+    import os
+    import pty
+    import threading
+
+    write_fd, read_fd = pty.openpty()
+    os.dup2(read_fd, sys.stdin.fileno())
+    writer = os.fdopen(write_fd, "wb")
+
+    run_cmd = cmd or os.environ.get("SHELL", "sh")
+
+    print(f"Spawning {run_cmd}")
+
+    threading.Thread(target=pty.spawn, args=(run_cmd,), daemon=True).start()
+
+    while True:
+        line = await queue.get()
+
+        if line is None:
+            return
+
+        writer.write(line.encode("ascii"))
+        writer.flush()
+
+
 async def image_pty(image, app, cmd=None):
-    @app.function(image=image, serialized=True)
-    async def _pty(queue: AioQueue):
-        import os
-        import pty
-        import threading
+    _pty_wrapped = app.function(image=image)(_pty)
 
-        write_fd, read_fd = pty.openpty()
-        os.dup2(read_fd, sys.stdin.fileno())
-        writer = os.fdopen(write_fd, "wb")
-
-        run_cmd = cmd or os.environ.get("SHELL", "sh")
-
-        print(f"Spawning {run_cmd}")
-
-        threading.Thread(target=pty.spawn, args=(run_cmd,), daemon=True).start()
-
-        while True:
-            line = await queue.get()
-
-            if line is None:
-                return
-
-            writer.write(line.encode("ascii"))
-            writer.flush()
-
-    async with app.run():
+    async with app.run(show_progress=False):
         queue = await AioQueue.create(app)
 
         async with TaskContext(grace=0) as tc:
-            tc.create_task(_pty(queue))
+            tc.create_task(_pty_wrapped(cmd, queue))
 
             try:
                 while True:
