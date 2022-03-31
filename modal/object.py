@@ -23,28 +23,6 @@ class Object(metaclass=ObjectMeta):
 
     Examples of objects include Modal primitives like Images and Functions, as
     well as distributed data structures like Queues or Dicts.
-
-    The Object base class provides some common initialization patterns. There
-    are 2 main ways to initialize and use Objects.
-
-    The first pattern is to directly instantiate objects and pass them as
-    parameters when required. This is common for data structures (e.g. ``dict_
-    = Dict(); main(dict_)``).
-    Instances of Object are just handles with an object ID and some associated
-    metadata, so they can be safely serialized or passed as parameters to Modal
-    functions.
-
-    The second pattern is to declare objects in the global scope. This is most
-    common for global and unique objects like Images. In this case, some
-    identifier is required to matching up local and remote copies objects and
-    to avoid double initialization.
-
-    The solution is to declare objects as "factory functions". A factory
-    function is a function decorated with ``@Type.factory`` whose body
-    initializes and returns an object of type ``Type``. This object will be
-    automatically initialized once and tagged with the function name/module.
-    The decorator will convert the function into a proxy object, so it can be
-    used directly.
     """
 
     def __init__(self, app, tag=None, label=None):
@@ -85,10 +63,6 @@ class Object(metaclass=ObjectMeta):
 
     async def load(self, app):
         raise NotImplementedError(f"Object factory of class {type(self)} has no load method")
-
-    @classmethod
-    def object_type_name(cls):
-        return ObjectMeta.prefix_to_type[cls._type_prefix].__name__  # type: ignore
 
     @classmethod
     def _init_persisted(cls, object_id, app):
