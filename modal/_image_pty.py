@@ -1,37 +1,48 @@
 import asyncio
 import sys
 
+from modal.queue import AioQueue
+from modal_utils.async_utils import TaskContext
+
 
 async def image_pty(image, app, cmd=None):
-    initialized = False
-    writer = None
-
     @app.function(image=image)
-    def send_line(line: bytes):
-        nonlocal initialized, writer
+    async def _pty(queue: AioQueue):
+        import os
+        import pty
+        import threading
 
-        if not initialized:
-            import os
-            import pty
-            import threading
+        write_fd, read_fd = pty.openpty()
+        os.dup2(read_fd, sys.stdin.fileno())
+        writer = os.fdopen(write_fd, "wb")
 
-            write_fd, read_fd = pty.openpty()
-            os.dup2(read_fd, sys.stdin.fileno())
-            writer = os.fdopen(write_fd, "wb")
+        run_cmd = cmd or os.environ.get("SHELL", "sh")
 
-            run_cmd = cmd or os.environ.get("SHELL", "sh")
+        print(f"Spawning {run_cmd}")
 
-            print(f"Spawning {run_cmd}")
+        threading.Thread(target=pty.spawn, args=(run_cmd,), daemon=True).start()
+        initialized = True
 
-            threading.Thread(target=lambda: pty.spawn(run_cmd), daemon=True).start()
-            initialized = True
+        while True:
+            line = await queue.get()
 
-        writer.write(line)
-        writer.flush()
+            if line is None:
+                return
+
+            writer.write(line.encode("ascii"))
+            writer.flush()
 
     async with app.run():
-        await send_line(b"")
-        while True:
-            loop = asyncio.get_event_loop()
-            line = await loop.run_in_executor(None, sys.stdin.readline)
-            await send_line(f"{line}".encode("ascii"))
+        queue = await AioQueue.create(app)
+
+        async with TaskContext(grace=0) as tc:
+            tc.create_task(_pty(queue))
+
+            try:
+                while True:
+                    loop = asyncio.get_event_loop()
+                    line = await loop.run_in_executor(None, sys.stdin.readline)
+                    await queue.put(line)
+            except KeyboardInterrupt:
+                # TODO: synchronicity doesn't seem to propagate KeyboardInterrupts correctly.
+                await queue.put(None)

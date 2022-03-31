@@ -20,7 +20,3 @@ def test_rate_limit(client):
         @app.function(rate_limit=modal.RateLimit(per_minute=15, per_second=5))
         def two_params_limit():
             pass
-
-    with app.run(client=client):
-        per_second_5()
-        per_minute_15()
