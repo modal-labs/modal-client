@@ -79,7 +79,7 @@ def _factory_make(cls, fun):
             signature = inspect.signature(fun_app_bound)
             args = signature.bind(**kwargs)
             args.apply_defaults()
-            args_list = list(args.arguments.values())[1:]  # remove app
+            args_list = list(args.arguments.values())
             args_str = json.dumps(args_list)[1:-1]  # remove the enclosing []
             tag = f"{tag}({args_str})"
 
