@@ -21,7 +21,6 @@ from ._app_singleton import get_container_app, set_container_app
 from ._app_state import AppState
 from ._factory import _local_construction
 from ._logging import LogPrinter
-from ._object_meta import ObjectMeta
 from ._serialization import Pickler, Unpickler
 from .client import _Client
 from .config import config, logger
@@ -443,7 +442,7 @@ class _App:
 
     def _deserialize(self, s: bytes):
         """Deserializes object and replaces all client placeholders by self."""
-        return Unpickler(self, ObjectMeta.prefix_to_type, io.BytesIO(s)).load()
+        return Unpickler(self, io.BytesIO(s)).load()
 
     @decorator_with_options
     def function(

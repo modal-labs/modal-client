@@ -86,13 +86,6 @@ class Object(metaclass=ObjectMeta):
     async def load(self, app):
         raise NotImplementedError(f"Object factory of class {type(self)} has no load method")
 
-    def _init_attributes(self, app=None, label=None):
-        """Initialize attributes"""
-        self._label = label
-        self._object_id = None
-        self._app_id = app.app_id
-        self._app = app
-
     @classmethod
     def object_type_name(cls):
         return ObjectMeta.prefix_to_type[cls._type_prefix].__name__  # type: ignore
@@ -102,7 +95,7 @@ class Object(metaclass=ObjectMeta):
         prefix, _ = object_id.split("-")  # TODO: util method
         object_cls = ObjectMeta.prefix_to_type[prefix]
         obj = Object.__new__(object_cls)
-        obj._init_attributes(app=app)
+        Object.__init__(obj, app)
         obj.set_object_id(object_id, app)
         return obj
 
@@ -115,6 +108,8 @@ class Object(metaclass=ObjectMeta):
     @property
     def object_id(self):
         """The Modal internal object id"""
+        # Note that the app might run multiple times and cause the object id to change
+        # That's why we check the app id
         if self._app_id is not None and self._app is not None and self._app_id == self._app.app_id:
             return self._object_id
 
