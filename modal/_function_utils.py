@@ -13,14 +13,13 @@ class FunctionInfo:
 
     # TODO: we should have a bunch of unit tests for this
     # TODO: if the function is declared in a local scope, this function still "works": we should throw an exception
-    def __init__(self, f):
+    def __init__(self, f, serialized=False):
         self.function_name = f.__qualname__
         self.function_serialized = None
         self.signature = inspect.signature(f)
         module = inspect.getmodule(f)
-        # TODO: is there a better way to do this?
-        local_function = "<locals>" in f.__qualname__
-        if module.__package__ and not local_function:
+
+        if module.__package__ and not serialized:
             # This is a "real" module, eg. examples.logs.f
             # Get the package path
             # Note: __import__ always returns the top-level package.
@@ -32,7 +31,7 @@ class FunctionInfo:
             self.recursive = True
             self.remote_dir = "/root/" + module.__package__.split(".")[0]  # TODO: don't hardcode /root
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
-        elif hasattr(module, "__file__") and not local_function:
+        elif hasattr(module, "__file__") and not serialized:
             # This generally covers the case where it's invoked with
             # python foo/bar/baz.py
             module_fn = os.path.abspath(module.__file__)

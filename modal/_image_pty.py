@@ -6,7 +6,7 @@ from modal_utils.async_utils import TaskContext
 
 
 async def image_pty(image, app, cmd=None):
-    @app.function(image=image)
+    @app.function(image=image, serialized=True)
     async def _pty(queue: AioQueue):
         import os
         import pty
@@ -21,7 +21,6 @@ async def image_pty(image, app, cmd=None):
         print(f"Spawning {run_cmd}")
 
         threading.Thread(target=pty.spawn, args=(run_cmd,), daemon=True).start()
-        initialized = True
 
         while True:
             line = await queue.get()

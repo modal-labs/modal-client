@@ -226,9 +226,11 @@ class _Function(Object, type_prefix="fu"):
         is_generator=False,
         gpu: bool = False,
         rate_limit: Optional[RateLimit] = None,
+        # TODO: maybe break this out into a separate decorator for notebooks.
+        serialized: bool = False,
     ):
         assert callable(raw_f)
-        self.info = FunctionInfo(raw_f)
+        self.info = FunctionInfo(raw_f, serialized)
         if schedule is not None:
             if not self.info.is_nullary():
                 raise InvalidError(

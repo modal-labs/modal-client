@@ -454,6 +454,7 @@ class _App:
         secrets: Collection[Secret] = (),  # Plural version of `secret` when multiple secrets are needed
         gpu: bool = False,  # Whether a GPU is required
         rate_limit: Optional[RateLimit] = None,  # Optional RateLimit for the function
+        serialized: bool = False,  # Whether to send the function over using cloudpickle.
     ) -> _Function:  # Function object - callable as a regular function within a Modal app
         """Decorator to create Modal functions"""
         if image is None:
@@ -468,6 +469,7 @@ class _App:
             is_generator=False,
             gpu=gpu,
             rate_limit=rate_limit,
+            serialized=serialized,
         )
         return function
 
@@ -480,12 +482,21 @@ class _App:
         secrets: Collection[Secret] = (),  # Plural version of `secret` when multiple secrets are needed
         gpu: bool = False,  # Whether a GPU is required
         rate_limit: Optional[RateLimit] = None,  # Optional RateLimit for the function
+        serialized: bool = False,  # Whether to send the function over using cloudpickle.
     ) -> _Function:
         if image is None:
             image = _DebianSlim(app=self)
         """Decorator to create Modal generators"""
         function = _Function(
-            self, raw_f, image=image, secret=secret, secrets=secrets, is_generator=True, gpu=gpu, rate_limit=rate_limit
+            self,
+            raw_f,
+            image=image,
+            secret=secret,
+            secrets=secrets,
+            is_generator=True,
+            gpu=gpu,
+            rate_limit=rate_limit,
+            serialized=serialized,
         )
         return function
 
