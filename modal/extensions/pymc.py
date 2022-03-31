@@ -3,16 +3,18 @@ import traceback
 from collections import namedtuple
 from typing import Any, List
 
-import synchronicity
 from aiostream import stream
+from synchronicity.interface import Interface
 
 import modal
 from modal._factory import _factory
 from modal.image import _extend_image, _Image
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_apis
+from modal_utils.async_utils import synchronize_apis, synchronizer
 
 pymc_app = modal.App()
+# HACK
+aio_pymc_app = synchronizer._translate_out(synchronizer._translate_in(pymc_app), Interface.ASYNC)
 
 
 @_factory(_Image)
@@ -31,9 +33,8 @@ async def _PyMCImage(app):
     return await _extend_image(conda_image, dockerfile_commands)
 
 
-PyMCImage, AioPyMCImage = synchronize_apis(_PyMCImage)
+PyMCImage, _ = synchronize_apis(_PyMCImage)
 pymc_image = PyMCImage(pymc_app)
-aio_pymc_image = AioPyMCImage(pymc_app)
 
 
 if pymc_image.is_inside():
@@ -77,7 +78,7 @@ def rebuild_exc(exc, tb):
     return exc
 
 
-@pymc_app.generator(image=pymc_image)
+@aio_pymc_app.generator(image=pymc_image)
 def sample_process(
     draws: int,
     tune: int,
@@ -153,8 +154,7 @@ def sample_process(
 Draw = namedtuple("Draw", ["chain", "is_last", "draw_idx", "tuning", "stats", "point", "warnings"])
 
 
-@synchronicity.Synchronizer()  # TODO: uses the old deprecated API
-class ModalSampler:
+class _ModalSampler:
     def __init__(
         self,
         draws: int,
@@ -235,3 +235,6 @@ class ModalSampler:
 
     def __exit__(self, *args):
         pass
+
+
+ModalSampler, _ = synchronize_apis(_ModalSampler)
