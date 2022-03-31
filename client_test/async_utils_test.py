@@ -4,8 +4,6 @@ import pytest
 
 from modal_utils.async_utils import (
     TaskContext,
-    asyncify_function,
-    asyncify_generator,
     chunk_generator,
     queue_batch_iterator,
     retry,
@@ -88,42 +86,6 @@ async def test_chunk_generator_raises():
 
     ret = await unchunk_generator(chunk_generator(generator_raises(), 0.33))
     assert ret == [[42, "exc"]]
-
-
-@pytest.mark.asyncio
-async def test_asyncify_generator():
-    @asyncify_generator
-    def f(x, n):
-        for i in range(n):
-            yield x**i
-
-    ret = []
-    async for x in f(42, 3):
-        ret.append(x)
-    assert ret == [1, 42, 1764]
-
-
-@pytest.mark.asyncio
-async def test_asyncify_generator_raises():
-    @asyncify_generator
-    def g(x):
-        yield x**2
-        raise SampleException("banana")
-
-    ret = []
-    with pytest.raises(SampleException):
-        async for x in g(99):
-            ret.append(x)
-    assert ret == [99**2]
-
-
-@pytest.mark.asyncio
-async def test_asyncify_function():
-    @asyncify_function
-    def f(x):
-        return x**3
-
-    assert await f(77) == 77 * 77 * 77
 
 
 @pytest.mark.asyncio

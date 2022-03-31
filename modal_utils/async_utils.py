@@ -184,45 +184,6 @@ async def chunk_generator(generator, timeout):
             task.cancel()
 
 
-# TODO: maybe these methods could move into synchronizer later?
-
-
-def asyncify_generator(generator_fn):
-    """Takes a blocking generator and returns an async generator.
-
-    TODO: merge into aiostream: https://github.com/vxgmichel/aiostream/issues/78
-    """
-
-    @functools.wraps(generator_fn)
-    async def new_generator(*args, **kwargs):
-        generator = generator_fn(*args, **kwargs)
-        loop = asyncio.get_event_loop()
-        done = False
-
-        def safe_next(it):
-            nonlocal done
-            try:
-                return next(it)
-            except StopIteration:
-                done = True
-
-        while True:
-            ret = await loop.run_in_executor(None, safe_next, generator)
-            if done:
-                break
-            yield ret
-
-    return new_generator
-
-
-def asyncify_function(function):
-    async def asynced_function(*args, **kwargs):
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, lambda: function(*args, **kwargs))
-
-    return asynced_function
-
-
 class TaskContext:
     """Simple thing to make sure we don't have stray tasks.
 
