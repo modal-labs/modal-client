@@ -36,21 +36,21 @@ class Object(metaclass=ObjectMeta):
         self._object_id = None
         self._app_id = app.app_id
 
-        # A bunch of initialization specific to objects that are created
-        # prior to the app running (we should verify this)
-        if label is not None:
-            container_app = get_container_app()
-            if container_app is not None:
-                # If we're inside the container, then just lookup the tag and use
-                # it if possible.
-                if app != container_app:
-                    raise Exception(f"app {app} is not container app {container_app}")
-                object_id = app._get_object_id_by_tag(label.local_tag)
-                if object_id is not None:
-                    self.set_object_id(object_id, app)
-            else:
-                if app.state == AppState.NONE:
-                    app._register_object(self)
+        container_app = get_container_app()
+        if container_app is not None and app != container_app:
+            raise Exception(f"App {app} is not container app {container_app}")
+
+        # If we're inside the container and have a label, always look things up
+        if container_app is not None and label is not None:
+            object_id = app._get_object_id_by_tag(label.local_tag)
+            if object_id is not None:
+                self.set_object_id(object_id, app)
+
+        # Otherwise, if the app isn't running, always require a label
+        if app.state == AppState.NONE:
+            if label is None:
+                raise InvalidError(f"Can't create object {self}: no label and app isn't running")
+            app._register_object(self)
 
     @classmethod
     async def create(cls, *args, **kwargs):
