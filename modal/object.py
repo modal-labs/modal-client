@@ -29,6 +29,7 @@ class Object(metaclass=ObjectMeta):
         if app is None:
             raise InvalidError(f"Object {self} created without an app")
         if tag is not None:
+            self._tag = tag
             assert isinstance(tag, str)
             label = ObjectLabel(tag)
         self._label = label
