@@ -30,7 +30,7 @@ async def _PyMCImage(app):
         "&& conda install theano-pymc==1.1.2 pymc3==3.11.2 scikit-learn mkl-service --yes ",
     ]
     conda_image = _Image.include(app, "conda", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
-    return await _extend_image(conda_image, dockerfile_commands)
+    return _extend_image(app, base_image=conda_image, extra_dockerfile_commands=dockerfile_commands)
 
 
 PyMCImage, _ = synchronize_apis(_PyMCImage)

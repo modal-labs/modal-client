@@ -79,15 +79,14 @@ def _factory_make(cls, fun):
             signature = inspect.signature(fun_app_bound)
             args = signature.bind(**kwargs)
             args.apply_defaults()
-            args_list = [a._tag if isinstance(a, Object) else a for a in args.arguments.values()]
+            args_list = [a._label.local_tag if isinstance(a, Object) else a for a in args.arguments.values()]
             args_str = json.dumps(args_list)[1:-1]  # remove the enclosing []
             tag = f"{tag}({args_str})"
 
             Object.__init__(self, app, tag)
 
         async def load(self, app):
-            if get_container_app() is not None:
-                assert False
+            assert get_container_app() is None
             obj = await fun(app, **self._kwargs)
             if not isinstance(obj, cls):
                 raise TypeError(f"expected {obj} to have type {cls}")
