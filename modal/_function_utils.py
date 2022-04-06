@@ -19,7 +19,7 @@ class FunctionInfo:
         self.signature = inspect.signature(f)
         module = inspect.getmodule(f)
 
-        if module.__package__ and not serialized:
+        if getattr(module, "__package__", None) and not serialized:
             # This is a "real" module, eg. examples.logs.f
             # Get the package path
             # Note: __import__ always returns the top-level package.

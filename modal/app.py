@@ -51,11 +51,11 @@ class _App:
 
     app = modal.App()
 
-    @app.function(secret=some_secret, schedule=some_schedule)
+    @app.function(secret=modal.Secret.include(app, "some_secret"), schedule=modal.Period(days=1))
     def foo():
         ...
     ```
-    In this example, both `foo`, `some_secret` and `some_schedule` are registered with the app.
+    In this example, both `foo`, the secret and the schedule are registered with the app.
     """
 
     _pending_tagged_objects: List[Object]
@@ -360,8 +360,9 @@ class _App:
 
         Usage:
         ```python
-        with app.run()
-            app.deploy()
+        if __name__ == "__main__":
+            with app.run():
+                app.deploy()
         ```
 
         Deployment has two primary purposes:
@@ -507,13 +508,13 @@ class _App:
 
         Example:
         ```python
-            @app.local_construction(Secret)
-            def forward_local_secrets():
-                return Secret(os.environ)
+        @app.local_construction(modal.Secret)
+        def forward_local_secrets():
+            return modal.Secret(os.environ)
 
-            @app.function(secrets=forward_local_secrets):
-            def editor():
-                return os.environ["EDITOR"]
+        @app.function(secrets=forward_local_secrets)
+        def editor():
+            return os.environ["EDITOR"]
         ```
         """
         return _local_construction(self, cls)
