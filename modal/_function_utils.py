@@ -37,7 +37,7 @@ class FunctionInfo:
             module_fn = os.path.abspath(module.__file__)
             self.module_name = os.path.splitext(os.path.basename(module_fn))[0]
             self.package_path = os.path.dirname(module_fn)
-            self.recursive = False  # Just pick out files in the same directory
+            self.recursive = True
             self.remote_dir = "/root"  # TODO: don't hardcore /root
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
         else:
