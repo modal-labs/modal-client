@@ -50,7 +50,7 @@ class FunctionInfo:
             self.remote_dir = "/root"  # TODO: don't hardcore /root
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_SERIALIZED
 
-        self.condition = lambda filename: os.path.splitext(filename)[1] in [".py", ".ipynb"]
+        self.condition = lambda filename: os.path.splitext(filename)[1] in [".py"]
 
     def get_tag(self):
         return f"{self.module_name}.{self.function_name}"
