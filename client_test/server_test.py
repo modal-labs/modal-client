@@ -1,3 +1,5 @@
+import pytest
+
 from modal_utils.server_connection import GRPCConnectionFactory
 
 
@@ -10,9 +12,9 @@ def test_create_factory():
     assert cf.target == "localhost:1234"
     assert cf.credentials is not None
 
-    cf = GRPCConnectionFactory("http://host.docker.internal:1234", credentials=("foo", "bar"))
-    assert cf.target == "host.docker.internal:1234"
-    assert cf.credentials is None  # This is a special case where we have to remove credentails
+    with pytest.raises(AssertionError):
+        # Non-localhost URLs must have TLS enabled.
+        cf = GRPCConnectionFactory("http://not.a.real.domain:1234", credentials=("foo", "bar"))
 
     cf = GRPCConnectionFactory("https://api.modal.com", credentials=("foo", "bar"))
     assert cf.target == "api.modal.com"
