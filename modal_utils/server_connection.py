@@ -49,21 +49,13 @@ class GRPCConnectionFactory:
 
         self.target = o.netloc
         is_tls = o.scheme.endswith("s")
-
         host = o.netloc.split(":")[0]
-        if credentials and not is_tls and host != "localhost":
-            # There are only two options for vanilla http traffic in GRPC:
-            # - grpc.experimental.insecure_channel(): can't be used with call credentials
-            # - grpc.local_channel_credentials(): can only be used with localhost
-            # The problem is inside containers, we connect to host.docker.internal, so
-            # we need to use the insecure channel, which means we can't use call credentials.
-            credentials = None
-
         if credentials or is_tls:
             basic_auth = BasicAuth(client_type, credentials)
             if is_tls:
                 channel_credentials = grpc.ssl_channel_credentials()
             else:
+                assert host == "localhost", f"TLS should be enabled for gRPC target {self.target}"
                 channel_credentials = grpc.local_channel_credentials()
             call_credentials = grpc.metadata_call_credentials(basic_auth)
             self.credentials = grpc.composite_channel_credentials(
