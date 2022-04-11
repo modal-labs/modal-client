@@ -4,7 +4,7 @@ import functools
 import inspect
 import sys
 import time
-from typing import Any, Coroutine, List
+from typing import Any, Coroutine, List, Optional
 
 import synchronicity
 
@@ -192,7 +192,7 @@ class TaskContext:
         task = task_context.create(coro())
     """
 
-    def __init__(self, grace=None):
+    def __init__(self, grace: Optional[float] = None):
         self._grace = grace
         self._loops = set()
 
