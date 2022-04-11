@@ -34,7 +34,7 @@ def module_mount_condition(f):
 BINARY_FORMATS = ["so", "S", "s", "asm"]  # TODO
 
 
-def get_module_mount_info(module):
+def get_module_mount_info(module: str):
     """Returns a list of tuples [(module, path, condition)] describing how to mount a given module."""
 
     file_formats = get_file_formats(module)

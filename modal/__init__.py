@@ -3,6 +3,7 @@ from .dict import Dict
 from .exception import RemoteError
 from .functions import Function
 from .image import DebianSlim, DockerhubImage, Image
+from .mount import Mount
 from .queue import Queue
 from .rate_limit import RateLimit
 from .schedule import Cron, Period
@@ -13,16 +14,16 @@ __all__ = [
     "__version__",
     "App",
     "Cron",
+    "DebianSlim",
     "Dict",
+    "DockerhubImage",
     "Function",
     "Image",
+    "Mount",
     "Period",
     "Queue",
-    "RemoteError",
-    "Secret",
-    "DebianSlim",
-    "DockerhubImage",
     "Queue",
     "RateLimit",
-    "App",
+    "RemoteError",
+    "Secret",
 ]

@@ -228,6 +228,7 @@ class _Function(Object, type_prefix="fu"):
         rate_limit: Optional[RateLimit] = None,
         # TODO: maybe break this out into a separate decorator for notebooks.
         serialized: bool = False,
+        mounts: Collection[_Mount] = (),
     ):
         assert callable(raw_f)
         self.info = FunctionInfo(raw_f, serialized)
@@ -252,17 +253,18 @@ class _Function(Object, type_prefix="fu"):
         self.is_generator = is_generator
         self.gpu = gpu
         self.rate_limit = rate_limit
+        self.mounts = mounts
         Object.__init__(self, app, tag)
 
     async def load(self, app):
-        mount = _Mount(
+        workdir_mount = _Mount(
             app=app,
             local_dir=self.info.package_path,
             remote_dir=self.info.remote_dir,
             recursive=self.info.recursive,
             condition=self.info.condition,
         )
-        mounts = [mount]
+        mounts = [workdir_mount, *self.mounts]
         # TODO(erikbern): couldn't we just create one single mount with all packages instead of multiple?
         if config["sync_entrypoint"]:
             mounts.append(await _create_client_mount(app))

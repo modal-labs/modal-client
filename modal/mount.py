@@ -9,10 +9,12 @@ import aiostream
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 from modal_utils.package_utils import (
+    get_module_mount_info,
     get_sha256_hex_from_filename,
     module_mount_condition,
 )
 
+from ._factory import _factory
 from .config import logger
 from .object import Object
 
@@ -116,3 +118,16 @@ async def _create_client_mount(app):
 
 
 _, aio_create_client_mount = synchronize_apis(_create_client_mount)
+
+
+@_factory(_Mount)
+async def _create_package_mount(app, module_name):
+    mount_infos = get_module_mount_info(module_name)
+
+    assert len(mount_infos) == 1
+
+    _, base_path, module_mount_condition = mount_infos[0]
+    return _Mount(app, base_path, f"/pkg/{module_name}", module_mount_condition, recursive=True)
+
+
+create_package_mount, aio_create_package_mount = synchronize_apis(_create_package_mount)

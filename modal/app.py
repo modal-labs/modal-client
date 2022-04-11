@@ -27,6 +27,7 @@ from .config import config, logger
 from .exception import InvalidError, NotFoundError
 from .functions import _Function
 from .image import _DebianSlim, _Image
+from .mount import _Mount
 from .object import Object
 from .rate_limit import RateLimit
 from .schedule import Schedule
@@ -455,6 +456,7 @@ class _App:
         gpu: bool = False,  # Whether a GPU is required
         rate_limit: Optional[RateLimit] = None,  # Optional RateLimit for the function
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
+        mounts: Collection[_Mount] = (),
     ) -> _Function:  # Function object - callable as a regular function within a Modal app
         """Decorator to create Modal functions"""
         if image is None:
@@ -470,6 +472,7 @@ class _App:
             gpu=gpu,
             rate_limit=rate_limit,
             serialized=serialized,
+            mounts=mounts,
         )
         return function
 
@@ -483,6 +486,7 @@ class _App:
         gpu: bool = False,  # Whether a GPU is required
         rate_limit: Optional[RateLimit] = None,  # Optional RateLimit for the function
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
+        mounts: Collection[_Mount] = (),
     ) -> _Function:
         if image is None:
             image = _DebianSlim(app=self)
@@ -497,6 +501,7 @@ class _App:
             gpu=gpu,
             rate_limit=rate_limit,
             serialized=serialized,
+            mounts=mounts,
         )
         return function
 
