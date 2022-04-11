@@ -97,3 +97,4 @@ async def thread_capture(stream: io.IOBase, callback: Callable[[str, io.TextIOBa
             # TODO: this doesn't actually kill the thread, but since the pipe is closed it shouldn't
             #       capture more user output and eventually end when eof is reached on the read pipe
             logger.warn("Could not empty user output buffer. Some user output might be missing at this time")
+        os.close(read_fd)
