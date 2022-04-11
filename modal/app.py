@@ -515,7 +515,7 @@ class _App:
         ```python
         @app.local_construction(modal.Secret)
         def forward_local_secrets():
-            return modal.Secret(os.environ)
+            return modal.Secret(app, os.environ)
 
         @app.function(secrets=forward_local_secrets)
         def editor():
