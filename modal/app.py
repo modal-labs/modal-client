@@ -42,7 +42,8 @@ class _App:
     * Making Objects stay alive and not be garbage collected for as long as the app lives (see App lifetime below)
     * Manage log collection for everything that happens inside your code
 
-    # Registering Functions with an app
+    **Registering Functions with an app**
+
     The most common way to explicitly register an Object with an app is through the `app.function()` decorator.
     It both registers the annotated function itself and other passed objects like Schedules and Secrets with the
     specified app:

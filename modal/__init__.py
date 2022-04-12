@@ -1,6 +1,5 @@
 from .app import App
 from .dict import Dict
-from .exception import RemoteError
 from .functions import Function
 from .image import DebianSlim, DockerhubImage, Image
 from .mount import Mount
@@ -22,8 +21,6 @@ __all__ = [
     "Mount",
     "Period",
     "Queue",
-    "Queue",
     "RateLimit",
-    "RemoteError",
     "Secret",
 ]

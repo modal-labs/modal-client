@@ -12,7 +12,7 @@ class Cron(Schedule):
     """Cron jobs are specified using the standard
     [Unix cron tabs](https://crontab.guru/)
 
-    # Usage
+    **Usage**
 
     ```python
     import modal
@@ -35,7 +35,7 @@ class Cron(Schedule):
 class Period(Schedule):
     """Create a schedule that runs every given time interval.
 
-    # Usage
+    **Usage**
 
     ```python
     import modal

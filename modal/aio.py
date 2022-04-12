@@ -1,3 +1,8 @@
+"""**async interfaces for use with `asyncio` event loops**
+
+The async interfaces are mostly mirrors of the blocking ones, with the `Aio` or `aio_` prefixes.
+"""
+
 from .app import AioApp
 from .dict import AioDict
 from .functions import AioFunction

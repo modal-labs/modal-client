@@ -29,7 +29,7 @@ class _Dict(Object, type_prefix="di"):
                 "    * a `modal.function`\n"
                 "    * a `with app.run():` or `with app.run():` block\n"
                 "    * a `@Dict.factory` decorated global function\n"
-                "See https://modal.com/docs/reference/dict"
+                "See https://modal.com/docs/reference/modal.Dict"
             )
         serialized = self._serialize_dict(app, self._data)
         req = api_pb2.DictCreateRequest(app_id=app.app_id, data=serialized)

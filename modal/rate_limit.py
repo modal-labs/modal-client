@@ -8,7 +8,7 @@ from .exception import InvalidError
 class RateLimit:
     """Add a rate limit to a modal function.
 
-    # Usage
+    **Usage**
 
     ```python
     import modal
