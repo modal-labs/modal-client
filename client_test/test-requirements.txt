@@ -1,0 +1,9 @@
+# some comment
+banana~=1.2.3
+apple # another comment
+blueberry~=0.0.0; python_version >= '3.7'
+git+https://github.com/modal-com/synchronicity.git#egg=synchronicity
+
+
+# more
+# comments

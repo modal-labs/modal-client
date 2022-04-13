@@ -5,6 +5,7 @@ import sys
 from modal_proto import api_pb2
 from modal_utils.async_utils import retry, synchronize_apis
 from modal_utils.grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
+from modal_utils.package_utils import parse_requirements_txt
 
 from ._factory import _factory
 from ._image_pty import image_pty
@@ -135,6 +136,7 @@ async def _DebianSlim(
     python_packages=None,
     python_version=None,
     pip_find_links=None,
+    requirements_txt=None,
     version=None,
 ):
     """A default base image, built on the official python:<version>-slim-buster Docker hub images
@@ -145,13 +147,16 @@ async def _DebianSlim(
     python_version = _dockerhub_python_version(python_version)
     base_image = _Image.include(app, f"debian-slim-{python_version}", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
 
-    if extra_commands is None and python_packages is None:
-        return base_image
-
     dockerfile_commands = ["FROM base as target"]
     base_images = {"base": base_image}
     if extra_commands is not None:
         dockerfile_commands += [f"RUN {cmd}" for cmd in extra_commands]
+
+    if requirements_txt is not None:
+        python_packages = parse_requirements_txt(requirements_txt) + (python_packages or [])
+
+    if extra_commands is None and python_packages is None:
+        return base_image
 
     if python_packages is not None:
         find_links_arg = f"-f {pip_find_links}" if pip_find_links else ""

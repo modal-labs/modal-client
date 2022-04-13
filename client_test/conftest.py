@@ -79,6 +79,19 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
             seconds_since_last=1.0,
         )
 
+    async def ImageGetOrCreate(
+        self, request: api_pb2.ImageGetOrCreateRequest, context: grpc.aio.ServicerContext
+    ) -> api_pb2.ImageGetOrCreateResponse:
+        self.last_image = request.image
+        return api_pb2.ImageGetOrCreateResponse(image_id="im-123")
+
+    async def ImageJoin(
+        self, request: api_pb2.ImageJoinRequest, context: grpc.aio.ServicerContext
+    ) -> api_pb2.ImageJoinResponse:
+        return api_pb2.ImageJoinResponse(
+            result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
+        )
+
     async def AppGetLogs(
         self, request: api_pb2.AppGetLogsRequest, context: grpc.aio.ServicerContext = None, timeout=None
     ) -> typing.AsyncIterator[api_pb2.TaskLogsBatch]:
