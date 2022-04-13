@@ -1,5 +1,6 @@
 import asyncio
 import os
+import shlex
 import sys
 
 from modal_proto import api_pb2
@@ -160,9 +161,10 @@ async def _DebianSlim(
 
     if python_packages is not None:
         find_links_arg = f"-f {pip_find_links}" if pip_find_links else ""
+        package_args = " ".join(shlex.quote(pkg) for pkg in python_packages)
 
         dockerfile_commands += [
-            f"RUN pip install {' '.join(python_packages)} {find_links_arg}",
+            f"RUN pip install {package_args} {find_links_arg}",
         ]
 
     return _Image(
