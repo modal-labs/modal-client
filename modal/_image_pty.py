@@ -27,7 +27,7 @@ async def _pty(cmd: Optional[str], queue: AioQueue):
         if line is None:
             return
 
-        writer.write(line.encode("ascii"))
+        writer.write(line.encode("utf-8"))
         writer.flush()
 
 

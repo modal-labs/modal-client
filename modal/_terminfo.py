@@ -9,7 +9,7 @@ except Exception:
     _using_terminfo = False
 
 FALLBACK_SEQUENCES: Dict[str, Callable[..., bytes]] = {
-    "cuu": lambda i: f"\r\033[{i}A".encode("ascii"),
+    "cuu": lambda i: f"\r\033[{i}A".encode("utf-8"),
     "cr": lambda: b"\r",
     "ed": lambda: b"\033[J",
     "el": lambda: b"\033[K",
@@ -42,4 +42,4 @@ def term_seq(capname, *args):
 
 
 def term_seq_str(capname, *args):
-    return term_seq(capname, *args).decode("ascii")
+    return term_seq(capname, *args).decode("utf-8")

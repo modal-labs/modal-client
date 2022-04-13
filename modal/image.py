@@ -17,7 +17,7 @@ from .object import Object
 
 def _make_bytes(s):
     assert type(s) in (str, bytes)
-    return s.encode("ascii") if type(s) is str else s
+    return s.encode("utf-8") if type(s) is str else s
 
 
 class _Image(Object, type_prefix="im"):
