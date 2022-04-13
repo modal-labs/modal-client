@@ -34,13 +34,11 @@ class _Image(Object, type_prefix="im"):
         base_images={},
         context_files={},
         dockerfile_commands=[],
-        local_image_python_executable=None,
         version=None,
     ):
         self._base_images = base_images
         self._context_files = context_files
         self._dockerfile_commands = dockerfile_commands
-        self._local_image_python_executable = local_image_python_executable
         self._version = version
         super().__init__(app=app)
 
@@ -61,7 +59,6 @@ class _Image(Object, type_prefix="im"):
             base_images=base_images_pb2s,
             dockerfile_commands=dockerfile_commands,
             context_files=context_file_pb2s,
-            local_image_python_executable=self._local_image_python_executable,
             version=self._version,
         )
 
