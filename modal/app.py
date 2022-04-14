@@ -507,10 +507,13 @@ class _App:
         return function
 
     def local_construction(self, cls):
-        """Decorator to create a custom initialization function for something that runs on startup.
+        """Decorator to create a custom initialization function for something that runs on app startup.
 
-        This is useful if you need to define some object globally, and defer its initialization until
-        later.
+        This is useful if you need to define some object based on data on your development machine
+        and access it later from Modal functions.
+
+        The annotated function is called on app startup and persisted after that for the lifetime of
+        the app.
 
         Example:
         ```python

@@ -39,7 +39,7 @@ async def _get_files(local_dir, condition, recursive):
 
 
 class _Mount(Object, type_prefix="mo"):
-    def __init__(self, app, local_dir, remote_dir, condition, recursive=True):
+    def __init__(self, app, local_dir, remote_dir, condition=lambda path: True, recursive=True):
         self._local_dir = local_dir
         self._remote_dir = remote_dir
         self._condition = condition
