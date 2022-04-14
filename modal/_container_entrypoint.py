@@ -12,12 +12,7 @@ import cloudpickle
 import google.protobuf.json_format
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import (
-    TaskContext,
-    asyncio_run,
-    synchronize_apis,
-    synchronizer,
-)
+from modal_utils.async_utils import TaskContext, synchronize_apis, synchronizer
 
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._buffer_utils import buffered_rpc_read, buffered_rpc_write
@@ -268,7 +263,7 @@ def _call_function_asyncgen(function_context, function_call_id, input_id, res, i
             gen_status=api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE,
         )
 
-    asyncio_run(run_asyncgen())
+    asyncio.run(run_asyncgen())
 
 
 def call_function(
@@ -308,7 +303,7 @@ def call_function(
 
         else:
             if inspect.iscoroutine(res):
-                res = asyncio_run(res)
+                res = asyncio.run(res)
 
             if inspect.isgenerator(res) or inspect.isasyncgen(res):
                 raise InvalidError("Function which is not a generator returned a generator output")

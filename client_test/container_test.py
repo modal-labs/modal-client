@@ -118,5 +118,5 @@ def test_container_entrypoint_failure(servicer, reset_global_apps):
 
     output = _get_output(outputs[0])
     assert output.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
-    assert output.exception in ["Exception('Failure!')", "Exception('Failure!',)"]  # The 2nd is 3.6
+    assert output.exception == "Exception('Failure!')"
     assert "Traceback" in output.traceback

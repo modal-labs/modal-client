@@ -120,7 +120,6 @@ def _dockerhub_python_version(python_version=None):
         "3.9": "9",
         "3.8": "12",
         "3.7": "12",
-        "3.6": "15",
     }
     major_minor_version = ".".join(python_version.split(".")[:2])
     python_version = major_minor_version + "." + latest_micro_version[major_minor_version]
@@ -198,7 +197,7 @@ async def _DockerhubImage(app, tag):
     Build a modal image from a pre-existing image on DockerHub.
 
     This assumes the following about the image:
-    - Python 3.6 or above is present, and is available as `python`
+    - Python 3.7 or above is present, and is available as `python`
     - `pip` is installed correctly
     - The image is built for the `linux/amd64` platform
     """

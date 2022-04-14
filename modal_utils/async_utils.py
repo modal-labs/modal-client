@@ -2,7 +2,6 @@ import asyncio
 import concurrent.futures
 import functools
 import inspect
-import sys
 import time
 from typing import Any, Coroutine, List, Optional
 
@@ -44,20 +43,6 @@ def synchronize_apis(obj):
         interfaces[synchronicity.Interface.BLOCKING],
         interfaces[synchronicity.Interface.ASYNC],
     )
-
-
-def asyncio_run(coro):
-    # 3.6 compatibility version of asyncio.run
-    if sys.version_info >= (3, 7):
-        return asyncio.run(coro)
-
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
-        asyncio.set_event_loop(None)
 
 
 def retry(direct_fn=None, *, n_attempts=3, base_delay=0, delay_factor=2, timeout=90, warn_on_cancel=True):
@@ -217,7 +202,6 @@ class TaskContext:
         except asyncio.TimeoutError:
             pass
         finally:
-            await asyncio.sleep(0)  # Needed in 3.6 to make any just-cancelled tasks actually cancel
             # asyncio.wait_for cancels the future, but the CancelledError
             # still needs to be handled
             # (https://stackoverflow.com/a/63356323/2475114)
@@ -313,7 +297,7 @@ def run_coro_blocking(coro):
     moving the whole thing to a separate thread.
     """
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        fut = executor.submit(asyncio_run, coro)
+        fut = executor.submit(asyncio.run, coro)
         return fut.result()
 
 

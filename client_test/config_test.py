@@ -13,9 +13,6 @@ def _cli(args, env={}):
     env = {
         **os.environ,
         **env,
-        # This is a dumb Python 3.6 issue
-        "LC_ALL": "en_US.UTF-8",
-        "LANG": "en_US.UTF-8",
         # For windows
         "PYTHONUTF8": "1",
     }
