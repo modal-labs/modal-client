@@ -51,7 +51,8 @@ class _Image(Object, type_prefix="im"):
         ]
 
         context_file_pb2s = [
-            api_pb2.ImageContextFile(filename=filename, data=data) for filename, data in self._context_files.items()
+            api_pb2.ImageContextFile(filename=filename, data=open(path, "rb").read())
+            for filename, path in self._context_files.items()
         ]
 
         dockerfile_commands = [_make_bytes(s) for s in self._dockerfile_commands]
@@ -172,23 +173,22 @@ async def _DebianSlim(
 
 
 @_factory(_Image)
-async def _extend_image(app, base_image, extra_dockerfile_commands):
+async def _extend_image(app, base_image, extra_dockerfile_commands, context_files={}):
     """Extend an image with arbitrary dockerfile commands"""
     return _Image(
-        base_image.app, base_images={"base": base_image}, dockerfile_commands=["FROM base"] + extra_dockerfile_commands
+        base_image.app,
+        base_images={"base": base_image},
+        dockerfile_commands=["FROM base"] + extra_dockerfile_commands,
+        context_files=context_files,
     )
 
 
-def get_client_requirements():
+def get_client_requirements_fn():
     # Locate Modal client requirements.txt
     import modal
 
     modal_path = modal.__path__[0]
-    requirements_fn = os.path.join(modal_path, "requirements.txt")
-
-    requirements_data = open(requirements_fn, "rb").read()
-
-    return requirements_fn, requirements_data
+    return os.path.join(modal_path, "requirements.txt")
 
 
 @_factory(_Image)
@@ -202,7 +202,7 @@ async def _DockerhubImage(app, tag):
     - The image is built for the `linux/amd64` platform
     """
 
-    requirements_fn, requirements_data = get_client_requirements()
+    requirements_fn = get_client_requirements_fn()
 
     dockerfile_commands = [
         f"FROM {tag}",
@@ -214,7 +214,7 @@ async def _DockerhubImage(app, tag):
     return _Image(
         app,
         dockerfile_commands=dockerfile_commands,
-        context_files={requirements_fn: requirements_data},
+        context_files={requirements_fn: requirements_fn},
     )
 
 
