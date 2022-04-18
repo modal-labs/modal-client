@@ -31,8 +31,8 @@ async def _pty(cmd: Optional[str], queue: AioQueue):
         writer.flush()
 
 
-async def image_pty(image, app, cmd=None):
-    _pty_wrapped = app.function(image=image)(_pty)
+async def image_pty(image, app, cmd=None, mounts=[]):
+    _pty_wrapped = app.function(image=image, mounts=mounts)(_pty)
 
     async with app.run(show_progress=False):
         queue = await AioQueue.create(app)

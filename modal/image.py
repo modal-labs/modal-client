@@ -100,7 +100,7 @@ class _Image(Object, type_prefix="im"):
         logger.debug(f"Is image inside? env {env_image_id} image {image_id}")
         return image_id is not None and env_image_id == image_id
 
-    async def run_interactive(self, cmd=None):
+    async def run_interactive(self, cmd=None, mounts=[]):
         """Run `cmd` interactively within this image. Similar to `docker run -it --entrypoint={cmd}`.
 
         If `cmd` is `None`, this falls back to the default shell within the image.
