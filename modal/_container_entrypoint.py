@@ -129,7 +129,7 @@ class _FunctionContext:
                 continue
 
             if response.status == api_pb2.READ_STATUS_TIMEOUT:
-                logger.info(f"Task {self.task_id} input request timed out.")
+                logger.debug(f"Task {self.task_id} input request timed out.")
                 break
 
             for item in response.inputs:
