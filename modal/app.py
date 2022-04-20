@@ -164,38 +164,40 @@ class _App:
             msg = "Tasks created..."
         self._progress.set_substep_text(msg)
 
-    async def _get_logs(self, stdout, stderr, last_log_batch_entry_id, timeout=BLOCKING_REQUEST_TIMEOUT):
-        request = api_pb2.AppGetLogsRequest(
-            app_id=self._app_id,
-            timeout=timeout,
-            last_entry_id=last_log_batch_entry_id,
-        )
-        async for log_batch in self.client.stub.AppGetLogs(request, timeout=timeout + GRPC_REQUEST_TIME_BUFFER):
-            if log_batch.app_state:
-                logger.info(f"App state now {api_pb2.AppState.Name(log_batch.app_state)}")
-                if log_batch.app_state not in (
-                    api_pb2.APP_STATE_EPHEMERAL,
-                    api_pb2.APP_STATE_DRAINING_LOGS,
-                ):
-                    return None
-            else:
-                if log_batch.entry_id != "":
-                    # log_batch entry_id is empty for fd="server" messages from AppGetLogs
-                    last_log_batch_entry_id = log_batch.entry_id
-
-                for log in log_batch.items:
-                    if log.task_state:
-                        self._update_task_state(log_batch.task_id, log.task_state)
-                    if log.data:
-                        self._log_printer.feed(log, stdout, stderr)
-
-        return last_log_batch_entry_id
-
     async def _get_logs_loop(self, stdout, stderr):
         last_log_batch_entry_id = ""
+
+        async def _get_logs(stdout, stderr, timeout=BLOCKING_REQUEST_TIMEOUT):
+            nonlocal last_log_batch_entry_id
+
+            request = api_pb2.AppGetLogsRequest(
+                app_id=self._app_id,
+                timeout=timeout,
+                last_entry_id=last_log_batch_entry_id,
+            )
+            async for log_batch in self.client.stub.AppGetLogs(request, timeout=timeout + GRPC_REQUEST_TIME_BUFFER):
+                if log_batch.app_state:
+                    logger.info(f"App state now {api_pb2.AppState.Name(log_batch.app_state)}")
+                    if log_batch.app_state not in (
+                        api_pb2.APP_STATE_EPHEMERAL,
+                        api_pb2.APP_STATE_DRAINING_LOGS,
+                    ):
+                        last_log_batch_entry_id = None
+                        return
+                else:
+                    if log_batch.entry_id != "":
+                        # log_batch entry_id is empty for fd="server" messages from AppGetLogs
+                        last_log_batch_entry_id = log_batch.entry_id
+
+                    for log in log_batch.items:
+                        if log.task_state:
+                            self._update_task_state(log_batch.task_id, log.task_state)
+                        if log.data:
+                            self._log_printer.feed(log, stdout, stderr)
+
         while True:
             try:
-                last_log_batch_entry_id = await self._get_logs(stdout, stderr, last_log_batch_entry_id)
+                await _get_logs(stdout, stderr)
             except asyncio.CancelledError:
                 logger.info("Logging cancelled")
                 raise
