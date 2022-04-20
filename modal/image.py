@@ -5,7 +5,6 @@ import sys
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import retry, synchronize_apis
-from modal_utils.grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIMEOUT
 from modal_utils.package_utils import parse_requirements_txt
 
 from ._factory import _factory
@@ -74,10 +73,10 @@ class _Image(Object, type_prefix="im"):
         while True:
             request = api_pb2.ImageJoinRequest(
                 image_id=image_id,
-                timeout=BLOCKING_REQUEST_TIMEOUT,
+                timeout=60,
                 app_id=app.app_id,
             )
-            response = await retry(app.client.stub.ImageJoin)(request, timeout=GRPC_REQUEST_TIMEOUT)
+            response = await retry(app.client.stub.ImageJoin)(request)
             if not response.result.status:
                 continue
             elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:

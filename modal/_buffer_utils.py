@@ -3,7 +3,6 @@ import time
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import retry
-from modal_utils.grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIME_BUFFER
 
 from .config import logger
 
@@ -36,16 +35,12 @@ async def buffered_rpc_read(fn, request, timeout=None, warn_on_cancel=True):
     t0 = time.time()
 
     while True:
-        next_timeout = BLOCKING_REQUEST_TIMEOUT
-
         if timeout is not None:
-            time_remaining = timeout - (time.time() - t0)
-            next_timeout = min(next_timeout, time_remaining)
+            request.timeout = timeout - (time.time() - t0)
+        else:
+            request.timeout = 60
 
-        request.timeout = next_timeout
-        response = await retry(fn, warn_on_cancel=warn_on_cancel, timeout=next_timeout + GRPC_REQUEST_TIME_BUFFER)(
-            request, timeout=next_timeout + GRPC_REQUEST_TIME_BUFFER
-        )
+        response = await retry(fn, warn_on_cancel=warn_on_cancel, timeout=request.timeout)(request)
 
         if response.status == api_pb2.READ_STATUS_SUCCESS:
             return response

@@ -15,7 +15,6 @@ from modal_utils.async_utils import (
     synchronizer,
 )
 from modal_utils.decorator_utils import decorator_with_options
-from modal_utils.grpc_utils import BLOCKING_REQUEST_TIMEOUT, GRPC_REQUEST_TIME_BUFFER
 
 from ._app_singleton import get_container_app, set_container_app
 from ._app_state import AppState
@@ -167,15 +166,15 @@ class _App:
     async def _get_logs_loop(self, stdout, stderr):
         last_log_batch_entry_id = ""
 
-        async def _get_logs(stdout, stderr, timeout=BLOCKING_REQUEST_TIMEOUT):
+        async def _get_logs(stdout, stderr):
             nonlocal last_log_batch_entry_id
 
             request = api_pb2.AppGetLogsRequest(
                 app_id=self._app_id,
-                timeout=timeout,
+                timeout=60,
                 last_entry_id=last_log_batch_entry_id,
             )
-            async for log_batch in self.client.stub.AppGetLogs(request, timeout=timeout + GRPC_REQUEST_TIME_BUFFER):
+            async for log_batch in self.client.stub.AppGetLogs(request):
                 if log_batch.app_state:
                     logger.info(f"App state now {api_pb2.AppState.Name(log_batch.app_state)}")
                     if log_batch.app_state not in (

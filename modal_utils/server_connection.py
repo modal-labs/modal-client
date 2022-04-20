@@ -13,7 +13,7 @@ class BasicAuth(grpc.AuthMetadataPlugin):
     # See https://www.grpc.io/docs/guides/auth/
     _metadata: Iterable[Tuple[str, str]]
 
-    def __init__(self, client_type, credentials):
+    def __init__(self, client_type: api_pb2.ClientType, credentials):
         if credentials and (client_type == api_pb2.CLIENT_TYPE_CLIENT or client_type == api_pb2.CLIENT_TYPE_WEB_SERVER):
             token_id, token_secret = credentials
             self._metadata = (
@@ -40,7 +40,7 @@ MAX_MESSAGE_LENGTH = 1000000000  # 100 MB
 class GRPCConnectionFactory:
     """Manages gRPC connection with the server. This factory is used by the channel pool."""
 
-    def __init__(self, server_url, client_type=None, credentials=None):
+    def __init__(self, server_url: str, client_type: api_pb2.ClientType = None, credentials=None) -> None:
         try:
             o = urllib.parse.urlparse(server_url)
         except Exception:
@@ -74,7 +74,7 @@ class GRPCConnectionFactory:
             ("grpc.max_receive_message_length", MAX_MESSAGE_LENGTH),
         ]
 
-    async def create(self):
+    async def create(self) -> Channel:
         # Note that the grpc.aio documentation uses secure_channel and insecure_channel, but those are just
         # thin wrappers around the underlying Channel constructor, and insecure_channel currently doesn't
         # let you provide a credentials object
