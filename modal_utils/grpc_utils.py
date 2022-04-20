@@ -9,7 +9,7 @@ from .logger import logger
 HTTP_TIME_BUFFER = 5
 GRPC_REQUEST_TIME_BUFFER = 5
 
-HTTP_IDLE_TIMEOUT = 60  # EC2 ALBs don't seem trustworthy above this
+HTTP_IDLE_TIMEOUT = 4000  # EC2 ALBs don't seem trustworthy above this
 GRPC_REQUEST_TIMEOUT = HTTP_IDLE_TIMEOUT - HTTP_TIME_BUFFER  # Timeout enforced on all requests
 BLOCKING_REQUEST_TIMEOUT = (
     GRPC_REQUEST_TIMEOUT - GRPC_REQUEST_TIME_BUFFER
