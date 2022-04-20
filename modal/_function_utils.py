@@ -1,11 +1,19 @@
 import inspect
 import os
+import sys
 
 import cloudpickle
 
 from modal_proto import api_pb2
 
 from .config import logger
+
+
+def function_mount_condition(filename):
+    if filename.startswith(sys.prefix):
+        return False
+
+    return os.path.splitext(filename)[1] in [".py"]
 
 
 class FunctionInfo:
@@ -50,7 +58,7 @@ class FunctionInfo:
             self.remote_dir = "/root"  # TODO: don't hardcore /root
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_SERIALIZED
 
-        self.condition = lambda filename: os.path.splitext(filename)[1] in [".py"]
+        self.condition = function_mount_condition
 
     def get_tag(self):
         return f"{self.module_name}.{self.function_name}"
