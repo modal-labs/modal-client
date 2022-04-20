@@ -17,7 +17,7 @@ def _get_sha256_hex_from_content(content):
 def get_sha256_hex_from_filename(filename, rel_filename):
     # Somewhat CPU intensive, so we run it in a thread/process
     content = open(filename, "rb").read()
-    return filename, rel_filename, _get_sha256_hex_from_content(content)
+    return filename, rel_filename, content, _get_sha256_hex_from_content(content)
 
 
 def get_file_formats(module):

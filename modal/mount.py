@@ -34,8 +34,8 @@ async def _get_files(local_dir, condition, recursive):
                 futs.append(loop.run_in_executor(exe, get_sha256_hex_from_filename, filename, rel_filename))
         logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} workers")
         for fut in asyncio.as_completed(futs):
-            filename, rel_filename, sha256_hex = await fut
-            yield filename, rel_filename, sha256_hex
+            filename, rel_filename, content, sha256_hex = await fut
+            yield filename, rel_filename, content, sha256_hex
 
 
 class _Mount(Object, type_prefix="mo"):
@@ -54,7 +54,7 @@ class _Mount(Object, type_prefix="mo"):
         t0 = time.time()
         n_concurrent_uploads = 16
 
-        async def _put_file(client, mount_id, filename, rel_filename, sha256_hex):
+        async def _put_file(client, mount_id, filename, rel_filename, data, sha256_hex):
             nonlocal n_files, n_missing_files, total_bytes
 
             remote_filename = (Path(self._remote_dir) / Path(rel_filename)).as_posix()
@@ -65,8 +65,7 @@ class _Mount(Object, type_prefix="mo"):
             response = await client.stub.MountRegisterFile(request)
             n_files += 1
             if not response.exists:
-                # TODO: this will be moved to S3 soon
-                data = open(filename, "rb").read()
+                # TODO: use S3 for large files.
                 n_missing_files += 1
                 total_bytes += len(data)
                 logger.debug(f"Uploading file {filename} to {remote_filename} ({len(data)} bytes)")
@@ -87,8 +86,8 @@ class _Mount(Object, type_prefix="mo"):
         files_stream = aiostream.stream.iterate(files)
 
         async def put_file_tupled(tup):
-            filename, rel_filename, sha256_hex = tup
-            await _put_file(app.client, mount_id, filename, rel_filename, sha256_hex)
+            filename, rel_filename, content, sha256_hex = tup
+            await _put_file(app.client, mount_id, filename, rel_filename, content, sha256_hex)
 
         # Upload files
         uploads_stream = aiostream.stream.map(files_stream, put_file_tupled, task_limit=n_concurrent_uploads)

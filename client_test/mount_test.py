@@ -9,7 +9,7 @@ from modal.mount import Mount, _get_files
 async def test_get_files():
     files = {}
     async for tup in _get_files(os.path.dirname(__file__), lambda fn: fn.endswith(".py"), True):
-        filename, rel_filename, sha256_hex = tup
+        filename, rel_filename, content, sha256_hex = tup
         files[filename] = sha256_hex
 
     assert __file__ in files
