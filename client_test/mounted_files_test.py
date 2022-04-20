@@ -1,5 +1,6 @@
 import os
 import pytest
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -11,6 +12,14 @@ def test_dir(request):
     root_dir = Path(request.config.rootdir)
     test_dir = Path(os.getenv("PYTEST_CURRENT_TEST")).parent
     return root_dir / test_dir
+
+
+@pytest.fixture(scope="function")
+def venv_path(test_dir):
+    venv_path = test_dir / "supports" / "venv"
+    subprocess.run([sys.executable, "-m", "venv", venv_path, "--copies", "--system-site-packages"])
+    yield venv_path
+    shutil.rmtree(venv_path)
 
 
 def test_function_info_script(test_dir):
@@ -27,3 +36,22 @@ def test_function_info_package(test_dir):
 
     assert len(files) == 1
     assert "client/client_test/supports/mounted_files.py" in files[0]
+
+
+def test_function_info_sys_prefix(test_dir, venv_path):
+    # Run without venv, so it's not on sys.prefix.
+    p = subprocess.run([sys.executable, "supports/mounted_files.py"], capture_output=True, cwd=test_dir)
+    files = p.stdout.decode("utf-8").splitlines()
+
+    # A bunch of venv files are mounted.
+    assert len(files) > 1
+
+    # Run with venv activated, so it's on sys.prefix.
+    p = subprocess.run(
+        [venv_path / "bin" / "python", "supports/mounted_files.py"],
+        capture_output=True,
+        cwd=test_dir,
+    )
+    files = p.stdout.decode("utf-8").splitlines()
+
+    assert len(files) == 1
