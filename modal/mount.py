@@ -7,7 +7,7 @@ from pathlib import Path
 import aiostream
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_apis
+from modal_utils.async_utils import retry, synchronize_apis
 from modal_utils.package_utils import (
     get_module_mount_info,
     get_sha256_hex_from_filename,
@@ -62,7 +62,7 @@ class _Mount(Object, type_prefix="mo"):
             request = api_pb2.MountRegisterFileRequest(
                 filename=remote_filename, sha256_hex=sha256_hex, mount_id=mount_id
             )
-            response = await client.stub.MountRegisterFile(request)
+            response = await retry(client.stub.MountRegisterFile, base_delay=1)(request)
             n_files += 1
             if not response.exists:
                 # TODO: use S3 for large files.
@@ -73,10 +73,10 @@ class _Mount(Object, type_prefix="mo"):
                 request2 = api_pb2.MountUploadFileRequest(
                     data=data, sha256_hex=sha256_hex, size=len(data), mount_id=mount_id
                 )
-                await client.stub.MountUploadFile(request2)
+                await retry(client.stub.MountUploadFile, base_delay=1)(request2)
 
         req = api_pb2.MountCreateRequest(app_id=app.app_id)
-        resp = await app.client.stub.MountCreate(req)
+        resp = await retry(app.client.stub.MountCreate, base_delay=1)(req)
         mount_id = resp.mount_id
 
         logger.debug(f"Uploading mount {mount_id} using {n_concurrent_uploads} uploads")
@@ -97,7 +97,7 @@ class _Mount(Object, type_prefix="mo"):
 
         # Set the mount to done
         req_done = api_pb2.MountDoneRequest(mount_id=mount_id)
-        await app.client.stub.MountDone(req_done)
+        await retry(app.client.stub.MountDone, base_delay=1)(req_done)
 
         return mount_id
 
