@@ -2,12 +2,7 @@ import asyncio
 import platform
 import pytest
 
-from modal_utils.async_utils import (
-    TaskContext,
-    chunk_generator,
-    queue_batch_iterator,
-    retry,
-)
+from modal_utils.async_utils import TaskContext, queue_batch_iterator, retry
 
 skip_non_linux = pytest.mark.skipif(
     platform.system() != "Linux", reason="sleep is inaccurate on Github Actions runners."
@@ -46,46 +41,6 @@ async def test_retry():
     with pytest.raises(SampleException):
         f_retry = retry(n_attempts=5)(FailNTimes(6))
         assert await f_retry(42) == 43
-
-
-async def unchunk_generator(generator):
-    ret = []
-    async for chunk in generator:
-        loop_ret = []
-        ret.append(loop_ret)
-        try:
-            async for value in chunk:
-                loop_ret.append(value)
-        except SampleException:
-            loop_ret.append("exc")
-            break
-    return ret
-
-
-@skip_non_linux
-@pytest.mark.asyncio
-async def test_chunk_generator():
-    async def generator():
-        try:
-            for i in range(10):
-                await asyncio.sleep(0.1)
-                yield i
-        except BaseException as exc:
-            print(f"generator exc {exc}")
-            raise
-
-    ret = await unchunk_generator(chunk_generator(generator(), 0.33))
-    assert ret == [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9]]
-
-
-@pytest.mark.asyncio
-async def test_chunk_generator_raises():
-    async def generator_raises():
-        yield 42
-        raise SampleException("foo")
-
-    ret = await unchunk_generator(chunk_generator(generator_raises(), 0.33))
-    assert ret == [[42, "exc"]]
 
 
 @pytest.mark.asyncio

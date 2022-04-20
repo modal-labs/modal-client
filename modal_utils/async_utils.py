@@ -134,41 +134,6 @@ def add_traceback(obj, func_name=None):
         raise Exception(f"{obj} is not a coro or async gen!")
 
 
-async def chunk_generator(generator, timeout):
-    """Takes a generator and returns a generator of generator where each sub-generator only runs for a certain time.
-
-    TODO: merge this into aiostream.
-    """
-    done = False
-    task = None
-    try:
-        while not done:
-
-            async def chunk():
-                nonlocal done, task
-                t0 = time.time()
-                while True:
-                    try:
-                        attempt_timeout = t0 + timeout - time.time()
-                        if task is None:
-                            coro = generator.__anext__()
-                            loop = asyncio.get_event_loop()
-                            task = loop.create_task(coro)
-                        value = await asyncio.wait_for(asyncio.shield(task), attempt_timeout)
-                        yield value
-                        task = None
-                    except asyncio.TimeoutError:
-                        return
-                    except StopAsyncIteration:
-                        done = True
-                        return
-
-            yield chunk()
-    finally:
-        if task is not None:
-            task.cancel()
-
-
 class TaskContext:
     """Simple thing to make sure we don't have stray tasks.
 
