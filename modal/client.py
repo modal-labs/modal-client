@@ -13,7 +13,7 @@ from .config import config, logger
 from .exception import AuthError, ConnectionError, InvalidError, VersionError
 from .version import __version__
 
-CLIENT_CREATE_TIMEOUT = 2.0
+CLIENT_CREATE_TIMEOUT = 5.0
 HEARTBEAT_INTERVAL = 3.0
 
 
