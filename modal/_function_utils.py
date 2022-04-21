@@ -1,6 +1,7 @@
 import inspect
 import os
 import sys
+from typing import List
 
 import cloudpickle
 
@@ -17,7 +18,7 @@ def package_mount_condition(filename):
 
 
 def get_script_mount_condition(current_filename, script_path):
-    module_paths = []
+    module_paths: List[str] = []
     for m in sys.modules.values():
         if getattr(m, "__path__", None):
             module_paths.extend(m.__path__)
@@ -81,7 +82,7 @@ class FunctionInfo:
             self.recursive = False  # Just pick out files in the same directory
             self.remote_dir = "/root"  # TODO: don't hardcore /root
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_SERIALIZED
-            self.condition = get_script_mount_condition(module_fn, self.package_path)
+            self.condition = get_script_mount_condition("", self.package_path)
 
     def get_tag(self):
         return f"{self.module_name}.{self.function_name}"

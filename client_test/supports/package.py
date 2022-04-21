@@ -3,6 +3,9 @@ import asyncio
 from modal._function_utils import FunctionInfo
 from modal.mount import _get_files
 
+from .a import *  # noqa
+from .b.c import *  # noqa
+
 
 def f():
     pass
