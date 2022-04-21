@@ -9,11 +9,33 @@ from modal_proto import api_pb2
 from .config import logger
 
 
-def function_mount_condition(filename):
+def package_mount_condition(filename):
     if filename.startswith(sys.prefix):
         return False
 
     return os.path.splitext(filename)[1] in [".py"]
+
+
+def get_script_mount_condition(current_filename, script_path):
+    module_paths = []
+    for m in sys.modules.values():
+        if getattr(m, "__path__", None):
+            module_paths.extend(m.__path__)
+        elif hasattr(m, "__file__"):
+            module_paths.append(m.__file__)
+
+    filtered_module_paths = [p for p in module_paths if p.startswith(script_path)]
+
+    def condition(filename):
+        if filename.startswith(sys.prefix):
+            return False
+
+        if filename != current_filename and not any([filename.startswith(p) for p in filtered_module_paths]):
+            return False
+
+        return os.path.splitext(filename)[1] in [".py"]
+
+    return condition
 
 
 class FunctionInfo:
@@ -39,6 +61,7 @@ class FunctionInfo:
             self.recursive = True
             self.remote_dir = "/root/" + module.__package__.split(".")[0]  # TODO: don't hardcode /root
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
+            self.condition = package_mount_condition
         elif hasattr(module, "__file__") and not serialized:
             # This generally covers the case where it's invoked with
             # python foo/bar/baz.py
@@ -48,6 +71,7 @@ class FunctionInfo:
             self.recursive = True
             self.remote_dir = "/root"  # TODO: don't hardcore /root
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
+            self.condition = get_script_mount_condition(module_fn, self.package_path)
         else:
             # Use cloudpickle. Used when working w/ Jupyter notebooks.
             self.function_serialized = cloudpickle.dumps(f)
@@ -57,8 +81,7 @@ class FunctionInfo:
             self.recursive = False  # Just pick out files in the same directory
             self.remote_dir = "/root"  # TODO: don't hardcore /root
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_SERIALIZED
-
-        self.condition = function_mount_condition
+            self.condition = get_script_mount_condition(module_fn, self.package_path)
 
     def get_tag(self):
         return f"{self.module_name}.{self.function_name}"

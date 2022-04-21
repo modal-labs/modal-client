@@ -19,6 +19,8 @@ def test_dir(request):
 def venv_path(test_dir):
     venv_path = test_dir / "supports" / "venv"
     subprocess.run([sys.executable, "-m", "venv", venv_path, "--copies", "--system-site-packages"])
+    # Install a tiny package in the venv.
+    subprocess.run([venv_path / "bin" / "python", "-m", "pip", "install", "--force-reinstall", "six"])
     yield venv_path
     shutil.rmtree(venv_path)
 
@@ -44,13 +46,6 @@ def test_function_info_package(test_dir):
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="venvs behave differently on Windows.")
 def test_function_info_sys_prefix(test_dir, venv_path):
-    # Run without venv, so it's not on sys.prefix.
-    p = subprocess.run([sys.executable, script_path], capture_output=True, cwd=test_dir)
-    files = p.stdout.decode("utf-8").splitlines()
-
-    # A bunch of venv files are mounted.
-    assert len(files) > 1
-
     # Run with venv activated, so it's on sys.prefix.
     p = subprocess.run(
         [venv_path / "bin" / "python", script_path],

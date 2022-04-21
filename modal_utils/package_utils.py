@@ -29,7 +29,7 @@ def get_file_formats(module):
 
 
 def module_mount_condition(f):
-    return not any([f.endswith(".pyc"), f.startswith(".")])
+    return not any([f.endswith(".pyc"), os.path.basename(f).startswith(".")])
 
 
 BINARY_FORMATS = ["so", "S", "s", "asm"]  # TODO
