@@ -2,7 +2,7 @@ aiohttp==3.7.4
 aiostream==0.4.4
 cloudpickle==2.0.0
 colorama==0.4.3
-click==8.0.0
+click==8.1.2
 fastprogress==1.0.0
 grpcio==1.43.0
 importlib_metadata==4.8.1
