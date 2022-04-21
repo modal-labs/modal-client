@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import io
+import random
 import sys
 import threading
 from typing import Optional, Tuple
@@ -18,6 +19,26 @@ default_frames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 class Symbols:
     DONE = "✓"
     ONGOING = "-"
+
+
+class StepState:
+    def __init__(self, frames, message):
+        self.frames = frames
+        self.message = message
+        self.idx = random.randint(0, len(frames) - 1)
+        self.done = False
+
+    def tick(self):
+        self.idx = (self.idx + 1) % len(self.frames)
+
+    def done(self):
+        self.done = True
+
+    def value(self):
+        if self.done:
+            return Symbols.DONE
+        else:
+            return self.frames[self.idx]
 
 
 class NoProgress:
@@ -39,14 +60,12 @@ class ProgressSpinner:
         self._stdout = stdout
 
         self._frames = frames
-        self._frame_i = 0
 
         self._stopped = True
         self._suspended = 0
         self._lock = threading.Lock()
         self._lines_printed = 0
         self._time_per_frame = self.looptime / len(self._frames)
-        self._status_message = ""
 
         self.colors = {
             "status": colorama.Fore.BLUE,
@@ -59,8 +78,7 @@ class ProgressSpinner:
         self._active_step: Optional[Tuple[str, str]] = None
         self._ongoing_parent_step: Optional[str] = None
 
-    def _step(self):
-        self._frame_i = (self._frame_i + 1) % len(self._frames)
+        self._ongoing_steps: List[StepState] = []
 
     def _print(self):
         if self._lines_printed > 0:
@@ -68,18 +86,18 @@ class ProgressSpinner:
 
         self._stdout.write(self.colors["reset"])
 
-        frame = self._frames[self._frame_i]
         if self._ongoing_parent_step:
             self._lines_printed += 1
             self._stdout.write(f"{Symbols.ONGOING} {self._ongoing_parent_step}\n")
 
-        self._stdout.write(f"{frame} {self._status_message}\r")
-        self._lines_printed += 1
+        for step in self._ongoing_steps:
+            status_color = self.colors["status"]
+            reset_color = self.colors["reset"]
+            self._stdout.write(f"{step.value()} {status_color}{step.message}{reset_color}\n")
+            self._lines_printed += 1
 
+        self._stdout.write(term_seq_str("cuu", 1))  # move cursor up 1 line.
         self._stdout.flush()
-
-    def _set_status_message(self, status_message):
-        self._status_message = self.colors["status"] + status_message + self.colors["reset"]
 
     def _persist_done(self, final_message):
         with self._lock:
@@ -111,7 +129,8 @@ class ProgressSpinner:
         with self._lock:
             self._clear()
             self._print()
-            self._step()
+            for step in self._ongoing_steps:
+                step.tick()
 
     async def _loop(self):
         try:
@@ -134,14 +153,26 @@ class ProgressSpinner:
         if self._active_step:
             self._persist_done(self._active_step[1])
 
-        self._set_status_message(status)
+        self._ongoing_steps = [StepState(self._frames, status)]
         self._active_step = (status, completion_status)
 
-    def set_substep_text(self, status):
+    def set_substep_text(self, status, clear=True):
         if self._active_step and not self._ongoing_parent_step:
             self._ongoing_parent_step = self._active_step[0]
+            self._ongoing_steps = []
 
-        self._set_status_message(status)
+        if clear:
+            self._ongoing_steps = []
+
+        step_no = len(self._ongoing_steps)
+        self._ongoing_steps.append(StepState(self._frames, status))
+        return step_no
+
+    def set_substep_done(self, previous_status, new_status):
+        try:
+            idx = self._ongoing_steps.index(previous_status)
+        except ValueError:
+            return
 
     @contextlib.contextmanager
     def suspend(self):

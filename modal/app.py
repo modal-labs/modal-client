@@ -241,9 +241,9 @@ class _App:
             return self._created_tagged_objects[obj.tag]
 
         if obj.tag:
-            self._progress.set_substep_text(f"Creating {obj.tag}...")
+            self._progress.set_substep_text(f"Creating {obj.tag}...", False)
         else:
-            self._progress.set_substep_text(f"Creating {type(obj)}...")
+            self._progress.set_substep_text(f"Creating {type(obj)}...", False)
 
         # Create object
         if obj.label is not None and obj.label.app_name is not None:
