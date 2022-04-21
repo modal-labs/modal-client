@@ -4,7 +4,7 @@ import io
 import random
 import sys
 import threading
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 import colorama  # TODO: maybe use _terminfo for this
 
@@ -17,14 +17,15 @@ default_frames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
 
 class Symbols:
-    DONE = "✓"
-    ONGOING = "-"
+    STEP_COMPLETED = "✓"
+    SUBSTEP_COMPLETED = "🔨"
 
 
 class StepState:
-    def __init__(self, frames: str, message: str, is_substep: bool):
+    def __init__(self, frames: str, ongoing_message: str, is_substep: bool, done_message: Optional[str] = None):
         self.frames = frames
-        self.message = message
+        self.ongoing_message = ongoing_message
+        self.done_message = done_message
         self.idx = random.randint(0, len(frames) - 1)
         self.done = False
         self.is_substep = is_substep
@@ -32,22 +33,32 @@ class StepState:
     def tick(self):
         self.idx = (self.idx + 1) % len(self.frames)
 
-    def set_done(self, new_message):
+    def set_done(self):
         self.done = True
-        self.message = new_message
 
-    def value(self):
+    @property
+    def message(self):
+        if self.done and self.done_message:
+            return self.done_message
+        else:
+            return self.ongoing_message
+
+    @property
+    def symbol(self):
         if self.done:
-            return Symbols.DONE
+            if self.is_substep:
+                return "  " + Symbols.SUBSTEP_COMPLETED
+            else:
+                return Symbols.STEP_COMPLETED
         else:
             return self.frames[self.idx]
 
 
 class NoProgress:
-    def step(self, status, completion_status):
+    def step(self, message, done_message):
         pass
 
-    def set_substep_text(self, status):
+    def set_substep_text(self, message, clear=True, done_message=None):
         pass
 
     @contextlib.contextmanager
@@ -70,45 +81,42 @@ class ProgressSpinner:
         self._time_per_frame = self.looptime / len(self._frames)
 
         self.colors = {
-            "status": colorama.Fore.BLUE,
+            "substep_ongoing": colorama.Fore.BLUE,
             "success": colorama.Fore.GREEN,
             "reset": colorama.Style.RESET_ALL,
         }
         if not use_color:
             self.colors = {k: "" for k in self.colors.keys()}
 
-        self._active_step: Optional[Tuple[str, str]] = None
-        self._ongoing_parent_step: Optional[str] = None
-
         self._ongoing_steps: List[StepState] = []
 
     def _print(self):
-        if self._lines_printed > 0:
+        if self._lines_printed > 0 or not self._ongoing_steps:
             return
 
         self._stdout.write(self.colors["reset"])
 
-        if self._ongoing_parent_step:
-            self._lines_printed += 1
-            self._stdout.write(f"{Symbols.ONGOING} {self._ongoing_parent_step}\n")
-
         for step in self._ongoing_steps:
-            self._stdout.write(f"{step.value()} {self.colors['status']}{step.message}{self.colors['reset']}\n")
+            color = self.colors["substep_ongoing"] if step.is_substep and not step.done else self.colors["reset"]
+            self._stdout.write(f"{step.symbol} {color}{step.message}{self.colors['reset']}\n")
             self._lines_printed += 1
 
         self._stdout.write(term_seq_str("cuu", 1))  # move cursor up 1 line.
         self._stdout.flush()
 
-    def _persist_done(self, final_message):
+    def _persist_done(self):
+        if len(self._ongoing_steps) == 0:
+            return
+
+        assert not self._ongoing_steps[0].is_substep
+        self._ongoing_steps[0].set_done()
         with self._lock:
             self._clear()
-            self._stdout.write(f"{self.colors['success']}{Symbols.DONE}{self.colors['reset']} {final_message}\n")
             for step in self._ongoing_steps:
                 if step.done:
-                    self._stdout.write(f"  {self.colors['success']}🔨{self.colors['reset']} {step.message}\n")
+                    self._stdout.write(f"{self.colors['success']}{step.symbol}{self.colors['reset']} {step.message}\n")
             self._lines_printed += 1
-            self._active_step = None
-            self._ongoing_parent_step = None
+            self._ongoing_steps = []
 
     def _hide_cursor(self):
         self._stdout.write(term_seq_str("civis"))  # cursor invisible.
@@ -123,6 +131,7 @@ class ProgressSpinner:
             self._stdout.write(term_seq_str("cr"))  # carriage return.
             self._stdout.write(term_seq_str("cuu", self._lines_printed - 1))  # move cursor up n lines.
             self._stdout.write(term_seq_str("ed"))  # clear to end of display.
+            self._stdout.flush()
         if self._lines_printed >= 1:
             self._stdout.write(term_seq_str("el"))  # erase line.
             self._stdout.flush()
@@ -150,32 +159,24 @@ class ProgressSpinner:
 
     def _stop(self):
         self._stopped = True
-        if self._active_step:
-            self._persist_done(self._active_step[1])
+        self._persist_done()
 
-    def step(self, status: str, completion_status: str):
-        if self._active_step:
-            self._persist_done(self._active_step[1])
+    def step(self, message: str, done_message: str):
+        self._persist_done()
+        self._ongoing_steps = [StepState("-", message, False, done_message)]
 
-        self._ongoing_steps = [StepState(self._frames, status)]
-        self._active_step = (status, completion_status)
-
-    def set_substep_text(self, status, clear=True):
-        if self._active_step and not self._ongoing_parent_step:
-            self._ongoing_parent_step = self._active_step[0]
-            self._ongoing_steps = []
-
+    def set_substep_text(self, message, clear=True, done_message=None):
         if clear:
-            self._ongoing_steps = []
+            self._ongoing_steps = self._ongoing_steps[:1]
 
         step_no = len(self._ongoing_steps)
-        self._ongoing_steps.append(StepState(self._frames, status))
+        self._ongoing_steps.append(StepState(self._frames, message, True, done_message))
         return step_no
 
-    def set_substep_done(self, step_no, new_message):
+    def set_substep_done(self, step_no):
         if step_no >= len(self._ongoing_steps):
             return
-        self._ongoing_steps[step_no].set_done(new_message)
+        self._ongoing_steps[step_no].set_done()
 
     @contextlib.contextmanager
     def suspend(self):

@@ -176,7 +176,7 @@ class _App:
             )
             async for log_batch in self.client.stub.AppGetLogs(request):
                 if log_batch.app_state:
-                    logger.info(f"App state now {api_pb2.AppState.Name(log_batch.app_state)}")
+                    logger.debug(f"App state now {api_pb2.AppState.Name(log_batch.app_state)}")
                     if log_batch.app_state not in (
                         api_pb2.APP_STATE_EPHEMERAL,
                         api_pb2.APP_STATE_DRAINING_LOGS,
@@ -210,7 +210,7 @@ class _App:
             if last_log_batch_entry_id is None:
                 break
             # TODO: catch errors, sleep, and retry?
-        logger.info("Logging exited gracefully")
+        logger.debug("Logging exited gracefully")
 
     async def _initialize_container(self, app_id, client, task_id):
         """Used by the container to bootstrap the app and all its objects."""
@@ -242,7 +242,7 @@ class _App:
 
         progress_messages = obj.get_progress_messages()
         if progress_messages is not None:
-            step_no = self._progress.set_substep_text(progress_messages[0], False)
+            step_no = self._progress.set_substep_text(progress_messages[0], False, progress_messages[1])
 
         # Create object
         if obj.label is not None and obj.label.app_name is not None:
@@ -258,7 +258,7 @@ class _App:
             self._created_tagged_objects[obj.tag] = object_id
 
         if progress_messages is not None:
-            self._progress.set_substep_done(step_no, progress_messages[1])
+            self._progress.set_substep_done(step_no)
 
         return object_id
 
