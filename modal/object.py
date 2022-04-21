@@ -98,6 +98,9 @@ class Object(metaclass=ObjectMeta):
         else:
             return None
 
+    def get_progress_messages(self):
+        return None
+
     @property
     def app(self):
         return self._app

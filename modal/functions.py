@@ -256,6 +256,9 @@ class _Function(Object, type_prefix="fu"):
         self.mounts = mounts
         Object.__init__(self, app, tag)
 
+    def get_progress_messages(self):
+        return (f"Creating {self.tag}...", f"Created {self.tag}")
+
     async def load(self, app):
         mounts = [*self.info.create_mounts(app), *self.mounts]
         # TODO(erikbern): couldn't we just create one single mount with all packages instead of multiple?

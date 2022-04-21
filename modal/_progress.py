@@ -4,7 +4,7 @@ import io
 import random
 import sys
 import threading
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import colorama  # TODO: maybe use _terminfo for this
 
@@ -22,17 +22,19 @@ class Symbols:
 
 
 class StepState:
-    def __init__(self, frames, message):
+    def __init__(self, frames: str, message: str, is_substep: bool):
         self.frames = frames
         self.message = message
         self.idx = random.randint(0, len(frames) - 1)
         self.done = False
+        self.is_substep = is_substep
 
     def tick(self):
         self.idx = (self.idx + 1) % len(self.frames)
 
-    def done(self):
+    def set_done(self, new_message):
         self.done = True
+        self.message = new_message
 
     def value(self):
         if self.done:
@@ -91,9 +93,7 @@ class ProgressSpinner:
             self._stdout.write(f"{Symbols.ONGOING} {self._ongoing_parent_step}\n")
 
         for step in self._ongoing_steps:
-            status_color = self.colors["status"]
-            reset_color = self.colors["reset"]
-            self._stdout.write(f"{step.value()} {status_color}{step.message}{reset_color}\n")
+            self._stdout.write(f"{step.value()} {self.colors['status']}{step.message}{self.colors['reset']}\n")
             self._lines_printed += 1
 
         self._stdout.write(term_seq_str("cuu", 1))  # move cursor up 1 line.
@@ -103,6 +103,10 @@ class ProgressSpinner:
         with self._lock:
             self._clear()
             self._stdout.write(f"{self.colors['success']}{Symbols.DONE}{self.colors['reset']} {final_message}\n")
+            for step in self._ongoing_steps:
+                if step.done:
+                    self._stdout.write(f"  {self.colors['success']}🔨{self.colors['reset']} {step.message}\n")
+            self._lines_printed += 1
             self._active_step = None
             self._ongoing_parent_step = None
 
@@ -168,11 +172,10 @@ class ProgressSpinner:
         self._ongoing_steps.append(StepState(self._frames, status))
         return step_no
 
-    def set_substep_done(self, previous_status, new_status):
-        try:
-            idx = self._ongoing_steps.index(previous_status)
-        except ValueError:
+    def set_substep_done(self, step_no, new_message):
+        if step_no >= len(self._ongoing_steps):
             return
+        self._ongoing_steps[step_no].set_done(new_message)
 
     @contextlib.contextmanager
     def suspend(self):

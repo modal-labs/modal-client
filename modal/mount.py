@@ -37,6 +37,11 @@ class _Mount(Object, type_prefix="mo"):
         self._recursive = recursive
         super().__init__(app=app)
 
+    def get_progress_messages(self):
+        if not hasattr(self, "_local_dir"):
+            return None
+        return (f"Mounting {self._local_dir}...", f"Mounted {self._local_dir}")
+
     async def _get_files(self):
         if self._local_file:
             relpath = os.path.basename(self._local_file)

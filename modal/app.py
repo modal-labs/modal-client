@@ -240,10 +240,9 @@ class _App:
         if obj.tag and obj.tag in self._created_tagged_objects:
             return self._created_tagged_objects[obj.tag]
 
-        if obj.tag:
-            self._progress.set_substep_text(f"Creating {obj.tag}...", False)
-        else:
-            self._progress.set_substep_text(f"Creating {type(obj)}...", False)
+        progress_messages = obj.get_progress_messages()
+        if progress_messages is not None:
+            step_no = self._progress.set_substep_text(progress_messages[0], False)
 
         # Create object
         if obj.label is not None and obj.label.app_name is not None:
@@ -257,6 +256,10 @@ class _App:
         obj.set_object_id(object_id, self)
         if obj.tag:
             self._created_tagged_objects[obj.tag] = object_id
+
+        if progress_messages is not None:
+            self._progress.set_substep_done(step_no, progress_messages[1])
+
         return object_id
 
     async def _flush_objects(self):
