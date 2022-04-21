@@ -43,7 +43,7 @@ async def buffered_rpc_read(fn, request, timeout=None, warn_on_cancel=True):
             next_timeout = min(next_timeout, time_remaining)
 
         request.timeout = next_timeout
-        response = await retry(fn, warn_on_cancel=warn_on_cancel)(
+        response = await retry(fn, warn_on_cancel=warn_on_cancel, timeout=next_timeout + GRPC_REQUEST_TIME_BUFFER)(
             request, timeout=next_timeout + GRPC_REQUEST_TIME_BUFFER
         )
 
