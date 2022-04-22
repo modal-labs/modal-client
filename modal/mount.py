@@ -16,35 +16,48 @@ from modal_utils.package_utils import (
 
 from ._factory import _factory
 from .config import logger
+from .exception import InvalidError
 from .object import Object
 
 
-async def _get_files(local_dir, condition, recursive):
-    loop = asyncio.get_event_loop()
-    with concurrent.futures.ThreadPoolExecutor() as exe:
-        futs = []
-        if recursive:
-            gen = (os.path.join(root, name) for root, dirs, files in os.walk(local_dir) for name in files)
-        else:
-            gen = (dir_entry.path for dir_entry in os.scandir(local_dir) if dir_entry.is_file())
-
-        for filename in gen:
-            rel_filename = os.path.relpath(filename, local_dir)
-            if condition(filename):
-                futs.append(loop.run_in_executor(exe, get_sha256_hex_from_filename, filename, rel_filename))
-        logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} workers")
-        for fut in asyncio.as_completed(futs):
-            filename, rel_filename, content, sha256_hex = await fut
-            yield filename, rel_filename, content, sha256_hex
-
-
 class _Mount(Object, type_prefix="mo"):
-    def __init__(self, app, local_dir, remote_dir, condition=lambda path: True, recursive=True):
+    def __init__(
+        self, app, remote_dir, *, local_dir=None, local_file=None, condition=lambda path: True, recursive=True
+    ):
+        if local_file is not None and local_dir is not None:
+            raise InvalidError("Cannot specify both local_file and local_dir as arguments to Mount.")
+
+        if local_file is None and local_dir is None:
+            raise InvalidError("Must provide at least one of local_file and local_dir to Mount.")
+
         self._local_dir = local_dir
+        self._local_file = local_file
         self._remote_dir = remote_dir
         self._condition = condition
         self._recursive = recursive
         super().__init__(app=app)
+
+    async def _get_files(self):
+        if self._local_file:
+            relpath = os.path.basename(self._local_file)
+            yield get_sha256_hex_from_filename(self._local_file, relpath)
+            return
+
+        loop = asyncio.get_event_loop()
+        with concurrent.futures.ThreadPoolExecutor() as exe:
+            futs = []
+            if self._recursive:
+                gen = (os.path.join(root, name) for root, dirs, files in os.walk(self._local_dir) for name in files)
+            else:
+                gen = (dir_entry.path for dir_entry in os.scandir(self._local_dir) if dir_entry.is_file())
+
+            for filename in gen:
+                rel_filename = os.path.relpath(filename, self._local_dir)
+                if self._condition(filename):
+                    futs.append(loop.run_in_executor(exe, get_sha256_hex_from_filename, filename, rel_filename))
+            logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} workers")
+            for fut in asyncio.as_completed(futs):
+                yield await fut
 
     async def load(self, app):
         # Run a threadpool to compute hash values, and use n coroutines to put files
@@ -82,8 +95,7 @@ class _Mount(Object, type_prefix="mo"):
         logger.debug(f"Uploading mount {mount_id} using {n_concurrent_uploads} uploads")
 
         # Create async generator
-        files = _get_files(self._local_dir, self._condition, self._recursive)
-        files_stream = aiostream.stream.iterate(files)
+        files_stream = aiostream.stream.iterate(self._get_files())
 
         async def put_file_tupled(tup):
             filename, rel_filename, content, sha256_hex = tup
@@ -111,7 +123,7 @@ async def _create_client_mount(app):
     # Get the base_path because it also contains `modal_utils` and `modal_proto`.
     base_path, _ = os.path.split(modal.__path__[0])
 
-    mount = _Mount(app, base_path, "/pkg/", module_mount_condition, recursive=True)
+    mount = _Mount(app, local_dir=base_path, remote_dir="/pkg/", condition=module_mount_condition, recursive=True)
     await app.create_object(mount)
     return mount
 
@@ -126,7 +138,9 @@ async def _create_package_mount(app, module_name):
     assert len(mount_infos) == 1
 
     _, base_path, module_mount_condition = mount_infos[0]
-    return _Mount(app, base_path, f"/pkg/{module_name}", module_mount_condition, recursive=True)
+    return _Mount(
+        app, local_dir=base_path, remote_dir=f"/pkg/{module_name}", condition=module_mount_condition, recursive=True
+    )
 
 
 create_package_mount, aio_create_package_mount = synchronize_apis(_create_package_mount)

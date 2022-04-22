@@ -257,14 +257,7 @@ class _Function(Object, type_prefix="fu"):
         Object.__init__(self, app, tag)
 
     async def load(self, app):
-        workdir_mount = _Mount(
-            app=app,
-            local_dir=self.info.package_path,
-            remote_dir=self.info.remote_dir,
-            recursive=self.info.recursive,
-            condition=self.info.condition,
-        )
-        mounts = [workdir_mount, *self.mounts]
+        mounts = [*self.info.create_mounts(app), *self.mounts]
         # TODO(erikbern): couldn't we just create one single mount with all packages instead of multiple?
         if config["sync_entrypoint"]:
             mounts.append(await _create_client_mount(app))

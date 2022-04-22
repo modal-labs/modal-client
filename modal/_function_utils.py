@@ -8,35 +8,13 @@ import cloudpickle
 from modal_proto import api_pb2
 
 from .config import logger
+from .mount import _Mount
+
+ROOT_DIR = "/root"
 
 
 def package_mount_condition(filename):
-    if filename.startswith(sys.prefix):
-        return False
-
     return os.path.splitext(filename)[1] in [".py"]
-
-
-def get_script_mount_condition(current_filename, script_path):
-    module_paths: List[str] = []
-    for m in sys.modules.values():
-        if getattr(m, "__path__", None):
-            module_paths.extend(m.__path__)
-        elif hasattr(m, "__file__"):
-            module_paths.append(m.__file__)
-
-    filtered_module_paths = [p for p in module_paths if p.startswith(script_path)]
-
-    def condition(filename):
-        if filename.startswith(sys.prefix):
-            return False
-
-        if filename != current_filename and not any([filename.startswith(p) for p in filtered_module_paths]):
-            return False
-
-        return os.path.splitext(filename)[1] in [".py"]
-
-    return condition
 
 
 class FunctionInfo:
@@ -59,30 +37,69 @@ class FunctionInfo:
             assert len(package_path) == 1
             (self.package_path,) = package_path
             self.module_name = module.__spec__.name
-            self.recursive = True
-            self.remote_dir = "/root/" + module.__package__.split(".")[0]  # TODO: don't hardcode /root
-            self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
-            self.condition = package_mount_condition
+            self.remote_dir = os.path.join(ROOT_DIR, module.__package__.split(".")[0])
+            self.definition_type = api_pb2.Function.DEFINITION_TYPE_PACKAGE
         elif hasattr(module, "__file__") and not serialized:
             # This generally covers the case where it's invoked with
             # python foo/bar/baz.py
-            module_fn = os.path.abspath(module.__file__)
-            self.module_name = os.path.splitext(os.path.basename(module_fn))[0]
-            self.package_path = os.path.dirname(module_fn)
-            self.recursive = True
-            self.remote_dir = "/root"  # TODO: don't hardcore /root
-            self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
-            self.condition = get_script_mount_condition(module_fn, self.package_path)
+            self.file = os.path.abspath(module.__file__)
+            self.module_name = os.path.splitext(os.path.basename(self.file))[0]
+            self.package_path = os.path.dirname(self.file)
+            self.definition_type = api_pb2.Function.DEFINITION_TYPE_SCRIPT
         else:
             # Use cloudpickle. Used when working w/ Jupyter notebooks.
             self.function_serialized = cloudpickle.dumps(f)
             logger.debug(f"Serializing {f.__qualname__}, size is {len(self.function_serialized)}")
             self.module_name = None
             self.package_path = os.path.abspath("")  # get current dir
-            self.recursive = False  # Just pick out files in the same directory
-            self.remote_dir = "/root"  # TODO: don't hardcore /root
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_SERIALIZED
-            self.condition = get_script_mount_condition("", self.package_path)
+
+    def create_mounts(self, app) -> List[_Mount]:
+        if self.definition_type == api_pb2.Function.DEFINITION_TYPE_PACKAGE:
+            return [
+                _Mount(
+                    app=app,
+                    local_dir=self.package_path,
+                    remote_dir=self.remote_dir,
+                    recursive=True,
+                    condition=package_mount_condition,
+                )
+            ]
+        else:
+            mounts = [
+                _Mount(
+                    app=app,
+                    local_file=self.file,
+                    remote_dir=ROOT_DIR,
+                )
+            ]
+
+            for m in sys.modules.values():
+                if getattr(m, "__path__", None):
+                    for path in m.__path__:
+                        if path.startswith(self.package_path) and not path.startswith(sys.prefix):
+                            relpath = os.path.relpath(path, self.package_path)
+                            mounts.append(
+                                _Mount(
+                                    app=app,
+                                    local_dir=path,
+                                    remote_dir=os.path.join(ROOT_DIR, relpath),
+                                    condition=package_mount_condition,
+                                    recursive=True,
+                                )
+                            )
+                elif hasattr(m, "__file__"):
+                    path = m.__file__
+                    if path != self.file and path.startswith(self.package_path) and not path.startswith(sys.prefix):
+                        relpath = os.path.relpath(os.path.dirname(path), self.package_path)
+                        mounts.append(
+                            _Mount(
+                                app=app,
+                                local_file=path,
+                                remote_dir=os.path.join(ROOT_DIR, relpath),
+                            )
+                        )
+        return mounts
 
     def get_tag(self):
         return f"{self.module_name}.{self.function_name}"

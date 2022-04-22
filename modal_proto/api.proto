@@ -298,7 +298,8 @@ message Function {
   enum DefinitionType {
     DEFINITION_TYPE_UNSPECIFIED = 0;
     DEFINITION_TYPE_SERIALIZED = 1;
-    DEFINITION_TYPE_FILE = 2;
+    DEFINITION_TYPE_SCRIPT = 2;
+    DEFINITION_TYPE_PACKAGE = 3;
   }
   DefinitionType definition_type = 7;
 
