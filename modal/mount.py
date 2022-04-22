@@ -38,9 +38,10 @@ class _Mount(Object, type_prefix="mo"):
         super().__init__(app=app)
 
     def get_progress_messages(self):
-        if not hasattr(self, "_local_dir"):
+        label = getattr(self, "_local_dir", None) or getattr(self, "_local_file", None)
+        if label is None:
             return None
-        return (f"Mounting {self._local_dir}...", f"Mounted {self._local_dir}")
+        return (f"Mounting {label}...", f"Mounted {label}")
 
     async def _get_files(self):
         if self._local_file:
