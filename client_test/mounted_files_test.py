@@ -30,7 +30,11 @@ script_path = Path("supports") / "script.py"
 
 def test_mounted_files_script(test_dir):
     p = subprocess.run([sys.executable, str(script_path)], capture_output=True, cwd=test_dir)
-    files = p.stdout.decode("utf-8").splitlines()
+    stdout = p.stdout.decode("utf-8")
+    stderr = p.stderr.decode("utf-8")
+    print("stdout: ", stdout)
+    print("stderr: ", stderr)
+    files = stdout.splitlines()
 
     assert len(files) == 4
     assert any(["a.py" in f for f in files])
@@ -42,7 +46,11 @@ def test_mounted_files_script(test_dir):
 
 def test_mounted_files_package(test_dir):
     p = subprocess.run([sys.executable, "-m", "supports.package"], cwd=test_dir, capture_output=True)
-    files = p.stdout.decode("utf-8").splitlines()
+    stdout = p.stdout.decode("utf-8")
+    stderr = p.stderr.decode("utf-8")
+    print("stdout: ", stdout)
+    print("stderr: ", stderr)
+    files = stdout.splitlines()
 
     assert len(files) == 6
     assert any(["a.py" in f for f in files])
@@ -61,7 +69,11 @@ def test_mounted_files_sys_prefix(test_dir, venv_path):
         capture_output=True,
         cwd=test_dir,
     )
-    files = p.stdout.decode("utf-8").splitlines()
+    stdout = p.stdout.decode("utf-8")
+    stderr = p.stderr.decode("utf-8")
+    print("stdout: ", stdout)
+    print("stderr: ", stderr)
+    files = stdout.splitlines()
 
     assert len(files) == 4
     assert any(["a.py" in f for f in files])

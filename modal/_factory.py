@@ -31,8 +31,10 @@ def _get_tag(f):
     module = inspect.getmodule(f)
     if getattr(module, "__package__", None):
         module_name = module.__spec__.name
-    else:
+    elif getattr(module, "__file__", None):
         module_name, _ = os.path.splitext(os.path.basename(module.__file__))
+    else:
+        module_name = None
     function_name = f.__qualname__
     return f"{module_name}.{function_name}"
 

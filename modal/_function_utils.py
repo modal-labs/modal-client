@@ -14,6 +14,9 @@ ROOT_DIR = "/root"
 
 
 def package_mount_condition(filename):
+    if filename.startswith(sys.prefix):
+        return False
+
     return os.path.splitext(filename)[1] in [".py"]
 
 
@@ -35,31 +38,34 @@ class FunctionInfo:
             package_path = __import__(module.__package__).__path__
             # TODO: we should handle the array case, https://stackoverflow.com/questions/2699287/what-is-path-useful-for
             assert len(package_path) == 1
-            (self.package_path,) = package_path
+            (self.base_dir,) = package_path
             self.module_name = module.__spec__.name
             self.remote_dir = os.path.join(ROOT_DIR, module.__package__.split(".")[0])
-            self.definition_type = api_pb2.Function.DEFINITION_TYPE_PACKAGE
+            self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
+            self.is_package = True
         elif hasattr(module, "__file__") and not serialized:
             # This generally covers the case where it's invoked with
             # python foo/bar/baz.py
             self.file = os.path.abspath(module.__file__)
             self.module_name = os.path.splitext(os.path.basename(self.file))[0]
-            self.package_path = os.path.dirname(self.file)
-            self.definition_type = api_pb2.Function.DEFINITION_TYPE_SCRIPT
+            self.base_dir = os.path.dirname(self.file)
+            self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
+            self.is_package = False
         else:
             # Use cloudpickle. Used when working w/ Jupyter notebooks.
             self.function_serialized = cloudpickle.dumps(f)
             logger.debug(f"Serializing {f.__qualname__}, size is {len(self.function_serialized)}")
             self.module_name = None
-            self.package_path = os.path.abspath("")  # get current dir
+            self.base_dir = os.path.abspath("")  # get current dir
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_SERIALIZED
+            self.is_package = False
 
     def create_mounts(self, app) -> List[_Mount]:
-        if self.definition_type == api_pb2.Function.DEFINITION_TYPE_PACKAGE:
+        if self.is_package:
             return [
                 _Mount(
                     app=app,
-                    local_dir=self.package_path,
+                    local_dir=self.base_dir,
                     remote_dir=self.remote_dir,
                     recursive=True,
                     condition=package_mount_condition,
@@ -78,35 +84,33 @@ class FunctionInfo:
 
             for m in sys.modules.values():
                 if getattr(m, "__package__", None):
-                    package_path = __import__(m.__package__).__path__
-                    for path in package_path:
-                        if (
-                            path not in packages
-                            and path.startswith(self.package_path)
-                            and not path.startswith(sys.prefix)
-                        ):
-                            packages.add(path)
-                            relpath = os.path.relpath(path, self.package_path)
-                            mounts.append(
-                                _Mount(
-                                    app=app,
-                                    local_dir=path,
-                                    remote_dir=os.path.join(ROOT_DIR, relpath),
-                                    condition=package_mount_condition,
-                                    recursive=True,
-                                )
-                            )
-                elif getattr(m, "__file__", None):
-                    path = m.__file__
-                    if path != self.file and path.startswith(self.package_path) and not path.startswith(sys.prefix):
-                        relpath = os.path.relpath(os.path.dirname(path), self.package_path)
+                    for path in __import__(m.__package__).__path__:
+                        if path in packages or not path.startswith(self.base_dir) or path.startswith(sys.prefix):
+                            continue
+
+                        packages.add(path)
+                        relpath = os.path.relpath(path, self.base_dir)
                         mounts.append(
                             _Mount(
                                 app=app,
-                                local_file=path,
+                                local_dir=path,
                                 remote_dir=os.path.join(ROOT_DIR, relpath),
+                                condition=package_mount_condition,
+                                recursive=True,
                             )
                         )
+                elif getattr(m, "__file__", None):
+                    path = m.__file__
+                    if path == self.file or not path.startswith(self.base_dir) or path.startswith(sys.prefix):
+                        continue
+                    relpath = os.path.relpath(os.path.dirname(path), self.base_dir)
+                    mounts.append(
+                        _Mount(
+                            app=app,
+                            local_file=path,
+                            remote_dir=os.path.join(ROOT_DIR, relpath),
+                        )
+                    )
         return mounts
 
     def get_tag(self):
