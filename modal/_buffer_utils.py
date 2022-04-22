@@ -40,7 +40,7 @@ async def buffered_rpc_read(fn, request, timeout=None, warn_on_cancel=True):
         else:
             request.timeout = 60
 
-        response = await retry(fn, warn_on_cancel=warn_on_cancel, timeout=request.timeout)(request)
+        response = await retry(fn, warn_on_cancel=warn_on_cancel, timeout=request.timeout + 10)(request)
 
         if response.status == api_pb2.READ_STATUS_SUCCESS:
             return response
