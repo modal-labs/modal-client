@@ -182,7 +182,7 @@ async def _extend_image(app, base_image, extra_dockerfile_commands, context_file
     )
 
 
-def get_client_requirements_fn():
+def get_client_requirements_path():
     # Locate Modal client requirements.txt
     import modal
 
@@ -201,19 +201,19 @@ async def _DockerhubImage(app, tag):
     - The image is built for the `linux/amd64` platform
     """
 
-    requirements_fn = get_client_requirements_fn()
+    requirements_path = get_client_requirements_path()
 
     dockerfile_commands = [
         f"FROM {tag}",
-        f"COPY {requirements_fn} {requirements_fn}",
+        "COPY /modal_requirements.txt /modal_requirements.txt",
         "RUN pip install --upgrade pip",
-        f"RUN pip install -r {requirements_fn}",
+        "RUN pip install -r /modal_requirements.txt",
     ]
 
     return _Image(
         app,
         dockerfile_commands=dockerfile_commands,
-        context_files={requirements_fn: requirements_fn},
+        context_files={"/modal_requirements.txt": requirements_path},
     )
 
 
