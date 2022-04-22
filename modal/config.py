@@ -98,7 +98,32 @@ def _read_user_config():
 
 
 _user_config = _read_user_config()
-_env = os.environ.get("MODAL_ENV", "default")
+
+
+def _config_envs():
+    return _user_config.keys()
+
+
+def _config_active_env():
+    for key, values in _user_config.items():
+        if values.get("active", False) is True:
+            return key
+    else:
+        return "default"
+
+
+def _config_set_active_env(env: str):
+    if env not in _user_config:
+        raise KeyError(env)
+
+    for key, values in _user_config.items():
+        values.pop("active", None)
+
+    _user_config[env]["active"] = True
+    _write_user_config(_user_config)
+
+
+_env = os.environ.get("MODAL_ENV", _config_active_env())
 
 # Define settings
 
@@ -165,7 +190,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger()
 
-# Util to write config
+# Utils to write config
 
 
 def _store_user_config(new_settings, env=None):
@@ -174,6 +199,10 @@ def _store_user_config(new_settings, env=None):
         env = _env
     user_config = _read_user_config()
     user_config.setdefault(env, {}).update(**new_settings)
+    _write_user_config(user_config)
+
+
+def _write_user_config(user_config):
     with open(user_config_path, "w") as f:
         toml.dump(user_config, f)
 

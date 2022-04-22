@@ -8,7 +8,14 @@ from modal_proto import api_pb2
 from modal_utils.package_utils import import_app_by_ref
 
 from .client import Client
-from .config import _store_user_config, config, user_config_path
+from .config import (
+    _config_envs,
+    _config_set_active_env,
+    _env,
+    _store_user_config,
+    config,
+    user_config_path,
+)
 
 app = typer.Typer()
 
@@ -18,6 +25,8 @@ config_app = typer.Typer()
 app.add_typer(config_app, name="config")
 app_app = typer.Typer()
 app.add_typer(app_app, name="app")
+env_app = typer.Typer()
+app.add_typer(env_app, name="env")
 
 
 class Symbols:
@@ -51,6 +60,22 @@ def show():
 @config_app.command()
 def main():
     app()
+
+
+@env_app.command()
+def activate(env: str):
+    _config_set_active_env(env)
+
+
+@env_app.command()
+def current():
+    print(_env)
+
+
+@env_app.command()
+def list():
+    for env in _config_envs():
+        print(f"{env} [active]" if _env == env else env)
 
 
 @app_app.command()
