@@ -62,8 +62,14 @@ class NoProgress:
     def step(self, message, done_message):
         pass
 
-    def set_substep_text(self, message, clear=True, done_message=None):
+    def substep(self, message, clear=True, done_message=None):
         pass
+
+    def complete_substep(self, step_no):
+        pass
+
+    def is_stopped(self):
+        return True
 
     @contextlib.contextmanager
     def suspend(self):
@@ -172,7 +178,7 @@ class ProgressSpinner:
         self._persist_done()
         self._ongoing_steps = [StepState(self._frames, message, False, done_message)]
 
-    def set_substep_text(self, message, clear=True, done_message=None) -> int:
+    def substep(self, message, clear=True, done_message=None) -> int:
         if clear:
             self._ongoing_steps = self._ongoing_steps[:1]
 
@@ -183,7 +189,7 @@ class ProgressSpinner:
         self._ongoing_steps.append(StepState(self._frames, message, True, done_message))
         return step_no
 
-    def set_substep_done(self, step_no):
+    def complete_substep(self, step_no):
         if step_no >= len(self._ongoing_steps):
             return
         self._ongoing_steps[step_no].set_done()
@@ -260,22 +266,22 @@ if __name__ == "__main__":
         async with TaskContext(grace=1.0) as tc:
             async with safe_progress(tc, sys.stdout, sys.stderr) as p:
                 p.step("Making pastaz", "Pasta done")
-                p.set_substep_text("boiling water.............")
+                p.substep("boiling water.............")
                 await asyncio.sleep(1)
                 print("kids start to shout")
                 await asyncio.sleep(1)
                 print("grandpa slips", file=sys.stderr)
                 with p.suspend():
                     await asyncio.sleep(1)
-                p.set_substep_text("putting pasta in water")
+                p.substep("putting pasta in water")
                 await asyncio.sleep(1)
-                p.set_substep_text("rinsing pasta")
+                p.substep("rinsing pasta")
                 await asyncio.sleep(1)
                 p.step("Making sauce", "Sauce done")
                 await asyncio.sleep(1)
-                p.set_substep_text("frying onions")
+                p.substep("frying onions")
                 await asyncio.sleep(1)
-                p.set_substep_text("adding tomatoes")
+                p.substep("adding tomatoes")
                 await asyncio.sleep(1)
                 p.step("Eating", "Ate")
                 await asyncio.sleep(1)

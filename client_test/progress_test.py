@@ -41,7 +41,7 @@ def test_tick(mocked_random):
 def test_state_subtext(mocked_random):
     buf, p = get_test_spinner()
     p.step("foo", "done")
-    p.set_substep_text("sub")
+    p.substep("sub")
     p._tick()
     assert f"- foo\n{FRAMES[0]} sub{LINE_END}" == buf.getvalue().replace("\r\n", "\n")
     p._tick()

@@ -162,7 +162,7 @@ class _App:
         else:
             msg = "Tasks created..."
         if not self._progress.is_stopped():
-            self._progress.set_substep_text(msg)
+            self._progress.substep(msg)
 
     async def _get_logs_loop(self, stdout, stderr):
         last_log_batch_entry_id = ""
@@ -243,7 +243,7 @@ class _App:
 
         progress_messages = obj.get_progress_messages()
         if progress_messages is not None:
-            step_no = self._progress.set_substep_text(progress_messages[0], False, progress_messages[1])
+            step_no = self._progress.substep(progress_messages[0], False, progress_messages[1])
 
         # Create object
         if obj.label is not None and obj.label.app_name is not None:
@@ -259,7 +259,7 @@ class _App:
             self._created_tagged_objects[obj.tag] = object_id
 
         if progress_messages is not None:
-            self._progress.set_substep_done(step_no)
+            self._progress.complete_substep(step_no)
 
         return object_id
 
