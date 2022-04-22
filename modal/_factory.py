@@ -1,13 +1,13 @@
 import functools
 import inspect
 import json
+import os
 
 import synchronicity
 
 from modal_utils.async_utils import synchronize_apis, synchronizer
 
 from ._app_singleton import get_container_app
-from ._function_utils import FunctionInfo
 from .object import Object
 
 
@@ -27,6 +27,16 @@ def _create_callback(fun):
     return synchronizer.create_callback(fun, interface)
 
 
+def _get_tag(f):
+    module = inspect.getmodule(f)
+    if getattr(module, "__package__", None):
+        module_name = module.__spec__.name
+    else:
+        module_name, _ = os.path.splitext(os.path.basename(module.__file__))
+    function_name = f.__qualname__
+    return f"{module_name}.{function_name}"
+
+
 def _local_construction_make(app, cls, fun):
     callback = _create_callback(fun)
 
@@ -40,7 +50,7 @@ def _local_construction_make(app, cls, fun):
         def __init__(self):
             # This is the only place where tags are being set on objects,
             # besides Function
-            tag = FunctionInfo(fun).get_tag()
+            tag = _get_tag(fun)
             Object.__init__(self, app, tag)
 
         async def load(self, app):
@@ -72,7 +82,7 @@ def _factory_make(cls, fun):
     class _InternalFactory(cls):  # type: ignore
         def __init__(self, app, **kwargs):
             self._kwargs = kwargs
-            tag = FunctionInfo(fun).get_tag()
+            tag = _get_tag(fun)
 
             # Append the arguments (but not the app) to the tag
             fun_app_bound = functools.partial(fun, None)
