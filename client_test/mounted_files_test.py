@@ -32,10 +32,11 @@ def test_mounted_files_script(test_dir):
     p = subprocess.run([sys.executable, str(script_path)], capture_output=True, cwd=test_dir)
     files = p.stdout.decode("utf-8").splitlines()
 
-    assert len(files) == 3
+    assert len(files) == 4
     assert any(["a.py" in f for f in files])
     assert any(["c.py" in f for f in files])
     assert not any(["d.py" in f for f in files])
+    assert any(["e.py" in f for f in files])
     assert any(["script.py" in f for f in files])
 
 
@@ -43,10 +44,11 @@ def test_mounted_files_package(test_dir):
     p = subprocess.run([sys.executable, "-m", "supports.package"], cwd=test_dir, capture_output=True)
     files = p.stdout.decode("utf-8").splitlines()
 
-    assert len(files) == 5
+    assert len(files) == 6
     assert any(["a.py" in f for f in files])
     assert any(["c.py" in f for f in files])
     assert any(["d.py" in f for f in files])
+    assert any(["e.py" in f for f in files])
     assert any(["script.py" in f for f in files])
     assert any(["package.py" in f for f in files])
 
@@ -61,8 +63,9 @@ def test_mounted_files_sys_prefix(test_dir, venv_path):
     )
     files = p.stdout.decode("utf-8").splitlines()
 
-    assert len(files) == 3
+    assert len(files) == 4
     assert any(["a.py" in f for f in files])
     assert any(["c.py" in f for f in files])
-    assert any(["script.py" in f for f in files])
     assert not any(["d.py" in f for f in files])
+    assert any(["e.py" in f for f in files])
+    assert any(["script.py" in f for f in files])

@@ -74,10 +74,18 @@ class FunctionInfo:
                 )
             ]
 
+            packages = set()
+
             for m in sys.modules.values():
-                if getattr(m, "__path__", None):
-                    for path in m.__path__:
-                        if path.startswith(self.package_path) and not path.startswith(sys.prefix):
+                if getattr(m, "__package__", None):
+                    package_path = __import__(m.__package__).__path__
+                    for path in package_path:
+                        if (
+                            path not in packages
+                            and path.startswith(self.package_path)
+                            and not path.startswith(sys.prefix)
+                        ):
+                            packages.add(path)
                             relpath = os.path.relpath(path, self.package_path)
                             mounts.append(
                                 _Mount(
@@ -88,7 +96,7 @@ class FunctionInfo:
                                     recursive=True,
                                 )
                             )
-                elif hasattr(m, "__file__"):
+                elif getattr(m, "__file__", None):
                     path = m.__file__
                     if path != self.file and path.startswith(self.package_path) and not path.startswith(sys.prefix):
                         relpath = os.path.relpath(os.path.dirname(path), self.package_path)

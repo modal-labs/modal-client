@@ -1,7 +1,8 @@
 import asyncio
 
+from modal._app_state import AppState
 from modal._function_utils import FunctionInfo
-from modal.mount import _get_files
+from modal.app import _App
 
 from .a import *  # noqa
 from .b.c import *  # noqa
@@ -14,8 +15,12 @@ def f():
 async def get_files():
     fn_info = FunctionInfo(f)
 
-    async for file_info in _get_files(fn_info.package_path, fn_info.condition, fn_info.recursive):
-        print(file_info[0])
+    app = _App()
+    app.state = AppState.RUNNING
+
+    for mount in fn_info.create_mounts(app):
+        async for file_info in mount._get_files():
+            print(file_info[0])
 
 
 if __name__ == "__main__":
