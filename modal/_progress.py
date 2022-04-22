@@ -36,6 +36,10 @@ class StepState:
     def set_done(self):
         self.done = True
 
+    def update_frames(self, frames: str):
+        self.frames = frames
+        self.idx = random.randint(0, len(frames) - 1)
+
     @property
     def message(self):
         if self.done and self.done_message:
@@ -157,19 +161,25 @@ class ProgressSpinner:
         finally:
             self._show_cursor()
 
+    def is_stopped(self):
+        return self._stopped
+
     def _stop(self):
         self._stopped = True
         self._persist_done()
 
     def step(self, message: str, done_message: str):
         self._persist_done()
-        self._ongoing_steps = [StepState("-", message, False, done_message)]
+        self._ongoing_steps = [StepState(self._frames, message, False, done_message)]
 
-    def set_substep_text(self, message, clear=True, done_message=None):
+    def set_substep_text(self, message, clear=True, done_message=None) -> int:
         if clear:
             self._ongoing_steps = self._ongoing_steps[:1]
 
         step_no = len(self._ongoing_steps)
+        assert step_no > 0
+
+        self._ongoing_steps[0].update_frames("-")  # Make parent step spinner static.
         self._ongoing_steps.append(StepState(self._frames, message, True, done_message))
         return step_no
 

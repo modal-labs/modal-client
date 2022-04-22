@@ -161,7 +161,8 @@ class _App:
             msg = "Tasks queued..."
         else:
             msg = "Tasks created..."
-        self._progress.set_substep_text(msg)
+        if not self._progress.is_stopped():
+            self._progress.set_substep_text(msg)
 
     async def _get_logs_loop(self, stdout, stderr):
         last_log_batch_entry_id = ""

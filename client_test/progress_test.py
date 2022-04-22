@@ -1,6 +1,7 @@
 import io
+import pytest
 
-from modal._progress import ProgressSpinner, Symbols
+from modal._progress import ProgressSpinner
 from modal._terminfo import term_seq_str
 
 FRAMES = range(1, 10)
@@ -16,37 +17,35 @@ def text_between(source, substr1, substr2):
 
 
 CLEAR = "\033[K"
+LINE_END = "\n" + term_seq_str("cuu", 1)
 CLEAR_TWO_LINES = term_seq_str("cr") + term_seq_str("cuu", 1) + term_seq_str("ed") + term_seq_str("el")
+MESSAGE = "foo"
+DONE_MESSAGE = "bar"
 
 
-def test_tick():
+@pytest.fixture
+def mocked_random(monkeypatch):
+    return monkeypatch.setattr("random.randint", lambda a, b: 0)
+
+
+def test_tick(mocked_random):
     buf, p = get_test_spinner()
+    p.step(MESSAGE, DONE_MESSAGE)
     p._tick()
-    assert f"{FRAMES[0]} \r" == buf.getvalue()
+    assert f"{FRAMES[0]} {MESSAGE}{LINE_END}" == buf.getvalue()
     p._tick()
-    assert f"{FRAMES[0]} \r{CLEAR}{FRAMES[1]} \r" == buf.getvalue()
+    print(repr(buf.getvalue()))
+    assert f"{FRAMES[0]} {MESSAGE}{LINE_END}{CLEAR}{FRAMES[1]} {MESSAGE}{LINE_END}" == buf.getvalue()
 
 
-def test_state_subtext():
+def test_state_subtext(mocked_random):
     buf, p = get_test_spinner()
     p.step("foo", "done")
     p.set_substep_text("sub")
     p._tick()
-    assert f"{Symbols.ONGOING} foo\n{FRAMES[0]} sub\r" == buf.getvalue().replace("\r\n", "\n")
+    assert f"- foo\n{FRAMES[0]} sub{LINE_END}" == buf.getvalue().replace("\r\n", "\n")
     p._tick()
     assert (
-        f"{Symbols.ONGOING} foo\n{FRAMES[0]} sub\r{CLEAR_TWO_LINES}{Symbols.ONGOING} foo\n{FRAMES[1]} sub\r"
+        f"- foo\n{FRAMES[0]} sub{LINE_END}{CLEAR_TWO_LINES}- foo\n{FRAMES[1]} sub{LINE_END}"
         == buf.getvalue().replace("\r\n", "\n")
     )
-
-
-def test_overwrite():
-    buf, p = get_test_spinner()
-    p.set_substep_text("something_long")
-    p._tick()
-    p.set_substep_text("short")
-    p._tick()
-    v = buf.getvalue()
-    between = text_between(v, "something_long", "short")
-    assert "\n" not in between, "no newlines between status messages"
-    assert CLEAR in between, "clear line before next status"
