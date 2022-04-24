@@ -1,4 +1,5 @@
 import ctypes
+import sys
 import traceback
 from collections import namedtuple
 from typing import Any, List
@@ -188,6 +189,9 @@ class _ModalSampler:
         if progressbar:
             self._progress = progress_bar(range(chains * (draws + tune)), display=progressbar)
             self._progress.comment = self._desc.format(self)
+
+            # HACK: fastprogress checks sys.stdout.isatty(), and there's no way to override.
+            sys.stdout.isatty = lambda: True  # type: ignore
 
         self._draws = draws
         self._tune = tune
