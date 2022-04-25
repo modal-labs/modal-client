@@ -33,7 +33,9 @@ class StepState:
     def tick(self):
         self.idx = (self.idx + 1) % len(self.frames)
 
-    def set_done(self):
+    def set_done(self, done_message: Optional[str] = None):
+        if done_message is not None:
+            self.done_message = done_message
         self.done = True
 
     def update_frames(self, frames: str):
@@ -62,10 +64,10 @@ class NoProgress:
     def step(self, message, done_message):
         pass
 
-    def substep(self, message, clear=True, done_message=None):
+    def substep(self, message, clear=True):
         pass
 
-    def complete_substep(self, step_no):
+    def complete_substep(self, step_no, done_message):
         pass
 
     def is_stopped(self):
@@ -178,7 +180,7 @@ class ProgressSpinner:
         self._persist_done()
         self._ongoing_steps = [StepState(self._frames, message, False, done_message)]
 
-    def substep(self, message, clear=True, done_message=None) -> int:
+    def substep(self, message, clear=True) -> int:
         if clear:
             self._ongoing_steps = self._ongoing_steps[:1]
 
@@ -186,13 +188,13 @@ class ProgressSpinner:
         assert step_no > 0
 
         self._ongoing_steps[0].update_frames("-")  # Make parent step spinner static.
-        self._ongoing_steps.append(StepState(self._frames, message, True, done_message))
+        self._ongoing_steps.append(StepState(self._frames, message, True))
         return step_no
 
-    def complete_substep(self, step_no):
+    def complete_substep(self, step_no, done_message):
         if step_no >= len(self._ongoing_steps):
             return
-        self._ongoing_steps[step_no].set_done()
+        self._ongoing_steps[step_no].set_done(done_message)
 
     @contextlib.contextmanager
     def suspend(self):

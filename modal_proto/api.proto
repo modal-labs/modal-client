@@ -313,17 +313,19 @@ message Function {
   repeated string secret_ids = 10;
 
   RateLimit rate_limit = 11;
+
+  bool webhook = 12;
 }
 
 message FunctionCreateRequest {
   Function function = 1;
   string app_id = 2;
   Schedule schedule = 6;
-  bool webhook=7;
 }
 
 message FunctionCreateResponse {
   string function_id = 1;
+  string webhook_url = 2;
 }
 
 message FunctionGetSerializedRequest {

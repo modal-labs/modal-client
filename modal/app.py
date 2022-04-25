@@ -222,9 +222,9 @@ class _App:
         if obj.tag and obj.tag in self._created_tagged_objects:
             return self._created_tagged_objects[obj.tag]
 
-        progress_messages = obj.get_progress_messages()
-        if progress_messages is not None:
-            step_no = self._progress.substep(progress_messages[0], False, progress_messages[1])
+        creating_message = obj.get_creating_message()
+        if creating_message is not None:
+            step_no = self._progress.substep(creating_message, False)
 
         # Create object
         if obj.label is not None and obj.label.app_name is not None:
@@ -239,8 +239,10 @@ class _App:
         if obj.tag:
             self._created_tagged_objects[obj.tag] = object_id
 
-        if progress_messages is not None:
-            self._progress.complete_substep(step_no)
+        if creating_message is not None:
+            created_message = obj.get_created_message()
+            assert created_message is not None
+            self._progress.complete_substep(step_no, created_message)
 
         return object_id
 

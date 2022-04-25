@@ -98,7 +98,10 @@ class Object(metaclass=ObjectMeta):
         else:
             return None
 
-    def get_progress_messages(self):
+    def get_creating_message(self):
+        return None
+
+    def get_created_message(self):
         return None
 
     @property

@@ -37,11 +37,17 @@ class _Mount(Object, type_prefix="mo"):
         self._recursive = recursive
         super().__init__(app=app)
 
-    def get_progress_messages(self):
+    def get_creating_message(self):
         label = getattr(self, "_local_dir", None) or getattr(self, "_local_file", None)
         if label is None:
             return None
-        return (f"Mounting {label}...", f"Mounted {label}")
+        return f"Mounting {label}..."
+
+    def get_created_message(self):
+        label = getattr(self, "_local_dir", None) or getattr(self, "_local_file", None)
+        if label is None:
+            return None
+        return f"Mounted {label}."
 
     async def _get_files(self):
         if self._local_file:
