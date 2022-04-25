@@ -1,3 +1,5 @@
+from typing import List
+
 from .object import Object
 
 
@@ -6,7 +8,7 @@ class Blueprint:
 
     These objects are not created yet but may be created later."""
 
-    _pending_tagged_objects: list[Object]
+    _pending_tagged_objects: List[Object]
 
     def __init__(self):
         self._pending_tagged_objects = []
