@@ -8,12 +8,7 @@ import grpc
 
 from modal._progress import safe_progress
 from modal_proto import api_pb2
-from modal_utils.async_utils import (
-    TaskContext,
-    run_coro_blocking,
-    synchronize_apis,
-    synchronizer,
-)
+from modal_utils.async_utils import TaskContext, synchronize_apis, synchronizer
 from modal_utils.decorator_utils import decorator_with_options
 
 from ._app_singleton import get_container_app, set_container_app
@@ -77,7 +72,7 @@ class _App:
             app = super().__new__(cls)
             return app
 
-    def __init__(self, name=None, blocking_late_creation_ok=False):
+    def __init__(self, name=None):
         if hasattr(self, "_initialized"):
             return  # Prevent re-initialization with the singleton
 
@@ -91,12 +86,6 @@ class _App:
         self._task_states = {}
         self._progress = None
         self._log_printer = LogPrinter()
-
-        # TODO: this is a very hacky thing for notebooks. The problem is that
-        # (a) notebooks require creating functions "late"
-        # (b) notebooks run with an event loop, which makes synchronizer confused
-        # We will have to rethink this soon.
-        self._blocking_late_creation_ok = blocking_late_creation_ok
         super().__init__()
 
     @property
@@ -129,10 +118,6 @@ class _App:
             pass
         elif self.state == AppState.NONE:
             self._pending_tagged_objects.append(obj)
-        elif self._blocking_late_creation_ok:
-            # See comment in constructor. This is a hacky hack to get notebooks working.
-            # Let's revisit this shortly
-            run_coro_blocking(self.create_object(obj))
         else:
             raise Exception(f"Can only register objects on a app that's not running (state = {self.state}")
 
