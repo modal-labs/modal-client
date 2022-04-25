@@ -266,9 +266,7 @@ class _App:
     async def _flush_objects(self):
         "Create objects that have been defined but not created on the server."
 
-        while len(self._pending_tagged_objects) > 0:
-            obj = self._pending_tagged_objects.pop()
-
+        for obj in self._pending_tagged_objects:
             if obj.object_id is not None:
                 # object is already created (happens due to object re-initialization in the container).
                 # TODO: we should check that the object id isn't old
@@ -286,8 +284,6 @@ class _App:
         self.state = AppState.STARTING
         self.client = client
 
-        # We need to re-initialize all these objects. Needed if a app is reused.
-        initial_objects = list(self._pending_tagged_objects)
         if show_progress is None:
             visible_progress = (stdout or sys.stdout).isatty()
         else:
@@ -334,7 +330,6 @@ class _App:
             self.client = None
             self.state = AppState.NONE
             self._progress = None
-            self._pending_tagged_objects = initial_objects
             self._created_tagged_objects = {}
 
     @synchronizer.asynccontextmanager
