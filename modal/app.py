@@ -2,7 +2,7 @@ import asyncio
 import io
 import os
 import sys
-from typing import Collection, Dict, List, Optional, Union
+from typing import Collection, Dict, Optional, Union
 
 import grpc
 
@@ -13,6 +13,7 @@ from modal_utils.decorator_utils import decorator_with_options
 
 from ._app_singleton import get_container_app, set_container_app
 from ._app_state import AppState
+from ._blueprint import Blueprint
 from ._factory import _local_construction
 from ._logging import LogPrinter
 from ._serialization import Pickler, Unpickler
@@ -54,7 +55,6 @@ class _App:
     In this example, both `foo`, the secret and the schedule are registered with the app.
     """
 
-    _pending_tagged_objects: List[Object]
     _created_tagged_objects: Dict[str, str]  # tag -> id
 
     @classmethod
@@ -81,8 +81,8 @@ class _App:
         self.client = None
         self.name = name or self._infer_app_name()
         self.state = AppState.NONE
-        self._pending_tagged_objects = []  # list of objects that haven't been created
         self._created_tagged_objects = {}  # tag -> object id
+        self._blueprint = Blueprint()
         self._task_states = {}
         self._progress = None
         self._log_printer = LogPrinter()
@@ -107,19 +107,15 @@ class _App:
     def _register_object(self, obj):
         """Registers an object to be created by the app so that it's available in modal.
 
-        This is only used by factories and functions.
-        """
-        if obj.tag is None:
-            raise Exception("Can only register named objects")
+        This is only used by factories and functions."""
+        if self.state != AppState.NONE:
+            raise Exception(f"Can only register objects on a app that's not running (state = {self.state}")
         if obj.tag in self._created_tagged_objects:
             # in case of a double load of an object, which seems
             # to happen sometimes when cloudpickle loads an object whose
             # type is declared in a module with modal functions
             pass
-        elif self.state == AppState.NONE:
-            self._pending_tagged_objects.append(obj)
-        else:
-            raise Exception(f"Can only register objects on a app that's not running (state = {self.state}")
+        self._blueprint.register(obj)
 
     def _update_task_state(self, task_id, state):
         self._task_states[task_id] = state
@@ -251,7 +247,7 @@ class _App:
     async def _flush_objects(self):
         "Create objects that have been defined but not created on the server."
 
-        for obj in self._pending_tagged_objects:
+        for obj in self._blueprint.get_objects():
             if obj.object_id is not None:
                 # object is already created (happens due to object re-initialization in the container).
                 # TODO: we should check that the object id isn't old
