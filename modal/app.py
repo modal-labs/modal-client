@@ -439,6 +439,7 @@ class _App:
         rate_limit: Optional[RateLimit] = None,  # Optional RateLimit for the function
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Collection[_Mount] = (),
+        webhook: bool = False,  # Whether to create a webhook URL for this function.
     ) -> _Function:  # Function object - callable as a regular function within a Modal app
         """Decorator to create Modal functions"""
         if image is None:
@@ -455,6 +456,7 @@ class _App:
             rate_limit=rate_limit,
             serialized=serialized,
             mounts=mounts,
+            webhook=webhook,
         )
         return function
 
@@ -469,6 +471,7 @@ class _App:
         rate_limit: Optional[RateLimit] = None,  # Optional RateLimit for the function
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Collection[_Mount] = (),
+        webhook: bool = False,  # Whether to create a webhook URL for this function.
     ) -> _Function:
         if image is None:
             image = _DebianSlim(app=self)
@@ -484,6 +487,7 @@ class _App:
             rate_limit=rate_limit,
             serialized=serialized,
             mounts=mounts,
+            webhook=webhook,
         )
         return function
 

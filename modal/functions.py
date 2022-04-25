@@ -229,6 +229,7 @@ class _Function(Object, type_prefix="fu"):
         # TODO: maybe break this out into a separate decorator for notebooks.
         serialized: bool = False,
         mounts: Collection[_Mount] = (),
+        webhook: bool = False,
     ):
         assert callable(raw_f)
         self.info = FunctionInfo(raw_f, serialized)
@@ -254,6 +255,7 @@ class _Function(Object, type_prefix="fu"):
         self.gpu = gpu
         self.rate_limit = rate_limit
         self.mounts = mounts
+        self.webhook = webhook
         Object.__init__(self, app, tag)
 
     def get_progress_messages(self):
@@ -312,6 +314,7 @@ class _Function(Object, type_prefix="fu"):
             app_id=app.app_id,
             function=function_definition,
             schedule=self.schedule.proto_message if self.schedule is not None else None,
+            webhook=self.webhook,
         )
         response = await app.client.stub.FunctionCreate(request)
 

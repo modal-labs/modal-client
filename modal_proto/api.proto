@@ -319,6 +319,7 @@ message FunctionCreateRequest {
   Function function = 1;
   string app_id = 2;
   Schedule schedule = 6;
+  bool webhook=7;
 }
 
 message FunctionCreateResponse {
