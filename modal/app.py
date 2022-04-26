@@ -340,7 +340,7 @@ class _App:
             Object, Dict[str, Object]
         ] = None,  # A single Modal *Object* or a `dict[str, Object]` of labels -> Objects to be exported for use by other apps
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT,
-        client=None,
+        **run_kwargs,
     ):
         """Deploys and exports objects in the app
 
@@ -369,7 +369,7 @@ class _App:
                 "or\n"
                 'app = App("some name")'
             )
-        async with self.run(client=client):
+        async with self.run(**run_kwargs):
             object_id = None
             object_ids = None  # name -> object_id
             if isinstance(obj_or_objs, Object):

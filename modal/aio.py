@@ -7,6 +7,7 @@ from .app import AioApp
 from .dict import AioDict
 from .functions import AioFunction
 from .image import AioDebianSlim, AioDockerhubImage, AioImage, aio_extend_image
+from .mount import AioMount
 from .queue import AioQueue
 from .secret import AioSecret
 
@@ -15,6 +16,7 @@ __all__ = [
     "AioDict",
     "AioImage",
     "AioFunction",
+    "AioMount",
     "AioQueue",
     "AioSecret",
     "AioDebianSlim",
