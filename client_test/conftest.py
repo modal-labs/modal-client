@@ -221,12 +221,9 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
                 status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
                 data=cloudpickle.dumps(res),
             )
-            return api_pb2.FunctionGetOutputsResponse(
-                status=api_pb2.READ_STATUS_SUCCESS,
-                outputs=[result],
-            )
+            return api_pb2.FunctionGetOutputsResponse(outputs=[result])
         else:
-            return api_pb2.FunctionGetOutputsResponse(status=api_pb2.READ_STATUS_TIMEOUT)
+            await context.abort(StatusCode.DEADLINE_EXCEEDED, "Read timeout")
 
     async def SecretCreate(
         self,

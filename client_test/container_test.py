@@ -22,10 +22,8 @@ def _get_inputs(client):
     function_input = api_pb2.FunctionInput(args=app._serialize(((42,), {})), function_call_id=FUNCTION_CALL_ID)
 
     return [
-        api_pb2.FunctionGetInputsResponse(inputs=[function_input], status=api_pb2.READ_STATUS_SUCCESS),
-        api_pb2.FunctionGetInputsResponse(
-            inputs=[api_pb2.FunctionInput(kill_switch=True)], status=api_pb2.READ_STATUS_SUCCESS
-        ),
+        api_pb2.FunctionGetInputsResponse(inputs=[function_input]),
+        api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionInput(kill_switch=True)]),
     ]
 
 

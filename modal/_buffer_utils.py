@@ -1,6 +1,9 @@
 import asyncio
 import time
 
+from grpc import StatusCode
+from grpc.aio import AioRpcError
+
 from modal_proto import api_pb2
 from modal_utils.async_utils import retry
 
@@ -40,13 +43,14 @@ async def buffered_rpc_read(fn, request, timeout=None, warn_on_cancel=True):
         else:
             request.timeout = 60
 
-        response = await retry(fn, warn_on_cancel=warn_on_cancel, timeout=request.timeout + 10)(request)
-
-        if response.status == api_pb2.READ_STATUS_SUCCESS:
+        try:
+            response = await retry(fn, warn_on_cancel=warn_on_cancel, timeout=request.timeout + 10)(request)
             return response
+        except AioRpcError as exc:
+            if exc.code() in (StatusCode.DEADLINE_EXCEEDED, StatusCode.RESOURCE_EXHAUSTED):
+                raise
+            if timeout is not None and (time.time() - t0) > timeout:
+                raise
 
-        if timeout is not None and (time.time() - t0) > timeout:
-            return response
-
-        logger.debug(f"{fn_name}: buffer read timed out. Retrying.")
-        # TODO: maybe have some kind of exponential back-off.
+            logger.debug(f"{fn_name}: buffer read timed out. Retrying.")
+            # TODO: maybe have some kind of exponential back-off.

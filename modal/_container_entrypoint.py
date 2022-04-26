@@ -10,6 +10,8 @@ from typing import Any, AsyncIterator, Callable, List
 
 import cloudpickle
 import google.protobuf.json_format
+from grpc import StatusCode
+from grpc.aio import AioRpcError
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import TaskContext, synchronize_apis, synchronizer
@@ -119,18 +121,22 @@ class _FunctionContext:
         eof_received = False
         while not eof_received:
             request.max_values = self.get_max_inputs_to_fetch()
-            response = await buffered_rpc_read(
-                self.client.stub.FunctionGetInputs, request, timeout=config["container_input_timeout"]
-            )
 
-            if response.status == api_pb2.READ_STATUS_RATE_LIMIT_EXCEEDED:
-                logger.info(f"Task {self.task_id} exceeded rate limit.")
-                await asyncio.sleep(1)
-                continue
+            try:
+                response = await buffered_rpc_read(
+                    self.client.stub.FunctionGetInputs, request, timeout=config["container_input_timeout"]
+                )
+            except AioRpcError as exc:
+                if exc.code() == StatusCode.RESOURCE_EXHAUSTED:
+                    logger.info(f"Task {self.task_id} exceeded rate limit.")
+                    await asyncio.sleep(1)
+                    continue
 
-            if response.status == api_pb2.READ_STATUS_TIMEOUT:
-                logger.debug(f"Task {self.task_id} input request timed out.")
-                break
+                if exc.code() == StatusCode.DEADLINE_EXCEEDED:
+                    logger.debug(f"Task {self.task_id} input request timed out.")
+                    break
+
+                raise
 
             for item in response.inputs:
                 if item.kill_switch:

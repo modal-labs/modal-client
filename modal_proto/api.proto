@@ -342,13 +342,6 @@ enum WriteStatus {
   WRITE_STATUS_BUFFER_FULL = 2;
 }
 
-enum ReadStatus {
-  READ_STATUS_UNSPECIFIED = 0;
-  READ_STATUS_SUCCESS = 1;
-  READ_STATUS_TIMEOUT = 2;
-  READ_STATUS_RATE_LIMIT_EXCEEDED = 3;
-}
-
 message FunctionInput {
   string function_call_id = 3;
   string input_id = 4;
@@ -380,7 +373,6 @@ message FunctionGetInputsRequest {
 
 
 message FunctionGetInputsResponse {
-  ReadStatus status = 1;
   repeated FunctionInput inputs = 2;
 }
 
@@ -401,7 +393,6 @@ message FunctionGetOutputsRequest {
 }
 
 message FunctionGetOutputsResponse {
-  ReadStatus status = 1;
   repeated GenericResult outputs = 2;
 }
 
