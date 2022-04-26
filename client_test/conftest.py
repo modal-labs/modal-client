@@ -101,9 +101,9 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
 
     async def FunctionPutOutputs(
         self, request: api_pb2.FunctionPutOutputsRequest, context: ServicerContext = None
-    ) -> api_pb2.FunctionPutOutputsResponse:
+    ) -> Empty:
         self.container_outputs.append(request)
-        return api_pb2.FunctionPutOutputsResponse(status=api_pb2.WRITE_STATUS_SUCCESS)
+        return Empty()
 
     async def AppGetObjects(
         self, request: api_pb2.AppGetObjectsRequest, context: ServicerContext = None
@@ -202,11 +202,11 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self,
         request: api_pb2.FunctionPutInputsRequest,
         context: ServicerContext,
-    ) -> api_pb2.FunctionPutInputsResponse:
+    ) -> Empty:
         for function_input in request.inputs:
             args, kwargs = cloudpickle.loads(function_input.args) if function_input.args else ((), {})
             self.client_calls.append((args, kwargs))
-        return api_pb2.FunctionPutInputsResponse(status=api_pb2.WRITE_STATUS_SUCCESS)
+        return Empty()
 
     async def FunctionGetOutputs(
         self,

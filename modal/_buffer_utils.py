@@ -4,9 +4,6 @@ import time
 from grpc import StatusCode
 from grpc.aio import AioRpcError
 
-from modal_proto import api_pb2
-from modal_utils.async_utils import retry
-
 from .config import logger
 
 INITIAL_STREAM_SIZE = 5
@@ -21,14 +18,16 @@ async def buffered_rpc_write(fn, request):
     # request.buffer_req.idempotency_key = str(uuid.uuid4())
 
     while True:
-        response = await retry(fn)(request)
-
-        if response.status == api_pb2.WRITE_STATUS_SUCCESS:
-            return response
-
-        logger.debug(f"{fn_name}: no space left in buffer. Sleeping.")
-        # TODO: maybe have some kind of exponential back-off and timeout.
-        await asyncio.sleep(1)
+        try:
+            await fn(request)
+            return
+        except AioRpcError as exc:
+            if exc.code() == StatusCode.UNAVAILABLE:
+                logger.debug(f"{fn_name}: no space left in buffer. Sleeping.")
+                # TODO: maybe have some kind of exponential back-off and timeout.
+                await asyncio.sleep(1)
+            else:
+                raise
 
 
 async def buffered_rpc_read(fn, request, timeout=None, warn_on_cancel=True):
@@ -44,8 +43,7 @@ async def buffered_rpc_read(fn, request, timeout=None, warn_on_cancel=True):
             request.timeout = 60
 
         try:
-            response = await retry(fn, warn_on_cancel=warn_on_cancel, timeout=request.timeout + 10)(request)
-            return response
+            return await fn(request)
         except AioRpcError as exc:
             if exc.code() in (StatusCode.DEADLINE_EXCEEDED, StatusCode.RESOURCE_EXHAUSTED):
                 raise

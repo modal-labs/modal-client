@@ -336,12 +336,6 @@ message FunctionMapResponse {
   string function_call_id = 1;
 }
 
-enum WriteStatus {
-  WRITE_STATUS_UNSPECIFIED = 0;
-  WRITE_STATUS_SUCCESS = 1;
-  WRITE_STATUS_BUFFER_FULL = 2;
-}
-
 message FunctionInput {
   string function_call_id = 3;
   string input_id = 4;
@@ -360,10 +354,6 @@ message FunctionPutInputsRequest {
   repeated FunctionInput inputs = 2;
 }
 
-message FunctionPutInputsResponse {
-  WriteStatus status = 1;
-}
-
 message FunctionGetInputsRequest {
   string function_id = 1;
   string task_id = 2;
@@ -380,10 +370,6 @@ message FunctionPutOutputsRequest {
   string function_call_id = 1;
   string task_id = 2;
   repeated GenericResult outputs = 3;
-}
-
-message FunctionPutOutputsResponse {
-  WriteStatus status = 1;
 }
 
 message FunctionGetOutputsRequest {
@@ -557,8 +543,8 @@ service ModalClient {
   rpc FunctionCreate(FunctionCreateRequest) returns (FunctionCreateResponse);
   rpc FunctionGetSerialized(FunctionGetSerializedRequest) returns (FunctionGetSerializedResponse);
   rpc FunctionMap(FunctionMapRequest) returns (FunctionMapResponse);
-  rpc FunctionPutInputs(FunctionPutInputsRequest) returns (FunctionPutInputsResponse);
-  rpc FunctionPutOutputs(FunctionPutOutputsRequest) returns (FunctionPutOutputsResponse);  // For containers to return result
+  rpc FunctionPutInputs(FunctionPutInputsRequest) returns (google.protobuf.Empty);
+  rpc FunctionPutOutputs(FunctionPutOutputsRequest) returns (google.protobuf.Empty);  // For containers to return result
   rpc FunctionGetInputs(FunctionGetInputsRequest) returns (FunctionGetInputsResponse);  // For containers to request next call
   rpc FunctionGetOutputs(FunctionGetOutputsRequest) returns (FunctionGetOutputsResponse);  // Returns the next result
 }
