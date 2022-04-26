@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import importlib
 import inspect
 import math
@@ -16,6 +17,7 @@ from grpc.aio import AioRpcError
 from modal_proto import api_pb2
 from modal_utils.async_utils import TaskContext, synchronize_apis, synchronizer
 
+from ._asgi import asgi_app_wrapper
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._buffer_utils import buffered_rpc_read, buffered_rpc_write
 from .app import _App
@@ -372,9 +374,14 @@ def main(container_args, client):
             # We want the internal type of this, not the external
             _function = synchronizer._translate_in(imported_function)
             assert isinstance(_function, _Function)
+
             function = _function.get_raw_f()
         else:
             function = imported_function
+
+        if container_args.function_def.asgi_app:
+            asgi_app = function()
+            function = functools.partial(asgi_app_wrapper, asgi_app)
 
     with function_context.send_outputs():
         for function_input in function_context.generate_inputs():  # type: ignore

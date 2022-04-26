@@ -1,5 +1,4 @@
 import asyncio
-import functools
 import io
 import os
 import sys
@@ -14,7 +13,6 @@ from modal_utils.decorator_utils import decorator_with_options
 
 from ._app_singleton import get_container_app, set_container_app
 from ._app_state import AppState
-from ._asgi import asgi_app_wrapper
 from ._blueprint import Blueprint
 from ._factory import _local_construction
 from ._logging import LogPrinter
@@ -486,6 +484,7 @@ class _App:
         )
         return function
 
+    @decorator_with_options
     def asgi(
         self,
         asgi_app,  # The asgi app
@@ -494,20 +493,17 @@ class _App:
         secrets: Collection[Secret] = (),  # Plural version of `secret` when multiple secrets are needed
         gpu: bool = False,  # Whether a GPU is required
         mounts: Collection[_Mount] = (),
-    ) -> _Function:
+    ):
         if image is None:
             image = _DebianSlim(app=self)
 
-        raw_f = functools.partial(asgi_app_wrapper, asgi_app)
-        functools.update_wrapper(raw_f, asgi_app_wrapper)
-
         function = _Function(
             self,
-            raw_f,
+            asgi_app,
             image=image,
             secret=secret,
             secrets=secrets,
-            is_generator=True,
+            is_generator=False,
             gpu=gpu,
             mounts=mounts,
             asgi_app=True,
