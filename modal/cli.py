@@ -91,8 +91,8 @@ def deploy(app_ref: str, name: str = None):
         traceback.print_exc()
         sys.exit(1)
 
-    with app.run():
-        app.deploy(name=name)
+    # TODO(erikbern): will this work for AioApps?
+    app.deploy(name=name)
 
 
 if __name__ == "__main__":

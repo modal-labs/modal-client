@@ -37,10 +37,12 @@ async def test_create_object(servicer, aio_client):
 @pytest.mark.asyncio
 async def test_persistent_object(servicer, aio_client):
     app_1 = AioApp()
-    async with app_1.run(client=aio_client):
-        q_1 = await AioQueue.create(app=app_1)
-        assert q_1.object_id == "qu-1"
-        await app_1.deploy("my-queue", q_1)
+
+    @app_1.local_construction(AioQueue)
+    def q_1():
+        return AioQueue(app=app_1)
+
+    await app_1.deploy("my-queue", q_1, client=aio_client)
 
     app_2 = AioApp()
     async with app_2.run(client=aio_client):
@@ -79,23 +81,22 @@ def test_create_object_exception(servicer, client):
 
 def test_deploy_falls_back_to_app_name(servicer, client):
     named_app = App(name="foo_app")
-    with named_app.run(client=client):
-        named_app.deploy()
+    named_app.deploy(client=client)
     assert "foo_app" in servicer.deployments
 
 
 def test_deploy_uses_deployment_name_if_specified(servicer, client):
     named_app = App(name="foo_app")
-    with named_app.run(client=client):
-        named_app.deploy("bar_app")
+    named_app.deploy("bar_app", client=client)
     assert "bar_app" in servicer.deployments
     assert "foo_app" not in servicer.deployments
 
 
-def test_deploy_without_run_fails(servicer, client):
+def test_deploy_running_app_fails(servicer, client):
     app = App()
-    with pytest.raises(modal.exception.InvalidError):
-        app.deploy(name="my_deployment")
+    with app.run():
+        with pytest.raises(modal.exception.InvalidError):
+            app.deploy(name="my_deployment")
 
 
 def test_run_function_without_app_error():

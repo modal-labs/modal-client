@@ -109,7 +109,7 @@ class _App:
 
         This is only used by factories and functions."""
         if self.state != AppState.NONE:
-            raise Exception(f"Can only register objects on a app that's not running (state = {self.state}")
+            raise InvalidError("Can only register objects on a app that's not running (state = {self.state}")
         if obj.tag in self._created_tagged_objects:
             # in case of a double load of an object, which seems
             # to happen sometimes when cloudpickle loads an object whose
@@ -340,14 +340,14 @@ class _App:
             Object, Dict[str, Object]
         ] = None,  # A single Modal *Object* or a `dict[str, Object]` of labels -> Objects to be exported for use by other apps
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT,
+        client=None,
     ):
         """Deploys and exports objects in the app
 
         Usage:
         ```python
         if __name__ == "__main__":
-            with app.run():
-                app.deploy()
+            app.deploy()
         ```
 
         Deployment has two primary purposes:
@@ -356,14 +356,8 @@ class _App:
           the client has closed.
         * Allows for certain of these objects, *deployment objects*, to be referred to and used by other apps
         """
-        if self.client is None:
-            raise InvalidError(
-                "The app needs to be running to be deployed.\n\n"
-                "Example usage:\n"
-                "with app.run():\n"
-                '    app.deploy("my_deployment")\n'
-            )
-
+        if self.state != AppState.NONE:
+            raise InvalidError(f"Can only deploy an app that isn't running")
         if name is None:
             name = self.name
         if name is None:
@@ -375,24 +369,25 @@ class _App:
                 "or\n"
                 'app = App("some name")'
             )
-        object_id = None
-        object_ids = None  # name -> object_id
-        if isinstance(obj_or_objs, Object):
-            object_id = obj_or_objs.object_id
-        elif isinstance(obj_or_objs, dict):
-            object_ids = {label: obj.object_id for label, obj in obj_or_objs.items()}
-        elif obj_or_objs is None:
-            pass
-        else:
-            raise InvalidError(f"{obj_or_objs} not an Object or dict or None")
-        request = api_pb2.AppDeployRequest(
-            app_id=self._app_id,
-            name=name,
-            namespace=namespace,
-            object_id=object_id,
-            object_ids=object_ids,
-        )
-        await self.client.stub.AppDeploy(request)
+        async with self.run(client=client):
+            object_id = None
+            object_ids = None  # name -> object_id
+            if isinstance(obj_or_objs, Object):
+                object_id = obj_or_objs.object_id
+            elif isinstance(obj_or_objs, dict):
+                object_ids = {label: obj.object_id for label, obj in obj_or_objs.items()}
+            elif obj_or_objs is None:
+                pass
+            else:
+                raise InvalidError(f"{obj_or_objs} not an Object or dict or None")
+            request = api_pb2.AppDeployRequest(
+                app_id=self._app_id,
+                name=name,
+                namespace=namespace,
+                object_id=object_id,
+                object_ids=object_ids,
+            )
+            await self.client.stub.AppDeploy(request)
 
     async def _include(self, name, object_label, namespace):
         """Internal method to resolve to an object id."""
