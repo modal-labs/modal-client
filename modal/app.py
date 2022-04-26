@@ -357,7 +357,7 @@ class _App:
         * Allows for certain of these objects, *deployment objects*, to be referred to and used by other apps
         """
         if self.state != AppState.NONE:
-            raise InvalidError(f"Can only deploy an app that isn't running")
+            raise InvalidError("Can only deploy an app that isn't running")
         if name is None:
             name = self.name
         if name is None:
