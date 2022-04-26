@@ -230,7 +230,7 @@ class _Function(Object, type_prefix="fu"):
         # TODO: maybe break this out into a separate decorator for notebooks.
         serialized: bool = False,
         mounts: Collection[_Mount] = (),
-        webhook: bool = False,
+        asgi_app: bool = False,
     ):
         assert callable(raw_f)
         self.info = FunctionInfo(raw_f, serialized)
@@ -256,17 +256,17 @@ class _Function(Object, type_prefix="fu"):
         self.gpu = gpu
         self.rate_limit = rate_limit
         self.mounts = mounts
-        self.webhook = webhook
-        self.webhook_url = None
+        self.asgi_app = asgi_app
+        self.web_url = None
         Object.__init__(self, app, tag)
 
     def get_creating_message(self):
         return f"Creating {self.tag}..."
 
     def get_created_message(self):
-        if self.webhook_url is not None:
+        if self.web_url is not None:
             # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
-            return f"Created {self.tag} => {colorama.Fore.MAGENTA}{self.webhook_url}{colorama.Fore.RESET}"
+            return f"Created {self.tag} => {colorama.Fore.MAGENTA}{self.web_url}{colorama.Fore.RESET}"
         return f"Created {self.tag}."
 
     async def load(self, app):
@@ -317,7 +317,7 @@ class _Function(Object, type_prefix="fu"):
             function_type=function_type,
             resources=api_pb2.Resources(gpu=self.gpu),
             rate_limit=rate_limit,
-            webhook=self.webhook,
+            asgi_app=self.asgi_app,
         )
         request = api_pb2.FunctionCreateRequest(
             app_id=app.app_id,
@@ -326,8 +326,8 @@ class _Function(Object, type_prefix="fu"):
         )
         response = await app.client.stub.FunctionCreate(request)
 
-        if response.webhook_url:
-            self.webhook_url = response.webhook_url
+        if response.web_url:
+            self.web_url = response.web_url
 
         return response.function_id
 

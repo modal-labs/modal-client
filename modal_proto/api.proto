@@ -306,7 +306,7 @@ message Function {
 
   RateLimit rate_limit = 11;
 
-  bool webhook = 12;
+  bool asgi_app = 12;
 }
 
 message FunctionCreateRequest {
@@ -317,7 +317,7 @@ message FunctionCreateRequest {
 
 message FunctionCreateResponse {
   string function_id = 1;
-  string webhook_url = 2;
+  string web_url = 2;
 }
 
 message FunctionGetSerializedRequest {
