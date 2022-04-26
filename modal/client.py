@@ -1,8 +1,8 @@
 import asyncio
 import time
 
-import grpc
-import grpc.aio
+from grpc import StatusCode
+from grpc.aio import AioRpcError
 
 from modal_proto import api_pb2, api_pb2_grpc
 from modal_utils.async_utils import TaskContext, retry, synchronize_apis
@@ -60,13 +60,13 @@ class _Client:
             )
             resp = await retry(self.stub.ClientCreate, timeout=CLIENT_CREATE_TIMEOUT)(req)
             self._client_id = resp.client_id
-        except grpc.aio._call.AioRpcError as exc:
+        except AioRpcError as exc:
             ms = int(1000 * (time.time() - t0))
-            if exc.code() == grpc.StatusCode.UNAUTHENTICATED:
+            if exc.code() == StatusCode.UNAUTHENTICATED:
                 raise AuthError(f"Connecting to {self.server_url}: {exc.details()} (after {ms} ms)")
-            elif exc.code() in [grpc.StatusCode.UNAVAILABLE, grpc.StatusCode.DEADLINE_EXCEEDED]:
+            elif exc.code() in [StatusCode.UNAVAILABLE, StatusCode.DEADLINE_EXCEEDED]:
                 raise ConnectionError(f"Connecting to {self.server_url}: {exc.details()} (after {ms} ms)")
-            elif exc.code() == grpc.StatusCode.FAILED_PRECONDITION:
+            elif exc.code() == StatusCode.FAILED_PRECONDITION:
                 # TODO: include a link to the latest package
                 raise VersionError(
                     f"The client version {self.version} is too old. Please update to the latest package."
@@ -100,11 +100,15 @@ class _Client:
     async def _heartbeat(self):
         if self._stub is not None:
             req = api_pb2.ClientHeartbeatRequest(client_id=self._client_id, num_connections=self._channel_pool.size())
-            response: api_pb2.ClientHeartbeatResponse = await self.stub.ClientHeartbeat(req)
-            if response.status == api_pb2.ClientHeartbeatResponse.CLIENT_HEARTBEAT_STATUS_GONE:
-                # server has deleted this client - perform graceful shutdown
-                # can't simply await self._stop here since it recursively wait for this task as well
-                asyncio.ensure_future(self._stop())
+            try:
+                await self.stub.ClientHeartbeat(req)
+            except AioRpcError as exc:
+                if exc.code() == StatusCode.NOT_FOUND:
+                    # server has deleted this client - perform graceful shutdown
+                    # can't simply await self._stop here since it recursively wait for this task as well
+                    asyncio.ensure_future(self._stop())
+                else:
+                    raise
 
     async def __aenter__(self):
         try:

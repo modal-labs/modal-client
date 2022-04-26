@@ -10,6 +10,8 @@ import cloudpickle
 import grpc
 import pkg_resources
 from google.protobuf.empty_pb2 import Empty
+from grpc import StatusCode
+from grpc.aio import ServicerContext
 
 from modal._app_singleton import set_container_app
 from modal.client import AioClient, Client
@@ -44,99 +46,90 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.heartbeat_return_client_gone = False
 
     async def ClientCreate(
-        self, request: api_pb2.ClientCreateRequest, context: grpc.aio.ServicerContext = None, timeout=None
+        self, request: api_pb2.ClientCreateRequest, context: ServicerContext = None, timeout=None
     ) -> api_pb2.ClientCreateResponse:
         self.requests.append(request)
         client_id = "cl-123"
         if pkg_resources.parse_version(request.version) < pkg_resources.parse_version(__version__):
-            await context.abort(grpc.StatusCode.FAILED_PRECONDITION, "Old client")
+            await context.abort(StatusCode.FAILED_PRECONDITION, "Old client")
         return api_pb2.ClientCreateResponse(client_id=client_id)
 
     async def AppCreate(
         self,
         request: api_pb2.AppCreateRequest,
-        context: grpc.aio.ServicerContext = None,
+        context: ServicerContext = None,
     ) -> api_pb2.AppCreateResponse:
         self.requests.append(request)
         app_id = "se-123"
         return api_pb2.AppCreateResponse(app_id=app_id)
 
     async def AppClientDisconnect(
-        self, request: api_pb2.AppClientDisconnectRequest, context: grpc.aio.ServicerContext = None
+        self, request: api_pb2.AppClientDisconnectRequest, context: ServicerContext = None
     ) -> Empty:
         self.requests.append(request)
         self.done = True
         return Empty()
 
-    async def ClientHeartbeat(
-        self, request: api_pb2.ClientHeartbeatRequest, context: grpc.aio.ServicerContext = None
-    ) -> Empty:
+    async def ClientHeartbeat(self, request: api_pb2.ClientHeartbeatRequest, context: ServicerContext = None) -> Empty:
         self.requests.append(request)
         if self.heartbeat_return_client_gone:
-            return api_pb2.ClientHeartbeatResponse(status=api_pb2.ClientHeartbeatResponse.CLIENT_HEARTBEAT_STATUS_GONE)
-        return api_pb2.ClientHeartbeatResponse(
-            status=api_pb2.ClientHeartbeatResponse.CLIENT_HEARTBEAT_STATUS_ACTIVE,
-            seconds_since_last=1.0,
-        )
+            await context.abort(StatusCode.NOT_FOUND, f"Client {request.client_id} not found")
+        return api_pb2.ClientHeartbeatResponse(seconds_since_last=1.0)
 
     async def ImageGetOrCreate(
-        self, request: api_pb2.ImageGetOrCreateRequest, context: grpc.aio.ServicerContext
+        self, request: api_pb2.ImageGetOrCreateRequest, context: ServicerContext
     ) -> api_pb2.ImageGetOrCreateResponse:
         self.last_image = request.image
         return api_pb2.ImageGetOrCreateResponse(image_id="im-123")
 
-    async def ImageJoin(
-        self, request: api_pb2.ImageJoinRequest, context: grpc.aio.ServicerContext
-    ) -> api_pb2.ImageJoinResponse:
+    async def ImageJoin(self, request: api_pb2.ImageJoinRequest, context: ServicerContext) -> api_pb2.ImageJoinResponse:
         return api_pb2.ImageJoinResponse(
             result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
         )
 
     async def AppGetLogs(
-        self, request: api_pb2.AppGetLogsRequest, context: grpc.aio.ServicerContext = None, timeout=None
+        self, request: api_pb2.AppGetLogsRequest, context: ServicerContext = None, timeout=None
     ) -> typing.AsyncIterator[api_pb2.TaskLogsBatch]:
         await asyncio.sleep(0.1)
         if self.done:
             yield api_pb2.TaskLogsBatch(app_state=api_pb2.APP_STATE_STOPPED)
 
     async def FunctionGetInputs(
-        self, request: api_pb2.FunctionGetInputsRequest, context: grpc.aio.ServicerContext = None
+        self, request: api_pb2.FunctionGetInputsRequest, context: ServicerContext = None
     ) -> api_pb2.FunctionGetInputsResponse:
         return self.container_inputs.pop(0)
 
     async def FunctionPutOutputs(
-        self, request: api_pb2.FunctionPutOutputsRequest, context: grpc.aio.ServicerContext = None
+        self, request: api_pb2.FunctionPutOutputsRequest, context: ServicerContext = None
     ) -> api_pb2.FunctionPutOutputsResponse:
         self.container_outputs.append(request)
         return api_pb2.FunctionPutOutputsResponse(status=api_pb2.WRITE_STATUS_SUCCESS)
 
     async def AppGetObjects(
-        self, request: api_pb2.AppGetObjectsRequest, context: grpc.aio.ServicerContext = None
+        self, request: api_pb2.AppGetObjectsRequest, context: ServicerContext = None
     ) -> api_pb2.AppGetObjectsResponse:
         return api_pb2.AppGetObjectsResponse(object_ids=self.object_ids)
 
-    async def AppSetObjects(
-        self, request: api_pb2.AppSetObjectsRequest, context: grpc.aio.ServicerContext = None
-    ) -> Empty:
+    async def AppSetObjects(self, request: api_pb2.AppSetObjectsRequest, context: ServicerContext = None) -> Empty:
         self.objects = dict(request.object_ids)
         return Empty()
 
     async def QueueCreate(
-        self, request: api_pb2.QueueCreateRequest, context: grpc.aio.ServicerContext = None
+        self, request: api_pb2.QueueCreateRequest, context: ServicerContext = None
     ) -> api_pb2.QueueCreateResponse:
         self.n_queues += 1
         return api_pb2.QueueCreateResponse(queue_id=f"qu-{self.n_queues}")
 
-    async def QueuePut(self, request: api_pb2.QueuePutRequest, context: grpc.aio.ServicerContext = None) -> Empty:
+    async def QueuePut(self, request: api_pb2.QueuePutRequest, context: ServicerContext = None) -> Empty:
         self.queue += request.values
         return Empty()
 
     async def QueueGet(
-        self, request: api_pb2.QueueGetRequest, context: grpc.aio.ServicerContext = None
+        self, request: api_pb2.QueueGetRequest, context: ServicerContext = None
     ) -> api_pb2.QueueGetResponse:
         return api_pb2.QueueGetResponse(values=[self.queue.pop(0)])
 
-    async def AppDeploy(self, request: api_pb2.AppDeployRequest, context: grpc.aio.ServicerContext = None) -> Empty:
+    async def AppDeploy(self, request: api_pb2.AppDeployRequest, context: ServicerContext = None) -> Empty:
         if request.object_id:
             self.deployments[request.name] = request.object_id
         elif request.object_ids:
@@ -147,7 +140,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         return Empty()
 
     async def AppIncludeObject(
-        self, request: api_pb2.AppIncludeObjectRequest, context: grpc.aio.ServicerContext
+        self, request: api_pb2.AppIncludeObjectRequest, context: ServicerContext
     ) -> api_pb2.AppIncludeObjectResponse:
         if request.object_label:
             object_id = self.deployments.get((request.name, request.object_label))
@@ -158,14 +151,14 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     async def MountCreate(
         self,
         request: api_pb2.MountCreateRequest,
-        context: grpc.aio.ServicerContext,
+        context: ServicerContext,
     ) -> api_pb2.MountCreateResponse:
         return api_pb2.MountCreateResponse(mount_id="mo-123")
 
     async def MountRegisterFile(
         self,
         request: api_pb2.MountRegisterFileRequest,
-        context: grpc.aio.ServicerContext,
+        context: ServicerContext,
     ) -> api_pb2.MountRegisterFileResponse:
         self.files_name2sha[request.filename] = request.sha256_hex
         return api_pb2.MountRegisterFileResponse(filename=request.filename, exists=False)
@@ -173,7 +166,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     async def MountUploadFile(
         self,
         request: api_pb2.MountUploadFileRequest,
-        context: grpc.aio.ServicerContext,
+        context: ServicerContext,
     ) -> Empty:
         self.files_sha2data[request.sha256_hex] = request.data
         return Empty()
@@ -181,14 +174,14 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     async def MountDone(
         self,
         request: api_pb2.MountDoneRequest,
-        context: grpc.aio.ServicerContext,
+        context: ServicerContext,
     ) -> Empty:
         return Empty()
 
     async def FunctionCreate(
         self,
         request: api_pb2.FunctionCreateRequest,
-        context: grpc.aio.ServicerContext,
+        context: ServicerContext,
     ) -> api_pb2.FunctionCreateResponse:
         if self.function_create_error:
             raise Exception("Function create failed")
@@ -201,14 +194,14 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     async def FunctionMap(
         self,
         request: api_pb2.FunctionMapRequest,
-        context: grpc.aio.ServicerContext,
+        context: ServicerContext,
     ) -> api_pb2.FunctionMapResponse:
         return api_pb2.FunctionMapResponse(function_call_id="fc-out")
 
     async def FunctionPutInputs(
         self,
         request: api_pb2.FunctionPutInputsRequest,
-        context: grpc.aio.ServicerContext,
+        context: ServicerContext,
     ) -> api_pb2.FunctionPutInputsResponse:
         for function_input in request.inputs:
             args, kwargs = cloudpickle.loads(function_input.args) if function_input.args else ((), {})
@@ -218,7 +211,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     async def FunctionGetOutputs(
         self,
         request: api_pb2.FunctionGetOutputsRequest,
-        context: grpc.aio.ServicerContext,
+        context: ServicerContext,
     ) -> api_pb2.FunctionGetOutputsResponse:
         if self.client_calls:
             args, kwargs = self.client_calls.pop(0)
@@ -238,7 +231,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     async def SecretCreate(
         self,
         request: api_pb2.SecretCreateRequest,
-        context: grpc.aio.ServicerContext,
+        context: ServicerContext,
     ) -> api_pb2.SecretCreateResponse:
         return api_pb2.SecretCreateResponse(secret_id="st-123")
 

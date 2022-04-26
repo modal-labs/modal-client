@@ -63,15 +63,7 @@ message ClientHeartbeatRequest {
   int32 num_connections = 2;
 }
 
-
 message ClientHeartbeatResponse {
-  enum ClientHeartbeatStatus {
-    CLIENT_HEARTBEAT_STATUS_UNSPECIFIED = 0;
-    CLIENT_HEARTBEAT_STATUS_ACTIVE = 1;
-    CLIENT_HEARTBEAT_STATUS_GONE = 2;
-  }
-
-  ClientHeartbeatStatus status = 1;
   double seconds_since_last = 2;
 }
 
