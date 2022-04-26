@@ -94,9 +94,9 @@ def test_deploy_uses_deployment_name_if_specified(servicer, client):
 
 def test_deploy_running_app_fails(servicer, client):
     app = App()
-    with app.run():
+    with app.run(client=client):
         with pytest.raises(modal.exception.InvalidError):
-            app.deploy(name="my_deployment")
+            app.deploy(name="my_deployment", client=client)
 
 
 def test_run_function_without_app_error():
