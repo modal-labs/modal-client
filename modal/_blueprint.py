@@ -8,10 +8,10 @@ class Blueprint:
 
     These objects are not created yet but may be created later."""
 
-    _pending_tagged_objects: List[Object]
+    _objects: List[Object]
 
     def __init__(self):
-        self._pending_tagged_objects = []
+        self._objects = []
 
     def register(self, obj):
         """Registers an object to be created by the app so that it's available in modal.
@@ -21,8 +21,8 @@ class Blueprint:
         if obj.tag is None:
             raise Exception("Can only register named objects")
 
-        self._pending_tagged_objects.append(obj)
+        self._objects.append(obj)
 
     def get_objects(self):
-        for obj in self._pending_tagged_objects:
+        for obj in self._objects:
             yield obj
