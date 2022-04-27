@@ -1,4 +1,5 @@
 import asyncio
+import functools
 from typing import Collection, Optional
 
 import colorama
@@ -230,7 +231,8 @@ class _Function(Object, type_prefix="fu"):
         # TODO: maybe break this out into a separate decorator for notebooks.
         serialized: bool = False,
         mounts: Collection[_Mount] = (),
-        asgi_app: bool = False,
+        webhook_type: api_pb2.Function.WebhookType = api_pb2.Function.WEBHOOK_TYPE_UNSPECIFIED,
+        webhook_methods: Collection[str] = [],
     ):
         assert callable(raw_f)
         self.info = FunctionInfo(raw_f, serialized)
@@ -256,7 +258,8 @@ class _Function(Object, type_prefix="fu"):
         self.gpu = gpu
         self.rate_limit = rate_limit
         self.mounts = mounts
-        self.asgi_app = asgi_app
+        self.webhook_type = webhook_type
+        self.webhook_methods = webhook_methods
         self.web_url = None
         Object.__init__(self, app, tag)
 
@@ -317,7 +320,8 @@ class _Function(Object, type_prefix="fu"):
             function_type=function_type,
             resources=api_pb2.Resources(gpu=self.gpu),
             rate_limit=rate_limit,
-            asgi_app=self.asgi_app,
+            webhook_type=self.webhook_type,
+            webhook_methods=self.webhook_methods,
         )
         request = api_pb2.FunctionCreateRequest(
             app_id=app.app_id,
@@ -366,6 +370,14 @@ class _Function(Object, type_prefix="fu"):
 
     def get_raw_f(self):
         return self.raw_f
+
+
+def webhook(f):
+    @functools.wraps(f)
+    def f_wrapped(*args, **kwargs):
+        return f()
+
+    return f_wrapped(k)
 
 
 Function, AioFunction = synchronize_apis(_Function)

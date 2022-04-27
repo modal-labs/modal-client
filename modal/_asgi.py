@@ -6,14 +6,11 @@ def asgi_app_wrapper(asgi_app):
         messages = []
 
         async def send(message):
-            print("SENT", message)
             messages.append(message)
 
         async def receive():
-            print("RECEIVED", body)
             return {"type": "http.request", "body": body}
 
-        print("INSIDE WRAPPER!", scope)
         await asgi_app(scope, receive, send)
 
         return messages
@@ -27,5 +24,10 @@ def fastAPI_function_wrapper(fn: Callable, methods: List[str]):
     from fastapi import FastAPI
 
     app = FastAPI()
-    app.route("/", methods)(fn)
+
+    if len(methods) == 1 and methods[0] == "POST":
+        # Using app.route() directly seems to not use the Pydantic models correctly.
+        app.post("/")(fn)
+    else:
+        app.route("/", methods)(fn)
     return asgi_app_wrapper(app)

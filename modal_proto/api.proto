@@ -306,7 +306,13 @@ message Function {
 
   RateLimit rate_limit = 11;
 
-  bool asgi_app = 12;
+  enum WebhookType {
+    WEBHOOK_TYPE_UNSPECIFIED = 0;
+    WEBHOOK_TYPE_ASGI_APP = 1;
+    WEBHOOK_TYPE_FUNCTION = 2;
+  }
+  WebhookType webhook_type = 12;
+  repeated string webhook_methods = 13;
 }
 
 message FunctionCreateRequest {

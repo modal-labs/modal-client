@@ -506,7 +506,35 @@ class _App:
             is_generator=False,
             gpu=gpu,
             mounts=mounts,
-            asgi_app=True,
+            webhook_type=api_pb2.Function.WEBHOOK_TYPE_ASGI_APP,
+        )
+        return function
+
+    @decorator_with_options
+    def webhook(
+        self,
+        raw_f,
+        methods: Collection[str] = ["GET"],  # REST methods to support for the created endpoint.
+        image: _Image = None,  # The image to run as the container for the function
+        secret: Optional[Secret] = None,  # An optional Modal Secret with environment variables for the container
+        secrets: Collection[Secret] = (),  # Plural version of `secret` when multiple secrets are needed
+        gpu: bool = False,  # Whether a GPU is required
+        mounts: Collection[_Mount] = (),
+    ):
+        if image is None:
+            image = _DebianSlim(app=self)
+
+        function = _Function(
+            self,
+            raw_f,
+            image=image,
+            secret=secret,
+            secrets=secrets,
+            is_generator=False,
+            gpu=gpu,
+            mounts=mounts,
+            webhook_type=api_pb2.Function.WEBHOOK_TYPE_FUNCTION,
+            webhook_methods=methods,
         )
         return function
 
