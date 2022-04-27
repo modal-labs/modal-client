@@ -1,4 +1,4 @@
-from typing import Callable, List
+from typing import Callable
 
 
 def asgi_app_wrapper(asgi_app):
@@ -18,16 +18,27 @@ def asgi_app_wrapper(asgi_app):
     return fn
 
 
-def fastAPI_function_wrapper(fn: Callable, methods: List[str]):
+def fastAPI_function_wrapper(fn: Callable, method: str):
     """Take in a function that's not attached to an ASGI app,
     and return a wrapped FastAPI app with this function as the root handler."""
     from fastapi import FastAPI
 
     app = FastAPI()
 
-    if len(methods) == 1 and methods[0] == "POST":
-        # Using app.route() directly seems to not use the Pydantic models correctly.
+    # Using app.route() directly seems to not set up the FastAPI models correctly.
+    if method == "POST":
         app.post("/")(fn)
-    else:
-        app.route("/", methods)(fn)
+    elif method == "GET":
+        app.get("/")(fn)
+    elif method == "DELETE":
+        app.delete("/")(fn)
+    elif method == "HEAD":
+        app.head("/")(fn)
+    elif method == "OPTIONS":
+        app.options("/")(fn)
+    elif method == "PATCH":
+        app.patch("/")(fn)
+    elif method == "PUT":
+        app.put("/")(fn)
+
     return asgi_app_wrapper(app)

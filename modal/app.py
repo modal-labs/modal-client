@@ -514,7 +514,7 @@ class _App:
     def webhook(
         self,
         raw_f,
-        methods: Collection[str] = ["GET"],  # REST methods to support for the created endpoint.
+        method: str = "GET",  # REST methods to support for the created endpoint.
         image: _Image = None,  # The image to run as the container for the function
         secret: Optional[Secret] = None,  # An optional Modal Secret with environment variables for the container
         secrets: Collection[Secret] = (),  # Plural version of `secret` when multiple secrets are needed
@@ -534,7 +534,7 @@ class _App:
             gpu=gpu,
             mounts=mounts,
             webhook_type=api_pb2.Function.WEBHOOK_TYPE_FUNCTION,
-            webhook_methods=methods,
+            webhook_method=method,
         )
         return function
 

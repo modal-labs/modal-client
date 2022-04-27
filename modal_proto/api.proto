@@ -312,7 +312,7 @@ message Function {
     WEBHOOK_TYPE_FUNCTION = 2;
   }
   WebhookType webhook_type = 12;
-  repeated string webhook_methods = 13;
+  string webhook_method = 14;
 }
 
 message FunctionCreateRequest {
