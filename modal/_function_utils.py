@@ -51,6 +51,7 @@ class FunctionInfo:
             self.base_dir = os.path.dirname(self.file)
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
             self.is_package = False
+            self.is_file = True
         else:
             # Use cloudpickle. Used when working w/ Jupyter notebooks.
             self.function_serialized = cloudpickle.dumps(f)
@@ -59,6 +60,7 @@ class FunctionInfo:
             self.base_dir = os.path.abspath("")  # get current dir
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_SERIALIZED
             self.is_package = False
+            self.is_file = False
 
     def create_mounts(self, app) -> List[_Mount]:
         if self.is_package:
@@ -71,7 +73,7 @@ class FunctionInfo:
                     condition=package_mount_condition,
                 )
             ]
-        else:
+        elif self.is_file:
             mounts = [
                 _Mount(
                     app=app,
@@ -111,6 +113,8 @@ class FunctionInfo:
                             remote_dir=os.path.join(ROOT_DIR, relpath),
                         )
                     )
+        else:
+            mounts = []
         return mounts
 
     def get_tag(self):
