@@ -3,7 +3,7 @@ import concurrent.futures
 import functools
 import inspect
 import time
-from typing import Any, Coroutine, List, Optional
+from typing import Any, List, Optional
 
 import synchronicity
 
@@ -192,7 +192,7 @@ class TaskContext:
     async def __aexit__(self, exc_type, value, tb):
         await self.stop()
 
-    def create_task(self, coro_or_task):
+    def create_task(self, coro_or_task) -> asyncio.Task:
         if isinstance(coro_or_task, asyncio.Task):
             task = coro_or_task
         elif asyncio.iscoroutine(coro_or_task):
@@ -203,7 +203,7 @@ class TaskContext:
         self._tasks.add(task)
         return task
 
-    def infinite_loop(self, async_f, timeout=90, sleep=10) -> Coroutine[Any, Any, None]:
+    def infinite_loop(self, async_f, timeout=90, sleep=10) -> asyncio.Task:
         function_name = async_f.__qualname__
 
         async def loop_coro() -> None:

@@ -225,7 +225,7 @@ if config["sentry_dsn"] and "localhost" not in config["server_url"]:
             integrations=[AtexitIntegration(callback=sentry_exit_callback)],
             # Sentry DSN for the client project; not secret.
             traces_sample_rate=1,
-        )
+        )  # type: ignore
 
         sentry_sdk.set_tag("token_id", config["token_id"])
         sentry_sdk.set_user(
