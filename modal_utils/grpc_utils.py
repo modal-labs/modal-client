@@ -7,7 +7,7 @@ from grpc.aio._channel import Channel
 
 from modal_utils.server_connection import GRPCConnectionFactory
 
-from .async_utils import TaskContext, add_traceback
+from .async_utils import TaskContext
 from .logger import logger
 
 
@@ -115,16 +115,10 @@ class ChannelPool:
         return len(self._channels)
 
     def _wrap_base(self, coro, method):
-        # grpcio wants a sync function that returns an coroutine (or a async generator)
-        def f(req, **kwargs):
-            ret = coro(req, **kwargs)
-            return add_traceback(ret, method)  # gRPC seems to suppress tracebacks in many cases
-
         # Put a name on the coroutine so that stack traces are a bit more readable
-        f.__name__ = "__wrapped_" + re.sub(r"\W", "", method)
-        f.__qualname__ = "ChannelPool." + f.__name__
-
-        return f
+        coro.__name__ = "__wrapped_" + re.sub(r"\W", "", method)
+        coro.__qualname__ = "ChannelPool." + coro.__name__
+        return coro
 
     def _wrap_function(self, rpc_type, method, request_serializer, response_deserializer):
         async def coro(req, **kwargs):

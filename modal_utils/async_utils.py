@@ -99,41 +99,6 @@ def retry(direct_fn=None, *, n_attempts=3, base_delay=0, delay_factor=2, timeout
         return decorator
 
 
-def add_traceback(obj, func_name=None):
-    """Wrap a function/generator and make sure its traceback is always printed."""
-    if func_name is None:
-        func_name = repr(obj)
-    if inspect.iscoroutine(obj):
-
-        async def _wrap_coro():
-            try:
-                return await obj
-            # pre Python3.8, CancelledErrors were a subclass of exception
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                logger.exception(f"Exception while running {func_name}")
-                raise
-
-        return _wrap_coro()
-    elif inspect.isasyncgen(obj):
-
-        async def _wrap_gen():
-            try:
-                async for elm in obj:
-                    yield elm
-            # pre Python3.8, CancelledErrors were a subclass of exception
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                logger.exception(f"Exception while running {func_name}")
-                raise
-
-        return _wrap_gen()
-    else:
-        raise Exception(f"{obj} is not a coro or async gen!")
-
-
 class TaskContext:
     """Simple thing to make sure we don't have stray tasks.
 
