@@ -414,6 +414,7 @@ class _App:
                     object_ids=object_ids,
                 )
                 await client.stub.AppDeploy(deploy_req)
+        return self._app_id
 
     async def _include(self, name, object_label, namespace):
         """Internal method to resolve to an object id."""
