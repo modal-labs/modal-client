@@ -275,10 +275,18 @@ class _App:
             visible_progress = show_progress
 
         try:
-            # Start app
-            req = api_pb2.AppCreateRequest(client_id=client.client_id, name=self.name)
-            resp = await client.stub.AppCreate(req)
-            self._app_id = resp.app_id
+            if existing_app_id is not None:
+                # Get all the objects first
+                req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
+                resp = await self.client.stub.AppGetObjects(req)
+                self._patchable_tagged_objects = dict(resp.object_ids)
+                self._app_id = existing_app_id
+            else:
+                # Start app
+                # TODO(erikbern): maybe this should happen outside of this method?
+                req = api_pb2.AppCreateRequest(client_id=client.client_id, name=self.name)
+                resp = await client.stub.AppCreate(req)
+                self._app_id = resp.app_id
 
             # Start tracking logs and yield context
             async with TaskContext(grace=config["logs_timeout"]) as tc:
@@ -295,6 +303,8 @@ class _App:
                         self._progress.step("Running app...", "App completed.")
 
                         # Create the app (and send a list of all tagged obs)
+                        # TODO(erikbern): we should delete objects from a previous version that are no longer needed
+                        # We just delete them from the app, but the actual objects will stay around
                         req_set = api_pb2.AppSetObjectsRequest(
                             app_id=self._app_id,
                             object_ids=self._created_tagged_objects,
