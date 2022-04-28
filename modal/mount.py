@@ -73,6 +73,10 @@ class _Mount(Object, type_prefix="mo"):
 
     async def load(self, app):
         # Run a threadpool to compute hash values, and use n coroutines to put files
+        # TODO(erikbern): this is not ideal when mounts are created in-place, because it
+        # creates a brief period where the files are reset to an empty list.
+        # A better way to do it is to upload the files before we create the mount.
+        # Let's consider doing this as a part of refactoring how we store mounts and files.
         n_files = 0
         n_missing_files = 0
         total_bytes = 0
