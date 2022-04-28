@@ -388,7 +388,7 @@ class _App:
 
         async with self._get_client(client) as client:
             # Look up any existing deployment
-            app_req = api_pb2.AppGetByDeploymentNameRequest(name=name, namespace=namespace)
+            app_req = api_pb2.AppGetByDeploymentNameRequest(name=name, namespace=namespace, client_id=client.client_id)
             app_resp = await client.stub.AppGetByDeploymentName(app_req)
             existing_app_id = app_resp.app_id or None
 
