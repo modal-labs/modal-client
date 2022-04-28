@@ -62,7 +62,7 @@ def _local_construction_make(app, cls, fun):
             if not isinstance(obj, cls):
                 raise TypeError(f"expected {obj} to have type {cls}")
             # Then let's create the object
-            object_id = await obj.load(app)
+            object_id = await obj.load(app, existing_object_id)
             # Note that we can "steal" the object id from the other object
             # and set it on this object. This is a general trick we can do
             # to other objects too.

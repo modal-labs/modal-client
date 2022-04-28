@@ -233,7 +233,12 @@ class _App:
             # TODO: this is a bit of a special case that we should clean up later
             object_id = await self._include(obj.label.app_name, obj.label.object_label, obj.label.namespace)
         else:
-            object_id = await obj.load(self, self._patchable_tagged_objects.get(obj.tag))
+            existing_object_id = self._patchable_tagged_objects.get(obj.tag)
+            object_id = await obj.load(self, existing_object_id)
+            if existing_object_id is not None and object_id != existing_object_id:
+                raise Exception(
+                    f"Tried creating an object with tag {obj.tag} using existing id {existing_object_id} but it has id {object_id}"
+                )
         if object_id is None:
             raise Exception(f"object_id for object of type {type(obj)} is None")
 
