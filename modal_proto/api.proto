@@ -135,6 +135,7 @@ message AppDetachRequest {
 
 message QueueCreateRequest {
   string app_id = 1;
+  string existing_queue_id = 2;
 }
 
 message QueueCreateResponse {
@@ -179,6 +180,7 @@ message Image {
 message ImageGetOrCreateRequest {
   Image image = 2;
   string app_id = 4;
+  string existing_image_id = 5;  // ignored
 }
 
 message ImageGetOrCreateResponse {
@@ -203,6 +205,7 @@ message DictEntry {
 message DictCreateRequest {
   repeated DictEntry data = 1;
   string app_id = 2;
+  string existing_dict_id = 3;
 }
 
 message DictCreateResponse {
@@ -258,6 +261,7 @@ message SecretCreateRequest {
   map<string, string> env_dict = 1;
   string app_id = 2;
   string template_type = 3;
+  string existing_secret_id = 4;
 }
 
 message SecretCreateResponse {
@@ -319,6 +323,7 @@ message FunctionCreateRequest {
   Function function = 1;
   string app_id = 2;
   Schedule schedule = 6;
+  string existing_function_id = 7;
 }
 
 message FunctionCreateResponse {
@@ -389,6 +394,8 @@ message FunctionGetOutputsResponse {
 }
 
 message BlobCreateRequest {
+  // TODO(erikbern): how are these garbage collected?
+  // Shouldn't they belong to an app?
   string content_md5 = 1;
 }
 
@@ -407,6 +414,7 @@ message BlobGetResponse {
 
 message MountCreateRequest {
   string app_id = 2;
+  string existing_mount_id = 3;
 }
 
 message MountCreateResponse {
@@ -542,7 +550,7 @@ service ModalClient {
   rpc DictContains(DictContainsRequest) returns (DictContainsResponse);
   rpc DictLen(DictLenRequest) returns (DictLenResponse);
 
-  // Env Dicts
+  // Secrets
   rpc SecretCreate(SecretCreateRequest) returns (SecretCreateResponse);
 
   // Functions
