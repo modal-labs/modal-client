@@ -133,6 +133,15 @@ message AppDetachRequest {
   string app_id = 1;
 }
 
+message AppGetByDeploymentNameRequest {
+  DeploymentNamespace namespace = 1;
+  string name = 2;
+}
+
+message AppGetByDeploymentNameResponse {
+  string app_id = 1;
+}
+
 message QueueCreateRequest {
   string app_id = 1;
   string existing_queue_id = 2;
@@ -522,6 +531,7 @@ service ModalClient {
   rpc AppIncludeObject(AppIncludeObjectRequest) returns (AppIncludeObjectResponse);
   rpc AppDeploy(AppDeployRequest) returns (google.protobuf.Empty);
   rpc AppDetach(AppDetachRequest) returns (google.protobuf.Empty);
+  rpc AppGetByDeploymentName(AppGetByDeploymentNameRequest) returns (AppGetByDeploymentNameResponse);
 
   // Queues
   rpc QueueCreate(QueueCreateRequest) returns (QueueCreateResponse);
