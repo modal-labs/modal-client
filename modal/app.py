@@ -277,16 +277,16 @@ class _App:
         try:
             if existing_app_id is not None:
                 # Get all the objects first
-                req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
-                resp = await self.client.stub.AppGetObjects(req)
-                self._patchable_tagged_objects = dict(resp.object_ids)
+                obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
+                obj_resp = await self.client.stub.AppGetObjects(obj_req)
+                self._patchable_tagged_objects = dict(obj_resp.object_ids)
                 self._app_id = existing_app_id
             else:
                 # Start app
                 # TODO(erikbern): maybe this should happen outside of this method?
-                req = api_pb2.AppCreateRequest(client_id=client.client_id, name=self.name)
-                resp = await client.stub.AppCreate(req)
-                self._app_id = resp.app_id
+                app_req = api_pb2.AppCreateRequest(client_id=client.client_id, name=self.name)
+                app_resp = await client.stub.AppCreate(app_req)
+                self._app_id = app_resp.app_id
 
             # Start tracking logs and yield context
             async with TaskContext(grace=config["logs_timeout"]) as tc:
@@ -388,9 +388,9 @@ class _App:
 
         async with self._get_client(client) as client:
             # Look up any existing deployment
-            request = api_pb2.AppGetByDeploymentNameRequest(name=name, namespace=namespace)
-            response = await client.stub.AppGetByDeploymentName(request)
-            existing_app_id = response.app_id or None
+            app_req = api_pb2.AppGetByDeploymentNameRequest(name=name, namespace=namespace)
+            app_resp = await client.stub.AppGetByDeploymentName(app_req)
+            existing_app_id = app_resp.app_id or None
 
             # The `_run` method contains the logic for starting and running an app
             async with self._run(client, stdout, stderr, logs_timeout, show_progress, existing_app_id):
@@ -406,14 +406,14 @@ class _App:
                     raise InvalidError(f"{obj_or_objs} not an Object or dict or None")
 
                 # TODO: this could be simplified in case it's the same app id as previously
-                request = api_pb2.AppDeployRequest(
+                deploy_req = api_pb2.AppDeployRequest(
                     app_id=self._app_id,
                     name=name,
                     namespace=namespace,
                     object_id=object_id,
                     object_ids=object_ids,
                 )
-                await client.stub.AppDeploy(request)
+                await client.stub.AppDeploy(deploy_req)
 
     async def _include(self, name, object_label, namespace):
         """Internal method to resolve to an object id."""
