@@ -19,7 +19,7 @@ def test_app_deploy_success(servicer, mock_dir, monkeypatch):
         res = runner.invoke(cli.app_app, ["deploy", "myapp.py"])
         assert res.exit_code == 0
 
-    assert "my_app" in servicer.deployments
+    assert "my_app" in servicer.deployed_objects
 
 
 def test_app_deploy_no_such_module():

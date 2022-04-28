@@ -30,7 +30,8 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.container_outputs = []
         self.object_ids = {}
         self.queue = []
-        self.deployments = {
+        self.deployed_apps = {}
+        self.deployed_objects = {
             MODAL_CLIENT_MOUNT_NAME: "mo-123",
             "foo-queue": "qu-foo",
             f"debian-slim-{_dockerhub_python_version()}": "im-123",
@@ -44,6 +45,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.function2schedule = {}
         self.function_create_error = False
         self.heartbeat_return_client_gone = False
+        self.n_apps = 0
 
     async def ClientCreate(
         self, request: api_pb2.ClientCreateRequest, context: ServicerContext = None, timeout=None
@@ -60,7 +62,8 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         context: ServicerContext = None,
     ) -> api_pb2.AppCreateResponse:
         self.requests.append(request)
-        app_id = "se-123"
+        self.n_apps += 1
+        app_id = f"ap-{self.n_apps}"
         return api_pb2.AppCreateResponse(app_id=app_id)
 
     async def AppClientDisconnect(
@@ -130,27 +133,28 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         return api_pb2.QueueGetResponse(values=[self.queue.pop(0)])
 
     async def AppDeploy(self, request: api_pb2.AppDeployRequest, context: ServicerContext = None) -> Empty:
+        self.deployed_apps[request.name] = request.app_id
         if request.object_id:
-            self.deployments[request.name] = request.object_id
+            self.deployed_objects[request.name] = request.object_id
         elif request.object_ids:
             for label, object_id in request.object_ids.items():
-                self.deployments[(request.name, label)] = object_id
+                self.deployed_objects[(request.name, label)] = object_id
         else:
-            self.deployments[request.name] = ""  # for stuff like schedules that don't require arguments to deploy
+            self.deployed_objects[request.name] = ""  # for stuff like schedules that don't require arguments to deploy
         return Empty()
 
     async def AppGetByDeploymentName(
         self, request: api_pb2.AppGetByDeploymentNameRequest, context: ServicerContext = None
     ) -> api_pb2.AppGetByDeploymentNameResponse:
-        return api_pb2.AppGetByDeploymentNameResponse()
+        return api_pb2.AppGetByDeploymentNameResponse(app_id=self.deployed_apps.get(request.name))
 
     async def AppIncludeObject(
         self, request: api_pb2.AppIncludeObjectRequest, context: ServicerContext
     ) -> api_pb2.AppIncludeObjectResponse:
         if request.object_label:
-            object_id = self.deployments.get((request.name, request.object_label))
+            object_id = self.deployed_objects.get((request.name, request.object_label))
         else:
-            object_id = self.deployments.get(request.name)
+            object_id = self.deployed_objects.get(request.name)
         return api_pb2.AppIncludeObjectResponse(object_id=object_id)
 
     async def MountCreate(

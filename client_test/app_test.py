@@ -5,7 +5,7 @@ from modal import App
 from modal._app_state import AppState
 from modal.aio import AioApp, AioQueue
 from modal.app import _App
-from modal.exception import ExecutionError, NotFoundError
+from modal.exception import NotFoundError
 
 
 def test_app(reset_global_apps):
@@ -54,13 +54,29 @@ async def test_persistent_object(servicer, aio_client):
             await app_2.include("bazbazbaz")
 
 
-@pytest.mark.skip("TODO: how should this behave when we don't have global run?")
-def test_run_inside_container(reset_global_apps, servicer, aio_client):
-    App._initialize_container_app()
-    app = App()
-    with pytest.raises(ExecutionError):
-        with app.run(client=aio_client):
-            pass
+def square(x):
+    return x**2
+
+
+@pytest.mark.asyncio
+async def test_redeploy(servicer, aio_client):
+    app = AioApp()
+    f = app.function(square)
+
+    # Deploy app
+    await app.deploy("my-app", client=aio_client)
+    assert app.app_id == "ap-1"
+    assert f.object_id == "fu-1"
+
+    # Redeploy, make sure all ids are the same
+    await app.deploy("my-app", client=aio_client)
+    assert app.app_id == "ap-1"
+    assert f.object_id == "fu-1"
+
+    # Deploy to a different name, ids should change
+    await app.deploy("my-app-xyz", client=aio_client)
+    assert app.app_id == "ap-2"
+    assert f.object_id == "fu-2"
 
 
 # Should exit without waiting for the logs grace period.
@@ -82,14 +98,14 @@ def test_create_object_exception(servicer, client):
 def test_deploy_falls_back_to_app_name(servicer, client):
     named_app = App(name="foo_app")
     named_app.deploy(client=client)
-    assert "foo_app" in servicer.deployments
+    assert "foo_app" in servicer.deployed_objects
 
 
 def test_deploy_uses_deployment_name_if_specified(servicer, client):
     named_app = App(name="foo_app")
     named_app.deploy("bar_app", client=client)
-    assert "bar_app" in servicer.deployments
-    assert "foo_app" not in servicer.deployments
+    assert "bar_app" in servicer.deployed_objects
+    assert "foo_app" not in servicer.deployed_objects
 
 
 def test_deploy_running_app_fails(servicer, client):
