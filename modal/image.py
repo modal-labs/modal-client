@@ -41,7 +41,7 @@ class _Image(Object, type_prefix="im"):
         self._version = version
         super().__init__(app=app)
 
-    async def load(self, app):
+    async def load(self, app, existing_image_id):
         # Recursively build base images
         base_image_ids = await asyncio.gather(*(app.create_object(image) for image in self._base_images.values()))
         base_images_pb2s = [
@@ -65,6 +65,7 @@ class _Image(Object, type_prefix="im"):
         req = api_pb2.ImageGetOrCreateRequest(
             app_id=app.app_id,
             image=image_definition,
+            existing_image_id=existing_image_id,  # TODO: ignored
         )
         resp = await app.client.stub.ImageGetOrCreate(req)
         image_id = resp.image_id

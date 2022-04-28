@@ -21,7 +21,7 @@ class _Dict(Object, type_prefix="di"):
         self._data = data
         super().__init__(app=app)
 
-    async def load(self, app):
+    async def load(self, app, existing_dict_id):
         if app.app_id is None:
             raise InvalidError(
                 "No initialized app existed when creating Dict.\n\n"
@@ -32,7 +32,7 @@ class _Dict(Object, type_prefix="di"):
                 "See https://modal.com/docs/reference/modal.Dict"
             )
         serialized = self._serialize_dict(app, self._data)
-        req = api_pb2.DictCreateRequest(app_id=app.app_id, data=serialized)
+        req = api_pb2.DictCreateRequest(app_id=app.app_id, data=serialized, existing_dict_id=existing_dict_id)
         response = await app.client.stub.DictCreate(req)
         logger.debug("Created dict with id %s" % response.dict_id)
         return response.dict_id

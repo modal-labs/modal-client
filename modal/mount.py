@@ -71,7 +71,7 @@ class _Mount(Object, type_prefix="mo"):
             for fut in asyncio.as_completed(futs):
                 yield await fut
 
-    async def load(self, app):
+    async def load(self, app, existing_mount_id):
         # Run a threadpool to compute hash values, and use n coroutines to put files
         # TODO(erikbern): this is not ideal when mounts are created in-place, because it
         # creates a brief period where the files are reset to an empty list.
@@ -104,7 +104,7 @@ class _Mount(Object, type_prefix="mo"):
                 )
                 await retry(client.stub.MountUploadFile, base_delay=1)(request2)
 
-        req = api_pb2.MountCreateRequest(app_id=app.app_id)
+        req = api_pb2.MountCreateRequest(app_id=app.app_id, existing_mount_id=existing_mount_id)
         resp = await retry(app.client.stub.MountCreate, base_delay=1)(req)
         mount_id = resp.mount_id
 

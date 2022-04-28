@@ -271,7 +271,7 @@ class _Function(Object, type_prefix="fu"):
             return f"Created {self.tag} => {colorama.Fore.MAGENTA}{self.web_url}{colorama.Fore.RESET}"
         return f"Created {self.tag}."
 
-    async def load(self, app):
+    async def load(self, app, existing_function_id):
         mounts = [*self.info.create_mounts(app), *self.mounts]
         # TODO(erikbern): couldn't we just create one single mount with all packages instead of multiple?
         if config["sync_entrypoint"]:
@@ -326,6 +326,7 @@ class _Function(Object, type_prefix="fu"):
             app_id=app.app_id,
             function=function_definition,
             schedule=self.schedule.proto_message if self.schedule is not None else None,
+            existing_function_id=existing_function_id,
         )
         response = await app.client.stub.FunctionCreate(request)
 

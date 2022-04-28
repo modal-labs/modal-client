@@ -57,11 +57,11 @@ class Object(metaclass=ObjectMeta):
         obj = cls(*args, **kwargs)
         if obj._app.state != AppState.RUNNING:
             raise InvalidError(f"{cls.__name__}.create(...): can only do this on a running app")
-        object_id = await obj.load(obj._app)
+        object_id = await obj.load(obj._app, None)
         obj.set_object_id(object_id, obj._app)
         return obj
 
-    async def load(self, app):
+    async def load(self, app, existing_object_id):
         raise NotImplementedError(f"Object factory of class {type(self)} has no load method")
 
     @classmethod

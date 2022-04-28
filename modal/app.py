@@ -233,7 +233,7 @@ class _App:
             # TODO: this is a bit of a special case that we should clean up later
             object_id = await self._include(obj.label.app_name, obj.label.object_label, obj.label.namespace)
         else:
-            object_id = await obj.load(self)
+            object_id = await obj.load(self, self._patchable_tagged_objects.get(obj.tag))
         if object_id is None:
             raise Exception(f"object_id for object of type {type(obj)} is None")
 

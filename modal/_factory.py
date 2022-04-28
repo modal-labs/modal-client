@@ -55,7 +55,7 @@ def _local_construction_make(app, cls, fun):
             tag = _get_tag(fun)
             Object.__init__(self, app, tag)
 
-        async def load(self, app):
+        async def load(self, app, existing_object_id):
             if get_container_app() is not None:
                 assert False
             obj = await callback()
@@ -97,7 +97,7 @@ def _factory_make(cls, fun):
 
             Object.__init__(self, app, tag)
 
-        async def load(self, app):
+        async def load(self, app, existing_object_id):
             assert get_container_app() is None
             obj = await fun(app, **self._kwargs)
             if not isinstance(obj, cls):
