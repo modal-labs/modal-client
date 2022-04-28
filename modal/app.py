@@ -56,6 +56,7 @@ class _App:
     """
 
     _created_tagged_objects: Dict[str, str]  # tag -> id
+    _patchable_tagged_objects: Dict[str, str]  # tag -> id
 
     @classmethod
     def _initialize_container_app(cls):
@@ -82,6 +83,7 @@ class _App:
         self.name = name or self._infer_app_name()
         self.state = AppState.NONE
         self._created_tagged_objects = {}  # tag -> object id
+        self._patchable_tagged_objects = {}  # tag -> object id
         self._blueprint = Blueprint()
         self._task_states = {}
         self._progress = None
@@ -259,7 +261,7 @@ class _App:
             await self.create_object(obj)
 
     @synchronizer.asynccontextmanager
-    async def _run(self, client, stdout, stderr, logs_timeout, show_progress=None):
+    async def _run(self, client, stdout, stderr, logs_timeout, show_progress, existing_app_id):
         # TOOD: use something smarter than checking for the .client to exists in order to prevent
         # race conditions here!
         if self.state != AppState.NONE:
@@ -326,7 +328,7 @@ class _App:
     @synchronizer.asynccontextmanager
     async def run(self, client=None, stdout=None, stderr=None, logs_timeout=None, show_progress=None):
         async with self._get_client(client) as client:
-            async with self._run(client, stdout, stderr, logs_timeout, show_progress) as it:
+            async with self._run(client, stdout, stderr, logs_timeout, show_progress, None) as it:
                 yield it  # ctx mgr
 
     async def detach(self):
@@ -340,7 +342,11 @@ class _App:
             Object, Dict[str, Object]
         ] = None,  # A single Modal *Object* or a `dict[str, Object]` of labels -> Objects to be exported for use by other apps
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT,
-        **run_kwargs,
+        client=None,
+        stdout=None,
+        stderr=None,
+        logs_timeout=None,
+        show_progress=None,
     ):
         """Deploys and exports objects in the app
 
@@ -369,25 +375,35 @@ class _App:
                 "or\n"
                 'app = App("some name")'
             )
-        async with self.run(**run_kwargs):
-            object_id = None
-            object_ids = None  # name -> object_id
-            if isinstance(obj_or_objs, Object):
-                object_id = obj_or_objs.object_id
-            elif isinstance(obj_or_objs, dict):
-                object_ids = {label: obj.object_id for label, obj in obj_or_objs.items()}
-            elif obj_or_objs is None:
-                pass
-            else:
-                raise InvalidError(f"{obj_or_objs} not an Object or dict or None")
-            request = api_pb2.AppDeployRequest(
-                app_id=self._app_id,
-                name=name,
-                namespace=namespace,
-                object_id=object_id,
-                object_ids=object_ids,
-            )
-            await self.client.stub.AppDeploy(request)
+
+        async with self._get_client(client) as client:
+            # Look up any existing deployment
+            request = api_pb2.AppGetByDeploymentNameRequest(name=name, namespace=namespace)
+            response = await client.stub.AppGetByDeploymentName(request)
+            existing_app_id = response.app_id or None
+
+            # The `_run` method contains the logic for starting and running an app
+            async with self._run(client, stdout, stderr, logs_timeout, show_progress, existing_app_id):
+                object_id = None
+                object_ids = None  # name -> object_id
+                if isinstance(obj_or_objs, Object):
+                    object_id = obj_or_objs.object_id
+                elif isinstance(obj_or_objs, dict):
+                    object_ids = {label: obj.object_id for label, obj in obj_or_objs.items()}
+                elif obj_or_objs is None:
+                    pass
+                else:
+                    raise InvalidError(f"{obj_or_objs} not an Object or dict or None")
+
+                # TODO: this could be simplified in case it's the same app id as previously
+                request = api_pb2.AppDeployRequest(
+                    app_id=self._app_id,
+                    name=name,
+                    namespace=namespace,
+                    object_id=object_id,
+                    object_ids=object_ids,
+                )
+                await client.stub.AppDeploy(request)
 
     async def _include(self, name, object_label, namespace):
         """Internal method to resolve to an object id."""

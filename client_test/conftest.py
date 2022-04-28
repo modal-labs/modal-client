@@ -139,6 +139,11 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
             self.deployments[request.name] = ""  # for stuff like schedules that don't require arguments to deploy
         return Empty()
 
+    async def AppGetByDeploymentName(
+        self, request: api_pb2.AppGetByDeploymentNameRequest, context: ServicerContext = None
+    ) -> api_pb2.AppGetByDeploymentNameResponse:
+        return api_pb2.AppGetByDeploymentNameResponse()
+
     async def AppIncludeObject(
         self, request: api_pb2.AppIncludeObjectRequest, context: ServicerContext
     ) -> api_pb2.AppIncludeObjectResponse:
