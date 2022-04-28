@@ -21,7 +21,6 @@ aio_pymc_app = synchronizer._translate_out(synchronizer._translate_in(pymc_app),
 @_factory(_Image)
 async def _PyMCImage(app):
     dockerfile_commands = [
-        'SHELL ["/bin/bash", "-c"]',
         "RUN conda info",
         "RUN echo $0 \\ ",
         "&& . /root/.bashrc \\ ",
