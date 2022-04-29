@@ -389,7 +389,7 @@ class _App:
                 "Examples:\n"
                 'app.deploy("some_name")\n\n'
                 "or\n"
-                'app = App("some_name")'
+                'app = App("some-name")'
             )
         if not is_valid_deployment_name(name):
             raise InvalidError(f"Name {name} is not a valid deloyment name: try removing special characters")
