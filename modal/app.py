@@ -8,6 +8,7 @@ import grpc
 
 from modal._progress import safe_progress
 from modal_proto import api_pb2
+from modal_utils.app_utils import is_valid_deployment_name
 from modal_utils.async_utils import TaskContext, synchronize_apis, synchronizer
 from modal_utils.decorator_utils import decorator_with_options
 
@@ -388,8 +389,10 @@ class _App:
                 "Examples:\n"
                 'app.deploy("some_name")\n\n'
                 "or\n"
-                'app = App("some name")'
+                'app = App("some_name")'
             )
+        if not is_valid_deployment_name(name):
+            raise InvalidError(f"Name {name} is not a valid deloyment name: try removing special characters")
         # TODO(erikbern): we should verify that the name doesn't contain characters that can't be used in an URL
 
         async with self._get_client(client) as client:
