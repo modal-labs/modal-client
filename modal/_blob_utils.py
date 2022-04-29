@@ -17,11 +17,11 @@ def base64_md5(value) -> str:
     return base64.b64encode(m.digest()).decode("utf-8")
 
 
-async def blob_upload(payload, client):
+async def blob_upload(payload, stub):
     content_md5 = base64_md5(payload)
 
     req = api_pb2.BlobCreateRequest(content_md5=content_md5)
-    resp = await client.stub.BlobCreate(req)
+    resp = await stub.BlobCreate(req)
 
     blob_id = resp.blob_id
     target = resp.upload_url
@@ -40,9 +40,9 @@ async def blob_upload(payload, client):
     return blob_id
 
 
-async def blob_download(blob_id, client):
+async def blob_download(blob_id, stub):
     req = api_pb2.BlobGetRequest(blob_id=blob_id)
-    resp = await client.stub.BlobGet(req)
+    resp = await stub.BlobGet(req)
     target = resp.download_url
 
     async with aiohttp.ClientSession() as session:

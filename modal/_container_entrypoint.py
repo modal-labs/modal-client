@@ -96,7 +96,7 @@ class _FunctionContext:
         return self.app._deserialize(data)
 
     async def populate_input_blobs(self, item):
-        args = await blob_download(item.args_blob_id, self.client)
+        args = await blob_download(item.args_blob_id, self.client.stub)
 
         # Mutating
         item.ClearField("args_blob_id")
@@ -213,7 +213,7 @@ class _FunctionContext:
     async def enqueue_output(self, function_call_id, input_id, idx, **kwargs):
         # upload data to S3 if too big.
         if "data" in kwargs and kwargs["data"] and len(kwargs["data"]) > MAX_OBJECT_SIZE_BYTES:
-            data_blob_id = await blob_upload(kwargs["data"], self.client)
+            data_blob_id = await blob_upload(kwargs["data"], self.client.stub)
             # mutating kwargs.
             kwargs.pop("data")
             kwargs["data_blob_id"] = data_blob_id

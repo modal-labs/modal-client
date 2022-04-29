@@ -23,7 +23,7 @@ MODAL_CLIENT_MOUNT_NAME = "modal-client-mount"
 
 async def _process_result(app, result):
     if result.WhichOneof("data_oneof") == "data_blob_id":
-        data = await blob_download(result.data_blob_id, app.client)
+        data = await blob_download(result.data_blob_id, app.client.stub)
     else:
         data = result.data
 
@@ -56,7 +56,7 @@ async def _create_input(args, kwargs, app, function_call_id, idx=None) -> api_pb
     args_serialized = app._serialize((args, kwargs))
 
     if len(args_serialized) > MAX_OBJECT_SIZE_BYTES:
-        args_blob_id = await blob_upload(args_serialized, app.client)
+        args_blob_id = await blob_upload(args_serialized, app.client.stub)
 
         return api_pb2.FunctionInput(
             args_blob_id=args_blob_id,
