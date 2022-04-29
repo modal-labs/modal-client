@@ -84,6 +84,7 @@ class FunctionInfo:
 
             packages = set()
 
+            # Note: sys.modules may change during the iteration
             modules = list(sys.modules.values())
             for m in modules:
                 if getattr(m, "__package__", None):
