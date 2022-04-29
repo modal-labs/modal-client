@@ -84,7 +84,8 @@ class FunctionInfo:
 
             packages = set()
 
-            for m in sys.modules.values():
+            modules = list(sys.modules.values())
+            for m in modules:
                 if getattr(m, "__package__", None):
                     for path in __import__(m.__package__).__path__:
                         if path in packages or not path.startswith(self.base_dir) or path.startswith(sys.prefix):
