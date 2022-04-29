@@ -390,6 +390,7 @@ class _App:
                 "or\n"
                 'app = App("some name")'
             )
+        # TODO(erikbern): we should verify that the name doesn't contain characters that can't be used in an URL
 
         async with self._get_client(client) as client:
             # Look up any existing deployment

@@ -92,7 +92,9 @@ def deploy(app_ref: str, name: str = None):
         sys.exit(1)
 
     # TODO(erikbern): will this work for AioApps?
-    app.deploy(name=name)
+    app_id = app.deploy(name=name)
+    print(f"App deployed! {Symbols.PARTY_POPPER}")
+    print(f"App ID: {app_id}")  # TODO: print URL instead
 
 
 if __name__ == "__main__":
