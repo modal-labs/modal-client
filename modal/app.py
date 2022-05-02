@@ -148,9 +148,7 @@ class _App:
         if not self._progress.is_stopped():
             self._progress.substep(msg)
 
-    async def _get_logs_loop(self, stdout, stderr):
-        last_log_batch_entry_id = ""
-
+    async def _get_logs_loop(self, stdout, stderr, last_log_batch_entry_id: str = ""):
         async def _get_logs(stdout, stderr):
             nonlocal last_log_batch_entry_id
 
@@ -287,12 +285,14 @@ class _App:
                 obj_resp = await self.client.stub.AppGetObjects(obj_req)
                 self._patchable_tagged_objects = dict(obj_resp.object_ids)
                 self._app_id = existing_app_id
+                last_log_entry_id = obj_resp.last_log_entry_id
             else:
                 # Start app
                 # TODO(erikbern): maybe this should happen outside of this method?
                 app_req = api_pb2.AppCreateRequest(client_id=client.client_id, name=self.name)
                 app_resp = await client.stub.AppCreate(app_req)
                 self._app_id = app_resp.app_id
+                last_log_entry_id = None
 
             # Start tracking logs and yield context
             async with TaskContext(grace=config["logs_timeout"]) as tc:
@@ -300,7 +300,7 @@ class _App:
                     self._progress = progress_handler
                     self._progress.step("Initializing...", "Initialized.")
 
-                    tc.create_task(self._get_logs_loop(stdout, stderr))
+                    tc.create_task(self._get_logs_loop(stdout, stderr, last_log_entry_id))
 
                     try:
                         self._progress.step("Creating objects...", "Created objects.")
