@@ -148,7 +148,7 @@ class _App:
         if not self._progress.is_stopped():
             self._progress.substep(msg)
 
-    async def _get_logs_loop(self, stdout, stderr, last_log_batch_entry_id: str = ""):
+    async def _get_logs_loop(self, stdout, stderr, last_log_batch_entry_id: str):
         async def _get_logs(stdout, stderr):
             nonlocal last_log_batch_entry_id
 
@@ -265,7 +265,7 @@ class _App:
             await self.create_object(obj)
 
     @synchronizer.asynccontextmanager
-    async def _run(self, client, stdout, stderr, logs_timeout, show_progress, existing_app_id):
+    async def _run(self, client, stdout, stderr, logs_timeout, show_progress, existing_app_id, last_log_entry_id=None):
         # TOOD: use something smarter than checking for the .client to exists in order to prevent
         # race conditions here!
         if self.state != AppState.NONE:
@@ -285,14 +285,12 @@ class _App:
                 obj_resp = await self.client.stub.AppGetObjects(obj_req)
                 self._patchable_tagged_objects = dict(obj_resp.object_ids)
                 self._app_id = existing_app_id
-                last_log_entry_id = obj_resp.last_log_entry_id
             else:
                 # Start app
                 # TODO(erikbern): maybe this should happen outside of this method?
                 app_req = api_pb2.AppCreateRequest(client_id=client.client_id, name=self.name)
                 app_resp = await client.stub.AppCreate(app_req)
                 self._app_id = app_resp.app_id
-                last_log_entry_id = None
 
             # Start tracking logs and yield context
             async with TaskContext(grace=config["logs_timeout"]) as tc:
@@ -300,7 +298,7 @@ class _App:
                     self._progress = progress_handler
                     self._progress.step("Initializing...", "Initialized.")
 
-                    tc.create_task(self._get_logs_loop(stdout, stderr, last_log_entry_id))
+                    tc.create_task(self._get_logs_loop(stdout, stderr, last_log_entry_id or ""))
 
                     try:
                         self._progress.step("Creating objects...", "Created objects.")
@@ -397,9 +395,12 @@ class _App:
             app_req = api_pb2.AppGetByDeploymentNameRequest(name=name, namespace=namespace, client_id=client.client_id)
             app_resp = await client.stub.AppGetByDeploymentName(app_req)
             existing_app_id = app_resp.app_id or None
+            last_log_entry_id = app_resp.last_log_entry_id
 
             # The `_run` method contains the logic for starting and running an app
-            async with self._run(client, stdout, stderr, logs_timeout, show_progress, existing_app_id):
+            async with self._run(
+                client, stdout, stderr, logs_timeout, show_progress, existing_app_id, last_log_entry_id
+            ):
                 # TODO: this could be simplified in case it's the same app id as previously
                 deploy_req = api_pb2.AppDeployRequest(
                     app_id=self._app_id,

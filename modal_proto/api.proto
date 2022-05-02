@@ -101,7 +101,6 @@ message AppGetObjectsRequest {
 
 message AppGetObjectsResponse {
   map<string, string> object_ids = 1;
-  string last_log_entry_id = 2; // Last log entry as a starting point for the client.
 }
 
 enum DeploymentNamespace {  // TODO: rename this to something else?
@@ -140,6 +139,7 @@ message AppGetByDeploymentNameRequest {
 
 message AppGetByDeploymentNameResponse {
   string app_id = 1;
+  string last_log_entry_id = 2; // Last log entry as a starting point for the client.
 }
 
 message QueueCreateRequest {
