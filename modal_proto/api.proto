@@ -293,6 +293,17 @@ message RateLimit {
   RateLimitInterval interval = 2;
 }
 
+enum WebhookType {
+  WEBHOOK_TYPE_UNSPECIFIED = 0;
+  WEBHOOK_TYPE_ASGI_APP = 1;
+  WEBHOOK_TYPE_FUNCTION = 2;
+}
+
+message WebhookConfig {
+  WebhookType type = 1;
+  string method = 2;
+}
+
 message Function {
   string module_name = 1;
   string function_name = 2;
@@ -319,14 +330,7 @@ message Function {
   repeated string secret_ids = 10;
 
   RateLimit rate_limit = 11;
-
-  enum WebhookType {
-    WEBHOOK_TYPE_UNSPECIFIED = 0;
-    WEBHOOK_TYPE_ASGI_APP = 1;
-    WEBHOOK_TYPE_FUNCTION = 2;
-  }
-  WebhookType webhook_type = 12;
-  string webhook_method = 14;
+  WebhookConfig webhook_config = 12;
 }
 
 message FunctionCreateRequest {

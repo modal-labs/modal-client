@@ -230,8 +230,7 @@ class _Function(Object, type_prefix="fu"):
         # TODO: maybe break this out into a separate decorator for notebooks.
         serialized: bool = False,
         mounts: Collection[_Mount] = (),
-        webhook_type=api_pb2.Function.WEBHOOK_TYPE_UNSPECIFIED,  # TODO: fix type
-        webhook_method: Optional[str] = None,
+        webhook_config: Optional[api_pb2.WebhookConfig] = None,
     ):
         assert callable(raw_f)
         self.info = FunctionInfo(raw_f, serialized)
@@ -257,8 +256,7 @@ class _Function(Object, type_prefix="fu"):
         self.gpu = gpu
         self.rate_limit = rate_limit
         self.mounts = mounts
-        self.webhook_type = webhook_type
-        self.webhook_method = webhook_method
+        self.webhook_config = webhook_config
         self.web_url = None
         Object.__init__(self, app, tag)
 
@@ -319,8 +317,7 @@ class _Function(Object, type_prefix="fu"):
             function_type=function_type,
             resources=api_pb2.Resources(gpu=self.gpu),
             rate_limit=rate_limit,
-            webhook_type=self.webhook_type,
-            webhook_method=self.webhook_method,
+            webhook_config=self.webhook_config,
         )
         request = api_pb2.FunctionCreateRequest(
             app_id=app.app_id,

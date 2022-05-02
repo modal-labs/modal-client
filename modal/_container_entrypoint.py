@@ -378,13 +378,13 @@ def main(container_args, client):
         else:
             function = imported_function
 
-        if container_args.function_def.webhook_type == api_pb2.Function.WEBHOOK_TYPE_ASGI_APP:
+        if container_args.function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP:
             # function returns an asgi_app, that we can use as a callable.
             asgi_app = function()
             function = asgi_app_wrapper(asgi_app)
-        elif container_args.function_def.webhook_type == api_pb2.Function.WEBHOOK_TYPE_FUNCTION:
+        elif container_args.function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
             # function is webhook without an ASGI app. Create one for it.
-            function = fastAPI_function_wrapper(function, container_args.function_def.webhook_method)
+            function = fastAPI_function_wrapper(function, container_args.function_def.webhook_config.method)
 
     with function_context.send_outputs():
         for function_input in function_context.generate_inputs():  # type: ignore

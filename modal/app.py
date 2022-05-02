@@ -542,7 +542,7 @@ class _App:
             is_generator=False,
             gpu=gpu,
             mounts=mounts,
-            webhook_type=api_pb2.Function.WEBHOOK_TYPE_ASGI_APP,
+            webhook_config=api_pb2.WebhookConfig(type=api_pb2.WEBHOOK_TYPE_ASGI_APP),
         )
         return function
 
@@ -569,8 +569,7 @@ class _App:
             is_generator=False,
             gpu=gpu,
             mounts=mounts,
-            webhook_type=api_pb2.Function.WEBHOOK_TYPE_FUNCTION,
-            webhook_method=method,
+            webhook_config=api_pb2.WebhookConfig(type=api_pb2.WEBHOOK_TYPE_FUNCTION, method=method),
         )
         return function
 
