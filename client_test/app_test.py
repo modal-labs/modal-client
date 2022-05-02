@@ -42,7 +42,7 @@ async def test_persistent_object(servicer, aio_client):
     def q_1():
         return AioQueue(app=app_1)
 
-    await app_1.deploy("my-queue", q_1, client=aio_client)
+    await app_1.deploy("my-queue", client=aio_client)
 
     app_2 = AioApp()
     async with app_2.run(client=aio_client):
@@ -98,14 +98,14 @@ def test_create_object_exception(servicer, client):
 def test_deploy_falls_back_to_app_name(servicer, client):
     named_app = App(name="foo_app")
     named_app.deploy(client=client)
-    assert "foo_app" in servicer.deployed_objects
+    assert "foo_app" in servicer.deployed_apps
 
 
 def test_deploy_uses_deployment_name_if_specified(servicer, client):
     named_app = App(name="foo_app")
     named_app.deploy("bar_app", client=client)
-    assert "bar_app" in servicer.deployed_objects
-    assert "foo_app" not in servicer.deployed_objects
+    assert "bar_app" in servicer.deployed_apps
+    assert "foo_app" not in servicer.deployed_apps
 
 
 def test_deploy_running_app_fails(servicer, client):

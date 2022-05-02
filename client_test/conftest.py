@@ -30,11 +30,15 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.container_outputs = []
         self.object_ids = {}
         self.queue = []
-        self.deployed_apps = {}
-        self.deployed_objects = {
-            MODAL_CLIENT_MOUNT_NAME: "mo-123",
-            "foo-queue": "qu-foo",
-            f"debian-slim-{_dockerhub_python_version()}": "im-123",
+        self.deployed_apps = {
+            MODAL_CLIENT_MOUNT_NAME: "ap-x",
+            "foo-queue": "ap-y",
+            f"debian-slim-{_dockerhub_python_version()}": "ap-z",
+        }
+        self.app_objects = {
+            "ap-x": {"": "mo-123"},
+            "ap-y": {"foo-queue": "qu-foo"},
+            "ap-z": {"": "im-123"},
         }
         self.n_queues = 0
         self.files_name2sha = {}
@@ -114,7 +118,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         return api_pb2.AppGetObjectsResponse(object_ids=self.object_ids)
 
     async def AppSetObjects(self, request: api_pb2.AppSetObjectsRequest, context: ServicerContext = None) -> Empty:
-        self.objects = dict(request.object_ids)
+        self.app_objects[request.app_id] = dict(request.object_ids)
         return Empty()
 
     async def QueueCreate(
@@ -134,13 +138,6 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
 
     async def AppDeploy(self, request: api_pb2.AppDeployRequest, context: ServicerContext = None) -> Empty:
         self.deployed_apps[request.name] = request.app_id
-        if request.object_id:
-            self.deployed_objects[request.name] = request.object_id
-        elif request.object_ids:
-            for label, object_id in request.object_ids.items():
-                self.deployed_objects[(request.name, label)] = object_id
-        else:
-            self.deployed_objects[request.name] = ""  # for stuff like schedules that don't require arguments to deploy
         return Empty()
 
     async def AppGetByDeploymentName(
@@ -151,10 +148,14 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     async def AppIncludeObject(
         self, request: api_pb2.AppIncludeObjectRequest, context: ServicerContext
     ) -> api_pb2.AppIncludeObjectResponse:
-        if request.object_label:
-            object_id = self.deployed_objects.get((request.name, request.object_label))
-        else:
-            object_id = self.deployed_objects.get(request.name)
+        object_id = None
+        app_id = self.deployed_apps.get(request.name)
+        if app_id is not None:
+            app_objects = self.app_objects[app_id]
+            if request.object_label:
+                object_id = app_objects.get(request.object_label)
+            else:
+                (object_id,) = list(app_objects.values())
         return api_pb2.AppIncludeObjectResponse(object_id=object_id)
 
     async def MountCreate(
