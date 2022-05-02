@@ -135,7 +135,7 @@ class ProgressSpinner:
         self._stdout.flush()
 
     def _show_cursor(self):
-        self._stdout.write(term_seq_str("cvvis"))  # cursor visible.
+        self._stdout.write(term_seq_str("cnorm"))  # cursor reset.
         self._stdout.flush()
 
     def _clear(self):
