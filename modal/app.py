@@ -524,6 +524,7 @@ class _App:
     def asgi(
         self,
         asgi_app,  # The asgi app
+        wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
         image: _Image = None,  # The image to run as the container for the function
         secret: Optional[Secret] = None,  # An optional Modal Secret with environment variables for the container
         secrets: Collection[Secret] = (),  # Plural version of `secret` when multiple secrets are needed
@@ -542,7 +543,9 @@ class _App:
             is_generator=False,
             gpu=gpu,
             mounts=mounts,
-            webhook_config=api_pb2.WebhookConfig(type=api_pb2.WEBHOOK_TYPE_ASGI_APP),
+            webhook_config=api_pb2.WebhookConfig(
+                type=api_pb2.WEBHOOK_TYPE_ASGI_APP, wait_for_response=wait_for_response
+            ),
         )
         return function
 
