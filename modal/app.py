@@ -2,7 +2,7 @@ import asyncio
 import io
 import os
 import sys
-from typing import Collection, Dict, Optional, Union
+from typing import Collection, Dict, Optional
 
 import grpc
 
@@ -354,9 +354,6 @@ class _App:
     async def deploy(
         self,
         name: str = None,  # Unique name of the deployment. Subsequent deploys with the same name overwrites previous ones. Falls back to the app name
-        obj_or_objs: Union[
-            Object, Dict[str, Object]
-        ] = None,  # A single Modal *Object* or a `dict[str, Object]` of labels -> Objects to be exported for use by other apps
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT,
         client=None,
         stdout=None,
@@ -403,24 +400,11 @@ class _App:
 
             # The `_run` method contains the logic for starting and running an app
             async with self._run(client, stdout, stderr, logs_timeout, show_progress, existing_app_id):
-                object_id = None
-                object_ids = None  # name -> object_id
-                if isinstance(obj_or_objs, Object):
-                    object_id = obj_or_objs.object_id
-                elif isinstance(obj_or_objs, dict):
-                    object_ids = {label: obj.object_id for label, obj in obj_or_objs.items()}
-                elif obj_or_objs is None:
-                    pass
-                else:
-                    raise InvalidError(f"{obj_or_objs} not an Object or dict or None")
-
                 # TODO: this could be simplified in case it's the same app id as previously
                 deploy_req = api_pb2.AppDeployRequest(
                     app_id=self._app_id,
                     name=name,
                     namespace=namespace,
-                    object_id=object_id,
-                    object_ids=object_ids,
                 )
                 await client.stub.AppDeploy(deploy_req)
         return self._app_id

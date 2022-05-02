@@ -114,8 +114,6 @@ message AppDeployRequest {
   string app_id = 1;
   DeploymentNamespace namespace = 2;
   string name = 3;
-  string object_id = 4;
-  map<string, string> object_ids = 5;
 }
 
 message AppIncludeObjectRequest {
