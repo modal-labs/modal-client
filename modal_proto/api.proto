@@ -302,6 +302,7 @@ enum WebhookType {
 message WebhookConfig {
   WebhookType type = 1;
   string method = 2;
+  bool wait_for_response = 3;
 }
 
 message Function {
@@ -330,7 +331,7 @@ message Function {
   repeated string secret_ids = 10;
 
   RateLimit rate_limit = 11;
-  WebhookConfig webhook_config = 12;
+  WebhookConfig webhook_config = 15;
 }
 
 message FunctionCreateRequest {
