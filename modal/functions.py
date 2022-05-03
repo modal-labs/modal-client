@@ -1,7 +1,6 @@
 import asyncio
 from typing import Collection, Optional
 
-import colorama
 from aiostream import pipe, stream
 
 from modal_proto import api_pb2
@@ -260,13 +259,13 @@ class _Function(Object, type_prefix="fu"):
         self.web_url = None
         Object.__init__(self, app, tag)
 
-    def get_creating_message(self):
+    def get_creating_message(self) -> str:
         return f"Creating {self.tag}..."
 
-    def get_created_message(self):
+    def get_created_message(self) -> str:
         if self.web_url is not None:
             # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
-            return f"Created {self.tag} => {colorama.Fore.MAGENTA}{self.web_url}{colorama.Fore.RESET}"
+            return f"Created {self.tag} => [magenta underline]{self.web_url}[/magenta underline]"
         return f"Created {self.tag}."
 
     async def load(self, app, existing_function_id):

@@ -5,6 +5,7 @@ import sys
 from typing import Collection, Dict, Optional
 
 import grpc
+from rich.console import Console
 
 from modal._progress import safe_progress
 from modal_proto import api_pb2
@@ -16,7 +17,7 @@ from ._app_singleton import get_container_app, set_container_app
 from ._app_state import AppState
 from ._blueprint import Blueprint
 from ._factory import _local_construction
-from ._logging import LogPrinter
+from ._progress import ProgressSpinner
 from ._serialization import Pickler, Unpickler
 from .client import _Client
 from .config import config, logger
@@ -28,6 +29,26 @@ from .object import Object
 from .rate_limit import RateLimit
 from .schedule import Schedule
 from .secret import Secret
+
+
+def print_log(log: api_pb2.TaskLogs, stdout, stderr) -> None:
+    stdout_buf = stdout or sys.stdout
+    stderr_buf = stderr or sys.stderr
+
+    if log.file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
+        buf = stdout_buf
+        style = "blue"
+    elif log.file_descriptor == api_pb2.FILE_DESCRIPTOR_STDERR:
+        buf = stderr_buf
+        style = "red"
+    elif log.file_descriptor == api_pb2.FILE_DESCRIPTOR_INFO:
+        buf = stderr_buf
+        style = "yellow"
+    else:
+        raise Exception(f"Weird file descriptor {log.file_descriptor} for log output")
+
+    console = Console(file=buf, highlight=False)
+    console.out(log.data, style=style, end="")
 
 
 class _App:
@@ -86,9 +107,8 @@ class _App:
         self._tag_to_object = {}
         self._tag_to_existing_id = {}
         self._blueprint = Blueprint()
-        self._task_states = {}
-        self._progress = None
-        self._log_printer = LogPrinter()
+        self._task_states: Dict[str, api_pb2.TaskState] = {}
+        self._progress: Optional[ProgressSpinner] = None
         super().__init__()
 
     # needs to be a function since synchronicity hides other attributes.
@@ -120,7 +140,7 @@ class _App:
         # but I have a feeling it's no longer an issue, so I remved it for now.
         self._blueprint.register(obj)
 
-    def _update_task_state(self, task_id, state):
+    def _update_task_state(self, task_id: str, state: api_pb2.TaskState) -> None:
         self._task_states[task_id] = state
 
         # Recompute task status string.
@@ -174,7 +194,7 @@ class _App:
                         if log.task_state:
                             self._update_task_state(log_batch.task_id, log.task_state)
                         if log.data:
-                            self._log_printer.feed(log, stdout, stderr)
+                            print_log(log, stdout, stderr)
 
         while True:
             try:
@@ -226,6 +246,8 @@ class _App:
         if obj.tag and obj.tag in self._tag_to_object:
             return self._tag_to_object[obj.tag].object_id
 
+        print(f"Calling create_object for object label {obj.label}")
+        print(f"message = {obj.get_creating_message()}")
         creating_message = obj.get_creating_message()
         if creating_message is not None:
             step_no = self._progress.substep(creating_message, False)
@@ -249,6 +271,7 @@ class _App:
 
         if creating_message is not None:
             created_message = obj.get_created_message()
+            print(f"completing substep = {created_message}")
             assert created_message is not None
             self._progress.complete_substep(step_no, created_message)
 
@@ -294,6 +317,7 @@ class _App:
 
             # Start tracking logs and yield context
             async with TaskContext(grace=config["logs_timeout"]) as tc:
+                progress_handler: ProgressSpinner
                 async with safe_progress(tc, stdout, stderr, visible_progress) as progress_handler:
                     self._progress = progress_handler
                     self._progress.step("Initializing...", "Initialized.")

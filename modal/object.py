@@ -76,10 +76,10 @@ class Object(metaclass=ObjectMeta):
         else:
             return None
 
-    def get_creating_message(self):
+    def get_creating_message(self) -> Optional[str]:
         return None
 
-    def get_created_message(self):
+    def get_created_message(self) -> Optional[str]:
         return None
 
     @property

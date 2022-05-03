@@ -24,6 +24,7 @@ class _Mount(Object, type_prefix="mo"):
     def __init__(
         self, app, remote_dir, *, local_dir=None, local_file=None, condition=lambda path: True, recursive=True
     ):
+        print("creating mount...", local_dir, local_file)
         if local_file is not None and local_dir is not None:
             raise InvalidError("Cannot specify both local_file and local_dir as arguments to Mount.")
 

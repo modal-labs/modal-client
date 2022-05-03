@@ -1,12 +1,12 @@
 aiohttp==3.7.4
 aiostream==0.4.4
 cloudpickle==2.0.0
-colorama==0.4.3
 fastapi==0.75.2
 fastprogress==1.0.0
 grpcio==1.43.0
 importlib_metadata==4.8.1
 protobuf==3.19.4
+rich==12.3.0
 sentry-sdk==1.5.1
 synchronicity==0.2.3
 toml==0.10.2
