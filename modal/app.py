@@ -449,6 +449,7 @@ class _App:
     def function(
         self,
         raw_f=None,  # The decorated function
+        *,
         image: _Image = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
         secret: Optional[Secret] = None,  # An optional Modal Secret with environment variables for the container
@@ -480,6 +481,7 @@ class _App:
     def generator(
         self,
         raw_f=None,  # The decorated function
+        *,
         image: _Image = None,  # The image to run as the container for the function
         secret: Optional[Secret] = None,  # An optional Modal Secret with environment variables for the container
         secrets: Collection[Secret] = (),  # Plural version of `secret` when multiple secrets are needed
@@ -509,6 +511,7 @@ class _App:
     def asgi(
         self,
         asgi_app,  # The asgi app
+        *,
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
         image: _Image = None,  # The image to run as the container for the function
         secret: Optional[Secret] = None,  # An optional Modal Secret with environment variables for the container
@@ -538,6 +541,7 @@ class _App:
     def webhook(
         self,
         raw_f,
+        *,
         method: str = "GET",  # REST methods to support for the created endpoint.
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
         image: _Image = None,  # The image to run as the container for the function
