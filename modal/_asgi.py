@@ -19,26 +19,9 @@ def asgi_app_wrapper(asgi_app):
 
 
 def fastAPI_function_wrapper(fn: Callable, method: str):
-    """Take in a function that's not attached to an ASGI app,
-    and return a wrapped FastAPI app with this function as the root handler."""
+    """Return a FastAPI app wrapping a function handler."""
     from fastapi import FastAPI
 
     app = FastAPI()
-
-    # Using app.route() directly seems to not set up the FastAPI models correctly.
-    if method == "POST":
-        app.post("/")(fn)
-    elif method == "GET":
-        app.get("/")(fn)
-    elif method == "DELETE":
-        app.delete("/")(fn)
-    elif method == "HEAD":
-        app.head("/")(fn)
-    elif method == "OPTIONS":
-        app.options("/")(fn)
-    elif method == "PATCH":
-        app.patch("/")(fn)
-    elif method == "PUT":
-        app.put("/")(fn)
-
+    app.add_api_route("/", fn, methods=[method])
     return asgi_app_wrapper(app)
