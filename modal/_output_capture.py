@@ -134,6 +134,7 @@ async def thread_capture(stream: typing.IO[str], callback: Callable[[str, typing
         stream.flush()  # flush any remaining writes on fake output
         os.close(write_fd)  # this should trigger eof in the capture thread
         os.dup2(dup_fd, fd)  # restore stdout
+        os.close(dup_fd)  # close the copy of the original fd
         try:
             await asyncio.wait_for(print_task, 3)  # wait for thread to empty the read buffer
         except TimeoutError:
