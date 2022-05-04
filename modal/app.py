@@ -540,7 +540,7 @@ class _App:
         self,
         raw_f,
         *,
-        method: str = "GET",  # REST methods to support for the created endpoint.
+        method: str = "GET",  # REST method for the created endpoint.
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
         image: _Image = None,  # The image to run as the container for the function
         secret: Optional[Secret] = None,  # An optional Modal Secret with environment variables for the container
