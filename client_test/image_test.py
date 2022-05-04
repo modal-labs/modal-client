@@ -16,7 +16,7 @@ def test_python_version():
 def test_image_tag():
     app = App()
     image = DockerhubImage(app, tag="foo")
-    assert image.tag == 'modal.image._DockerhubImage("foo")'
+    assert image.tag == '_DockerhubImage("foo")'
 
 
 def test_debian_slim_python_packages(client):

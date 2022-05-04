@@ -12,7 +12,7 @@ async def my_factory():
 
 @pytest.mark.asyncio
 async def test_async_factory(servicer, client):
-    assert my_factory.tag == "client_test.factory_test.my_factory"
+    assert my_factory.tag == "my_factory"
     async with app.run(client=client):
         assert isinstance(my_factory, AioQueue)
         assert my_factory.object_id == "qu-1"
