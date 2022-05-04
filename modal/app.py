@@ -453,10 +453,18 @@ class _App:
         return Unpickler(self, io.BytesIO(s)).load()
 
     def _register_function(self, function):
-        # If this happens on the container, create this object on the fly
-        if function.tag in self._created_tagged_objects:
-            object_id = self._created_tagged_objects[function.tag]
-            self._created_tagged_objects_objs[function.tag] = function.set_object_id(object_id)
+        container_app = get_container_app()
+        if container_app is not None and self != container_app:
+            raise Exception(f"App {app} is not container app {container_app}")
+
+        if container_app:
+            # If we're inside the container and have a label, always look things up
+            if function.tag in self._created_tagged_objects:
+                object_id = self._created_tagged_objects[function.tag]
+                self._created_tagged_objects_objs[function.tag] = function.set_object_id(object_id)
+        else:
+            self._register_object(function)
+
         function_proxy = _FunctionProxy(function, self, function.tag)
         return function_proxy
 
