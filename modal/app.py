@@ -452,6 +452,14 @@ class _App:
         """Deserializes object and replaces all client placeholders by self."""
         return Unpickler(self, io.BytesIO(s)).load()
 
+    def _register_function(self, function):
+        # If this happens on the container, create this object on the fly
+        if function.tag in self._created_tagged_objects:
+            object_id = self._created_tagged_objects[function.tag]
+            self._created_tagged_objects_objs[function.tag] = function.set_object_id(object_id)
+        function_proxy = _FunctionProxy(function, self, function.tag)
+        return function_proxy
+
     @decorator_with_options
     def function(
         self,
@@ -482,7 +490,7 @@ class _App:
             serialized=serialized,
             mounts=mounts,
         )
-        return _FunctionProxy(function, self, function.tag)
+        return self._register_function(function)
 
     @decorator_with_options
     def generator(
@@ -512,7 +520,7 @@ class _App:
             serialized=serialized,
             mounts=mounts,
         )
-        return _FunctionProxy(function, self, function.tag)
+        return self._register_function(function)
 
     @decorator_with_options
     def asgi(
@@ -542,7 +550,7 @@ class _App:
                 type=api_pb2.WEBHOOK_TYPE_ASGI_APP, wait_for_response=wait_for_response
             ),
         )
-        return _FunctionProxy(function, self, function.tag)
+        return self._register_function(function)
 
     @decorator_with_options
     def webhook(
@@ -573,7 +581,7 @@ class _App:
                 type=api_pb2.WEBHOOK_TYPE_FUNCTION, method=method, wait_for_response=wait_for_response
             ),
         )
-        return _FunctionProxy(function, self, function.tag)
+        return self._register_function(function)
 
     def local_construction(self, cls):
         """Decorator to create a custom initialization function for something that runs on app startup.

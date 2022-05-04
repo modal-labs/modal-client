@@ -28,7 +28,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.done = False
         self.container_inputs = []
         self.container_outputs = []
-        self.object_ids = {}
+        self.object_ids = None
         self.queue = []
         self.deployed_apps = {
             MODAL_CLIENT_MOUNT_NAME: "ap-x",
@@ -115,7 +115,11 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     async def AppGetObjects(
         self, request: api_pb2.AppGetObjectsRequest, context: ServicerContext = None
     ) -> api_pb2.AppGetObjectsResponse:
-        return api_pb2.AppGetObjectsResponse(object_ids=self.app_objects.get(request.app_id, {}))
+        if self.object_ids:
+            object_ids = self.object_ids
+        else:
+            object_ids = self.app_objects.get(request.app_id, {})
+        return api_pb2.AppGetObjectsResponse(object_ids=object_ids)
 
     async def AppSetObjects(self, request: api_pb2.AppSetObjectsRequest, context: ServicerContext = None) -> Empty:
         self.app_objects[request.app_id] = dict(request.object_ids)

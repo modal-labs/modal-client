@@ -374,7 +374,7 @@ def main(container_args, client):
             _function_proxy = synchronizer._translate_in(imported_function)
             assert isinstance(_function_proxy, _FunctionProxy)
 
-            function = _function_proxy._get_function().get_raw_f()
+            function = _function_proxy.get_raw_f()
         else:
             function = imported_function
 

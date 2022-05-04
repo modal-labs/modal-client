@@ -4,12 +4,14 @@ import time
 
 from modal import App, DebianSlim
 from modal._container_entrypoint import main
-from modal._test_support import SLEEP_DELAY
+
+# from modal._test_support import SLEEP_DELAY
 from modal.client import Client
 from modal_proto import api_pb2
 
 EXTRA_TOLERANCE_DELAY = 0.15
 FUNCTION_CALL_ID = "fc-123"
+SLEEP_DELAY = 0.1
 
 app = App()  # Just used for (de)serialization
 

@@ -359,9 +359,6 @@ class _Function(Object, type_prefix="fu"):
         else:
             await self.call_function_nowait(args, kwargs)
 
-    def get_raw_f(self):
-        return self.raw_f
-
 
 class _FunctionProxy:
     def __init__(self, orig_function, app, tag):
@@ -382,6 +379,10 @@ class _FunctionProxy:
             return self._get_function().call_generator(args, kwargs)
         else:
             return self._get_function().call_function(args, kwargs)
+
+    def get_raw_f(self):
+        """Use by the container to get the code for the function."""
+        return self._orig_function.raw_f
 
     @property
     def object_id(self):
