@@ -64,6 +64,10 @@ class Object(metaclass=ObjectMeta):
 
     @property
     def object_id(self):
+        # TODO(erikbern): would be good to enable this exception, but it doesn't quite
+        # work right now. Will fix later.
+        # if self._object_id is None:
+        #    raise InvalidError("Object is a blueprint created without an object id")
         return self._object_id
 
     @property
