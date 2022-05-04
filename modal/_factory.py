@@ -45,6 +45,7 @@ def _local_construction_make(app, cls, fun):
             # besides Function
             tag = _get_tag(fun)
             Object.__init__(self, app, tag)
+            app._register_object(self)
 
         async def load(self, app, existing_object_id):
             if get_container_app() is not None:
