@@ -81,7 +81,7 @@ class _App:
         self._initialized = True
         self._app_id = None
         self.client = None
-        self.name = name or self._infer_app_name()
+        self._name = name
         self.state = AppState.NONE
         self._tag_to_object = {}
         self._tag_to_existing_id = {}
@@ -90,6 +90,14 @@ class _App:
         self._progress = None
         self._log_printer = LogPrinter()
         super().__init__()
+
+    # needs to be a function since synchronicity hides other attributes.
+    def provided_name(self):
+        return self._name
+
+    @property
+    def name(self):
+        return self._name or self._infer_app_name()
 
     @property
     def app_id(self):

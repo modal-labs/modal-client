@@ -1,4 +1,5 @@
 import getpass
+import os
 import sys
 import traceback
 
@@ -90,6 +91,10 @@ def deploy(app_ref: str, name: str = None):
     except Exception:
         traceback.print_exc()
         sys.exit(1)
+
+    if name is None and app.provided_name() is None:
+        # replace os.sep for convenience
+        name = app_ref.replace(os.sep, ".")
 
     # TODO(erikbern): will this work for AioApps?
     app_id = app.deploy(name=name)
