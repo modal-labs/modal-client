@@ -2,18 +2,20 @@ import os
 import pytest
 
 from modal import App
-from modal.mount import Mount
+from modal.aio import AioApp
+from modal.mount import AioMount, Mount
 
 
 @pytest.mark.asyncio
 async def test_get_files(servicer, client):
     files = {}
-    app = App()
-    with app.run(client=client):
-        m = Mount.create(
+    app = AioApp()
+    async with app.run(client=client):
+        m = AioMount(
             app, "/", local_dir=os.path.dirname(__file__), condition=lambda fn: fn.endswith(".py"), recursive=True
         )
-        for tup in m._get_files():
+        await m.load(app, None)
+        async for tup in m._get_files():
             filename, rel_filename, content, sha256_hex = tup
             files[filename] = sha256_hex
 
@@ -29,8 +31,8 @@ def test_create_mount(servicer, client):
         def condition(fn):
             return fn.endswith(".py")
 
-        m = Mount.create(app, local_dir=local_dir, remote_dir=remote_dir, condition=condition)
-        assert m.object_id == "mo-123"
+        m = Mount(app, local_dir=local_dir, remote_dir=remote_dir, condition=condition)
+        m.load(app, None) == "mo-123"
         assert f"/foo/{cur_filename}" in servicer.files_name2sha
         sha256_hex = servicer.files_name2sha[f"/foo/{cur_filename}"]
         assert sha256_hex in servicer.files_sha2data

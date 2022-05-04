@@ -21,7 +21,7 @@ from ._serialization import Pickler, Unpickler
 from .client import _Client
 from .config import config, logger
 from .exception import InvalidError, NotFoundError
-from .functions import _Function
+from .functions import _Function, _FunctionProxy
 from .image import _DebianSlim, _Image
 from .mount import _Mount
 from .object import Object
@@ -58,6 +58,7 @@ class _App:
 
     _created_tagged_objects: Dict[str, str]  # tag -> id
     _patchable_tagged_objects: Dict[str, str]  # tag -> id
+    _created_tagged_objects_objs: Dict[str, Object]  # tag -> Object
 
     @classmethod
     def _initialize_container_app(cls):
@@ -75,7 +76,7 @@ class _App:
             return app
 
     def __init__(self, name=None):
-        if hasattr(self, "_initialized"):
+        if "_initialized" in self.__dict__:
             return  # Prevent re-initialization with the singleton
 
         self._initialized = True
@@ -84,6 +85,7 @@ class _App:
         self.name = name or self._infer_app_name()
         self.state = AppState.NONE
         self._created_tagged_objects = {}  # tag -> object id
+        self._created_tagged_objects_objs = {}  # tag -> Object
         self._patchable_tagged_objects = {}  # tag -> object id
         self._blueprint = Blueprint()
         self._task_states = {}
@@ -241,9 +243,9 @@ class _App:
         if object_id is None:
             raise Exception(f"object_id for object of type {type(obj)} is None")
 
-        obj.set_object_id(object_id, self)
         if obj.tag:
             self._created_tagged_objects[obj.tag] = object_id
+            self._created_tagged_objects_objs[obj.tag] = obj.set_object_id(object_id)
 
         if creating_message is not None:
             created_message = obj.get_created_message()
@@ -263,6 +265,9 @@ class _App:
 
             logger.debug(f"Creating object {obj}")
             await self.create_object(obj)
+
+    def __getitem__(self, tag):
+        return self._created_tagged_objects_objs[tag]
 
     @synchronizer.asynccontextmanager
     async def _run(self, client, stdout, stderr, logs_timeout, show_progress, existing_app_id, last_log_entry_id=None):
@@ -290,6 +295,7 @@ class _App:
                 # TODO(erikbern): maybe this should happen outside of this method?
                 app_req = api_pb2.AppCreateRequest(client_id=client.client_id, name=self.name)
                 app_resp = await client.stub.AppCreate(app_req)
+                self._patchable_tagged_objects = {}
                 self._app_id = app_resp.app_id
 
             # Start tracking logs and yield context
@@ -330,6 +336,7 @@ class _App:
             self.state = AppState.NONE
             self._progress = None
             self._created_tagged_objects = {}
+            # self._created_tagged_objects_objs = {}
 
     @synchronizer.asynccontextmanager
     async def _get_client(self, client=None):
@@ -475,7 +482,7 @@ class _App:
             serialized=serialized,
             mounts=mounts,
         )
-        return function
+        return _FunctionProxy(function, self, function.tag)
 
     @decorator_with_options
     def generator(
@@ -505,7 +512,7 @@ class _App:
             serialized=serialized,
             mounts=mounts,
         )
-        return function
+        return _FunctionProxy(function, self, function.tag)
 
     @decorator_with_options
     def asgi(
@@ -535,7 +542,7 @@ class _App:
                 type=api_pb2.WEBHOOK_TYPE_ASGI_APP, wait_for_response=wait_for_response
             ),
         )
-        return function
+        return _FunctionProxy(function, self, function.tag)
 
     @decorator_with_options
     def webhook(
@@ -566,7 +573,7 @@ class _App:
                 type=api_pb2.WEBHOOK_TYPE_FUNCTION, method=method, wait_for_response=wait_for_response
             ),
         )
-        return function
+        return _FunctionProxy(function, self, function.tag)
 
     def local_construction(self, cls):
         """Decorator to create a custom initialization function for something that runs on app startup.

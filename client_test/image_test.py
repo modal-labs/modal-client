@@ -23,8 +23,7 @@ def test_debian_slim_python_packages(client):
     app = App()
     image = DebianSlim(app, python_packages=["numpy"])
     with app.run(client=client):
-        app.create_object(image)
-        assert image.object_id == "im-123"
+        assert app.create_object(image) == "im-123"
 
 
 def test_debian_slim_requirements_txt(servicer, client):
@@ -34,6 +33,5 @@ def test_debian_slim_requirements_txt(servicer, client):
     app = App()
     image = DebianSlim(app, requirements_txt=requirements_txt)
     with app.run(client=client):
-        app.create_object(image)
-        assert image.object_id == "im-123"
+        assert app.create_object(image) == "im-123"
         assert any("blueberry" in cmd for cmd in servicer.last_image.dockerfile_commands)

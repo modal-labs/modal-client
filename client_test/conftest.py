@@ -115,7 +115,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     async def AppGetObjects(
         self, request: api_pb2.AppGetObjectsRequest, context: ServicerContext = None
     ) -> api_pb2.AppGetObjectsResponse:
-        return api_pb2.AppGetObjectsResponse(object_ids=self.object_ids)
+        return api_pb2.AppGetObjectsResponse(object_ids=self.app_objects.get(request.app_id, {}))
 
     async def AppSetObjects(self, request: api_pb2.AppSetObjectsRequest, context: ServicerContext = None) -> Empty:
         self.app_objects[request.app_id] = dict(request.object_ids)
@@ -195,8 +195,11 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     ) -> api_pb2.FunctionCreateResponse:
         if self.function_create_error:
             raise Exception("Function create failed")
-        self.n_functions += 1
-        function_id = f"fu-{self.n_functions}"
+        if request.existing_function_id:
+            function_id = request.existing_function_id
+        else:
+            self.n_functions += 1
+            function_id = f"fu-{self.n_functions}"
         if request.schedule:
             self.function2schedule[function_id] = request.schedule
         return api_pb2.FunctionCreateResponse(function_id=function_id)

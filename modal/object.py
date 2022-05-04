@@ -25,7 +25,7 @@ class Object(metaclass=ObjectMeta):
     well as distributed data structures like Queues or Dicts.
     """
 
-    def __init__(self, app, tag=None, label=None):
+    def __init__(self, app, tag=None, label=None, object_id=None):
         if app is None:
             raise InvalidError(f"Object {self} created without an app")
         if tag is not None:
@@ -43,8 +43,8 @@ class Object(metaclass=ObjectMeta):
         # If we're inside the container and have a label, always look things up
         if container_app is not None and label is not None:
             object_id = app._get_object_id_by_tag(label.local_tag)
-            if object_id is not None:
-                self.set_object_id(object_id, app)
+
+        self._object_id = object_id
 
         # Otherwise, if the app isn't running, always require a label
         if app.state == AppState.NONE:
@@ -58,8 +58,9 @@ class Object(metaclass=ObjectMeta):
         if obj._app.state != AppState.RUNNING:
             raise InvalidError(f"{cls.__name__}.create(...): can only do this on a running app")
         object_id = await obj.load(obj._app, None)
-        obj.set_object_id(object_id, obj._app)
-        return obj
+        obj_2 = Object.__new__(cls)
+        Object.__init__(obj_2, obj._app, object_id=object_id)
+        return obj_2
 
     async def load(self, app, existing_object_id):
         raise NotImplementedError(f"Object factory of class {type(self)} has no load method")
@@ -69,23 +70,18 @@ class Object(metaclass=ObjectMeta):
         prefix, _ = object_id.split("-")  # TODO: util method
         object_cls = ObjectMeta.prefix_to_type[prefix]
         obj = Object.__new__(object_cls)
-        Object.__init__(obj, app)
-        obj.set_object_id(object_id, app)
+        Object.__init__(obj, app, object_id=object_id)
         return obj
 
-    def set_object_id(self, object_id, app):
-        """Set the Modal internal object id"""
-        self._object_id = object_id
-        self._app = app
-        self._app_id = app.app_id
+    def set_object_id(self, object_id):
+        object_cls = type(self)
+        obj = Object.__new__(object_cls)
+        Object.__init__(obj, self._app, object_id=object_id)
+        return obj
 
     @property
     def object_id(self):
-        """The Modal internal object id"""
-        # Note that the app might run multiple times and cause the object id to change
-        # That's why we check the app id
-        if self._app_id is not None and self._app is not None and self._app_id == self._app.app_id:
-            return self._object_id
+        return self._object_id
 
     @property
     def label(self):

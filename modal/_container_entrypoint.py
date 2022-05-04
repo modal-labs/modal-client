@@ -23,7 +23,7 @@ from .app import _App
 from .client import Client, _Client
 from .config import config, logger
 from .exception import InvalidError
-from .functions import AioFunction, Function, _Function
+from .functions import AioFunctionProxy, FunctionProxy, _FunctionProxy
 
 
 def _path_to_function(module_name, function_name):
@@ -369,12 +369,12 @@ def main(container_args, client):
         imported_function = _path_to_function(
             container_args.function_def.module_name, container_args.function_def.function_name
         )
-        if isinstance(imported_function, Function) or isinstance(imported_function, AioFunction):
+        if isinstance(imported_function, FunctionProxy) or isinstance(imported_function, AioFunctionProxy):
             # We want the internal type of this, not the external
-            _function = synchronizer._translate_in(imported_function)
-            assert isinstance(_function, _Function)
+            _function_proxy = synchronizer._translate_in(imported_function)
+            assert isinstance(_function_proxy, _FunctionProxy)
 
-            function = _function.get_raw_f()
+            function = _function_proxy._get_function().get_raw_f()
         else:
             function = imported_function
 

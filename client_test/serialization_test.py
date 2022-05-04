@@ -21,8 +21,9 @@ async def test_persistent_object(servicer, client):
         assert q.object_id == q_roundtrip.object_id
 
         # Serialize factory object and deserialize
-        assert isinstance(qf, AioQueue)
-        data = app._serialize(qf)
-        qf_roundtrip = app._deserialize(data)
-        assert isinstance(qf_roundtrip, AioQueue)
-        assert qf.object_id == qf_roundtrip.object_id
+        q = app["qf"]
+        assert isinstance(q, AioQueue)
+        data = app._serialize(q)
+        q_roundtrip = app._deserialize(data)
+        assert isinstance(q_roundtrip, AioQueue)
+        assert q.object_id == q_roundtrip.object_id

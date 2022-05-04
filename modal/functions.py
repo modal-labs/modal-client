@@ -352,12 +352,6 @@ class _Function(Object, type_prefix="fu"):
     async def call_generator_nowait(self, args, kwargs):
         await _Invocation.create(self.object_id, args, kwargs, self._app)
 
-    def __call__(self, *args, **kwargs):
-        if self.is_generator:
-            return self.call_generator(args, kwargs)
-        else:
-            return self.call_function(args, kwargs)
-
     async def enqueue(self, *args, **kwargs):
         """Calls the function with the given arguments without waiting for the results"""
         if self.is_generator:
@@ -369,4 +363,29 @@ class _Function(Object, type_prefix="fu"):
         return self.raw_f
 
 
-Function, AioFunction = synchronize_apis(_Function)
+class _FunctionProxy:
+    def __init__(self, orig_function, app, tag):
+        # Need to store a reference to the unitialized function that has the contructor args
+        self._orig_function = orig_function
+        self._app = app
+        self._tag = tag
+
+    def _get_function(self):
+        return self._app[self._tag]
+
+    async def map(self, inputs, window=100, kwargs={}):
+        async for it in self._get_function().map(inputs, window, kwargs):
+            yield it
+
+    def __call__(self, *args, **kwargs):
+        if self._orig_function.is_generator:
+            return self._get_function().call_generator(args, kwargs)
+        else:
+            return self._get_function().call_function(args, kwargs)
+
+    @property
+    def object_id(self):
+        return self._get_function().object_id
+
+
+FunctionProxy, AioFunctionProxy = synchronize_apis(_FunctionProxy)

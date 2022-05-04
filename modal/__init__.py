@@ -1,6 +1,5 @@
 from .app import App
 from .dict import Dict
-from .functions import Function
 from .image import DebianSlim, DockerhubImage, Image
 from .mount import Mount
 from .queue import Queue
@@ -16,7 +15,6 @@ __all__ = [
     "DebianSlim",
     "Dict",
     "DockerhubImage",
-    "Function",
     "Image",
     "Mount",
     "Period",
