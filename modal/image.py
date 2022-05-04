@@ -7,6 +7,7 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import retry, synchronize_apis
 from modal_utils.package_utils import parse_requirements_txt
 
+from ._app_singleton import get_container_app
 from ._factory import _factory
 from ._image_pty import image_pty
 from .config import config, logger
@@ -95,10 +96,14 @@ class _Image(Object, type_prefix="im"):
         Useful for conditionally importing libraries when inside images.
         """
         # This is used from inside of containers to know whether this container is active or not
-        env_image_id = config.get("image_id")
-        image_id = self.object_id
-        logger.debug(f"Is image inside? env {env_image_id} image {image_id}")
-        return image_id is not None and env_image_id == image_id
+        if get_container_app() is None:
+            return False
+        else:
+            env_image_id = config.get("image_id")
+            # TODO(erikbern): this is super wacky. Let's clean it up in a second
+            image_id = self._app._created_tagged_objects.get(self.tag)
+            logger.debug(f"Is image inside? env {env_image_id} image {image_id}")
+            return image_id is not None and env_image_id == image_id
 
     async def run_interactive(self, cmd=None, mounts=[], secrets=[]):
         """Run `cmd` interactively within this image. Similar to `docker run -it --entrypoint={cmd}`.
