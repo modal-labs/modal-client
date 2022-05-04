@@ -3,6 +3,7 @@ import concurrent.futures
 import os
 import time
 from pathlib import Path
+from typing import Callable, Optional, Union
 
 import aiostream
 
@@ -22,9 +23,15 @@ from .object import Object
 
 class _Mount(Object, type_prefix="mo"):
     def __init__(
-        self, app, remote_dir, *, local_dir=None, local_file=None, condition=lambda path: True, recursive=True
+        self,
+        app,
+        remote_dir: Union[str, Path],
+        *,
+        local_dir: Optional[Union[str, Path]] = None,
+        local_file: Optional[Union[str, Path]] = None,
+        condition: Callable[[str], bool] = lambda path: True,
+        recursive: bool = True,
     ):
-        print("creating mount...", local_dir, local_file)
         if local_file is not None and local_dir is not None:
             raise InvalidError("Cannot specify both local_file and local_dir as arguments to Mount.")
 

@@ -5,9 +5,9 @@ import sys
 from typing import Collection, Dict, Optional
 
 import grpc
-from rich.console import Console
+import rich
+from rich.tree import Tree
 
-from modal._progress import safe_progress
 from modal_proto import api_pb2
 from modal_utils.app_utils import is_valid_deployment_name
 from modal_utils.async_utils import TaskContext, synchronize_apis, synchronizer
@@ -17,7 +17,8 @@ from ._app_singleton import get_container_app, set_container_app
 from ._app_state import AppState
 from ._blueprint import Blueprint
 from ._factory import _local_construction
-from ._progress import ProgressSpinner
+from ._logging import print_log
+from ._progress import live_capture, step_completed, step_progress
 from ._serialization import Pickler, Unpickler
 from .client import _Client
 from .config import config, logger
@@ -29,26 +30,6 @@ from .object import Object
 from .rate_limit import RateLimit
 from .schedule import Schedule
 from .secret import Secret
-
-
-def print_log(log: api_pb2.TaskLogs, stdout, stderr) -> None:
-    stdout_buf = stdout or sys.stdout
-    stderr_buf = stderr or sys.stderr
-
-    if log.file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
-        buf = stdout_buf
-        style = "blue"
-    elif log.file_descriptor == api_pb2.FILE_DESCRIPTOR_STDERR:
-        buf = stderr_buf
-        style = "red"
-    elif log.file_descriptor == api_pb2.FILE_DESCRIPTOR_INFO:
-        buf = stderr_buf
-        style = "yellow"
-    else:
-        raise Exception(f"Weird file descriptor {log.file_descriptor} for log output")
-
-    console = Console(file=buf, highlight=False)
-    console.out(log.data, style=style, end="")
 
 
 class _App:
@@ -108,7 +89,7 @@ class _App:
         self._tag_to_existing_id = {}
         self._blueprint = Blueprint()
         self._task_states: Dict[str, api_pb2.TaskState] = {}
-        self._progress: Optional[ProgressSpinner] = None
+        self._progress: Optional[Tree] = None
         super().__init__()
 
     # needs to be a function since synchronicity hides other attributes.
@@ -140,10 +121,10 @@ class _App:
         # but I have a feeling it's no longer an issue, so I remved it for now.
         self._blueprint.register(obj)
 
-    def _update_task_state(self, task_id: str, state: api_pb2.TaskState) -> None:
+    def _update_task_state(self, task_id: str, state: api_pb2.TaskState) -> str:
+        """Updates the state of a task, returning the new task status string."""
         self._task_states[task_id] = state
 
-        # Recompute task status string.
         all_states = self._task_states.values()
         states_set = set(all_states)
 
@@ -164,8 +145,7 @@ class _App:
             msg = "Tasks queued..."
         else:
             msg = "Tasks created..."
-        if not self._progress.is_stopped():
-            self._progress.substep(msg)
+        return msg
 
     async def _get_logs_loop(self, stdout, stderr, last_log_batch_entry_id: str):
         async def _get_logs(stdout, stderr):
@@ -176,6 +156,7 @@ class _App:
                 timeout=60,
                 last_entry_id=last_log_batch_entry_id,
             )
+            log_batch: api_pb2.TaskLogsBatch
             async for log_batch in self.client.stub.AppGetLogs(request):
                 if log_batch.app_state:
                     logger.debug(f"App state now {api_pb2.AppState.Name(log_batch.app_state)}")
@@ -246,11 +227,9 @@ class _App:
         if obj.tag and obj.tag in self._tag_to_object:
             return self._tag_to_object[obj.tag].object_id
 
-        print(f"Calling create_object for object label {obj.label}")
-        print(f"message = {obj.get_creating_message()}")
         creating_message = obj.get_creating_message()
         if creating_message is not None:
-            step_no = self._progress.substep(creating_message, False)
+            step_node = self._progress.add(step_progress(creating_message))
 
         # Create object
         if obj.label is not None and obj.label.app_name is not None:
@@ -271,9 +250,8 @@ class _App:
 
         if creating_message is not None:
             created_message = obj.get_created_message()
-            print(f"completing substep = {created_message}")
             assert created_message is not None
-            self._progress.complete_substep(step_no, created_message)
+            step_node.label = step_completed(created_message, is_substep=True)
 
         return object_id
 
@@ -300,6 +278,10 @@ class _App:
         else:
             visible_progress = show_progress
 
+        def print_if_progress(renderable):
+            if visible_progress:
+                rich.print(renderable)
+
         try:
             if existing_app_id is not None:
                 # Get all the objects first
@@ -317,19 +299,20 @@ class _App:
 
             # Start tracking logs and yield context
             async with TaskContext(grace=config["logs_timeout"]) as tc:
-                progress_handler: ProgressSpinner
-                async with safe_progress(tc, stdout, stderr, visible_progress) as progress_handler:
-                    self._progress = progress_handler
-                    self._progress.step("Initializing...", "Initialized.")
-
+                async with live_capture(step_progress("Initializing..."), stdout, stderr):
                     tc.create_task(self._get_logs_loop(stdout, stderr, last_log_entry_id or ""))
+                print_if_progress(step_completed("Intialized."))
 
-                    try:
-                        self._progress.step("Creating objects...", "Created objects.")
-                        # Create all members
+                try:
+                    progress = Tree(step_progress("Creating objects..."), guide_style="gray50")
+                    self._progress = progress
+                    async with live_capture(progress, stdout, stderr):
                         await self._flush_objects()
-                        self._progress.step("Running app...", "App completed.")
+                    progress.label = step_completed("Created objects.")
+                    print_if_progress(progress)
 
+                    # Create all members
+                    async with live_capture(step_progress("Running app..."), stdout, stderr):
                         # Create the app (and send a list of all tagged obs)
                         # TODO(erikbern): we should delete objects from a previous version that are no longer needed
                         # We just delete them from the app, but the actual objects will stay around
@@ -343,13 +326,15 @@ class _App:
                         self.state = AppState.RUNNING
                         yield self  # yield context manager to block
                         self.state = AppState.STOPPING
-                    finally:
-                        # Stop app server-side. This causes:
-                        # 1. Server to kill any running task
-                        # 2. Logs to drain (stopping the _get_logs_loop coroutine)
-                        logger.debug("Stopping the app server-side")
-                        req_disconnect = api_pb2.AppClientDisconnectRequest(app_id=self._app_id)
-                        await self.client.stub.AppClientDisconnect(req_disconnect)
+                    print_if_progress(step_completed("App completed."))
+
+                finally:
+                    # Stop app server-side. This causes:
+                    # 1. Server to kill any running task
+                    # 2. Logs to drain (stopping the _get_logs_loop coroutine)
+                    logger.debug("Stopping the app server-side")
+                    req_disconnect = api_pb2.AppClientDisconnectRequest(app_id=self._app_id)
+                    await self.client.stub.AppClientDisconnect(req_disconnect)
         finally:
             self.client = None
             self.state = AppState.NONE

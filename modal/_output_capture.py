@@ -43,9 +43,10 @@ class LineBufferedOutput(io.TextIOBase, typing.IO[str]):  # type: ignore
         # re.split("(<exp>)") returns the matched groups, and also the separators.
         # e.g. re.split("(+)", "a+b") returns ["a", "+", "b"].
         # This means that chunks is guaranteed to be odd in length.
-        for i in range(int(len(chunks) / 2)):
+        assert len(chunks) % 2 == 1
+        for i in range(0, len(chunks) - 2, 2):
             # piece together chunk back with separator.
-            line = chunks[2 * i] + chunks[2 * i + 1]
+            line = chunks[i] + chunks[i + 1]
             self._callback(line, self._original_stream)
 
         self._buf = chunks[-1]
@@ -134,7 +135,6 @@ async def thread_capture(stream: typing.IO[str], callback: Callable[[str, typing
         stream.flush()  # flush any remaining writes on fake output
         os.close(write_fd)  # this should trigger eof in the capture thread
         os.dup2(dup_fd, fd)  # restore stdout
-        os.close(dup_fd)  # close the copy of the original fd
         try:
             await asyncio.wait_for(print_task, 3)  # wait for thread to empty the read buffer
         except TimeoutError:
@@ -142,3 +142,4 @@ async def thread_capture(stream: typing.IO[str], callback: Callable[[str, typing
             #       capture more user output and eventually end when eof is reached on the read pipe
             logger.warn("Could not empty user output buffer. Some user output might be missing at this time")
         os.close(read_fd)
+        os.close(dup_fd)  # close the copy of the original fd
