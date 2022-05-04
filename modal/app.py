@@ -455,7 +455,7 @@ class _App:
     def _register_function(self, function):
         container_app = get_container_app()
         if container_app is not None and self != container_app:
-            raise Exception(f"App {app} is not container app {container_app}")
+            raise Exception(f"App {self} is not container app {container_app}")
 
         if container_app:
             # If we're inside the container and have a label, always look things up

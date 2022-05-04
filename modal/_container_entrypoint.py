@@ -23,7 +23,7 @@ from .app import _App
 from .client import Client, _Client
 from .config import config, logger
 from .exception import InvalidError
-from .functions import AioFunctionProxy, FunctionProxy, _FunctionProxy
+from .functions import AioFunctionProxy, FunctionProxy, _Function, _FunctionProxy
 
 
 def _path_to_function(module_name, function_name):
@@ -85,9 +85,8 @@ class _FunctionContext:
 
         # Create a function dynamically
         # Function object is already created, so we need to associate the correct object ID.
-        fun = _Function(self.app, raw_f)
-        fun.set_object_id(self.function_id, self.app)
-        return fun.get_raw_f()
+        fun = _Function(self.app, raw_f).set_object_id(self.function_id)
+        return fun.raw_f
 
     async def serialize(self, obj: Any) -> bytes:
         return self.app._serialize(obj)
