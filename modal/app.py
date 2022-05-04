@@ -113,14 +113,25 @@ class _App:
         """Registers an object to be created by the app so that it's available in modal.
 
         This is only used by factories and functions."""
-        if self.state != AppState.NONE:
-            raise InvalidError("Can only register objects on a app that's not running (state = {self.state}")
-        if obj.tag in self._created_tagged_objects:
-            # in case of a double load of an object, which seems
-            # to happen sometimes when cloudpickle loads an object whose
-            # type is declared in a module with modal functions
-            pass
-        self._blueprint.register(obj)
+        # if self.state != AppState.NONE:
+        #    raise InvalidError(f"Can only register objects on a app that's not running (state = {self.state}")
+
+        container_app = get_container_app()
+        if container_app is not None and self != container_app:
+            raise Exception(f"App {self} is not container app {container_app}")
+
+        if container_app:
+            # If we're inside the container and have a label, always look things up
+            if obj.tag in self._created_tagged_objects:
+                object_id = self._created_tagged_objects[obj.tag]
+                self._created_tagged_objects_objs[obj.tag] = obj.set_object_id(object_id)
+        else:
+            if obj.tag in self._created_tagged_objects:
+                # in case of a double load of an object, which seems
+                # to happen sometimes when cloudpickle loads an object whose
+                # type is declared in a module with modal functions
+                pass
+            self._blueprint.register(obj)
 
     def _update_task_state(self, task_id, state):
         self._task_states[task_id] = state
@@ -453,18 +464,7 @@ class _App:
         return Unpickler(self, io.BytesIO(s)).load()
 
     def _register_function(self, function):
-        container_app = get_container_app()
-        if container_app is not None and self != container_app:
-            raise Exception(f"App {self} is not container app {container_app}")
-
-        if container_app:
-            # If we're inside the container and have a label, always look things up
-            if function.tag in self._created_tagged_objects:
-                object_id = self._created_tagged_objects[function.tag]
-                self._created_tagged_objects_objs[function.tag] = function.set_object_id(object_id)
-        else:
-            self._register_object(function)
-
+        self._register_object(function)
         function_proxy = _FunctionProxy(function, self, function.tag)
         return function_proxy
 

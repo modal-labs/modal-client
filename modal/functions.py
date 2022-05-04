@@ -332,9 +332,9 @@ class _Function(Object, type_prefix="fu"):
 
         return response.function_id
 
-    async def map(self, inputs, window=100, kwargs={}):
+    async def map(self, inputs, window, kwargs, is_generator):
         input_stream = stream.iterate(inputs) | pipe.map(lambda arg: (arg,))
-        async for item in _MapInvocation(self.object_id, input_stream, kwargs, self._app, self.is_generator):
+        async for item in _MapInvocation(self.object_id, input_stream, kwargs, self._app, is_generator):
             yield item
 
     async def call_function(self, args, kwargs):
@@ -352,13 +352,6 @@ class _Function(Object, type_prefix="fu"):
     async def call_generator_nowait(self, args, kwargs):
         await _Invocation.create(self.object_id, args, kwargs, self._app)
 
-    async def enqueue(self, *args, **kwargs):
-        """Calls the function with the given arguments without waiting for the results"""
-        if self.is_generator:
-            await self.call_generator_nowait(args, kwargs)
-        else:
-            await self.call_function_nowait(args, kwargs)
-
 
 class _FunctionProxy:
     def __init__(self, orig_function, app, tag):
@@ -371,7 +364,7 @@ class _FunctionProxy:
         return self._app[self._tag]
 
     async def map(self, inputs, window=100, kwargs={}):
-        async for it in self._get_function().map(inputs, window, kwargs):
+        async for it in self._get_function().map(inputs, window, kwargs, self._orig_function.is_generator):
             yield it
 
     def __call__(self, *args, **kwargs):
@@ -379,6 +372,13 @@ class _FunctionProxy:
             return self._get_function().call_generator(args, kwargs)
         else:
             return self._get_function().call_function(args, kwargs)
+
+    async def enqueue(self, *args, **kwargs):
+        """Calls the function with the given arguments without waiting for the results"""
+        if self._orig_function.is_generator:
+            await self._get_function().call_generator_nowait(args, kwargs)
+        else:
+            await self._get_function().call_function_nowait(args, kwargs)
 
     def get_raw_f(self):
         """Use by the container to get the code for the function."""
