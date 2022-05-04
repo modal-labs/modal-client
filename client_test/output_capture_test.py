@@ -1,11 +1,13 @@
 import os
+import platform
+
 import pytest
 import subprocess
 import sys
 import time
 from contextlib import contextmanager
 
-from modal._output_capture import thread_capture
+from modal._output_capture import capture
 from modal_utils.async_utils import synchronizer
 
 
@@ -43,7 +45,7 @@ def capture_stdout_as_list(suspend_capture):
             caps.append(line.replace("\r\n", "\n"))
 
         with suspend_capture:
-            async with thread_capture(sys.stdout, callback):
+            async with capture(sys.stdout, callback):
                 yield caps
 
     return ctx
@@ -96,7 +98,7 @@ async def test_error_bubbles_through_and_shuts_down_thread(suspend_capture, caps
     with capsys.disabled():
         with suspend_capture:
             with pytest.raises(DummyException):
-                async with thread_capture(sys.stdout, callback):
+                async with capture(sys.stdout, callback):
                     # in case line buffering is turned off for sys.stdout in the test env
                     print("foo")
                     raise DummyException()
@@ -107,9 +109,10 @@ async def test_error_bubbles_through_and_shuts_down_thread(suspend_capture, caps
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(platform.system() == "Windows", reason="capture of subprocess output not supported on windows")
 async def test_capture_subprocess(capture_stdout_as_list):
     async with capture_stdout_as_list() as caps:
-        subprocess.call(["echo", "foo"])
+        subprocess.call("echo foo", shell=True)
 
     assert caps == ["foo\n"]
 
@@ -126,7 +129,7 @@ async def test_capture_tty(suspend_capture):
         pass
 
     with suspend_capture:
-        async with thread_capture(reader, callback):
+        async with capture(reader, callback):
             assert reader.isatty()
 
 

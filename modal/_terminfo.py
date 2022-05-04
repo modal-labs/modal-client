@@ -14,7 +14,7 @@ FALLBACK_SEQUENCES: Dict[str, Callable[..., bytes]] = {
     "ed": lambda: b"\033[J",
     "el": lambda: b"\033[K",
     "civis": lambda: b"\033[?25l",
-    "cvvis": lambda: b"\033[?25h",
+    "cnorm": lambda: b"\033[?25h",
 }
 
 

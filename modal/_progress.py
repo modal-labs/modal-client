@@ -1,6 +1,8 @@
 import asyncio
 import contextlib
 import io
+import os
+import platform
 import random
 import sys
 import threading
@@ -8,12 +10,15 @@ from typing import List, Optional
 
 import colorama  # TODO: maybe use _terminfo for this
 
-from modal._output_capture import can_capture, nullcapture, thread_capture
+from modal._output_capture import capture, nullcapture
 from modal_utils.async_utils import TaskContext, synchronizer
 
 from ._terminfo import term_seq_str
 
-default_frames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+if platform.system() == "Windows":
+    default_frames = "-\\|/"
+else:
+    default_frames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
 
 class Symbols:
@@ -241,18 +246,21 @@ async def safe_progress(task_context, stdout, stderr, visible=True):
                     pending_cr = False
 
     # capture stdout/err unless they have been customized
-    if (stdout is None or stdout == sys.stdout) and can_capture(sys.stdout):
-        capstdout = thread_capture(sys.stdout, write_callback)
+    if stdout is None or stdout == sys.stdout:
+        capstdout = capture(sys.stdout, write_callback)
     else:
         capstdout = nullcapture(stdout or sys.stdout)
 
-    if (stderr is None or stderr == sys.stderr) and can_capture(sys.stderr):
-        capstderr = thread_capture(sys.stderr, write_callback)
+    if stderr is None or stderr == sys.stderr:
+        capstderr = capture(sys.stderr, write_callback)
     else:
         capstderr = nullcapture(stderr or sys.stderr)
 
     async with capstdout as stdout:
         async with capstderr as stderr:
+            if platform.system() == "Windows":
+                os.system("")
+
             progress = ProgressSpinner(stdout)
             t = task_context.create_task(progress._loop())
             try:
