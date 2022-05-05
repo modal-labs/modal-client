@@ -338,6 +338,7 @@ message FunctionCreateRequest {
   string app_id = 2;
   Schedule schedule = 6;
   string existing_function_id = 7;
+  string deployment_name = 8;
 }
 
 message FunctionCreateResponse {

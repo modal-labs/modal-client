@@ -11,7 +11,6 @@ from rich.live import Live
 from rich.tree import Tree
 
 from modal_proto import api_pb2
-from modal_utils.app_utils import is_valid_subdomain_label
 from modal_utils.async_utils import TaskContext, synchronize_apis, synchronizer
 from modal_utils.decorator_utils import decorator_with_options
 
@@ -97,7 +96,9 @@ class _App:
         self._initialized = True
         self._app_id = None
         self.client = None
+        # TODO: we take a name in the app constructor, that can be different from the deployment name passed in later. Simplify this.
         self._name = name
+        self.deployment_name = None
         self.state = AppState.NONE
         self._tag_to_object = {}
         self._tag_to_existing_id = {}
@@ -420,11 +421,8 @@ class _App:
                 "or\n"
                 'app = App("some-name")'
             )
-        if not is_valid_subdomain_label(name):
-            raise InvalidError(
-                f"Name {name} is not a valid deloyment name: only lowercase letters, digits, and hyphens are allowed."
-            )
-        # TODO(erikbern): we should verify that the name doesn't contain characters that can't be used in an URL
+
+        self.deployment_name = name
 
         async with self._get_client(client) as client:
             # Look up any existing deployment

@@ -6,7 +6,7 @@ from modal import cli
 dummy_app_file = """
 import modal
 
-app = modal.App("my-app")
+app = modal.App("my_app")
 """
 
 
@@ -19,13 +19,13 @@ def test_app_deploy_success(servicer, mock_dir, monkeypatch):
         res = runner.invoke(cli.app_app, ["deploy", "myapp.py"])
         assert res.exit_code == 0
 
-    assert "my-app" in servicer.deployed_apps
+    assert "my_app" in servicer.deployed_apps
 
 
 dummy_aio_app_file = """
 from modal.aio import AioApp
 
-app = AioApp("my-aio-app")
+app = AioApp("my_aio_app")
 """
 
 
@@ -38,7 +38,7 @@ def test_aio_app_deploy_success(servicer, mock_dir, monkeypatch):
         res = runner.invoke(cli.app_app, ["deploy", "myaioapp.py"])
         assert res.exit_code == 0
 
-    assert "my-aio-app" in servicer.deployed_apps
+    assert "my_aio_app" in servicer.deployed_apps
 
 
 def test_app_deploy_no_such_module():

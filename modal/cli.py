@@ -1,14 +1,13 @@
 import asyncio
 import getpass
 import inspect
-import re
-import string
 import sys
 import traceback
 
 import typer
 
 from modal_proto import api_pb2
+from modal_utils.app_utils import replace_invalid_subdomain_chars
 from modal_utils.package_utils import import_app_by_ref
 
 from .client import Client
@@ -96,8 +95,8 @@ def deploy(app_ref: str, name: str = None):
         sys.exit(1)
 
     if name is None and app.provided_name() is None:
-        # replace special characters with - for convenience
-        name = re.sub(f"[{string.punctuation}]", "-", app_ref)
+        # replace special characters for convenience
+        name = replace_invalid_subdomain_chars(app_ref)
 
     res = app.deploy(name=name)
     if inspect.iscoroutine(res):

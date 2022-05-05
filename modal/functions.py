@@ -323,6 +323,7 @@ class _Function(Object, type_prefix="fu"):
             function=function_definition,
             schedule=self.schedule.proto_message if self.schedule is not None else None,
             existing_function_id=existing_function_id,
+            deployment_name=self.app.deployment_name,
         )
         response = await app.client.stub.FunctionCreate(request)
 
