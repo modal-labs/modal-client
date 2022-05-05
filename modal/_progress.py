@@ -1,6 +1,6 @@
 import platform
 
-from rich.abc import RichRenderable
+from rich.console import RenderableType
 from rich.spinner import Spinner
 from rich.text import Text
 
@@ -10,12 +10,12 @@ else:
     default_spinner = "dots"
 
 
-def step_progress(message: str) -> RichRenderable:
+def step_progress(message: str) -> RenderableType:
     """Returns the element to be rendered when a step is in progress."""
     return Spinner(default_spinner, Text(message, style="blue"), style="default")
 
 
-def step_completed(message: str, is_substep: bool = False) -> RichRenderable:
+def step_completed(message: str, is_substep: bool = False) -> RenderableType:
     """Returns the element to be rendered when a step is completed."""
 
     STEP_COMPLETED = "✓"

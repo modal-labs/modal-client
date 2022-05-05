@@ -101,7 +101,7 @@ class _App:
         self._tag_to_object = {}
         self._tag_to_existing_id = {}
         self._blueprint = Blueprint()
-        self._task_states: Dict[str, api_pb2.TaskState] = {}
+        self._task_states: Dict[str, int] = {}
         self._progress: Optional[Tree] = None
         super().__init__()
 
@@ -134,7 +134,7 @@ class _App:
         # but I have a feeling it's no longer an issue, so I remved it for now.
         self._blueprint.register(obj)
 
-    def _update_task_state(self, task_id: str, state: api_pb2.TaskState) -> str:
+    def _update_task_state(self, task_id: str, state: int) -> str:
         """Updates the state of a task, returning the new task status string."""
         self._task_states[task_id] = state
 
