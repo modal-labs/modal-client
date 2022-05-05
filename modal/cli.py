@@ -1,7 +1,8 @@
 import asyncio
 import getpass
 import inspect
-import os
+import re
+import string
 import sys
 import traceback
 
@@ -95,8 +96,8 @@ def deploy(app_ref: str, name: str = None):
         sys.exit(1)
 
     if name is None and app.provided_name() is None:
-        # replace os.sep for convenience
-        name = app_ref.replace(os.sep, ".")
+        # replace special characters with - for convenience
+        name = re.sub(f"[{string.punctuation}]", "-", app_ref)
 
     res = app.deploy(name=name)
     if inspect.iscoroutine(res):
