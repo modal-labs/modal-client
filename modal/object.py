@@ -49,7 +49,7 @@ class Object(metaclass=ObjectMeta):
         raise NotImplementedError(f"Object factory of class {type(self)} has no load method")
 
     @classmethod
-    def _init_persisted(cls, object_id, app):
+    def from_id(cls, object_id, app):
         prefix, _ = object_id.split("-")  # TODO: util method
         object_cls = ObjectMeta.prefix_to_type[prefix]
         obj = Object.__new__(object_cls)

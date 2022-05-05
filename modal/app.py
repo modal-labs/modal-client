@@ -451,7 +451,7 @@ class _App:
     async def include(self, name, object_label=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
         """Looks up an object and return a newly constructed one."""
         object_id = await self._include(name, object_label, namespace)
-        return Object._init_persisted(object_id, self)
+        return Object.from_id(object_id, self)
 
     def _serialize(self, obj):
         """Serializes object and replaces all references to the client class by a placeholder."""

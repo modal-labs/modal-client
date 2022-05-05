@@ -28,4 +28,4 @@ class Unpickler(pickle.Unpickler):
 
     def persistent_load(self, pid):
         object_id = pid
-        return Object._init_persisted(object_id, self.app)
+        return Object.from_id(object_id, self.app)
