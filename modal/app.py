@@ -5,7 +5,8 @@ import sys
 from typing import Collection, Dict, Optional
 
 import grpc
-import rich
+from rich.console import Console
+from rich.live import Live
 from rich.tree import Tree
 
 from modal_proto import api_pb2
@@ -17,8 +18,7 @@ from ._app_singleton import get_container_app, set_container_app
 from ._app_state import AppState
 from ._blueprint import Blueprint
 from ._factory import _local_construction
-from ._logging import print_log
-from ._progress import live_capture, step_completed, step_progress
+from ._progress import step_completed, step_progress
 from ._serialization import Pickler, Unpickler
 from .client import _Client
 from .config import config, logger
@@ -30,6 +30,19 @@ from .object import Object
 from .rate_limit import RateLimit
 from .schedule import Schedule
 from .secret import Secret
+
+
+def print_log(log: api_pb2.TaskLogs, console) -> None:
+    if log.file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
+        style = "blue"
+    elif log.file_descriptor == api_pb2.FILE_DESCRIPTOR_STDERR:
+        style = "red"
+    elif log.file_descriptor == api_pb2.FILE_DESCRIPTOR_INFO:
+        style = "yellow"
+    else:
+        raise Exception(f"Weird file descriptor {log.file_descriptor} for log output")
+
+    console.out(log.data, style=style, end="")
 
 
 class _App:
@@ -147,8 +160,8 @@ class _App:
             msg = "Tasks created..."
         return msg
 
-    async def _get_logs_loop(self, stdout, stderr, last_log_batch_entry_id: str):
-        async def _get_logs(stdout, stderr):
+    async def _get_logs_loop(self, console: Console, live_task_status: Live, last_log_batch_entry_id: str):
+        async def _get_logs():
             nonlocal last_log_batch_entry_id
 
             request = api_pb2.AppGetLogsRequest(
@@ -173,13 +186,14 @@ class _App:
 
                     for log in log_batch.items:
                         if log.task_state:
-                            self._update_task_state(log_batch.task_id, log.task_state)
+                            message = self._update_task_state(log_batch.task_id, log.task_state)
+                            live_task_status.update(step_progress(message))
                         if log.data:
-                            print_log(log, stdout, stderr)
+                            print_log(log, console)
 
         while True:
             try:
-                await _get_logs(stdout, stderr)
+                await _get_logs()
             except asyncio.CancelledError:
                 logger.info("Logging cancelled")
                 raise
@@ -278,9 +292,11 @@ class _App:
         else:
             visible_progress = show_progress
 
-        def print_if_progress(renderable):
+        console = Console(file=stdout, highlight=False)
+
+        def print_if_visible(renderable):
             if visible_progress:
-                rich.print(renderable)
+                console.print(renderable)
 
         try:
             if existing_app_id is not None:
@@ -299,20 +315,21 @@ class _App:
 
             # Start tracking logs and yield context
             async with TaskContext(grace=config["logs_timeout"]) as tc:
-                async with live_capture(step_progress("Initializing..."), stdout, stderr):
-                    tc.create_task(self._get_logs_loop(stdout, stderr, last_log_entry_id or ""))
-                print_if_progress(step_completed("Intialized."))
+                with Live(step_progress("Initializing..."), console=console, transient=True):
+                    live_task_status = Live(step_progress("Running app..."), console=console, transient=True)
+                    tc.create_task(self._get_logs_loop(console, live_task_status, last_log_entry_id or ""))
+                print_if_visible(step_completed("Intialized."))
 
                 try:
                     progress = Tree(step_progress("Creating objects..."), guide_style="gray50")
                     self._progress = progress
-                    async with live_capture(progress, stdout, stderr):
+                    with Live(progress, console=console, transient=True):
                         await self._flush_objects()
                     progress.label = step_completed("Created objects.")
-                    print_if_progress(progress)
+                    print_if_visible(progress)
 
                     # Create all members
-                    async with live_capture(step_progress("Running app..."), stdout, stderr):
+                    with live_task_status:
                         # Create the app (and send a list of all tagged obs)
                         # TODO(erikbern): we should delete objects from a previous version that are no longer needed
                         # We just delete them from the app, but the actual objects will stay around
@@ -326,7 +343,7 @@ class _App:
                         self.state = AppState.RUNNING
                         yield self  # yield context manager to block
                         self.state = AppState.STOPPING
-                    print_if_progress(step_completed("App completed."))
+                    print_if_visible(step_completed("App completed."))
 
                 finally:
                     # Stop app server-side. This causes:
