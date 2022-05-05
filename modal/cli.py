@@ -1,4 +1,6 @@
+import asyncio
 import getpass
+import inspect
 import os
 import sys
 import traceback
@@ -96,8 +98,12 @@ def deploy(app_ref: str, name: str = None):
         # replace os.sep for convenience
         name = app_ref.replace(os.sep, ".")
 
-    # TODO(erikbern): will this work for AioApps?
-    app_id = app.deploy(name=name)
+    res = app.deploy(name=name)
+    if inspect.iscoroutine(res):
+        app_id = asyncio.run(res)
+    else:
+        app_id = res
+
     print(f"App deployed! {Symbols.PARTY_POPPER}")
     print(f"App ID: {app_id}")  # TODO: print URL instead
 
