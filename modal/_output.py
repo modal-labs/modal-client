@@ -1,7 +1,7 @@
 import io
 import platform
 import re
-from typing import Callable, TextIO
+from typing import Callable
 
 from rich.console import RenderableType
 from rich.spinner import Spinner
@@ -28,7 +28,7 @@ def step_completed(message: str, is_substep: bool = False) -> RenderableType:
     return f"[green]{symbol}[/green] " + message
 
 
-class LineBufferedOutput(io.TextIOBase, TextIO):
+class LineBufferedOutput(io.StringIO):
     """Output stream that buffers lines and passes them to a callback."""
 
     LINE_REGEX = re.compile("(\r\n|\r|\n)")
