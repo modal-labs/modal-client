@@ -149,17 +149,16 @@ class _App:
         if api_pb2.TASK_STATE_RUNNING in states_set:
             tasks_running = tasks_at_state(api_pb2.TASK_STATE_RUNNING)
             tasks_loading = tasks_at_state(api_pb2.TASK_STATE_LOADING_IMAGE)
-            msg = f"Running ({tasks_running}/{tasks_running + tasks_loading} containers in use)..."
+            return f"Running ({tasks_running}/{tasks_running + tasks_loading} containers in use)..."
         elif api_pb2.TASK_STATE_LOADING_IMAGE in states_set:
             tasks_loading = tasks_at_state(api_pb2.TASK_STATE_LOADING_IMAGE)
-            msg = f"Loading images ({tasks_loading} containers initializing)..."
+            return f"Loading images ({tasks_loading} containers initializing)..."
         elif api_pb2.TASK_STATE_WORKER_ASSIGNED in states_set:
-            msg = "Worker assigned..."
+            return "Worker assigned..."
         elif api_pb2.TASK_STATE_QUEUED in states_set:
-            msg = "Tasks queued..."
+            return "Tasks queued..."
         else:
-            msg = "Tasks created..."
-        return msg
+            return "Tasks created..."
 
     async def _get_logs_loop(self, console: Console, live_task_status: Live, last_log_batch_entry_id: str):
         async def _get_logs():
