@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import io
 import os
 import sys
@@ -18,7 +19,7 @@ from ._app_singleton import get_container_app, set_container_app
 from ._app_state import AppState
 from ._blueprint import Blueprint
 from ._factory import _local_construction
-from ._progress import step_completed, step_progress
+from ._output import LineBufferedOutput, step_completed, step_progress
 from ._serialization import Pickler, Unpickler
 from .client import _Client
 from .config import config, logger
@@ -32,17 +33,17 @@ from .schedule import Schedule
 from .secret import Secret
 
 
-def print_log(log: api_pb2.TaskLogs, console) -> None:
-    if log.file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
+def print_log(console: Console, fd: int, data: str) -> None:
+    if fd == api_pb2.FILE_DESCRIPTOR_STDOUT:
         style = "blue"
-    elif log.file_descriptor == api_pb2.FILE_DESCRIPTOR_STDERR:
+    elif fd == api_pb2.FILE_DESCRIPTOR_STDERR:
         style = "red"
-    elif log.file_descriptor == api_pb2.FILE_DESCRIPTOR_INFO:
+    elif fd == api_pb2.FILE_DESCRIPTOR_INFO:
         style = "yellow"
     else:
-        raise Exception(f"Weird file descriptor {log.file_descriptor} for log output")
+        raise Exception(f"Weird file descriptor {fd} for log output")
 
-    console.out(log.data, style=style, end="")
+    console.out(data, style=style, end="")
 
 
 class _App:
@@ -170,6 +171,7 @@ class _App:
                 last_entry_id=last_log_batch_entry_id,
             )
             log_batch: api_pb2.TaskLogsBatch
+            line_buffers: Dict[int, LineBufferedOutput] = {}
             async for log_batch in self.client.stub.AppGetLogs(request):
                 if log_batch.app_state:
                     logger.debug(f"App state now {api_pb2.AppState.Name(log_batch.app_state)}")
@@ -189,7 +191,13 @@ class _App:
                             message = self._update_task_state(log_batch.task_id, log.task_state)
                             live_task_status.update(step_progress(message))
                         if log.data:
-                            print_log(log, console)
+                            stream = line_buffers.get(log.file_descriptor)
+                            if stream is None:
+                                stream = LineBufferedOutput(functools.partial(print_log, console, log.file_descriptor))
+                                line_buffers[log.file_descriptor] = stream
+                            stream.write(log.data)
+            for stream in line_buffers.values():
+                stream.finalize()
 
         while True:
             try:
