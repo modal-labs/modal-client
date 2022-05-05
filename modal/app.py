@@ -247,14 +247,8 @@ class _App:
         return object_id
 
     async def _flush_objects(self):
-        "Create objects that have been defined but not created on the server."
-
+        """Create objects that have been defined but not created on the server."""
         for obj in self._blueprint.get_objects():
-            if obj.object_id is not None:
-                # object is already created (happens due to object re-initialization in the container).
-                # TODO: we should check that the object id isn't old
-                continue
-
             logger.debug(f"Creating object {obj}")
             await self.create_object(obj)
 
