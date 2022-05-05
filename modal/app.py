@@ -343,7 +343,6 @@ class _App:
                         self.state = AppState.RUNNING
                         yield self  # yield context manager to block
                         self.state = AppState.STOPPING
-                    print_if_visible(step_completed("App completed."))
 
                 finally:
                     # Stop app server-side. This causes:
@@ -352,6 +351,9 @@ class _App:
                     logger.debug("Stopping the app server-side")
                     req_disconnect = api_pb2.AppClientDisconnectRequest(app_id=self._app_id)
                     await self.client.stub.AppClientDisconnect(req_disconnect)
+
+            print_if_visible(step_completed("App completed."))
+
         finally:
             self.client = None
             self.state = AppState.NONE
