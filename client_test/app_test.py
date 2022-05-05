@@ -61,22 +61,23 @@ def square(x):
 @pytest.mark.asyncio
 async def test_redeploy(servicer, aio_client):
     app = AioApp()
-    f = app.function(square)
+    app.function(square)
+    f_name = "client_test.app_test.square"
 
     # Deploy app
     await app.deploy("my-app", client=aio_client)
     assert app.app_id == "ap-1"
-    assert f.object_id == "fu-1"
+    assert servicer.app_objects["ap-1"][f_name] == "fu-1"
 
     # Redeploy, make sure all ids are the same
     await app.deploy("my-app", client=aio_client)
     assert app.app_id == "ap-1"
-    assert f.object_id == "fu-1"
+    assert servicer.app_objects["ap-1"][f_name] == "fu-1"
 
     # Deploy to a different name, ids should change
     await app.deploy("my-app-xyz", client=aio_client)
     assert app.app_id == "ap-2"
-    assert f.object_id == "fu-2"
+    assert servicer.app_objects["ap-2"][f_name] == "fu-2"
 
 
 # Should exit without waiting for the logs grace period.

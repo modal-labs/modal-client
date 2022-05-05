@@ -98,12 +98,15 @@ class _Image(Object, type_prefix="im"):
         # This is used from inside of containers to know whether this container is active or not
         if get_container_app() is None:
             return False
-        else:
-            env_image_id = config.get("image_id")
-            # TODO(erikbern): this is super wacky. Let's clean it up in a second
-            image_id = self._app._created_tagged_objects.get(self.tag)
-            logger.debug(f"Is image inside? env {env_image_id} image {image_id}")
-            return image_id is not None and env_image_id == image_id
+
+        env_image_id = config.get("image_id")
+        # TODO(erikbern): this is super wacky. Let's clean it up in a second
+        try:
+            image_id = self._app[self.tag].object_id
+        except KeyError:
+            image_id = None
+        logger.debug(f"Is image inside? env {env_image_id} image {image_id}")
+        return image_id is not None and env_image_id == image_id
 
     async def run_interactive(self, cmd=None, mounts=[], secrets=[]):
         """Run `cmd` interactively within this image. Similar to `docker run -it --entrypoint={cmd}`.

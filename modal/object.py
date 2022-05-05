@@ -50,16 +50,15 @@ class Object(metaclass=ObjectMeta):
 
     @classmethod
     def from_id(cls, object_id, app):
-        prefix, _ = object_id.split("-")  # TODO: util method
+        parts = object_id.split("-")
+        if len(parts) != 2:
+            raise InvalidError(f"Object id {object_id} has no dash in it")
+        prefix = parts[0]
+        if prefix not in ObjectMeta.prefix_to_type:
+            raise InvalidError(f"Object prefix {prefix} does not correspond to a type")
         object_cls = ObjectMeta.prefix_to_type[prefix]
         obj = Object.__new__(object_cls)
         Object.__init__(obj, app, object_id=object_id)
-        return obj
-
-    def set_object_id(self, object_id):
-        object_cls = type(self)
-        obj = Object.__new__(object_cls)
-        Object.__init__(obj, self._app, object_id=object_id)
         return obj
 
     @property

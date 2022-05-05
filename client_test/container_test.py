@@ -57,11 +57,11 @@ def _run_container(servicer, module_name, function_name):
         image_tag = image.tag
 
         servicer.object_ids = {
-            image_tag: "1",
-            "modal._test_support.square": "2",
-            "modal._test_support.square_sync_returning_async": "3",
-            "modal._test_support.square_async": "4",
-            "modal._test_support.raises": "5",
+            image_tag: "im-1",
+            "modal._test_support.square": "fu-2",
+            "modal._test_support.square_sync_returning_async": "fu-3",
+            "modal._test_support.square_async": "fu-4",
+            "modal._test_support.raises": "fu-5",
         }
         main(container_args, client)
 

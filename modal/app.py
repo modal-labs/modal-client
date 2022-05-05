@@ -56,9 +56,8 @@ class _App:
     In this example, both `foo`, the secret and the schedule are registered with the app.
     """
 
-    _created_tagged_objects: Dict[str, str]  # tag -> id
-    _patchable_tagged_objects: Dict[str, str]  # tag -> id
-    _created_tagged_objects_objs: Dict[str, Object]  # tag -> Object
+    _tag_to_object: Dict[str, Object]
+    _tag_to_existing_id: Dict[str, str]
 
     @classmethod
     def _initialize_container_app(cls):
@@ -84,9 +83,8 @@ class _App:
         self.client = None
         self.name = name or self._infer_app_name()
         self.state = AppState.NONE
-        self._created_tagged_objects = {}  # tag -> object id
-        self._created_tagged_objects_objs = {}  # tag -> Object
-        self._patchable_tagged_objects = {}  # tag -> object id
+        self._tag_to_object = {}
+        self._tag_to_existing_id = {}
         self._blueprint = Blueprint()
         self._task_states = {}
         self._progress = None
@@ -102,42 +100,22 @@ class _App:
         args = [script_filename] + sys.argv[1:]
         return " ".join(args)
 
-    def _get_object_id_by_tag(self, tag: str):
-        """Assigns an id to the object if there is already one set.
-
-        This happens inside a container in the global scope.
-        """
-        return self._created_tagged_objects.get(tag)
-
     def _register_object(self, obj):
         """Registers an object to be created by the app so that it's available in modal.
 
         This is only used by factories and functions."""
-        # if self.state != AppState.NONE:
-        #    raise InvalidError(f"Can only register objects on a app that's not running (state = {self.state}")
-
-        container_app = get_container_app()
-        if container_app is not None and self != container_app:
-            raise Exception(f"App {self} is not container app {container_app}")
-
-        if container_app:
-            # If we're inside the container and have a label, always look things up
-            if obj.tag in self._created_tagged_objects:
-                object_id = self._created_tagged_objects[obj.tag]
-                self._created_tagged_objects_objs[obj.tag] = obj.set_object_id(object_id)
-        else:
-            if obj.tag in self._created_tagged_objects:
-                # in case of a double load of an object, which seems
-                # to happen sometimes when cloudpickle loads an object whose
-                # type is declared in a module with modal functions
-                pass
-            self._blueprint.register(obj)
+        if get_container_app():
+            return
+        if self.state != AppState.NONE:
+            raise InvalidError(f"Can only register objects on a app that's not running (state = {self.state}")
+        # TODO(erikbern): there was a special case with a comment here about double-loading and cloudpickle,
+        # but I have a feeling it's no longer an issue, so I remved it for now.
+        self._blueprint.register(obj)
 
     def _update_task_state(self, task_id, state):
         self._task_states[task_id] = state
 
         # Recompute task status string.
-
         all_states = self._task_states.values()
         states_set = set(all_states)
 
@@ -215,7 +193,11 @@ class _App:
 
         req = api_pb2.AppGetObjectsRequest(app_id=app_id, task_id=task_id)
         resp = await self.client.stub.AppGetObjects(req)
-        self._created_tagged_objects = dict(resp.object_ids)
+        for (
+            tag,
+            object_id,
+        ) in resp.object_ids.items():
+            self._tag_to_object[tag] = Object.from_id(object_id, self)
 
         # In the container, run forever
         self.state = AppState.RUNNING
@@ -233,8 +215,8 @@ class _App:
             return obj.object_id
 
         # Already created
-        if obj.tag and obj.tag in self._created_tagged_objects:
-            return self._created_tagged_objects[obj.tag]
+        if obj.tag and obj.tag in self._tag_to_object:
+            return self._tag_to_object[obj.tag].object_id
 
         creating_message = obj.get_creating_message()
         if creating_message is not None:
@@ -245,7 +227,7 @@ class _App:
             # TODO: this is a bit of a special case that we should clean up later
             object_id = await self._include(obj.label.app_name, obj.label.object_label, obj.label.namespace)
         else:
-            existing_object_id = self._patchable_tagged_objects.get(obj.tag)
+            existing_object_id = self._tag_to_existing_id.get(obj.tag)
             object_id = await obj.load(self, existing_object_id)
             if existing_object_id is not None and object_id != existing_object_id:
                 raise Exception(
@@ -255,8 +237,7 @@ class _App:
             raise Exception(f"object_id for object of type {type(obj)} is None")
 
         if obj.tag:
-            self._created_tagged_objects[obj.tag] = object_id
-            self._created_tagged_objects_objs[obj.tag] = obj.set_object_id(object_id)
+            self._tag_to_object[obj.tag] = Object.from_id(object_id, self)
 
         if creating_message is not None:
             created_message = obj.get_created_message()
@@ -278,7 +259,7 @@ class _App:
             await self.create_object(obj)
 
     def __getitem__(self, tag):
-        return self._created_tagged_objects_objs[tag]
+        return self._tag_to_object[tag]
 
     @synchronizer.asynccontextmanager
     async def _run(self, client, stdout, stderr, logs_timeout, show_progress, existing_app_id, last_log_entry_id=None):
@@ -299,14 +280,14 @@ class _App:
                 # Get all the objects first
                 obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
                 obj_resp = await self.client.stub.AppGetObjects(obj_req)
-                self._patchable_tagged_objects = dict(obj_resp.object_ids)
+                self._tag_to_existing_id = dict(obj_resp.object_ids)
                 self._app_id = existing_app_id
             else:
                 # Start app
                 # TODO(erikbern): maybe this should happen outside of this method?
                 app_req = api_pb2.AppCreateRequest(client_id=client.client_id, name=self.name)
                 app_resp = await client.stub.AppCreate(app_req)
-                self._patchable_tagged_objects = {}
+                self._tag_to_existing_id = {}
                 self._app_id = app_resp.app_id
 
             # Start tracking logs and yield context
@@ -326,9 +307,10 @@ class _App:
                         # Create the app (and send a list of all tagged obs)
                         # TODO(erikbern): we should delete objects from a previous version that are no longer needed
                         # We just delete them from the app, but the actual objects will stay around
+                        object_ids = {tag: obj.object_id for tag, obj in self._tag_to_object.items()}
                         req_set = api_pb2.AppSetObjectsRequest(
                             app_id=self._app_id,
-                            object_ids=self._created_tagged_objects,
+                            object_ids=object_ids,
                         )
                         await self.client.stub.AppSetObjects(req_set)
 
@@ -346,8 +328,7 @@ class _App:
             self.client = None
             self.state = AppState.NONE
             self._progress = None
-            self._created_tagged_objects = {}
-            # self._created_tagged_objects_objs = {}
+            self._tag_to_object = {}
 
     @synchronizer.asynccontextmanager
     async def _get_client(self, client=None):

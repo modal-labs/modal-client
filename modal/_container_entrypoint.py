@@ -23,7 +23,7 @@ from .app import _App
 from .client import Client, _Client
 from .config import config, logger
 from .exception import InvalidError
-from .functions import AioFunction, Function, _Function
+from .functions import AioFunction, Function
 
 
 def _path_to_function(module_name, function_name):
@@ -83,10 +83,10 @@ class _FunctionContext:
         response = await self.client.stub.FunctionGetSerialized(request)
         raw_f = cloudpickle.loads(response.function_serialized)
 
-        # Create a function dynamically
-        # Function object is already created, so we need to associate the correct object ID.
-        fun = _Function(self.app, raw_f).set_object_id(self.function_id)
-        return fun.raw_f
+        # TODO(erikbern): there was some code here to create the _Function object,
+        # I think related to notebooks, but it was never used. Deleted it for now,
+        # will go back to it once we fix notebooks.
+        return raw_f
 
     async def serialize(self, obj: Any) -> bytes:
         return self.app._serialize(obj)
