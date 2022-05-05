@@ -354,6 +354,8 @@ class _Function(Object, type_prefix="fu"):
 
 
 class _FunctionProxy:
+    """This class represents a decorated function."""
+
     def __init__(self, orig_function, app, tag):
         # Need to store a reference to the unitialized function that has the contructor args
         self._orig_function = orig_function
@@ -389,4 +391,5 @@ class _FunctionProxy:
         return self._get_function().object_id
 
 
-FunctionProxy, AioFunctionProxy = synchronize_apis(_FunctionProxy)
+# Note that we rename these
+Function, AioFunction = synchronize_apis(_FunctionProxy)
