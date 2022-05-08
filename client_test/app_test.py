@@ -37,11 +37,7 @@ async def test_create_object(servicer, aio_client):
 @pytest.mark.asyncio
 async def test_persistent_object(servicer, aio_client):
     app_1 = AioApp()
-
-    @app_1.local_construction(AioQueue)
-    def q_1():
-        return AioQueue(app=app_1)
-
+    app_1["q_1"] = AioQueue(app=app_1)
     await app_1.deploy("my-queue", client=aio_client)
 
     app_2 = AioApp()

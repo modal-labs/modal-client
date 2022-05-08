@@ -18,7 +18,6 @@ from modal_utils.decorator_utils import decorator_with_options
 from ._app_singleton import get_container_app, set_container_app
 from ._app_state import AppState
 from ._blueprint import Blueprint
-from ._factory import _local_construction
 from ._output import LineBufferedOutput, make_live, step_completed, step_progress
 from ._serialization import Pickler, Unpickler
 from .client import _Client
@@ -291,7 +290,14 @@ class _App:
             self._tag_to_object[tag] = Object.from_id(object_id, self)
 
     def __getitem__(self, tag):
-        return self._tag_to_object[tag]
+        # TODO(erikbern): this should really be an app vs blueprint thing
+        if self.state == AppState.RUNNING:
+            return self._tag_to_object[tag]
+        else:
+            return self._blueprint.get_object(tag)
+
+    def __setitem__(self, tag, obj):
+        self._register_object(tag, obj)
 
     @synchronizer.asynccontextmanager
     async def _run(self, client, stdout, show_progress, existing_app_id, last_log_entry_id=None):
@@ -623,28 +629,6 @@ class _App:
             ),
         )
         return self._register_function(function)
-
-    def local_construction(self, cls):
-        """Decorator to create a custom initialization function for something that runs on app startup.
-
-        This is useful if you need to define some object based on data on your development machine
-        and access it later from Modal functions.
-
-        The annotated function is called on app startup and persisted after that for the lifetime of
-        the app.
-
-        Example:
-        ```python
-        @app.local_construction(modal.Secret)
-        def forward_local_secrets():
-            return modal.Secret(app, os.environ)
-
-        @app.function(secrets=forward_local_secrets)
-        def editor():
-            return os.environ["EDITOR"]
-        ```
-        """
-        return _local_construction(self, cls)
 
 
 App, AioApp = synchronize_apis(_App)

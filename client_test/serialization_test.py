@@ -4,10 +4,7 @@ from modal.aio import AioApp, AioQueue
 
 app = AioApp()
 
-
-@app.local_construction(AioQueue)
-async def qf():
-    return AioQueue(app=app)
+app["qf"] = AioQueue(app=app)
 
 
 @pytest.mark.asyncio

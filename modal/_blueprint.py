@@ -18,8 +18,10 @@ class Blueprint:
 
         This is only used by factories and functions.
         """
-        print(tag, obj)
         self._objects[tag] = obj
+
+    def get_object(self, tag: str) -> Object:
+        return self._objects[tag]
 
     def get_objects(self) -> Iterator[Tuple[str, Object]]:
         for tag, obj in self._objects.items():

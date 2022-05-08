@@ -4,15 +4,12 @@ from modal.aio import AioApp, AioQueue
 
 app = AioApp()
 
-
-@app.local_construction(AioQueue)
-async def my_factory():
-    return AioQueue(app=app)
+app["my_factory"] = AioQueue(app=app)
 
 
 @pytest.mark.asyncio
 async def test_async_factory(servicer, client):
-    assert isinstance(my_factory, AioQueue)
+    assert isinstance(app["my_factory"], AioQueue)
     async with app.run(client=client):
         assert isinstance(app["my_factory"], AioQueue)
         assert app["my_factory"].object_id == "qu-1"
