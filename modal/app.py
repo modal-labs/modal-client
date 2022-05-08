@@ -494,6 +494,13 @@ class _App:
         function_proxy = _FunctionProxy(function, self, function.tag)
         return function_proxy
 
+    def _get_default_image(self):
+        # TODO(erikbern): instead of writing this to the same namespace
+        # as the user's objects, we could use sub-blueprints in the future
+        image = _DebianSlim(app=self)
+        self._register_object("_image", image)
+        return image
+
     @decorator_with_options
     def function(
         self,
@@ -510,7 +517,7 @@ class _App:
     ) -> _Function:  # Function object - callable as a regular function within a Modal app
         """Decorator to create Modal functions"""
         if image is None:
-            image = _DebianSlim(app=self)
+            image = self._get_default_image()
         function = _Function(
             self,
             raw_f,
@@ -541,7 +548,7 @@ class _App:
     ) -> _Function:
         """Decorator to create Modal generators"""
         if image is None:
-            image = _DebianSlim(app=self)
+            image = self._get_default_image()
         function = _Function(
             self,
             raw_f,
@@ -569,7 +576,7 @@ class _App:
         mounts: Collection[_Mount] = (),
     ):
         if image is None:
-            image = _DebianSlim(app=self)
+            image = self._get_default_image()
 
         function = _Function(
             self,
@@ -600,7 +607,7 @@ class _App:
         mounts: Collection[_Mount] = (),
     ):
         if image is None:
-            image = _DebianSlim(app=self)
+            image = self._get_default_image()
 
         function = _Function(
             self,

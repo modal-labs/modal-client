@@ -2,7 +2,7 @@ import platform
 import pytest
 import time
 
-from modal import App, DebianSlim
+from modal import App
 from modal._container_entrypoint import main
 
 # from modal._test_support import SLEEP_DELAY
@@ -51,13 +51,8 @@ def _run_container(servicer, module_name, function_name):
             function_def=function_def,
         )
 
-        # Get the base image tag in an awkward way
-        app = App()
-        image = DebianSlim(app)
-        image_tag = image.tag
-
         servicer.object_ids = {
-            image_tag: "im-1",
+            "image": "im-1",
             "modal._test_support.square": "fu-2",
             "modal._test_support.square_sync_returning_async": "fu-3",
             "modal._test_support.square_async": "fu-4",

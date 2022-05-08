@@ -8,7 +8,6 @@ from modal_utils.async_utils import retry, synchronize_apis
 from modal_utils.package_utils import parse_requirements_txt
 
 from ._app_singleton import get_container_app
-from ._factory import _factory
 from ._image_pty import image_pty
 from .config import config, logger
 from .exception import RemoteError
@@ -135,8 +134,7 @@ def _dockerhub_python_version(python_version=None):
     return python_version
 
 
-@_factory(_Image)
-async def _DebianSlim(
+def _DebianSlim(
     app=None,
     extra_commands=None,
     python_packages=None,
@@ -180,8 +178,7 @@ async def _DebianSlim(
     )
 
 
-@_factory(_Image)
-async def _extend_image(app, base_image, extra_dockerfile_commands, context_files={}):
+def _extend_image(app, base_image, extra_dockerfile_commands, context_files={}):
     """Extend an image with arbitrary dockerfile commands"""
     return _Image(
         base_image.app,
@@ -199,8 +196,7 @@ def get_client_requirements_path():
     return os.path.join(modal_path, "requirements.txt")
 
 
-@_factory(_Image)
-async def _DockerhubImage(app, tag):
+def _DockerhubImage(app, tag):
     """
     Build a modal image from a pre-existing image on DockerHub.
 

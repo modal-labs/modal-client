@@ -15,7 +15,6 @@ from modal_utils.package_utils import (
     module_mount_condition,
 )
 
-from ._factory import _factory
 from .config import logger
 from .exception import InvalidError
 from .object import Object
@@ -155,7 +154,6 @@ async def _create_client_mount(app):
 _, aio_create_client_mount = synchronize_apis(_create_client_mount)
 
 
-@_factory(_Mount)
 async def _create_package_mount(app, module_name):
     mount_infos = get_module_mount_info(module_name)
 

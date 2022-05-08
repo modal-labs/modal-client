@@ -1,6 +1,5 @@
 import functools
 import inspect
-import json
 
 import synchronicity
 
@@ -67,39 +66,3 @@ def _local_construction_make(app, cls, fun):
 def _local_construction(app, cls):
     """Used as a decorator."""
     return functools.partial(_local_construction_make, app, cls)
-
-
-def _factory_make(cls, fun):
-    # TODO: we should add support for user code:
-    # callback = _create_callback(fun)
-
-    class _InternalFactory(cls):  # type: ignore
-        def __init__(self, app, **kwargs):
-            self._kwargs = kwargs
-            tag = _get_tag(fun)
-
-            # Append the arguments (but not the app) to the tag
-            fun_app_bound = functools.partial(fun, None)
-            signature = inspect.signature(fun_app_bound)
-            args = signature.bind(**kwargs)
-            args.apply_defaults()
-            args_list = [a._label.local_tag if isinstance(a, Object) else a for a in args.arguments.values()]
-            args_str = json.dumps(args_list)[1:-1]  # remove the enclosing []
-            tag = f"{tag}({args_str})"
-
-            Object.__init__(self, app, tag)
-
-        async def load(self, app, existing_object_id):
-            assert get_container_app() is None
-            obj = await fun(app, **self._kwargs)
-            if not isinstance(obj, cls):
-                raise TypeError(f"expected {obj} to have type {cls}")
-            object_id = await app.create_object(obj)
-            return object_id
-
-    return _InternalFactory
-
-
-def _factory(cls):
-    # Used as a decorator
-    return functools.partial(_factory_make, cls)
