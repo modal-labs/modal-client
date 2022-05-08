@@ -24,12 +24,9 @@ class Object(metaclass=ObjectMeta):
     well as distributed data structures like Queues or Dicts.
     """
 
-    def __init__(self, app, tag=None, label=None, object_id=None):
+    def __init__(self, app, label=None, object_id=None):
         if app is None:
             raise InvalidError(f"Object {self} created without an app")
-        if tag is not None:
-            assert isinstance(tag, str)
-            label = ObjectLabel(tag)
         self._label = label
         self._app = app
         self._object_id = object_id
@@ -68,13 +65,6 @@ class Object(metaclass=ObjectMeta):
     @property
     def label(self):
         return self._label
-
-    @property
-    def tag(self):
-        if self._label is not None:
-            return self._label.local_tag
-        else:
-            return None
 
     def get_creating_message(self) -> Optional[str]:
         return None

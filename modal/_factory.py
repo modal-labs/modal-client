@@ -43,9 +43,9 @@ def _local_construction_make(app, cls, fun):
         def __init__(self):
             # This is the only place where tags are being set on objects,
             # besides Function
+            Object.__init__(self, app)
             tag = _get_tag(fun)
-            Object.__init__(self, app, tag)
-            app._register_object(self)
+            app._register_object(tag, self)
 
         async def load(self, app, existing_object_id):
             if get_container_app() is not None:

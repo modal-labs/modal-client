@@ -125,7 +125,7 @@ class _App:
         args = [script_filename] + sys.argv[1:]
         return " ".join(args)
 
-    def _register_object(self, obj):
+    def _register_object(self, tag: str, obj: Object):
         """Registers an object to be created by the app so that it's available in modal.
 
         This is only used by factories and functions."""
@@ -135,7 +135,7 @@ class _App:
             raise InvalidError(f"Can only register objects on a app that's not running (state = {self.state}")
         # TODO(erikbern): there was a special case with a comment here about double-loading and cloudpickle,
         # but I have a feeling it's no longer an issue, so I remved it for now.
-        self._blueprint.register(obj)
+        self._blueprint.register(tag, obj)
 
     def _update_task_state(self, task_id: str, state: int) -> str:
         """Updates the state of a task, returning the new task status string."""
@@ -234,7 +234,7 @@ class _App:
         # In the container, run forever
         self.state = AppState.RUNNING
 
-    async def create_object(self, obj: Object) -> str:
+    async def create_object(self, obj: Object, existing_object_id: Optional[str] = None) -> str:
         """Takes an object as input, returns an object id.
 
         This is a noop for any object that's not a factory.
@@ -247,19 +247,20 @@ class _App:
             return obj.object_id
 
         # Already created
-        if obj.tag and obj.tag in self._tag_to_object:
-            return self._tag_to_object[obj.tag].object_id
+        # TODO: handle references to the current app
+        # if obj.tag and obj.tag in self._tag_to_object:
+        #    return self._tag_to_object[obj.tag].object_id
 
         creating_message = obj.get_creating_message()
         if creating_message is not None:
             step_node = self._progress.add(step_progress(creating_message))
 
         # Create object
+        print(f"{obj.label=}")
         if obj.label is not None and obj.label.app_name is not None:
             # TODO: this is a bit of a special case that we should clean up later
             object_id = await self._include(obj.label.app_name, obj.label.object_label, obj.label.namespace)
         else:
-            existing_object_id = self._tag_to_existing_id.get(obj.tag)
             object_id = await obj.load(self, existing_object_id)
             if existing_object_id is not None and object_id != existing_object_id:
                 # TODO(erikbern): this is a very ugly fix to a problem that's on the server side.
@@ -274,9 +275,6 @@ class _App:
         if object_id is None:
             raise Exception(f"object_id for object of type {type(obj)} is None")
 
-        if obj.tag:
-            self._tag_to_object[obj.tag] = Object.from_id(object_id, self)
-
         if creating_message is not None:
             created_message = obj.get_created_message()
             assert created_message is not None
@@ -286,9 +284,11 @@ class _App:
 
     async def _flush_objects(self):
         """Create objects that have been defined but not created on the server."""
-        for obj in self._blueprint.get_objects():
-            logger.debug(f"Creating object {obj}")
-            await self.create_object(obj)
+        for tag, obj in self._blueprint.get_objects():
+            existing_object_id = self._tag_to_existing_id.get(tag)
+            logger.debug(f"Creating object {obj} with existing id {existing_object_id}")
+            object_id = await self.create_object(obj, existing_object_id)
+            self._tag_to_object[tag] = Object.from_id(object_id, self)
 
     def __getitem__(self, tag):
         return self._tag_to_object[tag]
@@ -490,7 +490,7 @@ class _App:
         return Unpickler(self, io.BytesIO(s)).load()
 
     def _register_function(self, function):
-        self._register_object(function)
+        self._register_object(function.tag, function)
         function_proxy = _FunctionProxy(function, self, function.tag)
         return function_proxy
 

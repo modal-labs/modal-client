@@ -240,8 +240,6 @@ class _Function(Object, type_prefix="fu"):
                 )
         # assert not synchronizer.is_synchronized(image)
 
-        # This is the only place besides object factory that sets tags
-        tag = self.info.get_tag()
         self.raw_f = raw_f
         self.image = image
         if secret and secrets:
@@ -257,7 +255,8 @@ class _Function(Object, type_prefix="fu"):
         self.mounts = mounts
         self.webhook_config = webhook_config
         self.web_url = None
-        Object.__init__(self, app, tag)
+        self.tag = self.info.get_tag()
+        Object.__init__(self, app)
 
     def get_creating_message(self) -> str:
         return f"Creating {self.tag}..."
