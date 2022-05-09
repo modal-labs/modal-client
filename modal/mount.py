@@ -140,14 +140,13 @@ class _Mount(Object, type_prefix="mo"):
 Mount, AioMount = synchronize_apis(_Mount)
 
 
-async def _create_client_mount(app):
+def _create_client_mount(app):
     import modal
 
     # Get the base_path because it also contains `modal_utils` and `modal_proto`.
     base_path, _ = os.path.split(modal.__path__[0])
 
     mount = _Mount(app, local_dir=base_path, remote_dir="/pkg/", condition=module_mount_condition, recursive=True)
-    await app.create_object(mount)
     return mount
 
 

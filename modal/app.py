@@ -255,7 +255,6 @@ class _App:
             step_node = self._progress.add(step_progress(creating_message))
 
         # Create object
-        print(f"{obj.label=}")
         if obj.label is not None and obj.label.app_name is not None:
             # TODO: this is a bit of a special case that we should clean up later
             object_id = await self._include(obj.label.app_name, obj.label.object_label, obj.label.namespace)
