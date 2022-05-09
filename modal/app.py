@@ -224,6 +224,7 @@ class _App:
 
         req = api_pb2.AppGetObjectsRequest(app_id=app_id, task_id=task_id)
         resp = await self.client.stub.AppGetObjects(req)
+        print("setting objects of this app to:", dict(resp.object_ids))
         for (
             tag,
             object_id,

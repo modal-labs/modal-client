@@ -8,10 +8,6 @@ from .exception import InvalidError
 
 
 class ObjectLabel(NamedTuple):
-    # Local to this app
-    local_tag: str
-
-    # Different app
     app_name: Optional[str] = None
     object_label: Optional[str] = None
     namespace: Optional[int] = None  # api_pb2.DEPLOYMENT_NAMESPACE
@@ -79,11 +75,7 @@ class Object(metaclass=ObjectMeta):
     @classmethod
     def include(cls, app, app_name, object_label=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
         """Use an object published with `modal.App.deploy`"""
-        # TODO: this is somewhat hacky
-        # everything needs a local label right now, so let's contruct an artificial one
-
-        local_tag = f"#SHARE({app_name}, {object_label}, {namespace})"
-        label = ObjectLabel(local_tag, app_name, object_label, namespace)
+        label = ObjectLabel(app_name, object_label, namespace)
 
         obj = Object.__new__(cls)
         Object.__init__(obj, app, label=label)
