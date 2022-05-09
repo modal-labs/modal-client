@@ -3,7 +3,8 @@ import platform
 import re
 from typing import Callable
 
-from rich.console import RenderableType
+from rich.console import Console, RenderableType
+from rich.live import Live
 from rich.spinner import Spinner
 from rich.text import Text
 
@@ -26,6 +27,11 @@ def step_completed(message: str, is_substep: bool = False) -> RenderableType:
 
     symbol = SUBSTEP_COMPLETED if is_substep else STEP_COMPLETED
     return f"[green]{symbol}[/green] " + message
+
+
+def make_live(renderable: RenderableType, console: Console) -> Live:
+    """Creates a customized `rich.Live` instance with the given renderable."""
+    return Live(renderable, console=console, transient=True, refresh_per_second=10)
 
 
 class LineBufferedOutput(io.StringIO):

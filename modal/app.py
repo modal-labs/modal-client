@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import functools
 import io
 import os
@@ -18,7 +19,7 @@ from ._app_singleton import get_container_app, set_container_app
 from ._app_state import AppState
 from ._blueprint import Blueprint
 from ._factory import _local_construction
-from ._output import LineBufferedOutput, step_completed, step_progress
+from ._output import LineBufferedOutput, make_live, step_completed, step_progress
 from ._serialization import Pickler, Unpickler
 from .client import _Client
 from .config import config, logger
@@ -312,6 +313,11 @@ class _App:
             if visible_progress:
                 console.print(renderable)
 
+        def ctx_if_visible(context_mgr):
+            if visible_progress:
+                return context_mgr
+            return contextlib.nullcontext()
+
         try:
             if existing_app_id is not None:
                 # Get all the objects first
@@ -329,23 +335,21 @@ class _App:
 
             # Start tracking logs and yield context
             async with TaskContext(grace=config["logs_timeout"]) as tc:
-                with Live(step_progress("Initializing..."), console=console, transient=True, refresh_per_second=10):
-                    live_task_status = Live(
-                        step_progress("Running app..."), console=console, transient=True, refresh_per_second=10
-                    )
+                with ctx_if_visible(make_live(step_progress("Initializing..."), console)):
+                    live_task_status = make_live(step_progress("Running app..."), console)
                     tc.create_task(self._get_logs_loop(console, live_task_status, last_log_entry_id or ""))
                 print_if_visible(step_completed("Intialized."))
 
                 try:
                     progress = Tree(step_progress("Creating objects..."), guide_style="gray50")
                     self._progress = progress
-                    with Live(progress, console=console, transient=True, refresh_per_second=10):
+                    with ctx_if_visible(make_live(progress, console)):
                         await self._flush_objects()
                     progress.label = step_completed("Created objects.")
                     print_if_visible(progress)
 
                     # Create all members
-                    with live_task_status:
+                    with ctx_if_visible(live_task_status):
                         # Create the app (and send a list of all tagged obs)
                         # TODO(erikbern): we should delete objects from a previous version that are no longer needed
                         # We just delete them from the app, but the actual objects will stay around
