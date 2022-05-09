@@ -329,15 +329,17 @@ class _App:
 
             # Start tracking logs and yield context
             async with TaskContext(grace=config["logs_timeout"]) as tc:
-                with Live(step_progress("Initializing..."), console=console, transient=True):
-                    live_task_status = Live(step_progress("Running app..."), console=console, transient=True)
+                with Live(step_progress("Initializing..."), console=console, transient=True, refresh_per_second=10):
+                    live_task_status = Live(
+                        step_progress("Running app..."), console=console, transient=True, refresh_per_second=10
+                    )
                     tc.create_task(self._get_logs_loop(console, live_task_status, last_log_entry_id or ""))
                 print_if_visible(step_completed("Intialized."))
 
                 try:
                     progress = Tree(step_progress("Creating objects..."), guide_style="gray50")
                     self._progress = progress
-                    with Live(progress, console=console, transient=True):
+                    with Live(progress, console=console, transient=True, refresh_per_second=10):
                         await self._flush_objects()
                     progress.label = step_completed("Created objects.")
                     print_if_visible(progress)
