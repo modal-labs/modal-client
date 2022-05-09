@@ -292,7 +292,11 @@ class _App:
     def __getitem__(self, tag):
         # TODO(erikbern): this should really be an app vs blueprint thing
         if self.state == AppState.RUNNING:
-            return self._tag_to_object[tag]
+            # TODO: this is a terrible hack for now. For running apps inside the container,
+            # because of the singleton thing, any unrelated app will also be RUNNING, so this
+            # branch triggers. However we don't want this to cause a KeyError.
+            # Let's revisit once we clean up the app singleton
+            return self._tag_to_object.get(tag)
         else:
             return self._blueprint.get_object(tag)
 
