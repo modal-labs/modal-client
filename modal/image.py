@@ -145,7 +145,7 @@ async def _DebianSlim(
     requirements_txt=None,
     version=None,
 ):
-    """A default base image, built on the official python:<version>-slim-buster Docker hub images
+    """A default base image, built on the official python:<version>-slim-bullseye Docker hub images
 
     Can also be called as a function to build a new image with additional bash
     commands or python packages.
