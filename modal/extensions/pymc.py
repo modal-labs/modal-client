@@ -8,8 +8,7 @@ from aiostream import stream
 from synchronicity.interface import Interface
 
 import modal
-from modal._factory import _factory
-from modal.image import _extend_image, _Image
+from modal.image import Image, extend_image
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis, synchronizer
 
@@ -18,23 +17,17 @@ pymc_app = modal.App()
 aio_pymc_app = synchronizer._translate_out(synchronizer._translate_in(pymc_app), Interface.ASYNC)
 
 
-@_factory(_Image)
-async def _PyMCImage(app):
-    dockerfile_commands = [
-        "RUN conda info",
-        "RUN echo $0 \\ ",
-        "&& . /root/.bashrc \\ ",
-        "&& conda activate base \\ ",
-        "&& conda info \\ ",
-        "&& conda list \\ ",
-        "&& conda install theano-pymc==1.1.2 pymc3==3.11.2 scikit-learn mkl-service --yes ",
-    ]
-    conda_image = _Image.include(app, "conda", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
-    return _extend_image(app, base_image=conda_image, extra_dockerfile_commands=dockerfile_commands)
-
-
-PyMCImage, _ = synchronize_apis(_PyMCImage)
-pymc_image = PyMCImage(pymc_app)
+dockerfile_commands = [
+    "RUN conda info",
+    "RUN echo $0 \\ ",
+    "&& . /root/.bashrc \\ ",
+    "&& conda activate base \\ ",
+    "&& conda info \\ ",
+    "&& conda list \\ ",
+    "&& conda install theano-pymc==1.1.2 pymc3==3.11.2 scikit-learn mkl-service --yes ",
+]
+conda_image = Image.include(pymc_app, "conda", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
+pymc_image = extend_image(pymc_app, base_image=conda_image, extra_dockerfile_commands=dockerfile_commands)
 
 
 if pymc_image.is_inside():
