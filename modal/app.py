@@ -303,6 +303,9 @@ class _App:
     def __setitem__(self, tag, obj):
         self._register_object(tag, obj)
 
+    def is_local(self):
+        return not get_container_app()
+
     @synchronizer.asynccontextmanager
     async def _run(self, client, stdout, show_progress, existing_app_id, last_log_entry_id=None):
         # TOOD: use something smarter than checking for the .client to exists in order to prevent
