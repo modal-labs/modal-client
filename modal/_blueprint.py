@@ -1,5 +1,6 @@
 from typing import Dict, Iterator, Tuple
 
+from .exception import InvalidError
 from .object import Object
 
 
@@ -18,6 +19,8 @@ class Blueprint:
 
         This is only used by factories and functions.
         """
+        if tag in self._objects:
+            raise InvalidError(f"Overwriting existing object with tag {tag}")
         self._objects[tag] = obj
 
     def get_object(self, tag: str) -> Object:
