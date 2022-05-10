@@ -506,9 +506,12 @@ class _App:
     def _get_default_image(self):
         # TODO(erikbern): instead of writing this to the same namespace
         # as the user's objects, we could use sub-blueprints in the future
-        image = _DebianSlim(app=self)
-        self._register_object("_image", image)
-        return image
+        try:
+            return self._blueprint.get_object("_image")
+        except KeyError:
+            image = _DebianSlim(app=self)
+            self._register_object("_image", image)
+            return image
 
     @decorator_with_options
     def function(
