@@ -269,7 +269,7 @@ class _App:
                 # from "image definitions" or something like that, but that's a big project.
                 if not existing_object_id.startswith("im-"):
                     raise Exception(
-                        f"Tried creating an object with tag {obj.tag} using existing id {existing_object_id} but it has id {object_id}"
+                        f"Tried creating an object using existing id {existing_object_id} but it has id {object_id}"
                     )
         if object_id is None:
             raise Exception(f"object_id for object of type {type(obj)} is None")
