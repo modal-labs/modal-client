@@ -1,4 +1,4 @@
-from .app import App
+from .app import App, is_local
 from .dict import Dict
 from .functions import Function
 from .image import DebianSlim, DockerhubImage, Image
@@ -23,4 +23,5 @@ __all__ = [
     "Queue",
     "RateLimit",
     "Secret",
+    "is_local",
 ]
