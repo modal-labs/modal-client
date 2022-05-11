@@ -48,7 +48,7 @@ class Object(metaclass=ObjectMeta):
             if app is None:
                 raise InvalidError(".create must be passed the app explicitly if not running in a container")
         if app.state != AppState.RUNNING:
-            raise InvalidError(f"{cls.__name__}.create(...): can only do this on a running app")
+            raise InvalidError(f"{self}.create(...): can only do this on a running app")
         object_id = await self.load(app, None)
         return Object.from_id(object_id, app)
 
