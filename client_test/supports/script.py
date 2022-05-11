@@ -20,7 +20,7 @@ async def get_files():
     app = _App()
     app.state = AppState.RUNNING
 
-    for mount in fn_info.create_mounts(app):
+    for mount in fn_info.create_mounts():
         async for file_info in mount._get_files():
             print(file_info[0])
 
