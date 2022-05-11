@@ -152,7 +152,6 @@ def _DebianSlim(
     commands or python packages.
     """
     if app is not None:
-        raise Exception("banana")
         warnings.warn("Passing `app` to the image constructor is deprecated", DeprecationWarning)
 
     python_version = _dockerhub_python_version(python_version)
