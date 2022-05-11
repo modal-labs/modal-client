@@ -27,7 +27,7 @@ def test_common_app(reset_global_apps):
 async def test_create_object(servicer, aio_client):
     app = AioApp()
     async with app.run(client=aio_client):
-        q = await AioQueue.create(app=app)
+        q = await AioQueue().create(app)
         await q.put("foo")
         await q.put("bar")
         assert await q.get() == "foo"
@@ -37,7 +37,7 @@ async def test_create_object(servicer, aio_client):
 @pytest.mark.asyncio
 async def test_persistent_object(servicer, aio_client):
     app_1 = AioApp()
-    app_1["q_1"] = AioQueue(app=app_1)
+    app_1["q_1"] = AioQueue()
     await app_1.deploy("my-queue", client=aio_client)
 
     app_2 = AioApp()

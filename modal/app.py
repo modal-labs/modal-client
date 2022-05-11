@@ -509,7 +509,7 @@ class _App:
         try:
             return self._blueprint.get_object("_image")
         except KeyError:
-            image = _DebianSlim(app=self)
+            image = _DebianSlim()
             self._register_object("_image", image)
             return image
 

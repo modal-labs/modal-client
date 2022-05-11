@@ -4,7 +4,7 @@ from modal.aio import AioApp, AioQueue
 
 app = AioApp()
 
-app["my_factory"] = AioQueue(app=app)
+app["my_factory"] = AioQueue()
 
 
 @pytest.mark.asyncio

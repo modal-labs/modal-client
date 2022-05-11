@@ -2,6 +2,7 @@ import asyncio
 import os
 import shlex
 import sys
+import warnings
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import retry, synchronize_apis
@@ -29,7 +30,6 @@ class _Image(Object, type_prefix="im"):
 
     def __init__(
         self,
-        app,
         base_images={},
         context_files={},
         dockerfile_commands=[],
@@ -39,7 +39,7 @@ class _Image(Object, type_prefix="im"):
         self._context_files = context_files
         self._dockerfile_commands = dockerfile_commands
         self._version = version
-        super().__init__(app=app)
+        super().__init__()
 
     async def load(self, app, existing_image_id):
         # Recursively build base images
@@ -151,6 +151,9 @@ def _DebianSlim(
     Can also be called as a function to build a new image with additional bash
     commands or python packages.
     """
+    if app is not None:
+        warnings.warn("Passing `app` to the image constructor is deprecated", DeprecationWarning)
+
     python_version = _dockerhub_python_version(python_version)
     base_image = _Image.include(app, f"debian-slim-{python_version}", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
 
@@ -174,7 +177,6 @@ def _DebianSlim(
         ]
 
     return _Image(
-        app,
         dockerfile_commands=dockerfile_commands,
         base_images=base_images,
         version=version,
@@ -184,7 +186,6 @@ def _DebianSlim(
 def _extend_image(app, base_image, extra_dockerfile_commands, context_files={}):
     """Extend an image with arbitrary dockerfile commands"""
     return _Image(
-        base_image.app,
         base_images={"base": base_image},
         dockerfile_commands=["FROM base"] + extra_dockerfile_commands,
         context_files=context_files,
@@ -199,7 +200,7 @@ def get_client_requirements_path():
     return os.path.join(modal_path, "requirements.txt")
 
 
-def _DockerhubImage(app, tag):
+def _DockerhubImage(app=None, tag=None):
     """
     Build a modal image from a pre-existing image on DockerHub.
 
@@ -208,6 +209,8 @@ def _DockerhubImage(app, tag):
     - `pip` is installed correctly
     - The image is built for the `linux/amd64` platform
     """
+    if app is not None:
+        warnings.warn("Passing `app` to the image constructor is deprecated", DeprecationWarning)
 
     requirements_path = get_client_requirements_path()
 
@@ -219,7 +222,6 @@ def _DockerhubImage(app, tag):
     ]
 
     return _Image(
-        app,
         dockerfile_commands=dockerfile_commands,
         context_files={"/modal_requirements.txt": requirements_path},
     )

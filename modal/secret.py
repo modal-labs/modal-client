@@ -14,10 +14,10 @@ class _Secret(Object, type_prefix="st"):
     See [The guide](/docs/guide/secrets) for more information.
     """
 
-    def __init__(self, app, env_dict={}, template_type=""):
+    def __init__(self, env_dict={}, template_type=""):
         self._env_dict = env_dict
         self._template_type = template_type
-        super().__init__(app=app)
+        super().__init__()
 
     async def load(self, app, existing_secret_id):
         req = api_pb2.SecretCreateRequest(

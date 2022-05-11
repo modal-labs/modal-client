@@ -4,14 +4,14 @@ from modal.aio import AioApp, AioQueue
 
 app = AioApp()
 
-app["qf"] = AioQueue(app=app)
+app["qf"] = AioQueue()
 
 
 @pytest.mark.asyncio
 async def test_persistent_object(servicer, client):
     async with app.run(client=client):
         # Serialize "dynamic" object and deserialize
-        q = await AioQueue.create(app=app)
+        q = await AioQueue().create(app)
         data = app._serialize(q)
         q_roundtrip = app._deserialize(data)
         assert isinstance(q_roundtrip, AioQueue)

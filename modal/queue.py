@@ -15,8 +15,8 @@ class _Queue(Object, type_prefix="qu"):
     The contents of the Queue can be any serializable object.
     """
 
-    def __init__(self, app):
-        super().__init__(app=app)
+    def __init__(self):
+        super().__init__()
 
     async def load(self, app, existing_queue_id):
         request = api_pb2.QueueCreateRequest(app_id=app.app_id, existing_queue_id=existing_queue_id)

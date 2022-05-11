@@ -1,4 +1,5 @@
 import os
+import pytest
 import sys
 
 from modal import App, DebianSlim
@@ -15,7 +16,15 @@ def test_python_version():
 
 def test_debian_slim_python_packages(client):
     app = App()
-    image = DebianSlim(app, python_packages=["numpy"])
+    image = DebianSlim(python_packages=["numpy"])
+    with app.run(client=client):
+        assert app.create_object(image) == "im-123"
+
+
+def test_debian_slim_with_apps(client):
+    app = App()
+    with pytest.deprecated_call():
+        image = DebianSlim(app, python_packages=["numpy"])
     with app.run(client=client):
         assert app.create_object(image) == "im-123"
 
@@ -25,7 +34,7 @@ def test_debian_slim_requirements_txt(servicer, client):
     requirements_txt = os.path.join(os.path.dirname(__file__), "test-requirements.txt")
 
     app = App()
-    image = DebianSlim(app, requirements_txt=requirements_txt)
+    image = DebianSlim(requirements_txt=requirements_txt)
     with app.run(client=client):
         assert app.create_object(image) == "im-123"
         assert any("blueberry" in cmd for cmd in servicer.last_image.dockerfile_commands)
