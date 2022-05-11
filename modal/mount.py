@@ -23,7 +23,6 @@ from .object import Object
 class _Mount(Object, type_prefix="mo"):
     def __init__(
         self,
-        app,
         remote_dir: Union[str, Path],
         *,
         local_dir: Optional[Union[str, Path]] = None,
@@ -42,7 +41,7 @@ class _Mount(Object, type_prefix="mo"):
         self._remote_dir = remote_dir
         self._condition = condition
         self._recursive = recursive
-        super().__init__(app=app)
+        super().__init__()
 
     def get_creating_message(self):
         label = getattr(self, "_local_dir", None) or getattr(self, "_local_file", None)
@@ -140,27 +139,27 @@ class _Mount(Object, type_prefix="mo"):
 Mount, AioMount = synchronize_apis(_Mount)
 
 
-def _create_client_mount(app):
+def _create_client_mount():
     import modal
 
     # Get the base_path because it also contains `modal_utils` and `modal_proto`.
     base_path, _ = os.path.split(modal.__path__[0])
 
-    mount = _Mount(app, local_dir=base_path, remote_dir="/pkg/", condition=module_mount_condition, recursive=True)
+    mount = _Mount(local_dir=base_path, remote_dir="/pkg/", condition=module_mount_condition, recursive=True)
     return mount
 
 
 _, aio_create_client_mount = synchronize_apis(_create_client_mount)
 
 
-async def _create_package_mount(app, module_name):
+async def _create_package_mount(module_name):
     mount_infos = get_module_mount_info(module_name)
 
     assert len(mount_infos) == 1
 
     _, base_path, module_mount_condition = mount_infos[0]
     return _Mount(
-        app, local_dir=base_path, remote_dir=f"/pkg/{module_name}", condition=module_mount_condition, recursive=True
+        local_dir=base_path, remote_dir=f"/pkg/{module_name}", condition=module_mount_condition, recursive=True
     )
 
 

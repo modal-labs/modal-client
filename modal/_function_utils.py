@@ -62,11 +62,10 @@ class FunctionInfo:
             self.is_package = False
             self.is_file = False
 
-    def create_mounts(self, app) -> List[_Mount]:
+    def create_mounts(self) -> List[_Mount]:
         if self.is_package:
             return [
                 _Mount(
-                    app=app,
                     local_dir=self.base_dir,
                     remote_dir=self.remote_dir,
                     recursive=True,
@@ -76,7 +75,6 @@ class FunctionInfo:
         elif self.is_file:
             mounts = [
                 _Mount(
-                    app=app,
                     local_file=self.file,
                     remote_dir=ROOT_DIR,
                 )
@@ -96,7 +94,6 @@ class FunctionInfo:
                         relpath = os.path.relpath(path, self.base_dir)
                         mounts.append(
                             _Mount(
-                                app=app,
                                 local_dir=path,
                                 remote_dir=os.path.join(ROOT_DIR, relpath),
                                 condition=package_mount_condition,
@@ -110,7 +107,6 @@ class FunctionInfo:
                     relpath = os.path.relpath(os.path.dirname(path), self.base_dir)
                     mounts.append(
                         _Mount(
-                            app=app,
                             local_file=path,
                             remote_dir=os.path.join(ROOT_DIR, relpath),
                         )

@@ -531,7 +531,6 @@ class _App:
         if image is None:
             image = self._get_default_image()
         function = _Function(
-            self,
             raw_f,
             image=image,
             secret=secret,
@@ -562,7 +561,6 @@ class _App:
         if image is None:
             image = self._get_default_image()
         function = _Function(
-            self,
             raw_f,
             image=image,
             secret=secret,
@@ -591,7 +589,6 @@ class _App:
             image = self._get_default_image()
 
         function = _Function(
-            self,
             asgi_app,
             image=image,
             secret=secret,
@@ -622,7 +619,6 @@ class _App:
             image = self._get_default_image()
 
         function = _Function(
-            self,
             raw_f,
             image=image,
             secret=secret,

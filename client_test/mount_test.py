@@ -11,9 +11,7 @@ async def test_get_files(servicer, client):
     files = {}
     app = AioApp()
     async with app.run(client=client):
-        m = AioMount(
-            app, "/", local_dir=os.path.dirname(__file__), condition=lambda fn: fn.endswith(".py"), recursive=True
-        )
+        m = AioMount("/", local_dir=os.path.dirname(__file__), condition=lambda fn: fn.endswith(".py"), recursive=True)
         await m.load(app, None)
         async for tup in m._get_files():
             filename, rel_filename, content, sha256_hex = tup
@@ -31,7 +29,7 @@ def test_create_mount(servicer, client):
         def condition(fn):
             return fn.endswith(".py")
 
-        m = Mount(app, local_dir=local_dir, remote_dir=remote_dir, condition=condition)
+        m = Mount(local_dir=local_dir, remote_dir=remote_dir, condition=condition)
         m.load(app, None) == "mo-123"
         assert f"/foo/{cur_filename}" in servicer.files_name2sha
         sha256_hex = servicer.files_name2sha[f"/foo/{cur_filename}"]

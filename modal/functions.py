@@ -217,7 +217,6 @@ class _MapInvocation:
 class _Function(Object, type_prefix="fu"):
     def __init__(
         self,
-        app,
         raw_f,
         image=None,
         secret: Optional[Secret] = None,
@@ -256,7 +255,7 @@ class _Function(Object, type_prefix="fu"):
         self.webhook_config = webhook_config
         self.web_url = None
         self.tag = self.info.get_tag()
-        Object.__init__(self, app)
+        super().__init__()
 
     def get_creating_message(self) -> str:
         return f"Creating {self.tag}..."
@@ -268,10 +267,10 @@ class _Function(Object, type_prefix="fu"):
         return f"Created {self.tag}."
 
     async def load(self, app, existing_function_id):
-        mounts = [*self.info.create_mounts(app), *self.mounts]
+        mounts = [*self.info.create_mounts(), *self.mounts]
         # TODO(erikbern): couldn't we just create one single mount with all packages instead of multiple?
         if config["sync_entrypoint"]:
-            mounts.append(await _create_client_mount(app))
+            mounts.append(await _create_client_mount())
         else:
             client_mount = _Mount.include(app, MODAL_CLIENT_MOUNT_NAME, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
             mounts.append(client_mount)
@@ -322,7 +321,7 @@ class _Function(Object, type_prefix="fu"):
             function=function_definition,
             schedule=self.schedule.proto_message if self.schedule is not None else None,
             existing_function_id=existing_function_id,
-            deployment_name=self.app.deployment_name,
+            deployment_name=app.deployment_name,
         )
         response = await app.client.stub.FunctionCreate(request)
 
