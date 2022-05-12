@@ -7,12 +7,12 @@ from typing import Any, List
 from aiostream import stream
 from synchronicity.interface import Interface
 
-import modal
-from modal.image import Image, extend_image
+from modal import App, ref
+from modal.image import extend_image
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis, synchronizer
 
-pymc_app = modal.App()
+pymc_app = App()
 # HACK
 aio_pymc_app = synchronizer._translate_out(synchronizer._translate_in(pymc_app), Interface.ASYNC)
 
@@ -26,7 +26,7 @@ dockerfile_commands = [
     "&& conda list \\ ",
     "&& conda install theano-pymc==1.1.2 pymc3==3.11.2 scikit-learn mkl-service --yes ",
 ]
-conda_image = Image.include("conda", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
+conda_image = ref("conda", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
 pymc_image = extend_image(base_image=conda_image, extra_dockerfile_commands=dockerfile_commands)
 
 
