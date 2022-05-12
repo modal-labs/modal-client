@@ -5,16 +5,13 @@ from collections import namedtuple
 from typing import Any, List
 
 from aiostream import stream
-from synchronicity.interface import Interface
 
 from modal import App, ref
 from modal.image import extend_image
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_apis, synchronizer
+from modal_utils.async_utils import synchronize_apis
 
 pymc_app = App()
-# HACK
-aio_pymc_app = synchronizer._translate_out(synchronizer._translate_in(pymc_app), Interface.ASYNC)
 
 
 dockerfile_commands = [
@@ -27,10 +24,10 @@ dockerfile_commands = [
     "&& conda install theano-pymc==1.1.2 pymc3==3.11.2 scikit-learn mkl-service --yes ",
 ]
 conda_image = ref("conda", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
-pymc_image = extend_image(base_image=conda_image, extra_dockerfile_commands=dockerfile_commands)
+pymc_app["image"] = extend_image(base_image=conda_image, extra_dockerfile_commands=dockerfile_commands)
 
 
-if pymc_image.is_inside():
+if pymc_app["image"].is_inside():
     import numpy as np
     from fastprogress.fastprogress import progress_bar
     from pymc3 import theanof
@@ -71,7 +68,7 @@ def rebuild_exc(exc, tb):
     return exc
 
 
-@aio_pymc_app.generator(image=pymc_image)
+@pymc_app.generator(image=pymc_app["image"])
 def sample_process(
     draws: int,
     tune: int,
