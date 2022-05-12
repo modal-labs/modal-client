@@ -12,7 +12,7 @@ from ._app_singleton import get_container_app
 from ._image_pty import image_pty
 from .config import config, logger
 from .exception import RemoteError
-from .object import Object
+from .object import Object, ref
 
 
 def _make_bytes(s):
@@ -155,7 +155,7 @@ def _DebianSlim(
         warnings.warn("Passing `app` to the image constructor is deprecated", DeprecationWarning)
 
     python_version = _dockerhub_python_version(python_version)
-    base_image = _Image.include(app, f"debian-slim-{python_version}", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
+    base_image = ref(f"debian-slim-{python_version}", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
 
     dockerfile_commands = ["FROM base as target"]
     base_images = {"base": base_image}

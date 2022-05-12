@@ -12,7 +12,7 @@ from ._function_utils import FunctionInfo
 from .config import config
 from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError
 from .mount import _create_client_mount, _Mount
-from .object import Object
+from .object import Object, ref
 from .rate_limit import RateLimit
 from .schedule import Schedule
 from .secret import Secret
@@ -272,7 +272,7 @@ class _Function(Object, type_prefix="fu"):
         if config["sync_entrypoint"]:
             mounts.append(await _create_client_mount())
         else:
-            client_mount = _Mount.include(app, MODAL_CLIENT_MOUNT_NAME, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
+            client_mount = ref(MODAL_CLIENT_MOUNT_NAME, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
             mounts.append(client_mount)
 
         # Wait for image and mounts to finish

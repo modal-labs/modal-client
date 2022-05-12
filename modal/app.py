@@ -64,7 +64,7 @@ class _App:
 
     app = modal.App()
 
-    @app.function(secret=modal.Secret.include(app, "some_secret"), schedule=modal.Period(days=1))
+    @app.function(secret=modal.ref("some_secret"), schedule=modal.Period(days=1))
     def foo():
         ...
     ```

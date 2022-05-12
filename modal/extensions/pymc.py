@@ -26,8 +26,8 @@ dockerfile_commands = [
     "&& conda list \\ ",
     "&& conda install theano-pymc==1.1.2 pymc3==3.11.2 scikit-learn mkl-service --yes ",
 ]
-conda_image = Image.include(pymc_app, "conda", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
-pymc_image = extend_image(pymc_app, base_image=conda_image, extra_dockerfile_commands=dockerfile_commands)
+conda_image = Image.include("conda", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
+pymc_image = extend_image(base_image=conda_image, extra_dockerfile_commands=dockerfile_commands)
 
 
 if pymc_image.is_inside():
