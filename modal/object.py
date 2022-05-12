@@ -1,3 +1,4 @@
+import warnings
 from typing import NamedTuple, Optional
 
 from modal_proto import api_pb2
@@ -73,8 +74,18 @@ class Object(metaclass=ObjectMeta):
     @classmethod
     def include(cls, app, app_name, object_label=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
         """Use an object published with `modal.App.deploy`"""
-        label = ObjectLabel(app_name, object_label, namespace)
+        warnings.warn("The `Object.include` method is deprecated! Use `modal.ref` instead.", DeprecationWarning)
 
+        label = ObjectLabel(app_name, object_label, namespace)
         obj = Object.__new__(cls)
         Object.__init__(obj, app, label=label)
         return obj
+
+
+class Ref(Object):
+    pass
+
+
+def ref(app_name, object_label=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
+    label = ObjectLabel(app_name, object_label, namespace)
+    return Ref(label=label)

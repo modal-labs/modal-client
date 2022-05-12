@@ -3,6 +3,7 @@ from .dict import Dict
 from .functions import Function
 from .image import DebianSlim, DockerhubImage, Image
 from .mount import Mount
+from .object import ref
 from .queue import Queue
 from .rate_limit import RateLimit
 from .schedule import Cron, Period
@@ -24,4 +25,5 @@ __all__ = [
     "RateLimit",
     "Secret",
     "is_local",
+    "ref",
 ]
