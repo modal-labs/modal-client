@@ -183,7 +183,7 @@ def _DebianSlim(
     )
 
 
-def _extend_image(app, base_image, extra_dockerfile_commands, context_files={}):
+def _extend_image(base_image, extra_dockerfile_commands, context_files={}):
     """Extend an image with arbitrary dockerfile commands"""
     return _Image(
         base_images={"base": base_image},
