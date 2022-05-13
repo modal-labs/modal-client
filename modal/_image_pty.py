@@ -17,7 +17,7 @@ async def _pty(cmd: Optional[str], queue: AioQueue):
 
     run_cmd = cmd or os.environ.get("SHELL", "sh")
 
-    print(f"Spawning {run_cmd}")
+    print(f"Spawning {run_cmd}. Type 'exit' to exit. ")
 
     threading.Thread(target=pty.spawn, args=(run_cmd,), daemon=True).start()
 
@@ -41,11 +41,12 @@ async def image_pty(image, app, cmd=None, mounts=[], secrets=[]):
         async with TaskContext(grace=0) as tc:
             tc.create_task(_pty_wrapped(cmd, queue))
 
-            try:
-                while True:
-                    loop = asyncio.get_event_loop()
-                    line = await loop.run_in_executor(None, sys.stdin.readline)
-                    await queue.put(line)
-            except KeyboardInterrupt:
-                # TODO: synchronicity doesn't seem to propagate KeyboardInterrupts correctly.
-                await queue.put(None)
+            # TODO: figure out keyboard interrupts
+            while True:
+                loop = asyncio.get_event_loop()
+                line = await loop.run_in_executor(None, sys.stdin.readline)
+                if line == "exit\n":
+                    await queue.put(None)
+                    return
+
+                await queue.put(line)
