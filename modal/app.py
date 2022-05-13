@@ -3,7 +3,6 @@ import functools
 import io
 import os
 import sys
-import time
 from typing import Collection, Dict, Optional
 
 import grpc
@@ -382,7 +381,7 @@ class _App:
             async with self._run(client, output_mgr, None):
                 output_mgr.print_if_visible(step_completed("Running forever... hit Ctrl-C to stop!"))
                 while True:
-                    time.sleep(1.0)
+                    await asyncio.sleep(1.0)
 
     async def detach(self):
         request = api_pb2.AppDetachRequest(app_id=self._app_id)
