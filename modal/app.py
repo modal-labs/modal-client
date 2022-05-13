@@ -3,6 +3,7 @@ import functools
 import io
 import os
 import sys
+import time
 from typing import Collection, Dict, Optional
 
 import grpc
@@ -374,6 +375,17 @@ class _App:
             output_mgr = OutputManager(stdout, show_progress)
             async with self._run(client, output_mgr, None) as it:
                 yield it  # ctx mgr
+
+    async def run_forever(self, client=None, stdout=None, show_progress=None):
+        async with self._get_client(client) as client:
+            output_mgr = OutputManager(stdout, show_progress)
+            async with self._run(client, output_mgr, None):
+                output_mgr.print_if_visible(step_completed("Running forever... hit Ctrl-C to stop!"))
+                try:
+                    while True:
+                        time.sleep(1.0)
+                except KeyboardInterrupt:
+                    output_mgr.print_if_visible(step_completed("Got a KeyboardInterrupt... exiting"))
 
     async def detach(self):
         request = api_pb2.AppDetachRequest(app_id=self._app_id)
