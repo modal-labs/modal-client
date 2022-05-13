@@ -1,5 +1,4 @@
 import asyncio
-import contextlib
 import functools
 import io
 import os
@@ -7,7 +6,6 @@ import sys
 from typing import Collection, Dict, Optional
 
 import grpc
-from rich.console import Console
 from rich.live import Live
 from rich.tree import Tree
 
@@ -18,7 +16,7 @@ from modal_utils.decorator_utils import decorator_with_options
 from ._app_singleton import get_container_app, set_container_app
 from ._app_state import AppState
 from ._blueprint import Blueprint
-from ._output import LineBufferedOutput, make_live, step_completed, step_progress
+from ._output import LineBufferedOutput, OutputManager, step_completed, step_progress
 from ._serialization import Pickler, Unpickler
 from .client import _Client
 from .config import config, logger
@@ -30,19 +28,6 @@ from .object import Object
 from .rate_limit import RateLimit
 from .schedule import Schedule
 from .secret import Secret
-
-
-def print_log(console: Console, fd: int, data: str) -> None:
-    if fd == api_pb2.FILE_DESCRIPTOR_STDOUT:
-        style = "blue"
-    elif fd == api_pb2.FILE_DESCRIPTOR_STDERR:
-        style = "red"
-    elif fd == api_pb2.FILE_DESCRIPTOR_INFO:
-        style = "yellow"
-    else:
-        raise Exception(f"Weird file descriptor {fd} for log output")
-
-    console.out(data, style=style, end="")
 
 
 class _App:
@@ -161,7 +146,7 @@ class _App:
         else:
             return "Tasks created..."
 
-    async def _get_logs_loop(self, console: Console, live_task_status: Live, last_log_batch_entry_id: str):
+    async def _get_logs_loop(self, output_mgr: OutputManager, live_task_status: Live, last_log_batch_entry_id: str):
         async def _get_logs():
             nonlocal last_log_batch_entry_id
 
@@ -193,7 +178,9 @@ class _App:
                         if log.data:
                             stream = line_buffers.get(log.file_descriptor)
                             if stream is None:
-                                stream = LineBufferedOutput(functools.partial(print_log, console, log.file_descriptor))
+                                stream = LineBufferedOutput(
+                                    functools.partial(output_mgr.print_log, log.file_descriptor)
+                                )
                                 line_buffers[log.file_descriptor] = stream
                             stream.write(log.data)
             for stream in line_buffers.values():
@@ -303,29 +290,13 @@ class _App:
         self._register_object(tag, obj)
 
     @synchronizer.asynccontextmanager
-    async def _run(self, client, stdout, show_progress, existing_app_id, last_log_entry_id=None):
+    async def _run(self, client, output_mgr, existing_app_id, last_log_entry_id=None):
         # TOOD: use something smarter than checking for the .client to exists in order to prevent
         # race conditions here!
         if self.state != AppState.NONE:
             raise Exception(f"Can't start a app that's already in state {self.state}")
         self.state = AppState.STARTING
         self.client = client
-
-        if show_progress is None:
-            visible_progress = (stdout or sys.stdout).isatty()
-        else:
-            visible_progress = show_progress
-
-        console = Console(file=stdout, highlight=False)
-
-        def print_if_visible(renderable):
-            if visible_progress:
-                console.print(renderable)
-
-        def ctx_if_visible(context_mgr):
-            if visible_progress:
-                return context_mgr
-            return contextlib.nullcontext()
 
         try:
             if existing_app_id is not None:
@@ -344,21 +315,21 @@ class _App:
 
             # Start tracking logs and yield context
             async with TaskContext(grace=config["logs_timeout"]) as tc:
-                with ctx_if_visible(make_live(step_progress("Initializing..."), console)):
-                    live_task_status = make_live(step_progress("Running app..."), console)
-                    tc.create_task(self._get_logs_loop(console, live_task_status, last_log_entry_id or ""))
-                print_if_visible(step_completed("Intialized."))
+                with output_mgr.ctx_if_visible(output_mgr.make_live(step_progress("Initializing..."))):
+                    live_task_status = output_mgr.make_live(step_progress("Running app..."))
+                    tc.create_task(self._get_logs_loop(output_mgr, live_task_status, last_log_entry_id or ""))
+                output_mgr.print_if_visible(step_completed("Intialized."))
 
                 try:
                     progress = Tree(step_progress("Creating objects..."), guide_style="gray50")
                     self._progress = progress
-                    with ctx_if_visible(make_live(progress, console)):
+                    with output_mgr.ctx_if_visible(output_mgr.make_live(progress)):
                         await self._flush_objects()
                     progress.label = step_completed("Created objects.")
-                    print_if_visible(progress)
+                    output_mgr.print_if_visible(progress)
 
                     # Create all members
-                    with ctx_if_visible(live_task_status):
+                    with output_mgr.ctx_if_visible(live_task_status):
                         # Create the app (and send a list of all tagged obs)
                         # TODO(erikbern): we should delete objects from a previous version that are no longer needed
                         # We just delete them from the app, but the actual objects will stay around
@@ -381,7 +352,7 @@ class _App:
                     req_disconnect = api_pb2.AppClientDisconnectRequest(app_id=self._app_id)
                     await self.client.stub.AppClientDisconnect(req_disconnect)
 
-            print_if_visible(step_completed("App completed."))
+            output_mgr.print_if_visible(step_completed("App completed."))
 
         finally:
             self.client = None
@@ -400,7 +371,8 @@ class _App:
     @synchronizer.asynccontextmanager
     async def run(self, client=None, stdout=None, show_progress=None):
         async with self._get_client(client) as client:
-            async with self._run(client, stdout, show_progress, None) as it:
+            output_mgr = OutputManager(stdout, show_progress)
+            async with self._run(client, output_mgr, None) as it:
                 yield it  # ctx mgr
 
     async def detach(self):
@@ -453,7 +425,8 @@ class _App:
             last_log_entry_id = app_resp.last_log_entry_id
 
             # The `_run` method contains the logic for starting and running an app
-            async with self._run(client, stdout, show_progress, existing_app_id, last_log_entry_id):
+            output_mgr = OutputManager(stdout, show_progress)
+            async with self._run(client, output_mgr, existing_app_id, last_log_entry_id):
                 # TODO: this could be simplified in case it's the same app id as previously
                 deploy_req = api_pb2.AppDeployRequest(
                     app_id=self._app_id,

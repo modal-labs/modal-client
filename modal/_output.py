@@ -1,12 +1,16 @@
+import contextlib
 import io
 import platform
 import re
+import sys
 from typing import Callable
 
 from rich.console import Console, RenderableType
 from rich.live import Live
 from rich.spinner import Spinner
 from rich.text import Text
+
+from modal_proto import api_pb2
 
 if platform.system() == "Windows":
     default_spinner = "line"
@@ -27,11 +31,6 @@ def step_completed(message: str, is_substep: bool = False) -> RenderableType:
 
     symbol = SUBSTEP_COMPLETED if is_substep else STEP_COMPLETED
     return f"[green]{symbol}[/green] " + message
-
-
-def make_live(renderable: RenderableType, console: Console) -> Live:
-    """Creates a customized `rich.Live` instance with the given renderable."""
-    return Live(renderable, console=console, transient=True, refresh_per_second=10)
 
 
 class LineBufferedOutput(io.StringIO):
@@ -63,3 +62,38 @@ class LineBufferedOutput(io.StringIO):
         if self._buf:
             self._callback(self._buf)
             self._buf = ""
+
+
+class OutputManager:
+    def __init__(self, stdout, show_progress):
+        if show_progress is None:
+            self._visible_progress = (stdout or sys.stdout).isatty()
+        else:
+            self._visible_progress = show_progress
+
+        self._console = Console(file=stdout, highlight=False)
+
+    def print_if_visible(self, renderable):
+        if self._visible_progress:
+            self._console.print(renderable)
+
+    def ctx_if_visible(self, context_mgr):
+        if self._visible_progress:
+            return context_mgr
+        return contextlib.nullcontext()
+
+    def make_live(self, renderable: RenderableType) -> Live:
+        """Creates a customized `rich.Live` instance with the given renderable."""
+        return Live(renderable, console=self._console, transient=True, refresh_per_second=10)
+
+    def print_log(self, fd: int, data: str) -> None:
+        if fd == api_pb2.FILE_DESCRIPTOR_STDOUT:
+            style = "blue"
+        elif fd == api_pb2.FILE_DESCRIPTOR_STDERR:
+            style = "red"
+        elif fd == api_pb2.FILE_DESCRIPTOR_INFO:
+            style = "yellow"
+        else:
+            raise Exception(f"Weird file descriptor {fd} for log output")
+
+        self._console.out(data, style=style, end="")
