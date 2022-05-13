@@ -2,7 +2,7 @@ import urllib.parse
 from typing import Iterable, Tuple
 
 import grpc
-from grpc.aio._channel import Channel
+from grpc.aio import Channel, insecure_channel, secure_channel
 
 from modal_proto import api_pb2
 
@@ -61,7 +61,7 @@ class GRPCConnectionFactory:
             self.credentials = grpc.composite_channel_credentials(
                 channel_credentials,
                 call_credentials,
-            )._credentials
+            )
         else:
             self.credentials = None
 
@@ -75,13 +75,18 @@ class GRPCConnectionFactory:
         ]
 
     async def create(self) -> Channel:
-        # Note that the grpc.aio documentation uses secure_channel and insecure_channel, but those are just
-        # thin wrappers around the underlying Channel constructor, and insecure_channel currently doesn't
-        # let you provide a credentials object
-        return Channel(
-            target=self.target,
-            options=self.options,
-            credentials=self.credentials,
-            compression=None,
-            interceptors=None,
-        )
+        if self.credentials is None:
+            return insecure_channel(
+                target=self.target,
+                options=self.options,
+                compression=None,
+                interceptors=None,
+            )
+        else:
+            return secure_channel(
+                target=self.target,
+                credentials=self.credentials,
+                options=self.options,
+                compression=None,
+                interceptors=None,
+            )

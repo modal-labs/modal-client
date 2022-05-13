@@ -3,7 +3,7 @@ import enum
 import re
 import time
 
-from grpc.aio._channel import Channel
+from grpc.aio import Channel
 
 from modal_utils.server_connection import GRPCConnectionFactory
 

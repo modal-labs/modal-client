@@ -192,7 +192,7 @@ class _App:
             except asyncio.CancelledError:
                 logger.info("Logging cancelled")
                 raise
-            except grpc.aio._call.AioRpcError as exc:
+            except grpc.aio.AioRpcError as exc:
                 if exc.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
                     # try again if we had a temporary connection drop, for example if computer went to sleep
                     logger.info("Log fetching timed out - retrying")
