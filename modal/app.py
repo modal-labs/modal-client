@@ -381,11 +381,8 @@ class _App:
             output_mgr = OutputManager(stdout, show_progress)
             async with self._run(client, output_mgr, None):
                 output_mgr.print_if_visible(step_completed("Running forever... hit Ctrl-C to stop!"))
-                try:
-                    while True:
-                        time.sleep(1.0)
-                except KeyboardInterrupt:
-                    output_mgr.print_if_visible(step_completed("Got a KeyboardInterrupt... exiting"))
+                while True:
+                    time.sleep(1.0)
 
     async def detach(self):
         request = api_pb2.AppDetachRequest(app_id=self._app_id)
