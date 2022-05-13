@@ -379,9 +379,14 @@ class _App:
         async with self._get_client(client) as client:
             output_mgr = OutputManager(stdout, show_progress)
             async with self._run(client, output_mgr, None):
-                output_mgr.print_if_visible(step_completed("Running forever... hit Ctrl-C to stop!"))
-                while True:
-                    await asyncio.sleep(1.0)
+                timeout = config["run_forever_timeout"]
+                if timeout:
+                    output_mgr.print_if_visible(step_completed(f"Running for {timeout} seconds... hit Ctrl-C to stop!"))
+                    await asyncio.sleep(timeout)
+                else:
+                    output_mgr.print_if_visible(step_completed("Running forever... hit Ctrl-C to stop!"))
+                    while True:
+                        await asyncio.sleep(1.0)
 
     async def detach(self):
         request = api_pb2.AppDetachRequest(app_id=self._app_id)
