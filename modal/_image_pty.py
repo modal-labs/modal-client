@@ -2,7 +2,7 @@ import asyncio
 import sys
 from typing import Optional
 
-from modal.queue import AioQueue
+from modal.queue import AioQueue, _Queue
 from modal_utils.async_utils import TaskContext
 
 
@@ -33,9 +33,10 @@ async def _pty(cmd: Optional[str], queue: AioQueue):
 
 async def image_pty(image, app, cmd=None, mounts=[], secrets=[]):
     _pty_wrapped = app.function(image=image, mounts=mounts, secrets=secrets)(_pty)
+    app["queue"] = _Queue()
 
     async with app.run(show_progress=False):
-        queue = await AioQueue.create(app)
+        queue = app["queue"]
 
         async with TaskContext(grace=0) as tc:
             tc.create_task(_pty_wrapped(cmd, queue))

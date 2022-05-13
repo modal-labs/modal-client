@@ -9,7 +9,6 @@ from modal_utils.async_utils import retry, synchronize_apis
 from modal_utils.package_utils import parse_requirements_txt
 
 from ._app_singleton import get_container_app
-from ._image_pty import image_pty
 from .config import config, logger
 from .exception import RemoteError
 from .object import Object, ref
@@ -109,13 +108,6 @@ class _Image(Object, type_prefix="im"):
         env_image_id = config.get("image_id")
         logger.debug(f"Is image inside? env {env_image_id} image {self.object_id}")
         return self.object_id == env_image_id
-
-    async def run_interactive(self, cmd=None, mounts=[], secrets=[]):
-        """Run `cmd` interactively within this image. Similar to `docker run -it --entrypoint={cmd}`.
-
-        If `cmd` is `None`, this falls back to the default shell within the image.
-        """
-        await image_pty(self, self.app, cmd, mounts, secrets)
 
 
 def _dockerhub_python_version(python_version=None):

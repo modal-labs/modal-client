@@ -618,6 +618,15 @@ class _App:
         )
         return self._register_function(function)
 
+    async def run_interactive(self, image_ref, cmd=None, mounts=[], secrets=[]):
+        """Run `cmd` interactively within this image. Similar to `docker run -it --entrypoint={cmd}`.
+
+        If `cmd` is `None`, this falls back to the default shell within the image.
+        """
+        from ._image_pty import image_pty
+
+        await image_pty(image_ref, self, cmd, mounts, secrets)
+
 
 App, AioApp = synchronize_apis(_App)
 
