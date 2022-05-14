@@ -1,12 +1,9 @@
 import asyncio
-import functools
 import io
 import os
 import sys
 from typing import Collection, Dict, Optional
 
-import grpc
-from rich.live import Live
 from rich.tree import Tree
 
 from modal_proto import api_pb2
@@ -16,7 +13,7 @@ from modal_utils.decorator_utils import decorator_with_options
 from ._app_singleton import get_container_app, set_container_app
 from ._app_state import AppState
 from ._blueprint import Blueprint
-from ._output import LineBufferedOutput, OutputManager, step_completed, step_progress
+from ._output import OutputManager, step_completed, step_progress
 from ._serialization import Pickler, Unpickler
 from .client import _Client
 from .config import config, logger
@@ -88,6 +85,8 @@ class _App:
         self._tag_to_object = {}
         self._tag_to_existing_id = {}
         self._blueprint = Blueprint()
+        # TODO: this is only used during _flush_objects, but that function gets called from objects, so we need to store it somewhere
+        # Once we rewrite object creation to be non-recursive, this should no longer be needed
         self._progress: Optional[Tree] = None
         super().__init__()
 
@@ -119,64 +118,6 @@ class _App:
         # TODO(erikbern): there was a special case with a comment here about double-loading and cloudpickle,
         # but I have a feeling it's no longer an issue, so I remved it for now.
         self._blueprint.register(tag, obj)
-
-    async def _get_logs_loop(self, output_mgr: OutputManager, live_task_status: Live, last_log_batch_entry_id: str):
-        async def _get_logs():
-            nonlocal last_log_batch_entry_id
-
-            request = api_pb2.AppGetLogsRequest(
-                app_id=self._app_id,
-                timeout=60,
-                last_entry_id=last_log_batch_entry_id,
-            )
-            log_batch: api_pb2.TaskLogsBatch
-            line_buffers: Dict[int, LineBufferedOutput] = {}
-            async for log_batch in self.client.stub.AppGetLogs(request):
-                if log_batch.app_state:
-                    logger.debug(f"App state now {api_pb2.AppState.Name(log_batch.app_state)}")
-                    if log_batch.app_state not in (
-                        api_pb2.APP_STATE_EPHEMERAL,
-                        api_pb2.APP_STATE_DRAINING_LOGS,
-                    ):
-                        last_log_batch_entry_id = None
-                        return
-                else:
-                    if log_batch.entry_id != "":
-                        # log_batch entry_id is empty for fd="server" messages from AppGetLogs
-                        last_log_batch_entry_id = log_batch.entry_id
-
-                    for log in log_batch.items:
-                        if log.task_state:
-                            message = output_mgr.update_task_state(log_batch.task_id, log.task_state)
-                            live_task_status.update(step_progress(message))
-                        if log.data:
-                            stream = line_buffers.get(log.file_descriptor)
-                            if stream is None:
-                                stream = LineBufferedOutput(
-                                    functools.partial(output_mgr.print_log, log.file_descriptor)
-                                )
-                                line_buffers[log.file_descriptor] = stream
-                            stream.write(log.data)
-            for stream in line_buffers.values():
-                stream.finalize()
-
-        while True:
-            try:
-                await _get_logs()
-            except asyncio.CancelledError:
-                logger.info("Logging cancelled")
-                raise
-            except grpc.aio.AioRpcError as exc:
-                if exc.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
-                    # try again if we had a temporary connection drop, for example if computer went to sleep
-                    logger.info("Log fetching timed out - retrying")
-                    continue
-                raise
-
-            if last_log_batch_entry_id is None:
-                break
-            # TODO: catch errors, sleep, and retry?
-        logger.debug("Logging exited gracefully")
 
     async def _initialize_container(self, app_id, client, task_id):
         """Used by the container to bootstrap the app and all its objects."""
@@ -291,7 +232,9 @@ class _App:
             async with TaskContext(grace=config["logs_timeout"]) as tc:
                 with output_mgr.ctx_if_visible(output_mgr.make_live(step_progress("Initializing..."))):
                     live_task_status = output_mgr.make_live(step_progress("Running app..."))
-                    tc.create_task(self._get_logs_loop(output_mgr, live_task_status, last_log_entry_id or ""))
+                    tc.create_task(
+                        output_mgr.get_logs_loop(self._app_id, self.client, live_task_status, last_log_entry_id or "")
+                    )
                 output_mgr.print_if_visible(step_completed("Intialized."))
 
                 try:

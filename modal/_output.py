@@ -1,16 +1,22 @@
+import asyncio
 import contextlib
+import functools
 import io
 import platform
 import re
 import sys
 from typing import Callable, Dict, Optional
 
+import grpc
 from rich.console import Console, RenderableType
 from rich.live import Live
 from rich.spinner import Spinner
 from rich.text import Text
 
 from modal_proto import api_pb2
+
+from .client import _Client
+from .config import logger
 
 if platform.system() == "Windows":
     default_spinner = "line"
@@ -91,7 +97,7 @@ class OutputManager:
         """Creates a customized `rich.Live` instance with the given renderable."""
         return Live(renderable, console=self._console, transient=True, refresh_per_second=10)
 
-    def print_log(self, fd: int, data: str) -> None:
+    def _print_log(self, fd: int, data: str) -> None:
         if fd == api_pb2.FILE_DESCRIPTOR_STDOUT:
             style = "blue"
         elif fd == api_pb2.FILE_DESCRIPTOR_STDERR:
@@ -103,7 +109,7 @@ class OutputManager:
 
         self._console.out(data, style=style, end="")
 
-    def update_task_state(self, task_id: str, state: int) -> str:
+    def _update_task_state(self, task_id: str, state: int) -> str:
         """Updates the state of a task, returning the new task status string."""
         self._task_states[task_id] = state
 
@@ -127,3 +133,59 @@ class OutputManager:
             return "Tasks queued..."
         else:
             return "Tasks created..."
+
+    async def get_logs_loop(self, app_id: str, client: _Client, live_task_status: Live, last_log_batch_entry_id: str):
+        async def _get_logs():
+            nonlocal last_log_batch_entry_id
+
+            request = api_pb2.AppGetLogsRequest(
+                app_id=app_id,
+                timeout=60,
+                last_entry_id=last_log_batch_entry_id,
+            )
+            log_batch: api_pb2.TaskLogsBatch
+            line_buffers: Dict[int, LineBufferedOutput] = {}
+            async for log_batch in client.stub.AppGetLogs(request):
+                if log_batch.app_state:
+                    logger.debug(f"App state now {api_pb2.AppState.Name(log_batch.app_state)}")
+                    if log_batch.app_state not in (
+                        api_pb2.APP_STATE_EPHEMERAL,
+                        api_pb2.APP_STATE_DRAINING_LOGS,
+                    ):
+                        last_log_batch_entry_id = None
+                        return
+                else:
+                    if log_batch.entry_id != "":
+                        # log_batch entry_id is empty for fd="server" messages from AppGetLogs
+                        last_log_batch_entry_id = log_batch.entry_id
+
+                    for log in log_batch.items:
+                        if log.task_state:
+                            message = self._update_task_state(log_batch.task_id, log.task_state)
+                            live_task_status.update(step_progress(message))
+                        if log.data:
+                            stream = line_buffers.get(log.file_descriptor)
+                            if stream is None:
+                                stream = LineBufferedOutput(functools.partial(self._print_log, log.file_descriptor))
+                                line_buffers[log.file_descriptor] = stream
+                            stream.write(log.data)
+            for stream in line_buffers.values():
+                stream.finalize()
+
+        while True:
+            try:
+                await _get_logs()
+            except asyncio.CancelledError:
+                logger.info("Logging cancelled")
+                raise
+            except grpc.aio.AioRpcError as exc:
+                if exc.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
+                    # try again if we had a temporary connection drop, for example if computer went to sleep
+                    logger.info("Log fetching timed out - retrying")
+                    continue
+                raise
+
+            if last_log_batch_entry_id is None:
+                break
+            # TODO: catch errors, sleep, and retry?
+        logger.debug("Logging exited gracefully")
