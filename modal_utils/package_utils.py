@@ -2,7 +2,6 @@ import hashlib
 import importlib
 import os
 import sys
-import typing
 from importlib import import_module
 
 from importlib_metadata import PackageNotFoundError, files
@@ -82,20 +81,3 @@ def import_app_by_ref(app_ref: str):
     module = importlib.import_module(import_path)
     app = getattr(module, var_name)
     return app
-
-
-@typing.no_type_check  # mypy is complaining for no obvious reason
-def parse_requirements_txt(filename):
-    # https://stackoverflow.com/questions/49689880/proper-way-to-parse-requirements-file-after-pip-upgrade-to-pip-10-x-x
-    try:
-        # pip >=20
-        from pip._internal.req import parse_requirements
-    except ImportError:
-        try:
-            # 10.0.0 <= pip <= 19.3.1
-            from pip._internal.req import parse_requirements
-        except ImportError:
-            # pip <= 9.0.3
-            from pip.req import parse_requirements
-
-    return [req.requirement for req in parse_requirements(filename, session=False)]

@@ -6,7 +6,6 @@ import warnings
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import retry, synchronize_apis
-from modal_utils.package_utils import parse_requirements_txt
 
 from ._app_singleton import get_container_app
 from .config import config, logger
@@ -148,6 +147,7 @@ def _DebianSlim(
 
     python_version = _dockerhub_python_version(python_version)
     base_image = ref(f"debian-slim-{python_version}", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
+    context_files = {}
 
     dockerfile_commands = ["FROM base as target"]
     base_images = {"base": base_image}
@@ -155,7 +155,12 @@ def _DebianSlim(
         dockerfile_commands += [f"RUN {cmd}" for cmd in extra_commands]
 
     if requirements_txt is not None:
-        python_packages = parse_requirements_txt(requirements_txt) + (python_packages or [])
+        context_files["/.requirements.txt"] = requirements_txt
+
+        dockerfile_commands += [
+            "COPY /.requirements.txt /.requirements.txt",
+            "RUN pip install -r /.requirements.txt",
+        ]
 
     if extra_commands is None and python_packages is None:
         return base_image
@@ -170,6 +175,7 @@ def _DebianSlim(
 
     return _Image(
         dockerfile_commands=dockerfile_commands,
+        context_files=context_files,
         base_images=base_images,
         version=version,
     )
