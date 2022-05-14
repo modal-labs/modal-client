@@ -37,4 +37,8 @@ def test_debian_slim_requirements_txt(servicer, client):
     image = DebianSlim(requirements_txt=requirements_txt)
     with app.run(client=client):
         assert app.create_object(image) == "im-123"
-        assert any("blueberry" in cmd for cmd in servicer.last_image.dockerfile_commands)
+        assert any(
+            "COPY /.requirements.txt /.requirements.txt" in cmd for cmd in servicer.last_image.dockerfile_commands
+        )
+        assert any("pip install -r /.requirements.txt" in cmd for cmd in servicer.last_image.dockerfile_commands)
+        assert any(b"banana" in f.data for f in servicer.last_image.context_files)

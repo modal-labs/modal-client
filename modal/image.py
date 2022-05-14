@@ -162,9 +162,6 @@ def _DebianSlim(
             "RUN pip install -r /.requirements.txt",
         ]
 
-    if extra_commands is None and python_packages is None:
-        return base_image
-
     if python_packages is not None:
         find_links_arg = f"-f {pip_find_links}" if pip_find_links else ""
         package_args = " ".join(shlex.quote(pkg) for pkg in python_packages)
@@ -172,6 +169,9 @@ def _DebianSlim(
         dockerfile_commands += [
             f"RUN pip install {package_args} {find_links_arg}",
         ]
+
+    if len(dockerfile_commands) == 1:
+        return base_image
 
     return _Image(
         dockerfile_commands=dockerfile_commands,
