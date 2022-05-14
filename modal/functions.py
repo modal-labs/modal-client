@@ -270,7 +270,7 @@ class _Function(Object, type_prefix="fu"):
         mounts = [*self.info.create_mounts(), *self.mounts]
         # TODO(erikbern): couldn't we just create one single mount with all packages instead of multiple?
         if config["sync_entrypoint"]:
-            mounts.append(await _create_client_mount())
+            mounts.append(_create_client_mount())
         else:
             client_mount = ref(MODAL_CLIENT_MOUNT_NAME, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
             mounts.append(client_mount)
