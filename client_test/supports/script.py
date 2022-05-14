@@ -1,10 +1,10 @@
 import asyncio
 
-import a  # noqa
 import b  # noqa
 import b.c  # noqa
 import six  # noqa
 
+import a  # noqa
 from modal._app_state import AppState
 from modal._function_utils import FunctionInfo
 from modal.app import _App
@@ -20,7 +20,7 @@ async def get_files():
     app = _App()
     app.state = AppState.RUNNING
 
-    for mount in fn_info.create_mounts():
+    for _, mount in fn_info.get_mounts().items():
         async for file_info in mount._get_files():
             print(file_info.rel_filename)
 

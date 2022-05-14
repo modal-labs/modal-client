@@ -13,6 +13,7 @@ from modal_utils.decorator_utils import decorator_with_options
 from ._app_singleton import get_container_app, set_container_app
 from ._app_state import AppState
 from ._blueprint import Blueprint
+from ._function_utils import FunctionInfo
 from ._output import OutputManager, step_completed, step_progress
 from ._serialization import Pickler, Unpickler
 from .client import _Client
@@ -20,8 +21,8 @@ from .config import config, logger
 from .exception import InvalidError, NotFoundError
 from .functions import _Function, _FunctionProxy
 from .image import _DebianSlim, _Image
-from .mount import _Mount
-from .object import Object
+from .mount import MODAL_CLIENT_MOUNT_NAME, _Mount
+from .object import Object, ref
 from .rate_limit import RateLimit
 from .schedule import Schedule
 from .secret import Secret
@@ -107,18 +108,6 @@ class _App:
         args = [script_filename] + sys.argv[1:]
         return " ".join(args)
 
-    def _register_object(self, tag: str, obj: Object):
-        """Registers an object to be created by the app so that it's available in modal.
-
-        This is only used by factories and functions."""
-        if get_container_app():
-            return
-        if self.state != AppState.NONE:
-            raise InvalidError(f"Can only register objects on a app that's not running (state = {self.state}")
-        # TODO(erikbern): there was a special case with a comment here about double-loading and cloudpickle,
-        # but I have a feeling it's no longer an issue, so I remved it for now.
-        self._blueprint.register(tag, obj)
-
     async def _initialize_container(self, app_id, client, task_id):
         """Used by the container to bootstrap the app and all its objects."""
         self._app_id = app_id
@@ -202,7 +191,7 @@ class _App:
             return self._blueprint.get_object(tag)
 
     def __setitem__(self, tag, obj):
-        self._register_object(tag, obj)
+        self._blueprint.register(tag, obj)
 
     @synchronizer.asynccontextmanager
     async def _run(self, client, output_mgr, existing_app_id, last_log_entry_id=None):
@@ -402,19 +391,37 @@ class _App:
         return Unpickler(self, io.BytesIO(s)).load()
 
     def _register_function(self, function):
-        self._register_object(function.tag, function)
+        self._blueprint.register(function.tag, function)
         function_proxy = _FunctionProxy(function, self, function.tag)
         return function_proxy
 
     def _get_default_image(self):
         # TODO(erikbern): instead of writing this to the same namespace
         # as the user's objects, we could use sub-blueprints in the future
-        try:
-            return self._blueprint.get_object("_image")
-        except KeyError:
-            image = _DebianSlim()
-            self._register_object("_image", image)
-            return image
+        if not self._blueprint.has_object("_image"):
+            self._blueprint.register("_image", _DebianSlim())
+        return self._blueprint.get_object("_image")
+
+    def _get_function_mounts(self, raw_f):
+        mounts = []
+
+        # Create client mount
+        if not self._blueprint.has_object("_client_mount"):
+            if config["sync_entrypoint"]:
+                client_mount = _create_client_mount()
+            else:
+                client_mount = ref(MODAL_CLIENT_MOUNT_NAME, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
+            self._blueprint.register("_client_mount", client_mount)
+        mounts.append(self._blueprint.get_object("_client_mount"))  # change to a ref
+
+        # Create function mounts
+        info = FunctionInfo(raw_f)
+        for key, mount in info.get_mounts().items():
+            if not self._blueprint.has_object(key):
+                self._blueprint.register(key, mount)
+            mounts.append(mount)  # change to a ref
+
+        return mounts
 
     @decorator_with_options
     def function(
@@ -433,6 +440,7 @@ class _App:
         """Decorator to create Modal functions"""
         if image is None:
             image = self._get_default_image()
+        mounts = [*self._get_function_mounts(raw_f), *mounts]
         function = _Function(
             raw_f,
             image=image,
@@ -463,6 +471,7 @@ class _App:
         """Decorator to create Modal generators"""
         if image is None:
             image = self._get_default_image()
+        mounts = [*self._get_function_mounts(raw_f), *mounts]
         function = _Function(
             raw_f,
             image=image,
@@ -490,7 +499,7 @@ class _App:
     ):
         if image is None:
             image = self._get_default_image()
-
+        mounts = [*self._get_function_mounts(asgi_app), *mounts]
         function = _Function(
             asgi_app,
             image=image,
@@ -520,7 +529,7 @@ class _App:
     ):
         if image is None:
             image = self._get_default_image()
-
+        mounts = [*self._get_function_mounts(raw_f), *mounts]
         function = _Function(
             raw_f,
             image=image,

@@ -16,8 +16,8 @@ from grpc.aio import ServicerContext
 
 from modal._app_singleton import set_container_app
 from modal.client import AioClient, Client
-from modal.functions import MODAL_CLIENT_MOUNT_NAME
 from modal.image import _dockerhub_python_version
+from modal.mount import MODAL_CLIENT_MOUNT_NAME
 from modal.version import __version__
 from modal_proto import api_pb2, api_pb2_grpc
 from modal_utils.async_utils import synchronize_apis

@@ -26,6 +26,9 @@ class Blueprint:
     def get_object(self, tag: str) -> Object:
         return self._objects[tag]
 
+    def has_object(self, tag: str) -> bool:
+        return tag in self._objects
+
     def get_objects(self) -> Iterator[Tuple[str, Object]]:
         for tag, obj in self._objects.items():
             yield tag, obj

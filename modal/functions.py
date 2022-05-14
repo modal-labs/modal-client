@@ -9,15 +9,12 @@ from modal_utils.async_utils import queue_batch_iterator, retry, synchronize_api
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._buffer_utils import buffered_rpc_read, buffered_rpc_write
 from ._function_utils import FunctionInfo
-from .config import config
 from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError
-from .mount import _create_client_mount, _Mount
-from .object import Object, ref
+from .mount import _Mount
+from .object import Object
 from .rate_limit import RateLimit
 from .schedule import Schedule
 from .secret import Secret
-
-MODAL_CLIENT_MOUNT_NAME = "modal-client-mount"
 
 
 async def _process_result(app, result):
@@ -267,15 +264,6 @@ class _Function(Object, type_prefix="fu"):
         return f"Created {self.tag}."
 
     async def load(self, app, existing_function_id):
-        mounts = [*self.info.create_mounts(), *self.mounts]
-        # TODO(erikbern): couldn't we just create one single mount with all packages instead of multiple?
-        if config["sync_entrypoint"]:
-            mounts.append(_create_client_mount())
-        else:
-            client_mount = ref(MODAL_CLIENT_MOUNT_NAME, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
-            mounts.append(client_mount)
-
-        # Wait for image and mounts to finish
         # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
         if self.image is not None:
             image_id = await app.create_object(self.image)
@@ -293,7 +281,7 @@ class _Function(Object, type_prefix="fu"):
                 )
             secret_ids.append(secret_id)
 
-        mount_ids = await asyncio.gather(*(app.create_object(mount) for mount in mounts))
+        mount_ids = await asyncio.gather(*(app.create_object(mount) for mount in self.mounts))
 
         if self.is_generator:
             function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR

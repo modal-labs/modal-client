@@ -62,23 +62,23 @@ class FunctionInfo:
             self.is_package = False
             self.is_file = False
 
-    def create_mounts(self) -> List[_Mount]:
+    def get_mounts(self) -> List[_Mount]:
         if self.is_package:
-            return [
-                _Mount(
+            return {
+                self.base_dir: _Mount(
                     local_dir=self.base_dir,
                     remote_dir=self.remote_dir,
                     recursive=True,
                     condition=package_mount_condition,
                 )
-            ]
+            }
         elif self.is_file:
-            mounts = [
-                _Mount(
+            mounts = {
+                self.file: _Mount(
                     local_file=self.file,
                     remote_dir=ROOT_DIR,
                 )
-            ]
+            }
 
             packages = set()
 
@@ -92,28 +92,24 @@ class FunctionInfo:
 
                         packages.add(path)
                         relpath = os.path.relpath(path, self.base_dir)
-                        mounts.append(
-                            _Mount(
-                                local_dir=path,
-                                remote_dir=os.path.join(ROOT_DIR, relpath),
-                                condition=package_mount_condition,
-                                recursive=True,
-                            )
+                        mounts[path] = _Mount(
+                            local_dir=path,
+                            remote_dir=os.path.join(ROOT_DIR, relpath),
+                            condition=package_mount_condition,
+                            recursive=True,
                         )
                 elif getattr(m, "__file__", None):
                     path = m.__file__
                     if path == self.file or not path.startswith(self.base_dir) or path.startswith(sys.prefix):
                         continue
                     relpath = os.path.relpath(os.path.dirname(path), self.base_dir)
-                    mounts.append(
-                        _Mount(
-                            local_file=path,
-                            remote_dir=os.path.join(ROOT_DIR, relpath),
-                        )
+                    mounts[path] = _Mount(
+                        local_file=path,
+                        remote_dir=os.path.join(ROOT_DIR, relpath),
                     )
+            return mounts
         else:
-            mounts = []
-        return mounts
+            return {}
 
     def get_tag(self):
         return f"{self.module_name}.{self.function_name}"

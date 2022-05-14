@@ -22,6 +22,7 @@ from .object import Object
 #  It will also make sure to chunk the hash calculation to avoid reading the entire file into memory
 LARGE_FILE_LIMIT = 64 * 1024  # 64k
 HASH_CHUNK_SIZE = 4096
+MODAL_CLIENT_MOUNT_NAME = "modal-client-mount"
 
 
 class _Mount(Object, type_prefix="mo"):
