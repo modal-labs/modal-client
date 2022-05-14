@@ -3,7 +3,7 @@ import io
 import platform
 import re
 import sys
-from typing import Callable
+from typing import Callable, Dict, Optional
 
 from rich.console import Console, RenderableType
 from rich.live import Live
@@ -65,13 +65,18 @@ class LineBufferedOutput(io.StringIO):
 
 
 class OutputManager:
-    def __init__(self, stdout, show_progress):
+    _visible_progress: bool
+    _console: Console
+    _task_states: Dict[str, int]
+
+    def __init__(self, stdout, show_progress: Optional[bool]):
         if show_progress is None:
             self._visible_progress = (stdout or sys.stdout).isatty()
         else:
             self._visible_progress = show_progress
 
         self._console = Console(file=stdout, highlight=False)
+        self._task_states = {}
 
     def print_if_visible(self, renderable):
         if self._visible_progress:
@@ -97,3 +102,28 @@ class OutputManager:
             raise Exception(f"Weird file descriptor {fd} for log output")
 
         self._console.out(data, style=style, end="")
+
+    def update_task_state(self, task_id: str, state: int) -> str:
+        """Updates the state of a task, returning the new task status string."""
+        self._task_states[task_id] = state
+
+        all_states = self._task_states.values()
+        states_set = set(all_states)
+
+        def tasks_at_state(state):
+            return sum(x == state for x in all_states)
+
+        # The most advanced state that's present informs the message.
+        if api_pb2.TASK_STATE_RUNNING in states_set:
+            tasks_running = tasks_at_state(api_pb2.TASK_STATE_RUNNING)
+            tasks_loading = tasks_at_state(api_pb2.TASK_STATE_LOADING_IMAGE)
+            return f"Running ({tasks_running}/{tasks_running + tasks_loading} containers in use)..."
+        elif api_pb2.TASK_STATE_LOADING_IMAGE in states_set:
+            tasks_loading = tasks_at_state(api_pb2.TASK_STATE_LOADING_IMAGE)
+            return f"Loading images ({tasks_loading} containers initializing)..."
+        elif api_pb2.TASK_STATE_WORKER_ASSIGNED in states_set:
+            return "Worker assigned..."
+        elif api_pb2.TASK_STATE_QUEUED in states_set:
+            return "Tasks queued..."
+        else:
+            return "Tasks created..."

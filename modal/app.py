@@ -88,7 +88,6 @@ class _App:
         self._tag_to_object = {}
         self._tag_to_existing_id = {}
         self._blueprint = Blueprint()
-        self._task_states: Dict[str, int] = {}
         self._progress: Optional[Tree] = None
         super().__init__()
 
@@ -121,31 +120,6 @@ class _App:
         # but I have a feeling it's no longer an issue, so I remved it for now.
         self._blueprint.register(tag, obj)
 
-    def _update_task_state(self, task_id: str, state: int) -> str:
-        """Updates the state of a task, returning the new task status string."""
-        self._task_states[task_id] = state
-
-        all_states = self._task_states.values()
-        states_set = set(all_states)
-
-        def tasks_at_state(state):
-            return sum(x == state for x in all_states)
-
-        # The most advanced state that's present informs the message.
-        if api_pb2.TASK_STATE_RUNNING in states_set:
-            tasks_running = tasks_at_state(api_pb2.TASK_STATE_RUNNING)
-            tasks_loading = tasks_at_state(api_pb2.TASK_STATE_LOADING_IMAGE)
-            return f"Running ({tasks_running}/{tasks_running + tasks_loading} containers in use)..."
-        elif api_pb2.TASK_STATE_LOADING_IMAGE in states_set:
-            tasks_loading = tasks_at_state(api_pb2.TASK_STATE_LOADING_IMAGE)
-            return f"Loading images ({tasks_loading} containers initializing)..."
-        elif api_pb2.TASK_STATE_WORKER_ASSIGNED in states_set:
-            return "Worker assigned..."
-        elif api_pb2.TASK_STATE_QUEUED in states_set:
-            return "Tasks queued..."
-        else:
-            return "Tasks created..."
-
     async def _get_logs_loop(self, output_mgr: OutputManager, live_task_status: Live, last_log_batch_entry_id: str):
         async def _get_logs():
             nonlocal last_log_batch_entry_id
@@ -173,7 +147,7 @@ class _App:
 
                     for log in log_batch.items:
                         if log.task_state:
-                            message = self._update_task_state(log_batch.task_id, log.task_state)
+                            message = output_mgr.update_task_state(log_batch.task_id, log.task_state)
                             live_task_status.update(step_progress(message))
                         if log.data:
                             stream = line_buffers.get(log.file_descriptor)
