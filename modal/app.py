@@ -21,7 +21,7 @@ from .config import config, logger
 from .exception import InvalidError, NotFoundError
 from .functions import _Function, _FunctionProxy
 from .image import _DebianSlim, _Image
-from .mount import MODAL_CLIENT_MOUNT_NAME, _Mount
+from .mount import MODAL_CLIENT_MOUNT_NAME, _create_client_mount, _Mount
 from .object import Object, ref
 from .rate_limit import RateLimit
 from .schedule import Schedule

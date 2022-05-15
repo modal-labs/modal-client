@@ -1,7 +1,7 @@
 import inspect
 import os
 import sys
-from typing import List
+from typing import Dict
 
 import cloudpickle
 
@@ -62,7 +62,7 @@ class FunctionInfo:
             self.is_package = False
             self.is_file = False
 
-    def get_mounts(self) -> List[_Mount]:
+    def get_mounts(self) -> Dict[str, _Mount]:
         if self.is_package:
             return {
                 self.base_dir: _Mount(
