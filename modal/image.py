@@ -7,7 +7,6 @@ from typing import Collection, Dict, List, Optional, Union
 from modal_proto import api_pb2
 from modal_utils.async_utils import retry, synchronize_apis
 
-from ._app_singleton import get_container_app
 from .config import config, logger
 from .exception import InvalidError, NotFoundError, RemoteError
 from .object import Object, ref
@@ -103,23 +102,11 @@ class _Image(Object, type_prefix="im"):
 
         return image_id
 
-    def is_inside(self):
+    def _is_inside(self):
         """Returns whether this container is active or not.
 
-        Useful for conditionally importing libraries when inside images.
+        This is not meant to be called directly: see app.is_inside(image)
         """
-        # TODO(erikbern): This method only works if an image is assigned to an app
-        # This is pretty confusing so let's figure out a way to clean it up.
-        #
-        # image = DebianSlim()
-        # if image.is_inside():  # This WILL NOT work
-        #
-        # app["image"] = DebianSlim()
-        # if app["image"].is_inside()  # This WILL work
-
-        if get_container_app() is None:
-            return False
-
         env_image_id = config.get("image_id")
         logger.debug(f"Is image inside? env {env_image_id} image {self.object_id}")
         return self.object_id == env_image_id

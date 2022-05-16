@@ -11,9 +11,6 @@ from modal.image import extend_image
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 
-pymc_app = App()
-
-
 dockerfile_commands = [
     "RUN conda info",
     "RUN echo $0 \\ ",
@@ -24,10 +21,9 @@ dockerfile_commands = [
     "&& conda install theano-pymc==1.1.2 pymc3==3.11.2 scikit-learn mkl-service --yes ",
 ]
 conda_image = ref("conda", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
-pymc_app["image"] = extend_image(base_image=conda_image, extra_dockerfile_commands=dockerfile_commands)
+pymc_app = App(image=extend_image(base_image=conda_image, extra_dockerfile_commands=dockerfile_commands))
 
-
-if pymc_app["image"].is_inside():
+if app.is_inside():
     import numpy as np
     from fastprogress.fastprogress import progress_bar
     from pymc3 import theanof
@@ -68,7 +64,7 @@ def rebuild_exc(exc, tb):
     return exc
 
 
-@pymc_app.generator(image=pymc_app["image"])
+@pymc_app.generator
 def sample_process(
     draws: int,
     tune: int,

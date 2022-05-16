@@ -216,6 +216,16 @@ class _App:
             raise Exception("Setting a reference on the blueprint")
         self._blueprint.register(tag, obj)
 
+    def is_inside(self, image: Optional[Object] = None):
+        if not get_container_app():
+            return False
+        if image is None:
+            tag = "_image"
+        else:
+            tag = image.label.object_label
+        image = self._tag_to_object.get(tag)
+        return image._is_inside()
+
     @synchronizer.asynccontextmanager
     async def _run(self, client, output_mgr, existing_app_id, last_log_entry_id=None):
         # TOOD: use something smarter than checking for the .client to exists in order to prevent
