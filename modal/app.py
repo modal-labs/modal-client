@@ -72,7 +72,7 @@ class _App:
             app = super().__new__(cls)
             return app
 
-    def __init__(self, name=None):
+    def __init__(self, name=None, *, image=None):
         if "_initialized" in self.__dict__:
             return  # Prevent re-initialization with the singleton
 
@@ -86,6 +86,9 @@ class _App:
         self._tag_to_object = {}
         self._tag_to_existing_id = {}
         self._blueprint = Blueprint()
+        if image is None:
+            image = _DebianSlim()
+        self._image = image
         # TODO: this is only used during _flush_objects, but that function gets called from objects, so we need to store it somewhere
         # Once we rewrite object creation to be non-recursive, this should no longer be needed
         self._progress: Optional[Tree] = None
@@ -419,8 +422,8 @@ class _App:
         # TODO(erikbern): instead of writing this to the same namespace
         # as the user's objects, we could use sub-blueprints in the future
         if not self._blueprint.has_object("_image"):
-            self._blueprint.register("_image", _DebianSlim())
-        return self._blueprint.get_object("_image")
+            self._blueprint.register("_image", self._image)
+        return ref(None, "_image")
 
     def _get_function_mounts(self, raw_f):
         mounts = []
