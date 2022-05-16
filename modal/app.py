@@ -235,7 +235,7 @@ class _App:
                     tc.create_task(
                         output_mgr.get_logs_loop(self._app_id, self.client, live_task_status, last_log_entry_id or "")
                     )
-                output_mgr.print_if_visible(step_completed("Intialized."))
+                output_mgr.print_if_visible(step_completed("Initialized."))
 
                 try:
                     progress = Tree(step_progress("Creating objects..."), guide_style="gray50")
