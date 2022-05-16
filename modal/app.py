@@ -224,6 +224,7 @@ class _App:
         else:
             tag = image.label.object_label
         image = self._tag_to_object.get(tag)
+        assert isinstance(image, _Image)
         return image._is_inside()
 
     @synchronizer.asynccontextmanager
