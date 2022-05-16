@@ -266,13 +266,13 @@ class _Function(Object, type_prefix="fu"):
     async def load(self, app, existing_function_id):
         # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
         if self.image is not None:
-            image_id = await app.create_object(self.image)
+            image_id = await app.lookup(self.image)
         else:
             image_id = None  # Happens if it's a notebook function
         secret_ids = []
         for secret in self.secrets:
             try:
-                secret_id = await app.create_object(secret)
+                secret_id = await app.lookup(secret)
             except NotFoundError as ex:
                 raise NotFoundError(
                     f"Could not find secret {ex.obj_repr}\n"
@@ -281,7 +281,7 @@ class _Function(Object, type_prefix="fu"):
                 )
             secret_ids.append(secret_id)
 
-        mount_ids = await asyncio.gather(*(app.create_object(mount) for mount in self.mounts))
+        mount_ids = await asyncio.gather(*(app.lookup(mount) for mount in self.mounts))
 
         if self.is_generator:
             function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR

@@ -124,32 +124,41 @@ class _App:
         # In the container, run forever
         self.state = AppState.RUNNING
 
-    async def create_object(self, obj: Object, existing_object_id: Optional[str] = None) -> str:
-        """Takes an object as input, returns an object id.
+    async def lookup(self, obj: Object) -> str:
+        """Takes a Ref object and looks up its id.
 
-        This is a noop for any object that's not a factory.
+        It's either an object defined locally on this app, or one defined on a separate app
         """
-        if synchronizer.is_synchronized(obj):
-            raise Exception(f"{obj} is synchronized")
+        if not obj.label:
+            # TODO: explain these exception more, since I think it might be a common issue
+            raise InvalidError(f"Object {obj} has no label. Make sure every object is defined on the app.")
+        if not obj.label.app_name and not obj.label.object_label:
+            raise InvalidError(f"Object label {obj.label} is a malformed reference to nothing.")
 
-        if obj.object_id:
-            # This object is already created, just return the id
-            return obj.object_id
+        if obj.label.app_name is not None:
+            # A different app
+            object_id = await self._include(obj.label.app_name, obj.label.object_label, obj.label.namespace)
+        else:
+            # Same app, an object that was created earlier
+            obj = self._tag_to_object[obj.label.object_label]
+            object_id = obj.object_id
 
-        # Already created
-        # TODO: handle references to the current app
-        # if obj.tag and obj.tag in self._tag_to_object:
-        #    return self._tag_to_object[obj.tag].object_id
+        assert object_id
+        return object_id
 
+    async def _create_object(self, obj: Object, existing_object_id: Optional[str] = None) -> str:
+        """Takes an object as input, create it, and return an object id."""
         creating_message = obj.get_creating_message()
         if creating_message is not None:
             step_node = self._progress.add(step_progress(creating_message))
 
-        # Create object
-        if obj.label is not None and obj.label.app_name is not None:
-            # TODO: this is a bit of a special case that we should clean up later
+        if obj.label is not None:
+            assert obj.label.app_name is not None
+            # A different app
             object_id = await self._include(obj.label.app_name, obj.label.object_label, obj.label.namespace)
+
         else:
+            # Create object
             object_id = await obj.load(self, existing_object_id)
             if existing_object_id is not None and object_id != existing_object_id:
                 # TODO(erikbern): this is a very ugly fix to a problem that's on the server side.
@@ -171,15 +180,23 @@ class _App:
 
         return object_id
 
-    async def _flush_objects(self):
+    async def _create_all_objects(self):
         """Create objects that have been defined but not created on the server."""
-        for tag, obj in self._blueprint.get_objects():
+        # Instead of doing a topological sort here, we rely on a sort of dumb "trick".
+        # Functions are the only objects that "depend" on other objects, so we make sure
+        # they are built last. In the future we might have some more complicated structure
+        # where we actually have to model out the DAG
+        tags = [tag for tag, obj in self._blueprint.get_objects()]
+        tags.sort(key=lambda obj: obj.startswith("fu-"))
+        for tag in tags:
+            obj = self._blueprint.get_object(tag)
             existing_object_id = self._tag_to_existing_id.get(tag)
-            logger.debug(f"Creating object {obj} with existing id {existing_object_id}")
-            object_id = await self.create_object(obj, existing_object_id)
+            logger.debug(f"Creating object {tag} with existing id {existing_object_id}")
+            object_id = await self._create_object(obj, existing_object_id)
             self._tag_to_object[tag] = Object.from_id(object_id, self)
 
-    def __getitem__(self, tag):
+    def __getitem__(self, tag: str):
+        assert isinstance(tag, str)
         # TODO(erikbern): this should really be an app vs blueprint thing
         if self.state == AppState.RUNNING:
             # TODO: this is a terrible hack for now. For running apps inside the container,
@@ -188,9 +205,12 @@ class _App:
             # Let's revisit once we clean up the app singleton
             return self._tag_to_object.get(tag)
         else:
-            return self._blueprint.get_object(tag)
+            # Return a reference to an object that will be created in the future
+            return ref(None, tag)
 
     def __setitem__(self, tag, obj):
+        if obj.label and not obj.label.app_name:
+            raise Exception("Setting a reference on the blueprint")
         self._blueprint.register(tag, obj)
 
     @synchronizer.asynccontextmanager
@@ -230,7 +250,7 @@ class _App:
                     progress = Tree(step_progress("Creating objects..."), guide_style="gray50")
                     self._progress = progress
                     with output_mgr.ctx_if_visible(output_mgr.make_live(progress)):
-                        await self._flush_objects()
+                        await self._create_all_objects()
                     progress.label = step_completed("Created objects.")
                     output_mgr.print_if_visible(progress)
 
@@ -412,14 +432,14 @@ class _App:
             else:
                 client_mount = ref(MODAL_CLIENT_MOUNT_NAME, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
             self._blueprint.register("_client_mount", client_mount)
-        mounts.append(self._blueprint.get_object("_client_mount"))  # change to a ref
+        mounts.append(ref(None, "_client_mount"))
 
         # Create function mounts
         info = FunctionInfo(raw_f)
         for key, mount in info.get_mounts().items():
             if not self._blueprint.has_object(key):
                 self._blueprint.register(key, mount)
-            mounts.append(mount)  # change to a ref
+            mounts.append(ref(None, key))
 
         return mounts
 

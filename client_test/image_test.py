@@ -17,9 +17,9 @@ def test_python_version():
 
 def test_debian_slim_python_packages(client):
     app = App()
-    image = DebianSlim(python_packages=["numpy"])
+    app["image"] = DebianSlim(python_packages=["numpy"])
     with app.run(client=client):
-        assert app.create_object(image) == "im-123"
+        assert app["image"].object_id == "im-123"
 
 
 def test_debian_slim_with_apps(client):
@@ -29,13 +29,12 @@ def test_debian_slim_with_apps(client):
 
 
 def test_debian_slim_requirements_txt(servicer, client):
-
     requirements_txt = os.path.join(os.path.dirname(__file__), "test-requirements.txt")
 
     app = App()
-    image = DebianSlim(requirements_txt=requirements_txt)
+    app["image"] = DebianSlim(requirements_txt=requirements_txt)
     with app.run(client=client):
-        assert app.create_object(image) == "im-123"
+        assert app["image"].object_id == "im-123"
         assert any(
             "COPY /.requirements.txt /.requirements.txt" in cmd for cmd in servicer.last_image.dockerfile_commands
         )

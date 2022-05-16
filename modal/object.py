@@ -9,7 +9,7 @@ from .exception import InvalidError
 
 
 class ObjectLabel(NamedTuple):
-    app_name: Optional[str] = None
+    app_name: Optional[str] = None  # If it's none then it's the same app
     object_label: Optional[str] = None
     namespace: Optional[int] = None  # api_pb2.DEPLOYMENT_NAMESPACE
 
@@ -80,6 +80,6 @@ class Ref(Object):
     pass
 
 
-def ref(app_name, object_label=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
+def ref(app_name: Optional[str], object_label: Optional[str] = None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
     label = ObjectLabel(app_name, object_label, namespace)
     return Ref(label=label)

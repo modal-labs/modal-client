@@ -9,7 +9,6 @@ from modal.exception import InvalidError
 async def test_async_factory(servicer, client):
     app = AioApp()
     app["my_factory"] = AioQueue()
-    assert isinstance(app["my_factory"], AioQueue)
     async with app.run(client=client):
         assert isinstance(app["my_factory"], AioQueue)
         assert app["my_factory"].object_id == "qu-1"
