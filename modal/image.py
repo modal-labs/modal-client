@@ -9,7 +9,7 @@ from modal_utils.async_utils import retry, synchronize_apis
 
 from ._app_singleton import get_container_app
 from .config import config, logger
-from .exception import RemoteError
+from .exception import NotFoundError, RemoteError
 from .object import Object, ref
 
 
@@ -31,12 +31,14 @@ class _Image(Object, type_prefix="im"):
         base_images={},
         context_files={},
         dockerfile_commands=[],
+        secrets=[],
         version=None,
     ):
         self._base_images = base_images
         self._context_files = context_files
         self._dockerfile_commands = dockerfile_commands
         self._version = version
+        self._secrets = secrets
         super().__init__()
 
     async def load(self, app, existing_image_id):
@@ -46,6 +48,18 @@ class _Image(Object, type_prefix="im"):
             api_pb2.BaseImage(docker_tag=docker_tag, image_id=image_id)
             for docker_tag, image_id in zip(self._base_images.keys(), base_image_ids)
         ]
+
+        secret_ids = []
+        for secret in self._secrets:
+            try:
+                secret_id = await app.create_object(secret)
+            except NotFoundError as ex:
+                raise NotFoundError(
+                    f"Could not find secret {ex.obj_repr}\n"
+                    + "You can add secrets to your account at https://modal.com/secrets",
+                    ex.obj_repr,
+                )
+            secret_ids.append(secret_id)
 
         context_file_pb2s = [
             api_pb2.ImageContextFile(filename=filename, data=open(path, "rb").read())
@@ -58,6 +72,7 @@ class _Image(Object, type_prefix="im"):
             dockerfile_commands=dockerfile_commands,
             context_files=context_file_pb2s,
             version=self._version,
+            secret_ids=secret_ids,
         )
 
         req = api_pb2.ImageGetOrCreateRequest(
@@ -136,6 +151,7 @@ def _DebianSlim(
     pip_find_links=None,
     requirements_txt=None,
     version=None,
+    secrets=[],
 ):
     """A default base image, built on the official python:<version>-slim-bullseye Docker hub images
 
@@ -178,15 +194,17 @@ def _DebianSlim(
         context_files=context_files,
         base_images=base_images,
         version=version,
+        secrets=secrets,
     )
 
 
-def _extend_image(base_image, extra_dockerfile_commands, context_files={}):
+def _extend_image(base_image, extra_dockerfile_commands, context_files={}, secrets=[]):
     """Extend an image with arbitrary dockerfile commands"""
     return _Image(
         base_images={"base": base_image},
         dockerfile_commands=["FROM base"] + extra_dockerfile_commands,
         context_files=context_files,
+        secrets=secrets,
     )
 
 

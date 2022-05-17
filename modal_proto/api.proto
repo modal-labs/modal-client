@@ -184,6 +184,7 @@ message Image {
   repeated string dockerfile_commands = 6;
   repeated ImageContextFile context_files = 7;
   string version = 11;
+  repeated string secret_ids = 12;
 }
 
 message ImageGetOrCreateRequest {
