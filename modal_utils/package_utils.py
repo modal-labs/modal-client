@@ -1,4 +1,3 @@
-import hashlib
 import importlib
 import os
 import sys
@@ -7,16 +6,6 @@ from importlib import import_module
 from importlib_metadata import PackageNotFoundError, files
 
 from .logger import logger
-
-
-def _get_sha256_hex_from_content(content):
-    return hashlib.sha256(content).hexdigest()
-
-
-def get_sha256_hex_from_filename(filename, rel_filename):
-    # Somewhat CPU intensive, so we run it in a thread/process
-    content = open(filename, "rb").read()
-    return filename, rel_filename, content, _get_sha256_hex_from_content(content)
 
 
 def get_file_formats(module):

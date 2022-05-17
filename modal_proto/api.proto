@@ -451,8 +451,13 @@ message MountRegisterFileResponse {
 message MountUploadFileRequest {
   string sha256_hex = 1;
   int32 size = 2;
-  bytes data = 3;
+
   string mount_id = 4;
+
+  oneof data_oneof {
+    bytes data = 3;
+    string data_blob_id = 5;
+  }
 }
 
 message MountDoneRequest {

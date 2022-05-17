@@ -1,23 +1,47 @@
+import hashlib
 import os
 import pytest
 
 from modal import App
 from modal.aio import AioApp
-from modal.mount import AioMount, Mount
+from modal.mount import LARGE_FILE_LIMIT, AioMount, Mount
 
 
 @pytest.mark.asyncio
-async def test_get_files(servicer, client):
+async def test_get_files(servicer, client, tmpdir, mock_blob_upload_file):
+    small_content = "# not much here"
+    large_content = "a" * (LARGE_FILE_LIMIT + 1)
+
+    tmpdir.join("small.py").write(small_content)
+    tmpdir.join("large.py").write(large_content)
+    tmpdir.join("fluff").write("hello")
+
     files = {}
     app = AioApp()
     async with app.run(client=client):
-        m = AioMount("/", local_dir=os.path.dirname(__file__), condition=lambda fn: fn.endswith(".py"), recursive=True)
+        m = AioMount("/", local_dir=tmpdir, condition=lambda fn: fn.endswith(".py"), recursive=True)
         await m.load(app, None)
-        async for tup in m._get_files():
-            filename, rel_filename, content, sha256_hex = tup
-            files[filename] = sha256_hex
+        async for upload_spec in m._get_files():
+            files[upload_spec.rel_filename] = upload_spec
 
-        assert __file__ in files
+        assert "small.py" in files
+        assert "large.py" in files
+        assert "fluff" not in files
+        assert files["small.py"].use_blob is False
+        assert files["small.py"].content == small_content.encode("utf8")
+        assert files["small.py"].sha256_hex == hashlib.sha256(small_content.encode("utf8")).hexdigest()
+
+        assert files["large.py"].use_blob is True
+        assert files["large.py"].content is None
+        assert files["large.py"].sha256_hex == hashlib.sha256(large_content.encode("utf8")).hexdigest()
+        assert len(mock_blob_upload_file) == 1
+        assert mock_blob_upload_file["0"].endswith("large.py")
+
+        assert servicer.files_sha2data[files["large.py"].sha256_hex] == {"data": b"", "data_blob_id": "0"}
+        assert servicer.files_sha2data[files["small.py"].sha256_hex] == {
+            "data": small_content.encode("utf8"),
+            "data_blob_id": "",
+        }
 
 
 def test_create_mount(servicer, client):
@@ -30,8 +54,8 @@ def test_create_mount(servicer, client):
             return fn.endswith(".py")
 
         m = Mount(local_dir=local_dir, remote_dir=remote_dir, condition=condition)
-        m.load(app, None) == "mo-123"
+        assert m.load(app, None) == "mo-123"
         assert f"/foo/{cur_filename}" in servicer.files_name2sha
         sha256_hex = servicer.files_name2sha[f"/foo/{cur_filename}"]
         assert sha256_hex in servicer.files_sha2data
-        assert servicer.files_sha2data[sha256_hex] == open(__file__, "rb").read()
+        assert servicer.files_sha2data[sha256_hex]["data"] == open(__file__, "rb").read()

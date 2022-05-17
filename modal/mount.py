@@ -1,5 +1,7 @@
 import asyncio
 import concurrent.futures
+import dataclasses
+import hashlib
 import os
 import time
 from pathlib import Path
@@ -7,17 +9,19 @@ from typing import Callable, Optional, Union
 
 import aiostream
 
+import modal._blob_utils
 from modal_proto import api_pb2
 from modal_utils.async_utils import retry, synchronize_apis
-from modal_utils.package_utils import (
-    get_module_mount_info,
-    get_sha256_hex_from_filename,
-    module_mount_condition,
-)
+from modal_utils.package_utils import get_module_mount_info, module_mount_condition
 
 from .config import logger
 from .exception import InvalidError
 from .object import Object
+
+#  If a file is LARGE_FILE_LIMIT bytes or larger, it's uploaded to blob store (s3) instead of going through grpc
+#  It will also make sure to chunk the hash calculation to avoid reading the entire file into memory
+LARGE_FILE_LIMIT = 64 * 1024  # 64k
+HASH_CHUNK_SIZE = 4096
 
 
 class _Mount(Object, type_prefix="mo"):
@@ -58,7 +62,7 @@ class _Mount(Object, type_prefix="mo"):
     async def _get_files(self):
         if self._local_file:
             relpath = os.path.basename(self._local_file)
-            yield get_sha256_hex_from_filename(self._local_file, relpath)
+            yield _get_file_upload_spec(self._local_file, relpath)
             return
 
         loop = asyncio.get_event_loop()
@@ -72,7 +76,7 @@ class _Mount(Object, type_prefix="mo"):
             for filename in gen:
                 rel_filename = os.path.relpath(filename, self._local_dir)
                 if self._condition(filename):
-                    futs.append(loop.run_in_executor(exe, get_sha256_hex_from_filename, filename, rel_filename))
+                    futs.append(loop.run_in_executor(exe, _get_file_upload_spec, filename, rel_filename))
             logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} workers")
             for fut in asyncio.as_completed(futs):
                 yield await fut
@@ -89,26 +93,35 @@ class _Mount(Object, type_prefix="mo"):
         t0 = time.time()
         n_concurrent_uploads = 16
 
-        async def _put_file(client, mount_id, filename, rel_filename, data, sha256_hex):
+        async def _put_file(mount_file: _FileUploadSpec):
             nonlocal n_files, n_missing_files, total_bytes
 
-            remote_filename = (Path(self._remote_dir) / Path(rel_filename)).as_posix()
+            remote_filename = (Path(self._remote_dir) / Path(mount_file.rel_filename)).as_posix()
 
             request = api_pb2.MountRegisterFileRequest(
-                filename=remote_filename, sha256_hex=sha256_hex, mount_id=mount_id
+                filename=remote_filename, sha256_hex=mount_file.sha256_hex, mount_id=mount_id
             )
-            response = await retry(client.stub.MountRegisterFile, base_delay=1)(request)
+            response = await retry(app.client.stub.MountRegisterFile, base_delay=1)(request)
             n_files += 1
             if not response.exists:
-                # TODO: use S3 for large files.
                 n_missing_files += 1
-                total_bytes += len(data)
-                logger.debug(f"Uploading file {filename} to {remote_filename} ({len(data)} bytes)")
-
-                request2 = api_pb2.MountUploadFileRequest(
-                    data=data, sha256_hex=sha256_hex, size=len(data), mount_id=mount_id
-                )
-                await retry(client.stub.MountUploadFile, base_delay=1)(request2)
+                if mount_file.use_blob:
+                    logger.debug(f"Creating blob file for {mount_file.filename} ({mount_file.size} bytes)")
+                    blob_id = await modal._blob_utils.blob_upload_file(mount_file.filename, app.client.stub)
+                    logger.debug(f"Uploading blob file {mount_file.filename} as {remote_filename}")
+                    request2 = api_pb2.MountUploadFileRequest(
+                        data_blob_id=blob_id, sha256_hex=mount_file.sha256_hex, size=mount_file.size, mount_id=mount_id
+                    )
+                else:
+                    total_bytes += len(mount_file.content)
+                    logger.debug(f"Uploading file {mount_file.filename} to {remote_filename} ({mount_file.size} bytes)")
+                    request2 = api_pb2.MountUploadFileRequest(
+                        data=mount_file.content,
+                        sha256_hex=mount_file.sha256_hex,
+                        size=mount_file.size,
+                        mount_id=mount_id,
+                    )
+                await retry(app.client.stub.MountUploadFile, base_delay=1)(request2)
 
         req = api_pb2.MountCreateRequest(app_id=app.app_id, existing_mount_id=existing_mount_id)
         resp = await retry(app.client.stub.MountCreate, base_delay=1)(req)
@@ -119,12 +132,8 @@ class _Mount(Object, type_prefix="mo"):
         # Create async generator
         files_stream = aiostream.stream.iterate(self._get_files())
 
-        async def put_file_tupled(tup):
-            filename, rel_filename, content, sha256_hex = tup
-            await _put_file(app.client, mount_id, filename, rel_filename, content, sha256_hex)
-
         # Upload files
-        uploads_stream = aiostream.stream.map(files_stream, put_file_tupled, task_limit=n_concurrent_uploads)
+        uploads_stream = aiostream.stream.map(files_stream, _put_file, task_limit=n_concurrent_uploads)
         await uploads_stream
 
         logger.debug(f"Uploaded {n_missing_files}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
@@ -164,3 +173,40 @@ async def _create_package_mount(module_name):
 
 
 create_package_mount, aio_create_package_mount = synchronize_apis(_create_package_mount)
+
+
+@dataclasses.dataclass
+class _FileUploadSpec:
+    filename: str
+    rel_filename: str
+
+    use_blob: bool
+    content: Optional[bytes]  # typically None if using blob, required otherwise
+    sha256_hex: str
+    size: int
+
+
+def _get_file_upload_spec(filename, rel_filename):
+    # Somewhat CPU intensive, so we run it in a thread/process
+    filesize = os.path.getsize(filename)
+
+    if filesize >= LARGE_FILE_LIMIT:
+        sha256 = hashlib.sha256()
+        size = 0
+        with open(filename, "rb") as fp:
+            while 1:
+                chunk = fp.read(HASH_CHUNK_SIZE)
+                if not chunk:
+                    break
+                size += len(chunk)
+                sha256.update(chunk)
+
+        sha256_hex = sha256.hexdigest()
+        return _FileUploadSpec(filename, rel_filename, use_blob=True, content=None, sha256_hex=sha256_hex, size=size)
+    else:
+        with open(filename, "rb") as fp:
+            content = fp.read()
+        sha256_hex = hashlib.sha256(content).hexdigest()
+        return _FileUploadSpec(
+            filename, rel_filename, use_blob=False, content=content, sha256_hex=sha256_hex, size=len(content)
+        )

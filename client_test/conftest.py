@@ -5,6 +5,7 @@ import pytest
 import shutil
 import tempfile
 import typing
+from unittest import mock
 
 import cloudpickle
 import grpc
@@ -182,7 +183,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         request: api_pb2.MountUploadFileRequest,
         context: ServicerContext,
     ) -> Empty:
-        self.files_sha2data[request.sha256_hex] = request.data
+        self.files_sha2data[request.sha256_hex] = {"data": request.data, "data_blob_id": request.data_blob_id}
         return Empty()
 
     async def MountDone(
@@ -251,7 +252,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
 
 
 @pytest.fixture(scope="function")
-async def servicer():
+async def servicer(mock_blob_upload_file):
     servicer = GRPCClientServicer()
     server = None
 
@@ -333,3 +334,16 @@ def mock_dir_factory():
         shutil.rmtree(root_dir, ignore_errors=True)
 
     return mock_dir
+
+
+@pytest.fixture
+def mock_blob_upload_file():
+    blobs = {}
+
+    async def mock_blob_upload(filename, stub):
+        id = str(len(blobs))
+        blobs[id] = filename
+        return id
+
+    with mock.patch("modal._blob_utils.blob_upload_file", mock_blob_upload):
+        yield blobs
