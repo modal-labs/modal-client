@@ -3,7 +3,7 @@ import os
 import shlex
 import sys
 import warnings
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import retry, synchronize_apis
@@ -150,7 +150,7 @@ def _DebianSlim(
     python_packages: List[str] = [],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
     python_version: Optional[str] = None,  # Set a specific Python version
     pip_find_links: Optional[str] = None,
-    requirements_txt: Optional[str] = None,  # File contents of a requirements.txt
+    requirements_txt: Optional[Union[bytes, str]] = None,  # File contents of a requirements.txt
     context_files: Dict[
         str, bytes
     ] = {},  # A dict containing any files that will be present during the build to use with COPY
@@ -176,6 +176,9 @@ def _DebianSlim(
 
     if requirements_txt is not None:
         context_files = context_files.copy()
+        if isinstance(requirements_txt, str):
+            requirements_txt = requirements_txt.encode()
+            assert isinstance(requirements_txt, bytes)
         context_files["/.requirements.txt"] = requirements_txt
 
         dockerfile_commands += [
