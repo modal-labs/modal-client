@@ -25,7 +25,7 @@ def test_debian_slim_python_packages(client):
 def test_debian_slim_with_apps(client):
     app = App()
     with pytest.raises(InvalidError):
-        image = DebianSlim(app, python_packages=["numpy"])
+        DebianSlim(app, python_packages=["numpy"])
 
 
 def test_debian_slim_requirements_txt(servicer, client):
