@@ -2,15 +2,14 @@ import asyncio
 import os
 import shlex
 import sys
-import warnings
-from typing import Dict, List, Optional, Union, Collection
+from typing import Collection, Dict, List, Optional, Union
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import retry, synchronize_apis
 
 from ._app_singleton import get_container_app
 from .config import config, logger
-from .exception import NotFoundError, RemoteError
+from .exception import InvalidError, NotFoundError, RemoteError
 from .object import Object, ref
 from .secret import _Secret
 
@@ -166,7 +165,7 @@ def _DebianSlim(
     commands or python packages.
     """
     if app is not None:
-        warnings.warn("Passing `app` to the image constructor is deprecated", DeprecationWarning)
+        raise InvalidError("The latest API does no longer require the `app` argument, so please update your code!")
 
     python_version = _dockerhub_python_version(python_version)
     base_image = ref(f"debian-slim-{python_version}", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
@@ -244,7 +243,7 @@ def _DockerhubImage(app=None, tag=None):
     - The image is built for the `linux/amd64` platform
     """
     if app is not None:
-        warnings.warn("Passing `app` to the image constructor is deprecated", DeprecationWarning)
+        raise InvalidError("The latest API does no longer require the `app` argument, so please update your code!")
 
     requirements_path = get_client_requirements_path()
 
