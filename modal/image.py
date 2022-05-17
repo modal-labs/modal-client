@@ -3,7 +3,7 @@ import os
 import shlex
 import sys
 import warnings
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union, Collection
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import retry, synchronize_apis
@@ -12,6 +12,7 @@ from ._app_singleton import get_container_app
 from .config import config, logger
 from .exception import NotFoundError, RemoteError
 from .object import Object, ref
+from .secret import _Secret
 
 
 def _make_bytes(s):
@@ -206,8 +207,17 @@ def _DebianSlim(
     )
 
 
-def _extend_image(base_image, extra_dockerfile_commands, context_files={}, secrets=[]):
+def _extend_image(
+    base_image: _Image,
+    extra_dockerfile_commands: Union[str, List[str]],
+    context_files: Dict[str, str] = {},
+    secrets: Collection[_Secret] = [],
+):
     """Extend an image with arbitrary dockerfile commands"""
+
+    if isinstance(extra_dockerfile_commands, str):
+        extra_dockerfile_commands = extra_dockerfile_commands.split("\n")
+
     return _Image(
         base_images={"base": base_image},
         dockerfile_commands=["FROM base"] + extra_dockerfile_commands,
