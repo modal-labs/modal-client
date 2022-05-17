@@ -3,6 +3,7 @@ import os
 import shlex
 import sys
 import warnings
+from typing import Dict, List, Optional
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import retry, synchronize_apis
@@ -145,13 +146,18 @@ def _dockerhub_python_version(python_version=None):
 
 def _DebianSlim(
     app=None,
-    extra_commands=None,
-    python_packages=None,
-    python_version=None,
-    pip_find_links=None,
-    requirements_txt=None,
-    version=None,
-    secrets=[],
+    extra_commands: List[str] = [],  # A list of shell commands executed while building the image
+    python_packages: List[str] = [],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
+    python_version: Optional[str] = None,  # Set a specific Python version
+    pip_find_links: Optional[str] = None,
+    requirements_txt: Optional[str] = None,  # File contents of a requirements.txt
+    context_files: Dict[
+        str, bytes
+    ] = {},  # A dict containing any files that will be present during the build to use with COPY
+    secrets: List[
+        Object
+    ] = [],  # List of Modal secrets that will be available as environment variables during the build process
+    version: Optional[str] = None,  # Custom string to break the image hashing and force the image to be rebuilt
 ):
     """A default base image, built on the official python:<version>-slim-bullseye Docker hub images
 
@@ -163,14 +169,13 @@ def _DebianSlim(
 
     python_version = _dockerhub_python_version(python_version)
     base_image = ref(f"debian-slim-{python_version}", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
-    context_files = {}
 
     dockerfile_commands = ["FROM base as target"]
     base_images = {"base": base_image}
-    if extra_commands is not None:
-        dockerfile_commands += [f"RUN {cmd}" for cmd in extra_commands]
+    dockerfile_commands += [f"RUN {cmd}" for cmd in extra_commands]
 
     if requirements_txt is not None:
+        context_files = context_files.copy()
         context_files["/.requirements.txt"] = requirements_txt
 
         dockerfile_commands += [
@@ -178,7 +183,7 @@ def _DebianSlim(
             "RUN pip install -r /.requirements.txt",
         ]
 
-    if python_packages is not None:
+    if python_packages:
         find_links_arg = f"-f {pip_find_links}" if pip_find_links else ""
         package_args = " ".join(shlex.quote(pkg) for pkg in python_packages)
 
