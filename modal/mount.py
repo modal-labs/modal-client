@@ -20,7 +20,7 @@ from .object import Object
 
 #  If a file is LARGE_FILE_LIMIT bytes or larger, it's uploaded to blob store (s3) instead of going through grpc
 #  It will also make sure to chunk the hash calculation to avoid reading the entire file into memory
-LARGE_FILE_LIMIT = 64 * 1024  # 64k
+LARGE_FILE_LIMIT = 1024 * 1024  # 1MB
 HASH_CHUNK_SIZE = 4096
 MODAL_CLIENT_MOUNT_NAME = "modal-client-mount"
 
