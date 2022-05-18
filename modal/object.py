@@ -1,4 +1,4 @@
-from typing import NamedTuple, Optional
+from typing import Optional
 
 from modal_proto import api_pb2
 
@@ -8,12 +8,6 @@ from ._object_meta import ObjectMeta
 from .exception import InvalidError
 
 
-class ObjectLabel(NamedTuple):
-    app_name: Optional[str] = None  # If it's none then it's the same app
-    object_label: Optional[str] = None
-    namespace: Optional[int] = None  # api_pb2.DEPLOYMENT_NAMESPACE
-
-
 class Object(metaclass=ObjectMeta):
     """The shared base class of any synced/distributed object in Modal.
 
@@ -21,8 +15,7 @@ class Object(metaclass=ObjectMeta):
     well as distributed data structures like Queues or Dicts.
     """
 
-    def __init__(self, app=None, label=None, object_id=None):
-        self._label = label
+    def __init__(self, app=None, object_id=None):
         self._app = app
         self._object_id = object_id
 
@@ -56,10 +49,6 @@ class Object(metaclass=ObjectMeta):
     def object_id(self):
         return self._object_id
 
-    @property
-    def label(self):
-        return self._label
-
     def get_creating_message(self) -> Optional[str]:
         return None
 
@@ -77,9 +66,18 @@ class Object(metaclass=ObjectMeta):
 
 
 class Ref(Object):
-    pass
+    def __init__(
+        self,
+        app_name: Optional[str] = None,  # If it's none then it's the same app
+        tag: Optional[str] = None,
+        namespace: Optional[int] = None,  # api_pb2.DEPLOYMENT_NAMESPACE
+    ):
+        self.app_name = app_name
+        self.tag = tag
+        self.namespace = namespace
+        super().__init__()
 
 
-def ref(app_name: Optional[str], object_label: Optional[str] = None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
-    label = ObjectLabel(app_name, object_label, namespace)
-    return Ref(label=label)
+def ref(app_name: Optional[str], tag: Optional[str] = None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
+    # TODO(erikbern): we should probably get rid of this function since it's just a dumb wrapper
+    return Ref(app_name, tag, namespace)

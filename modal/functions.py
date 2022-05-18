@@ -1,5 +1,5 @@
 import asyncio
-from typing import Collection, Optional
+from typing import Collection, Optional, Union
 
 from aiostream import pipe, stream
 
@@ -11,10 +11,10 @@ from ._buffer_utils import buffered_rpc_read, buffered_rpc_write
 from ._function_utils import FunctionInfo
 from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError
 from .mount import _Mount
-from .object import Object
+from .object import Object, Ref
 from .rate_limit import RateLimit
 from .schedule import Schedule
-from .secret import Secret
+from .secret import _Secret
 
 
 async def _process_result(app, result):
@@ -216,15 +216,15 @@ class _Function(Object, type_prefix="fu"):
         self,
         raw_f,
         image=None,
-        secret: Optional[Secret] = None,
-        secrets: Collection[Secret] = (),
+        secret: Optional[Union[Ref, _Secret]] = None,
+        secrets: Collection[Union[Ref, _Secret]] = (),
         schedule: Optional[Schedule] = None,
         is_generator=False,
         gpu: bool = False,
         rate_limit: Optional[RateLimit] = None,
         # TODO: maybe break this out into a separate decorator for notebooks.
         serialized: bool = False,
-        mounts: Collection[_Mount] = (),
+        mounts: Collection[Union[Ref, _Mount]] = (),
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
     ):
         assert callable(raw_f)
@@ -241,7 +241,7 @@ class _Function(Object, type_prefix="fu"):
         if secret and secrets:
             raise InvalidError(f"Function {raw_f} has both singular `secret` and plural `secrets` attached")
         if secret:
-            self.secrets: Collection[Secret] = [secret]
+            self.secrets = [secret]
         else:
             self.secrets = secrets
         self.schedule = schedule

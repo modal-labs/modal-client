@@ -2,7 +2,7 @@ import asyncio
 import io
 import os
 import sys
-from typing import Collection, Dict, Optional
+from typing import Collection, Dict, Optional, Union
 
 from rich.tree import Tree
 
@@ -22,10 +22,10 @@ from .exception import InvalidError, NotFoundError
 from .functions import _Function, _FunctionProxy
 from .image import _DebianSlim, _Image
 from .mount import MODAL_CLIENT_MOUNT_NAME, _create_client_mount, _Mount
-from .object import Object, ref
+from .object import Object, Ref, ref
 from .rate_limit import RateLimit
 from .schedule import Schedule
-from .secret import Secret
+from .secret import _Secret
 
 
 class _App:
@@ -132,18 +132,18 @@ class _App:
 
         It's either an object defined locally on this app, or one defined on a separate app
         """
-        if not obj.label:
+        if not isinstance(obj, Ref):
             # TODO: explain these exception more, since I think it might be a common issue
             raise InvalidError(f"Object {obj} has no label. Make sure every object is defined on the app.")
-        if not obj.label.app_name and not obj.label.object_label:
-            raise InvalidError(f"Object label {obj.label} is a malformed reference to nothing.")
+        if not obj.app_name and not obj.tag:
+            raise InvalidError(f"Object {obj} is a malformed reference to nothing.")
 
-        if obj.label.app_name is not None:
+        if obj.app_name is not None:
             # A different app
-            object_id = await self._include(obj.label.app_name, obj.label.object_label, obj.label.namespace)
+            object_id = await self._include(obj.app_name, obj.tag, obj.namespace)
         else:
             # Same app, an object that was created earlier
-            obj = self._tag_to_object[obj.label.object_label]
+            obj = self._tag_to_object[obj.tag]
             object_id = obj.object_id
 
         assert object_id
@@ -155,10 +155,10 @@ class _App:
         if creating_message is not None:
             step_node = self._progress.add(step_progress(creating_message))
 
-        if obj.label is not None:
-            assert obj.label.app_name is not None
+        if isinstance(obj, Ref):
+            assert obj.app_name is not None
             # A different app
-            object_id = await self._include(obj.label.app_name, obj.label.object_label, obj.label.namespace)
+            object_id = await self._include(obj.app_name, obj.tag, obj.namespace)
 
         else:
             # Create object
@@ -212,17 +212,15 @@ class _App:
             return ref(None, tag)
 
     def __setitem__(self, tag, obj):
-        if obj.label and not obj.label.app_name:
-            raise Exception("Setting a reference on the blueprint")
         self._blueprint.register(tag, obj)
 
-    def is_inside(self, image: Optional[Object] = None):
+    def is_inside(self, image: Optional[Ref] = None):
         if not get_container_app():
             return False
         if image is None:
             tag = "_image"
         else:
-            tag = image.label.object_label
+            tag = image.tag
         image = self._tag_to_object.get(tag)
         assert isinstance(image, _Image)
         return image._is_inside()
@@ -389,19 +387,19 @@ class _App:
                 await client.stub.AppDeploy(deploy_req)
         return self._app_id
 
-    async def _include(self, name, object_label, namespace):
+    async def _include(self, app_name, tag, namespace):
         """Internal method to resolve to an object id."""
         request = api_pb2.AppIncludeObjectRequest(
             app_id=self._app_id,
-            name=name,
-            object_label=object_label,
+            name=app_name,  # TODO: update the protobuf field name
+            object_label=tag,  # TODO: update the protobuf field name
             namespace=namespace,
         )
         response = await self.client.stub.AppIncludeObject(request)
         if not response.object_id:
-            obj_repr = name
-            if object_label is not None:
-                obj_repr += f".{object_label}"
+            obj_repr = app_name
+            if tag is not None:
+                obj_repr += f".{tag}"
             if namespace != api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT:
                 obj_repr += f" (namespace {api_pb2.DeploymentNamespace.Name(namespace)})"
             # TODO: disambiguate between app not found and object not found?
@@ -409,9 +407,9 @@ class _App:
             raise NotFoundError(err_msg, obj_repr)
         return response.object_id
 
-    async def include(self, name, object_label=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
+    async def include(self, app_name, tag=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
         """Looks up an object and return a newly constructed one."""
-        object_id = await self._include(name, object_label, namespace)
+        object_id = await self._include(app_name, tag, namespace)
         return Object.from_id(object_id, self)
 
     def _serialize(self, obj):
@@ -462,14 +460,16 @@ class _App:
         self,
         raw_f=None,  # The decorated function
         *,
-        image: _Image = None,  # The image to run as the container for the function
+        image: Union[_Image, Ref] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
-        secret: Optional[Secret] = None,  # An optional Modal Secret with environment variables for the container
-        secrets: Collection[Secret] = (),  # Plural version of `secret` when multiple secrets are needed
+        secret: Optional[
+            Union[_Secret, Ref]
+        ] = None,  # An optional Modal Secret with environment variables for the container
+        secrets: Collection[Union[_Secret, Ref]] = (),  # Plural version of `secret` when multiple secrets are needed
         gpu: bool = False,  # Whether a GPU is required
         rate_limit: Optional[RateLimit] = None,  # Optional RateLimit for the function
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
-        mounts: Collection[_Mount] = (),
+        mounts: Collection[Union[_Mount, Ref]] = (),
     ) -> _Function:  # Function object - callable as a regular function within a Modal app
         """Decorator to create Modal functions"""
         if image is None:
@@ -494,13 +494,15 @@ class _App:
         self,
         raw_f=None,  # The decorated function
         *,
-        image: _Image = None,  # The image to run as the container for the function
-        secret: Optional[Secret] = None,  # An optional Modal Secret with environment variables for the container
-        secrets: Collection[Secret] = (),  # Plural version of `secret` when multiple secrets are needed
+        image: Union[_Image, Ref] = None,  # The image to run as the container for the function
+        secret: Optional[
+            Union[_Secret, Ref]
+        ] = None,  # An optional Modal Secret with environment variables for the container
+        secrets: Collection[Union[_Secret, Ref]] = (),  # Plural version of `secret` when multiple secrets are needed
         gpu: bool = False,  # Whether a GPU is required
         rate_limit: Optional[RateLimit] = None,  # Optional RateLimit for the function
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
-        mounts: Collection[_Mount] = (),
+        mounts: Collection[Union[_Mount, Ref]] = (),
     ) -> _Function:
         """Decorator to create Modal generators"""
         if image is None:
@@ -525,11 +527,13 @@ class _App:
         asgi_app,  # The asgi app
         *,
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-        image: _Image = None,  # The image to run as the container for the function
-        secret: Optional[Secret] = None,  # An optional Modal Secret with environment variables for the container
-        secrets: Collection[Secret] = (),  # Plural version of `secret` when multiple secrets are needed
+        image: Union[_Image, Ref] = None,  # The image to run as the container for the function
+        secret: Optional[
+            Union[_Secret, Ref]
+        ] = None,  # An optional Modal Secret with environment variables for the container
+        secrets: Collection[Union[_Secret, Ref]] = (),  # Plural version of `secret` when multiple secrets are needed
         gpu: bool = False,  # Whether a GPU is required
-        mounts: Collection[_Mount] = (),
+        mounts: Collection[Union[_Mount, Ref]] = (),
     ):
         if image is None:
             image = self._get_default_image()
@@ -555,11 +559,13 @@ class _App:
         *,
         method: str = "GET",  # REST method for the created endpoint.
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-        image: _Image = None,  # The image to run as the container for the function
-        secret: Optional[Secret] = None,  # An optional Modal Secret with environment variables for the container
-        secrets: Collection[Secret] = (),  # Plural version of `secret` when multiple secrets are needed
+        image: Union[_Image, Ref] = None,  # The image to run as the container for the function
+        secret: Optional[
+            Union[_Secret, Ref]
+        ] = None,  # An optional Modal Secret with environment variables for the container
+        secrets: Collection[Union[_Secret, Ref]] = (),  # Plural version of `secret` when multiple secrets are needed
         gpu: bool = False,  # Whether a GPU is required
-        mounts: Collection[_Mount] = (),
+        mounts: Collection[Union[_Mount, Ref]] = (),
     ):
         if image is None:
             image = self._get_default_image()
