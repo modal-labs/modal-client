@@ -52,7 +52,7 @@ class _Image(Object, type_prefix="im"):
         secret_ids = []
         for secret in self._secrets:
             try:
-                secret_id = await app.create_object(secret)
+                secret_id = await app.lookup(secret)
             except NotFoundError as ex:
                 raise NotFoundError(
                     f"Could not find secret {ex.obj_repr}\n"
