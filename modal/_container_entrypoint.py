@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import importlib
 import inspect
 import math
@@ -9,7 +10,6 @@ import traceback
 from typing import Any, AsyncIterator, Callable, List
 
 import cloudpickle
-import google.protobuf.json_format
 from grpc import StatusCode
 from grpc.aio import AioRpcError
 
@@ -392,10 +392,10 @@ def main(container_args, client):
 
 if __name__ == "__main__":
     logger.debug("Container: starting")
-    container_args = google.protobuf.json_format.Parse(
-        sys.argv[1],
-        api_pb2.ContainerArguments(),
-    )
+
+    container_args = api_pb2.ContainerArguments()
+    container_args.ParseFromString(base64.b64decode(sys.argv[1]))
+
     # Note that we're creating the client in a synchronous context, but it will be running in a separate thread.
     # This is good because if the function is long running then we the client can still send heartbeats
     # The only caveat is a bunch of calls will now cross threads, which adds a bit of overhead?
