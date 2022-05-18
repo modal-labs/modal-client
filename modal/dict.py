@@ -3,7 +3,6 @@ from modal_utils.async_utils import synchronize_apis
 
 from ._serialization import deserialize, serialize
 from .config import logger
-from .exception import InvalidError
 from .object import Object
 
 
@@ -23,15 +22,6 @@ class _Dict(Object, type_prefix="di"):
         super().__init__()
 
     async def load(self, running_app, existing_dict_id):
-        if app.app_id is None:
-            raise InvalidError(
-                "No initialized app existed when creating Dict.\n\n"
-                "Try creating your Dict within either:\n"
-                "    * a `modal.function`\n"
-                "    * a `with app.run():` or `with app.run():` block\n"
-                "    * a `@Dict.factory` decorated global function\n"
-                "See https://modal.com/docs/reference/modal.Dict"
-            )
         serialized = self._serialize_dict(self._data)
         req = api_pb2.DictCreateRequest(app_id=running_app.app_id, data=serialized, existing_dict_id=existing_dict_id)
         response = await running_app.client.stub.DictCreate(req)

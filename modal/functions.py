@@ -20,7 +20,7 @@ from .secret import _Secret
 
 async def _process_result(running_app, result):
     if result.WhichOneof("data_oneof") == "data_blob_id":
-        data = await blob_download(result.data_blob_id, app.client.stub)
+        data = await blob_download(result.data_blob_id, running_app.client.stub)
     else:
         data = result.data
 
@@ -45,7 +45,7 @@ async def _process_result(running_app, result):
     return deserialize(data, running_app)
 
 
-async def _create_input(args, kwargs, function_call_id, idx=None) -> api_pb2.FunctionInput:
+async def _create_input(args, kwargs, running_app, function_call_id, idx=None) -> api_pb2.FunctionInput:
     """Serialize function arguments and create a FunctionInput protobuf,
     uploading to blob storage if needed.
     """
@@ -53,7 +53,7 @@ async def _create_input(args, kwargs, function_call_id, idx=None) -> api_pb2.Fun
     args_serialized = serialize((args, kwargs))
 
     if len(args_serialized) > MAX_OBJECT_SIZE_BYTES:
-        args_blob_id = await blob_upload(args_serialized, app.client.stub)
+        args_blob_id = await blob_upload(args_serialized, running_app.client.stub)
 
         return api_pb2.FunctionInput(
             args_blob_id=args_blob_id,
@@ -90,7 +90,7 @@ class _Invocation:
 
         function_call_id = response.function_call_id
 
-        inp = await _create_input(args, kwargs, function_call_id)
+        inp = await _create_input(args, kwargs, running_app, function_call_id)
         request_put = api_pb2.FunctionPutInputsRequest(function_id=function_id, inputs=[inp])
         await buffered_rpc_write(running_app.client.stub.FunctionPutInputs, request_put)
 
@@ -145,7 +145,9 @@ class _MapInvocation:
             nonlocal num_inputs, input_queue
             async with self.input_stream.stream() as streamer:
                 async for arg in streamer:
-                    function_input = await _create_input(arg, self.kwargs, function_call_id, idx=num_inputs)
+                    function_input = await _create_input(
+                        arg, self.kwargs, self.running_app, function_call_id, idx=num_inputs
+                    )
                     num_inputs += 1
                     await input_queue.put(function_input)
             # close queue iterator
