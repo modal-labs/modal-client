@@ -212,6 +212,9 @@ class _MapInvocation:
 
 
 class _Function(Object, type_prefix="fu"):
+    # TODO: more type annotations
+    secrets: Collection[Union[Ref, _Secret]]
+
     def __init__(
         self,
         raw_f,

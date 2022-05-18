@@ -221,9 +221,9 @@ class _App:
             tag = "_image"
         else:
             tag = image.tag
-        image = self._tag_to_object.get(tag)
-        assert isinstance(image, _Image)
-        return image._is_inside()
+        obj = self._tag_to_object.get(tag)
+        assert isinstance(obj, _Image)
+        return obj._is_inside()
 
     @synchronizer.asynccontextmanager
     async def _run(self, client, output_mgr, existing_app_id, last_log_entry_id=None):
