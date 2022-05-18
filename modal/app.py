@@ -49,6 +49,29 @@ async def _include(client: _Client, app_id: str, app_name: str, tag: Optional[st
     return response.object_id
 
 
+class _RunningApp:
+    _tag_to_object: Dict[str, Object]
+    _tag_to_existing_id: Dict[str, str]
+    _client: _Client
+    _app_id: str
+
+    def __init__(
+        self,
+        client: _Client,
+        app_id: str,
+        tag_to_object: Dict[str, Object] = {},
+        tag_to_existing_id: Dict[str, str] = {},
+    ):
+        self._app_id = app_id
+        self._client = client
+        self._tag_to_object = tag_to_object
+        self._tag_to_existing_id = tag_to_existing_id
+
+    @property
+    def client(self):
+        return self._client
+
+
 class _App:
     """An App manages Objects (Functions, Images, Secrets, Schedules etc.) associated with your applications
 
@@ -75,9 +98,6 @@ class _App:
     In this example, both `foo`, the secret and the schedule are registered with the app.
     """
 
-    _tag_to_object: Dict[str, Object]
-    _tag_to_existing_id: Dict[str, str]
-
     @classmethod
     def _initialize_container_app(cls):
         set_container_app(super().__new__(cls))
@@ -98,18 +118,15 @@ class _App:
             return  # Prevent re-initialization with the singleton
 
         self._initialized = True
-        self._app_id = None
-        self.client = None
         # TODO: we take a name in the app constructor, that can be different from the deployment name passed in later. Simplify this.
         self._name = name
         self.deployment_name = None
         self.state = AppState.NONE
-        self._tag_to_object = {}
-        self._tag_to_existing_id = {}
         self._blueprint = Blueprint()
         if image is None:
             image = _DebianSlim()
         self._image = image
+        self._running_app = None
         super().__init__()
 
     # needs to be a function since synchronicity hides other attributes.
@@ -122,7 +139,11 @@ class _App:
 
     @property
     def app_id(self):
-        return self._app_id
+        return self._running_app._app_id
+
+    @property
+    def client(self):
+        return self._running_app._client
 
     def _infer_app_name(self):
         script_filename = os.path.split(sys.argv[0])[-1]
@@ -131,20 +152,20 @@ class _App:
 
     async def _initialize_container(self, app_id, client, task_id):
         """Used by the container to bootstrap the app and all its objects."""
-        self._app_id = app_id
-        self.client = client
-
         req = api_pb2.AppGetObjectsRequest(app_id=app_id, task_id=task_id)
-        resp = await self.client.stub.AppGetObjects(req)
+        resp = await client.stub.AppGetObjects(req)
+        tag_to_object = {}
         for (
             tag,
             object_id,
         ) in resp.object_ids.items():
-            self._tag_to_object[tag] = Object.from_id(object_id, self)
+            tag_to_object[tag] = Object.from_id(object_id, self)
 
         # In the container, run forever
+        self._running_app = _RunningApp(app_id, client, tag_to_object)
         self.state = AppState.RUNNING
 
+    # TODO: move this to _RunningApp
     async def lookup(self, obj: Object) -> str:
         """Takes a Ref object and looks up its id.
 
@@ -158,15 +179,18 @@ class _App:
 
         if obj.app_name is not None:
             # A different app
-            object_id = await _include(self.client, self._app_id, obj.app_name, obj.tag, obj.namespace)
+            object_id = await _include(
+                self._running_app._client, self._running_app._app_id, obj.app_name, obj.tag, obj.namespace
+            )
         else:
             # Same app, an object that was created earlier
-            obj = self._tag_to_object[obj.tag]
+            obj = self._running_app._tag_to_object[obj.tag]
             object_id = obj.object_id
 
         assert object_id
         return object_id
 
+    # TODO: make this a helper function?
     async def _create_object(self, obj: Object, progress: Tree, existing_object_id: Optional[str] = None) -> str:
         """Takes an object as input, create it, and return an object id."""
         creating_message = obj.get_creating_message()
@@ -176,7 +200,9 @@ class _App:
         if isinstance(obj, Ref):
             assert obj.app_name is not None
             # A different app
-            object_id = await _include(self.client, self._app_id, obj.app_name, obj.tag, obj.namespace)
+            object_id = await _include(
+                self._running_app._client, self._running_app._app_id, obj.app_name, obj.tag, obj.namespace
+            )
 
         else:
             # Create object
@@ -201,6 +227,7 @@ class _App:
 
         return object_id
 
+    # TODO(erikbern): This should just be a function from blueprint to running app
     async def _create_all_objects(self, progress: Tree):
         """Create objects that have been defined but not created on the server."""
         # Instead of doing a topological sort here, we rely on a sort of dumb "trick".
@@ -211,10 +238,10 @@ class _App:
         tags.sort(key=lambda obj: obj.startswith("fu-"))
         for tag in tags:
             obj = self._blueprint.get_object(tag)
-            existing_object_id = self._tag_to_existing_id.get(tag)
+            existing_object_id = self._running_app._tag_to_existing_id.get(tag)
             logger.debug(f"Creating object {tag} with existing id {existing_object_id}")
             object_id = await self._create_object(obj, progress, existing_object_id)
-            self._tag_to_object[tag] = Object.from_id(object_id, self)
+            self._running_app._tag_to_object[tag] = Object.from_id(object_id, self)
 
     def __getitem__(self, tag: str):
         assert isinstance(tag, str)
@@ -224,7 +251,7 @@ class _App:
             # because of the singleton thing, any unrelated app will also be RUNNING, so this
             # branch triggers. However we don't want this to cause a KeyError.
             # Let's revisit once we clean up the app singleton
-            return self._tag_to_object.get(tag)
+            return self._running_app._tag_to_object.get(tag)
         else:
             # Return a reference to an object that will be created in the future
             return ref(None, tag)
@@ -236,9 +263,9 @@ class _App:
         if not get_container_app():
             return False
         if image is None:
-            obj = self._tag_to_object.get("_image")
+            obj = self._running_app._tag_to_object.get("_image")
         elif isinstance(image, Ref):
-            obj = self._tag_to_object.get(image.tag)
+            obj = self._running_app._tag_to_object.get(image.tag)
         elif isinstance(image, _Image):
             obj = image
         assert isinstance(obj, _Image)
@@ -251,29 +278,28 @@ class _App:
         if self.state != AppState.NONE:
             raise Exception(f"Can't start a app that's already in state {self.state}")
         self.state = AppState.STARTING
-        self.client = client
 
         try:
             if existing_app_id is not None:
                 # Get all the objects first
                 obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
-                obj_resp = await self.client.stub.AppGetObjects(obj_req)
-                self._tag_to_existing_id = dict(obj_resp.object_ids)
-                self._app_id = existing_app_id
+                obj_resp = await client.stub.AppGetObjects(obj_req)
+                self._running_app = _RunningApp(client, existing_app_id, tag_to_existing_id=dict(obj_resp.object_ids))
             else:
                 # Start app
                 # TODO(erikbern): maybe this should happen outside of this method?
                 app_req = api_pb2.AppCreateRequest(client_id=client.client_id, name=self.name)
                 app_resp = await client.stub.AppCreate(app_req)
-                self._tag_to_existing_id = {}
-                self._app_id = app_resp.app_id
+                self._running_app = _RunningApp(client, app_resp.app_id)
 
             # Start tracking logs and yield context
             async with TaskContext(grace=config["logs_timeout"]) as tc:
                 with output_mgr.ctx_if_visible(output_mgr.make_live(step_progress("Initializing..."))):
                     live_task_status = output_mgr.make_live(step_progress("Running app..."))
                     tc.create_task(
-                        output_mgr.get_logs_loop(self._app_id, self.client, live_task_status, last_log_entry_id or "")
+                        output_mgr.get_logs_loop(
+                            self._running_app._app_id, client, live_task_status, last_log_entry_id or ""
+                        )
                     )
                 output_mgr.print_if_visible(step_completed("Initialized."))
 
@@ -289,16 +315,16 @@ class _App:
                         # Create the app (and send a list of all tagged obs)
                         # TODO(erikbern): we should delete objects from a previous version that are no longer needed
                         # We just delete them from the app, but the actual objects will stay around
-                        object_ids = {tag: obj.object_id for tag, obj in self._tag_to_object.items()}
+                        object_ids = {tag: obj.object_id for tag, obj in self._running_app._tag_to_object.items()}
                         req_set = api_pb2.AppSetObjectsRequest(
-                            app_id=self._app_id,
+                            app_id=self._running_app._app_id,
                             object_ids=object_ids,
                             client_id=client.client_id,
                         )
-                        await self.client.stub.AppSetObjects(req_set)
+                        await client.stub.AppSetObjects(req_set)
 
                         self.state = AppState.RUNNING
-                        yield self  # yield context manager to block
+                        yield self._running_app
                         self.state = AppState.STOPPING
 
                 finally:
@@ -306,15 +332,14 @@ class _App:
                     # 1. Server to kill any running task
                     # 2. Logs to drain (stopping the _get_logs_loop coroutine)
                     logger.debug("Stopping the app server-side")
-                    req_disconnect = api_pb2.AppClientDisconnectRequest(app_id=self._app_id)
-                    await self.client.stub.AppClientDisconnect(req_disconnect)
+                    req_disconnect = api_pb2.AppClientDisconnectRequest(app_id=self._running_app._app_id)
+                    await client.stub.AppClientDisconnect(req_disconnect)
 
             output_mgr.print_if_visible(step_completed("App completed."))
 
         finally:
-            self.client = None
             self.state = AppState.NONE
-            self._tag_to_object = {}
+            self._running_app = None
 
     @synchronizer.asynccontextmanager
     async def _get_client(self, client=None):
@@ -328,8 +353,8 @@ class _App:
     async def run(self, client=None, stdout=None, show_progress=None):
         async with self._get_client(client) as client:
             output_mgr = OutputManager(stdout, show_progress)
-            async with self._run(client, output_mgr, None) as it:
-                yield it  # ctx mgr
+            async with self._run(client, output_mgr, None) as running_app:
+                yield running_app
 
     async def run_forever(self, client=None, stdout=None, show_progress=None):
         async with self._get_client(client) as client:
@@ -343,10 +368,6 @@ class _App:
                     output_mgr.print_if_visible(step_completed("Running forever... hit Ctrl-C to stop!"))
                     while True:
                         await asyncio.sleep(1.0)
-
-    async def detach(self):
-        request = api_pb2.AppDetachRequest(app_id=self._app_id)
-        await self.client.stub.AppDetach(request)
 
     async def deploy(
         self,
@@ -395,19 +416,20 @@ class _App:
 
             # The `_run` method contains the logic for starting and running an app
             output_mgr = OutputManager(stdout, show_progress)
-            async with self._run(client, output_mgr, existing_app_id, last_log_entry_id):
+            async with self._run(client, output_mgr, existing_app_id, last_log_entry_id) as running_app:
                 # TODO: this could be simplified in case it's the same app id as previously
                 deploy_req = api_pb2.AppDeployRequest(
-                    app_id=self._app_id,
+                    app_id=running_app._app_id,
                     name=name,
                     namespace=namespace,
                 )
                 await client.stub.AppDeploy(deploy_req)
-        return self._app_id
+                return running_app._app_id
 
+    # TODO: move to the running app
     async def include(self, app_name, tag=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
         """Looks up an object and return a newly constructed one."""
-        object_id = await _include(self.client, self._app_id, app_name, tag, namespace)
+        object_id = await _include(self._running_app._client, self._running_app._app_id, app_name, tag, namespace)
         return Object.from_id(object_id, self)
 
     def _serialize(self, obj):
