@@ -292,6 +292,7 @@ class _App:
                         req_set = api_pb2.AppSetObjectsRequest(
                             app_id=self._app_id,
                             object_ids=object_ids,
+                            client_id=client.client_id,
                         )
                         await self.client.stub.AppSetObjects(req_set)
 

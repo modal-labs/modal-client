@@ -92,6 +92,7 @@ message AppSetObjectsRequest {
   // so this method won't be necessary.
   string app_id = 1;
   map<string, string> object_ids = 2;
+  string client_id = 3;
 }
 
 message AppGetObjectsRequest {
