@@ -89,9 +89,6 @@ class _App:
         if image is None:
             image = _DebianSlim()
         self._image = image
-        # TODO: this is only used during _flush_objects, but that function gets called from objects, so we need to store it somewhere
-        # Once we rewrite object creation to be non-recursive, this should no longer be needed
-        self._progress: Optional[Tree] = None
         super().__init__()
 
     # needs to be a function since synchronicity hides other attributes.
@@ -149,11 +146,11 @@ class _App:
         assert object_id
         return object_id
 
-    async def _create_object(self, obj: Object, existing_object_id: Optional[str] = None) -> str:
+    async def _create_object(self, obj: Object, progress: Tree, existing_object_id: Optional[str] = None) -> str:
         """Takes an object as input, create it, and return an object id."""
         creating_message = obj.get_creating_message()
         if creating_message is not None:
-            step_node = self._progress.add(step_progress(creating_message))
+            step_node = progress.add(step_progress(creating_message))
 
         if isinstance(obj, Ref):
             assert obj.app_name is not None
@@ -183,7 +180,7 @@ class _App:
 
         return object_id
 
-    async def _create_all_objects(self):
+    async def _create_all_objects(self, progress: Tree):
         """Create objects that have been defined but not created on the server."""
         # Instead of doing a topological sort here, we rely on a sort of dumb "trick".
         # Functions are the only objects that "depend" on other objects, so we make sure
@@ -195,7 +192,7 @@ class _App:
             obj = self._blueprint.get_object(tag)
             existing_object_id = self._tag_to_existing_id.get(tag)
             logger.debug(f"Creating object {tag} with existing id {existing_object_id}")
-            object_id = await self._create_object(obj, existing_object_id)
+            object_id = await self._create_object(obj, progress, existing_object_id)
             self._tag_to_object[tag] = Object.from_id(object_id, self)
 
     def __getitem__(self, tag: str):
@@ -260,9 +257,8 @@ class _App:
 
                 try:
                     progress = Tree(step_progress("Creating objects..."), guide_style="gray50")
-                    self._progress = progress
                     with output_mgr.ctx_if_visible(output_mgr.make_live(progress)):
-                        await self._create_all_objects()
+                        await self._create_all_objects(progress)
                     progress.label = step_completed("Created objects.")
                     output_mgr.print_if_visible(progress)
 
@@ -295,7 +291,6 @@ class _App:
         finally:
             self.client = None
             self.state = AppState.NONE
-            self._progress = None
             self._tag_to_object = {}
 
     @synchronizer.asynccontextmanager
