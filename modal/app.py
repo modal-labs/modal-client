@@ -1,5 +1,4 @@
 import asyncio
-import io
 import os
 import sys
 from typing import Collection, Dict, Optional, Union
@@ -15,7 +14,6 @@ from ._app_state import AppState
 from ._blueprint import Blueprint
 from ._function_utils import FunctionInfo
 from ._output import OutputManager, step_completed, step_progress
-from ._serialization import Pickler, Unpickler
 from .client import _Client
 from .config import config, logger
 from .exception import InvalidError, NotFoundError
@@ -70,6 +68,40 @@ class _RunningApp:
     @property
     def client(self):
         return self._client
+
+    @property
+    def app_id(self):
+        return self._app_id
+
+    async def lookup(self, obj: Object) -> str:
+        """Takes a Ref object and looks up its id.
+
+        It's either an object defined locally on this app, or one defined on a separate app
+        """
+        if not isinstance(obj, Ref):
+            # TODO: explain these exception more, since I think it might be a common issue
+            raise InvalidError(f"Object {obj} has no label. Make sure every object is defined on the app.")
+        if not obj.app_name and not obj.tag:
+            raise InvalidError(f"Object {obj} is a malformed reference to nothing.")
+
+        if obj.app_name is not None:
+            # A different app
+            object_id = await _include(self._client, self._app_id, obj.app_name, obj.tag, obj.namespace)
+        else:
+            # Same app, an object that was created earlier
+            obj = self._tag_to_object[obj.tag]
+            object_id = obj.object_id
+
+        assert object_id
+        return object_id
+
+    async def include(self, app_name, tag=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
+        """Looks up an object and return a newly constructed one."""
+        object_id = await _include(self._client, self._app_id, app_name, tag, namespace)
+        return Object.from_id(object_id, self)
+
+
+RunningApp, AioRunningApp = synchronize_apis(_RunningApp)
 
 
 class _App:
@@ -165,30 +197,7 @@ class _App:
         self._running_app = _RunningApp(app_id, client, tag_to_object)
         self.state = AppState.RUNNING
 
-    # TODO: move this to _RunningApp
-    async def lookup(self, obj: Object) -> str:
-        """Takes a Ref object and looks up its id.
-
-        It's either an object defined locally on this app, or one defined on a separate app
-        """
-        if not isinstance(obj, Ref):
-            # TODO: explain these exception more, since I think it might be a common issue
-            raise InvalidError(f"Object {obj} has no label. Make sure every object is defined on the app.")
-        if not obj.app_name and not obj.tag:
-            raise InvalidError(f"Object {obj} is a malformed reference to nothing.")
-
-        if obj.app_name is not None:
-            # A different app
-            object_id = await _include(
-                self._running_app._client, self._running_app._app_id, obj.app_name, obj.tag, obj.namespace
-            )
-        else:
-            # Same app, an object that was created earlier
-            obj = self._running_app._tag_to_object[obj.tag]
-            object_id = obj.object_id
-
-        assert object_id
-        return object_id
+        return self._running_app
 
     # TODO: make this a helper function?
     async def _create_object(self, obj: Object, progress: Tree, existing_object_id: Optional[str] = None) -> str:
@@ -206,7 +215,7 @@ class _App:
 
         else:
             # Create object
-            object_id = await obj.load(self, existing_object_id)
+            object_id = await obj.load(self._running_app, existing_object_id)
             if existing_object_id is not None and object_id != existing_object_id:
                 # TODO(erikbern): this is a very ugly fix to a problem that's on the server side.
                 # Unlike every other object, images are not assigned random ids, but rather an
@@ -284,23 +293,21 @@ class _App:
                 # Get all the objects first
                 obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
                 obj_resp = await client.stub.AppGetObjects(obj_req)
-                self._running_app = _RunningApp(client, existing_app_id, tag_to_existing_id=dict(obj_resp.object_ids))
+                app_id = existing_app_id
+                self._running_app = _RunningApp(client, app_id, tag_to_existing_id=dict(obj_resp.object_ids))
             else:
                 # Start app
                 # TODO(erikbern): maybe this should happen outside of this method?
                 app_req = api_pb2.AppCreateRequest(client_id=client.client_id, name=self.name)
                 app_resp = await client.stub.AppCreate(app_req)
-                self._running_app = _RunningApp(client, app_resp.app_id)
+                app_id = app_resp.app_id
+                self._running_app = _RunningApp(client, app_id)
 
             # Start tracking logs and yield context
             async with TaskContext(grace=config["logs_timeout"]) as tc:
                 with output_mgr.ctx_if_visible(output_mgr.make_live(step_progress("Initializing..."))):
                     live_task_status = output_mgr.make_live(step_progress("Running app..."))
-                    tc.create_task(
-                        output_mgr.get_logs_loop(
-                            self._running_app._app_id, client, live_task_status, last_log_entry_id or ""
-                        )
-                    )
+                    tc.create_task(output_mgr.get_logs_loop(app_id, client, live_task_status, last_log_entry_id or ""))
                 output_mgr.print_if_visible(step_completed("Initialized."))
 
                 try:
@@ -317,7 +324,7 @@ class _App:
                         # We just delete them from the app, but the actual objects will stay around
                         object_ids = {tag: obj.object_id for tag, obj in self._running_app._tag_to_object.items()}
                         req_set = api_pb2.AppSetObjectsRequest(
-                            app_id=self._running_app._app_id,
+                            app_id=app_id,
                             object_ids=object_ids,
                             client_id=client.client_id,
                         )
@@ -332,7 +339,7 @@ class _App:
                     # 1. Server to kill any running task
                     # 2. Logs to drain (stopping the _get_logs_loop coroutine)
                     logger.debug("Stopping the app server-side")
-                    req_disconnect = api_pb2.AppClientDisconnectRequest(app_id=self._running_app._app_id)
+                    req_disconnect = api_pb2.AppClientDisconnectRequest(app_id=app_id)
                     await client.stub.AppClientDisconnect(req_disconnect)
 
             output_mgr.print_if_visible(step_completed("App completed."))
@@ -425,22 +432,6 @@ class _App:
                 )
                 await client.stub.AppDeploy(deploy_req)
                 return running_app._app_id
-
-    # TODO: move to the running app
-    async def include(self, app_name, tag=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
-        """Looks up an object and return a newly constructed one."""
-        object_id = await _include(self._running_app._client, self._running_app._app_id, app_name, tag, namespace)
-        return Object.from_id(object_id, self)
-
-    def _serialize(self, obj):
-        """Serializes object and replaces all references to the client class by a placeholder."""
-        buf = io.BytesIO()
-        Pickler(self, buf).dump(obj)
-        return buf.getvalue()
-
-    def _deserialize(self, s: bytes):
-        """Deserializes object and replaces all client placeholders by self."""
-        return Unpickler(self, io.BytesIO(s)).load()
 
     def _register_function(self, function):
         self._blueprint.register(function.tag, function)

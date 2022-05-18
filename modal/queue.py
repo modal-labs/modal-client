@@ -5,6 +5,7 @@ from typing import Any, List
 from modal_proto import api_pb2
 from modal_utils.async_utils import retry, synchronize_apis
 
+from ._serialization import deserialize, serialize
 from .config import logger
 from .object import Object
 
@@ -18,9 +19,9 @@ class _Queue(Object, type_prefix="qu"):
     def __init__(self):
         super().__init__()
 
-    async def load(self, app, existing_queue_id):
-        request = api_pb2.QueueCreateRequest(app_id=app.app_id, existing_queue_id=existing_queue_id)
-        response = await app.client.stub.QueueCreate(request)
+    async def load(self, running_app, existing_queue_id):
+        request = api_pb2.QueueCreateRequest(app_id=running_app.app_id, existing_queue_id=existing_queue_id)
+        response = await running_app.client.stub.QueueCreate(request)
         logger.debug("Created queue with id %s" % response.queue_id)
         return response.queue_id
 
@@ -37,9 +38,9 @@ class _Queue(Object, type_prefix="qu"):
                 n_values=n_values,
                 idempotency_key=str(uuid.uuid4()),
             )
-            response = await retry(self._app.client.stub.QueueGet)(request, timeout=60.0)
+            response = await retry(self._running_app.client.stub.QueueGet)(request, timeout=60.0)
             if response.values:
-                return [self._app._deserialize(value) for value in response.values]
+                return [deserialize(value, self._running_app) for value in response.values]
             logger.debug("Queue get for %s had empty results, trying again" % self.object_id)
         raise queue.Empty()
 
@@ -54,13 +55,13 @@ class _Queue(Object, type_prefix="qu"):
 
     async def put_many(self, vs: List[Any]):
         """Put several objects"""
-        vs_encoded = [self._app._serialize(v) for v in vs]
+        vs_encoded = [serialize(v) for v in vs]
         request = api_pb2.QueuePutRequest(
             queue_id=self.object_id,
             values=vs_encoded,
             idempotency_key=str(uuid.uuid4()),
         )
-        return await retry(self._app.client.stub.QueuePut)(request, timeout=5.0)
+        return await retry(self._running_app.client.stub.QueuePut)(request, timeout=5.0)
 
     async def put(self, v):
         """Put an object"""

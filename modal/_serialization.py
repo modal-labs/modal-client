@@ -1,3 +1,4 @@
+import io
 import pickle
 
 import cloudpickle
@@ -9,8 +10,7 @@ PICKLE_PROTOCOL = 4  # Support older Python versions.
 
 
 class Pickler(cloudpickle.Pickler):
-    def __init__(self, app, buf):
-        self.app = app
+    def __init__(self, buf):
         super().__init__(buf, protocol=PICKLE_PROTOCOL)
 
     def persistent_id(self, obj):
@@ -22,10 +22,22 @@ class Pickler(cloudpickle.Pickler):
 
 
 class Unpickler(pickle.Unpickler):
-    def __init__(self, app, buf):
-        self.app = app
+    def __init__(self, running_app, buf):
+        self.running_app = running_app
         super().__init__(buf)
 
     def persistent_load(self, pid):
         object_id = pid
-        return Object.from_id(object_id, self.app)
+        return Object.from_id(object_id, self.running_app)
+
+
+def serialize(obj):
+    """Serializes object and replaces all references to the client class by a placeholder."""
+    buf = io.BytesIO()
+    Pickler(buf).dump(obj)
+    return buf.getvalue()
+
+
+def deserialize(s: bytes, running_app):
+    """Deserializes object and replaces all client placeholders by self."""
+    return Unpickler(running_app, io.BytesIO(s)).load()

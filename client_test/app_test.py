@@ -3,7 +3,7 @@ import pytest
 import modal.exception
 from modal import App
 from modal._app_state import AppState
-from modal.aio import AioApp, AioQueue
+from modal.aio import AioApp, AioQueue, AioRunningApp
 from modal.app import _App
 from modal.exception import NotFoundError
 
@@ -41,13 +41,14 @@ async def test_persistent_object(servicer, aio_client):
     await app_1.deploy("my-queue", client=aio_client)
 
     app_2 = AioApp()
-    async with app_2.run(client=aio_client):
-        q_2 = await app_2.include("my-queue")
+    async with app_2.run(client=aio_client) as running_app_2:
+        assert isinstance(running_app_2, AioRunningApp)
+        q_2 = await running_app_2.include("my-queue")
         assert isinstance(q_2, AioQueue)
         assert q_2.object_id == "qu-1"
 
         with pytest.raises(NotFoundError):
-            await app_2.include("bazbazbaz")
+            await running_app_2.include("bazbazbaz")
 
 
 def square(x):

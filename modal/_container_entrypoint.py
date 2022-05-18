@@ -19,6 +19,7 @@ from modal_utils.async_utils import TaskContext, synchronize_apis, synchronizer
 from ._asgi import asgi_app_wrapper, fastAPI_function_wrapper
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._buffer_utils import buffered_rpc_read, buffered_rpc_write
+from ._serialization import deserialize, serialize
 from .app import _App
 from .client import Client, _Client
 from .config import config, logger
@@ -75,7 +76,7 @@ class _FunctionContext:
         self.app = _App()
         _client = synchronizer._translate_in(self.client)  # make it a _Client object
         assert isinstance(_client, _Client)
-        await self.app._initialize_container(self.app_id, _client, self.task_id)
+        self.running_app = await self.app._initialize_container(self.app_id, _client, self.task_id)
 
     async def get_serialized_function(self) -> Callable:
         # Fetch the serialized function definition
@@ -89,10 +90,10 @@ class _FunctionContext:
         return raw_f
 
     async def serialize(self, obj: Any) -> bytes:
-        return self.app._serialize(obj)
+        return serialize(obj)
 
     def deserialize(self, data: bytes) -> Any:
-        return self.app._deserialize(data)
+        return deserialize(data, self.running_app)
 
     async def populate_input_blobs(self, item):
         args = await blob_download(item.args_blob_id, self.client.stub)

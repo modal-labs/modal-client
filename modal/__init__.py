@@ -1,4 +1,4 @@
-from .app import App, is_local
+from .app import App, RunningApp, is_local
 from .dict import Dict
 from .functions import Function
 from .image import DebianSlim, DockerhubImage, Image
@@ -13,6 +13,7 @@ from .version import __version__
 __all__ = [
     "__version__",
     "App",
+    "RunningApp",
     "Cron",
     "DebianSlim",
     "Dict",

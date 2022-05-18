@@ -19,14 +19,14 @@ class _Secret(Object, type_prefix="st"):
         self._template_type = template_type
         super().__init__()
 
-    async def load(self, app, existing_secret_id):
+    async def load(self, running_app, existing_secret_id):
         req = api_pb2.SecretCreateRequest(
-            app_id=app.app_id,
+            app_id=running_app.app_id,
             env_dict=self._env_dict,
             template_type=self._template_type,
             existing_secret_id=existing_secret_id,
         )
-        resp = await app.client.stub.SecretCreate(req)
+        resp = await running_app.client.stub.SecretCreate(req)
         return resp.secret_id
 
 

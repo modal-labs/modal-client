@@ -1,6 +1,7 @@
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 
+from ._serialization import deserialize, serialize
 from .config import logger
 from .exception import InvalidError
 from .object import Object
@@ -14,14 +15,14 @@ class _Dict(Object, type_prefix="di"):
     """
 
     @classmethod
-    def _serialize_dict(self, app, data):
-        return [api_pb2.DictEntry(key=app._serialize(k), value=app._serialize(v)) for k, v in data.items()]
+    def _serialize_dict(self, data):
+        return [api_pb2.DictEntry(key=serialize(k), value=serialize(v)) for k, v in data.items()]
 
     def __init__(self, data={}):
         self._data = data
         super().__init__()
 
-    async def load(self, app, existing_dict_id):
+    async def load(self, running_app, existing_dict_id):
         if app.app_id is None:
             raise InvalidError(
                 "No initialized app existed when creating Dict.\n\n"
@@ -31,9 +32,9 @@ class _Dict(Object, type_prefix="di"):
                 "    * a `@Dict.factory` decorated global function\n"
                 "See https://modal.com/docs/reference/modal.Dict"
             )
-        serialized = self._serialize_dict(app, self._data)
-        req = api_pb2.DictCreateRequest(app_id=app.app_id, data=serialized, existing_dict_id=existing_dict_id)
-        response = await app.client.stub.DictCreate(req)
+        serialized = self._serialize_dict(self._data)
+        req = api_pb2.DictCreateRequest(app_id=running_app.app_id, data=serialized, existing_dict_id=existing_dict_id)
+        response = await running_app.client.stub.DictCreate(req)
         logger.debug("Created dict with id %s" % response.dict_id)
         return response.dict_id
 
@@ -42,22 +43,22 @@ class _Dict(Object, type_prefix="di"):
 
         Raises KeyError if the key does not exist.
         """
-        req = api_pb2.DictGetRequest(dict_id=self.object_id, key=self._app._serialize(key))
-        resp = await self._app.client.stub.DictGet(req)
+        req = api_pb2.DictGetRequest(dict_id=self.object_id, key=self._running_app.serialize(key))
+        resp = await self._running_app.client.stub.DictGet(req)
         if not resp.found:
             raise KeyError(f"KeyError: {key} not in dict {self.object_id}")
-        return self._app._deserialize(resp.value)
+        return deserialize(resp.value, self._running_app)
 
     async def contains(self, key):
         """Check if the key exists"""
-        req = api_pb2.DictContainsRequest(dict_id=self.object_id, key=self._app._serialize(key))
-        resp = await self._app.client.stub.DictContains(req)
+        req = api_pb2.DictContainsRequest(dict_id=self.object_id, key=self._running_app.serialize(key))
+        resp = await self._running_app.client.stub.DictContains(req)
         return resp.found
 
     async def len(self):
         """The length of the dictionary"""
         req = api_pb2.DictLenRequest(dict_id=self.object_id)
-        resp = await self._app.client.stub.DictLen(req)
+        resp = await self._running_app.client.stub.DictLen(req)
         return resp.len
 
     async def __getitem__(self, key):
@@ -69,16 +70,16 @@ class _Dict(Object, type_prefix="di"):
 
         Key-value pairs to update should be specified as keyword-arguments
         """
-        serialized = self._serialize_dict(self._app, kwargs)
+        serialized = self._serialize_dict(kwargs)
         req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized)
-        await self._app.client.stub.DictUpdate(req)
+        await self._running_app.client.stub.DictUpdate(req)
 
     async def put(self, key, value):
         """Set the specific key/value pair in the dictionary"""
         updates = {key: value}
-        serialized = self._serialize_dict(self._app, updates)
+        serialized = self._serialize_dict(updates)
         req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized)
-        await self._app.client.stub.DictUpdate(req)
+        await self._running_app.client.stub.DictUpdate(req)
 
     # NOTE: setitem only works in a synchronous context.
     async def __setitem__(self, key, value):
@@ -90,11 +91,11 @@ class _Dict(Object, type_prefix="di"):
 
     async def pop(self, key):
         """Remove the specific key from the dictionary"""
-        req = api_pb2.DictPopRequest(dict_id=self.object_id, key=self._app._serialize(key))
-        resp = await self._app.client.stub.DictPop(req)
+        req = api_pb2.DictPopRequest(dict_id=self.object_id, key=serialize(key))
+        resp = await self._running_app.client.stub.DictPop(req)
         if not resp.found:
             raise KeyError(f"KeyError: {key} not in dict {self.object_id}")
-        return self._app._deserialize(resp.value)
+        return deserialize(resp.value, self._running_app)
 
     async def __delitem__(self, key):
         """Delete the specific key from the dictionary

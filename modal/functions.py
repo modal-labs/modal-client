@@ -9,6 +9,7 @@ from modal_utils.async_utils import queue_batch_iterator, retry, synchronize_api
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._buffer_utils import buffered_rpc_read, buffered_rpc_write
 from ._function_utils import FunctionInfo
+from ._serialization import deserialize, serialize
 from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError
 from .mount import _Mount
 from .object import Object, Ref
@@ -17,7 +18,7 @@ from .schedule import Schedule
 from .secret import _Secret
 
 
-async def _process_result(app, result):
+async def _process_result(running_app, result):
     if result.WhichOneof("data_oneof") == "data_blob_id":
         data = await blob_download(result.data_blob_id, app.client.stub)
     else:
@@ -26,7 +27,7 @@ async def _process_result(app, result):
     if result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
         if data:
             try:
-                exc = app._deserialize(data)
+                exc = deserialize(data, running_app)
             except Exception as deser_exc:
                 raise ExecutionError(
                     "Could not deserialize remote exception due to local error:\n"
@@ -41,15 +42,15 @@ async def _process_result(app, result):
             raise exc
         raise RemoteError(result.exception)
 
-    return app._deserialize(data)
+    return deserialize(data, running_app)
 
 
-async def _create_input(args, kwargs, app, function_call_id, idx=None) -> api_pb2.FunctionInput:
+async def _create_input(args, kwargs, function_call_id, idx=None) -> api_pb2.FunctionInput:
     """Serialize function arguments and create a FunctionInput protobuf,
     uploading to blob storage if needed.
     """
 
-    args_serialized = app._serialize((args, kwargs))
+    args_serialized = serialize((args, kwargs))
 
     if len(args_serialized) > MAX_OBJECT_SIZE_BYTES:
         args_blob_id = await blob_upload(args_serialized, app.client.stub)
@@ -68,13 +69,13 @@ async def _create_input(args, kwargs, app, function_call_id, idx=None) -> api_pb
 
 
 class _Invocation:
-    def __init__(self, app, function_id, function_call_id):
-        self.app = app
+    def __init__(self, running_app, function_id, function_call_id):
+        self.running_app = running_app
         self.function_id = function_id
         self.function_call_id = function_call_id
 
     @staticmethod
-    async def create(function_id, args, kwargs, app):
+    async def create(function_id, args, kwargs, running_app):
         if not function_id:
             raise InvalidError(
                 "The function has not been initialized.\n"
@@ -85,26 +86,26 @@ class _Invocation:
                 "    my_modal_function()\n"
             )
         request = api_pb2.FunctionMapRequest(function_id=function_id)
-        response = await retry(app.client.stub.FunctionMap)(request)
+        response = await retry(running_app.client.stub.FunctionMap)(request)
 
         function_call_id = response.function_call_id
 
-        inp = await _create_input(args, kwargs, app, function_call_id)
+        inp = await _create_input(args, kwargs, function_call_id)
         request_put = api_pb2.FunctionPutInputsRequest(function_id=function_id, inputs=[inp])
-        await buffered_rpc_write(app.client.stub.FunctionPutInputs, request_put)
+        await buffered_rpc_write(running_app.client.stub.FunctionPutInputs, request_put)
 
-        return _Invocation(app, function_id, function_call_id)
+        return _Invocation(running_app, function_id, function_call_id)
 
     async def get_items(self):
         request = api_pb2.FunctionGetOutputsRequest(function_call_id=self.function_call_id)
-        response = await buffered_rpc_read(self.app.client.stub.FunctionGetOutputs, request, timeout=None)
+        response = await buffered_rpc_read(self.running_app.client.stub.FunctionGetOutputs, request, timeout=None)
         for output in response.outputs:
             yield output
 
     async def run_function(self):
         result = (await stream.list(self.get_items()))[0]
         assert not result.gen_status
-        return await _process_result(self.app, result)
+        return await _process_result(self.running_app, result)
 
     async def run_generator(self):
         completed = False
@@ -113,7 +114,7 @@ class _Invocation:
                 if result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
                     completed = True
                     break
-                yield await _process_result(self.app, result)
+                yield await _process_result(self.running_app, result)
 
 
 MAP_INVOCATION_CHUNK_SIZE = 100
@@ -121,16 +122,16 @@ MAP_INVOCATION_CHUNK_SIZE = 100
 
 class _MapInvocation:
     # TODO: should this be an object?
-    def __init__(self, function_id, input_stream, kwargs, app, is_generator):
+    def __init__(self, function_id, input_stream, kwargs, running_app, is_generator):
         self.function_id = function_id
         self.input_stream = input_stream
         self.kwargs = kwargs
-        self.app = app
+        self.running_app = running_app
         self.is_generator = is_generator
 
     async def __aiter__(self):
         request = api_pb2.FunctionMapRequest(function_id=self.function_id)
-        response = await retry(self.app.client.stub.FunctionMap)(request)
+        response = await retry(self.running_app.client.stub.FunctionMap)(request)
 
         function_call_id = response.function_call_id
 
@@ -144,7 +145,7 @@ class _MapInvocation:
             nonlocal num_inputs, input_queue
             async with self.input_stream.stream() as streamer:
                 async for arg in streamer:
-                    function_input = await _create_input(arg, self.kwargs, self.app, function_call_id, idx=num_inputs)
+                    function_input = await _create_input(arg, self.kwargs, function_call_id, idx=num_inputs)
                     num_inputs += 1
                     await input_queue.put(function_input)
             # close queue iterator
@@ -156,7 +157,7 @@ class _MapInvocation:
 
             async for inputs in queue_batch_iterator(input_queue, MAP_INVOCATION_CHUNK_SIZE):
                 request = api_pb2.FunctionPutInputsRequest(function_id=self.function_id, inputs=inputs)
-                await buffered_rpc_write(self.app.client.stub.FunctionPutInputs, request)
+                await buffered_rpc_write(self.running_app.client.stub.FunctionPutInputs, request)
 
             have_all_inputs = True
             yield
@@ -170,7 +171,7 @@ class _MapInvocation:
             while True:
                 request = api_pb2.FunctionGetOutputsRequest(function_call_id=function_call_id)
                 response = await buffered_rpc_read(
-                    self.app.client.stub.FunctionGetOutputs, request, timeout=None, warn_on_cancel=False
+                    self.running_app.client.stub.FunctionGetOutputs, request, timeout=None, warn_on_cancel=False
                 )
 
                 for result in response.outputs:
@@ -178,12 +179,12 @@ class _MapInvocation:
                         if result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
                             num_outputs += 1
                         else:
-                            output = await _process_result(self.app, result)
+                            output = await _process_result(self.running_app, result)
                             # yield output directly for generators.
                             yield output
                     else:
                         # hold on to outputs for function maps, so we can reorder them correctly.
-                        pending_outputs[result.idx] = await _process_result(self.app, result)
+                        pending_outputs[result.idx] = await _process_result(self.running_app, result)
 
                 # send outputs sequentially while we can
                 while num_outputs in pending_outputs:
@@ -229,6 +230,7 @@ class _Function(Object, type_prefix="fu"):
         serialized: bool = False,
         mounts: Collection[Union[Ref, _Mount]] = (),
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
+        deployment_name: str = None,
     ):
         assert callable(raw_f)
         self.info = FunctionInfo(raw_f, serialized)
@@ -255,6 +257,7 @@ class _Function(Object, type_prefix="fu"):
         self.webhook_config = webhook_config
         self.web_url = None
         self.tag = self.info.get_tag()
+        self.deployment_name = deployment_name
         super().__init__()
 
     def get_creating_message(self) -> str:
@@ -266,16 +269,16 @@ class _Function(Object, type_prefix="fu"):
             return f"Created {self.tag} => [magenta underline]{self.web_url}[/magenta underline]"
         return f"Created {self.tag}."
 
-    async def load(self, app, existing_function_id):
+    async def load(self, running_app, existing_function_id):
         # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
         if self.image is not None:
-            image_id = await app.lookup(self.image)
+            image_id = await running_app.lookup(self.image)
         else:
             image_id = None  # Happens if it's a notebook function
         secret_ids = []
         for secret in self.secrets:
             try:
-                secret_id = await app.lookup(secret)
+                secret_id = await running_app.lookup(secret)
             except NotFoundError as ex:
                 raise NotFoundError(
                     f"Could not find secret {ex.obj_repr}\n"
@@ -284,7 +287,7 @@ class _Function(Object, type_prefix="fu"):
                 )
             secret_ids.append(secret_id)
 
-        mount_ids = await asyncio.gather(*(app.lookup(mount) for mount in self.mounts))
+        mount_ids = await asyncio.gather(*(running_app.lookup(mount) for mount in self.mounts))
 
         if self.is_generator:
             function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
@@ -308,13 +311,13 @@ class _Function(Object, type_prefix="fu"):
             webhook_config=self.webhook_config,
         )
         request = api_pb2.FunctionCreateRequest(
-            app_id=app.app_id,
+            app_id=running_app.app_id,
             function=function_definition,
             schedule=self.schedule.proto_message if self.schedule is not None else None,
             existing_function_id=existing_function_id,
-            deployment_name=app.deployment_name,
+            deployment_name=self.deployment_name,
         )
-        response = await app.client.stub.FunctionCreate(request)
+        response = await running_app.client.stub.FunctionCreate(request)
 
         if response.web_url:
             self.web_url = response.web_url
@@ -323,23 +326,23 @@ class _Function(Object, type_prefix="fu"):
 
     async def map(self, inputs, window, kwargs, is_generator):
         input_stream = stream.iterate(inputs) | pipe.map(lambda arg: (arg,))
-        async for item in _MapInvocation(self.object_id, input_stream, kwargs, self._app, is_generator):
+        async for item in _MapInvocation(self.object_id, input_stream, kwargs, self._running_app, is_generator):
             yield item
 
     async def call_function(self, args, kwargs):
-        invocation = await _Invocation.create(self.object_id, args, kwargs, self._app)
+        invocation = await _Invocation.create(self.object_id, args, kwargs, self._running_app)
         return await invocation.run_function()
 
     async def call_function_nowait(self, args, kwargs):
-        await _Invocation.create(self.object_id, args, kwargs, self._app)
+        await _Invocation.create(self.object_id, args, kwargs, self._running_app)
 
     async def call_generator(self, args, kwargs):
-        invocation = await _Invocation.create(self.object_id, args, kwargs, self._app)
+        invocation = await _Invocation.create(self.object_id, args, kwargs, self._running_app)
         async for res in invocation.run_generator():
             yield res
 
     async def call_generator_nowait(self, args, kwargs):
-        await _Invocation.create(self.object_id, args, kwargs, self._app)
+        await _Invocation.create(self.object_id, args, kwargs, self._running_app)
 
 
 class _FunctionProxy:

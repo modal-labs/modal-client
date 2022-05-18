@@ -15,15 +15,15 @@ class Object(metaclass=ObjectMeta):
     well as distributed data structures like Queues or Dicts.
     """
 
-    def __init__(self, app=None, object_id=None):
-        self._app = app
+    def __init__(self, running_app=None, object_id=None):
+        self._running_app = running_app
         self._object_id = object_id
 
-    async def load(self, app, existing_object_id):
+    async def load(self, running_app, existing_object_id):
         raise NotImplementedError(f"Object factory of class {type(self)} has no load method")
 
     @classmethod
-    def from_id(cls, object_id, app):
+    def from_id(cls, object_id, running_app):
         parts = object_id.split("-")
         if len(parts) != 2:
             raise InvalidError(f"Object id {object_id} has no dash in it")
@@ -32,18 +32,18 @@ class Object(metaclass=ObjectMeta):
             raise InvalidError(f"Object prefix {prefix} does not correspond to a type")
         object_cls = ObjectMeta.prefix_to_type[prefix]
         obj = Object.__new__(object_cls)
-        Object.__init__(obj, app, object_id=object_id)
+        Object.__init__(obj, running_app, object_id=object_id)
         return obj
 
-    async def create(self, app=None):
+    async def create(self, app=None):  # TODO: running app
         if app is None:
             app = get_container_app()
             if app is None:
                 raise InvalidError(".create must be passed the app explicitly if not running in a container")
         if app.state != AppState.RUNNING:
             raise InvalidError(f"{self}.create(...): can only do this on a running app")
-        object_id = await self.load(app, None)
-        return Object.from_id(object_id, app)
+        object_id = await self.load(app._running_app, None)
+        return Object.from_id(object_id, app._running_app)
 
     @property
     def object_id(self):
@@ -54,10 +54,6 @@ class Object(metaclass=ObjectMeta):
 
     def get_created_message(self) -> Optional[str]:
         return None
-
-    @property
-    def app(self):
-        return self._app
 
     @classmethod
     def include(cls, app, app_name, object_label=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):

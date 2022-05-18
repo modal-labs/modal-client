@@ -2,10 +2,10 @@ import platform
 import pytest
 import time
 
-from modal import App
 from modal._container_entrypoint import main
 
 # from modal._test_support import SLEEP_DELAY
+from modal._serialization import serialize
 from modal.client import Client
 from modal_proto import api_pb2
 
@@ -13,15 +13,14 @@ EXTRA_TOLERANCE_DELAY = 0.25
 FUNCTION_CALL_ID = "fc-123"
 SLEEP_DELAY = 0.1
 
-app = App()  # Just used for (de)serialization
-
 skip_non_linux = pytest.mark.skipif(
     platform.system() != "Linux", reason="sleep is inaccurate on Github Actions runners."
 )
 
 
 def _get_inputs(client):
-    function_input = api_pb2.FunctionInput(args=app._serialize(((42,), {})), function_call_id=FUNCTION_CALL_ID)
+    args = ((42,), {})
+    function_input = api_pb2.FunctionInput(args=serialize(args), function_call_id=FUNCTION_CALL_ID)
 
     return [
         api_pb2.FunctionGetInputsResponse(inputs=[function_input]),
@@ -60,12 +59,12 @@ def _run_container(servicer, module_name, function_name):
         }
         main(container_args, client)
 
-        return app, client, servicer.container_outputs
+        return client, servicer.container_outputs
 
 
 def test_container_entrypoint_success(servicer, reset_global_apps, event_loop):
     t0 = time.time()
-    app, client, outputs = _run_container(servicer, "modal._test_support", "square")
+    client, outputs = _run_container(servicer, "modal._test_support", "square")
     assert 0 <= time.time() - t0 < EXTRA_TOLERANCE_DELAY
 
     assert len(outputs) == 1
@@ -73,13 +72,13 @@ def test_container_entrypoint_success(servicer, reset_global_apps, event_loop):
 
     output = _get_output(outputs[0])
     assert output.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert output.data == app._serialize(42**2)
+    assert output.data == serialize(42**2)
 
 
 @skip_non_linux
 def test_container_entrypoint_async(servicer, reset_global_apps):
     t0 = time.time()
-    app, client, outputs = _run_container(servicer, "modal._test_support", "square_async")
+    client, outputs = _run_container(servicer, "modal._test_support", "square_async")
     assert SLEEP_DELAY <= time.time() - t0 < SLEEP_DELAY + EXTRA_TOLERANCE_DELAY
 
     assert len(outputs) == 1
@@ -87,13 +86,13 @@ def test_container_entrypoint_async(servicer, reset_global_apps):
 
     output = _get_output(outputs[0])
     assert output.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert output.data == app._serialize(42**2)
+    assert output.data == serialize(42**2)
 
 
 @skip_non_linux
 def test_container_entrypoint_sync_returning_async(servicer, reset_global_apps):
     t0 = time.time()
-    app, client, outputs = _run_container(servicer, "modal._test_support", "square_sync_returning_async")
+    client, outputs = _run_container(servicer, "modal._test_support", "square_sync_returning_async")
     assert SLEEP_DELAY <= time.time() - t0 < SLEEP_DELAY + EXTRA_TOLERANCE_DELAY
 
     assert len(outputs) == 1
@@ -101,12 +100,12 @@ def test_container_entrypoint_sync_returning_async(servicer, reset_global_apps):
 
     output = _get_output(outputs[0])
     assert output.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert output.data == app._serialize(42**2)
+    assert output.data == serialize(42**2)
 
 
 @skip_non_linux
 def test_container_entrypoint_failure(servicer, reset_global_apps):
-    app, client, outputs = _run_container(servicer, "modal._test_support", "raises")
+    client, outputs = _run_container(servicer, "modal._test_support", "raises")
 
     assert len(outputs) == 1
     assert isinstance(outputs[0], api_pb2.FunctionPutOutputsRequest)
