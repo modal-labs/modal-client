@@ -1,6 +1,6 @@
-import asyncio
 import enum
 import re
+import threading
 import time
 
 from grpc.aio import Channel
@@ -49,6 +49,8 @@ class ChannelPool:
     The ALB in AWS limits the number of streams per connection to 128.
     This is super annoying and means we can't put every request on the same channel.
     As a dumb workaround, we use a pool of channels.
+
+    This object is guaranteed thread-safe.
     """
 
     # How long to keep alive unused channels in the pool, before closing them.
@@ -61,14 +63,16 @@ class ChannelPool:
         # Only used by start()
         self._task_context = task_context
 
-        # Protects the variables below
-        self._lock = asyncio.Lock()
+        # Threadsafe because it is read-only
         self._conn_factory = conn_factory
+
+        # Protects the channels list below
+        self._lock = threading.Lock()
         self._channels: list[ChannelStruct] = []
 
     async def _purge_channels(self):
         to_close: list[ChannelStruct] = []
-        async with self._lock:
+        with self._lock:
             for ch in self._channels:
                 now = time.time()
                 inactive_time = now - ch.last_active
@@ -89,7 +93,7 @@ class ChannelPool:
         self._task_context.infinite_loop(self._purge_channels, sleep=10.0)
 
     async def _get_channel(self) -> ChannelStruct:
-        async with self._lock:
+        with self._lock:
             eligible_channels = [
                 ch for ch in self._channels if ch.n_concurrent_requests < self.MAX_REQUESTS_PER_CHANNEL
             ]
