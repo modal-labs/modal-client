@@ -1,6 +1,6 @@
+import asyncio
 import enum
 import re
-import threading
 import time
 
 from grpc.aio import Channel
@@ -50,7 +50,7 @@ class ChannelPool:
     This is super annoying and means we can't put every request on the same channel.
     As a dumb workaround, we use a pool of channels.
 
-    This object is guaranteed thread-safe.
+    This object is not thread-safe.
     """
 
     # How long to keep alive unused channels in the pool, before closing them.
@@ -67,12 +67,12 @@ class ChannelPool:
         self._conn_factory = conn_factory
 
         # Protects the channels list below
-        self._lock = threading.Lock()
+        self._lock = asyncio.Lock()
         self._channels: list[ChannelStruct] = []
 
     async def _purge_channels(self):
         to_close: list[ChannelStruct] = []
-        with self._lock:
+        async with self._lock:
             for ch in self._channels:
                 now = time.time()
                 inactive_time = now - ch.last_active
@@ -93,7 +93,7 @@ class ChannelPool:
         self._task_context.infinite_loop(self._purge_channels, sleep=10.0)
 
     async def _get_channel(self) -> ChannelStruct:
-        with self._lock:
+        async with self._lock:
             eligible_channels = [
                 ch for ch in self._channels if ch.n_concurrent_requests < self.MAX_REQUESTS_PER_CHANNEL
             ]
