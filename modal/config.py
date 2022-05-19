@@ -186,10 +186,10 @@ config = Config()
 
 # Logging
 
-logging.basicConfig(
-    level=config["loglevel"], format="%(threadName)s %(asctime)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%S%z"
-)
+logging.basicConfig(format="%(threadName)s %(asctime)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%S%z")
 logger = logging.getLogger()
+log_level_numeric = logging.getLevelName(config["loglevel"])
+logger.setLevel(log_level_numeric)
 
 # Utils to write config
 
