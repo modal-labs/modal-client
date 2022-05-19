@@ -232,14 +232,15 @@ class _App:
     def __setitem__(self, tag, obj):
         self._blueprint.register(tag, obj)
 
-    def is_inside(self, image: Optional[Ref] = None):
+    def is_inside(self, image: Optional[Union[Ref, _Image]] = None):
         if not get_container_app():
             return False
         if image is None:
-            tag = "_image"
-        else:
-            tag = image.tag
-        obj = self._tag_to_object.get(tag)
+            obj = self._tag_to_object.get("_image")
+        elif isinstance(image, Ref):
+            obj = self._tag_to_object.get(image.tag)
+        elif isinstance(image, _Image):
+            obj = image
         assert isinstance(obj, _Image)
         return obj._is_inside()
 
