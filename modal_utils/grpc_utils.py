@@ -96,7 +96,7 @@ class ChannelPool:
             if eligible_channels:
                 ch = eligible_channels[0]
             else:
-                channel = await self._conn_factory.create()
+                channel = self._conn_factory.create()
                 ch = ChannelStruct(channel)
                 self._channels.append(ch)
                 n_conc_reqs = [ch.n_concurrent_requests for ch in self._channels]

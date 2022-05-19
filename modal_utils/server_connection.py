@@ -74,7 +74,7 @@ class GRPCConnectionFactory:
             ("grpc.max_receive_message_length", MAX_MESSAGE_LENGTH),
         ]
 
-    async def create(self) -> Channel:
+    def create(self) -> Channel:
         if self.credentials is None:
             return insecure_channel(
                 target=self.target,
