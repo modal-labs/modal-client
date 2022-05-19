@@ -57,13 +57,13 @@ class _RunningApp:
         self,
         client: _Client,
         app_id: str,
-        tag_to_object: Dict[str, Object] = {},
-        tag_to_existing_id: Dict[str, str] = {},
+        tag_to_object: Optional[Dict[str, Object]] = None,
+        tag_to_existing_id: Optional[Dict[str, str]] = None,
     ):
         self._app_id = app_id
         self._client = client
-        self._tag_to_object = tag_to_object
-        self._tag_to_existing_id = tag_to_existing_id
+        self._tag_to_object = tag_to_object or {}
+        self._tag_to_existing_id = tag_to_existing_id or {}
 
     @property
     def client(self):
@@ -155,8 +155,6 @@ class _App:
         self.deployment_name = None
         self.state = AppState.NONE
         self._blueprint = Blueprint()
-        if image is None:
-            image = _DebianSlim()
         self._image = image
         self._running_app = None
         super().__init__()
@@ -194,7 +192,7 @@ class _App:
             tag_to_object[tag] = Object.from_id(object_id, self)
 
         # In the container, run forever
-        self._running_app = _RunningApp(app_id, client, tag_to_object)
+        self._running_app = _RunningApp(client, app_id, tag_to_object)
         self.state = AppState.RUNNING
 
         return self._running_app
@@ -442,7 +440,11 @@ class _App:
         # TODO(erikbern): instead of writing this to the same namespace
         # as the user's objects, we could use sub-blueprints in the future
         if not self._blueprint.has_object("_image"):
-            self._blueprint.register("_image", self._image)
+            if self._image is None:
+                image = _DebianSlim()
+            else:
+                image = self._image
+            self._blueprint.register("_image", image)
         return ref(None, "_image")
 
     def _get_function_mounts(self, raw_f):

@@ -3,7 +3,6 @@ from typing import Optional
 from modal_proto import api_pb2
 
 from ._app_singleton import get_container_app
-from ._app_state import AppState
 from ._object_meta import ObjectMeta
 from .exception import InvalidError
 
@@ -35,19 +34,22 @@ class Object(metaclass=ObjectMeta):
         Object.__init__(obj, running_app, object_id=object_id)
         return obj
 
-    async def create(self, app=None):  # TODO: running app
-        if app is None:
+    async def create(self, running_app=None):
+        if running_app is None:
             app = get_container_app()
             if app is None:
                 raise InvalidError(".create must be passed the app explicitly if not running in a container")
-        if app.state != AppState.RUNNING:
-            raise InvalidError(f"{self}.create(...): can only do this on a running app")
-        object_id = await self.load(app._running_app, None)
-        return Object.from_id(object_id, app._running_app)
+            running_app = app._running_app
+        object_id = await self.load(running_app, None)
+        return Object.from_id(object_id, running_app)
 
     @property
     def object_id(self):
         return self._object_id
+
+    @property
+    def running_app(self):
+        return self._running_app
 
     def get_creating_message(self) -> Optional[str]:
         return None

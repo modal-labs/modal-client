@@ -33,7 +33,7 @@ class _Dict(Object, type_prefix="di"):
 
         Raises KeyError if the key does not exist.
         """
-        req = api_pb2.DictGetRequest(dict_id=self.object_id, key=self._running_app.serialize(key))
+        req = api_pb2.DictGetRequest(dict_id=self.object_id, key=serialize(key))
         resp = await self._running_app.client.stub.DictGet(req)
         if not resp.found:
             raise KeyError(f"KeyError: {key} not in dict {self.object_id}")
@@ -41,7 +41,7 @@ class _Dict(Object, type_prefix="di"):
 
     async def contains(self, key):
         """Check if the key exists"""
-        req = api_pb2.DictContainsRequest(dict_id=self.object_id, key=self._running_app.serialize(key))
+        req = api_pb2.DictContainsRequest(dict_id=self.object_id, key=serialize(key))
         resp = await self._running_app.client.stub.DictContains(req)
         return resp.found
 
