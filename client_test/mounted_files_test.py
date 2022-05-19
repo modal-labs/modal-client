@@ -1,7 +1,6 @@
 import os
 import platform
 import pytest
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -15,14 +14,14 @@ def test_dir(request):
     return root_dir / test_dir
 
 
-@pytest.fixture(scope="function")
-def venv_path(test_dir):
-    venv_path = test_dir / "supports" / "venv"
+@pytest.fixture
+def venv_path(tmp_path):
+    venv_path = tmp_path
     subprocess.run([sys.executable, "-m", "venv", venv_path, "--copies", "--system-site-packages"])
-    # Install a tiny package in the venv.
+    # Install Modal and a tiny package in the venv.
+    subprocess.run([venv_path / "bin" / "python", "-m", "pip", "install", "-e", "client"])
     subprocess.run([venv_path / "bin" / "python", "-m", "pip", "install", "--force-reinstall", "six"])
     yield venv_path
-    shutil.rmtree(venv_path)
 
 
 script_path = Path("supports") / "script.py"
