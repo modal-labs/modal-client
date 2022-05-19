@@ -3,6 +3,7 @@ import concurrent.futures
 import dataclasses
 import hashlib
 import os
+import threading
 import time
 from pathlib import Path
 from typing import Callable, Optional, Union
@@ -88,14 +89,17 @@ class _Mount(Object, type_prefix="mo"):
         # creates a brief period where the files are reset to an empty list.
         # A better way to do it is to upload the files before we create the mount.
         # Let's consider doing this as a part of refactoring how we store mounts and files.
-        n_files = 0
-        n_missing_files = 0
-        total_bytes = 0
+
         t0 = time.time()
         n_concurrent_uploads = 16
 
+        lock = threading.Lock()  # protects the variables below
+        n_files = 0
+        uploaded_hashes: set[str] = set()
+        total_bytes = 0
+
         async def _put_file(mount_file: _FileUploadSpec):
-            nonlocal n_files, n_missing_files, total_bytes
+            nonlocal n_files, uploaded_hashes, total_bytes
 
             remote_filename = (Path(self._remote_dir) / Path(mount_file.rel_filename)).as_posix()
 
@@ -103,26 +107,30 @@ class _Mount(Object, type_prefix="mo"):
                 filename=remote_filename, sha256_hex=mount_file.sha256_hex, mount_id=mount_id
             )
             response = await retry(app.client.stub.MountRegisterFile, base_delay=1)(request)
-            n_files += 1
-            if not response.exists:
-                n_missing_files += 1
-                if mount_file.use_blob:
-                    logger.debug(f"Creating blob file for {mount_file.filename} ({mount_file.size} bytes)")
-                    blob_id = await modal._blob_utils.blob_upload_file(mount_file.filename, app.client.stub)
-                    logger.debug(f"Uploading blob file {mount_file.filename} as {remote_filename}")
-                    request2 = api_pb2.MountUploadFileRequest(
-                        data_blob_id=blob_id, sha256_hex=mount_file.sha256_hex, size=mount_file.size, mount_id=mount_id
-                    )
-                else:
-                    total_bytes += len(mount_file.content)
-                    logger.debug(f"Uploading file {mount_file.filename} to {remote_filename} ({mount_file.size} bytes)")
-                    request2 = api_pb2.MountUploadFileRequest(
-                        data=mount_file.content,
-                        sha256_hex=mount_file.sha256_hex,
-                        size=mount_file.size,
-                        mount_id=mount_id,
-                    )
-                await retry(app.client.stub.MountUploadFile, base_delay=1)(request2)
+
+            with lock:
+                n_files += 1
+                if response.exists or mount_file.sha256_hex in uploaded_hashes:
+                    return
+                uploaded_hashes.add(mount_file.sha256_hex)
+                total_bytes += mount_file.size
+
+            if mount_file.use_blob:
+                logger.debug(f"Creating blob file for {mount_file.filename} ({mount_file.size} bytes)")
+                blob_id = await modal._blob_utils.blob_upload_file(mount_file.filename, app.client.stub)
+                logger.debug(f"Uploading blob file {mount_file.filename} as {remote_filename}")
+                request2 = api_pb2.MountUploadFileRequest(
+                    data_blob_id=blob_id, sha256_hex=mount_file.sha256_hex, size=mount_file.size, mount_id=mount_id
+                )
+            else:
+                logger.debug(f"Uploading file {mount_file.filename} to {remote_filename} ({mount_file.size} bytes)")
+                request2 = api_pb2.MountUploadFileRequest(
+                    data=mount_file.content,
+                    sha256_hex=mount_file.sha256_hex,
+                    size=mount_file.size,
+                    mount_id=mount_id,
+                )
+            await retry(app.client.stub.MountUploadFile, base_delay=1)(request2)
 
         req = api_pb2.MountCreateRequest(app_id=app.app_id, existing_mount_id=existing_mount_id)
         resp = await retry(app.client.stub.MountCreate, base_delay=1)(req)
@@ -137,7 +145,7 @@ class _Mount(Object, type_prefix="mo"):
         uploads_stream = aiostream.stream.map(files_stream, _put_file, task_limit=n_concurrent_uploads)
         await uploads_stream
 
-        logger.debug(f"Uploaded {n_missing_files}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
+        logger.debug(f"Uploaded {len(uploaded_hashes)}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
 
         # Set the mount to done
         req_done = api_pb2.MountDoneRequest(mount_id=mount_id)
