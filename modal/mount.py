@@ -3,7 +3,6 @@ import concurrent.futures
 import dataclasses
 import hashlib
 import os
-import threading
 import time
 from pathlib import Path
 from typing import Callable, Optional, Union
@@ -93,7 +92,6 @@ class _Mount(Object, type_prefix="mo"):
         t0 = time.time()
         n_concurrent_uploads = 16
 
-        lock = threading.Lock()  # protects the variables below
         n_files = 0
         uploaded_hashes: set[str] = set()
         total_bytes = 0
@@ -108,12 +106,11 @@ class _Mount(Object, type_prefix="mo"):
             )
             response = await retry(app.client.stub.MountRegisterFile, base_delay=1)(request)
 
-            with lock:
-                n_files += 1
-                if response.exists or mount_file.sha256_hex in uploaded_hashes:
-                    return
-                uploaded_hashes.add(mount_file.sha256_hex)
-                total_bytes += mount_file.size
+            n_files += 1
+            if response.exists or mount_file.sha256_hex in uploaded_hashes:
+                return
+            uploaded_hashes.add(mount_file.sha256_hex)
+            total_bytes += mount_file.size
 
             if mount_file.use_blob:
                 logger.debug(f"Creating blob file for {mount_file.filename} ({mount_file.size} bytes)")
