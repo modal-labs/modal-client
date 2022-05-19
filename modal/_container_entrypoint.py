@@ -109,7 +109,7 @@ class _FunctionContext:
         time_elapsed = time.time() - self.start_time
         average_handling_time = time_elapsed / self.calls_completed
 
-        return math.ceil(RTT_S / average_handling_time)
+        return math.ceil(RTT_S / max(average_handling_time, 1e-6))
 
     async def generate_inputs(
         self,
