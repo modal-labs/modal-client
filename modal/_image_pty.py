@@ -2,11 +2,11 @@ import asyncio
 import sys
 from typing import Optional
 
-from modal.queue import AioQueue, _Queue
+from modal.queue import _Queue
 from modal_utils.async_utils import TaskContext
 
 
-async def _pty(cmd: Optional[str], queue: AioQueue):
+async def _pty(cmd: Optional[str], queue):  # queue is an AioQueue, but mypy doesn't like that
     import os
     import pty
     import threading
