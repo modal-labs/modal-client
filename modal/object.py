@@ -3,7 +3,6 @@ from typing import Optional
 from modal_proto import api_pb2
 
 from ._object_meta import ObjectMeta
-from .app_singleton import _container_app
 from .exception import InvalidError
 
 
@@ -36,6 +35,8 @@ class Object(metaclass=ObjectMeta):
 
     async def create(self, running_app=None):
         if running_app is None:
+            from .app import _container_app  # avoid circular import
+
             running_app = _container_app
             if running_app is None:
                 raise InvalidError(".create must be passed the app explicitly if not running in a container")

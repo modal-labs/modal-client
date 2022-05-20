@@ -12,7 +12,6 @@ from modal_utils.decorator_utils import decorator_with_options
 from ._blueprint import Blueprint
 from ._function_utils import FunctionInfo
 from ._output import OutputManager, step_completed, step_progress
-from .app_singleton import _container_app, set_container_app
 from .client import _Client
 from .config import config, logger
 from .exception import InvalidError, NotFoundError
@@ -148,9 +147,19 @@ class _RunningApp:
             object_id = await self._create_object(obj, progress, existing_object_id)
             self._tag_to_object[tag] = Object.from_id(object_id, self)
 
-    async def initialize_container(self, task_id):
+    def __getitem__(self, tag):
+        return self._tag_to_object[tag]
+
+    @staticmethod
+    async def container(client, app_id, task_id):
         """Used by the container to bootstrap the app and all its objects."""
-        req = api_pb2.AppGetObjectsRequest(app_id=self._app_id, task_id=task_id)
+        # This is a bit of a hacky thing:
+        global _container_app
+        self = _container_app
+        self._client = client
+        self._app_id = app_id
+
+        req = api_pb2.AppGetObjectsRequest(app_id=app_id, task_id=task_id)
         resp = await self._client.stub.AppGetObjects(req)
         for (
             tag,
@@ -158,14 +167,13 @@ class _RunningApp:
         ) in resp.object_ids.items():
             self._tag_to_object[tag] = Object.from_id(object_id, self)
 
-        # Register this as a singleton
-        set_container_app(self)
-
-    def __getitem__(self, tag):
-        return self._tag_to_object[tag]
-
 
 RunningApp, AioRunningApp = synchronize_apis(_RunningApp)
+
+_container_app = _RunningApp(None, None)
+container_app, aio_container_app = synchronize_apis(_container_app)
+assert isinstance(container_app, RunningApp)
+assert isinstance(aio_container_app, AioRunningApp)
 
 
 class _App:

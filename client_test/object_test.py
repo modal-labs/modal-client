@@ -9,9 +9,9 @@ from modal.exception import InvalidError
 async def test_async_factory(servicer, client):
     app = AioApp()
     app["my_factory"] = AioQueue()
-    async with app.run(client=client):
-        assert isinstance(app["my_factory"], AioQueue)
-        assert app["my_factory"].object_id == "qu-1"
+    async with app.run(client=client) as running_app:
+        assert isinstance(running_app["my_factory"], AioQueue)
+        assert running_app["my_factory"].object_id == "qu-1"
 
 
 @pytest.mark.asyncio
@@ -20,5 +20,5 @@ async def test_use_object(servicer, client):
     with pytest.raises(InvalidError):
         app["my_q"] = AioQueue.include(app, "foo-queue")
     app["my_q"] = ref("foo-queue")
-    async with app.run(client=client):
-        assert app["my_q"].object_id == "qu-foo"
+    async with app.run(client=client) as running_app:
+        assert running_app["my_q"].object_id == "qu-foo"

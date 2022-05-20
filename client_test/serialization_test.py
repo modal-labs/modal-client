@@ -12,14 +12,14 @@ app["qf"] = AioQueue()
 async def test_persistent_object(servicer, client):
     async with app.run(client=client) as running_app:
         # Serialize "dynamic" object and deserialize
-        q = await AioQueue().create(app)
+        q = await AioQueue().create(running_app)
         data = serialize(q)
         q_roundtrip = deserialize(data, running_app)
         assert isinstance(q_roundtrip, AioQueue)
         assert q.object_id == q_roundtrip.object_id
 
         # Serialize factory object and deserialize
-        q = app["qf"]
+        q = running_app["qf"]
         assert isinstance(q, AioQueue)
         data = serialize(q)
         q_roundtrip = deserialize(data, running_app)

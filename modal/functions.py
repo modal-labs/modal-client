@@ -357,7 +357,7 @@ class _FunctionProxy:
         self._tag = tag
 
     def _get_function(self):
-        return self._app[self._tag]
+        return self._app._running_app[self._tag]
 
     async def map(self, inputs, window=100, kwargs={}):
         async for it in self._get_function().map(inputs, window, kwargs, self._orig_function.is_generator):
