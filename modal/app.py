@@ -159,8 +159,7 @@ class _RunningApp:
 
         # Update all functions client-side to point to the running app
         for tag, obj in blueprint.get_objects():
-            created_obj = self._tag_to_object[tag]
-            if isinstance(created_obj, _Function):
+            if isinstance(obj, _Function):
                 obj.set_local_running_app(self)
 
     async def disconnect(self):
