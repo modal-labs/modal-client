@@ -9,7 +9,7 @@ from modal._container_entrypoint import main
 from modal.client import Client
 from modal_proto import api_pb2
 
-EXTRA_TOLERANCE_DELAY = 0.15
+EXTRA_TOLERANCE_DELAY = 0.25
 FUNCTION_CALL_ID = "fc-123"
 SLEEP_DELAY = 0.1
 
