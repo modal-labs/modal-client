@@ -14,7 +14,7 @@ from google.protobuf.empty_pb2 import Empty
 from grpc import StatusCode
 from grpc.aio import ServicerContext
 
-from modal._app_singleton import set_container_app
+from modal.app_singleton import set_container_app
 from modal.client import AioClient, Client
 from modal.image import _dockerhub_python_version
 from modal.mount import MODAL_CLIENT_MOUNT_NAME

@@ -18,9 +18,9 @@ async def test_get_files(servicer, client, tmpdir, mock_blob_upload_file):
 
     files = {}
     app = AioApp()
-    async with app.run(client=client):
+    async with app.run(client=client) as running_app:
         m = AioMount("/", local_dir=tmpdir, condition=lambda fn: fn.endswith(".py"), recursive=True)
-        await m.load(app, None)
+        await m.load(running_app, None)
         async for upload_spec in m._get_files():
             files[upload_spec.rel_filename] = upload_spec
 
@@ -46,7 +46,7 @@ async def test_get_files(servicer, client, tmpdir, mock_blob_upload_file):
 
 def test_create_mount(servicer, client):
     app = App()
-    with app.run(client=client):
+    with app.run(client=client) as running_app:
         local_dir, cur_filename = os.path.split(__file__)
         remote_dir = "/foo"
 
@@ -54,7 +54,7 @@ def test_create_mount(servicer, client):
             return fn.endswith(".py")
 
         m = Mount(local_dir=local_dir, remote_dir=remote_dir, condition=condition)
-        assert m.load(app, None) == "mo-123"
+        assert m.load(running_app, None) == "mo-123"
         assert f"/foo/{cur_filename}" in servicer.files_name2sha
         sha256_hex = servicer.files_name2sha[f"/foo/{cur_filename}"]
         assert sha256_hex in servicer.files_sha2data

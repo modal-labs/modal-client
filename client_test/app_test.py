@@ -9,8 +9,8 @@ from modal.exception import NotFoundError
 @pytest.mark.asyncio
 async def test_create_object(servicer, aio_client):
     app = AioApp()
-    async with app.run(client=aio_client):
-        q = await AioQueue().create(app)
+    async with app.run(client=aio_client) as running_app:
+        q = await AioQueue().create(running_app)
         await q.put("foo")
         await q.put("bar")
         assert await q.get() == "foo"
@@ -87,13 +87,6 @@ def test_deploy_uses_deployment_name_if_specified(servicer, client):
     named_app.deploy("bar_app", client=client)
     assert "bar_app" in servicer.deployed_apps
     assert "foo_app" not in servicer.deployed_apps
-
-
-def test_deploy_running_app_fails(servicer, client):
-    app = App()
-    with app.run(client=client):
-        with pytest.raises(modal.exception.InvalidError):
-            app.deploy(name="my_deployment", client=client)
 
 
 @pytest.mark.skip(reason="revisit in a sec once the app state stuff is fixed")

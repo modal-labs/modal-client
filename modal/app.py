@@ -9,11 +9,10 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import TaskContext, synchronize_apis, synchronizer
 from modal_utils.decorator_utils import decorator_with_options
 
-from ._app_singleton import get_container_app, set_container_app
-from ._app_state import AppState
 from ._blueprint import Blueprint
 from ._function_utils import FunctionInfo
 from ._output import OutputManager, step_completed, step_progress
+from .app_singleton import _container_app, set_container_app
 from .client import _Client
 from .config import config, logger
 from .exception import InvalidError, NotFoundError
@@ -162,6 +161,9 @@ class _RunningApp:
         # Register this as a singleton
         set_container_app(self)
 
+    def __getitem__(self, tag):
+        return self._tag_to_object[tag]
+
 
 RunningApp, AioRunningApp = synchronize_apis(_RunningApp)
 
@@ -196,7 +198,6 @@ class _App:
         # TODO: we take a name in the app constructor, that can be different from the deployment name passed in later. Simplify this.
         self._name = name
         self.deployment_name = None
-        self.state = AppState.NONE
         self._blueprint = Blueprint()
         self._image = image
         self._running_app = None
@@ -210,14 +211,6 @@ class _App:
     def name(self):
         return self._name or self._infer_app_name()
 
-    @property
-    def app_id(self):
-        return self._running_app._app_id
-
-    @property
-    def client(self):
-        return self._running_app._client
-
     def _infer_app_name(self):
         script_filename = os.path.split(sys.argv[0])[-1]
         args = [script_filename] + sys.argv[1:]
@@ -225,22 +218,14 @@ class _App:
 
     def __getitem__(self, tag: str):
         assert isinstance(tag, str)
-        # TODO(erikbern): this should really be an app vs blueprint thing
-        if self.state == AppState.RUNNING:
-            # TODO: this is a terrible hack for now. For running apps inside the container,
-            # because of the singleton thing, any unrelated app will also be RUNNING, so this
-            # branch triggers. However we don't want this to cause a KeyError.
-            # Let's revisit once we clean up the app singleton
-            return self._running_app._tag_to_object.get(tag)
-        else:
-            # Return a reference to an object that will be created in the future
-            return ref(None, tag)
+        # Return a reference to an object that will be created in the future
+        return ref(None, tag)
 
     def __setitem__(self, tag, obj):
         self._blueprint.register(tag, obj)
 
     def is_inside(self, image: Optional[Union[Ref, _Image]] = None):
-        if not get_container_app():
+        if _get_container_app:
             return False
         if image is None:
             obj = self._running_app._tag_to_object.get("_image")
@@ -255,10 +240,6 @@ class _App:
     async def _run(self, client, output_mgr, existing_app_id, last_log_entry_id=None):
         # TOOD: use something smarter than checking for the .client to exists in order to prevent
         # race conditions here!
-        if self.state != AppState.NONE:
-            raise Exception(f"Can't start a app that's already in state {self.state}")
-        self.state = AppState.STARTING
-
         try:
             if existing_app_id is not None:
                 # Get all the objects first
@@ -301,9 +282,7 @@ class _App:
                         )
                         await client.stub.AppSetObjects(req_set)
 
-                        self.state = AppState.RUNNING
                         yield self._running_app
-                        self.state = AppState.STOPPING
 
                 finally:
                     # Stop app server-side. This causes:
@@ -316,7 +295,6 @@ class _App:
             output_mgr.print_if_visible(step_completed("App completed."))
 
         finally:
-            self.state = AppState.NONE
             self._running_app = None
 
     @synchronizer.asynccontextmanager
@@ -369,8 +347,6 @@ class _App:
           the client has closed.
         * Allows for certain of these objects, *deployment objects*, to be referred to and used by other apps
         """
-        if self.state != AppState.NONE:
-            raise InvalidError("Can only deploy an app that isn't running")
         if name is None:
             name = self.name
         if name is None:
@@ -585,4 +561,4 @@ App, AioApp = synchronize_apis(_App)
 
 def is_local() -> bool:
     """Returns whether we're running in the cloud or not."""
-    return not get_container_app()
+    return not _container_app
