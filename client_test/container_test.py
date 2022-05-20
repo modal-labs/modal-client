@@ -62,7 +62,7 @@ def _run_container(servicer, module_name, function_name):
         return client, servicer.container_outputs
 
 
-def test_container_entrypoint_success(servicer, reset_global_apps, event_loop):
+def test_container_entrypoint_success(servicer, event_loop):
     t0 = time.time()
     client, outputs = _run_container(servicer, "modal._test_support", "square")
     assert 0 <= time.time() - t0 < EXTRA_TOLERANCE_DELAY
@@ -76,7 +76,7 @@ def test_container_entrypoint_success(servicer, reset_global_apps, event_loop):
 
 
 @skip_non_linux
-def test_container_entrypoint_async(servicer, reset_global_apps):
+def test_container_entrypoint_async(servicer):
     t0 = time.time()
     client, outputs = _run_container(servicer, "modal._test_support", "square_async")
     assert SLEEP_DELAY <= time.time() - t0 < SLEEP_DELAY + EXTRA_TOLERANCE_DELAY
@@ -90,7 +90,7 @@ def test_container_entrypoint_async(servicer, reset_global_apps):
 
 
 @skip_non_linux
-def test_container_entrypoint_sync_returning_async(servicer, reset_global_apps):
+def test_container_entrypoint_sync_returning_async(servicer):
     t0 = time.time()
     client, outputs = _run_container(servicer, "modal._test_support", "square_sync_returning_async")
     assert SLEEP_DELAY <= time.time() - t0 < SLEEP_DELAY + EXTRA_TOLERANCE_DELAY
@@ -104,7 +104,7 @@ def test_container_entrypoint_sync_returning_async(servicer, reset_global_apps):
 
 
 @skip_non_linux
-def test_container_entrypoint_failure(servicer, reset_global_apps):
+def test_container_entrypoint_failure(servicer):
     client, outputs = _run_container(servicer, "modal._test_support", "raises")
 
     assert len(outputs) == 1
