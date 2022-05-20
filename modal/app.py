@@ -100,6 +100,55 @@ class _RunningApp:
         object_id = await _include(self._client, self._app_id, app_name, tag, namespace)
         return Object.from_id(object_id, self)
 
+    async def _create_object(self, obj: Object, progress: Tree, existing_object_id: Optional[str] = None) -> str:
+        """Takes an object as input, create it, and return an object id."""
+        creating_message = obj.get_creating_message()
+        if creating_message is not None:
+            step_node = progress.add(step_progress(creating_message))
+
+        if isinstance(obj, Ref):
+            assert obj.app_name is not None
+            # A different app
+            object_id = await _include(self._client, self._app_id, obj.app_name, obj.tag, obj.namespace)
+
+        else:
+            # Create object
+            object_id = await obj.load(self, existing_object_id)
+            if existing_object_id is not None and object_id != existing_object_id:
+                # TODO(erikbern): this is a very ugly fix to a problem that's on the server side.
+                # Unlike every other object, images are not assigned random ids, but rather an
+                # id given by the hash of its contents. This means we can't _force_ an image to
+                # have a particular id. The better solution is probably to separate "images"
+                # from "image definitions" or something like that, but that's a big project.
+                if not existing_object_id.startswith("im-"):
+                    raise Exception(
+                        f"Tried creating an object using existing id {existing_object_id} but it has id {object_id}"
+                    )
+        if object_id is None:
+            raise Exception(f"object_id for object of type {type(obj)} is None")
+
+        if creating_message is not None:
+            created_message = obj.get_created_message()
+            assert created_message is not None
+            step_node.label = step_completed(created_message, is_substep=True)
+
+        return object_id
+
+    async def create_all_objects(self, blueprint: Blueprint, progress: Tree):
+        """Create objects that have been defined but not created on the server."""
+        # Instead of doing a topological sort here, we rely on a sort of dumb "trick".
+        # Functions are the only objects that "depend" on other objects, so we make sure
+        # they are built last. In the future we might have some more complicated structure
+        # where we actually have to model out the DAG
+        tags = [tag for tag, obj in blueprint.get_objects()]
+        tags.sort(key=lambda obj: obj.startswith("fu-"))
+        for tag in tags:
+            obj = blueprint.get_object(tag)
+            existing_object_id = self._tag_to_existing_id.get(tag)
+            logger.debug(f"Creating object {tag} with existing id {existing_object_id}")
+            object_id = await self._create_object(obj, progress, existing_object_id)
+            self._tag_to_object[tag] = Object.from_id(object_id, self)
+
 
 RunningApp, AioRunningApp = synchronize_apis(_RunningApp)
 
@@ -197,59 +246,6 @@ class _App:
 
         return self._running_app
 
-    # TODO: make this a helper function?
-    async def _create_object(self, obj: Object, progress: Tree, existing_object_id: Optional[str] = None) -> str:
-        """Takes an object as input, create it, and return an object id."""
-        creating_message = obj.get_creating_message()
-        if creating_message is not None:
-            step_node = progress.add(step_progress(creating_message))
-
-        if isinstance(obj, Ref):
-            assert obj.app_name is not None
-            # A different app
-            object_id = await _include(
-                self._running_app._client, self._running_app._app_id, obj.app_name, obj.tag, obj.namespace
-            )
-
-        else:
-            # Create object
-            object_id = await obj.load(self._running_app, existing_object_id)
-            if existing_object_id is not None and object_id != existing_object_id:
-                # TODO(erikbern): this is a very ugly fix to a problem that's on the server side.
-                # Unlike every other object, images are not assigned random ids, but rather an
-                # id given by the hash of its contents. This means we can't _force_ an image to
-                # have a particular id. The better solution is probably to separate "images"
-                # from "image definitions" or something like that, but that's a big project.
-                if not existing_object_id.startswith("im-"):
-                    raise Exception(
-                        f"Tried creating an object using existing id {existing_object_id} but it has id {object_id}"
-                    )
-        if object_id is None:
-            raise Exception(f"object_id for object of type {type(obj)} is None")
-
-        if creating_message is not None:
-            created_message = obj.get_created_message()
-            assert created_message is not None
-            step_node.label = step_completed(created_message, is_substep=True)
-
-        return object_id
-
-    # TODO(erikbern): This should just be a function from blueprint to running app
-    async def _create_all_objects(self, progress: Tree):
-        """Create objects that have been defined but not created on the server."""
-        # Instead of doing a topological sort here, we rely on a sort of dumb "trick".
-        # Functions are the only objects that "depend" on other objects, so we make sure
-        # they are built last. In the future we might have some more complicated structure
-        # where we actually have to model out the DAG
-        tags = [tag for tag, obj in self._blueprint.get_objects()]
-        tags.sort(key=lambda obj: obj.startswith("fu-"))
-        for tag in tags:
-            obj = self._blueprint.get_object(tag)
-            existing_object_id = self._running_app._tag_to_existing_id.get(tag)
-            logger.debug(f"Creating object {tag} with existing id {existing_object_id}")
-            object_id = await self._create_object(obj, progress, existing_object_id)
-            self._running_app._tag_to_object[tag] = Object.from_id(object_id, self)
-
     def __getitem__(self, tag: str):
         assert isinstance(tag, str)
         # TODO(erikbern): this should really be an app vs blueprint thing
@@ -311,7 +307,7 @@ class _App:
                 try:
                     progress = Tree(step_progress("Creating objects..."), guide_style="gray50")
                     with output_mgr.ctx_if_visible(output_mgr.make_live(progress)):
-                        await self._create_all_objects(progress)
+                        await self._running_app.create_all_objects(self._blueprint, progress)
                     progress.label = step_completed("Created objects.")
                     output_mgr.print_if_visible(progress)
 
