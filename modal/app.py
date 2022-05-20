@@ -168,6 +168,8 @@ class _RunningApp:
         ) in resp.object_ids.items():
             self._tag_to_object[tag] = Object.from_id(object_id, self)
 
+        return self
+
 
 RunningApp, AioRunningApp = synchronize_apis(_RunningApp)
 
