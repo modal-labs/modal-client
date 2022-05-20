@@ -9,7 +9,6 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import TaskContext, synchronize_apis, synchronizer
 from modal_utils.decorator_utils import decorator_with_options
 
-from ._blueprint import Blueprint
 from ._function_utils import FunctionInfo
 from ._output import OutputManager, step_completed, step_progress
 from .client import _Client
@@ -131,16 +130,16 @@ class _RunningApp:
 
         return object_id
 
-    async def create_all_objects(self, blueprint: Blueprint, progress: Tree):
+    async def create_all_objects(self, blueprint: Dict[str, Object], progress: Tree):
         """Create objects that have been defined but not created on the server."""
         # Instead of doing a topological sort here, we rely on a sort of dumb "trick".
         # Functions are the only objects that "depend" on other objects, so we make sure
         # they are built last. In the future we might have some more complicated structure
         # where we actually have to model out the DAG
-        tags = [tag for tag, obj in blueprint.get_objects()]
+        tags = list(blueprint.keys())
         tags.sort(key=lambda obj: obj.startswith("fu-"))
         for tag in tags:
-            obj = blueprint.get_object(tag)
+            obj = blueprint[tag]
             existing_object_id = self._tag_to_existing_id.get(tag)
             logger.debug(f"Creating object {tag} with existing id {existing_object_id}")
             object_id = await self._create_object(obj, progress, existing_object_id)
@@ -158,7 +157,7 @@ class _RunningApp:
         await self._client.stub.AppSetObjects(req_set)
 
         # Update all functions client-side to point to the running app
-        for tag, obj in blueprint.get_objects():
+        for obj in blueprint.values():
             if isinstance(obj, _Function):
                 obj.set_local_running_app(self)
 
@@ -249,12 +248,14 @@ class _App:
     In this example, both `foo`, the secret and the schedule are registered with the app.
     """
 
+    _blueprint: Dict[str, Object]
+
     def __init__(self, name=None, *, image=None):
         # TODO: we take a name in the app constructor, that can be different from the deployment name passed in later. Simplify this.
         self._name = name
         self.deployment_name = None
-        self._blueprint = Blueprint()
         self._image = image
+        self._blueprint = {}
         super().__init__()
 
     # needs to be a function since synchronicity hides other attributes.
@@ -276,7 +277,7 @@ class _App:
         return ref(None, tag)
 
     def __setitem__(self, tag, obj):
-        self._blueprint.register(tag, obj)
+        self._blueprint[tag] = obj
 
     def is_inside(self, image: Optional[Union[Ref, _Image]] = None):
         if not _is_container_app:
@@ -408,31 +409,31 @@ class _App:
     def _get_default_image(self):
         # TODO(erikbern): instead of writing this to the same namespace
         # as the user's objects, we could use sub-blueprints in the future
-        if not self._blueprint.has_object("_image"):
+        if "_image" not in self._blueprint:
             if self._image is None:
                 image = _DebianSlim()
             else:
                 image = self._image
-            self._blueprint.register("_image", image)
+            self._blueprint["_image"] = image
         return ref(None, "_image")
 
     def _get_function_mounts(self, raw_f):
         mounts = []
 
         # Create client mount
-        if not self._blueprint.has_object("_client_mount"):
+        if "_client_mount" not in self._blueprint:
             if config["sync_entrypoint"]:
                 client_mount = _create_client_mount()
             else:
                 client_mount = ref(MODAL_CLIENT_MOUNT_NAME, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
-            self._blueprint.register("_client_mount", client_mount)
+            self._blueprint["_client_mount"] = client_mount
         mounts.append(ref(None, "_client_mount"))
 
         # Create function mounts
         info = FunctionInfo(raw_f)
         for key, mount in info.get_mounts().items():
-            if not self._blueprint.has_object(key):
-                self._blueprint.register(key, mount)
+            if key not in self._blueprint:
+                self._blueprint[key] = mount
             mounts.append(ref(None, key))
 
         return mounts
@@ -469,7 +470,7 @@ class _App:
             serialized=serialized,
             mounts=mounts,
         )
-        self._blueprint.register(function.tag, function)
+        self._blueprint[function.tag] = function
         return function
 
     @decorator_with_options
@@ -502,7 +503,7 @@ class _App:
             serialized=serialized,
             mounts=mounts,
         )
-        self._blueprint.register(function.tag, function)
+        self._blueprint[function.tag] = function
         return function
 
     @decorator_with_options
@@ -534,7 +535,7 @@ class _App:
                 type=api_pb2.WEBHOOK_TYPE_ASGI_APP, wait_for_response=wait_for_response
             ),
         )
-        self._blueprint.register(function.tag, function)
+        self._blueprint[function.tag] = function
         return function
 
     @decorator_with_options
@@ -567,7 +568,7 @@ class _App:
                 type=api_pb2.WEBHOOK_TYPE_FUNCTION, method=method, wait_for_response=wait_for_response
             ),
         )
-        self._blueprint.register(function.tag, function)
+        self._blueprint[function.tag] = function
         return function
 
     async def interactive_shell(self, image_ref, cmd=None, mounts=[], secrets=[]):
