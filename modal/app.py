@@ -256,7 +256,6 @@ class _App:
         self.deployment_name = None
         self._blueprint = Blueprint()
         self._image = image
-        self._running_app = None
         super().__init__()
 
     # needs to be a function since synchronicity hides other attributes.
@@ -294,41 +293,35 @@ class _App:
 
     @synchronizer.asynccontextmanager
     async def _run(self, client, output_mgr, existing_app_id, last_log_entry_id=None):
-        # TOOD: use something smarter than checking for the .client to exists in order to prevent
-        # race conditions here!
-        try:
-            if existing_app_id is not None:
-                self._running_app = await _RunningApp.init_existing(client, existing_app_id)
-            else:
-                self._running_app = await _RunningApp.init_new(client, self.name)
+        if existing_app_id is not None:
+            running_app = await _RunningApp.init_existing(client, existing_app_id)
+        else:
+            running_app = await _RunningApp.init_new(client, self.name)
 
-            # Start tracking logs and yield context
-            async with TaskContext(grace=config["logs_timeout"]) as tc:
-                with output_mgr.ctx_if_visible(output_mgr.make_live(step_progress("Initializing..."))):
-                    live_task_status = output_mgr.make_live(step_progress("Running app..."))
-                    app_id = self._running_app.app_id
-                    tc.create_task(output_mgr.get_logs_loop(app_id, client, live_task_status, last_log_entry_id or ""))
-                output_mgr.print_if_visible(step_completed("Initialized."))
+        # Start tracking logs and yield context
+        async with TaskContext(grace=config["logs_timeout"]) as tc:
+            with output_mgr.ctx_if_visible(output_mgr.make_live(step_progress("Initializing..."))):
+                live_task_status = output_mgr.make_live(step_progress("Running app..."))
+                app_id = running_app.app_id
+                tc.create_task(output_mgr.get_logs_loop(app_id, client, live_task_status, last_log_entry_id or ""))
+            output_mgr.print_if_visible(step_completed("Initialized."))
 
-                try:
-                    # Create all members
-                    progress = Tree(step_progress("Creating objects..."), guide_style="gray50")
-                    with output_mgr.ctx_if_visible(output_mgr.make_live(progress)):
-                        await self._running_app.create_all_objects(self._blueprint, progress)
-                    progress.label = step_completed("Created objects.")
-                    output_mgr.print_if_visible(progress)
+            try:
+                # Create all members
+                progress = Tree(step_progress("Creating objects..."), guide_style="gray50")
+                with output_mgr.ctx_if_visible(output_mgr.make_live(progress)):
+                    await running_app.create_all_objects(self._blueprint, progress)
+                progress.label = step_completed("Created objects.")
+                output_mgr.print_if_visible(progress)
 
-                    # Yield to context
-                    with output_mgr.ctx_if_visible(live_task_status):
-                        yield self._running_app
+                # Yield to context
+                with output_mgr.ctx_if_visible(live_task_status):
+                    yield running_app
 
-                finally:
-                    await self._running_app.disconnect()
+            finally:
+                await running_app.disconnect()
 
-            output_mgr.print_if_visible(step_completed("App completed."))
-
-        finally:
-            self._running_app = None
+        output_mgr.print_if_visible(step_completed("App completed."))
 
     @synchronizer.asynccontextmanager
     async def _get_client(self, client=None):
