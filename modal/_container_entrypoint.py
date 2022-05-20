@@ -71,7 +71,7 @@ class _FunctionContext:
     async def initialize_app(self):
         _client = synchronizer._translate_in(self.client)  # make it a _Client object
         assert isinstance(_client, _Client)
-        self.running_app = await _RunningApp.container(_client, self.app_id, self.task_id)
+        self.running_app = await _RunningApp.init_container(_client, self.app_id, self.task_id)
 
     async def get_serialized_function(self) -> Callable:
         # Fetch the serialized function definition

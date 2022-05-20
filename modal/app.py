@@ -147,11 +147,30 @@ class _RunningApp:
             object_id = await self._create_object(obj, progress, existing_object_id)
             self._tag_to_object[tag] = Object.from_id(object_id, self)
 
+        # Create the app (and send a list of all tagged obs)
+        # TODO(erikbern): we should delete objects from a previous version that are no longer needed
+        # We just delete them from the app, but the actual objects will stay around
+        object_ids = {tag: obj.object_id for tag, obj in self._tag_to_object.items()}
+        req_set = api_pb2.AppSetObjectsRequest(
+            app_id=self._app_id,
+            object_ids=object_ids,
+            client_id=self._client.client_id,
+        )
+        await self._client.stub.AppSetObjects(req_set)
+
+    async def disconnect(self):
+        # Stop app server-side. This causes:
+        # 1. Server to kill any running task
+        # 2. Logs to drain (stopping the _get_logs_loop coroutine)
+        logger.debug("Stopping the app server-side")
+        req_disconnect = api_pb2.AppClientDisconnectRequest(app_id=self._app_id)
+        await self._client.stub.AppClientDisconnect(req_disconnect)
+
     def __getitem__(self, tag):
         return self._tag_to_object[tag]
 
     @staticmethod
-    async def container(client, app_id, task_id):
+    async def init_container(client, app_id, task_id):
         """Used by the container to bootstrap the app and all its objects."""
         # This is a bit of a hacky thing:
         global _container_app, _is_container_app
@@ -169,6 +188,21 @@ class _RunningApp:
             self._tag_to_object[tag] = Object.from_id(object_id, self)
 
         return self
+
+    @staticmethod
+    async def init_existing(client, existing_app_id):
+        # Get all the objects first
+        obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
+        obj_resp = await client.stub.AppGetObjects(obj_req)
+        return _RunningApp(client, existing_app_id, tag_to_existing_id=dict(obj_resp.object_ids))
+
+    @staticmethod
+    async def init_new(client, name):
+        # Start app
+        # TODO(erikbern): maybe this should happen outside of this method?
+        app_req = api_pb2.AppCreateRequest(client_id=client.client_id, name=name)
+        app_resp = await client.stub.AppCreate(app_req)
+        return _RunningApp(client, app_resp.app_id)
 
     @staticmethod
     def reset_container():
@@ -259,55 +293,30 @@ class _App:
         # race conditions here!
         try:
             if existing_app_id is not None:
-                # Get all the objects first
-                obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
-                obj_resp = await client.stub.AppGetObjects(obj_req)
-                app_id = existing_app_id
-                self._running_app = _RunningApp(client, app_id, tag_to_existing_id=dict(obj_resp.object_ids))
+                self._running_app = await _RunningApp.init_existing(client, existing_app_id)
             else:
-                # Start app
-                # TODO(erikbern): maybe this should happen outside of this method?
-                app_req = api_pb2.AppCreateRequest(client_id=client.client_id, name=self.name)
-                app_resp = await client.stub.AppCreate(app_req)
-                app_id = app_resp.app_id
-                self._running_app = _RunningApp(client, app_id)
+                self._running_app = await _RunningApp.init_new(client, self.name)
 
             # Start tracking logs and yield context
             async with TaskContext(grace=config["logs_timeout"]) as tc:
                 with output_mgr.ctx_if_visible(output_mgr.make_live(step_progress("Initializing..."))):
                     live_task_status = output_mgr.make_live(step_progress("Running app..."))
+                    app_id = self._running_app.app_id
                     tc.create_task(output_mgr.get_logs_loop(app_id, client, live_task_status, last_log_entry_id or ""))
                 output_mgr.print_if_visible(step_completed("Initialized."))
 
                 try:
+                    # Create all members
                     progress = Tree(step_progress("Creating objects..."), guide_style="gray50")
                     with output_mgr.ctx_if_visible(output_mgr.make_live(progress)):
                         await self._running_app.create_all_objects(self._blueprint, progress)
                     progress.label = step_completed("Created objects.")
                     output_mgr.print_if_visible(progress)
-
-                    # Create all members
                     with output_mgr.ctx_if_visible(live_task_status):
-                        # Create the app (and send a list of all tagged obs)
-                        # TODO(erikbern): we should delete objects from a previous version that are no longer needed
-                        # We just delete them from the app, but the actual objects will stay around
-                        object_ids = {tag: obj.object_id for tag, obj in self._running_app._tag_to_object.items()}
-                        req_set = api_pb2.AppSetObjectsRequest(
-                            app_id=app_id,
-                            object_ids=object_ids,
-                            client_id=client.client_id,
-                        )
-                        await client.stub.AppSetObjects(req_set)
-
                         yield self._running_app
 
                 finally:
-                    # Stop app server-side. This causes:
-                    # 1. Server to kill any running task
-                    # 2. Logs to drain (stopping the _get_logs_loop coroutine)
-                    logger.debug("Stopping the app server-side")
-                    req_disconnect = api_pb2.AppClientDisconnectRequest(app_id=app_id)
-                    await client.stub.AppClientDisconnect(req_disconnect)
+                    await self._running_app.disconnect()
 
             output_mgr.print_if_visible(step_completed("App completed."))
 
