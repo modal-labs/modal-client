@@ -345,10 +345,10 @@ class _Function(Object, type_prefix="fu"):
         object_id = running_app[self.tag].object_id
         return (running_app, object_id)
 
-    async def map(self, inputs, window, kwargs, is_generator):
+    async def map(self, inputs, window=100, kwargs={}):
         running_app, object_id = self._get_context()
         input_stream = stream.iterate(inputs) | pipe.map(lambda arg: (arg,))
-        async for item in _MapInvocation(object_id, input_stream, kwargs, running_app, is_generator):
+        async for item in _MapInvocation(object_id, input_stream, kwargs, running_app, self.is_generator):
             yield item
 
     async def call_function(self, args, kwargs):
