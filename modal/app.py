@@ -24,27 +24,6 @@ from .schedule import Schedule
 from .secret import _Secret
 
 
-async def _include(client: _Client, app_id: str, app_name: str, tag: Optional[str], namespace):
-    """Internal method to resolve to an object id."""
-    request = api_pb2.AppIncludeObjectRequest(
-        app_id=app_id,
-        name=app_name,  # TODO: update the protobuf field name
-        object_label=tag,  # TODO: update the protobuf field name
-        namespace=namespace,
-    )
-    response = await client.stub.AppIncludeObject(request)
-    if not response.object_id:
-        obj_repr = app_name
-        if tag is not None:
-            obj_repr += f".{tag}"
-        if namespace != api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT:
-            obj_repr += f" (namespace {api_pb2.DeploymentNamespace.Name(namespace)})"
-        # TODO: disambiguate between app not found and object not found?
-        err_msg = f"Could not find object {obj_repr}"
-        raise NotFoundError(err_msg, obj_repr)
-    return response.object_id
-
-
 class _RunningApp:
     _tag_to_object: Dict[str, Object]
     _tag_to_existing_id: Dict[str, str]
@@ -84,7 +63,7 @@ class _RunningApp:
 
         if obj.app_name is not None:
             # A different app
-            object_id = await _include(self._client, self._app_id, obj.app_name, obj.tag, obj.namespace)
+            object_id = await self._include(obj.app_name, obj.tag, obj.namespace)
         else:
             # Same app, an object that was created earlier
             obj = self._tag_to_object[obj.tag]
@@ -93,9 +72,29 @@ class _RunningApp:
         assert object_id
         return object_id
 
+    async def _include(self, app_name: str, tag: Optional[str], namespace):
+        """Internal method to resolve to an object id."""
+        request = api_pb2.AppIncludeObjectRequest(
+            app_id=self._app_id,
+            name=app_name,  # TODO: update the protobuf field name
+            object_label=tag,  # TODO: update the protobuf field name
+            namespace=namespace,
+        )
+        response = await self._client.stub.AppIncludeObject(request)
+        if not response.object_id:
+            obj_repr = app_name
+            if tag is not None:
+                obj_repr += f".{tag}"
+            if namespace != api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT:
+                obj_repr += f" (namespace {api_pb2.DeploymentNamespace.Name(namespace)})"
+            # TODO: disambiguate between app not found and object not found?
+            err_msg = f"Could not find object {obj_repr}"
+            raise NotFoundError(err_msg, obj_repr)
+        return response.object_id
+
     async def include(self, app_name, tag=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
         """Looks up an object and return a newly constructed one."""
-        object_id = await _include(self._client, self._app_id, app_name, tag, namespace)
+        object_id = await self._include(app_name, tag, namespace)
         return Object.from_id(object_id, self)
 
     async def _create_object(self, obj: Object, progress: Tree, existing_object_id: Optional[str] = None) -> str:
@@ -107,7 +106,7 @@ class _RunningApp:
         if isinstance(obj, Ref):
             assert obj.app_name is not None
             # A different app
-            object_id = await _include(self._client, self._app_id, obj.app_name, obj.tag, obj.namespace)
+            object_id = await self._include(obj.app_name, obj.tag, obj.namespace)
 
         else:
             # Create object
