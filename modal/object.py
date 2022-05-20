@@ -36,10 +36,9 @@ class Object(metaclass=ObjectMeta):
 
     async def create(self, running_app=None):
         if running_app is None:
-            app = get_container_app()
-            if app is None:
+            running_app = get_container_app()
+            if running_app is None:
                 raise InvalidError(".create must be passed the app explicitly if not running in a container")
-            running_app = app._running_app
         object_id = await self.load(running_app, None)
         return Object.from_id(object_id, running_app)
 

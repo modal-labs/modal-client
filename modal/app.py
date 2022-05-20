@@ -149,6 +149,19 @@ class _RunningApp:
             object_id = await self._create_object(obj, progress, existing_object_id)
             self._tag_to_object[tag] = Object.from_id(object_id, self)
 
+    async def initialize_container(self, task_id):
+        """Used by the container to bootstrap the app and all its objects."""
+        req = api_pb2.AppGetObjectsRequest(app_id=self._app_id, task_id=task_id)
+        resp = await self._client.stub.AppGetObjects(req)
+        for (
+            tag,
+            object_id,
+        ) in resp.object_ids.items():
+            self._tag_to_object[tag] = Object.from_id(object_id, self)
+
+        # Register this as a singleton
+        set_container_app(self)
+
 
 RunningApp, AioRunningApp = synchronize_apis(_RunningApp)
 
@@ -179,26 +192,7 @@ class _App:
     In this example, both `foo`, the secret and the schedule are registered with the app.
     """
 
-    @classmethod
-    def _initialize_container_app(cls):
-        set_container_app(super().__new__(cls))
-
-    def __new__(cls, *args, **kwargs):
-        singleton = get_container_app()
-        if singleton is not None and cls == _App:
-            # If there's a singleton app, just return it for everything
-            assert isinstance(singleton, cls)
-            return singleton
-        else:
-            # Refer to the normal constructor
-            app = super().__new__(cls)
-            return app
-
     def __init__(self, name=None, *, image=None):
-        if "_initialized" in self.__dict__:
-            return  # Prevent re-initialization with the singleton
-
-        self._initialized = True
         # TODO: we take a name in the app constructor, that can be different from the deployment name passed in later. Simplify this.
         self._name = name
         self.deployment_name = None
@@ -228,23 +222,6 @@ class _App:
         script_filename = os.path.split(sys.argv[0])[-1]
         args = [script_filename] + sys.argv[1:]
         return " ".join(args)
-
-    async def _initialize_container(self, app_id, client, task_id):
-        """Used by the container to bootstrap the app and all its objects."""
-        req = api_pb2.AppGetObjectsRequest(app_id=app_id, task_id=task_id)
-        resp = await client.stub.AppGetObjects(req)
-        tag_to_object = {}
-        for (
-            tag,
-            object_id,
-        ) in resp.object_ids.items():
-            tag_to_object[tag] = Object.from_id(object_id, self)
-
-        # In the container, run forever
-        self._running_app = _RunningApp(client, app_id, tag_to_object)
-        self.state = AppState.RUNNING
-
-        return self._running_app
 
     def __getitem__(self, tag: str):
         assert isinstance(tag, str)

@@ -2,25 +2,8 @@ import pytest
 
 import modal.exception
 from modal import App
-from modal._app_state import AppState
 from modal.aio import AioApp, AioQueue, AioRunningApp
-from modal.app import _App
 from modal.exception import NotFoundError
-
-
-def test_app(reset_global_apps):
-    app_a = _App()
-    app_b = _App()
-    assert app_a != app_b
-
-
-def test_common_app(reset_global_apps):
-    _App._initialize_container_app()
-    app_a = _App()
-    app_a.state = AppState.RUNNING  # Dummy to make sure constructor isn't run twice
-    app_b = _App()
-    assert app_a == app_b
-    assert app_b.state == AppState.RUNNING
 
 
 @pytest.mark.asyncio

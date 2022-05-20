@@ -2,7 +2,7 @@
 # the Object class needs to get the app singleton, but app.py imports object.py
 # Let's figure out a cleaner way to do this later, this is just a stopgap thing.
 
-_container_app = None
+_container_app = None  # RunningApp
 
 
 def get_container_app():
