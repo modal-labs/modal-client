@@ -14,6 +14,7 @@ from google.protobuf.empty_pb2 import Empty
 from grpc import StatusCode
 from grpc.aio import ServicerContext
 
+from modal.app import _RunningApp
 from modal.client import AioClient, Client
 from modal.image import _dockerhub_python_version
 from modal.mount import MODAL_CLIENT_MOUNT_NAME
@@ -340,3 +341,11 @@ def mock_blob_upload_file():
 
     with mock.patch("modal._blob_utils.blob_upload_file", mock_blob_upload):
         yield blobs
+
+
+@pytest.fixture(autouse=True)
+def reset_container_app():
+    try:
+        yield
+    finally:
+        _RunningApp.reset_container()

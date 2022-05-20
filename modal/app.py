@@ -170,6 +170,11 @@ class _RunningApp:
 
         return self
 
+    @staticmethod
+    def reset_container():
+        global _is_container_app
+        _is_container_app = False
+
 
 RunningApp, AioRunningApp = synchronize_apis(_RunningApp)
 
