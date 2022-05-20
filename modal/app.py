@@ -238,9 +238,9 @@ class _App:
         if not _is_container_app:
             return False
         if image is None:
-            obj = self._running_app._tag_to_object.get("_image")
+            obj = _container_app._tag_to_object.get("_image")
         elif isinstance(image, Ref):
-            obj = self._running_app._tag_to_object.get(image.tag)
+            obj = _container_app._tag_to_object.get(image.tag)
         elif isinstance(image, _Image):
             obj = image
         assert isinstance(obj, _Image)
