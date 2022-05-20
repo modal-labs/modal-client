@@ -154,7 +154,8 @@ class _RunningApp:
     async def container(client, app_id, task_id):
         """Used by the container to bootstrap the app and all its objects."""
         # This is a bit of a hacky thing:
-        global _container_app
+        global _container_app, _is_container_app
+        _is_container_app = True
         self = _container_app
         self._client = client
         self._app_id = app_id
@@ -170,6 +171,7 @@ class _RunningApp:
 
 RunningApp, AioRunningApp = synchronize_apis(_RunningApp)
 
+_is_container_app = False
 _container_app = _RunningApp(None, None)
 container_app, aio_container_app = synchronize_apis(_container_app)
 assert isinstance(container_app, RunningApp)
@@ -233,7 +235,7 @@ class _App:
         self._blueprint.register(tag, obj)
 
     def is_inside(self, image: Optional[Union[Ref, _Image]] = None):
-        if _get_container_app:
+        if not _is_container_app:
             return False
         if image is None:
             obj = self._running_app._tag_to_object.get("_image")
@@ -569,4 +571,4 @@ App, AioApp = synchronize_apis(_App)
 
 def is_local() -> bool:
     """Returns whether we're running in the cloud or not."""
-    return not _container_app
+    return not _is_container_app

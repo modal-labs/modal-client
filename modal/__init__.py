@@ -1,5 +1,4 @@
-from .app import App, RunningApp, is_local
-from .app_singleton import container_app
+from .app import App, RunningApp, container_app, is_local
 from .dict import Dict
 from .functions import Function
 from .image import DebianSlim, DockerhubImage, Image
