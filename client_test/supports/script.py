@@ -6,7 +6,6 @@ import b.c  # noqa
 import six  # noqa
 
 from modal._function_utils import FunctionInfo
-from modal.app import _App
 
 
 def f():
@@ -15,8 +14,6 @@ def f():
 
 async def get_files():
     fn_info = FunctionInfo(f)
-
-    app = _App()
 
     for _, mount in fn_info.get_mounts().items():
         async for file_info in mount._get_files():
