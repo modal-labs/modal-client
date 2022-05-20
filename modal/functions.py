@@ -260,6 +260,8 @@ class _Function(Object, type_prefix="fu"):
         self.web_url = None
         self.tag = self.info.get_tag()
         self.deployment_name = deployment_name
+        self._local_running_app = None
+        self._local_object_id = None
         super().__init__()
 
     def get_creating_message(self) -> str:
@@ -326,70 +328,64 @@ class _Function(Object, type_prefix="fu"):
 
         return response.function_id
 
+    def set_local_running_app(self, running_app):
+        self._local_running_app = running_app
+
+    def _get_context(self):
+        # Functions are sort of "special" in the sense that they are just global objects not attached to an app
+        # the way other objects are. So in order to work with functions, we need to look up the running app
+        # in runtime. Either we're inside a container, in which case it's a singleton, or we're in the client,
+        # in which case we can set the running app on all functions when we run the app.
+        from .app import _container_app, is_local  # avoid circular import
+
+        if is_local():
+            running_app = self._local_running_app
+        else:
+            running_app = _container_app
+        object_id = running_app[self.tag].object_id
+        return (running_app, object_id)
+
     async def map(self, inputs, window, kwargs, is_generator):
+        running_app, object_id = self._get_context()
         input_stream = stream.iterate(inputs) | pipe.map(lambda arg: (arg,))
-        async for item in _MapInvocation(self.object_id, input_stream, kwargs, self._running_app, is_generator):
+        async for item in _MapInvocation(object_id, input_stream, kwargs, running_app, is_generator):
             yield item
 
     async def call_function(self, args, kwargs):
-        invocation = await _Invocation.create(self.object_id, args, kwargs, self._running_app)
+        running_app, object_id = self._get_context()
+        invocation = await _Invocation.create(object_id, args, kwargs, running_app)
         return await invocation.run_function()
 
     async def call_function_nowait(self, args, kwargs):
-        await _Invocation.create(self.object_id, args, kwargs, self._running_app)
+        running_app, object_id = self._get_context()
+        await _Invocation.create(object_id, args, kwargs, running_app)
 
     async def call_generator(self, args, kwargs):
-        invocation = await _Invocation.create(self.object_id, args, kwargs, self._running_app)
+        running_app, object_id = self._get_context()
+        invocation = await _Invocation.create(object_id, args, kwargs, running_app)
         async for res in invocation.run_generator():
             yield res
 
     async def call_generator_nowait(self, args, kwargs):
-        await _Invocation.create(self.object_id, args, kwargs, self._running_app)
-
-
-class _FunctionProxy:
-    """This class represents a decorated function."""
-
-    def __init__(self, orig_function, app, tag):
-        # Need to store a reference to the unitialized function that has the contructor args
-        self._orig_function = orig_function
-        self._app = app
-        self._tag = tag
-
-    def _get_function(self):
-        # TODO(erikbern): this is incredibly hacky. Just doing this to kick the can down the road by about a day
-        from .app import _container_app, _is_container_app
-
-        if _is_container_app:
-            return _container_app[self._tag]
-        else:
-            return self._app._running_app[self._tag]
-
-    async def map(self, inputs, window=100, kwargs={}):
-        async for it in self._get_function().map(inputs, window, kwargs, self._orig_function.is_generator):
-            yield it
+        running_app, object_id = self._get_context()
+        await _Invocation.create(object_id, args, kwargs, running_app)
 
     def __call__(self, *args, **kwargs):
-        if self._orig_function.is_generator:
-            return self._get_function().call_generator(args, kwargs)
+        if self.is_generator:
+            return self.call_generator(args, kwargs)
         else:
-            return self._get_function().call_function(args, kwargs)
+            return self.call_function(args, kwargs)
 
     async def enqueue(self, *args, **kwargs):
         """Calls the function with the given arguments without waiting for the results"""
-        if self._orig_function.is_generator:
-            await self._get_function().call_generator_nowait(args, kwargs)
+        if self.is_generator:
+            await self.call_generator_nowait(args, kwargs)
         else:
-            await self._get_function().call_function_nowait(args, kwargs)
+            await self.call_function_nowait(args, kwargs)
 
     def get_raw_f(self):
         """Use by the container to get the code for the function."""
-        return self._orig_function.raw_f
-
-    @property
-    def object_id(self):
-        return self._get_function().object_id
+        return self.raw_f
 
 
-# Note that we rename these
-Function, AioFunction = synchronize_apis(_FunctionProxy)
+Function, AioFunction = synchronize_apis(_Function)

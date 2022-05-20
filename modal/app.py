@@ -15,7 +15,7 @@ from ._output import OutputManager, step_completed, step_progress
 from .client import _Client
 from .config import config, logger
 from .exception import InvalidError, NotFoundError
-from .functions import _Function, _FunctionProxy
+from .functions import _Function
 from .image import _DebianSlim, _Image
 from .mount import MODAL_CLIENT_MOUNT_NAME, _create_client_mount, _Mount
 from .object import Object, Ref, ref
@@ -156,6 +156,12 @@ class _RunningApp:
             client_id=self._client.client_id,
         )
         await self._client.stub.AppSetObjects(req_set)
+
+        # Update all functions client-side to point to the running app
+        for tag, obj in blueprint.get_objects():
+            created_obj = self._tag_to_object[tag]
+            if isinstance(created_obj, _Function):
+                obj.set_local_running_app(self)
 
     async def disconnect(self):
         # Stop app server-side. This causes:
@@ -311,6 +317,8 @@ class _App:
                         await self._running_app.create_all_objects(self._blueprint, progress)
                     progress.label = step_completed("Created objects.")
                     output_mgr.print_if_visible(progress)
+
+                    # Yield to context
                     with output_mgr.ctx_if_visible(live_task_status):
                         yield self._running_app
 
@@ -405,11 +413,6 @@ class _App:
                 await client.stub.AppDeploy(deploy_req)
                 return running_app._app_id
 
-    def _register_function(self, function):
-        self._blueprint.register(function.tag, function)
-        function_proxy = _FunctionProxy(function, self, function.tag)
-        return function_proxy
-
     def _get_default_image(self):
         # TODO(erikbern): instead of writing this to the same namespace
         # as the user's objects, we could use sub-blueprints in the future
@@ -474,7 +477,8 @@ class _App:
             serialized=serialized,
             mounts=mounts,
         )
-        return self._register_function(function)
+        self._blueprint.register(function.tag, function)
+        return function
 
     @decorator_with_options
     def generator(
@@ -506,7 +510,8 @@ class _App:
             serialized=serialized,
             mounts=mounts,
         )
-        return self._register_function(function)
+        self._blueprint.register(function.tag, function)
+        return function
 
     @decorator_with_options
     def asgi(
@@ -537,7 +542,8 @@ class _App:
                 type=api_pb2.WEBHOOK_TYPE_ASGI_APP, wait_for_response=wait_for_response
             ),
         )
-        return self._register_function(function)
+        self._blueprint.register(function.tag, function)
+        return function
 
     @decorator_with_options
     def webhook(
@@ -569,7 +575,8 @@ class _App:
                 type=api_pb2.WEBHOOK_TYPE_FUNCTION, method=method, wait_for_response=wait_for_response
             ),
         )
-        return self._register_function(function)
+        self._blueprint.register(function.tag, function)
+        return function
 
     async def interactive_shell(self, image_ref, cmd=None, mounts=[], secrets=[]):
         """Run `cmd` interactively within this image. Similar to `docker run -it --entrypoint={cmd}`.
