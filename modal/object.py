@@ -34,12 +34,13 @@ class Object(metaclass=ObjectMeta):
         return obj
 
     async def create(self, running_app=None):
-        if running_app is None:
-            from .app import _container_app  # avoid circular import
+        from .app import _container_app, _RunningApp  # avoid circular import
 
+        if running_app is None:
             running_app = _container_app
             if running_app is None:
                 raise InvalidError(".create must be passed the app explicitly if not running in a container")
+        assert isinstance(running_app, _RunningApp)
         object_id = await self.load(running_app, None)
         return Object.from_id(object_id, running_app)
 
