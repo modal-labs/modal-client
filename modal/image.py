@@ -146,7 +146,7 @@ def _DebianSlim(
     ] = [],  # List of Modal secrets that will be available as environment variables during the build process
     version: Optional[str] = None,  # Custom string to break the image hashing and force the image to be rebuilt
 ):
-    """A default base image, built on the official python:<version>-slim-bullseye Docker hub images
+    """A default base image, built on the official python:x.y.z-slim-bullseye Docker hub images
 
     Can also be called as a function to build a new image with additional bash
     commands or python packages.
