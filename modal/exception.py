@@ -19,9 +19,7 @@ class VersionError(Exception):
 
 
 class NotFoundError(Exception):
-    def __init__(self, msg, obj_repr):
-        super(NotFoundError, self).__init__(msg)
-        self.obj_repr = obj_repr
+    pass
 
 
 class ExecutionError(Exception):

@@ -284,11 +284,7 @@ class _Function(Object, type_prefix="fu"):
             try:
                 secret_id = await running_app.lookup(secret)
             except NotFoundError as ex:
-                raise NotFoundError(
-                    f"Could not find secret {ex.obj_repr}\n"
-                    + "You can add secrets to your account at https://modal.com/secrets",
-                    ex.obj_repr,
-                )
+                raise NotFoundError(str(ex) + "\n" + "You can add secrets to your account at https://modal.com/secrets")
             secret_ids.append(secret_id)
 
         mount_ids = await asyncio.gather(*(running_app.lookup(mount) for mount in self.mounts))

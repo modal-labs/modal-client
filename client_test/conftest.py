@@ -154,11 +154,11 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self, request: api_pb2.AppIncludeObjectRequest, context: ServicerContext
     ) -> api_pb2.AppIncludeObjectResponse:
         object_id = None
-        app_id = self.deployed_apps.get(request.name)
+        app_id = self.deployed_apps.get(request.app_name)
         if app_id is not None:
             app_objects = self.app_objects[app_id]
-            if request.object_label:
-                object_id = app_objects.get(request.object_label)
+            if request.object_tag:
+                object_id = app_objects.get(request.object_tag)
             else:
                 (object_id,) = list(app_objects.values())
         return api_pb2.AppIncludeObjectResponse(object_id=object_id)
