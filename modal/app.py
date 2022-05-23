@@ -75,20 +75,13 @@ class _RunningApp:
         """Internal method to resolve to an object id."""
         request = api_pb2.AppIncludeObjectRequest(
             app_id=self._app_id,
-            name=app_name,  # TODO: update the protobuf field name
-            object_label=tag,  # TODO: update the protobuf field name
+            app_name=app_name,
+            object_tag=tag,
             namespace=namespace,
         )
         response = await self._client.stub.AppIncludeObject(request)
         if not response.object_id:
-            obj_repr = app_name
-            if tag is not None:
-                obj_repr += f".{tag}"
-            if namespace != api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT:
-                obj_repr += f" (namespace {api_pb2.DeploymentNamespace.Name(namespace)})"
-            # TODO: disambiguate between app not found and object not found?
-            err_msg = f"Could not find object {obj_repr}"
-            raise NotFoundError(err_msg, obj_repr)
+            raise NotFoundError(response.error_message)
         return response.object_id
 
     async def include(self, app_name, tag=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):

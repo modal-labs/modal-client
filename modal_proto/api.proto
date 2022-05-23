@@ -120,12 +120,13 @@ message AppDeployRequest {
 message AppIncludeObjectRequest {
   string app_id = 1;
   DeploymentNamespace namespace = 2;
-  string name = 3;
-  string object_label = 4;
+  string app_name = 3;
+  string object_tag = 4;
 }
 
 message AppIncludeObjectResponse {
   string object_id = 1;
+  string error_message = 2;
 }
 
 message AppDetachRequest {
