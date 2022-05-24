@@ -58,6 +58,8 @@ class _FunctionContext:
         self.client = client
         self.start_time = time.time()
         self.calls_completed = 0
+        self._client = synchronizer._translate_in(self.client)  # make it a _Client object
+        assert isinstance(self._client, _Client)
 
     @synchronizer.asynccontextmanager
     async def send_outputs(self):
@@ -69,9 +71,7 @@ class _FunctionContext:
             await self.output_queue.put((None, None))
 
     async def initialize_app(self):
-        _client = synchronizer._translate_in(self.client)  # make it a _Client object
-        assert isinstance(_client, _Client)
-        self.running_app = await _RunningApp.init_container(_client, self.app_id, self.task_id)
+        await _RunningApp.init_container(self._client, self.app_id, self.task_id)
 
     async def get_serialized_function(self) -> Callable:
         # Fetch the serialized function definition
@@ -88,7 +88,7 @@ class _FunctionContext:
         return serialize(obj)
 
     def deserialize(self, data: bytes) -> Any:
-        return deserialize(data, self.running_app)
+        return deserialize(data, self._client)
 
     async def populate_input_blobs(self, item):
         args = await blob_download(item.args_blob_id, self.client.stub)
