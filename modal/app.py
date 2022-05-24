@@ -73,13 +73,12 @@ class _RunningApp:
 
     async def _include(self, app_name: str, tag: Optional[str], namespace):
         """Internal method to resolve to an object id."""
-        request = api_pb2.AppIncludeObjectRequest(
-            app_id=self._app_id,
+        request = api_pb2.AppLookupObjectRequest(
             app_name=app_name,
             object_tag=tag,
             namespace=namespace,
         )
-        response = await self._client.stub.AppIncludeObject(request)
+        response = await self._client.stub.AppLookupObject(request)
         if not response.object_id:
             raise NotFoundError(response.error_message)
         return response.object_id

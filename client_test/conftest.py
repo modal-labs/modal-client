@@ -150,9 +150,9 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     ) -> api_pb2.AppGetByDeploymentNameResponse:
         return api_pb2.AppGetByDeploymentNameResponse(app_id=self.deployed_apps.get(request.name))
 
-    async def AppIncludeObject(
-        self, request: api_pb2.AppIncludeObjectRequest, context: ServicerContext
-    ) -> api_pb2.AppIncludeObjectResponse:
+    async def AppLookupObject(
+        self, request: api_pb2.AppLookupObjectRequest, context: ServicerContext
+    ) -> api_pb2.AppLookupObjectResponse:
         object_id = None
         app_id = self.deployed_apps.get(request.app_name)
         if app_id is not None:
@@ -161,7 +161,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
                 object_id = app_objects.get(request.object_tag)
             else:
                 (object_id,) = list(app_objects.values())
-        return api_pb2.AppIncludeObjectResponse(object_id=object_id)
+        return api_pb2.AppLookupObjectResponse(object_id=object_id)
 
     async def MountCreate(
         self,

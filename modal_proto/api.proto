@@ -117,14 +117,13 @@ message AppDeployRequest {
   string name = 3;
 }
 
-message AppIncludeObjectRequest {
-  string app_id = 1;
+message AppLookupObjectRequest {
   DeploymentNamespace namespace = 2;
   string app_name = 3;
   string object_tag = 4;
 }
 
-message AppIncludeObjectResponse {
+message AppLookupObjectResponse {
   string object_id = 1;
   string error_message = 2;
 }
@@ -541,7 +540,8 @@ service ModalClient {
   rpc AppGetLogs(AppGetLogsRequest) returns (stream TaskLogsBatch);
   rpc AppSetObjects(AppSetObjectsRequest) returns (google.protobuf.Empty);
   rpc AppGetObjects(AppGetObjectsRequest) returns (AppGetObjectsResponse);
-  rpc AppIncludeObject(AppIncludeObjectRequest) returns (AppIncludeObjectResponse);
+  rpc AppIncludeObject(AppLookupObjectRequest) returns (AppLookupObjectResponse) { option deprecated = true; }
+  rpc AppLookupObject(AppLookupObjectRequest) returns (AppLookupObjectResponse);
   rpc AppDeploy(AppDeployRequest) returns (google.protobuf.Empty);
   rpc AppDetach(AppDetachRequest) returns (google.protobuf.Empty);
   rpc AppGetByDeploymentName(AppGetByDeploymentNameRequest) returns (AppGetByDeploymentNameResponse);
