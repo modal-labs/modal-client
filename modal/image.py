@@ -43,7 +43,7 @@ class _Image(Object, type_prefix="im"):
 
     async def load(self, running_app, existing_image_id):
         # Recursively build base images
-        base_image_ids = await asyncio.gather(*(running_app.lookup(image) for image in self._base_images.values()))
+        base_image_ids = await asyncio.gather(*(running_app.resolve(image) for image in self._base_images.values()))
         base_images_pb2s = [
             api_pb2.BaseImage(docker_tag=docker_tag, image_id=image_id)
             for docker_tag, image_id in zip(self._base_images.keys(), base_image_ids)
@@ -52,7 +52,7 @@ class _Image(Object, type_prefix="im"):
         secret_ids = []
         for secret in self._secrets:
             try:
-                secret_id = await running_app.lookup(secret)
+                secret_id = await running_app.resolve(secret)
             except NotFoundError as ex:
                 raise NotFoundError(str(ex) + "\n" + "You can add secrets to your account at https://modal.com/secrets")
             secret_ids.append(secret_id)

@@ -27,5 +27,6 @@ __all__ = [
     "Secret",
     "container_app",
     "is_local",
+    "lookup",
     "ref",
 ]

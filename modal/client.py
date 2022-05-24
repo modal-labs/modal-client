@@ -18,6 +18,8 @@ HEARTBEAT_INTERVAL = 3.0
 
 
 class _Client:
+    _client_from_env = None
+
     def __init__(
         self,
         server_url,
@@ -131,7 +133,10 @@ class _Client:
         return self._client_id
 
     @classmethod
-    def from_env(cls):
+    def from_env(cls) -> "_Client":
+        if cls._client_from_env:
+            return cls._client_from_env
+
         server_url = config["server_url"]
         token_id = config["token_id"]
         token_secret = config["token_secret"]
@@ -148,8 +153,8 @@ class _Client:
             client_type = api_pb2.CLIENT_TYPE_CLIENT
             credentials = None
 
-        client = _Client(server_url, client_type, credentials)
-        return client
+        cls._client_from_env = _Client(server_url, client_type, credentials)
+        return cls._client_from_env
 
 
 Client, AioClient = synchronize_apis(_Client)

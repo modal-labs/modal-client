@@ -1,6 +1,7 @@
 import asyncio
 import os
 import sys
+import warnings
 from typing import Collection, Dict, Optional, Union
 
 from rich.tree import Tree
@@ -21,6 +22,34 @@ from .object import Object, Ref, ref
 from .rate_limit import RateLimit
 from .schedule import Schedule
 from .secret import _Secret
+
+
+async def _lookup_to_id(app_name: str, tag: str, namespace, client: _Client) -> str:
+    """Internal method to resolve to an object id."""
+    request = api_pb2.AppLookupObjectRequest(
+        app_name=app_name,
+        object_tag=tag,
+        namespace=namespace,
+    )
+    response = await client.stub.AppLookupObject(request)
+    if not response.object_id:
+        raise NotFoundError(response.error_message)
+    return response.object_id
+
+
+async def _lookup(
+    app_name: str,
+    tag: Optional[str] = None,
+    namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT,
+    client: Optional[_Client] = None,
+) -> Object:
+    if client is None:
+        client = _Client.from_env()
+    object_id = await _lookup_to_id(app_name, tag, namespace, client)
+    return Object.from_id(object_id, client)
+
+
+lookup, aio_lookup = synchronize_apis(_lookup)
 
 
 class _RunningApp:
@@ -49,9 +78,10 @@ class _RunningApp:
     def app_id(self):
         return self._app_id
 
-    async def lookup(self, obj: Object) -> str:
+    async def resolve(self, obj: Object) -> str:
         """Takes a Ref object and looks up its id.
 
+        This is used internally by objects during app startup.
         It's either an object defined locally on this app, or one defined on a separate app
         """
         if not isinstance(obj, Ref):
@@ -62,7 +92,7 @@ class _RunningApp:
 
         if obj.app_name is not None:
             # A different app
-            object_id = await self._include(obj.app_name, obj.tag, obj.namespace)
+            object_id = await _lookup_to_id(obj.app_name, obj.tag, obj.namespace, self.client)
         else:
             # Same app, an object that was created earlier
             obj = self._tag_to_object[obj.tag]
@@ -71,22 +101,10 @@ class _RunningApp:
         assert object_id
         return object_id
 
-    async def _include(self, app_name: str, tag: Optional[str], namespace):
-        """Internal method to resolve to an object id."""
-        request = api_pb2.AppLookupObjectRequest(
-            app_name=app_name,
-            object_tag=tag,
-            namespace=namespace,
-        )
-        response = await self._client.stub.AppLookupObject(request)
-        if not response.object_id:
-            raise NotFoundError(response.error_message)
-        return response.object_id
-
     async def include(self, app_name, tag=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
         """Looks up an object and return a newly constructed one."""
-        object_id = await self._include(app_name, tag, namespace)
-        return Object.from_id(object_id, self._client)
+        warnings.warn("RunningApp.include is deprecated. Use modal.lookup instead", DeprecationWarning)
+        return await _lookup(app_name, tag, namespace, self.client)
 
     async def _create_object(self, obj: Object, progress: Tree, existing_object_id: Optional[str] = None) -> str:
         """Takes an object as input, create it, and return an object id."""
@@ -97,7 +115,7 @@ class _RunningApp:
         if isinstance(obj, Ref):
             assert obj.app_name is not None
             # A different app
-            object_id = await self._include(obj.app_name, obj.tag, obj.namespace)
+            object_id = await _lookup_to_id(obj.app_name, obj.tag, obj.namespace, self._client)
 
         else:
             # Create object
