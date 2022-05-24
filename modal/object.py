@@ -13,15 +13,15 @@ class Object(metaclass=ObjectMeta):
     well as distributed data structures like Queues or Dicts.
     """
 
-    def __init__(self, running_app=None, object_id=None):
-        self._running_app = running_app
+    def __init__(self, client=None, object_id=None):
+        self._client = client
         self._object_id = object_id
 
     async def load(self, running_app, existing_object_id):
         raise NotImplementedError(f"Object factory of class {type(self)} has no load method")
 
     @classmethod
-    def from_id(cls, object_id, running_app):
+    def from_id(cls, object_id, client):
         parts = object_id.split("-")
         if len(parts) != 2:
             raise InvalidError(f"Object id {object_id} has no dash in it")
@@ -30,7 +30,7 @@ class Object(metaclass=ObjectMeta):
             raise InvalidError(f"Object prefix {prefix} does not correspond to a type")
         object_cls = ObjectMeta.prefix_to_type[prefix]
         obj = Object.__new__(object_cls)
-        Object.__init__(obj, running_app, object_id=object_id)
+        Object.__init__(obj, client, object_id=object_id)
         return obj
 
     async def create(self, running_app=None):
@@ -42,15 +42,11 @@ class Object(metaclass=ObjectMeta):
                 raise InvalidError(".create must be passed the app explicitly if not running in a container")
         assert isinstance(running_app, _RunningApp)
         object_id = await self.load(running_app, None)
-        return Object.from_id(object_id, running_app)
+        return Object.from_id(object_id, running_app.client)
 
     @property
     def object_id(self):
         return self._object_id
-
-    @property
-    def running_app(self):
-        return self._running_app
 
     def get_creating_message(self) -> Optional[str]:
         return None

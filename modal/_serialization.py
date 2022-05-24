@@ -22,13 +22,13 @@ class Pickler(cloudpickle.Pickler):
 
 
 class Unpickler(pickle.Unpickler):
-    def __init__(self, running_app, buf):
-        self.running_app = running_app
+    def __init__(self, client, buf):
+        self.client = client
         super().__init__(buf)
 
     def persistent_load(self, pid):
         object_id = pid
-        return Object.from_id(object_id, self.running_app)
+        return Object.from_id(object_id, self.client)
 
 
 def serialize(obj):
@@ -38,7 +38,7 @@ def serialize(obj):
     return buf.getvalue()
 
 
-def deserialize(s: bytes, running_app):
+def deserialize(s: bytes, client):
     """Deserializes object and replaces all client placeholders by self."""
-    assert running_app
-    return Unpickler(running_app, io.BytesIO(s)).load()
+    assert client
+    return Unpickler(client, io.BytesIO(s)).load()

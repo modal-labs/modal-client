@@ -38,9 +38,9 @@ class _Queue(Object, type_prefix="qu"):
                 n_values=n_values,
                 idempotency_key=str(uuid.uuid4()),
             )
-            response = await retry(self._running_app.client.stub.QueueGet)(request, timeout=60.0)
+            response = await retry(self._client.stub.QueueGet)(request, timeout=60.0)
             if response.values:
-                return [deserialize(value, self._running_app) for value in response.values]
+                return [deserialize(value, self._client) for value in response.values]
             logger.debug("Queue get for %s had empty results, trying again" % self.object_id)
         raise queue.Empty()
 
@@ -61,7 +61,7 @@ class _Queue(Object, type_prefix="qu"):
             values=vs_encoded,
             idempotency_key=str(uuid.uuid4()),
         )
-        return await retry(self._running_app.client.stub.QueuePut)(request, timeout=5.0)
+        return await retry(self._client.stub.QueuePut)(request, timeout=5.0)
 
     async def put(self, v):
         """Put an object"""

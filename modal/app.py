@@ -86,7 +86,7 @@ class _RunningApp:
     async def include(self, app_name, tag=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
         """Looks up an object and return a newly constructed one."""
         object_id = await self._include(app_name, tag, namespace)
-        return Object.from_id(object_id, self)
+        return Object.from_id(object_id, self._client)
 
     async def _create_object(self, obj: Object, progress: Tree, existing_object_id: Optional[str] = None) -> str:
         """Takes an object as input, create it, and return an object id."""
@@ -135,7 +135,7 @@ class _RunningApp:
             existing_object_id = self._tag_to_existing_id.get(tag)
             logger.debug(f"Creating object {tag} with existing id {existing_object_id}")
             object_id = await self._create_object(obj, progress, existing_object_id)
-            self._tag_to_object[tag] = Object.from_id(object_id, self)
+            self._tag_to_object[tag] = Object.from_id(object_id, self._client)
 
         # Create the app (and send a list of all tagged obs)
         # TODO(erikbern): we should delete objects from a previous version that are no longer needed
@@ -180,7 +180,7 @@ class _RunningApp:
             tag,
             object_id,
         ) in resp.object_ids.items():
-            self._tag_to_object[tag] = Object.from_id(object_id, self)
+            self._tag_to_object[tag] = Object.from_id(object_id, self._client)
 
         return self
 

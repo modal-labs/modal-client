@@ -34,21 +34,21 @@ class _Dict(Object, type_prefix="di"):
         Raises KeyError if the key does not exist.
         """
         req = api_pb2.DictGetRequest(dict_id=self.object_id, key=serialize(key))
-        resp = await self._running_app.client.stub.DictGet(req)
+        resp = await self._client.stub.DictGet(req)
         if not resp.found:
             raise KeyError(f"KeyError: {key} not in dict {self.object_id}")
-        return deserialize(resp.value, self._running_app)
+        return deserialize(resp.value, self._client)
 
     async def contains(self, key):
         """Check if the key exists"""
         req = api_pb2.DictContainsRequest(dict_id=self.object_id, key=serialize(key))
-        resp = await self._running_app.client.stub.DictContains(req)
+        resp = await self._client.stub.DictContains(req)
         return resp.found
 
     async def len(self):
         """The length of the dictionary"""
         req = api_pb2.DictLenRequest(dict_id=self.object_id)
-        resp = await self._running_app.client.stub.DictLen(req)
+        resp = await self._client.stub.DictLen(req)
         return resp.len
 
     async def __getitem__(self, key):
@@ -62,14 +62,14 @@ class _Dict(Object, type_prefix="di"):
         """
         serialized = self._serialize_dict(kwargs)
         req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized)
-        await self._running_app.client.stub.DictUpdate(req)
+        await self._client.stub.DictUpdate(req)
 
     async def put(self, key, value):
         """Set the specific key/value pair in the dictionary"""
         updates = {key: value}
         serialized = self._serialize_dict(updates)
         req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized)
-        await self._running_app.client.stub.DictUpdate(req)
+        await self._client.stub.DictUpdate(req)
 
     # NOTE: setitem only works in a synchronous context.
     async def __setitem__(self, key, value):
@@ -82,10 +82,10 @@ class _Dict(Object, type_prefix="di"):
     async def pop(self, key):
         """Remove the specific key from the dictionary"""
         req = api_pb2.DictPopRequest(dict_id=self.object_id, key=serialize(key))
-        resp = await self._running_app.client.stub.DictPop(req)
+        resp = await self._client.stub.DictPop(req)
         if not resp.found:
             raise KeyError(f"KeyError: {key} not in dict {self.object_id}")
-        return deserialize(resp.value, self._running_app)
+        return deserialize(resp.value, self._client)
 
     async def __delitem__(self, key):
         """Delete the specific key from the dictionary
