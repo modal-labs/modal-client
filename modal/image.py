@@ -243,7 +243,46 @@ def _DockerhubImage(app=None, tag=None):
     )
 
 
+def _Conda(
+    extra_commands: List[str] = [],  # A list of shell commands executed while building the image
+    python_packages: List[str] = [],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
+    context_files: Dict[
+        str, bytes
+    ] = {},  # A dict containing any files that will be present during the build to use with COPY
+    secrets: List[
+        Object
+    ] = [],  # List of Modal secrets that will be available as environment variables during the build process
+    version: Optional[str] = None,  # Custom string to break the image hashing and force the image to be rebuilt
+):
+    """A Conda base image, built on the official miniconda3 Docker hub image."""
+
+    base_image = ref(f"conda", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
+
+    dockerfile_commands = ["FROM base as target"]
+    base_images = {"base": base_image}
+    dockerfile_commands += [f"RUN {cmd}" for cmd in extra_commands]
+
+    if python_packages:
+        package_args = " ".join(shlex.quote(pkg) for pkg in python_packages)
+
+        dockerfile_commands += [
+            f"RUN conda install {package_args} --yes",
+        ]
+
+    if len(dockerfile_commands) == 1:
+        return base_image
+
+    return _Image(
+        dockerfile_commands=dockerfile_commands,
+        context_files=context_files,
+        base_images=base_images,
+        version=version,
+        secrets=secrets,
+    )
+
+
 Image, AioImage = synchronize_apis(_Image)
+Conda, AioConda = synchronize_apis(_Conda)
 DebianSlim, AioDebianSlim = synchronize_apis(_DebianSlim)
 DockerhubImage, AioDockerhubImage = synchronize_apis(_DockerhubImage)
 extend_image, aio_extend_image = synchronize_apis(_extend_image)

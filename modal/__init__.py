@@ -1,7 +1,7 @@
 from .app import App, RunningApp, container_app, is_local
 from .dict import Dict
 from .functions import Function
-from .image import DebianSlim, DockerhubImage, Image
+from .image import Conda, DebianSlim, DockerhubImage, Image
 from .mount import Mount
 from .object import ref
 from .queue import Queue
@@ -15,6 +15,7 @@ __all__ = [
     "App",
     "RunningApp",
     "Cron",
+    "Conda",
     "DebianSlim",
     "Dict",
     "DockerhubImage",

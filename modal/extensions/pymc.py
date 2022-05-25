@@ -7,22 +7,11 @@ from typing import Any, List
 from aiostream import stream
 from synchronicity.interface import Interface
 
-from modal import App, ref
-from modal.image import extend_image
-from modal_proto import api_pb2
+from modal import App, Conda
 from modal_utils.async_utils import synchronize_apis, synchronizer
 
-dockerfile_commands = [
-    "RUN conda info",
-    "RUN echo $0 \\ ",
-    "&& . /root/.bashrc \\ ",
-    "&& conda activate base \\ ",
-    "&& conda info \\ ",
-    "&& conda list \\ ",
-    "&& conda install theano-pymc==1.1.2 pymc3==3.11.2 scikit-learn mkl-service --yes ",
-]
-conda_image = ref("conda", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
-pymc_app = App(image=extend_image(conda_image, extra_dockerfile_commands=dockerfile_commands))
+conda_image = Conda(python_packages=["theano-pymc==1.1.2", "pymc3==3.11.2", "scikit-learn", "mkl-service"])
+pymc_app = App(image=conda_image)
 
 # HACK: we need the aio version of the pymc app, so we can merge the sample processes
 # as async generators.
