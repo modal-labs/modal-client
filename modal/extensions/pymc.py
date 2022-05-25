@@ -5,11 +5,12 @@ from collections import namedtuple
 from typing import Any, List
 
 from aiostream import stream
+from synchronicity.interface import Interface
 
 from modal import App, ref
 from modal.image import extend_image
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_apis
+from modal_utils.async_utils import synchronize_apis, synchronizer
 
 dockerfile_commands = [
     "RUN conda info",
@@ -23,7 +24,11 @@ dockerfile_commands = [
 conda_image = ref("conda", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
 pymc_app = App(image=extend_image(conda_image, extra_dockerfile_commands=dockerfile_commands))
 
-if pymc_app.is_inside():
+# HACK: we need the aio version of the pymc app, so we can merge the sample processes
+# as async generators.
+aio_pymc_app = synchronizer._translate_out(synchronizer._translate_in(pymc_app), Interface.ASYNC)
+
+if aio_pymc_app.is_inside():
     import numpy as np
     from fastprogress.fastprogress import progress_bar
     from pymc3 import theanof
@@ -64,8 +69,8 @@ def rebuild_exc(exc, tb):
     return exc
 
 
-@pymc_app.generator
-def sample_process(
+@aio_pymc_app.generator
+async def sample_process(
     draws: int,
     tune: int,
     step_method,
