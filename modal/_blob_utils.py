@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 import aiohttp
 
 from modal_proto import api_pb2
+from modal_utils.async_utils import retry
 
 # Max size for function inputs and outputs.
 MAX_OBJECT_SIZE_BYTES = 64 * 1024  # 64 kb
@@ -37,6 +38,20 @@ async def blob_upload_file(filename: str, stub):
         return await _blob_upload(content_md5, fp, stub)
 
 
+@retry(n_attempts=5, base_delay=0.1, timeout=None)
+async def _upload_to_url(upload_url, content_md5, aiohttp_payload):
+    async with aiohttp.ClientSession() as session:
+        headers = {"content-type": "application/octet-stream"}
+
+        if CHECK_MD5:
+            headers["Content-MD5"] = content_md5
+
+        async with session.put(upload_url, data=aiohttp_payload, headers=headers) as resp:
+            if resp.status != 200:
+                text = await resp.text()
+                raise Exception(f"Put to {upload_url} failed with status {resp.status}: {text}")
+
+
 async def _blob_upload(content_md5, aiohttp_payload, stub):
     req = api_pb2.BlobCreateRequest(content_md5=content_md5)
     resp = await stub.BlobCreate(req)
@@ -44,16 +59,7 @@ async def _blob_upload(content_md5, aiohttp_payload, stub):
     blob_id = resp.blob_id
     target = resp.upload_url
 
-    async with aiohttp.ClientSession() as session:
-        headers = {"content-type": "application/octet-stream"}
-
-        if CHECK_MD5:
-            headers["Content-MD5"] = content_md5
-
-        async with session.put(target, data=aiohttp_payload, headers=headers) as resp:
-            if resp.status != 200:
-                text = await resp.text()
-                raise Exception(f"Put to {target} failed with status {resp.status}: {text}")
+    await _upload_to_url(target, content_md5, aiohttp_payload)
 
     return blob_id
 
@@ -69,10 +75,15 @@ async def _blob_download_file(download_url: str):
             yield resp
 
 
+@retry(n_attempts=5, base_delay=0.1, timeout=None)
+async def _download_from_url(download_url):
+    async with _blob_download_file(download_url) as download_response:
+        return await download_response.read()
+
+
 async def blob_download(blob_id, stub):
     # convenience function reading all of the downloaded file into memory
     req = api_pb2.BlobGetRequest(blob_id=blob_id)
     resp = await stub.BlobGet(req)
 
-    async with _blob_download_file(resp.download_url) as download_response:
-        return await download_response.read()
+    return await _download_from_url(resp.download_url)
