@@ -35,8 +35,8 @@ async def image_pty(image, app, cmd=None, mounts=[], secrets=[]):
     _pty_wrapped = app.function(image=image, mounts=mounts, secrets=secrets)(_pty)
     app["queue"] = _Queue()
 
-    async with app.run(show_progress=False):
-        queue = app["queue"]
+    async with app.run(show_progress=False) as running_app:
+        queue = running_app["queue"]
 
         async with TaskContext(grace=0) as tc:
             tc.create_task(_pty_wrapped(cmd, queue))
