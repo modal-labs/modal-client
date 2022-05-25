@@ -7,11 +7,12 @@ from typing import Any, List
 from aiostream import stream
 from synchronicity.interface import Interface
 
-from modal import App, Conda
+import modal
 from modal_utils.async_utils import synchronize_apis, synchronizer
 
-conda_image = Conda(python_packages=["theano-pymc==1.1.2", "pymc3==3.11.2", "scikit-learn", "mkl-service"])
-pymc_app = App(image=conda_image)
+pymc_app = modal.App(
+    image=modal.Conda(python_packages=["theano-pymc==1.1.2", "pymc3==3.11.2", "scikit-learn", "mkl-service"])
+)
 
 # HACK: we need the aio version of the pymc app, so we can merge the sample processes
 # as async generators.

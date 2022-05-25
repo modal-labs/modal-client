@@ -256,7 +256,7 @@ def _Conda(
 ):
     """A Conda base image, built on the official miniconda3 Docker hub image."""
 
-    base_image = ref(f"conda", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
+    base_image = ref("conda", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
 
     dockerfile_commands = ["FROM base as target"]
     base_images = {"base": base_image}
@@ -281,8 +281,8 @@ def _Conda(
     )
 
 
-Image, AioImage = synchronize_apis(_Image)
 Conda, AioConda = synchronize_apis(_Conda)
 DebianSlim, AioDebianSlim = synchronize_apis(_DebianSlim)
 DockerhubImage, AioDockerhubImage = synchronize_apis(_DockerhubImage)
+Image, AioImage = synchronize_apis(_Image)
 extend_image, aio_extend_image = synchronize_apis(_extend_image)
