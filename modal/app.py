@@ -85,48 +85,32 @@ class _RunningApp:
     def app_id(self):
         return self._app_id
 
-    async def resolve(self, obj: Object) -> str:
-        """Takes a Ref object and looks up its id.
-
-        This is used internally by objects during app startup.
-        It's either an object defined locally on this app, or one defined on a separate app
-        """
-        if not isinstance(obj, Ref):
-            # TODO: explain these exception more, since I think it might be a common issue
-            raise InvalidError(f"Object {obj} has no label. Make sure every object is defined on the app.")
-        if not obj.app_name and not obj.tag:
-            raise InvalidError(f"Object {obj} is a malformed reference to nothing.")
-
-        if obj.app_name is not None:
-            # A different app
-            object_id = await _lookup_to_id(obj.app_name, obj.tag, obj.namespace, self.client)
-        else:
-            # Same app, an object that was created earlier
-            obj = self._tag_to_object[obj.tag]
-            object_id = obj.object_id
-
-        assert object_id
-        return object_id
-
     async def include(self, app_name, tag=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
         """Looks up an object and return a newly constructed one."""
         warnings.warn("RunningApp.include is deprecated. Use modal.lookup instead", DeprecationWarning)
         return await _lookup(app_name, tag, namespace, self.client)
 
-    async def _create_object(self, obj: Object, progress: Tree, existing_object_id: Optional[str] = None) -> str:
+    async def load(self, obj: Object, progress: Optional[Tree] = None, existing_object_id: Optional[str] = None) -> str:
         """Takes an object as input, create it, and return an object id."""
-        creating_message = obj.get_creating_message()
-        if creating_message is not None:
-            step_node = progress.add(step_progress(creating_message))
+        print(f"load({obj=})")
+        if progress:
+            creating_message = obj.get_creating_message()
+            if creating_message is not None:
+                step_node = progress.add(step_progress(creating_message))
 
         if isinstance(obj, Ref):
-            assert obj.app_name is not None
-            # A different app
-            object_id = await _lookup_to_id(obj.app_name, obj.tag, obj.namespace, self._client)
+            if obj.app_name is not None:
+                # A different app
+                object_id = await _lookup_to_id(obj.app_name, obj.tag, obj.namespace, self._client)
+            else:
+                # Same app, an object that was created earlier
+                obj = self._tag_to_object[obj.tag]
+                object_id = obj.object_id
 
         else:
             # Create object
-            object_id = await obj.load(self, existing_object_id)
+            print(f"Running .load on {obj=}")
+            object_id = await obj.load(self.load, self.client, self.app_id, existing_object_id)
             if existing_object_id is not None and object_id != existing_object_id:
                 # TODO(erikbern): this is a very ugly fix to a problem that's on the server side.
                 # Unlike every other object, images are not assigned random ids, but rather an
@@ -140,10 +124,11 @@ class _RunningApp:
         if object_id is None:
             raise Exception(f"object_id for object of type {type(obj)} is None")
 
-        if creating_message is not None:
-            created_message = obj.get_created_message()
-            assert created_message is not None
-            step_node.label = step_completed(created_message, is_substep=True)
+        if progress:
+            if creating_message is not None:
+                created_message = obj.get_created_message()
+                assert created_message is not None
+                step_node.label = step_completed(created_message, is_substep=True)
 
         return object_id
 
@@ -159,7 +144,7 @@ class _RunningApp:
             obj = blueprint[tag]
             existing_object_id = self._tag_to_existing_id.get(tag)
             logger.debug(f"Creating object {tag} with existing id {existing_object_id}")
-            object_id = await self._create_object(obj, progress, existing_object_id)
+            object_id = await self.load(obj, progress, existing_object_id)
             self._tag_to_object[tag] = Object.from_id(object_id, self._client)
 
         # Create the app (and send a list of all tagged obs)

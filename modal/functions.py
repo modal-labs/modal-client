@@ -272,21 +272,21 @@ class _Function(Object, type_prefix="fu"):
             return f"Created {self.tag} => [magenta underline]{self.web_url}[/magenta underline]"
         return f"Created {self.tag}."
 
-    async def load(self, running_app, existing_function_id):
+    async def load(self, load, client, app_id, existing_function_id):
         # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
         if self.image is not None:
-            image_id = await running_app.resolve(self.image)
+            image_id = await load(self.image)
         else:
             image_id = None  # Happens if it's a notebook function
         secret_ids = []
         for secret in self.secrets:
             try:
-                secret_id = await running_app.resolve(secret)
+                secret_id = await load(secret)
             except NotFoundError as ex:
                 raise NotFoundError(str(ex) + "\n" + "You can add secrets to your account at https://modal.com/secrets")
             secret_ids.append(secret_id)
 
-        mount_ids = await asyncio.gather(*(running_app.resolve(mount) for mount in self.mounts))
+        mount_ids = await asyncio.gather(*(load(mount) for mount in self.mounts))
 
         if self.is_generator:
             function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
@@ -310,13 +310,13 @@ class _Function(Object, type_prefix="fu"):
             webhook_config=self.webhook_config,
         )
         request = api_pb2.FunctionCreateRequest(
-            app_id=running_app.app_id,
+            app_id=app_id,
             function=function_definition,
             schedule=self.schedule.proto_message if self.schedule is not None else None,
             existing_function_id=existing_function_id,
             deployment_name=running_app.deployment_name,
         )
-        response = await running_app.client.stub.FunctionCreate(request)
+        response = await client.stub.FunctionCreate(request)
 
         if response.web_url:
             self.web_url = response.web_url

@@ -1,8 +1,9 @@
-from typing import Optional
+from typing import Awaitable, Callable, Optional
 
 from modal_proto import api_pb2
 
 from ._object_meta import ObjectMeta
+from .client import _Client
 from .exception import InvalidError
 
 
@@ -17,7 +18,13 @@ class Object(metaclass=ObjectMeta):
         self._client = client
         self._object_id = object_id
 
-    async def load(self, running_app, existing_object_id):
+    async def load(
+        self,
+        load: Callable[["Object"], Awaitable[str]],
+        client: _Client,
+        app_id: str,
+        existing_object_id: Optional[str] = None,
+    ):
         raise NotImplementedError(f"Object factory of class {type(self)} has no load method")
 
     @classmethod
@@ -41,7 +48,7 @@ class Object(metaclass=ObjectMeta):
             if running_app is None:
                 raise InvalidError(".create must be passed the app explicitly if not running in a container")
         assert isinstance(running_app, _RunningApp)
-        object_id = await self.load(running_app, None)
+        object_id = await self.load(running_app.load, running_app.client, running_app.app_id, None)
         return Object.from_id(object_id, running_app.client)
 
     @property

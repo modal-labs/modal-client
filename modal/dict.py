@@ -21,10 +21,10 @@ class _Dict(Object, type_prefix="di"):
         self._data = data
         super().__init__()
 
-    async def load(self, running_app, existing_dict_id):
+    async def load(self, load, client, app_id, existing_dict_id):
         serialized = self._serialize_dict(self._data)
-        req = api_pb2.DictCreateRequest(app_id=running_app.app_id, data=serialized, existing_dict_id=existing_dict_id)
-        response = await running_app.client.stub.DictCreate(req)
+        req = api_pb2.DictCreateRequest(app_id=app_id, data=serialized, existing_dict_id=existing_dict_id)
+        response = await client.stub.DictCreate(req)
         logger.debug("Created dict with id %s" % response.dict_id)
         return response.dict_id
 

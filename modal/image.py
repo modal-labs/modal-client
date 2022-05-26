@@ -41,9 +41,9 @@ class _Image(Object, type_prefix="im"):
         self._secrets = secrets
         super().__init__()
 
-    async def load(self, running_app, existing_image_id):
+    async def load(self, load, client, app_id, existing_image_id):
         # Recursively build base images
-        base_image_ids = await asyncio.gather(*(running_app.resolve(image) for image in self._base_images.values()))
+        base_image_ids = await asyncio.gather(*(load(image) for image in self._base_images.values()))
         base_images_pb2s = [
             api_pb2.BaseImage(docker_tag=docker_tag, image_id=image_id)
             for docker_tag, image_id in zip(self._base_images.keys(), base_image_ids)
@@ -52,7 +52,7 @@ class _Image(Object, type_prefix="im"):
         secret_ids = []
         for secret in self._secrets:
             try:
-                secret_id = await running_app.resolve(secret)
+                secret_id = await load(secret)
             except NotFoundError as ex:
                 raise NotFoundError(str(ex) + "\n" + "You can add secrets to your account at https://modal.com/secrets")
             secret_ids.append(secret_id)
@@ -72,11 +72,11 @@ class _Image(Object, type_prefix="im"):
         )
 
         req = api_pb2.ImageGetOrCreateRequest(
-            app_id=running_app.app_id,
+            app_id=app_id,
             image=image_definition,
             existing_image_id=existing_image_id,  # TODO: ignored
         )
-        resp = await running_app.client.stub.ImageGetOrCreate(req)
+        resp = await client.stub.ImageGetOrCreate(req)
         image_id = resp.image_id
 
         logger.debug("Waiting for image %s" % image_id)
@@ -84,9 +84,9 @@ class _Image(Object, type_prefix="im"):
             request = api_pb2.ImageJoinRequest(
                 image_id=image_id,
                 timeout=60,
-                app_id=running_app.app_id,
+                app_id=app_id,
             )
-            response = await retry(running_app.client.stub.ImageJoin)(request)
+            response = await retry(client.stub.ImageJoin)(request)
             if not response.result.status:
                 continue
             elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
