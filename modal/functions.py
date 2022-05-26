@@ -18,9 +18,9 @@ from .schedule import Schedule
 from .secret import _Secret
 
 
-async def _process_result(client, result):
+async def _process_result(result, stub, client=None):
     if result.WhichOneof("data_oneof") == "data_blob_id":
-        data = await blob_download(result.data_blob_id, client.stub)
+        data = await blob_download(result.data_blob_id, stub)
     else:
         data = result.data
 
@@ -68,9 +68,10 @@ async def _create_input(args, kwargs, client, function_call_id, idx=None) -> api
         )
 
 
-class _Invocation:
-    def __init__(self, client, function_id, function_call_id):
-        self.client = client
+class Invocation:
+    def __init__(self, stub, function_id, function_call_id, client=None):
+        self.stub = stub
+        self.client = client  # Used by the deserializer.
         self.function_id = function_id
         self.function_call_id = function_call_id
 
@@ -94,18 +95,18 @@ class _Invocation:
         request_put = api_pb2.FunctionPutInputsRequest(function_id=function_id, inputs=[inp])
         await buffered_rpc_write(client.stub.FunctionPutInputs, request_put)
 
-        return _Invocation(client, function_id, function_call_id)
+        return Invocation(client.stub, function_id, function_call_id, client)
 
     async def get_items(self):
         request = api_pb2.FunctionGetOutputsRequest(function_call_id=self.function_call_id)
-        response = await buffered_rpc_read(self.client.stub.FunctionGetOutputs, request, timeout=None)
+        response = await buffered_rpc_read(self.stub.FunctionGetOutputs, request, timeout=None)
         for output in response.outputs:
             yield output
 
     async def run_function(self):
         result = (await stream.list(self.get_items()))[0]
         assert not result.gen_status
-        return await _process_result(self.client, result)
+        return await _process_result(result, self.stub, self.client)
 
     async def run_generator(self):
         completed = False
@@ -114,7 +115,7 @@ class _Invocation:
                 if result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
                     completed = True
                     break
-                yield await _process_result(self.client, result)
+                yield await _process_result(result, self.stub, self.client)
 
 
 MAP_INVOCATION_CHUNK_SIZE = 100
@@ -181,12 +182,12 @@ class _MapInvocation:
                         if result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
                             num_outputs += 1
                         else:
-                            output = await _process_result(self.client, result)
+                            output = await _process_result(result, self.client.stub, self.client)
                             # yield output directly for generators.
                             yield output
                     else:
                         # hold on to outputs for function maps, so we can reorder them correctly.
-                        pending_outputs[result.idx] = await _process_result(self.client, result)
+                        pending_outputs[result.idx] = await _process_result(result, self.client.stub, self.client)
 
                 # send outputs sequentially while we can
                 while num_outputs in pending_outputs:
@@ -354,22 +355,22 @@ class _Function(Object, type_prefix="fu"):
 
     async def call_function(self, args, kwargs):
         client, object_id = self._get_context()
-        invocation = await _Invocation.create(object_id, args, kwargs, client)
+        invocation = await Invocation.create(object_id, args, kwargs, client)
         return await invocation.run_function()
 
     async def call_function_nowait(self, args, kwargs):
         client, object_id = self._get_context()
-        await _Invocation.create(object_id, args, kwargs, client)
+        await Invocation.create(object_id, args, kwargs, client)
 
     async def call_generator(self, args, kwargs):
         client, object_id = self._get_context()
-        invocation = await _Invocation.create(object_id, args, kwargs, client)
+        invocation = await Invocation.create(object_id, args, kwargs, client)
         async for res in invocation.run_generator():
             yield res
 
     async def call_generator_nowait(self, args, kwargs):
         client, object_id = self._get_context()
-        await _Invocation.create(object_id, args, kwargs, client)
+        await Invocation.create(object_id, args, kwargs, client)
 
     def __call__(self, *args, **kwargs):
         if self.is_generator:

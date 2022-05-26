@@ -33,7 +33,7 @@ async def buffered_rpc_write(fn, request):
 async def buffered_rpc_read(fn, request, timeout=None, warn_on_cancel=True):
     """Reads from buffered method."""
 
-    fn_name = fn.__name__  # for logging
+    fn_name = getattr(fn, "__name__", None)  # for logging
     t0 = time.time()
 
     while True:
