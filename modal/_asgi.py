@@ -1,19 +1,24 @@
+import asyncio
 from typing import Callable
 
 
 def asgi_app_wrapper(asgi_app):
     async def fn(scope, body=None):
-        messages = []
+        messages_from_app = []
+
+        # TODO: send disconnect at some point.
+        messages_to_app = asyncio.Queue()
+        await messages_to_app.put({"type": "http.request", "body": body})
 
         async def send(message):
-            messages.append(message)
+            messages_from_app.append(message)
 
         async def receive():
-            return {"type": "http.request", "body": body}
+            return await messages_to_app.get()
 
         await asgi_app(scope, receive, send)
 
-        return messages
+        return messages_from_app
 
     return fn
 
