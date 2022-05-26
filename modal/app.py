@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import os
 import sys
 import warnings
@@ -55,6 +56,7 @@ lookup, aio_lookup = synchronize_apis(_lookup)
 class _RunningApp:
     _tag_to_object: Dict[str, Object]
     _tag_to_existing_id: Dict[str, str]
+    _seed_to_object_id: Dict[str, str]
     _client: _Client
     _app_id: str
     _deployment_name: str
@@ -72,6 +74,7 @@ class _RunningApp:
         self._tag_to_object = tag_to_object or {}
         self._tag_to_existing_id = tag_to_existing_id or {}
         self._deployment_name = deployment_name
+        self._seed_to_object_id = {}
 
     @property
     def deployment_name(self):
@@ -92,35 +95,42 @@ class _RunningApp:
 
     async def load(self, obj: Object, progress: Optional[Tree] = None, existing_object_id: Optional[str] = None) -> str:
         """Takes an object as input, create it, and return an object id."""
-        print(f"load({obj=})")
         if progress:
             creating_message = obj.get_creating_message()
             if creating_message is not None:
                 step_node = progress.add(step_progress(creating_message))
 
         if isinstance(obj, Ref):
+            # TODO: should we just move this code to the Ref class?
             if obj.app_name is not None:
                 # A different app
                 object_id = await _lookup_to_id(obj.app_name, obj.tag, obj.namespace, self._client)
             else:
-                # Same app, an object that was created earlier
-                obj = self._tag_to_object[obj.tag]
-                object_id = obj.object_id
-
+                # Same app
+                if obj.tag not in self._tag_to_object:
+                    obj = blueprint[tag]
+                    object_id = await self.load(obj, progress, existing_object_id)
+                    do_something_else_here()
+                object_id = 123
         else:
             # Create object
-            print(f"Running .load on {obj=}")
-            object_id = await obj.load(self.load, self.client, self.app_id, existing_object_id)
-            if existing_object_id is not None and object_id != existing_object_id:
-                # TODO(erikbern): this is a very ugly fix to a problem that's on the server side.
-                # Unlike every other object, images are not assigned random ids, but rather an
-                # id given by the hash of its contents. This means we can't _force_ an image to
-                # have a particular id. The better solution is probably to separate "images"
-                # from "image definitions" or something like that, but that's a big project.
-                if not existing_object_id.startswith("im-"):
-                    raise Exception(
-                        f"Tried creating an object using existing id {existing_object_id} but it has id {object_id}"
-                    )
+            if obj.seed in self._seed_to_object_id:
+                object_id = self._seed_to_object_id[obj.seed]
+            else:
+                load = functools.partial(self.load, progress=progress)
+                object_id = await obj.load(load, self.client, self.app_id, existing_object_id)
+                if existing_object_id is not None and object_id != existing_object_id:
+                    # TODO(erikbern): this is a very ugly fix to a problem that's on the server side.
+                    # Unlike every other object, images are not assigned random ids, but rather an
+                    # id given by the hash of its contents. This means we can't _force_ an image to
+                    # have a particular id. The better solution is probably to separate "images"
+                    # from "image definitions" or something like that, but that's a big project.
+                    if not existing_object_id.startswith("im-"):
+                        raise Exception(
+                            f"Tried creating an object using existing id {existing_object_id} but it has id {object_id}"
+                        )
+                self._seed_to_object_id[obj.seed] = object_id
+
         if object_id is None:
             raise Exception(f"object_id for object of type {type(obj)} is None")
 
@@ -134,17 +144,9 @@ class _RunningApp:
 
     async def create_all_objects(self, blueprint: Dict[str, Object], progress: Tree):
         """Create objects that have been defined but not created on the server."""
-        # Instead of doing a topological sort here, we rely on a sort of dumb "trick".
-        # Functions are the only objects that "depend" on other objects, so we make sure
-        # they are built last. In the future we might have some more complicated structure
-        # where we actually have to model out the DAG
-        tags = list(blueprint.keys())
-        tags.sort(key=lambda obj: obj.startswith("fu-"))
-        for tag in tags:
-            obj = blueprint[tag]
-            existing_object_id = self._tag_to_existing_id.get(tag)
-            logger.debug(f"Creating object {tag} with existing id {existing_object_id}")
-            object_id = await self.load(obj, progress, existing_object_id)
+        for tag in blueprint.keys():
+            obj = ref(None, tag)
+            object_id = await self.load(obj, progress)
             self._tag_to_object[tag] = Object.from_id(object_id, self._client)
 
         # Create the app (and send a list of all tagged obs)
