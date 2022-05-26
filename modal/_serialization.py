@@ -40,5 +40,4 @@ def serialize(obj):
 
 def deserialize(s: bytes, client):
     """Deserializes object and replaces all client placeholders by self."""
-    assert client
     return Unpickler(client, io.BytesIO(s)).load()

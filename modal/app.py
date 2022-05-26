@@ -538,7 +538,7 @@ class _App:
             image=image,
             secret=secret,
             secrets=secrets,
-            is_generator=False,
+            is_generator=True,
             gpu=gpu,
             mounts=mounts,
             webhook_config=api_pb2.WebhookConfig(
@@ -571,7 +571,7 @@ class _App:
             image=image,
             secret=secret,
             secrets=secrets,
-            is_generator=False,
+            is_generator=True,
             gpu=gpu,
             mounts=mounts,
             webhook_config=api_pb2.WebhookConfig(
