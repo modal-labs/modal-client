@@ -1,13 +1,13 @@
 import asyncio
-from typing import Callable
+from typing import Any, Callable, Dict, List
 
 
 def asgi_app_wrapper(asgi_app):
     async def fn(scope, body=None):
-        messages_from_app = []
+        messages_from_app: List[Dict[str, Any]] = []
 
         # TODO: send disconnect at some point.
-        messages_to_app = asyncio.Queue()
+        messages_to_app: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
         await messages_to_app.put({"type": "http.request", "body": body})
 
         async def send(message):
