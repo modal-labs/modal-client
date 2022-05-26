@@ -1,24 +1,40 @@
 import asyncio
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict
+
+from modal_utils.async_utils import TaskContext
 
 
 def asgi_app_wrapper(asgi_app):
     async def fn(scope, body=None):
-        messages_from_app: List[Dict[str, Any]] = []
+        messages_from_app: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
 
         # TODO: send disconnect at some point.
         messages_to_app: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
         await messages_to_app.put({"type": "http.request", "body": body})
 
         async def send(message):
-            messages_from_app.append(message)
+            await messages_from_app.put(message)
 
         async def receive():
             return await messages_to_app.get()
 
-        await asgi_app(scope, receive, send)
+        # Run the ASGI app, while draining the send message queue at the same time,
+        # and yielding results.
+        async with TaskContext(grace=1.0) as tc:
+            app_task = tc.create_task(asgi_app(scope, receive, send))
 
-        return messages_from_app
+            while True:
+                pop_task = tc.create_task(messages_from_app.get())
+
+                done, pending = await asyncio.wait([pop_task, app_task], return_when=asyncio.FIRST_COMPLETED)
+
+                if pop_task in done:
+                    yield pop_task.result()
+
+                if app_task in done:
+                    while not messages_from_app.empty():
+                        yield messages_from_app.get_nowait()
+                    break
 
     return fn
 
