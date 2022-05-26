@@ -57,6 +57,7 @@ class _RunningApp:
     _tag_to_existing_id: Dict[str, str]
     _client: _Client
     _app_id: str
+    _deployment_name: str
 
     def __init__(
         self,
@@ -64,11 +65,17 @@ class _RunningApp:
         app_id: str,
         tag_to_object: Optional[Dict[str, Object]] = None,
         tag_to_existing_id: Optional[Dict[str, str]] = None,
+        deployment_name: Optional[str] = None,
     ):
         self._app_id = app_id
         self._client = client
         self._tag_to_object = tag_to_object or {}
         self._tag_to_existing_id = tag_to_existing_id or {}
+        self._deployment_name = deployment_name
+
+    @property
+    def deployment_name(self):
+        return self._deployment_name
 
     @property
     def client(self):
@@ -203,19 +210,21 @@ class _RunningApp:
         return self
 
     @staticmethod
-    async def init_existing(client, existing_app_id):
+    async def init_existing(client, existing_app_id, deployment_name):
         # Get all the objects first
         obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
         obj_resp = await client.stub.AppGetObjects(obj_req)
-        return _RunningApp(client, existing_app_id, tag_to_existing_id=dict(obj_resp.object_ids))
+        return _RunningApp(
+            client, existing_app_id, tag_to_existing_id=dict(obj_resp.object_ids), deployment_name=deployment_name
+        )
 
     @staticmethod
-    async def init_new(client, name):
+    async def init_new(client, name, deployment_name):
         # Start app
         # TODO(erikbern): maybe this should happen outside of this method?
         app_req = api_pb2.AppCreateRequest(client_id=client.client_id, name=name)
         app_resp = await client.stub.AppCreate(app_req)
-        return _RunningApp(client, app_resp.app_id)
+        return _RunningApp(client, app_resp.app_id, deployment_name=deployment_name)
 
     @staticmethod
     def reset_container():
@@ -304,9 +313,9 @@ class _App:
     @synchronizer.asynccontextmanager
     async def _run(self, client, output_mgr, existing_app_id, last_log_entry_id=None):
         if existing_app_id is not None:
-            running_app = await _RunningApp.init_existing(client, existing_app_id)
+            running_app = await _RunningApp.init_existing(client, existing_app_id, self.deployment_name)
         else:
-            running_app = await _RunningApp.init_new(client, self.name)
+            running_app = await _RunningApp.init_new(client, self.name, self.deployment_name)
 
         # Start tracking logs and yield context
         async with TaskContext(grace=config["logs_timeout"]) as tc:

@@ -233,7 +233,6 @@ class _Function(Object, type_prefix="fu"):
         serialized: bool = False,
         mounts: Collection[Union[Ref, _Mount]] = (),
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
-        deployment_name: str = None,
     ):
         assert callable(raw_f)
         self.info = FunctionInfo(raw_f, serialized)
@@ -260,7 +259,6 @@ class _Function(Object, type_prefix="fu"):
         self.webhook_config = webhook_config
         self.web_url = None
         self.tag = self.info.get_tag()
-        self.deployment_name = deployment_name
         self._local_running_app = None
         self._local_object_id = None
         super().__init__()
@@ -316,7 +314,7 @@ class _Function(Object, type_prefix="fu"):
             function=function_definition,
             schedule=self.schedule.proto_message if self.schedule is not None else None,
             existing_function_id=existing_function_id,
-            deployment_name=self.deployment_name,
+            deployment_name=running_app.deployment_name,
         )
         response = await running_app.client.stub.FunctionCreate(request)
 
