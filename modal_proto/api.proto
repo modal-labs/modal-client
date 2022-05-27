@@ -451,7 +451,7 @@ message MountRegisterFileResponse {
 
 message MountUploadFileRequest {
   string sha256_hex = 1;
-  int32 size = 2;
+  int64 size = 2;
 
   string mount_id = 4;
 
