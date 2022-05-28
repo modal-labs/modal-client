@@ -293,8 +293,9 @@ class _App:
     def is_inside(self, image: Optional[Union[Ref, _Image]] = None):
         if not _is_container_app:
             return False
-        if image is None:
-            obj = _container_app._tag_to_object.get("_image")
+        # TODO(erikbern): figure this out
+        # if image is None:
+        #    obj = _container_app._tag_to_object.get("_image")
         elif isinstance(image, Ref):
             obj = _container_app._tag_to_object.get(image.tag)
         elif isinstance(image, _Image):
@@ -420,13 +421,9 @@ class _App:
     def _get_default_image(self):
         # TODO(erikbern): instead of writing this to the same namespace
         # as the user's objects, we could use sub-blueprints in the future
-        if "_image" not in self._blueprint:
-            if self._image is None:
-                image = _DebianSlim()
-            else:
-                image = self._image
-            self._blueprint["_image"] = image
-        return ref(None, "_image")
+        if self._image is None:
+            self._image = _DebianSlim()
+        return self._image
 
     def _get_function_mounts(self, raw_f):
         mounts = []
