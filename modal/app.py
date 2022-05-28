@@ -265,6 +265,8 @@ class _App:
         self.deployment_name = None
         self._image = image
         self._blueprint = {}
+        self._client_mount = None
+        self._function_mounts = {}
         super().__init__()
 
     # needs to be a function since synchronicity hides other attributes.
@@ -430,20 +432,19 @@ class _App:
         mounts = []
 
         # Create client mount
-        if "_client_mount" not in self._blueprint:
+        if self._client_mount is None:
             if config["sync_entrypoint"]:
-                client_mount = _create_client_mount()
+                self._client_mount = _create_client_mount()
             else:
-                client_mount = ref(MODAL_CLIENT_MOUNT_NAME, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
-            self._blueprint["_client_mount"] = client_mount
-        mounts.append(ref(None, "_client_mount"))
+                self._client_mount = ref(MODAL_CLIENT_MOUNT_NAME, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
+        mounts.append(self._client_mount)
 
         # Create function mounts
         info = FunctionInfo(raw_f)
         for key, mount in info.get_mounts().items():
-            if key not in self._blueprint:
-                self._blueprint[key] = mount
-            mounts.append(ref(None, key))
+            if key not in self._function_mounts:
+                self._function_mounts[key] = mount
+            mounts.append(mount)
 
         return mounts
 
