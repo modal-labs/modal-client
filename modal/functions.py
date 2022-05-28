@@ -314,7 +314,8 @@ class _Function(Object, type_prefix="fu"):
             function=function_definition,
             schedule=self.schedule.proto_message if self.schedule is not None else None,
             existing_function_id=existing_function_id,
-            deployment_name=running_app.deployment_name,
+            # TODO(erikbern): what is this?
+            # deployment_name=running_app.deployment_name,
         )
         response = await client.stub.FunctionCreate(request)
 

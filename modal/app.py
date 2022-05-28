@@ -63,12 +63,14 @@ class _RunningApp:
 
     def __init__(
         self,
+        app: "_App",
         client: _Client,
         app_id: str,
         tag_to_object: Optional[Dict[str, Object]] = None,
         tag_to_existing_id: Optional[Dict[str, str]] = None,
         deployment_name: Optional[str] = None,
     ):
+        self._app = app
         self._app_id = app_id
         self._client = client
         self._tag_to_object = tag_to_object or {}
@@ -107,11 +109,13 @@ class _RunningApp:
                 object_id = await _lookup_to_id(obj.app_name, obj.tag, obj.namespace, self._client)
             else:
                 # Same app
-                if obj.tag not in self._tag_to_object:
-                    obj = blueprint[tag]
-                    object_id = await self.load(obj, progress, existing_object_id)
-                    do_something_else_here()
-                object_id = 123
+                if obj.tag in self._tag_to_object:
+                    object_id = self._tag_to_object[obj.tag].object_id
+                else:
+                    real_obj = self._app._blueprint[obj.tag]
+                    existing_object_id = self._tag_to_existing_id.get(obj.tag)
+                    object_id = await self.load(real_obj, progress, existing_object_id)
+                    self._tag_to_object[obj.tag] = Object.from_id(object_id, self.client)
         else:
             # Create object
             if obj.seed in self._seed_to_object_id:
@@ -142,12 +146,11 @@ class _RunningApp:
 
         return object_id
 
-    async def create_all_objects(self, blueprint: Dict[str, Object], progress: Tree):
+    async def create_all_objects(self, progress: Tree):
         """Create objects that have been defined but not created on the server."""
-        for tag in blueprint.keys():
+        for tag in self._app._blueprint.keys():
             obj = ref(None, tag)
-            object_id = await self.load(obj, progress)
-            self._tag_to_object[tag] = Object.from_id(object_id, self._client)
+            await self.load(obj, progress)
 
         # Create the app (and send a list of all tagged obs)
         # TODO(erikbern): we should delete objects from a previous version that are no longer needed
@@ -161,7 +164,7 @@ class _RunningApp:
         await self._client.stub.AppSetObjects(req_set)
 
         # Update all functions client-side to point to the running app
-        for obj in blueprint.values():
+        for obj in self._app._blueprint.values():
             if isinstance(obj, _Function):
                 obj.set_local_running_app(self)
 
@@ -197,21 +200,21 @@ class _RunningApp:
         return self
 
     @staticmethod
-    async def init_existing(client, existing_app_id, deployment_name):
+    async def init_existing(app, client, existing_app_id, deployment_name):
         # Get all the objects first
         obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
         obj_resp = await client.stub.AppGetObjects(obj_req)
         return _RunningApp(
-            client, existing_app_id, tag_to_existing_id=dict(obj_resp.object_ids), deployment_name=deployment_name
+            app, client, existing_app_id, tag_to_existing_id=dict(obj_resp.object_ids), deployment_name=deployment_name
         )
 
     @staticmethod
-    async def init_new(client, name, deployment_name):
+    async def init_new(app, client, name, deployment_name):
         # Start app
         # TODO(erikbern): maybe this should happen outside of this method?
         app_req = api_pb2.AppCreateRequest(client_id=client.client_id, name=name)
         app_resp = await client.stub.AppCreate(app_req)
-        return _RunningApp(client, app_resp.app_id, deployment_name=deployment_name)
+        return _RunningApp(app, client, app_resp.app_id, deployment_name=deployment_name)
 
     @staticmethod
     def reset_container():
@@ -222,7 +225,7 @@ class _RunningApp:
 RunningApp, AioRunningApp = synchronize_apis(_RunningApp)
 
 _is_container_app = False
-_container_app = _RunningApp(None, None)
+_container_app = _RunningApp(None, None, None)
 container_app, aio_container_app = synchronize_apis(_container_app)
 assert isinstance(container_app, RunningApp)
 assert isinstance(aio_container_app, AioRunningApp)
@@ -300,9 +303,9 @@ class _App:
     @synchronizer.asynccontextmanager
     async def _run(self, client, output_mgr, existing_app_id, last_log_entry_id=None):
         if existing_app_id is not None:
-            running_app = await _RunningApp.init_existing(client, existing_app_id, self.deployment_name)
+            running_app = await _RunningApp.init_existing(self, client, existing_app_id, self.deployment_name)
         else:
-            running_app = await _RunningApp.init_new(client, self.name, self.deployment_name)
+            running_app = await _RunningApp.init_new(self, client, self.name, self.deployment_name)
 
         # Start tracking logs and yield context
         async with TaskContext(grace=config["logs_timeout"]) as tc:
@@ -316,7 +319,7 @@ class _App:
                 # Create all members
                 progress = Tree(step_progress("Creating objects..."), guide_style="gray50")
                 with output_mgr.ctx_if_visible(output_mgr.make_live(progress)):
-                    await running_app.create_all_objects(self._blueprint, progress)
+                    await running_app.create_all_objects(progress)
                 progress.label = step_completed("Created objects.")
                 output_mgr.print_if_visible(progress)
 
