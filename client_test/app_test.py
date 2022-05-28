@@ -2,7 +2,7 @@ import pytest
 
 import modal.exception
 from modal import App
-from modal.aio import AioApp, AioQueue, AioRunningApp, aio_lookup
+from modal.aio import AioApp, AioDebianSlim, AioQueue, AioRunningApp, aio_lookup
 from modal.exception import NotFoundError
 
 
@@ -105,3 +105,16 @@ def test_run_function_without_app_error():
 
     with pytest.raises(modal.exception.InvalidError):
         foo()
+
+
+@pytest.mark.asyncio
+async def test_standalone_object():
+    app = AioApp()
+    image = AioDebianSlim()
+
+    @app.function
+    def foo(image=image):
+        pass
+
+    async with app.run():
+        pass
