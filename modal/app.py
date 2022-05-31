@@ -1,5 +1,6 @@
 import asyncio
 import functools
+import inspect
 import os
 import sys
 import warnings
@@ -288,12 +289,12 @@ class _App:
             image = ref(None, "_image")
         if not isinstance(image, Ref):
             raise InvalidError(
-                """
-`is_inside` only works for an image associated with an App. For instance:
-app["image"] = DebianSlim()
-if app["image"].is_inside():
-    print("I'm inside!")
-"""
+                inspect.cleandoc(
+                    """`is_inside` only works for an image associated with an App. For instance:
+                app["image"] = DebianSlim()
+                if app["image"].is_inside():
+                    print("I'm inside!")"""
+                )
             )
         if image.tag not in _container_app._tag_to_object:
             # This is some other image, which could belong to some unrelated
