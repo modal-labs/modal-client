@@ -108,7 +108,7 @@ def test_run_function_without_app_error():
 
 
 @pytest.mark.asyncio
-async def test_standalone_object():
+async def test_standalone_object(aio_client):
     app = AioApp()
     image = AioDebianSlim()
 
@@ -116,5 +116,5 @@ async def test_standalone_object():
     def foo(image=image):
         pass
 
-    async with app.run():
+    async with app.run(client=aio_client):
         pass
