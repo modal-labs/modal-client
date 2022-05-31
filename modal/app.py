@@ -59,7 +59,6 @@ class _RunningApp:
     _seed_to_object_id: Dict[str, str]
     _client: _Client
     _app_id: str
-    _deployment_name: str
 
     def __init__(
         self,
@@ -68,19 +67,13 @@ class _RunningApp:
         app_id: str,
         tag_to_object: Optional[Dict[str, Object]] = None,
         tag_to_existing_id: Optional[Dict[str, str]] = None,
-        deployment_name: Optional[str] = None,
     ):
         self._app = app
         self._app_id = app_id
         self._client = client
         self._tag_to_object = tag_to_object or {}
         self._tag_to_existing_id = tag_to_existing_id or {}
-        self._deployment_name = deployment_name
         self._seed_to_object_id = {}
-
-    @property
-    def deployment_name(self):
-        return self._deployment_name
 
     @property
     def client(self):
@@ -200,21 +193,19 @@ class _RunningApp:
         return self
 
     @staticmethod
-    async def init_existing(app, client, existing_app_id, deployment_name):
+    async def init_existing(app, client, existing_app_id):
         # Get all the objects first
         obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
         obj_resp = await client.stub.AppGetObjects(obj_req)
-        return _RunningApp(
-            app, client, existing_app_id, tag_to_existing_id=dict(obj_resp.object_ids), deployment_name=deployment_name
-        )
+        return _RunningApp(app, client, existing_app_id, tag_to_existing_id=dict(obj_resp.object_ids))
 
     @staticmethod
-    async def init_new(app, client, name, deployment_name):
+    async def init_new(app, client, name):
         # Start app
         # TODO(erikbern): maybe this should happen outside of this method?
         app_req = api_pb2.AppCreateRequest(client_id=client.client_id, name=name)
         app_resp = await client.stub.AppCreate(app_req)
-        return _RunningApp(app, client, app_resp.app_id, deployment_name=deployment_name)
+        return _RunningApp(app, client, app_resp.app_id)
 
     @staticmethod
     def reset_container():
@@ -260,22 +251,18 @@ class _App:
     _blueprint: Dict[str, Object]
 
     def __init__(self, name=None, *, image=None):
-        # TODO: we take a name in the app constructor, that can be different from the deployment name passed in later. Simplify this.
+        if name is None:
+            name = self._infer_app_name()
         self._name = name
-        self.deployment_name = None
         self._image = image
         self._blueprint = {}
         self._client_mount = None
         self._function_mounts = {}
         super().__init__()
 
-    # needs to be a function since synchronicity hides other attributes.
-    def provided_name(self):
-        return self._name
-
     @property
     def name(self):
-        return self._name or self._infer_app_name()
+        return self._name
 
     def _infer_app_name(self):
         script_filename = os.path.split(sys.argv[0])[-1]
@@ -304,11 +291,11 @@ class _App:
         return obj._is_inside()
 
     @synchronizer.asynccontextmanager
-    async def _run(self, client, output_mgr, existing_app_id, last_log_entry_id=None):
+    async def _run(self, client, output_mgr, existing_app_id, last_log_entry_id=None, name=None):
         if existing_app_id is not None:
-            running_app = await _RunningApp.init_existing(self, client, existing_app_id, self.deployment_name)
+            running_app = await _RunningApp.init_existing(self, client, existing_app_id)
         else:
-            running_app = await _RunningApp.init_new(self, client, self.name, self.deployment_name)
+            running_app = await _RunningApp.init_new(self, client, name if name is not None else self.name)
 
         # Start tracking logs and yield context
         async with TaskContext(grace=config["logs_timeout"]) as tc:
@@ -397,8 +384,6 @@ class _App:
                 'app = App("some-name")'
             )
 
-        self.deployment_name = name
-
         async with self._get_client(client) as client:
             # Look up any existing deployment
             app_req = api_pb2.AppGetByDeploymentNameRequest(name=name, namespace=namespace, client_id=client.client_id)
@@ -408,8 +393,7 @@ class _App:
 
             # The `_run` method contains the logic for starting and running an app
             output_mgr = OutputManager(stdout, show_progress)
-            async with self._run(client, output_mgr, existing_app_id, last_log_entry_id) as running_app:
-                # TODO: this could be simplified in case it's the same app id as previously
+            async with self._run(client, output_mgr, existing_app_id, last_log_entry_id, name=name) as running_app:
                 deploy_req = api_pb2.AppDeployRequest(
                     app_id=running_app._app_id,
                     name=name,
@@ -419,8 +403,6 @@ class _App:
                 return running_app._app_id
 
     def _get_default_image(self):
-        # TODO(erikbern): instead of writing this to the same namespace
-        # as the user's objects, we could use sub-blueprints in the future
         if self._image is None:
             self._image = _DebianSlim()
         return self._image
