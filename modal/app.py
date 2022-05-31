@@ -299,7 +299,9 @@ if app["image"].is_inside():
             # This is some other image, which could belong to some unrelated
             # app or whatever
             return False
-        return _container_app._tag_to_object[image.tag]._is_inside()
+        app_image = _container_app._tag_to_object[image.tag]
+        assert isinstance(app_image, _Image)
+        return app_image._is_inside()
 
     @synchronizer.asynccontextmanager
     async def _run(self, client, output_mgr, existing_app_id, last_log_entry_id=None, name=None):
