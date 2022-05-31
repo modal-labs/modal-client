@@ -258,6 +258,10 @@ class _App:
         self._blueprint = {}
         self._client_mount = None
         self._function_mounts = {}
+        if image is not None:
+            # TODO(erikbern): reconsider this later
+            self._blueprint["_image"] = self._image
+
         super().__init__()
 
     @property
@@ -277,18 +281,25 @@ class _App:
     def __setitem__(self, tag, obj):
         self._blueprint[tag] = obj
 
-    def is_inside(self, image: Optional[Union[Ref, _Image]] = None):
+    def is_inside(self, image: Optional[Ref] = None):
         if not _is_container_app:
             return False
-        # TODO(erikbern): figure this out
-        # if image is None:
-        #    obj = _container_app._tag_to_object.get("_image")
-        elif isinstance(image, Ref):
-            obj = _container_app._tag_to_object.get(image.tag)
-        elif isinstance(image, _Image):
-            obj = image
-        assert isinstance(obj, _Image)
-        return obj._is_inside()
+        if image is None:
+            image = ref(None, "_image")
+        if not isinstance(image, Ref):
+            raise InvalidError(
+                """
+`is_inside` only works for an image associated with an App. For instance:
+app["image"] = DebianSlim()
+if app["image"].is_inside():
+    print("I'm inside!")
+"""
+            )
+        if image.tag not in _container_app._tag_to_object:
+            # This is some other image, which could belong to some unrelated
+            # app or whatever
+            return False
+        return _container_app._tag_to_object[image.tag]._is_inside()
 
     @synchronizer.asynccontextmanager
     async def _run(self, client, output_mgr, existing_app_id, last_log_entry_id=None, name=None):
@@ -405,6 +416,8 @@ class _App:
     def _get_default_image(self):
         if self._image is None:
             self._image = _DebianSlim()
+            # TODO(erikbern): reconsider this later
+            self._blueprint["_image"] = self._image
         return self._image
 
     def _get_function_mounts(self, raw_f):
