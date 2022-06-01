@@ -1,6 +1,7 @@
 import os
 import shlex
 import sys
+import warnings
 from pathlib import Path
 from typing import Collection, Dict, List, Optional, Self, Union
 
@@ -113,14 +114,30 @@ class _Image(Object, type_prefix="im"):
         self,
         poetry_pyproject_toml: str,
     ):
-        context_files = {}
-        _dockerfile_commands = ["FROM base"] + _poetry_pyproject_dockerfile_commands(
-            poetry_pyproject_toml, context_files
-        )
+        """Install poetry deps from a poetry.pyproject.toml file. Uses poetry.lock
+        if it exists."""
+
+        dockerfile_commands = ["RUN pip install poetry"]
+
+        context_files = {"/.pyproject.toml": poetry_pyproject_toml}
+
+        poetry_lockfile: Path = Path(poetry_pyproject_toml).parent / "poetry.lock"
+        if poetry_lockfile.exists():
+            context_files["/.poetry.lock"] = poetry_lockfile.as_posix()
+            dockerfile_commands += ["COPY /.poetry.lock /tmp/poetry/poetry.lock"]
+        else:
+            logger.warn("poetry.lock not found.")
+
+        dockerfile_commands += [
+            "COPY /.pyproject.toml /tmp/poetry/pyproject.toml",
+            "RUN cd /tmp/poetry && \ ",  # noqa
+            "  poetry config virtualenvs.create false && \ ",  # noqa
+            "  poetry install --no-root",
+        ]
 
         return _Image(
             base_images={"base": self},
-            dockerfile_commands=_dockerfile_commands,
+            dockerfile_commands=dockerfile_commands,
             context_files=context_files,
         )
 
@@ -129,14 +146,10 @@ class _Image(Object, type_prefix="im"):
         dockerfile_commands: Union[str, List[str]],
         context_files: Dict[str, str] = {},
         secrets: Collection[_Secret] = [],
-        poetry_pyproject: Optional[str] = None,
     ) -> Self:
         """Extend an image with arbitrary dockerfile commands"""
 
         _dockerfile_commands = ["FROM base"]
-
-        if poetry_pyproject is not None:
-            _dockerfile_commands += _poetry_pyproject_dockerfile_commands(poetry_pyproject, context_files)
 
         if isinstance(dockerfile_commands, str):
             _dockerfile_commands += dockerfile_commands.split("\n")
@@ -170,29 +183,6 @@ def _dockerhub_python_version(python_version=None):
     return python_version
 
 
-# Mutates context_files.
-def _poetry_pyproject_dockerfile_commands(poetry_pyproject_file_path: str, context_files: Dict[str, str]):
-    dockerfile_commands = ["RUN pip install poetry"]
-
-    context_files["/.pyproject.toml"] = poetry_pyproject_file_path
-
-    poetry_lockfile: Path = Path(poetry_pyproject_file_path).parent / "poetry.lock"
-    if poetry_lockfile.exists():
-        context_files["/.poetry.lock"] = poetry_lockfile.as_posix()
-        dockerfile_commands += ["COPY /.poetry.lock /tmp/poetry/poetry.lock"]
-    else:
-        logger.warn("poetry.lock not found.")
-
-    dockerfile_commands += [
-        "COPY /.pyproject.toml /tmp/poetry/pyproject.toml",
-        "RUN cd /tmp/poetry && \ ",  # noqa
-        "  poetry config virtualenvs.create false && \ ",  # noqa
-        "  poetry install --no-root",
-    ]
-
-    return dockerfile_commands
-
-
 def _DebianSlim(
     app=None,
     extra_commands: List[str] = [],  # A list of shell commands executed while building the image
@@ -200,7 +190,6 @@ def _DebianSlim(
     python_version: Optional[str] = None,  # Set a specific Python version
     pip_find_links: Optional[str] = None,
     requirements_txt: Optional[str] = None,  # File contents of a requirements.txt
-    poetry_pyproject: Optional[str] = None,  # Path to pyproject.toml file.
     context_files: Dict[
         str, str
     ] = {},  # A dict containing path to files that will be present during the build to use with COPY
@@ -233,9 +222,6 @@ def _DebianSlim(
             "RUN pip install -r /.requirements.txt",
         ]
 
-    if poetry_pyproject is not None:
-        dockerfile_commands += _poetry_pyproject_dockerfile_commands(poetry_pyproject, context_files)
-
     if python_packages:
         find_links_arg = f"-f {pip_find_links}" if pip_find_links else ""
         package_args = " ".join(shlex.quote(pkg) for pkg in python_packages)
@@ -260,15 +246,13 @@ def _extend_image(
     base_image: _Image,
     context_files: Dict[str, str] = {},
     secrets: Collection[_Secret] = [],
-    poetry_pyproject: Optional[str] = None,
     extra_dockerfile_commands: Union[str, List[str]] = [],
 ):
     """Extend an image with arbitrary dockerfile commands"""
 
-    dockerfile_commands = ["FROM base"]
+    warnings.warn("Direct usage of extend_image is deprecated. Use Image.extend_image instead", DeprecationWarning)
 
-    if poetry_pyproject is not None:
-        dockerfile_commands += _poetry_pyproject_dockerfile_commands(poetry_pyproject, context_files)
+    dockerfile_commands = ["FROM base"]
 
     if isinstance(extra_dockerfile_commands, str):
         dockerfile_commands += extra_dockerfile_commands.split("\n")
