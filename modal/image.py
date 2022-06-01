@@ -110,14 +110,33 @@ class _Image(Object, type_prefix="im"):
         logger.debug(f"Is image inside? env {env_image_id} image {self.object_id}")
         return self.object_id == env_image_id
 
-    def install_poetry_deps(
+    def pip_install(
+        self,
+        packages: List[str] = [],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
+        find_links: Optional[str] = None,
+    ):
+        """Install a list of packages using pip."""
+
+        find_links_arg = f"-f {find_links}" if find_links else ""
+        package_args = " ".join(shlex.quote(pkg) for pkg in packages)
+
+        dockerfile_commands += [
+            f"RUN pip install {package_args} {find_links_arg}",
+        ]
+
+        return _Image(
+            base_images={"base": self},
+            dockerfile_commands=dockerfile_commands,
+        )
+
+    def poetry_install_from_file(
         self,
         poetry_pyproject_toml: str,
     ):
-        """Install poetry deps from a poetry.pyproject.toml file. Uses poetry.lock
+        """Install poetry deps from a pyproject.toml file. Uses poetry.lock
         if it exists."""
 
-        dockerfile_commands = ["RUN pip install poetry"]
+        dockerfile_commands = ["FROM base", "RUN pip install poetry"]
 
         context_files = {"/.pyproject.toml": poetry_pyproject_toml}
 
@@ -302,6 +321,7 @@ def _DockerhubImage(app=None, tag=None):
     )
 
 
+# TODO: make this an Image subclass.
 def _Conda(
     extra_commands: List[str] = [],  # A list of shell commands executed while building the image
     conda_packages: List[str] = [],  # A list of packages to install through Conda, eg. ["numpy", "matplotlib>=3.5.0"]
