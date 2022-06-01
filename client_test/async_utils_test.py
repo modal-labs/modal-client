@@ -2,7 +2,12 @@ import asyncio
 import platform
 import pytest
 
-from modal_utils.async_utils import TaskContext, queue_batch_iterator, retry
+from modal_utils.async_utils import (
+    TaskContext,
+    intercept_coro,
+    queue_batch_iterator,
+    retry,
+)
 
 skip_non_linux = pytest.mark.skipif(
     platform.system() != "Linux", reason="sleep is inaccurate on Github Actions runners."
@@ -139,3 +144,29 @@ async def test_queue_batch_iterator():
         await asyncio.sleep(DEBOUNCE_TIME + 0.001)
 
         assert len(drained_items) == 3
+
+
+class Thing:
+    def __init__(self, n):
+        self._n = n
+
+    def __await__(self):
+        return (yield self)
+
+
+async def fib(n):
+    if n <= 1:
+        await asyncio.sleep(1e-6)
+        return await Thing(n)
+    else:
+        return await fib(n - 2) + await fib(n - 1)
+
+
+async def interceptor(thing):
+    return thing._n
+
+
+@pytest.mark.asyncio
+async def test_intercept_coro():
+    coro = fib(10)
+    assert await intercept_coro(coro, interceptor) == 55
