@@ -3,7 +3,7 @@ import shlex
 import sys
 import warnings
 from pathlib import Path
-from typing import Collection, Dict, List, Optional, Self, Union
+from typing import Collection, Dict, List, Optional, Union
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import retry, synchronize_apis
@@ -23,8 +23,7 @@ class _Image(Object, type_prefix="im"):
     """Base class for container images to run functions in.
 
     Do not construct this class directly; instead use
-    `modal.image.DebianSlim` or
-    `modal.image.extend_image`
+    `modal.image.DebianSlim`, `modal.image.DockerHubImage` or `modal.Conda`.
     """
 
     def __init__(
@@ -165,7 +164,7 @@ class _Image(Object, type_prefix="im"):
         dockerfile_commands: Union[str, List[str]],
         context_files: Dict[str, str] = {},
         secrets: Collection[_Secret] = [],
-    ) -> Self:
+    ):
         """Extend an image with arbitrary dockerfile commands"""
 
         _dockerfile_commands = ["FROM base"]
@@ -248,9 +247,6 @@ def _DebianSlim(
         dockerfile_commands += [
             f"RUN pip install {package_args} {find_links_arg}",
         ]
-
-    if len(dockerfile_commands) == 1:
-        return base_image
 
     return _Image(
         dockerfile_commands=dockerfile_commands,
