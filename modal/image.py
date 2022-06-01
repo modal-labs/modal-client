@@ -119,7 +119,8 @@ class _Image(Object, type_prefix="im"):
         find_links_arg = f"-f {find_links}" if find_links else ""
         package_args = " ".join(shlex.quote(pkg) for pkg in packages)
 
-        dockerfile_commands += [
+        dockerfile_commands = [
+            "FROM base",
             f"RUN pip install {package_args} {find_links_arg}",
         ]
 
