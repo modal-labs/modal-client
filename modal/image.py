@@ -144,8 +144,8 @@ def _poetry_pyproject_dockerfile_commands(poetry_pyproject_file_path: str, conte
 
     dockerfile_commands += [
         "COPY /.pyproject.toml /tmp/poetry/pyproject.toml",
-        "RUN cd /tmp/poetry && \ ",
-        "  poetry config virtualenvs.create false && \ ",
+        "RUN cd /tmp/poetry && \ ",  # noqa
+        "  poetry config virtualenvs.create false && \ ",  # noqa
         "  poetry install --no-root",
     ]
 
