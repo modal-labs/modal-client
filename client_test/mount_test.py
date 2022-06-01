@@ -20,7 +20,7 @@ async def test_get_files(servicer, client, tmpdir, mock_blob_upload_file):
     app = AioApp()
     async with app.run(client=client) as running_app:
         m = AioMount("/", local_dir=tmpdir, condition=lambda fn: fn.endswith(".py"), recursive=True)
-        # await m.load(running_app.load, running_app.client, running_app.app_id, None)
+        await running_app.load(m)
         async for upload_spec in m._get_files():
             files[upload_spec.rel_filename] = upload_spec
 
