@@ -18,7 +18,7 @@ class Object(metaclass=ObjectMeta):
     def __init__(self, client=None, object_id=None):
         self._client = client
         self._object_id = object_id
-        self._seed = str(uuid.uuid4())
+        self._local_uuid = str(uuid.uuid4())
 
     async def load(
         self,
@@ -58,8 +58,8 @@ class Object(metaclass=ObjectMeta):
         return self._object_id
 
     @property
-    def seed(self):
-        return self._seed
+    def local_uuid(self):
+        return self._local_uuid
 
     def get_creating_message(self) -> Optional[str]:
         return None

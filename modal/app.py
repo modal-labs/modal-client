@@ -57,7 +57,7 @@ lookup, aio_lookup = synchronize_apis(_lookup)
 class _RunningApp:
     _tag_to_object: Dict[str, Object]
     _tag_to_existing_id: Dict[str, str]
-    _seed_to_object_id: Dict[str, str]
+    _local_uuid_to_object_id: Dict[str, str]
     _client: _Client
     _app_id: str
 
@@ -74,7 +74,7 @@ class _RunningApp:
         self._client = client
         self._tag_to_object = tag_to_object or {}
         self._tag_to_existing_id = tag_to_existing_id or {}
-        self._seed_to_object_id = {}
+        self._local_uuid_to_object_id = {}
 
     @property
     def client(self):
@@ -112,8 +112,8 @@ class _RunningApp:
                     self._tag_to_object[obj.tag] = Object.from_id(object_id, self.client)
         else:
             # Create object
-            if obj.seed in self._seed_to_object_id:
-                object_id = self._seed_to_object_id[obj.seed]
+            if obj.local_uuid in self._local_uuid_to_object_id:
+                object_id = self._local_uuid_to_object_id[obj.local_uuid]
             else:
                 load = functools.partial(self.load, progress=progress)
                 object_id = await obj.load(load, self.client, self.app_id, existing_object_id)
@@ -127,7 +127,7 @@ class _RunningApp:
                         raise Exception(
                             f"Tried creating an object using existing id {existing_object_id} but it has id {object_id}"
                         )
-                self._seed_to_object_id[obj.seed] = object_id
+                self._local_uuid_to_object_id[obj.local_uuid] = object_id
 
         if object_id is None:
             raise Exception(f"object_id for object of type {type(obj)} is None")
