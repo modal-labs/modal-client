@@ -2,7 +2,7 @@ import os
 import shlex
 import sys
 from pathlib import Path
-from typing import Collection, Dict, List, Optional, Union
+from typing import Collection, Dict, List, Optional, Self, Union
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import retry, synchronize_apis
@@ -108,6 +108,47 @@ class _Image(Object, type_prefix="im"):
         env_image_id = config.get("image_id")
         logger.debug(f"Is image inside? env {env_image_id} image {self.object_id}")
         return self.object_id == env_image_id
+
+    def install_poetry_deps(
+        self,
+        poetry_pyproject_toml: str,
+    ):
+        context_files = {}
+        _dockerfile_commands = ["FROM base"] + _poetry_pyproject_dockerfile_commands(
+            poetry_pyproject_toml, context_files
+        )
+
+        return _Image(
+            base_images={"base": self},
+            dockerfile_commands=_dockerfile_commands,
+            context_files=context_files,
+        )
+
+    def extend_image(
+        self,
+        dockerfile_commands: Union[str, List[str]],
+        context_files: Dict[str, str] = {},
+        secrets: Collection[_Secret] = [],
+        poetry_pyproject: Optional[str] = None,
+    ) -> Self:
+        """Extend an image with arbitrary dockerfile commands"""
+
+        _dockerfile_commands = ["FROM base"]
+
+        if poetry_pyproject is not None:
+            _dockerfile_commands += _poetry_pyproject_dockerfile_commands(poetry_pyproject, context_files)
+
+        if isinstance(dockerfile_commands, str):
+            _dockerfile_commands += dockerfile_commands.split("\n")
+        else:
+            _dockerfile_commands += dockerfile_commands
+
+        return _Image(
+            base_images={"base": self},
+            dockerfile_commands=_dockerfile_commands,
+            context_files=context_files,
+            secrets=secrets,
+        )
 
 
 def _dockerhub_python_version(python_version=None):
