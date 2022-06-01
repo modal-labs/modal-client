@@ -83,11 +83,7 @@ class _Image(Object, type_prefix="im"):
 
         logger.debug("Waiting for image %s" % image_id)
         while True:
-            request = api_pb2.ImageJoinRequest(
-                image_id=image_id,
-                timeout=60,
-                app_id=app_id,
-            )
+            request = api_pb2.ImageJoinRequest(image_id=image_id, timeout=60)
             response = await retry(client.stub.ImageJoin)(request)
             if not response.result.status:
                 continue

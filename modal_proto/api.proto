@@ -201,7 +201,6 @@ message ImageGetOrCreateResponse {
 message ImageJoinRequest {
   string image_id = 1;
   float timeout = 2;
-  string app_id = 3;
 }
 
 message ImageJoinResponse {
