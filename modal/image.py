@@ -129,6 +129,29 @@ def _dockerhub_python_version(python_version=None):
     return python_version
 
 
+# Mutates context_files.
+def _poetry_pyproject_dockerfile_commands(poetry_pyproject_file_path: str, context_files: Dict[str, str]):
+    dockerfile_commands = ["RUN pip install poetry"]
+
+    context_files["/.pyproject.toml"] = poetry_pyproject_file_path
+
+    poetry_lockfile: Path = Path(poetry_pyproject_file_path).parent / "poetry.lock"
+    if poetry_lockfile.exists():
+        context_files["/.poetry.lock"] = poetry_lockfile.as_posix()
+        dockerfile_commands += ["COPY /.poetry.lock /tmp/poetry/poetry.lock"]
+    else:
+        logger.warn("poetry.lock not found.")
+
+    dockerfile_commands += [
+        "COPY /.pyproject.toml /tmp/poetry/pyproject.toml",
+        "RUN cd /tmp/poetry && \ ",
+        "  poetry config virtualenvs.create false && \ ",
+        "  poetry install --no-root",
+    ]
+
+    return dockerfile_commands
+
+
 def _DebianSlim(
     app=None,
     extra_commands: List[str] = [],  # A list of shell commands executed while building the image
@@ -173,23 +196,7 @@ def _DebianSlim(
         ]
 
     if poetry_pyproject is not None:
-        dockerfile_commands += ["RUN pip install poetry"]
-
-        context_files["/.pyproject.toml"] = poetry_pyproject
-
-        poetry_lockfile: Path = Path(poetry_pyproject).parent() / "poetry.lock"
-        if poetry_lockfile.exists():
-            context_files["/.poetry.lock"] = poetry_lockfile.as_posix()
-            dockerfile_commands += ["COPY /.poetry.lock /tmp/.poetry.lock"]
-        else:
-            logger.warn("poetry.lock not found.")
-
-        dockerfile_commands += [
-            "COPY /.pyproject.toml /tmp/.pyproject.toml",
-            "RUN cd tmp && \ ",
-            "  poetry config virtualenvs.create false && \ ",
-            "  poetry install --no-root",
-        ]
+        dockerfile_commands += _poetry_pyproject_dockerfile_commands(poetry_pyproject, context_files)
 
     if python_packages:
         find_links_arg = f"-f {pip_find_links}" if pip_find_links else ""
@@ -213,18 +220,26 @@ def _DebianSlim(
 
 def _extend_image(
     base_image: _Image,
-    extra_dockerfile_commands: Union[str, List[str]],
     context_files: Dict[str, str] = {},
     secrets: Collection[_Secret] = [],
+    poetry_pyproject: Optional[str] = None,
+    extra_dockerfile_commands: Union[str, List[str]] = [],
 ):
     """Extend an image with arbitrary dockerfile commands"""
 
+    dockerfile_commands = ["FROM base"]
+
+    if poetry_pyproject is not None:
+        dockerfile_commands += _poetry_pyproject_dockerfile_commands(poetry_pyproject, context_files)
+
     if isinstance(extra_dockerfile_commands, str):
-        extra_dockerfile_commands = extra_dockerfile_commands.split("\n")
+        dockerfile_commands += extra_dockerfile_commands.split("\n")
+    else:
+        dockerfile_commands += extra_dockerfile_commands
 
     return _Image(
         base_images={"base": base_image},
-        dockerfile_commands=["FROM base"] + extra_dockerfile_commands,
+        dockerfile_commands=dockerfile_commands,
         context_files=context_files,
         secrets=secrets,
     )
