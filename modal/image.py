@@ -158,11 +158,11 @@ def _DebianSlim(
     python_packages: List[str] = [],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
     python_version: Optional[str] = None,  # Set a specific Python version
     pip_find_links: Optional[str] = None,
-    requirements_txt: Optional[Union[bytes, str]] = None,  # File contents of a requirements.txt
+    requirements_txt: Optional[str] = None,  # File contents of a requirements.txt
     poetry_pyproject: Optional[str] = None,  # Path to pyproject.toml file.
     context_files: Dict[
-        str, bytes
-    ] = {},  # A dict containing any files that will be present during the build to use with COPY
+        str, str
+    ] = {},  # A dict containing path to files that will be present during the build to use with COPY
     secrets: List[
         Object
     ] = [],  # List of Modal secrets that will be available as environment variables during the build process
@@ -185,9 +185,6 @@ def _DebianSlim(
 
     if requirements_txt is not None:
         context_files = context_files.copy()
-        if isinstance(requirements_txt, str):
-            requirements_txt = requirements_txt.encode()
-            assert isinstance(requirements_txt, bytes)
         context_files["/.requirements.txt"] = requirements_txt
 
         dockerfile_commands += [
@@ -285,7 +282,7 @@ def _Conda(
     conda_packages: List[str] = [],  # A list of packages to install through Conda, eg. ["numpy", "matplotlib>=3.5.0"]
     pip_packages: List[str] = [],  # A list of packages to install through pip, eg. ["numpy", "matplotlib>=3.5.0"]
     context_files: Dict[
-        str, bytes
+        str, str
     ] = {},  # A dict containing any files that will be present during the build to use with COPY
     secrets: List[
         Object
