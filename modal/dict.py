@@ -94,5 +94,12 @@ class _Dict(Object, type_prefix="di"):
         """
         return await self.pop(key)
 
+    async def __contains__(self, key):
+        """Check if the key exists
+
+        Only works in a synchronous context
+        """
+        return await self.contains(key)
+
 
 Dict, AioDict = synchronize_apis(_Dict)
