@@ -245,7 +245,8 @@ def _DockerhubImage(app=None, tag=None):
 
 def _Conda(
     extra_commands: List[str] = [],  # A list of shell commands executed while building the image
-    python_packages: List[str] = [],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
+    conda_packages: List[str] = [],  # A list of packages to install through Conda, eg. ["numpy", "matplotlib>=3.5.0"]
+    pip_packages: List[str] = [],  # A list of packages to install through pip, eg. ["numpy", "matplotlib>=3.5.0"]
     context_files: Dict[
         str, bytes
     ] = {},  # A dict containing any files that will be present during the build to use with COPY
@@ -262,11 +263,18 @@ def _Conda(
     base_images = {"base": base_image}
     dockerfile_commands += [f"RUN {cmd}" for cmd in extra_commands]
 
-    if python_packages:
-        package_args = " ".join(shlex.quote(pkg) for pkg in python_packages)
+    if conda_packages:
+        package_args = " ".join(shlex.quote(pkg) for pkg in conda_packages)
 
         dockerfile_commands += [
             f"RUN conda install {package_args} --yes",
+        ]
+
+    if pip_packages:
+        package_args = " ".join(shlex.quote(pkg) for pkg in pip_packages)
+
+        dockerfile_commands += [
+            f"RUN pip install {package_args}",
         ]
 
     if len(dockerfile_commands) == 1:
