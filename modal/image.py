@@ -1,6 +1,7 @@
 import os
 import shlex
 import sys
+from pathlib import Path
 from typing import Collection, Dict, List, Optional, Union
 
 from modal_proto import api_pb2
@@ -135,6 +136,7 @@ def _DebianSlim(
     python_version: Optional[str] = None,  # Set a specific Python version
     pip_find_links: Optional[str] = None,
     requirements_txt: Optional[Union[bytes, str]] = None,  # File contents of a requirements.txt
+    poetry_pyproject: Optional[str] = None,  # Path to pyproject.toml file.
     context_files: Dict[
         str, bytes
     ] = {},  # A dict containing any files that will be present during the build to use with COPY
@@ -168,6 +170,25 @@ def _DebianSlim(
         dockerfile_commands += [
             "COPY /.requirements.txt /.requirements.txt",
             "RUN pip install -r /.requirements.txt",
+        ]
+
+    if poetry_pyproject is not None:
+        dockerfile_commands += ["RUN pip install poetry"]
+
+        context_files["/.pyproject.toml"] = poetry_pyproject
+
+        poetry_lockfile: Path = Path(poetry_pyproject).parent() / "poetry.lock"
+        if poetry_lockfile.exists():
+            context_files["/.poetry.lock"] = poetry_lockfile.as_posix()
+            dockerfile_commands += ["COPY /.poetry.lock /tmp/.poetry.lock"]
+        else:
+            logger.warn("poetry.lock not found.")
+
+        dockerfile_commands += [
+            "COPY /.pyproject.toml /tmp/.pyproject.toml",
+            "RUN cd tmp && \ ",
+            "  poetry config virtualenvs.create false && \ ",
+            "  poetry install --no-root",
         ]
 
     if python_packages:
