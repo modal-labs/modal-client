@@ -82,7 +82,7 @@ class _Mount(Object, type_prefix="mo"):
             for fut in asyncio.as_completed(futs):
                 yield await fut
 
-    async def load(self, load, client, app_id, existing_mount_id):
+    async def load(self, client, app_id, existing_mount_id):
         # Run a threadpool to compute hash values, and use n coroutines to put files
         # TODO(erikbern): this is not ideal when mounts are created in-place, because it
         # creates a brief period where the files are reset to an empty list.

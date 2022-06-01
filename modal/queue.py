@@ -19,7 +19,7 @@ class _Queue(Object, type_prefix="qu"):
     def __init__(self):
         super().__init__()
 
-    async def load(self, load, client, app_id, existing_queue_id):
+    async def load(self, client, app_id, existing_queue_id):
         request = api_pb2.QueueCreateRequest(app_id=app_id, existing_queue_id=existing_queue_id)
         response = await client.stub.QueueCreate(request)
         logger.debug("Created queue with id %s" % response.queue_id)

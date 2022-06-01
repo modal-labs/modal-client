@@ -1,5 +1,5 @@
 import uuid
-from typing import Awaitable, Callable, Optional
+from typing import Optional
 
 from modal_proto import api_pb2
 
@@ -22,7 +22,6 @@ class Object(metaclass=ObjectMeta):
 
     async def load(
         self,
-        load: Callable[["Object"], Awaitable[str]],
         client: _Client,
         app_id: str,
         existing_object_id: Optional[str] = None,
@@ -43,6 +42,7 @@ class Object(metaclass=ObjectMeta):
         return obj
 
     async def create(self, running_app=None):
+        # TOOD: should we just get rid of this one in favor of running_app.create(obj) ?
         from .app import _container_app, _RunningApp  # avoid circular import
 
         if running_app is None:
@@ -50,7 +50,7 @@ class Object(metaclass=ObjectMeta):
             if running_app is None:
                 raise InvalidError(".create must be passed the app explicitly if not running in a container")
         assert isinstance(running_app, _RunningApp)
-        object_id = await self.load(running_app.load, running_app.client, running_app.app_id, None)
+        object_id = await running_app.load(self)
         return Object.from_id(object_id, running_app.client)
 
     @property
@@ -71,6 +71,10 @@ class Object(metaclass=ObjectMeta):
     def include(cls, app, app_name, object_label=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
         """Use an object published with `modal.App.deploy`"""
         raise InvalidError("The `Object.include` method is gone. Use `modal.ref` instead!")
+
+    def __await__(self):
+        """Make objects awaitable from the load() method."""
+        return (yield self)
 
 
 class Ref(Object):

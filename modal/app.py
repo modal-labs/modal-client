@@ -1,5 +1,4 @@
 import asyncio
-import functools
 import inspect
 import os
 import sys
@@ -115,8 +114,21 @@ class _RunningApp:
             if obj.local_uuid in self._local_uuid_to_object_id:
                 object_id = self._local_uuid_to_object_id[obj.local_uuid]
             else:
-                load = functools.partial(self.load, progress=progress)
-                object_id = await obj.load(load, self.client, self.app_id, existing_object_id)
+                send = None
+                gen = obj.load(self.client, self.app_id, existing_object_id)
+                object_id = None
+                while object_id is None:
+                    try:
+                        awaitable = gen.send(send)
+                        if asyncio.isfuture(awaitable):
+                            (send,) = await asyncio.gather(awaitable)
+                        elif isinstance(awaitable, Object):
+                            send = await self.load(awaitable, progress=progress)
+                        else:
+                            raise Exception(f"Got weird type back from load(): {awaitable}")
+                    except StopIteration as exc:
+                        object_id = exc.value
+
                 if existing_object_id is not None and object_id != existing_object_id:
                     # TODO(erikbern): this is a very ugly fix to a problem that's on the server side.
                     # Unlike every other object, images are not assigned random ids, but rather an
