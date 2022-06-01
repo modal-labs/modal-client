@@ -253,3 +253,24 @@ async def queue_batch_iterator(q: asyncio.Queue, max_batch_size=100, debounce_ti
             yield item_list
             break
         item_list.append(res)
+
+
+async def intercept_coro(coro, interceptor):
+    # This roughly corresponds to https://gist.github.com/erikbern/ad7615d22b700e8dbbafd8e4d2f335e1
+    # The underlying idea is that we can execute a coroutine ourselves and use it to intercept
+    # any awaitable object. This lets the coroutine await arbitrary awaitable objects, not just
+    # asyncio futures. See how this is used in object.load.
+    value_to_send = None
+    while True:
+        try:
+            awaitable = coro.send(value_to_send)
+            assert inspect.isawaitable(awaitable)
+            if asyncio.isfuture(awaitable):
+                # This is an asyncio future, just pass it higher up
+                # TODO: is there some cleaner way to do this?
+                (send,) = await asyncio.gather(awaitable)
+            else:
+                # Intercept this one
+                value_to_send = await interceptor(awaitable)
+        except StopIteration as exc:
+            return exc.value

@@ -8,7 +8,12 @@ from typing import Collection, Dict, Optional, Union
 from rich.tree import Tree
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import TaskContext, synchronize_apis, synchronizer
+from modal_utils.async_utils import (
+    TaskContext,
+    intercept_coro,
+    synchronize_apis,
+    synchronizer,
+)
 from modal_utils.decorator_utils import decorator_with_options
 
 from ._function_utils import FunctionInfo
@@ -114,20 +119,15 @@ class _RunningApp:
             if obj.local_uuid in self._local_uuid_to_object_id:
                 object_id = self._local_uuid_to_object_id[obj.local_uuid]
             else:
-                send = None
-                gen = obj.load(self.client, self.app_id, existing_object_id)
-                object_id = None
-                while object_id is None:
-                    try:
-                        awaitable = gen.send(send)
-                        if asyncio.isfuture(awaitable):
-                            (send,) = await asyncio.gather(awaitable)
-                        elif isinstance(awaitable, Object):
-                            send = await self.load(awaitable, progress=progress)
-                        else:
-                            raise Exception(f"Got weird type back from load(): {awaitable}")
-                    except StopIteration as exc:
-                        object_id = exc.value
+
+                async def interceptor(awaitable):
+                    assert isinstance(awaitable, Object)
+                    return await self.load(awaitable, progress=progress)
+
+                object_id = await intercept_coro(
+                    obj.load(self.client, self.app_id, existing_object_id),
+                    interceptor,
+                )
 
                 if existing_object_id is not None and object_id != existing_object_id:
                     # TODO(erikbern): this is a very ugly fix to a problem that's on the server side.
