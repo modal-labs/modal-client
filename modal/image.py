@@ -1,6 +1,7 @@
 import os
 import shlex
 import sys
+import warnings
 from pathlib import Path
 from typing import Collection, Dict, List, Optional, Union
 
@@ -271,6 +272,10 @@ class _DebianSlim(_Image):
         dockerfile_commands += [f"RUN {cmd}" for cmd in extra_commands]
 
         if requirements_txt is not None:
+            warnings.warn(
+                "Arguments to DebianSlim are deprecated. Use image.pip_install_from_requirements() instead",
+                DeprecationWarning,
+            )
             context_files = context_files.copy()
             context_files["/.requirements.txt"] = requirements_txt
 
@@ -280,12 +285,19 @@ class _DebianSlim(_Image):
             ]
 
         if python_packages:
+            warnings.warn("Arguments to DebianSlim are deprecated. Use image.pip_install() instead", DeprecationWarning)
+
             find_links_arg = f"-f {pip_find_links}" if pip_find_links else ""
             package_args = " ".join(shlex.quote(pkg) for pkg in python_packages)
 
             dockerfile_commands += [
                 f"RUN pip install {package_args} {find_links_arg}",
             ]
+
+        if extra_commands:
+            warnings.warn(
+                "Arguments to DebianSlim are deprecated. Use image.run_commands() instead", DeprecationWarning
+            )
 
         super().__init__(
             dockerfile_commands=dockerfile_commands,
