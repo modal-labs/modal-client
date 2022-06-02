@@ -129,6 +129,27 @@ class _Image(Object, type_prefix="im"):
             dockerfile_commands=dockerfile_commands,
         )
 
+    def pip_install_from_requirements(
+        self,
+        requirements_txt: str,  # Path to a requirements.txt file.
+        find_links: Optional[str] = None,
+    ):
+        """Install a list of packages using pip."""
+
+        find_links_arg = f"-f {find_links}" if find_links else ""
+        context_files = {"/.requirements.txt": requirements_txt}
+
+        dockerfile_commands += [
+            "COPY /.requirements.txt /.requirements.txt",
+            f"RUN pip install -r /.requirements.txt {find_links_arg}",
+        ]
+
+        return _Image(
+            base_images={"base": self},
+            dockerfile_commands=dockerfile_commands,
+            context_files=context_files,
+        )
+
     def poetry_install_from_file(
         self,
         poetry_pyproject_toml: str,
@@ -212,17 +233,7 @@ class _DebianSlim(_Image):
     def __init__(
         self,
         app=None,
-        extra_commands: List[str] = [],  # A list of shell commands executed while building the image
-        python_packages: List[str] = [],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
         python_version: Optional[str] = None,  # Set a specific Python version
-        pip_find_links: Optional[str] = None,
-        requirements_txt: Optional[str] = None,  # File contents of a requirements.txt
-        context_files: Dict[
-            str, str
-        ] = {},  # A dict containing path to files that will be present during the build to use with COPY
-        secrets: List[
-            Object
-        ] = [],  # List of Modal secrets that will be available as environment variables during the build process
         version: Optional[str] = None,  # Custom string to break the image hashing and force the image to be rebuilt
     ):
         if app is not None:
@@ -233,24 +244,6 @@ class _DebianSlim(_Image):
 
         dockerfile_commands = ["FROM base as target"]
         base_images = {"base": base_image}
-        dockerfile_commands += [f"RUN {cmd}" for cmd in extra_commands]
-
-        if requirements_txt is not None:
-            context_files = context_files.copy()
-            context_files["/.requirements.txt"] = requirements_txt
-
-            dockerfile_commands += [
-                "COPY /.requirements.txt /.requirements.txt",
-                "RUN pip install -r /.requirements.txt",
-            ]
-
-        if python_packages:
-            find_links_arg = f"-f {pip_find_links}" if pip_find_links else ""
-            package_args = " ".join(shlex.quote(pkg) for pkg in python_packages)
-
-            dockerfile_commands += [
-                f"RUN pip install {package_args} {find_links_arg}",
-            ]
 
         super().__init__(
             dockerfile_commands=dockerfile_commands,
