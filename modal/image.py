@@ -202,60 +202,82 @@ def _dockerhub_python_version(python_version=None):
     return python_version
 
 
-def _DebianSlim(
-    app=None,
-    extra_commands: List[str] = [],  # A list of shell commands executed while building the image
-    python_packages: List[str] = [],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
-    python_version: Optional[str] = None,  # Set a specific Python version
-    pip_find_links: Optional[str] = None,
-    requirements_txt: Optional[str] = None,  # File contents of a requirements.txt
-    context_files: Dict[
-        str, str
-    ] = {},  # A dict containing path to files that will be present during the build to use with COPY
-    secrets: List[
-        Object
-    ] = [],  # List of Modal secrets that will be available as environment variables during the build process
-    version: Optional[str] = None,  # Custom string to break the image hashing and force the image to be rebuilt
-):
+class _DebianSlim(_Image):
     """A default base image, built on the official python:x.y.z-slim-bullseye Docker hub images
 
     Can also be called as a function to build a new image with additional bash
     commands or python packages.
     """
-    if app is not None:
-        raise InvalidError("The latest API does no longer require the `app` argument, so please update your code!")
 
-    python_version = _dockerhub_python_version(python_version)
-    base_image = ref(f"debian-slim-{python_version}", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
+    def __init__(
+        self,
+        app=None,
+        extra_commands: List[str] = [],  # A list of shell commands executed while building the image
+        python_packages: List[str] = [],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
+        python_version: Optional[str] = None,  # Set a specific Python version
+        pip_find_links: Optional[str] = None,
+        requirements_txt: Optional[str] = None,  # File contents of a requirements.txt
+        context_files: Dict[
+            str, str
+        ] = {},  # A dict containing path to files that will be present during the build to use with COPY
+        secrets: List[
+            Object
+        ] = [],  # List of Modal secrets that will be available as environment variables during the build process
+        version: Optional[str] = None,  # Custom string to break the image hashing and force the image to be rebuilt
+    ):
+        if app is not None:
+            raise InvalidError("The latest API does no longer require the `app` argument, so please update your code!")
 
-    dockerfile_commands = ["FROM base as target"]
-    base_images = {"base": base_image}
-    dockerfile_commands += [f"RUN {cmd}" for cmd in extra_commands]
+        python_version = _dockerhub_python_version(python_version)
+        base_image = ref(f"debian-slim-{python_version}", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
 
-    if requirements_txt is not None:
-        context_files = context_files.copy()
-        context_files["/.requirements.txt"] = requirements_txt
+        dockerfile_commands = ["FROM base as target"]
+        base_images = {"base": base_image}
+        dockerfile_commands += [f"RUN {cmd}" for cmd in extra_commands]
 
-        dockerfile_commands += [
-            "COPY /.requirements.txt /.requirements.txt",
-            "RUN pip install -r /.requirements.txt",
+        if requirements_txt is not None:
+            context_files = context_files.copy()
+            context_files["/.requirements.txt"] = requirements_txt
+
+            dockerfile_commands += [
+                "COPY /.requirements.txt /.requirements.txt",
+                "RUN pip install -r /.requirements.txt",
+            ]
+
+        if python_packages:
+            find_links_arg = f"-f {pip_find_links}" if pip_find_links else ""
+            package_args = " ".join(shlex.quote(pkg) for pkg in python_packages)
+
+            dockerfile_commands += [
+                f"RUN pip install {package_args} {find_links_arg}",
+            ]
+
+        super().__init__(
+            dockerfile_commands=dockerfile_commands,
+            context_files=context_files,
+            base_images=base_images,
+            version=version,
+            secrets=secrets,
+        )
+
+    def apt_install(
+        self,
+        packages: List[str] = [],  # A list of Debian packages, eg. ["ssh", "libpq-dev"]
+    ):
+        """Install a list of Debian using apt."""
+
+        package_args = " ".join(shlex.quote(pkg) for pkg in packages)
+
+        dockerfile_commands = [
+            "FROM base",
+            "RUN apt-get update",
+            f"RUN apt-get install -y {package_args}",
         ]
 
-    if python_packages:
-        find_links_arg = f"-f {pip_find_links}" if pip_find_links else ""
-        package_args = " ".join(shlex.quote(pkg) for pkg in python_packages)
-
-        dockerfile_commands += [
-            f"RUN pip install {package_args} {find_links_arg}",
-        ]
-
-    return _Image(
-        dockerfile_commands=dockerfile_commands,
-        context_files=context_files,
-        base_images=base_images,
-        version=version,
-        secrets=secrets,
-    )
+        return _Image(
+            base_images={"base": self},
+            dockerfile_commands=dockerfile_commands,
+        )
 
 
 def _extend_image(
