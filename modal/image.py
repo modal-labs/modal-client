@@ -1,7 +1,6 @@
 import os
 import shlex
 import sys
-import warnings
 from pathlib import Path
 from typing import Collection, Dict, List, Optional, Union
 
@@ -181,7 +180,7 @@ class _Image(Object, type_prefix="im"):
             context_files=context_files,
         )
 
-    def extend_image(
+    def dockerfile_commands(
         self,
         dockerfile_commands: Union[str, List[str]],
         context_files: Dict[str, str] = {},
@@ -200,6 +199,20 @@ class _Image(Object, type_prefix="im"):
             base_images={"base": self},
             dockerfile_commands=_dockerfile_commands,
             context_files=context_files,
+            secrets=secrets,
+        )
+
+    def run_commands(
+        self,
+        commands: List[str],
+        secrets: Collection[_Secret] = [],
+    ):
+        """Extend an image with a list of run commands"""
+        dockerfile_commands = ["FROM base"] + [f"RUN {cmd}" for cmd in commands]
+
+        return _Image(
+            base_images={"base": self},
+            dockerfile_commands=dockerfile_commands,
             secrets=secrets,
         )
 
@@ -262,31 +275,6 @@ class _DebianSlim(_Image):
             base_images={"base": self},
             dockerfile_commands=dockerfile_commands,
         )
-
-
-def _extend_image(
-    base_image: _Image,
-    context_files: Dict[str, str] = {},
-    secrets: Collection[_Secret] = [],
-    extra_dockerfile_commands: Union[str, List[str]] = [],
-):
-    """Extend an image with arbitrary dockerfile commands"""
-
-    warnings.warn("Direct usage of extend_image is deprecated. Use Image.extend_image instead", DeprecationWarning)
-
-    dockerfile_commands = ["FROM base"]
-
-    if isinstance(extra_dockerfile_commands, str):
-        dockerfile_commands += extra_dockerfile_commands.split("\n")
-    else:
-        dockerfile_commands += extra_dockerfile_commands
-
-    return _Image(
-        base_images={"base": base_image},
-        dockerfile_commands=dockerfile_commands,
-        context_files=context_files,
-        secrets=secrets,
-    )
 
 
 def get_client_requirements_path():
@@ -357,4 +345,3 @@ Conda, AioConda = synchronize_apis(_Conda)
 DebianSlim, AioDebianSlim = synchronize_apis(_DebianSlim)
 DockerhubImage, AioDockerhubImage = synchronize_apis(_DockerhubImage)
 Image, AioImage = synchronize_apis(_Image)
-extend_image, aio_extend_image = synchronize_apis(_extend_image)
