@@ -5,8 +5,6 @@ from importlib import import_module
 
 from importlib_metadata import PackageNotFoundError, files
 
-from .logger import logger
-
 
 def get_file_formats(module):
     try:
@@ -27,7 +25,6 @@ def get_module_mount_info(module: str):
     """Returns a list of tuples [(module, path, condition)] describing how to mount a given module."""
 
     file_formats = get_file_formats(module)
-    logger.info(f"{module}: {file_formats}")
     if set(BINARY_FORMATS) & set(file_formats):
         raise Exception(f"{module} can't be mounted because it contains a binary file.")
 

@@ -44,7 +44,7 @@ class GRPCConnectionFactory:
         try:
             o = urllib.parse.urlparse(server_url)
         except Exception:
-            logger.info(f"server url: {server_url}")
+            logger.exception(f"failed to parse server url: {server_url}")
             raise
 
         self.target = o.netloc

@@ -211,7 +211,7 @@ def sentry_exit_callback(pending, timeout):
 if config["sentry_dsn"] and "localhost" not in config["server_url"]:
     # Check if already initialized.
     if sentry_sdk.Hub.current.client:
-        logger.info("Skipping Sentry initialization, because Hub already exists.")
+        logger.debug("Skipping Sentry initialization, because Hub already exists.")
     else:
         logger.debug("Initializing Sentry with sample rate 1.")
         sentry_sdk.init(

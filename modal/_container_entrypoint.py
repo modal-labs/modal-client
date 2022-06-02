@@ -124,7 +124,7 @@ class _FunctionContext:
                 )
             except AioRpcError as exc:
                 if exc.code() == StatusCode.RESOURCE_EXHAUSTED:
-                    logger.info(f"Task {self.task_id} exceeded rate limit.")
+                    logger.debug(f"Task {self.task_id} exceeded rate limit.")
                     await asyncio.sleep(1)
                     continue
 
