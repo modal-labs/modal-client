@@ -232,26 +232,17 @@ class _DebianSlim(_Image):
 
     def __init__(
         self,
-        app=None,
         python_version: Optional[str] = None,  # Set a specific Python version
-        version: Optional[str] = None,  # Custom string to break the image hashing and force the image to be rebuilt
     ):
-        if app is not None:
-            raise InvalidError("The latest API does no longer require the `app` argument, so please update your code!")
+        if python_version is None:
+            python_version = _dockerhub_python_version(python_version)
 
-        python_version = _dockerhub_python_version(python_version)
-        base_image = ref(f"debian-slim-{python_version}", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
+        self._python_version = python_version
+        super().__init__()
 
-        dockerfile_commands = ["FROM base as target"]
-        base_images = {"base": base_image}
-
-        super().__init__(
-            dockerfile_commands=dockerfile_commands,
-            context_files=context_files,
-            base_images=base_images,
-            version=version,
-            secrets=secrets,
-        )
+    # Override load to just resolve a ref.
+    async def load(self, client, app_id, existing_image_id):
+        return await ref(f"debian-slim-{self._python_version}", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
 
     def apt_install(
         self,
@@ -336,49 +327,12 @@ def _DockerhubImage(app=None, tag=None):
 class _Conda(_Image):
     """A Conda base image, built on the official miniconda3 Docker hub image."""
 
-    def __init__(
-        self,
-        extra_commands: List[str] = [],  # A list of shell commands executed while building the image
-        conda_packages: List[
-            str
-        ] = [],  # A list of packages to install through Conda, eg. ["numpy", "matplotlib>=3.5.0"]
-        pip_packages: List[str] = [],  # A list of packages to install through pip, eg. ["numpy", "matplotlib>=3.5.0"]
-        context_files: Dict[
-            str, str
-        ] = {},  # A dict containing any files that will be present during the build to use with COPY
-        secrets: List[
-            Object
-        ] = [],  # List of Modal secrets that will be available as environment variables during the build process
-        version: Optional[str] = None,  # Custom string to break the image hashing and force the image to be rebuilt
-    ):
+    def __init__(self):
+        super().__init__()
 
-        base_image = ref("conda", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
-
-        dockerfile_commands = ["FROM base as target"]
-        base_images = {"base": base_image}
-        dockerfile_commands += [f"RUN {cmd}" for cmd in extra_commands]
-
-        if conda_packages:
-            package_args = " ".join(shlex.quote(pkg) for pkg in conda_packages)
-
-            dockerfile_commands += [
-                f"RUN conda install {package_args} --yes",
-            ]
-
-        if pip_packages:
-            package_args = " ".join(shlex.quote(pkg) for pkg in pip_packages)
-
-            dockerfile_commands += [
-                f"RUN pip install {package_args}",
-            ]
-
-        super().__init__(
-            dockerfile_commands=dockerfile_commands,
-            context_files=context_files,
-            base_images=base_images,
-            version=version,
-            secrets=secrets,
-        )
+    # Override load to just resolve a ref.
+    async def load(self, client, app_id, existing_image_id):
+        return await ref("conda", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
 
     def conda_install(
         self,
