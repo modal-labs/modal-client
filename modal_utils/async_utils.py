@@ -268,7 +268,7 @@ async def intercept_coro(coro, interceptor):
             if asyncio.isfuture(awaitable):
                 # This is an asyncio future, just pass it higher up
                 # TODO: is there some cleaner way to do this?
-                (send,) = await asyncio.gather(awaitable)
+                await asyncio.gather(awaitable)
             else:
                 # Intercept this one
                 value_to_send = await interceptor(awaitable)
