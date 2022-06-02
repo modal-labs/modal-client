@@ -138,7 +138,8 @@ class _Image(Object, type_prefix="im"):
         find_links_arg = f"-f {find_links}" if find_links else ""
         context_files = {"/.requirements.txt": requirements_txt}
 
-        dockerfile_commands += [
+        dockerfile_commands = [
+            "FROM base",
             "COPY /.requirements.txt /.requirements.txt",
             f"RUN pip install -r /.requirements.txt {find_links_arg}",
         ]
