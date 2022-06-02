@@ -76,13 +76,6 @@ from sentry_sdk.integrations.atexit import AtexitIntegration
 
 from .version import __version__
 
-try:
-    import icecream
-
-    icecream.install()
-except ImportError:
-    pass
-
 WHEEL_FILENAME = f"modal-{__version__}-py3-none-any.whl"
 
 # Locate config file and read it
