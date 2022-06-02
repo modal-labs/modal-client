@@ -248,10 +248,7 @@ class _DebianSlim(_Image):
         self,
         python_version: Optional[str] = None,  # Set a specific Python version
     ):
-        if python_version is None:
-            python_version = _dockerhub_python_version(python_version)
-
-        self._python_version = python_version
+        self._python_version = _dockerhub_python_version(python_version)
         super().__init__()
 
     # Override load to just resolve a ref.
