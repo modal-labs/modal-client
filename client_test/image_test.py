@@ -1,9 +1,7 @@
 import os
-import pytest
 import sys
 
 from modal import App, DebianSlim
-from modal.exception import InvalidError
 from modal.image import _dockerhub_python_version
 
 
@@ -17,15 +15,9 @@ def test_python_version():
 
 def test_debian_slim_python_packages(client):
     app = App()
-    app["image"] = DebianSlim(python_packages=["numpy"])
+    app["image"] = DebianSlim().pip_install(["numpy"])
     with app.run(client=client) as running_app:
         assert running_app["image"].object_id == "im-123"
-
-
-def test_debian_slim_with_apps(client):
-    app = App()
-    with pytest.raises(InvalidError):
-        DebianSlim(app, python_packages=["numpy"])
 
 
 def test_debian_slim_requirements_txt(servicer, client):
