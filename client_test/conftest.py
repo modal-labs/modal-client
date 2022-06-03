@@ -17,7 +17,7 @@ from grpc.aio import ServicerContext
 from modal.app import _RunningApp
 from modal.client import AioClient, Client
 from modal.image import _dockerhub_python_version
-from modal.mount import MODAL_CLIENT_MOUNT_NAME
+from modal.mount import client_mount_name
 from modal.version import __version__
 from modal_proto import api_pb2, api_pb2_grpc
 from modal_utils.async_utils import synchronize_apis
@@ -32,7 +32,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.object_ids = None
         self.queue = []
         self.deployed_apps = {
-            MODAL_CLIENT_MOUNT_NAME: "ap-x",
+            client_mount_name(): "ap-x",
             "foo-queue": "ap-y",
             f"debian-slim-{_dockerhub_python_version()}": "ap-z",
         }

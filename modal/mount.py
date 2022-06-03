@@ -17,12 +17,16 @@ from modal_utils.package_utils import get_module_mount_info, module_mount_condit
 from .config import logger
 from .exception import InvalidError
 from .object import Object
+from .version import __version__
 
 #  If a file is LARGE_FILE_LIMIT bytes or larger, it's uploaded to blob store (s3) instead of going through grpc
 #  It will also make sure to chunk the hash calculation to avoid reading the entire file into memory
 LARGE_FILE_LIMIT = 1024 * 1024  # 1MB
 HASH_CHUNK_SIZE = 4096
-MODAL_CLIENT_MOUNT_NAME = "modal-client-mount"
+
+
+def client_mount_name():
+    return f"modal-client-mount-{__version__}"
 
 
 class _Mount(Object, type_prefix="mo"):

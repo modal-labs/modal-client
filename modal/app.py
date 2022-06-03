@@ -23,7 +23,7 @@ from .config import config, logger
 from .exception import InvalidError, NotFoundError
 from .functions import _Function
 from .image import _DebianSlim, _Image
-from .mount import MODAL_CLIENT_MOUNT_NAME, _create_client_mount, _Mount
+from .mount import _create_client_mount, _Mount, client_mount_name
 from .object import Object, Ref, ref
 from .rate_limit import RateLimit
 from .schedule import Schedule
@@ -443,7 +443,7 @@ class _App:
             if config["sync_entrypoint"]:
                 self._client_mount = _create_client_mount()
             else:
-                self._client_mount = ref(MODAL_CLIENT_MOUNT_NAME, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
+                self._client_mount = ref(client_mount_name(), namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
         mounts.append(self._client_mount)
 
         # Create function mounts
