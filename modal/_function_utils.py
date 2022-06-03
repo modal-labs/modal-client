@@ -35,10 +35,17 @@ class FunctionInfo:
             # This is a "real" module, eg. examples.logs.f
             # Get the package path
             # Note: __import__ always returns the top-level package.
-            package_path = __import__(module.__package__).__path__
-            # TODO: we should handle the array case, https://stackoverflow.com/questions/2699287/what-is-path-useful-for
-            assert len(package_path) == 1
-            (self.base_dir,) = package_path
+            module_file = module.__file__
+            package_paths = __import__(module.__package__).__path__
+            # There might be multiple package paths in some weird cases
+            base_dirs = [
+                base_dir for base_dir in package_paths if os.path.commonpath((base_dir, module_file)) == base_dir
+            ]
+            if len(base_dirs) != 1:
+                raise Exception(
+                    f"Wasn't able to identify the base directory! {module_file=} {package_paths=} {base_dirs=}"
+                )
+            (self.base_dir,) = base_dirs
             self.module_name = module.__spec__.name
             self.remote_dir = os.path.join(ROOT_DIR, module.__package__.split(".")[0])
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE

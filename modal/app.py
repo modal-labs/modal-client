@@ -95,11 +95,6 @@ class _RunningApp:
 
     async def load(self, obj: Object, progress: Optional[Tree] = None, existing_object_id: Optional[str] = None) -> str:
         """Takes an object as input, create it, and return an object id."""
-        if progress:
-            creating_message = obj.get_creating_message()
-            if creating_message is not None:
-                step_node = progress.add(step_progress(creating_message))
-
         if isinstance(obj, Ref):
             # TODO: should we just move this code to the Ref class?
             if obj.app_name is not None:
@@ -120,6 +115,11 @@ class _RunningApp:
                 object_id = self._local_uuid_to_object_id[obj.local_uuid]
             else:
 
+                if progress:
+                    creating_message = obj.get_creating_message()
+                    if creating_message is not None:
+                        step_node = progress.add(step_progress(creating_message))
+
                 async def interceptor(awaitable):
                     assert isinstance(awaitable, Object)
                     return await self.load(awaitable, progress=progress)
@@ -128,6 +128,12 @@ class _RunningApp:
                     obj.load(self.client, self.app_id, existing_object_id),
                     interceptor,
                 )
+
+                if progress:
+                    if creating_message is not None:
+                        created_message = obj.get_created_message()
+                        assert created_message is not None
+                        step_node.label = step_completed(created_message, is_substep=True)
 
                 if existing_object_id is not None and object_id != existing_object_id:
                     # TODO(erikbern): this is a very ugly fix to a problem that's on the server side.
@@ -143,12 +149,6 @@ class _RunningApp:
 
         if object_id is None:
             raise Exception(f"object_id for object of type {type(obj)} is None")
-
-        if progress:
-            if creating_message is not None:
-                created_message = obj.get_created_message()
-                assert created_message is not None
-                step_node.label = step_completed(created_message, is_substep=True)
 
         return object_id
 
@@ -451,7 +451,7 @@ class _App:
         for key, mount in info.get_mounts().items():
             if key not in self._function_mounts:
                 self._function_mounts[key] = mount
-            mounts.append(mount)
+            mounts.append(self._function_mounts[key])
 
         return mounts
 
