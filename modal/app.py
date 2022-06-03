@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import inspect
 import os
 import sys
@@ -93,6 +94,17 @@ class _RunningApp:
         warnings.warn("RunningApp.include is deprecated. Use modal.lookup instead", DeprecationWarning)
         return await _lookup(app_name, tag, namespace, self.client)
 
+    @contextlib.contextmanager
+    def _progress_ctx(self, progress, obj):
+        creating_message = obj.get_creating_message()
+        if progress and creating_message:
+            step_node = progress.add(step_progress(creating_message))
+            yield
+            created_message = obj.get_created_message()
+            step_node.label = step_completed(created_message, is_substep=True)
+        else:
+            yield
+
     async def load(self, obj: Object, progress: Optional[Tree] = None, existing_object_id: Optional[str] = None) -> str:
         """Takes an object as input, create it, and return an object id."""
         if isinstance(obj, Ref):
@@ -115,25 +127,15 @@ class _RunningApp:
                 object_id = self._local_uuid_to_object_id[obj.local_uuid]
             else:
 
-                if progress:
-                    creating_message = obj.get_creating_message()
-                    if creating_message is not None:
-                        step_node = progress.add(step_progress(creating_message))
-
                 async def interceptor(awaitable):
                     assert isinstance(awaitable, Object)
                     return await self.load(awaitable, progress=progress)
 
-                object_id = await intercept_coro(
-                    obj.load(self.client, self.app_id, existing_object_id),
-                    interceptor,
-                )
-
-                if progress:
-                    if creating_message is not None:
-                        created_message = obj.get_created_message()
-                        assert created_message is not None
-                        step_node.label = step_completed(created_message, is_substep=True)
+                with self._progress_ctx(progress, obj):
+                    object_id = await intercept_coro(
+                        obj.load(self.client, self.app_id, existing_object_id),
+                        interceptor,
+                    )
 
                 if existing_object_id is not None and object_id != existing_object_id:
                     # TODO(erikbern): this is a very ugly fix to a problem that's on the server side.
