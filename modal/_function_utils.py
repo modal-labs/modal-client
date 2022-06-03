@@ -42,9 +42,10 @@ class FunctionInfo:
                 base_dir for base_dir in package_paths if os.path.commonpath((base_dir, module_file)) == base_dir
             ]
             if len(base_dirs) != 1:
-                raise Exception(
-                    f"Wasn't able to identify the base directory! {module_file=} {package_paths=} {base_dirs=}"
-                )
+                logger.info(f"Module files: {module_file}")
+                logger.info(f"Package paths: {package_paths}")
+                logger.info(f"Base dirs: {base_dirs}")
+                raise Exception("Wasn't able to find the package directory!")
             (self.base_dir,) = base_dirs
             self.module_name = module.__spec__.name
             self.remote_dir = os.path.join(ROOT_DIR, module.__package__.split(".")[0])
