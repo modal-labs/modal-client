@@ -16,6 +16,7 @@ from .object import Object, Ref
 from .rate_limit import RateLimit
 from .schedule import Schedule
 from .secret import _Secret
+from .shared_volume import _SharedVolume
 
 
 async def _process_result(result, stub, client=None):
@@ -232,6 +233,7 @@ class _Function(Object, type_prefix="fu"):
         # TODO: maybe break this out into a separate decorator for notebooks.
         serialized: bool = False,
         mounts: Collection[Union[Ref, _Mount]] = (),
+        shared_volumes: Collection[Union[_SharedVolume, Ref]] = (),
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
     ):
         assert callable(raw_f)
@@ -256,6 +258,7 @@ class _Function(Object, type_prefix="fu"):
         self.gpu = gpu
         self.rate_limit = rate_limit
         self.mounts = mounts
+        self.shared_volumes = shared_volumes
         self.webhook_config = webhook_config
         self.web_url = None
         self.tag = self.info.get_tag()
@@ -289,6 +292,10 @@ class _Function(Object, type_prefix="fu"):
         mount_ids = []
         for mount in self.mounts:
             mount_ids.append(await mount)
+
+        shared_volume_ids = []
+        for shared_volume in self.shared_volumes:
+            shared_volume_ids.append(await shared_volume)
 
         if self.is_generator:
             function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR

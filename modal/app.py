@@ -22,6 +22,7 @@ from .rate_limit import RateLimit
 from .running_app import _RunningApp, container_app, is_local
 from .schedule import Schedule
 from .secret import _Secret
+from .shared_volume import _SharedVolume
 
 
 class _App:
@@ -244,6 +245,7 @@ class _App:
         rate_limit: Optional[RateLimit] = None,  # Optional RateLimit for the function
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Collection[Union[_Mount, Ref]] = (),
+        shared_volumes: Collection[Union[_SharedVolume, Ref]] = (),
     ) -> _Function:  # Function object - callable as a regular function within a Modal app
         """Decorator to create Modal functions"""
         if image is None:
@@ -260,6 +262,7 @@ class _App:
             rate_limit=rate_limit,
             serialized=serialized,
             mounts=mounts,
+            shared_volumes=shared_volumes,
         )
         self._blueprint[function.tag] = function
         return function
@@ -278,6 +281,7 @@ class _App:
         rate_limit: Optional[RateLimit] = None,  # Optional RateLimit for the function
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Collection[Union[_Mount, Ref]] = (),
+        shared_volumes: Collection[Union[_SharedVolume, Ref]] = (),
     ) -> _Function:
         """Decorator to create Modal generators"""
         if image is None:
@@ -293,6 +297,7 @@ class _App:
             rate_limit=rate_limit,
             serialized=serialized,
             mounts=mounts,
+            shared_volumes=shared_volumes,
         )
         self._blueprint[function.tag] = function
         return function
@@ -310,6 +315,7 @@ class _App:
         secrets: Collection[Union[_Secret, Ref]] = (),  # Plural version of `secret` when multiple secrets are needed
         gpu: bool = False,  # Whether a GPU is required
         mounts: Collection[Union[_Mount, Ref]] = (),
+        shared_volumes: Collection[Union[_SharedVolume, Ref]] = (),
     ):
         if image is None:
             image = self._get_default_image()
@@ -322,6 +328,7 @@ class _App:
             is_generator=True,
             gpu=gpu,
             mounts=mounts,
+            shared_volumes=shared_volumes,
             webhook_config=api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_ASGI_APP, wait_for_response=wait_for_response
             ),
@@ -343,6 +350,7 @@ class _App:
         secrets: Collection[Union[_Secret, Ref]] = (),  # Plural version of `secret` when multiple secrets are needed
         gpu: bool = False,  # Whether a GPU is required
         mounts: Collection[Union[_Mount, Ref]] = (),
+        shared_volumes: Collection[Union[_SharedVolume, Ref]] = (),
     ):
         if image is None:
             image = self._get_default_image()
@@ -355,6 +363,7 @@ class _App:
             is_generator=True,
             gpu=gpu,
             mounts=mounts,
+            shared_volumes=shared_volumes,
             webhook_config=api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_FUNCTION, method=method, wait_for_response=wait_for_response
             ),
