@@ -1,7 +1,3 @@
-import asyncio
-import concurrent.futures
-import dataclasses
-import hashlib
 import os
 import time
 from pathlib import Path
@@ -14,15 +10,11 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import retry, synchronize_apis
 from modal_utils.package_utils import get_module_mount_info, module_mount_condition
 
+from ._blob_utils import FileUploadSpec, get_file_upload_spec, get_file_upload_specs
 from .config import logger
 from .exception import InvalidError
 from .object import Object
 from .version import __version__
-
-#  If a file is LARGE_FILE_LIMIT bytes or larger, it's uploaded to blob store (s3) instead of going through grpc
-#  It will also make sure to chunk the hash calculation to avoid reading the entire file into memory
-LARGE_FILE_LIMIT = 1024 * 1024  # 1MB
-HASH_CHUNK_SIZE = 4096
 
 
 def client_mount_name():
@@ -64,28 +56,6 @@ class _Mount(Object, type_prefix="mo"):
             return None
         return f"Mounted {label}."
 
-    async def _get_files(self):
-        if self._local_file:
-            relpath = os.path.basename(self._local_file)
-            yield _get_file_upload_spec(self._local_file, relpath)
-            return
-
-        loop = asyncio.get_event_loop()
-        with concurrent.futures.ThreadPoolExecutor() as exe:
-            futs = []
-            if self._recursive:
-                gen = (os.path.join(root, name) for root, dirs, files in os.walk(self._local_dir) for name in files)
-            else:
-                gen = (dir_entry.path for dir_entry in os.scandir(self._local_dir) if dir_entry.is_file())
-
-            for filename in gen:
-                rel_filename = os.path.relpath(filename, self._local_dir)
-                if self._condition(filename):
-                    futs.append(loop.run_in_executor(exe, _get_file_upload_spec, filename, rel_filename))
-            logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} workers")
-            for fut in asyncio.as_completed(futs):
-                yield await fut
-
     async def load(self, client, app_id, existing_mount_id):
         # Run a threadpool to compute hash values, and use n coroutines to put files
         # TODO(erikbern): this is not ideal when mounts are created in-place, because it
@@ -100,7 +70,7 @@ class _Mount(Object, type_prefix="mo"):
         uploaded_hashes: set[str] = set()
         total_bytes = 0
 
-        async def _put_file(mount_file: _FileUploadSpec):
+        async def _put_file(mount_file: FileUploadSpec):
             nonlocal n_files, uploaded_hashes, total_bytes
 
             remote_filename = (Path(self._remote_dir) / Path(mount_file.rel_filename)).as_posix()
@@ -140,7 +110,13 @@ class _Mount(Object, type_prefix="mo"):
         logger.debug(f"Uploading mount {mount_id} using {n_concurrent_uploads} uploads")
 
         # Create async generator
-        files_stream = aiostream.stream.iterate(self._get_files())
+        if self._local_file:
+            relpath = os.path.basename(self._local_file)
+            files_stream = aiostream.stream.just(get_file_upload_spec(self._local_file, relpath))
+        else:
+            files_stream = aiostream.stream.iterate(
+                get_file_upload_specs(self._local_dir, self._recursive, self._condition)
+            )
 
         # Upload files
         uploads_stream = aiostream.stream.map(files_stream, _put_file, task_limit=n_concurrent_uploads)
@@ -183,40 +159,3 @@ async def _create_package_mount(module_name):
 
 
 create_package_mount, aio_create_package_mount = synchronize_apis(_create_package_mount)
-
-
-@dataclasses.dataclass
-class _FileUploadSpec:
-    filename: str
-    rel_filename: str
-
-    use_blob: bool
-    content: Optional[bytes]  # typically None if using blob, required otherwise
-    sha256_hex: str
-    size: int
-
-
-def _get_file_upload_spec(filename, rel_filename):
-    # Somewhat CPU intensive, so we run it in a thread/process
-    filesize = os.path.getsize(filename)
-
-    if filesize >= LARGE_FILE_LIMIT:
-        sha256 = hashlib.sha256()
-        size = 0
-        with open(filename, "rb") as fp:
-            while 1:
-                chunk = fp.read(HASH_CHUNK_SIZE)
-                if not chunk:
-                    break
-                size += len(chunk)
-                sha256.update(chunk)
-
-        sha256_hex = sha256.hexdigest()
-        return _FileUploadSpec(filename, rel_filename, use_blob=True, content=None, sha256_hex=sha256_hex, size=size)
-    else:
-        with open(filename, "rb") as fp:
-            content = fp.read()
-        sha256_hex = hashlib.sha256(content).hexdigest()
-        return _FileUploadSpec(
-            filename, rel_filename, use_blob=False, content=content, sha256_hex=sha256_hex, size=len(content)
-        )

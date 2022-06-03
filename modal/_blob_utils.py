@@ -1,17 +1,29 @@
+import asyncio
 import base64
+import concurrent.futures
+import dataclasses
 import hashlib
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Callable, Optional, Union
 
 import aiohttp
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import retry
 
+from .config import logger
+
 # Max size for function inputs and outputs.
 MAX_OBJECT_SIZE_BYTES = 64 * 1024  # 64 kb
 # Turned off in tests because of an open issue in moto: https://github.com/spulec/moto/issues/816
 CHECK_MD5 = True
 HASH_CHUNK_SIZE = 4096
+
+#  If a file is LARGE_FILE_LIMIT bytes or larger, it's uploaded to blob store (s3) instead of going through grpc
+#  It will also make sure to chunk the hash calculation to avoid reading the entire file into memory
+LARGE_FILE_LIMIT = 1024 * 1024  # 1MB
 
 
 def base64_md5(md5) -> str:
@@ -87,3 +99,60 @@ async def blob_download(blob_id, stub):
     resp = await stub.BlobGet(req)
 
     return await _download_from_url(resp.download_url)
+
+
+@dataclasses.dataclass
+class FileUploadSpec:
+    filename: str
+    rel_filename: str
+
+    use_blob: bool
+    content: Optional[bytes]  # typically None if using blob, required otherwise
+    sha256_hex: str
+    size: int
+
+
+def get_file_upload_spec(filename, rel_filename):
+    # Somewhat CPU intensive, so we run it in a thread/process
+    filesize = os.path.getsize(filename)
+
+    if filesize >= LARGE_FILE_LIMIT:
+        sha256 = hashlib.sha256()
+        size = 0
+        with open(filename, "rb") as fp:
+            while 1:
+                chunk = fp.read(HASH_CHUNK_SIZE)
+                if not chunk:
+                    break
+                size += len(chunk)
+                sha256.update(chunk)
+
+        sha256_hex = sha256.hexdigest()
+        return FileUploadSpec(filename, rel_filename, use_blob=True, content=None, sha256_hex=sha256_hex, size=size)
+    else:
+        with open(filename, "rb") as fp:
+            content = fp.read()
+        sha256_hex = hashlib.sha256(content).hexdigest()
+        return FileUploadSpec(
+            filename, rel_filename, use_blob=False, content=content, sha256_hex=sha256_hex, size=len(content)
+        )
+
+
+async def get_file_upload_specs(
+    dir_path: Union[str, Path], recursive: bool = True, condition: Callable[[str], bool] = lambda x: True
+):
+    loop = asyncio.get_event_loop()
+    with concurrent.futures.ThreadPoolExecutor() as exe:
+        futs = []
+        if recursive:
+            gen = (os.path.join(root, name) for root, dirs, files in os.walk(dir_path) for name in files)
+        else:
+            gen = (dir_entry.path for dir_entry in os.scandir(dir_path) if dir_entry.is_file())
+
+        for filename in gen:
+            rel_filename = os.path.relpath(filename, dir_path)
+            if condition(filename):
+                futs.append(loop.run_in_executor(exe, get_file_upload_spec, filename, rel_filename))
+        logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} workers")
+        for fut in asyncio.as_completed(futs):
+            yield await fut
