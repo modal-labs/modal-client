@@ -9,6 +9,7 @@ from .rate_limit import RateLimit
 from .running_app import RunningApp, container_app, is_local, lookup
 from .schedule import Cron, Period
 from .secret import Secret
+from .shared_volume import SharedVolume
 from .version import __version__
 
 __all__ = [
@@ -27,6 +28,7 @@ __all__ = [
     "Queue",
     "RateLimit",
     "Secret",
+    "SharedVolume",
     "container_app",
     "is_local",
     "lookup",

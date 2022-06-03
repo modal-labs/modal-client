@@ -464,6 +464,32 @@ message MountDoneRequest {
   string mount_id = 1;
 }
 
+message SharedVolumeCreateRequest {
+  string app_id = 1;
+  string mount_path = 2;
+}
+
+message SharedVolumeCreateResponse {
+  string shared_volume_id = 1;
+}
+
+message SharedVolumeUploadFileRequest {
+  string filename = 1;
+  string sha256_hex = 2;
+  int64 size = 3;
+
+  string shared_volume_id = 4;
+
+  oneof data_oneof {
+    bytes data = 5;
+    string data_blob_id = 6;
+  }
+}
+
+message SharedVolumeDoneRequest {
+  string shared_volume_id = 1;
+}
+
 message Schedule {
   message Cron {
     string cron_string = 1;
@@ -559,6 +585,11 @@ service ModalClient {
   rpc MountRegisterFile(MountRegisterFileRequest) returns (MountRegisterFileResponse);
   rpc MountUploadFile(MountUploadFileRequest) returns (google.protobuf.Empty);  // TODO: return something?
   rpc MountDone(MountDoneRequest) returns (google.protobuf.Empty);
+
+  // SharedVolumes
+  rpc SharedVolumeCreate(SharedVolumeCreateRequest) returns (SharedVolumeCreateResponse);
+  rpc SharedVolumeUploadFile(SharedVolumeUploadFileRequest) returns (google.protobuf.Empty);
+  rpc SharedVolumeDone(SharedVolumeDoneRequest) returns (google.protobuf.Empty);
 
   // Images
   rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);

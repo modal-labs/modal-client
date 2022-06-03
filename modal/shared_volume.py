@@ -9,16 +9,20 @@ from modal_utils.async_utils import retry, synchronize_apis
 
 from ._blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_specs
 from .config import logger
+from .exception import InvalidError
 from .object import Object
 
 
-class _SharedVolume(Object, type_prefix="mo"):
+class _SharedVolume(Object, type_prefix="sv"):
     def __init__(
         self,
         remote_dir: Union[str, Path],
         *,
         local_init_dir: Optional[Union[str, Path]] = None,
     ):
+        if Path(remote_dir).resolve() != Path(remote_dir):
+            raise InvalidError("Shared volume remote directory must be an absolute path.")
+
         self._remote_dir = remote_dir
         self._local_init_dir = local_init_dir
         super().__init__()
@@ -30,6 +34,10 @@ class _SharedVolume(Object, type_prefix="mo"):
         return f"Created shared volume at {self._remote_dir}."
 
     async def load(self, client, app_id, existing_shared_volume_id):
+        if existing_shared_volume_id:
+            # Volume already exists; do nothing.
+            return existing_shared_volume_id
+
         t0 = time.time()
         n_concurrent_uploads = 16
 
@@ -39,7 +47,7 @@ class _SharedVolume(Object, type_prefix="mo"):
         async def _put_file(mount_file: FileUploadSpec):
             nonlocal n_files, total_bytes
 
-            remote_filename = (Path(self._remote_dir) / Path(mount_file.rel_filename)).as_posix()
+            remote_filename = mount_file.rel_filename
 
             n_files += 1
             total_bytes += mount_file.size
@@ -49,6 +57,7 @@ class _SharedVolume(Object, type_prefix="mo"):
                 blob_id = await blob_upload_file(mount_file.filename, client.stub)
                 logger.debug(f"Uploading blob file {mount_file.filename} as {remote_filename}")
                 request = api_pb2.SharedVolumeUploadFileRequest(
+                    filename=remote_filename,
                     data_blob_id=blob_id,
                     sha256_hex=mount_file.sha256_hex,
                     size=mount_file.size,
@@ -57,6 +66,7 @@ class _SharedVolume(Object, type_prefix="mo"):
             else:
                 logger.debug(f"Uploading file {mount_file.filename} to {remote_filename} ({mount_file.size} bytes)")
                 request = api_pb2.SharedVolumeUploadFileRequest(
+                    filename=remote_filename,
                     data=mount_file.content,
                     sha256_hex=mount_file.sha256_hex,
                     size=mount_file.size,
@@ -64,14 +74,14 @@ class _SharedVolume(Object, type_prefix="mo"):
                 )
             await retry(client.stub.SharedVolumeUploadFile, base_delay=1)(request)
 
-        req = api_pb2.SharedVolumeCreateRequest(app_id=app_id, existing_shared_volume_id=existing_shared_volume_id)
+        req = api_pb2.SharedVolumeCreateRequest(app_id=app_id, mount_path=self._remote_dir)
         resp = await retry(client.stub.SharedVolumeCreate, base_delay=1)(req)
-        shared_volume_id = resp.shared_voume_id
+        shared_volume_id = resp.shared_volume_id
 
         logger.debug(f"Uploading shared volume {shared_volume_id} using {n_concurrent_uploads} uploads")
 
         # Create async generator
-        files_stream = aiostream.stream.iterate(get_file_upload_specs(self._remote_dir))
+        files_stream = aiostream.stream.iterate(get_file_upload_specs(self._local_init_dir))
 
         # Upload files
         uploads_stream = aiostream.stream.map(files_stream, _put_file, task_limit=n_concurrent_uploads)
