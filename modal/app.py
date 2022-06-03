@@ -107,6 +107,10 @@ class _RunningApp:
 
     async def load(self, obj: Object, progress: Optional[Tree] = None, existing_object_id: Optional[str] = None) -> str:
         """Takes an object as input, create it, and return an object id."""
+        if obj.local_uuid in self._local_uuid_to_object_id:
+            # We already created this object before, shortcut this method
+            return self._local_uuid_to_object_id[obj.local_uuid]
+
         if isinstance(obj, Ref):
             # TODO: should we just move this code to the Ref class?
             if obj.app_name is not None:
@@ -122,32 +126,29 @@ class _RunningApp:
                     object_id = await self.load(real_obj, progress, existing_object_id)
                     self._tag_to_object[obj.tag] = Object.from_id(object_id, self.client)
         else:
-            # Create object
-            if obj.local_uuid in self._local_uuid_to_object_id:
-                object_id = self._local_uuid_to_object_id[obj.local_uuid]
-            else:
 
-                async def interceptor(awaitable):
-                    assert isinstance(awaitable, Object)
-                    return await self.load(awaitable, progress=progress)
+            async def interceptor(awaitable):
+                assert isinstance(awaitable, Object)
+                return await self.load(awaitable, progress=progress)
 
-                with self._progress_ctx(progress, obj):
-                    object_id = await intercept_coro(
-                        obj.load(self.client, self.app_id, existing_object_id),
-                        interceptor,
+            with self._progress_ctx(progress, obj):
+                object_id = await intercept_coro(
+                    obj.load(self.client, self.app_id, existing_object_id),
+                    interceptor,
+                )
+
+            if existing_object_id is not None and object_id != existing_object_id:
+                # TODO(erikbern): this is a very ugly fix to a problem that's on the server side.
+                # Unlike every other object, images are not assigned random ids, but rather an
+                # id given by the hash of its contents. This means we can't _force_ an image to
+                # have a particular id. The better solution is probably to separate "images"
+                # from "image definitions" or something like that, but that's a big project.
+                if not existing_object_id.startswith("im-"):
+                    raise Exception(
+                        f"Tried creating an object using existing id {existing_object_id} but it has id {object_id}"
                     )
 
-                if existing_object_id is not None and object_id != existing_object_id:
-                    # TODO(erikbern): this is a very ugly fix to a problem that's on the server side.
-                    # Unlike every other object, images are not assigned random ids, but rather an
-                    # id given by the hash of its contents. This means we can't _force_ an image to
-                    # have a particular id. The better solution is probably to separate "images"
-                    # from "image definitions" or something like that, but that's a big project.
-                    if not existing_object_id.startswith("im-"):
-                        raise Exception(
-                            f"Tried creating an object using existing id {existing_object_id} but it has id {object_id}"
-                        )
-                self._local_uuid_to_object_id[obj.local_uuid] = object_id
+        self._local_uuid_to_object_id[obj.local_uuid] = object_id
 
         if object_id is None:
             raise Exception(f"object_id for object of type {type(obj)} is None")
