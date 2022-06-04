@@ -371,14 +371,14 @@ class _App:
         self._blueprint[function.tag] = function
         return function
 
-    async def interactive_shell(self, cmd=None, mounts=[], secrets=[], image_ref=None):
+    async def interactive_shell(self, cmd=None, mounts=[], secrets=[], image_ref=None, shared_volumes={}):
         """Run `cmd` interactively within this image. Similar to `docker run -it --entrypoint={cmd}`.
 
         If `cmd` is `None`, this falls back to the default shell within the image.
         """
         from ._image_pty import image_pty
 
-        await image_pty(image_ref or self._image, self, cmd, mounts, secrets)
+        await image_pty(image_ref or self._image, self, cmd, mounts, secrets, shared_volumes)
 
 
 App, AioApp = synchronize_apis(_App)
