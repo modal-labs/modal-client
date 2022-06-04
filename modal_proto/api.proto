@@ -333,6 +333,8 @@ message Function {
 
   RateLimit rate_limit = 11;
   WebhookConfig webhook_config = 15;
+
+  map<string, string> shared_volume_ids = 16;
 }
 
 message FunctionCreateRequest {
@@ -466,7 +468,6 @@ message MountDoneRequest {
 
 message SharedVolumeCreateRequest {
   string app_id = 1;
-  string mount_path = 2;
 }
 
 message SharedVolumeCreateResponse {

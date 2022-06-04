@@ -9,29 +9,23 @@ from modal_utils.async_utils import retry, synchronize_apis
 
 from ._blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_specs
 from .config import logger
-from .exception import InvalidError
 from .object import Object
 
 
 class _SharedVolume(Object, type_prefix="sv"):
     def __init__(
         self,
-        remote_dir: Union[str, Path],
         *,
         local_init_dir: Optional[Union[str, Path]] = None,
     ):
-        if Path(remote_dir).resolve() != Path(remote_dir):
-            raise InvalidError("Shared volume remote directory must be an absolute path.")
-
-        self._remote_dir = remote_dir
         self._local_init_dir = local_init_dir
         super().__init__()
 
     def get_creating_message(self):
-        return f"Creating shared volume at {self._remote_dir}..."
+        return f"Creating shared volume..."
 
     def get_created_message(self):
-        return f"Created shared volume at {self._remote_dir}."
+        return f"Created shared volume."
 
     async def load(self, client, app_id, existing_shared_volume_id):
         if existing_shared_volume_id:
@@ -74,7 +68,7 @@ class _SharedVolume(Object, type_prefix="sv"):
                 )
             await retry(client.stub.SharedVolumeUploadFile, base_delay=1)(request)
 
-        req = api_pb2.SharedVolumeCreateRequest(app_id=app_id, mount_path=self._remote_dir)
+        req = api_pb2.SharedVolumeCreateRequest(app_id=app_id)
         resp = await retry(client.stub.SharedVolumeCreate, base_delay=1)(req)
         shared_volume_id = resp.shared_volume_id
 

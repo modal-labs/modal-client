@@ -1,5 +1,6 @@
 import asyncio
-from typing import Collection, Optional, Union
+from pathlib import Path
+from typing import Collection, Dict, Optional, Union
 
 from aiostream import pipe, stream
 
@@ -233,7 +234,7 @@ class _Function(Object, type_prefix="fu"):
         # TODO: maybe break this out into a separate decorator for notebooks.
         serialized: bool = False,
         mounts: Collection[Union[Ref, _Mount]] = (),
-        shared_volumes: Collection[Union[_SharedVolume, Ref]] = (),
+        shared_volumes: Dict[str, Union[_SharedVolume, Ref]] = {},
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
     ):
         assert callable(raw_f)
@@ -293,9 +294,12 @@ class _Function(Object, type_prefix="fu"):
         for mount in self.mounts:
             mount_ids.append(await mount)
 
-        shared_volume_ids = []
-        for shared_volume in self.shared_volumes:
-            shared_volume_ids.append(await shared_volume)
+        shared_volume_ids = {}
+        for path, shared_volume in self.shared_volumes.items():
+            if Path(path).resolve() != Path(path):
+                raise InvalidError("Shared volume remote directory must be an absolute path.")
+
+            shared_volume_ids[path] = await shared_volume
 
         if self.is_generator:
             function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
@@ -317,6 +321,7 @@ class _Function(Object, type_prefix="fu"):
             resources=api_pb2.Resources(gpu=self.gpu),
             rate_limit=rate_limit,
             webhook_config=self.webhook_config,
+            shared_volume_ids=shared_volume_ids,
         )
         request = api_pb2.FunctionCreateRequest(
             app_id=app_id,

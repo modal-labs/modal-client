@@ -245,7 +245,7 @@ class _App:
         rate_limit: Optional[RateLimit] = None,  # Optional RateLimit for the function
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Collection[Union[_Mount, Ref]] = (),
-        shared_volumes: Collection[Union[_SharedVolume, Ref]] = (),
+        shared_volumes: Dict[str, Union[_SharedVolume, Ref]] = {},
     ) -> _Function:  # Function object - callable as a regular function within a Modal app
         """Decorator to create Modal functions"""
         if image is None:
@@ -281,7 +281,7 @@ class _App:
         rate_limit: Optional[RateLimit] = None,  # Optional RateLimit for the function
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Collection[Union[_Mount, Ref]] = (),
-        shared_volumes: Collection[Union[_SharedVolume, Ref]] = (),
+        shared_volumes: Dict[str, Union[_SharedVolume, Ref]] = {},
     ) -> _Function:
         """Decorator to create Modal generators"""
         if image is None:
@@ -315,7 +315,7 @@ class _App:
         secrets: Collection[Union[_Secret, Ref]] = (),  # Plural version of `secret` when multiple secrets are needed
         gpu: bool = False,  # Whether a GPU is required
         mounts: Collection[Union[_Mount, Ref]] = (),
-        shared_volumes: Collection[Union[_SharedVolume, Ref]] = (),
+        shared_volumes: Dict[str, Union[_SharedVolume, Ref]] = {},
     ):
         if image is None:
             image = self._get_default_image()
@@ -350,7 +350,7 @@ class _App:
         secrets: Collection[Union[_Secret, Ref]] = (),  # Plural version of `secret` when multiple secrets are needed
         gpu: bool = False,  # Whether a GPU is required
         mounts: Collection[Union[_Mount, Ref]] = (),
-        shared_volumes: Collection[Union[_SharedVolume, Ref]] = (),
+        shared_volumes: Dict[str, Union[_SharedVolume, Ref]] = {},
     ):
         if image is None:
             image = self._get_default_image()
