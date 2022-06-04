@@ -294,12 +294,12 @@ class _Function(Object, type_prefix="fu"):
         for mount in self.mounts:
             mount_ids.append(await mount)
 
-        shared_volume_ids = {}
+        shared_volumes = {}
         for path, shared_volume in self.shared_volumes.items():
             if Path(path).resolve() != Path(path):
                 raise InvalidError("Shared volume remote directory must be an absolute path.")
 
-            shared_volume_ids[path] = await shared_volume
+            shared_volumes[path] = await shared_volume
 
         if self.is_generator:
             function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
@@ -321,7 +321,7 @@ class _Function(Object, type_prefix="fu"):
             resources=api_pb2.Resources(gpu=self.gpu),
             rate_limit=rate_limit,
             webhook_config=self.webhook_config,
-            shared_volume_ids=shared_volume_ids,
+            shared_volumes=shared_volumes,
         )
         request = api_pb2.FunctionCreateRequest(
             app_id=app_id,
