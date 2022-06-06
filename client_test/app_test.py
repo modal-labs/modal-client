@@ -118,3 +118,9 @@ async def test_standalone_object(aio_client):
 
     async with app.run(client=aio_client):
         pass
+
+
+@pytest.mark.asyncio
+async def test_is_inside():
+    app = AioApp()
+    assert app.is_inside() is False
