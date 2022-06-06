@@ -5,6 +5,7 @@ import pytest
 import shutil
 import tempfile
 import typing
+from pathlib import Path
 from unittest import mock
 
 import cloudpickle
@@ -51,6 +52,8 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.function_create_error = False
         self.heartbeat_return_client_gone = False
         self.n_apps = 0
+
+        self.shared_volume_files = []
 
     async def ClientCreate(
         self, request: api_pb2.ClientCreateRequest, context: ServicerContext = None, timeout=None
@@ -189,6 +192,28 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     async def MountDone(
         self,
         request: api_pb2.MountDoneRequest,
+        context: ServicerContext,
+    ) -> Empty:
+        return Empty()
+
+    async def SharedVolumeCreate(
+        self,
+        request: api_pb2.SharedVolumeCreateRequest,
+        context: ServicerContext,
+    ) -> api_pb2.SharedVolumeCreateResponse:
+        return api_pb2.SharedVolumeCreateResponse(shared_volume_id="sv-123")
+
+    async def SharedVolumeUploadFile(
+        self,
+        request: api_pb2.SharedVolumeUploadFileRequest,
+        context: ServicerContext,
+    ) -> Empty:
+        self.shared_volume_files.append(request.filename)
+        return Empty()
+
+    async def SharedVolumeDone(
+        self,
+        request: api_pb2.SharedVolumeDoneRequest,
         context: ServicerContext,
     ) -> Empty:
         return Empty()
@@ -349,3 +374,11 @@ def reset_container_app():
         yield
     finally:
         _RunningApp.reset_container()
+
+
+@pytest.fixture(scope="module")
+def test_dir(request):
+    """Absolute path to directory containing test file."""
+    root_dir = Path(request.config.rootdir)
+    test_dir = Path(os.getenv("PYTEST_CURRENT_TEST")).parent
+    return root_dir / test_dir

@@ -120,7 +120,10 @@ class _Mount(Object, type_prefix="mo"):
 
         # Upload files
         uploads_stream = aiostream.stream.map(files_stream, _put_file, task_limit=n_concurrent_uploads)
-        await uploads_stream
+        try:
+            await uploads_stream
+        except aiostream.StreamEmpty:
+            logger.warn("Mount is empty.")
 
         logger.debug(f"Uploaded {len(uploaded_hashes)}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
 

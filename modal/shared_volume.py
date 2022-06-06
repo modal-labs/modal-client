@@ -79,7 +79,10 @@ class _SharedVolume(Object, type_prefix="sv"):
 
         # Upload files
         uploads_stream = aiostream.stream.map(files_stream, _put_file, task_limit=n_concurrent_uploads)
-        await uploads_stream
+        try:
+            await uploads_stream
+        except aiostream.StreamEmpty:
+            logger.warn("Mount is empty.")
 
         logger.debug(f"Uploaded {n_files} files and {total_bytes} bytes in {time.time() - t0}s")
 
