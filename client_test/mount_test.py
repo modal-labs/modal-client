@@ -3,8 +3,9 @@ import os
 import pytest
 
 from modal import App
+from modal._blob_utils import LARGE_FILE_LIMIT
 from modal.aio import AioApp
-from modal.mount import LARGE_FILE_LIMIT, AioMount, Mount
+from modal.mount import AioMount, Mount
 
 
 @pytest.mark.asyncio
