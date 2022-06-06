@@ -1,17 +1,8 @@
-import os
 import platform
 import pytest
 import subprocess
 import sys
 from pathlib import Path
-
-
-@pytest.fixture(scope="module")
-def test_dir(request):
-    """Absolute path to directory containing test file."""
-    root_dir = Path(request.config.rootdir)
-    test_dir = Path(os.getenv("PYTEST_CURRENT_TEST")).parent
-    return root_dir / test_dir
 
 
 @pytest.fixture
