@@ -22,10 +22,10 @@ class _SharedVolume(Object, type_prefix="sv"):
         super().__init__()
 
     def get_creating_message(self):
-        return f"Creating shared volume..."
+        return "Creating shared volume..."
 
     def get_created_message(self):
-        return f"Created shared volume."
+        return "Created shared volume."
 
     async def load(self, client, app_id, existing_shared_volume_id):
         if existing_shared_volume_id:
