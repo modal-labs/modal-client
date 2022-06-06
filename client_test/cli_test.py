@@ -6,7 +6,7 @@ from modal import cli
 dummy_app_file = """
 import modal
 
-app = modal.App("my_app")
+stub = modal.Stub("my_app")
 """
 
 
@@ -23,9 +23,9 @@ def test_app_deploy_success(servicer, mock_dir, monkeypatch):
 
 
 dummy_aio_app_file = """
-from modal.aio import AioApp
+from modal.aio import AioStub
 
-app = AioApp("my_aio_app")
+stub = AioStub("my_aio_app")
 """
 
 

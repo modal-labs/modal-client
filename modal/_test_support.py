@@ -1,25 +1,25 @@
 import asyncio
 import warnings
 
-from . import App
+from . import Stub
 
 SLEEP_DELAY = 0.1
 
-app = App()
+stub = Stub()
 
 
-@app.function()
+@stub.function()
 def square(x):
     return x * x
 
 
-@app.function()
+@stub.function()
 async def square_async(x):
     await asyncio.sleep(SLEEP_DELAY)
     return x * x
 
 
-@app.function()
+@stub.function()
 def square_sync_returning_async(x):
     async def square():
         await asyncio.sleep(SLEEP_DELAY)
@@ -28,7 +28,7 @@ def square_sync_returning_async(x):
     return square()
 
 
-@app.function()
+@stub.function()
 def raises(x):
     raise Exception("Failure!")
 
