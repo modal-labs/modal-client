@@ -32,7 +32,6 @@ async def _pty(cmd: Optional[str], queue):  # queue is an AioQueue, but mypy doe
 
 
 async def image_pty(image, app, cmd=None, mounts=[], secrets=[], shared_volumes={}):
-    print(shared_volumes)
     _pty_wrapped = app.function(image=image, mounts=mounts, secrets=secrets, shared_volumes=shared_volumes)(_pty)
     app["queue"] = _Queue()
 
