@@ -15,16 +15,16 @@ from modal.exception import NotFoundError
 
 def test_deprecated_app():
     with pytest.deprecated_call():
-        app = App()
+        App()
     with pytest.deprecated_call():
-        app = AioApp()
+        AioApp()
 
 
 @pytest.mark.xfail
 def test_deprecated_app_exc():
     # Make sure uncaught warnings trigger exceptions
     # See conftest.py in the root of the repo
-    app = App()
+    App()
 
 
 @pytest.mark.asyncio
