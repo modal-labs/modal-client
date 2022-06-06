@@ -1,3 +1,5 @@
+import asyncio
+import concurrent.futures
 import os
 import time
 from pathlib import Path
@@ -10,7 +12,7 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import retry, synchronize_apis
 from modal_utils.package_utils import get_module_mount_info, module_mount_condition
 
-from ._blob_utils import FileUploadSpec, get_file_upload_spec, get_file_upload_specs
+from ._blob_utils import FileUploadSpec, get_file_upload_spec
 from .config import logger
 from .exception import InvalidError
 from .object import Object
@@ -55,6 +57,28 @@ class _Mount(Object, type_prefix="mo"):
         if label is None:
             return None
         return f"Mounted {label}."
+
+    async def _get_files(self):
+        if self._local_file:
+            relpath = os.path.basename(self._local_file)
+            yield get_file_upload_spec(self._local_file, relpath)
+            return
+
+        loop = asyncio.get_event_loop()
+        with concurrent.futures.ThreadPoolExecutor() as exe:
+            futs = []
+            if self._recursive:
+                gen = (os.path.join(root, name) for root, dirs, files in os.walk(self._local_dir) for name in files)
+            else:
+                gen = (dir_entry.path for dir_entry in os.scandir(self._local_dir) if dir_entry.is_file())
+
+            for filename in gen:
+                rel_filename = os.path.relpath(filename, self._local_dir)
+                if self._condition(filename):
+                    futs.append(loop.run_in_executor(exe, get_file_upload_spec, filename, rel_filename))
+            logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} workers")
+            for fut in asyncio.as_completed(futs):
+                yield await fut
 
     async def load(self, client, app_id, existing_mount_id):
         # Run a threadpool to compute hash values, and use n coroutines to put files
@@ -110,13 +134,7 @@ class _Mount(Object, type_prefix="mo"):
         logger.debug(f"Uploading mount {mount_id} using {n_concurrent_uploads} uploads")
 
         # Create async generator
-        if self._local_file:
-            relpath = os.path.basename(self._local_file)
-            files_stream = aiostream.stream.just(get_file_upload_spec(self._local_file, relpath))
-        else:
-            files_stream = aiostream.stream.iterate(
-                get_file_upload_specs(self._local_dir, self._recursive, self._condition)
-            )
+        files_stream = aiostream.stream.iterate(self._get_files())
 
         # Upload files
         uploads_stream = aiostream.stream.map(files_stream, _put_file, task_limit=n_concurrent_uploads)

@@ -1,19 +1,14 @@
-import asyncio
 import base64
-import concurrent.futures
 import dataclasses
 import hashlib
 import os
 from contextlib import asynccontextmanager
-from pathlib import Path
-from typing import Callable, Optional, Union
+from typing import Optional
 
 import aiohttp
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import retry
-
-from .config import logger
 
 # Max size for function inputs and outputs.
 MAX_OBJECT_SIZE_BYTES = 64 * 1024  # 64 kb
@@ -136,23 +131,3 @@ def get_file_upload_spec(filename, rel_filename):
         return FileUploadSpec(
             filename, rel_filename, use_blob=False, content=content, sha256_hex=sha256_hex, size=len(content)
         )
-
-
-async def get_file_upload_specs(
-    dir_path: Union[str, Path], recursive: bool = True, condition: Callable[[str], bool] = lambda x: True
-):
-    loop = asyncio.get_event_loop()
-    with concurrent.futures.ThreadPoolExecutor() as exe:
-        futs = []
-        if recursive:
-            gen = (os.path.join(root, name) for root, dirs, files in os.walk(dir_path) for name in files)
-        else:
-            gen = (dir_entry.path for dir_entry in os.scandir(dir_path) if dir_entry.is_file())
-
-        for filename in gen:
-            rel_filename = os.path.relpath(filename, dir_path)
-            if condition(filename):
-                futs.append(loop.run_in_executor(exe, get_file_upload_spec, filename, rel_filename))
-        logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} workers")
-        for fut in asyncio.as_completed(futs):
-            yield await fut

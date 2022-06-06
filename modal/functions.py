@@ -1,4 +1,5 @@
 import asyncio
+import platform
 from pathlib import Path
 from typing import Collection, Dict, Optional, Union
 
@@ -297,7 +298,8 @@ class _Function(Object, type_prefix="fu"):
         shared_volume_mounts = []
         # Relies on dicts being ordered (true as of Python 3.6).
         for path, shared_volume in self.shared_volumes.items():
-            if Path(path).resolve() != Path(path):
+            # TODO: check paths client-side on Windows as well.
+            if platform.system() != "Windows" and Path(path).resolve() != Path(path):
                 raise InvalidError("Shared volume remote directory must be an absolute path.")
 
             shared_volume_mounts.append(

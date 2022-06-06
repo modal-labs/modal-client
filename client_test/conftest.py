@@ -203,21 +203,6 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     ) -> api_pb2.SharedVolumeCreateResponse:
         return api_pb2.SharedVolumeCreateResponse(shared_volume_id="sv-123")
 
-    async def SharedVolumeUploadFile(
-        self,
-        request: api_pb2.SharedVolumeUploadFileRequest,
-        context: ServicerContext,
-    ) -> Empty:
-        self.shared_volume_files.append(request.filename)
-        return Empty()
-
-    async def SharedVolumeDone(
-        self,
-        request: api_pb2.SharedVolumeDoneRequest,
-        context: ServicerContext,
-    ) -> Empty:
-        return Empty()
-
     async def FunctionCreate(
         self,
         request: api_pb2.FunctionCreateRequest,
