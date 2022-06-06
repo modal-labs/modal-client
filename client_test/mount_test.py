@@ -2,9 +2,9 @@ import hashlib
 import os
 import pytest
 
-from modal import App
 from modal._blob_utils import LARGE_FILE_LIMIT
-from modal.aio import AioApp
+from modal import Stub
+from modal.aio import AioStub
 from modal.mount import AioMount, Mount
 
 
@@ -18,8 +18,8 @@ async def test_get_files(servicer, client, tmpdir):
     tmpdir.join("fluff").write("hello")
 
     files = {}
-    app = AioApp()
-    async with app.run(client=client) as running_app:
+    stub = AioStub()
+    async with stub.run(client=client) as running_app:
         m = AioMount("/", local_dir=tmpdir, condition=lambda fn: fn.endswith(".py"), recursive=True)
         await running_app.load(m)
         async for upload_spec in m._get_files():
@@ -47,8 +47,8 @@ async def test_get_files(servicer, client, tmpdir):
 
 
 def test_create_mount(servicer, client):
-    app = App()
-    with app.run(client=client) as running_app:
+    stub = Stub()
+    with stub.run(client=client) as running_app:
         local_dir, cur_filename = os.path.split(__file__)
         remote_dir = "/foo"
 

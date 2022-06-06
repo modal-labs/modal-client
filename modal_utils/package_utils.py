@@ -38,13 +38,13 @@ def get_module_mount_info(module: str):
         return [(module, os.path.dirname(filename), lambda f: os.path.basename(f) == os.path.basename(filename))]
 
 
-def import_app_by_ref(app_ref: str):
+def import_stub_by_ref(stub_ref: str):
     root_dir = os.getcwd()
-    if ".py" in app_ref:
+    if ".py" in stub_ref:
         # walk to the closest python package in the path and add that to the path
         # before importing, in case of imports etc. of other modules in that package
         # are needed
-        file_path, var_part = app_ref.split(".py")
+        file_path, var_part = stub_ref.split(".py")
         module_segments = file_path.split("/")
         for path_segment in module_segments.copy()[:-1]:
             if os.path.exists("__init__.py"):  # is package
@@ -55,15 +55,15 @@ def import_app_by_ref(app_ref: str):
         import_path = ".".join(module_segments)
         var_name = var_part.lstrip(":")
     else:
-        if "::" in app_ref:
-            import_path, var_name = app_ref.split("::")
-        elif ":" in app_ref:
-            import_path, var_name = app_ref.split(":")
+        if "::" in stub_ref:
+            import_path, var_name = stub_ref.split("::")
+        elif ":" in stub_ref:
+            import_path, var_name = stub_ref.split(":")
         else:
-            import_path, var_name = app_ref, "app"
+            import_path, var_name = stub_ref, "stub"
 
     sys.path.append(root_dir)
-    var_name = var_name or "app"
+    var_name = var_name or "stub"
     module = importlib.import_module(import_path)
-    app = getattr(module, var_name)
-    return app
+    stub = getattr(module, var_name)
+    return stub

@@ -1,6 +1,7 @@
 import asyncio
 import os
 import sys
+import warnings
 from typing import Collection, Dict, Optional, Union
 
 from rich.tree import Tree
@@ -25,8 +26,10 @@ from .secret import _Secret
 from .shared_volume import _SharedVolume
 
 
-class _App:
+class _Stub:
     """An App manages Objects (Functions, Images, Secrets, Schedules etc.) associated with your applications
+
+    A stub is a description of how to create an app.
 
     The App has three main responsibilities:
     * Syncing of identities across processes (your local Python interpreter and every Modal worker active in your application)
@@ -42,9 +45,9 @@ class _App:
     ```python
     import modal
 
-    app = modal.App()
+    stub = modal.Stub()
 
-    @app.function(secret=modal.ref("some_secret"), schedule=modal.Period(days=1))
+    @stub.function(secret=modal.ref("some_secret"), schedule=modal.Period(days=1))
     def foo():
         ...
     ```
@@ -181,9 +184,9 @@ class _App:
                 "You need to either supply an explicit deployment name to the deploy command, or have a name set on the app.\n"
                 "\n"
                 "Examples:\n"
-                'app.deploy("some_name")\n\n'
+                'stub.deploy("some_name")\n\n'
                 "or\n"
-                'app = App("some-name")'
+                'stub = Stub("some-name")'
             )
 
         async with self._get_client(client) as client:
@@ -380,6 +383,17 @@ class _App:
         from ._image_pty import image_pty
 
         await image_pty(image_ref or self._image, self, cmd, mounts, secrets, shared_volumes)
+
+
+Stub, AioStub = synchronize_apis(_Stub)
+
+
+class _App(_Stub):
+    """Deprecated class, use Stub instead."""
+
+    def __init__(self, name=None, *, image=None):
+        warnings.warn("App is a deprecated class name. Use Stub instead.", DeprecationWarning)
+        super().__init__(name, image=image)
 
 
 App, AioApp = synchronize_apis(_App)

@@ -1,24 +1,24 @@
 import pytest
 
 from modal import ref
-from modal.aio import AioApp, AioQueue
+from modal.aio import AioQueue, AioStub
 from modal.exception import InvalidError
 
 
 @pytest.mark.asyncio
 async def test_async_factory(servicer, client):
-    app = AioApp()
-    app["my_factory"] = AioQueue()
-    async with app.run(client=client) as running_app:
+    stub = AioStub()
+    stub["my_factory"] = AioQueue()
+    async with stub.run(client=client) as running_app:
         assert isinstance(running_app["my_factory"], AioQueue)
         assert running_app["my_factory"].object_id == "qu-1"
 
 
 @pytest.mark.asyncio
 async def test_use_object(servicer, client):
-    app = AioApp()
+    stub = AioStub()
     with pytest.raises(InvalidError):
-        app["my_q"] = AioQueue.include(app, "foo-queue")
-    app["my_q"] = ref("foo-queue")
-    async with app.run(client=client) as running_app:
+        stub["my_q"] = AioQueue.include(stub, "foo-queue")
+    stub["my_q"] = ref("foo-queue")
+    async with stub.run(client=client) as running_app:
         assert running_app["my_q"].object_id == "qu-foo"

@@ -1,8 +1,8 @@
-from modal import App, Secret
+from modal import Secret, Stub
 
 
 def test_secret(servicer, client):
-    app = App()
-    with app.run(client=client) as running_app:
+    stub = Stub()
+    with stub.run(client=client) as running_app:
         secret = Secret({"FOO": "BAR"}).create(running_app)
         assert secret.object_id == "st-123"

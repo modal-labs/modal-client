@@ -20,11 +20,11 @@ from ._asgi import asgi_app_wrapper, fastAPI_function_wrapper
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._buffer_utils import buffered_rpc_read, buffered_rpc_write
 from ._serialization import deserialize, serialize
-from .app import _RunningApp
 from .client import Client, _Client
 from .config import config, logger
 from .exception import InvalidError
 from .functions import AioFunction, Function
+from .running_app import _RunningApp
 
 
 def _path_to_function(module_name, function_name):

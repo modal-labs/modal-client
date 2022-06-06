@@ -1,4 +1,3 @@
-from .app import App
 from .dict import Dict
 from .functions import Function
 from .image import Conda, DebianSlim, DockerhubImage, Image
@@ -10,6 +9,7 @@ from .running_app import RunningApp, container_app, is_local, lookup
 from .schedule import Cron, Period
 from .secret import Secret
 from .shared_volume import SharedVolume
+from .stub import App, Stub
 from .version import __version__
 
 __all__ = [
@@ -29,6 +29,7 @@ __all__ = [
     "RateLimit",
     "Secret",
     "SharedVolume",
+    "Stub",
     "container_app",
     "is_local",
     "lookup",

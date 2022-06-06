@@ -7,7 +7,7 @@ import traceback
 import typer
 
 from modal_proto import api_pb2
-from modal_utils.package_utils import import_app_by_ref
+from modal_utils.package_utils import import_stub_by_ref
 
 from .client import Client
 from .config import (
@@ -86,17 +86,17 @@ def app_main():
 
 
 @app_app.command("deploy")
-def deploy(app_ref: str, name: str = None):
+def deploy(stub_ref: str, name: str = None):
     try:
-        app = import_app_by_ref(app_ref)
+        stub = import_stub_by_ref(stub_ref)
     except Exception:
         traceback.print_exc()
         sys.exit(1)
 
     if name is None:
-        name = app.name
+        name = stub.name
 
-    res = app.deploy(name=name)
+    res = stub.deploy(name=name)
     if inspect.iscoroutine(res):
         app_id = asyncio.run(res)
     else:
