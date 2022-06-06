@@ -1,4 +1,5 @@
 import contextlib
+import inspect
 import warnings
 from typing import Dict, Optional
 
@@ -10,8 +11,9 @@ from modal_utils.async_utils import intercept_coro, synchronize_apis
 from ._output import step_completed, step_progress
 from .client import _Client
 from .config import logger
-from .exception import NotFoundError
+from .exception import InvalidError, NotFoundError
 from .functions import _Function
+from .image import _Image
 from .object import Object, Ref, ref
 
 
@@ -52,7 +54,7 @@ class _RunningApp:
 
     def __init__(
         self,
-        app: "_App",
+        app,  # : _App,
         client: _Client,
         app_id: str,
         tag_to_object: Optional[Dict[str, Object]] = None,
@@ -171,6 +173,26 @@ class _RunningApp:
 
     def __getitem__(self, tag):
         return self._tag_to_object[tag]
+
+    def is_inside(self, image: Optional[Ref] = None):
+        if image is None:
+            image = ref(None, "_image")
+        elif not isinstance(image, Ref):
+            raise InvalidError(
+                inspect.cleandoc(
+                    """`is_inside` only works for an image associated with an App. For instance:
+                app["image"] = DebianSlim()
+                if app.is_inside(app["image"]):
+                    print("I'm inside!")"""
+                )
+            )
+        if image.tag not in self._tag_to_object:
+            # This is some other image, which could belong to some unrelated
+            # app or whatever
+            return False
+        app_image = self._tag_to_object[image.tag]
+        assert isinstance(app_image, _Image)
+        return app_image._is_inside()
 
     @staticmethod
     async def init_container(client, app_id, task_id):

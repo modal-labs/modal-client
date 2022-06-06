@@ -1,5 +1,4 @@
 import asyncio
-import inspect
 import os
 import sys
 from typing import Collection, Dict, Optional, Union
@@ -20,7 +19,7 @@ from .image import _DebianSlim, _Image
 from .mount import _create_client_mount, _Mount, client_mount_name
 from .object import Object, Ref, ref
 from .rate_limit import RateLimit
-from .running_app import _RunningApp
+from .running_app import _RunningApp, container_app, is_local
 from .schedule import Schedule
 from .secret import _Secret
 
@@ -85,26 +84,11 @@ class _App:
         self._blueprint[tag] = obj
 
     def is_inside(self, image: Optional[Ref] = None):
-        if not _is_container_app:
+        # TODO: this should just be a global function
+        if is_local():
             return False
-        if image is None:
-            image = ref(None, "_image")
-        if not isinstance(image, Ref):
-            raise InvalidError(
-                inspect.cleandoc(
-                    """`is_inside` only works for an image associated with an App. For instance:
-                app["image"] = DebianSlim()
-                if app["image"].is_inside():
-                    print("I'm inside!")"""
-                )
-            )
-        if image.tag not in _container_app._tag_to_object:
-            # This is some other image, which could belong to some unrelated
-            # app or whatever
-            return False
-        app_image = _container_app._tag_to_object[image.tag]
-        assert isinstance(app_image, _Image)
-        return app_image._is_inside()
+        else:
+            return container_app.is_inside(image)
 
     @synchronizer.asynccontextmanager
     async def _run(self, client, output_mgr, existing_app_id, last_log_entry_id=None, name=None):
