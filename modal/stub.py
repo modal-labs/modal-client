@@ -168,7 +168,7 @@ class _Stub:
         Usage:
         ```python
         if __name__ == "__main__":
-            app.deploy()
+            stub.deploy()
         ```
 
         Deployment has two primary purposes:
