@@ -336,7 +336,8 @@ class _Function(Object, type_prefix="fu"):
             # Can happen if this is a function loaded from a different app or something
             return self._object_id
 
-        from .app import _container_app, is_local  # avoid circular import
+        # avoid circular import
+        from .running_app import _container_app, is_local
 
         if is_local():
             running_app = self._local_running_app

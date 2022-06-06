@@ -43,7 +43,7 @@ class Object(metaclass=ObjectMeta):
 
     async def create(self, running_app=None):
         # TOOD: should we just get rid of this one in favor of running_app.create(obj) ?
-        from .app import _container_app, _RunningApp  # avoid circular import
+        from .running_app import _container_app, _RunningApp  # avoid circular import
 
         if running_app is None:
             running_app = _container_app
