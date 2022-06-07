@@ -69,6 +69,7 @@ Some "meta-options" are set using environment variables only:
 import logging
 import os
 import typing
+import warnings
 
 import sentry_sdk
 import toml
@@ -225,3 +226,12 @@ if config["sentry_dsn"] and "localhost" not in config["server_url"]:
         sentry_sdk.set_user(
             {"token_id": config["token_id"], "client_version": __version__, "task_id": config["task_id"]}
         )
+
+
+# Make sure all deprecation warnings are shown
+# See https://docs.python.org/3/library/warnings.html#overriding-the-default-filter
+warnings.filterwarnings(
+    "default",
+    category=DeprecationWarning,
+    module="modal",
+)

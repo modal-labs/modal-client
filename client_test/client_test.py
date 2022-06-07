@@ -41,6 +41,15 @@ async def test_client_old_version(servicer):
             pass
 
 
+@pytest.mark.asyncio
+async def test_client_deprecatedn(servicer):
+    with pytest.deprecated_call():
+        async with AioClient(
+            servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret"), version="deprecated"
+        ):
+            pass
+
+
 @pytest.mark.skip("TODO: flakes in Github Actions")
 @pytest.mark.asyncio
 async def test_server_client_gone_disconnects_client(servicer):

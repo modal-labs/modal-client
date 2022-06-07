@@ -1,5 +1,6 @@
 import asyncio
 import time
+import warnings
 
 from grpc import StatusCode
 from grpc.aio import AioRpcError
@@ -61,6 +62,9 @@ class _Client:
                 version=self.version,
             )
             resp = await retry(self.stub.ClientCreate, timeout=CLIENT_CREATE_TIMEOUT)(req)
+            if resp.deprecation_warning:
+                ALARM_EMOJI = chr(0x1F6A8)
+                warnings.warn(f"{ALARM_EMOJI} {resp.deprecation_warning} {ALARM_EMOJI}", DeprecationWarning)
             self._client_id = resp.client_id
         except AioRpcError as exc:
             ms = int(1000 * (time.time() - t0))

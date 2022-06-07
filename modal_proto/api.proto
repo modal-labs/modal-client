@@ -56,6 +56,7 @@ message ClientCreateRequest {
 message ClientCreateResponse {
   string client_id = 1;
   string error = 2;
+  string deprecation_warning = 3;
 }
 
 message ClientHeartbeatRequest {
