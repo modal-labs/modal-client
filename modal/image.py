@@ -59,10 +59,10 @@ class _Image(Object, type_prefix="im"):
                 raise NotFoundError(str(ex) + "\n" + "You can add secrets to your account at https://modal.com/secrets")
             secret_ids.append(secret_id)
 
-        context_file_pb2s = [
-            api_pb2.ImageContextFile(filename=filename, data=open(path, "rb").read())
-            for filename, path in self._context_files.items()
-        ]
+        context_file_pb2s = []
+        for filename, path in self._context_files.items():
+            with open(path, "rb") as f:
+                context_file_pb2s.append(api_pb2.ImageContextFile(filename=filename, data=f.read()))
 
         dockerfile_commands = [_make_bytes(s) for s in self._dockerfile_commands]
         image_definition = api_pb2.Image(
