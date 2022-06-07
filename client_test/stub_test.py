@@ -69,7 +69,7 @@ def square(x):
 async def test_redeploy(servicer, aio_client):
     stub = AioStub()
     stub.function(square)
-    f_name = "client_test.app_test.square"
+    f_name = "client_test.stub_test.square"
 
     # Deploy app
     app_id = await stub.deploy("my-app", client=aio_client)
