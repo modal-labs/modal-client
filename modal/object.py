@@ -83,10 +83,10 @@ class Object(metaclass=ObjectMeta):
 
         volume = modal.SharedVolume().persist("my-volume")
 
-        app = modal.App()
+        stub = modal.Stub()
 
-        # Volume refers to the same object, even across instances of `app`.
-        @app.function(shared_volumes={"/vol": volume})
+        # Volume refers to the same object, even across instances of `stub`.
+        @stub.function(shared_volumes={"/vol": volume})
         def f():
             pass
         ```
