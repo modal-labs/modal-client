@@ -100,9 +100,16 @@ class _RunningApp:
         if isinstance(obj, Ref):
             # TODO: should we just move this code to the Ref class?
             if obj.app_name is not None:
+                if obj.definition is not None:
+                    from .app import _App
+
+                    _app = _App(obj.app_name)
+                    _app["_object"] = obj.definition
+                    await _app.deploy(client=self._client)
                 # A different app
                 object_id = await _lookup_to_id(obj.app_name, obj.tag, obj.namespace, self._client)
             else:
+                assert not obj.definition
                 # Same app
                 if obj.tag in self._tag_to_object:
                     object_id = self._tag_to_object[obj.tag].object_id

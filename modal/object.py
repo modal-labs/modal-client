@@ -72,6 +72,28 @@ class Object(metaclass=ObjectMeta):
         """Use an object published with `modal.App.deploy`"""
         raise InvalidError("The `Object.include` method is gone. Use `modal.ref` instead!")
 
+    async def persist(self, label: str):
+        """Deploy a Modal app containing this object. This object can then be imported from other apps, using
+        the returned reference, or by calling `modal.ref(label)`.
+
+        **Example Usage**
+
+        ```python
+        import modal
+
+        volume = modal.SharedVolume().persist("my-volume")
+
+        app = modal.App()
+
+        # Volume refers to the same object, even across instances of `app`.
+        @app.function(shared_volumes={"/vol": volume})
+        def f():
+            pass
+        ```
+
+        """
+        return Ref(label, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT, definition=self)
+
     def __await__(self):
         """Make objects awaitable from the load() method."""
         return (yield self)
@@ -83,10 +105,12 @@ class Ref(Object):
         app_name: Optional[str] = None,  # If it's none then it's the same app
         tag: Optional[str] = None,
         namespace: Optional[int] = None,  # api_pb2.DEPLOYMENT_NAMESPACE
+        definition: Optional[Object] = None,  # Object definition to deploy to this ref.
     ):
         self.app_name = app_name
         self.tag = tag
         self.namespace = namespace
+        self.definition = definition
         super().__init__()
 
 
