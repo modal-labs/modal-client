@@ -1,4 +1,5 @@
 import asyncio
+import warnings
 
 from . import App
 
@@ -30,6 +31,11 @@ def square_sync_returning_async(x):
 @app.function()
 def raises(x):
     raise Exception("Failure!")
+
+
+def deprecated_function(x):
+    warnings.warn("This function is deprecated", DeprecationWarning)
+    return x**2
 
 
 if __name__ == "__main__":
