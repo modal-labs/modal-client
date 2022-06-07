@@ -73,7 +73,7 @@ class Object(metaclass=ObjectMeta):
         raise InvalidError("The `Object.include` method is gone. Use `modal.ref` instead!")
 
     async def persist(self, label: str):
-        """Deploy a Modal app containing this object. This object can then be imported from other apps, using
+        """Deploy a Modal app containing this object. This object can then be imported from other apps using
         the returned reference, or by calling `modal.ref(label)`.
 
         **Example Usage**
