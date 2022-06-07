@@ -392,7 +392,10 @@ class _App(_Stub):
     """Deprecated class, use Stub instead."""
 
     def __init__(self, name=None, *, image=None):
-        warnings.warn("App is a deprecated class name. Use Stub instead.", DeprecationWarning)
+        warnings.warn(
+            "App is a deprecated class name. Use Stub instead. See https://modal.com/docs/guide/apps for more info.",
+            DeprecationWarning,
+        )
         super().__init__(name, image=image)
 
 
