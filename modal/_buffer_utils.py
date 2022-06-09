@@ -45,7 +45,7 @@ async def buffered_rpc_read(fn, request, timeout=None, warn_on_cancel=True):
         try:
             return await fn(request)
         except AioRpcError as exc:
-            if exc.code() not in (StatusCode.DEADLINE_EXCEEDED, StatusCode.RESOURCE_EXHAUSTED):
+            if exc.code() not in (StatusCode.UNAVAILABLE, StatusCode.DEADLINE_EXCEEDED, StatusCode.RESOURCE_EXHAUSTED):
                 raise
             if timeout is not None and (time.time() - t0) > timeout:
                 raise

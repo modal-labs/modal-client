@@ -80,7 +80,7 @@ class GRPCConnectionFactory:
                 target=self.target,
                 options=self.options,
                 compression=None,
-                interceptors=None,
+                interceptors=[],
             )
         else:
             return secure_channel(
@@ -88,5 +88,5 @@ class GRPCConnectionFactory:
                 credentials=self.credentials,
                 options=self.options,
                 compression=None,
-                interceptors=None,
+                interceptors=[],
             )
