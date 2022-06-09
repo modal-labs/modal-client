@@ -67,6 +67,8 @@ class _Mount(Object, type_prefix="mo"):
         local_dir = os.path.expanduser(self._local_dir)
         if not os.path.exists(local_dir):
             raise FileNotFoundError(local_dir)
+        if not os.path.isdir(local_dir):
+            raise NotADirectoryError(local_dir)
 
         loop = asyncio.get_event_loop()
         with concurrent.futures.ThreadPoolExecutor() as exe:
