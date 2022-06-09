@@ -61,3 +61,11 @@ def test_create_mount(servicer, client):
         sha256_hex = servicer.files_name2sha[f"/foo/{cur_filename}"]
         assert sha256_hex in servicer.files_sha2data
         assert servicer.files_sha2data[sha256_hex]["data"] == open(__file__, "rb").read()
+
+
+def test_create_mount_file_doesnt_exist(servicer, client):
+    app = App()
+    with app.run(client=client) as running_app:
+        m = Mount(local_dir="xyz", remote_dir="/xyz")
+        with pytest.raises(FileNotFoundError):
+            obj_id = running_app.load(m)
