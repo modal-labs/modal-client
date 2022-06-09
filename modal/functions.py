@@ -295,6 +295,8 @@ class _Function(Object, type_prefix="fu"):
         for mount in self.mounts:
             mount_ids.append(await mount)
 
+        if not isinstance(self.shared_volumes, dict):
+            raise InvalidError("shared_volumes must be a dict[str, SharedVolume] where the keys are paths")
         shared_volume_mounts = []
         # Relies on dicts being ordered (true as of Python 3.6).
         for path, shared_volume in self.shared_volumes.items():

@@ -64,16 +64,19 @@ class _Mount(Object, type_prefix="mo"):
             yield get_file_upload_spec(self._local_file, relpath)
             return
 
+        local_dir = os.path.expanduser(self._local_dir)
+        assert os.path.exists(local_dir)
+
         loop = asyncio.get_event_loop()
         with concurrent.futures.ThreadPoolExecutor() as exe:
             futs = []
             if self._recursive:
-                gen = (os.path.join(root, name) for root, dirs, files in os.walk(self._local_dir) for name in files)
+                gen = (os.path.join(root, name) for root, dirs, files in os.walk(local_dir) for name in files)
             else:
-                gen = (dir_entry.path for dir_entry in os.scandir(self._local_dir) if dir_entry.is_file())
+                gen = (dir_entry.path for dir_entry in os.scandir(local_dir) if dir_entry.is_file())
 
             for filename in gen:
-                rel_filename = os.path.relpath(filename, self._local_dir)
+                rel_filename = os.path.relpath(filename, local_dir)
                 if self._condition(filename):
                     futs.append(loop.run_in_executor(exe, get_file_upload_spec, filename, rel_filename))
             logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} workers")
