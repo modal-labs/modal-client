@@ -562,7 +562,6 @@ service ModalClient {
 
   // Mounts
   rpc MountRegisterFile(MountRegisterFileRequest) returns (MountRegisterFileResponse);
-  rpc MountUploadFile(MountUploadFileRequest) returns (google.protobuf.Empty);
   rpc MountCreate(MountCreateRequest) returns (MountCreateResponse);
 
   // SharedVolumes
