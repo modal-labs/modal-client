@@ -434,31 +434,8 @@ message BlobGetResponse {
   string download_url = 1;
 }
 
-message MountCreateRequest {
-  string app_id = 2;
-  string existing_mount_id = 3;
-}
-
-message MountCreateResponse {
-  string mount_id = 1;
-}
-
 message MountRegisterFileRequest {
-  string filename = 1;
   string sha256_hex = 2;
-  string mount_id = 3;
-}
-
-message MountRegisterFileResponse {
-  string filename = 1;  // TODO(erikbern): don't think this one is needed?
-  bool exists = 2;
-}
-
-message MountUploadFileRequest {
-  string sha256_hex = 1;
-  int64 size = 2;
-
-  string mount_id = 4;
 
   oneof data_oneof {
     bytes data = 3;
@@ -466,7 +443,22 @@ message MountUploadFileRequest {
   }
 }
 
-message MountDoneRequest {
+message MountRegisterFileResponse {
+  bool exists = 2;
+}
+
+message MountFile {
+  string filename = 1;
+  string sha256_hex = 3;
+}
+
+message MountCreateRequest {
+  string app_id = 2;
+  string existing_mount_id = 3;
+  repeated MountFile files = 4;
+}
+
+message MountCreateResponse {
   string mount_id = 1;
 }
 
@@ -569,10 +561,9 @@ service ModalClient {
   rpc BlobGet(BlobGetRequest) returns (BlobGetResponse);
 
   // Mounts
-  rpc MountCreate(MountCreateRequest) returns (MountCreateResponse);
   rpc MountRegisterFile(MountRegisterFileRequest) returns (MountRegisterFileResponse);
-  rpc MountUploadFile(MountUploadFileRequest) returns (google.protobuf.Empty);  // TODO: return something?
-  rpc MountDone(MountDoneRequest) returns (google.protobuf.Empty);
+  rpc MountUploadFile(MountUploadFileRequest) returns (google.protobuf.Empty);
+  rpc MountCreate(MountCreateRequest) returns (MountCreateResponse);
 
   // SharedVolumes
   rpc SharedVolumeCreate(SharedVolumeCreateRequest) returns (SharedVolumeCreateResponse);
