@@ -2,8 +2,8 @@ import hashlib
 import os
 import pytest
 
-from modal._blob_utils import LARGE_FILE_LIMIT
 from modal import Stub
+from modal._blob_utils import LARGE_FILE_LIMIT
 from modal.aio import AioStub
 from modal.mount import AioMount, Mount
 
@@ -65,8 +65,8 @@ def test_create_mount(servicer, client):
 
 
 def test_create_mount_file_errors(servicer, client):
-    app = App()
-    with app.run(client=client) as running_app:
+    stub = Stub()
+    with stub.run(client=client) as running_app:
         m = Mount(local_dir="xyz", remote_dir="/xyz")
         with pytest.raises(FileNotFoundError):
             running_app.load(m)
