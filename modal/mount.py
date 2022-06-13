@@ -102,8 +102,8 @@ class _Mount(Object, type_prefix="mo"):
             remote_filename = (Path(self._remote_dir) / Path(mount_file.rel_filename)).as_posix()
             files[mount_file.sha256_hex] = remote_filename
 
-            request = api_pb2.MountRegisterFileV2Request(sha256_hex=mount_file.sha256_hex)
-            response = await retry(client.stub.MountRegisterFileV2, base_delay=1)(request)
+            request = api_pb2.MountPutFileRequest(sha256_hex=mount_file.sha256_hex)
+            response = await retry(client.stub.MountPutFile, base_delay=1)(request)
 
             n_files += 1
             if response.exists or mount_file.sha256_hex in uploaded_hashes:
@@ -115,11 +115,11 @@ class _Mount(Object, type_prefix="mo"):
                 logger.debug(f"Creating blob file for {mount_file.filename} ({mount_file.size} bytes)")
                 blob_id = await modal._blob_utils.blob_upload_file(mount_file.filename, client.stub)
                 logger.debug(f"Uploading blob file {mount_file.filename} as {remote_filename}")
-                request2 = api_pb2.MountRegisterFileV2Request(data_blob_id=blob_id, sha256_hex=mount_file.sha256_hex)
+                request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=mount_file.sha256_hex)
             else:
                 logger.debug(f"Uploading file {mount_file.filename} to {remote_filename} ({mount_file.size} bytes)")
-                request2 = api_pb2.MountRegisterFileV2Request(data=mount_file.content, sha256_hex=mount_file.sha256_hex)
-            await retry(client.stub.MountRegisterFileV2, base_delay=1)(request2)
+                request2 = api_pb2.MountPutFileRequest(data=mount_file.content, sha256_hex=mount_file.sha256_hex)
+            await retry(client.stub.MountPutFile, base_delay=1)(request2)
 
         logger.debug(f"Uploading mount using {n_concurrent_uploads} uploads")
 
@@ -133,8 +133,8 @@ class _Mount(Object, type_prefix="mo"):
         except aiostream.StreamEmpty:
             logger.warn("Mount is empty.")
 
-        req = api_pb2.MountCreateV2Request(app_id=app_id, existing_mount_id=existing_mount_id, files=files)
-        resp = await retry(client.stub.MountCreateV2, base_delay=1)(req)
+        req = api_pb2.MountBuildRequest(app_id=app_id, existing_mount_id=existing_mount_id, files=files)
+        resp = await retry(client.stub.MountBuild, base_delay=1)(req)
 
         logger.debug(f"Uploaded {len(uploaded_hashes)}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
         return resp.mount_id

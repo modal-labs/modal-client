@@ -434,7 +434,7 @@ message BlobGetResponse {
   string download_url = 1;
 }
 
-message MountRegisterFileV2Request {
+message MountPutFileRequest {
   string sha256_hex = 2;
 
   oneof data_oneof {
@@ -443,7 +443,7 @@ message MountRegisterFileV2Request {
   }
 }
 
-message MountRegisterFileV2Response {
+message MountPutFileResponse {
   bool exists = 2;
 }
 
@@ -452,13 +452,13 @@ message MountFile {
   string sha256_hex = 3;
 }
 
-message MountCreateV2Request {
+message MountBuildRequest {
   string app_id = 2;
   string existing_mount_id = 3;
   repeated MountFile files = 4;
 }
 
-message MountCreateV2Response {
+message MountBuildResponse {
   string mount_id = 1;
 }
 
@@ -599,8 +599,8 @@ service ModalClient {
   rpc BlobGet(BlobGetRequest) returns (BlobGetResponse);
 
   // Mounts
-  rpc MountRegisterFileV2(MountRegisterFileV2Request) returns (MountRegisterFileV2Response);
-  rpc MountCreateV2(MountCreateV2Request) returns (MountCreateV2Response);
+  rpc MountPutFile(MountPutFileRequest) returns (MountPutFileResponse);
+  rpc MountBuild(MountBuildRequest) returns (MountBuildResponse);
 
   // Mounts, deprecated
   rpc MountCreate(MountCreateRequest) returns (MountCreateResponse) { option deprecated = true; }
