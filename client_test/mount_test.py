@@ -9,9 +9,9 @@ from modal.mount import AioMount, Mount
 
 
 @pytest.mark.asyncio
-async def test_get_files(servicer, client, tmpdir, mock_blob_upload_file):
-    small_content = "# not much here"
-    large_content = "a" * (LARGE_FILE_LIMIT + 1)
+async def test_get_files(servicer, client, tmpdir):
+    small_content = b"# not much here"
+    large_content = b"a" * (LARGE_FILE_LIMIT + 1)
 
     tmpdir.join("small.py").write(small_content)
     tmpdir.join("large.py").write(large_content)
@@ -29,18 +29,19 @@ async def test_get_files(servicer, client, tmpdir, mock_blob_upload_file):
         assert "large.py" in files
         assert "fluff" not in files
         assert files["small.py"].use_blob is False
-        assert files["small.py"].content == small_content.encode("utf8")
-        assert files["small.py"].sha256_hex == hashlib.sha256(small_content.encode("utf8")).hexdigest()
+        assert files["small.py"].content == small_content
+        assert files["small.py"].sha256_hex == hashlib.sha256(small_content).hexdigest()
 
         assert files["large.py"].use_blob is True
         assert files["large.py"].content is None
-        assert files["large.py"].sha256_hex == hashlib.sha256(large_content.encode("utf8")).hexdigest()
-        assert len(mock_blob_upload_file) == 1
-        assert mock_blob_upload_file["0"].endswith("large.py")
+        assert files["large.py"].sha256_hex == hashlib.sha256(large_content).hexdigest()
+        blob_id = max(servicer.blobs.keys())  # last uploaded one
+        assert len(servicer.blobs[blob_id]) == len(large_content)
+        assert servicer.blobs[blob_id] == large_content
 
-        assert servicer.files_sha2data[files["large.py"].sha256_hex] == {"data": b"", "data_blob_id": "0"}
+        assert servicer.files_sha2data[files["large.py"].sha256_hex] == {"data": b"", "data_blob_id": blob_id}
         assert servicer.files_sha2data[files["small.py"].sha256_hex] == {
-            "data": small_content.encode("utf8"),
+            "data": small_content,
             "data_blob_id": "",
         }
 

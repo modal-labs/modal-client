@@ -3,11 +3,13 @@ import contextlib
 import os
 import pytest
 import shutil
+import socket
 import tempfile
 import typing
 from pathlib import Path
-from unittest import mock
 
+import aiohttp.web
+import aiohttp.web_runner
 import cloudpickle
 import grpc
 import pkg_resources
@@ -25,7 +27,10 @@ from modal_utils.async_utils import synchronize_apis
 
 
 class GRPCClientServicer(api_pb2_grpc.ModalClient):
-    def __init__(self):
+    def __init__(self, blob_host, blobs):
+        self.n_blobs = 0
+        self.blob_host = blob_host
+        self.blobs = blobs  # shared dict
         self.requests = []
         self.done = False
         self.container_inputs = []
@@ -54,6 +59,14 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.n_apps = 0
 
         self.shared_volume_files = []
+
+    async def BlobCreate(
+        self, request: api_pb2.BlobCreateRequest, context: ServicerContext = None, timeout=None
+    ) -> api_pb2.BlobCreateResponse:
+        self.n_blobs += 1
+        blob_id = f"bl-{self.n_blobs}"
+        upload_url = f"{self.blob_host}/upload?blob_id={blob_id}"
+        return api_pb2.BlobCreateResponse(blob_id=blob_id, upload_url=upload_url)
 
     async def ClientCreate(
         self, request: api_pb2.ClientCreateRequest, context: ServicerContext = None, timeout=None
@@ -261,9 +274,39 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         return api_pb2.SecretCreateResponse(secret_id="st-123")
 
 
+@pytest.fixture(scope="session")
+async def blob_server(event_loop):
+    blobs = {}
+
+    async def upload(request):
+        blob_id = request.query["blob_id"]
+        content = await request.content.read()
+        blobs[blob_id] = content
+        return aiohttp.web.Response(text="Hello, world")
+
+    app = aiohttp.web.Application()
+    app.add_routes([aiohttp.web.put("/upload", upload)])
+
+    # Create a server socket manually and get any free port
+    sock = socket.socket()
+    sock.bind(("", 0))
+    port = sock.getsockname()[1]
+    host = f"http://127.0.0.1:{port}"
+
+    runner = aiohttp.web_runner.AppRunner(app)
+    await runner.setup()
+    site = aiohttp.web_runner.SockSite(runner, sock=sock)
+    await site.start()
+    try:
+        yield (host, blobs)
+    finally:
+        await runner.cleanup()
+
+
 @pytest.fixture(scope="function")
-async def servicer(mock_blob_upload_file):
-    servicer = GRPCClientServicer()
+async def servicer(blob_server):
+    blob_host, blobs = blob_server
+    servicer = GRPCClientServicer(blob_host, blobs)
     server = None
 
     async def _start_servicer():
@@ -281,8 +324,10 @@ async def servicer(mock_blob_upload_file):
     _, aio_stop_servicer = synchronize_apis(_stop_servicer)
 
     await aio_start_servicer()
-    yield servicer
-    await aio_stop_servicer()
+    try:
+        yield servicer
+    finally:
+        await aio_stop_servicer()
 
 
 @pytest.fixture(scope="function")
@@ -338,19 +383,6 @@ def mock_dir_factory():
         shutil.rmtree(root_dir, ignore_errors=True)
 
     return mock_dir
-
-
-@pytest.fixture
-def mock_blob_upload_file():
-    blobs = {}
-
-    async def mock_blob_upload(filename, stub):
-        id = str(len(blobs))
-        blobs[id] = filename
-        return id
-
-    with mock.patch("modal._blob_utils.blob_upload_file", mock_blob_upload):
-        yield blobs
 
 
 @pytest.fixture(autouse=True)
