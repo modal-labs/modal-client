@@ -179,35 +179,25 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
                 (object_id,) = list(app_objects.values())
         return api_pb2.AppLookupObjectResponse(object_id=object_id)
 
-    async def MountCreate(
+    async def MountPutFile(
         self,
-        request: api_pb2.MountCreateRequest,
+        request: api_pb2.MountPutFileRequest,
         context: ServicerContext,
-    ) -> api_pb2.MountCreateResponse:
-        return api_pb2.MountCreateResponse(mount_id="mo-123")
+    ) -> api_pb2.MountPutFileResponse:
+        if request.WhichOneof("data_oneof") is not None:
+            self.files_sha2data[request.sha256_hex] = {"data": request.data, "data_blob_id": request.data_blob_id}
+            return api_pb2.MountPutFileResponse(exists=True)
+        else:
+            return api_pb2.MountPutFileResponse(exists=False)
 
-    async def MountRegisterFile(
+    async def MountBuild(
         self,
-        request: api_pb2.MountRegisterFileRequest,
+        request: api_pb2.MountBuildRequest,
         context: ServicerContext,
-    ) -> api_pb2.MountRegisterFileResponse:
-        self.files_name2sha[request.filename] = request.sha256_hex
-        return api_pb2.MountRegisterFileResponse(filename=request.filename, exists=False)
-
-    async def MountUploadFile(
-        self,
-        request: api_pb2.MountUploadFileRequest,
-        context: ServicerContext,
-    ) -> Empty:
-        self.files_sha2data[request.sha256_hex] = {"data": request.data, "data_blob_id": request.data_blob_id}
-        return Empty()
-
-    async def MountDone(
-        self,
-        request: api_pb2.MountDoneRequest,
-        context: ServicerContext,
-    ) -> Empty:
-        return Empty()
+    ) -> api_pb2.MountBuildResponse:
+        for file in request.files:
+            self.files_name2sha[file.filename] = file.sha256_hex
+        return api_pb2.MountBuildResponse(mount_id="mo-123")
 
     async def SharedVolumeCreate(
         self,

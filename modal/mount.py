@@ -93,14 +93,14 @@ class _Mount(Object, type_prefix="mo"):
 
         n_files = 0
         uploaded_hashes: set[str] = set()
-        files: dict[str, str] = {}
+        files: list[api_pb2.MountFile] = []
         total_bytes = 0
 
         async def _put_file(mount_file: FileUploadSpec):
             nonlocal n_files, uploaded_hashes, total_bytes
 
             remote_filename = (Path(self._remote_dir) / Path(mount_file.rel_filename)).as_posix()
-            files[mount_file.sha256_hex] = remote_filename
+            files.append(api_pb2.MountFile(filename=remote_filename, sha256_hex=mount_file.sha256_hex))
 
             request = api_pb2.MountPutFileRequest(sha256_hex=mount_file.sha256_hex)
             response = await retry(client.stub.MountPutFile, base_delay=1)(request)
