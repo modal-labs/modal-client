@@ -26,7 +26,7 @@ def base64_md5(md5) -> str:
 
 def check_md5(url):
     # Turned off in tests because of an open issue in moto: https://github.com/spulec/moto/issues/816
-    host, port = urlparse(url).netloc.split(":")
+    host = urlparse(url).netloc.split(":")[0]
     if host.endswith(".amazonaws.com"):
         return True
     elif host == "127.0.0.1":
