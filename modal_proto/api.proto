@@ -602,7 +602,7 @@ service ModalClient {
   rpc MountPutFile(MountPutFileRequest) returns (MountPutFileResponse);
   rpc MountBuild(MountBuildRequest) returns (MountBuildResponse);
 
-  // Mounts, deprecated
+  // Mounts, deprecated (modal<=0.0.14)
   rpc MountCreate(MountCreateRequest) returns (MountCreateResponse) { option deprecated = true; }
   rpc MountRegisterFile(MountRegisterFileRequest) returns (MountRegisterFileResponse) { option deprecated = true; }
   rpc MountUploadFile(MountUploadFileRequest) returns (google.protobuf.Empty) { option deprecated = true; }
