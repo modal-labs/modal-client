@@ -35,26 +35,6 @@ def check_md5(url):
         raise Exception(f"Unknown S3 host: {host}")
 
 
-async def blob_upload(payload: bytes, stub):
-    content_md5 = base64_md5(hashlib.md5(payload))
-    return await _blob_upload(content_md5, payload, stub)
-
-
-async def blob_upload_file(filename: str, stub):
-    md5 = hashlib.md5()
-    with open(filename, "rb") as fp:
-        # don't read entire file into memory, in case it's a big one
-        while 1:
-            chunk = fp.read(HASH_CHUNK_SIZE)
-            if not chunk:
-                break
-            md5.update(chunk)
-        content_md5 = base64_md5(md5)
-
-    with open(filename, "rb") as fp:
-        return await _blob_upload(content_md5, fp, stub)
-
-
 @retry(n_attempts=5, base_delay=0.1, timeout=None)
 async def _upload_to_url(upload_url, content_md5, aiohttp_payload):
     async with aiohttp.ClientSession() as session:
@@ -79,6 +59,26 @@ async def _blob_upload(content_md5, aiohttp_payload, stub):
     await _upload_to_url(target, content_md5, aiohttp_payload)
 
     return blob_id
+
+
+async def blob_upload(payload: bytes, stub):
+    content_md5 = base64_md5(hashlib.md5(payload))
+    return await _blob_upload(content_md5, payload, stub)
+
+
+async def blob_upload_file(filename: str, stub):
+    md5 = hashlib.md5()
+    with open(filename, "rb") as fp:
+        # don't read entire file into memory, in case it's a big one
+        while 1:
+            chunk = fp.read(HASH_CHUNK_SIZE)
+            if not chunk:
+                break
+            md5.update(chunk)
+        content_md5 = base64_md5(md5)
+
+    with open(filename, "rb") as fp:
+        return await _blob_upload(content_md5, fp, stub)
 
 
 @asynccontextmanager
