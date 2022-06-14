@@ -85,6 +85,7 @@ class _App:
         self._blueprint[tag] = obj
 
     def is_inside(self, image: Optional[Ref] = None):
+        """Returns if the current code block is executed within the `image` container"""
         # TODO: this should just be a global function
         if is_local():
             return False

@@ -269,15 +269,18 @@ class _Function(Object, type_prefix="fu"):
         super().__init__()
 
     def get_creating_message(self) -> str:
+        """mdmd:hidden"""
         return f"Creating {self.tag}..."
 
     def get_created_message(self) -> str:
+        """mdmd:hidden"""
         if self.web_url is not None:
             # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
             return f"Created {self.tag} => [magenta underline]{self.web_url}[/magenta underline]"
         return f"Created {self.tag}."
 
     async def load(self, client, app_id, existing_function_id):
+        """mdmd:hidden"""
         # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
         if self.image is not None:
             image_id = await self.image
@@ -344,6 +347,7 @@ class _Function(Object, type_prefix="fu"):
         return response.function_id
 
     def set_local_running_app(self, running_app):
+        """mdmd:hidden"""
         self._local_running_app = running_app
 
     def _get_context(self):
@@ -373,21 +377,25 @@ class _Function(Object, type_prefix="fu"):
             yield item
 
     async def call_function(self, args, kwargs):
+        """mdmd:hidden"""
         client, object_id = self._get_context()
         invocation = await Invocation.create(object_id, args, kwargs, client)
         return await invocation.run_function()
 
     async def call_function_nowait(self, args, kwargs):
+        """mdmd:hidden"""
         client, object_id = self._get_context()
         await Invocation.create(object_id, args, kwargs, client)
 
     async def call_generator(self, args, kwargs):
+        """mdmd:hidden"""
         client, object_id = self._get_context()
         invocation = await Invocation.create(object_id, args, kwargs, client)
         async for res in invocation.run_generator():
             yield res
 
     async def call_generator_nowait(self, args, kwargs):
+        """mdmd:hidden"""
         client, object_id = self._get_context()
         await Invocation.create(object_id, args, kwargs, client)
 

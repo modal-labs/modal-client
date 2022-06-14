@@ -114,6 +114,16 @@ class Ref(Object):
         super().__init__()
 
 
-def ref(app_name: Optional[str], tag: Optional[str] = None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
+def ref(app_name: Optional[str], tag: Optional[str] = None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT) -> Ref:
+    """Returns a reference to an Modal object any type
+
+    Useful for referring to already created/deployed objects, e.g., Secrets
+
+    ```python
+    @app.function(secret=modal.ref("my-secret-name"))
+    def some_function():
+        pass
+    ```
+    """
     # TODO(erikbern): we should probably get rid of this function since it's just a dumb wrapper
     return Ref(app_name, tag, namespace)

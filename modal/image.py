@@ -42,6 +42,7 @@ class _Image(Object, type_prefix="im"):
         super().__init__()
 
     async def load(self, client, app_id, existing_image_id):
+        """mdmd:hidden"""
         # Recursively build base images
         base_image_ids = []
         for image in self._base_images.values():
