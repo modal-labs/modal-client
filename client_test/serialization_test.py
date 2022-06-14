@@ -1,16 +1,16 @@
 import pytest
 
 from modal._serialization import deserialize, serialize
-from modal.aio import AioApp, AioQueue
+from modal.aio import AioQueue, AioStub
 
-app = AioApp()
+stub = AioStub()
 
-app["qf"] = AioQueue()
+stub["qf"] = AioQueue()
 
 
 @pytest.mark.asyncio
 async def test_persistent_object(servicer, client):
-    async with app.run(client=client) as running_app:
+    async with stub.run(client=client) as running_app:
         # Serialize "dynamic" object and deserialize
         q = await AioQueue().create(running_app)
         data = serialize(q)

@@ -10,7 +10,7 @@ from synchronicity.interface import Interface
 import modal
 from modal_utils.async_utils import synchronize_apis, synchronizer
 
-pymc_app = modal.App(
+pymc_app = modal.Stub(
     image=modal.Conda().conda_install(["theano-pymc==1.1.2", "pymc3==3.11.2", "scikit-learn", "mkl-service"])
 )
 

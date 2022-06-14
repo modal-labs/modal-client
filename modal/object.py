@@ -120,7 +120,11 @@ def ref(app_name: Optional[str], tag: Optional[str] = None, namespace=api_pb2.DE
     Useful for referring to already created/deployed objects, e.g., Secrets
 
     ```python
-    @app.function(secret=modal.ref("my-secret-name"))
+    import modal
+
+    stub = modal.Stub()
+
+    @stub.function(secret=modal.ref("my-secret-name"))
     def some_function():
         pass
     ```
