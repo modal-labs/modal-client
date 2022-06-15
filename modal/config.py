@@ -77,7 +77,7 @@ from sentry_sdk.integrations.atexit import AtexitIntegration
 
 from .version import __version__
 
-WHEEL_FILENAME = f"modal-{__version__}-py3-none-any.whl"
+WHEEL_FILENAME = "modal-py3-none-any.whl"
 
 # Locate config file and read it
 
