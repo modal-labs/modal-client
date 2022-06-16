@@ -1,6 +1,4 @@
-import base64
 import dataclasses
-import hashlib
 import os
 from typing import Optional
 
@@ -9,18 +7,14 @@ import aiohttp
 from modal_proto import api_pb2
 from modal_utils.async_utils import retry
 from modal_utils.blob_utils import use_md5
+from modal_utils.hash_utils import get_md5_base64, get_sha256_hex
 
 # Max size for function inputs and outputs.
 MAX_OBJECT_SIZE_BYTES = 64 * 1024  # 64 kb
-HASH_CHUNK_SIZE = 4096
 
 #  If a file is LARGE_FILE_LIMIT bytes or larger, it's uploaded to blob store (s3) instead of going through grpc
 #  It will also make sure to chunk the hash calculation to avoid reading the entire file into memory
 LARGE_FILE_LIMIT = 1024 * 1024  # 1MB
-
-
-def base64_md5(md5) -> str:
-    return base64.b64encode(md5.digest()).decode("utf-8")
 
 
 @retry(n_attempts=5, base_delay=0.1, timeout=None)
@@ -44,28 +38,18 @@ async def _blob_upload(content_md5: str, aiohttp_payload, stub):
     blob_id = resp.blob_id
     target = resp.upload_url
 
-    await _blob_upload_retry(target, content_md5, aiohttp_payload)
+    await _upload_to_url(target, content_md5, aiohttp_payload)
 
     return blob_id
 
 
 async def blob_upload(payload: bytes, stub):
-    content_md5 = base64_md5(hashlib.md5(payload))
-
+    content_md5 = get_md5_base64(payload)
     return await _blob_upload(content_md5, payload, stub)
 
 
 async def blob_upload_file(filename: str, stub):
-    md5 = hashlib.md5()
-    with open(filename, "rb") as fp:
-        # don't read entire file into memory, in case it's a big one
-        while 1:
-            chunk = fp.read(HASH_CHUNK_SIZE)
-            if not chunk:
-                break
-            md5.update(chunk)
-        content_md5 = base64_md5(md5)
-
+    content_md5 = get_md5_base64(open(filename, "rb"))
     with open(filename, "rb") as fp:
         return await _blob_upload(content_md5, fp, stub)
 
@@ -101,25 +85,15 @@ class FileUploadSpec:
 
 def get_file_upload_spec(filename, rel_filename):
     # Somewhat CPU intensive, so we run it in a thread/process
-    filesize = os.path.getsize(filename)
-
-    if filesize >= LARGE_FILE_LIMIT:
-        sha256 = hashlib.sha256()
-        size = 0
+    size = os.path.getsize(filename)
+    if size >= LARGE_FILE_LIMIT:
+        use_blob = True
+        content = None
         with open(filename, "rb") as fp:
-            while 1:
-                chunk = fp.read(HASH_CHUNK_SIZE)
-                if not chunk:
-                    break
-                size += len(chunk)
-                sha256.update(chunk)
-
-        sha256_hex = sha256.hexdigest()
-        return FileUploadSpec(filename, rel_filename, use_blob=True, content=None, sha256_hex=sha256_hex, size=size)
+            sha256_hex = get_sha256_hex(fp)
     else:
+        use_blob = False
         with open(filename, "rb") as fp:
             content = fp.read()
-        sha256_hex = hashlib.sha256(content).hexdigest()
-        return FileUploadSpec(
-            filename, rel_filename, use_blob=False, content=content, sha256_hex=sha256_hex, size=len(content)
-        )
+        sha256_hex = get_sha256_hex(content)
+    return FileUploadSpec(filename, rel_filename, use_blob=use_blob, content=content, sha256_hex=sha256_hex, size=size)
