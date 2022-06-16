@@ -61,7 +61,7 @@ async def _download_from_url(download_url):
             if resp.status != 200:
                 text = await resp.text()
                 raise Exception(f"Get from {download_url} failed with status {resp.status}: {text}")
-            return resp.read()
+            return await resp.read()
 
 
 async def blob_download(blob_id, stub):
