@@ -20,6 +20,9 @@ from .schedule import Schedule
 from .secret import _Secret
 from .shared_volume import _SharedVolume
 
+MIN_MEMORY_MB = 1024
+MAX_MEMORY_MB = 16 * 1024
+
 
 async def _process_result(result, stub, client=None):
     if result.WhichOneof("data_oneof") == "data_blob_id":
@@ -256,6 +259,12 @@ class _Function(Object, type_prefix="fu"):
             self.secrets = [secret]
         else:
             self.secrets = secrets
+
+        if memory is not None and memory < MIN_MEMORY_MB:
+            raise InvalidError(f"Function {raw_f} memory request must be at least {MIN_MEMORY_MB} MB")
+        elif memory is not None and memory >= MAX_MEMORY_MB:
+            raise InvalidError(f"Function {raw_f} memory request must be less than {MAX_MEMORY_MB} MB")
+
         self.schedule = schedule
         self.is_generator = is_generator
         self.gpu = gpu
