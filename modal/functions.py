@@ -237,6 +237,7 @@ class _Function(Object, type_prefix="fu"):
         mounts: Collection[Union[Ref, _Mount]] = (),
         shared_volumes: Dict[str, Union[_SharedVolume, Ref]] = {},
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
+        memory: Optional[int] = None,
     ):
         assert callable(raw_f)
         self.info = FunctionInfo(raw_f, serialized)
@@ -263,6 +264,7 @@ class _Function(Object, type_prefix="fu"):
         self.shared_volumes = shared_volumes
         self.webhook_config = webhook_config
         self.web_url = None
+        self.memory = memory
         self.tag = self.info.get_tag()
         self._local_running_app = None
         self._local_object_id = None
@@ -328,7 +330,7 @@ class _Function(Object, type_prefix="fu"):
             definition_type=self.info.definition_type,
             function_serialized=self.info.function_serialized,
             function_type=function_type,
-            resources=api_pb2.Resources(gpu=self.gpu),
+            resources=api_pb2.Resources(gpu=self.gpu, memory=self.memory),
             rate_limit=rate_limit,
             webhook_config=self.webhook_config,
             shared_volume_mounts=shared_volume_mounts,

@@ -250,6 +250,7 @@ class _Stub:
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Collection[Union[_Mount, Ref]] = (),
         shared_volumes: Dict[str, Union[_SharedVolume, Ref]] = {},
+        memory: Optional[int] = None,  # How much memory to request, in MB. This is a soft limit.
     ) -> _Function:  # Function object - callable as a regular function within a Modal app
         """Decorator to create Modal functions"""
         if image is None:
@@ -267,6 +268,7 @@ class _Stub:
             serialized=serialized,
             mounts=mounts,
             shared_volumes=shared_volumes,
+            memory=memory,
         )
         self._blueprint[function.tag] = function
         return function
@@ -286,6 +288,7 @@ class _Stub:
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Collection[Union[_Mount, Ref]] = (),
         shared_volumes: Dict[str, Union[_SharedVolume, Ref]] = {},
+        memory: Optional[int] = None,  # How much memory to request, in MB. This is a soft limit.
     ) -> _Function:
         """Decorator to create Modal generators"""
         if image is None:
@@ -302,6 +305,7 @@ class _Stub:
             serialized=serialized,
             mounts=mounts,
             shared_volumes=shared_volumes,
+            memory=memory,
         )
         self._blueprint[function.tag] = function
         return function
@@ -320,6 +324,7 @@ class _Stub:
         gpu: bool = False,  # Whether a GPU is required
         mounts: Collection[Union[_Mount, Ref]] = (),
         shared_volumes: Dict[str, Union[_SharedVolume, Ref]] = {},
+        memory: Optional[int] = None,  # How much memory to request, in MB. This is a soft limit.
     ):
         if image is None:
             image = self._get_default_image()
@@ -336,6 +341,7 @@ class _Stub:
             webhook_config=api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_ASGI_APP, wait_for_response=wait_for_response
             ),
+            memory=memory,
         )
         self._blueprint[function.tag] = function
         return function
@@ -355,6 +361,7 @@ class _Stub:
         gpu: bool = False,  # Whether a GPU is required
         mounts: Collection[Union[_Mount, Ref]] = (),
         shared_volumes: Dict[str, Union[_SharedVolume, Ref]] = {},
+        memory: Optional[int] = None,  # How much memory to request, in MB. This is a soft limit.
     ):
         if image is None:
             image = self._get_default_image()
@@ -371,6 +378,7 @@ class _Stub:
             webhook_config=api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_FUNCTION, method=method, wait_for_response=wait_for_response
             ),
+            memory=memory,
         )
         self._blueprint[function.tag] = function
         return function

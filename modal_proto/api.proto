@@ -281,6 +281,7 @@ message SecretCreateResponse {
 
 message Resources {
   bool gpu = 1;
+  uint32 memory = 2; // Memory requested in MB.
 }
 
 enum RateLimitInterval {
