@@ -2,7 +2,6 @@ import base64
 import dataclasses
 import hashlib
 import os
-from contextlib import asynccontextmanager
 from typing import Optional
 
 import aiohttp
@@ -38,20 +37,21 @@ async def _upload_to_url(upload_url, content_md5, aiohttp_payload):
                 raise Exception(f"Put to {upload_url} failed with status {resp.status}: {text}")
 
 
-async def _blob_upload(content_md5, aiohttp_payload, stub):
+async def _blob_upload(content_md5: str, aiohttp_payload, stub):
     req = api_pb2.BlobCreateRequest(content_md5=content_md5)
     resp = await stub.BlobCreate(req)
 
     blob_id = resp.blob_id
     target = resp.upload_url
 
-    await _upload_to_url(target, content_md5, aiohttp_payload)
+    await _blob_upload_retry(target, content_md5, aiohttp_payload)
 
     return blob_id
 
 
 async def blob_upload(payload: bytes, stub):
     content_md5 = base64_md5(hashlib.md5(payload))
+
     return await _blob_upload(content_md5, payload, stub)
 
 
@@ -70,21 +70,14 @@ async def blob_upload_file(filename: str, stub):
         return await _blob_upload(content_md5, fp, stub)
 
 
-@asynccontextmanager
-async def _blob_download_file(download_url: str):
+@retry(n_attempts=5, base_delay=0.1, timeout=None)
+async def _download_from_url(download_url):
     async with aiohttp.ClientSession() as session:
         async with session.get(download_url) as resp:
             if resp.status != 200:
                 text = await resp.text()
                 raise Exception(f"Get from {download_url} failed with status {resp.status}: {text}")
-
-            yield resp
-
-
-@retry(n_attempts=5, base_delay=0.1, timeout=None)
-async def _download_from_url(download_url):
-    async with _blob_download_file(download_url) as download_response:
-        return await download_response.read()
+            return resp.read()
 
 
 async def blob_download(blob_id, stub):

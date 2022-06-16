@@ -88,6 +88,7 @@ class _Mount(Object, type_prefix="mo"):
 
     async def load(self, client, app_id, existing_mount_id):
         # Run a threadpool to compute hash values, and use concurrent coroutines to register files.
+        print("creating mount")
         t0 = time.time()
         n_concurrent_uploads = 16
 
@@ -112,12 +113,12 @@ class _Mount(Object, type_prefix="mo"):
             total_bytes += mount_file.size
 
             if mount_file.use_blob:
-                logger.debug(f"Creating blob file for {mount_file.filename} ({mount_file.size} bytes)")
+                print(f"Creating blob file for {mount_file.filename} ({mount_file.size} bytes)")
                 blob_id = await modal._blob_utils.blob_upload_file(mount_file.filename, client.stub)
-                logger.debug(f"Uploading blob file {mount_file.filename} as {remote_filename}")
+                print(f"Uploading blob file {mount_file.filename} as {remote_filename}")
                 request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=mount_file.sha256_hex)
             else:
-                logger.debug(f"Uploading file {mount_file.filename} to {remote_filename} ({mount_file.size} bytes)")
+                print(f"Uploading file {mount_file.filename} to {remote_filename} ({mount_file.size} bytes)")
                 request2 = api_pb2.MountPutFileRequest(data=mount_file.content, sha256_hex=mount_file.sha256_hex)
             await retry(client.stub.MountPutFile, base_delay=1)(request2)
 
@@ -134,9 +135,11 @@ class _Mount(Object, type_prefix="mo"):
             logger.warn("Mount is empty.")
 
         req = api_pb2.MountBuildRequest(app_id=app_id, existing_mount_id=existing_mount_id, files=files)
-        resp = await retry(client.stub.MountBuild, base_delay=1)(req)
+        # resp = await retry(client.stub.MountBuild, base_delay=1)(req)
+        resp = await client.stub.MountBuild(req)
 
-        logger.debug(f"Uploaded {len(uploaded_hashes)}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
+        print(f"Uploaded {len(uploaded_hashes)}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
+        print("created mount")
         return resp.mount_id
 
 
