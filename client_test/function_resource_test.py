@@ -11,19 +11,19 @@ def test_function_memory_request(client):
     with pytest.raises(InvalidError):
 
         @stub.function(memory=MIN_MEMORY_MB - 1)
-        def f():
+        def f1():
             pass
 
     with pytest.raises(InvalidError):
 
         @stub.function(memory=MAX_MEMORY_MB)
-        def f():
+        def f2():
             pass
 
     @stub.function(memory=MAX_MEMORY_MB - 1)
-    def f():
+    def f3():
         pass
 
     @stub.function(memory=MIN_MEMORY_MB)
-    def f():
+    def f4():
         pass
