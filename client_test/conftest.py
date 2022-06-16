@@ -3,7 +3,6 @@ import contextlib
 import os
 import pytest
 import shutil
-import socket
 import tempfile
 import typing
 from pathlib import Path
@@ -24,6 +23,7 @@ from modal.running_app import _RunningApp
 from modal.version import __version__
 from modal_proto import api_pb2, api_pb2_grpc
 from modal_utils.async_utils import synchronize_apis
+from modal_utils.http_utils import run_temporary_http_server
 
 
 class GRPCClientServicer(api_pb2_grpc.ModalClient):
@@ -280,20 +280,8 @@ async def blob_server(event_loop):
     app = aiohttp.web.Application()
     app.add_routes([aiohttp.web.put("/upload", upload)])
 
-    # Create a server socket manually and get any free port
-    sock = socket.socket()
-    sock.bind(("", 0))
-    port = sock.getsockname()[1]
-    host = f"http://127.0.0.1:{port}"
-
-    runner = aiohttp.web_runner.AppRunner(app)
-    await runner.setup()
-    site = aiohttp.web_runner.SockSite(runner, sock=sock)
-    await site.start()
-    try:
-        yield (host, blobs)
-    finally:
-        await runner.cleanup()
+    async with run_temporary_http_server(app) as host:
+        yield host, blobs
 
 
 @pytest.fixture(scope="function")
