@@ -68,6 +68,12 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         upload_url = f"{self.blob_host}/upload?blob_id={blob_id}"
         return api_pb2.BlobCreateResponse(blob_id=blob_id, upload_url=upload_url)
 
+    async def BlobGet(
+        self, request: api_pb2.BlobGetRequest, context: ServicerContext = None, timeout=None
+    ) -> api_pb2.BlobGetResponse:
+        download_url = f"{self.blob_host}/download?blob_id={request.blob_id}"
+        return api_pb2.BlobGetResponse(download_url=download_url)
+
     async def ClientCreate(
         self, request: api_pb2.ClientCreateRequest, context: ServicerContext = None, timeout=None
     ) -> api_pb2.ClientCreateResponse:
@@ -277,8 +283,13 @@ async def blob_server(event_loop):
         blobs[blob_id] = content
         return aiohttp.web.Response(text="Hello, world")
 
+    async def download(request):
+        blob_id = request.query["blob_id"]
+        return aiohttp.web.Response(body=blobs[blob_id])
+
     app = aiohttp.web.Application()
     app.add_routes([aiohttp.web.put("/upload", upload)])
+    app.add_routes([aiohttp.web.get("/download", download)])
 
     async with run_temporary_http_server(app) as host:
         yield host, blobs
