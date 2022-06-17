@@ -12,5 +12,5 @@ async def f(x):
 
 @pytest.mark.asyncio
 async def test_webhook(servicer, aio_client):
-    async with stub.run(client=aio_client) as running_app:
+    async with stub.run(client=aio_client):
         assert f.web_url
