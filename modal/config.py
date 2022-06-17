@@ -75,6 +75,9 @@ import sentry_sdk
 import toml
 from sentry_sdk.integrations.atexit import AtexitIntegration
 
+import modal
+import modal_utils
+
 from .version import __version__
 
 WHEEL_FILENAME = f"modal-{__version__}-py3-none-any.whl"
@@ -209,6 +212,22 @@ def sentry_exit_callback(pending, timeout):
     pass
 
 
+MODAL_PACKAGE_PATHS = [*modal.__path__, *modal_utils.__path__]
+
+
+def filter_exceptions(event, hint):
+    """Filter out exceptions not originating from Modal, and also user errors."""
+    try:
+        exc_origin_path: str = event["exception"]["values"][0]["stacktrace"]["frames"][-1]["abs_path"]
+
+        if not any([exc_origin_path.startswith(p) for p in MODAL_PACKAGE_PATHS]):
+            return None
+    except KeyError:
+        pass
+
+    return event
+
+
 if config["sentry_dsn"] and "localhost" not in config["server_url"]:
     # Check if already initialized.
     if sentry_sdk.Hub.current.client:
@@ -216,10 +235,11 @@ if config["sentry_dsn"] and "localhost" not in config["server_url"]:
     else:
         logger.debug("Initializing Sentry with sample rate 1.")
         sentry_sdk.init(
+            # Sentry DSN for the client project; not secret.
             config["sentry_dsn"],
             integrations=[AtexitIntegration(callback=sentry_exit_callback)],
-            # Sentry DSN for the client project; not secret.
             traces_sample_rate=1,
+            before_send=filter_exceptions,
         )  # type: ignore
 
         sentry_sdk.set_tag("token_id", config["token_id"])
