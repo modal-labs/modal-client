@@ -229,7 +229,11 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
             function_id = f"fu-{self.n_functions}"
         if request.schedule:
             self.function2schedule[function_id] = request.schedule
-        return api_pb2.FunctionCreateResponse(function_id=function_id)
+        if request.function.webhook_config.type:
+            web_url = "http://xyz.internal"
+        else:
+            web_url = None
+        return api_pb2.FunctionCreateResponse(function_id=function_id, web_url=web_url)
 
     async def FunctionMap(
         self,

@@ -243,62 +243,62 @@ class _Function(Object, type_prefix="fu"):
         memory: Optional[int] = None,
     ):
         assert callable(raw_f)
-        self.info = FunctionInfo(raw_f, serialized)
+        self._info = FunctionInfo(raw_f, serialized)
         if schedule is not None:
-            if not self.info.is_nullary():
+            if not self._info.is_nullary():
                 raise InvalidError(
                     f"Function {raw_f} has a schedule, so it needs to support calling it with no arguments"
                 )
         # assert not synchronizer.is_synchronized(image)
 
-        self.raw_f = raw_f
-        self.image = image
+        self._raw_f = raw_f
+        self._image = image
         if secret and secrets:
             raise InvalidError(f"Function {raw_f} has both singular `secret` and plural `secrets` attached")
         if secret:
-            self.secrets = [secret]
+            self._secrets = [secret]
         else:
-            self.secrets = secrets
+            self._secrets = secrets
 
         if memory is not None and memory < MIN_MEMORY_MB:
             raise InvalidError(f"Function {raw_f} memory request must be at least {MIN_MEMORY_MB} MB")
         elif memory is not None and memory >= MAX_MEMORY_MB:
             raise InvalidError(f"Function {raw_f} memory request must be less than {MAX_MEMORY_MB} MB")
 
-        self.schedule = schedule
-        self.is_generator = is_generator
-        self.gpu = gpu
-        self.rate_limit = rate_limit
-        self.mounts = mounts
-        self.shared_volumes = shared_volumes
-        self.webhook_config = webhook_config
-        self.web_url = None
-        self.memory = memory
-        self.tag = self.info.get_tag()
+        self._schedule = schedule
+        self._is_generator = is_generator
+        self._gpu = gpu
+        self._rate_limit = rate_limit
+        self._mounts = mounts
+        self._shared_volumes = shared_volumes
+        self._webhook_config = webhook_config
+        self._web_url = None
+        self._memory = memory
         self._local_running_app = None
         self._local_object_id = None
+        self._tag = self._info.get_tag()
         super().__init__()
 
     def get_creating_message(self) -> str:
         """mdmd:hidden"""
-        return f"Creating {self.tag}..."
+        return f"Creating {self._tag}..."
 
     def get_created_message(self) -> str:
         """mdmd:hidden"""
-        if self.web_url is not None:
+        if self._web_url is not None:
             # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
-            return f"Created {self.tag} => [magenta underline]{self.web_url}[/magenta underline]"
-        return f"Created {self.tag}."
+            return f"Created {self._tag} => [magenta underline]{self._web_url}[/magenta underline]"
+        return f"Created {self._tag}."
 
     async def load(self, client, app_id, existing_function_id):
         """mdmd:hidden"""
         # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
-        if self.image is not None:
-            image_id = await self.image
+        if self._image is not None:
+            image_id = await self._image
         else:
             image_id = None  # Happens if it's a notebook function
         secret_ids = []
-        for secret in self.secrets:
+        for secret in self._secrets:
             try:
                 secret_id = await secret
             except NotFoundError as ex:
@@ -306,14 +306,14 @@ class _Function(Object, type_prefix="fu"):
             secret_ids.append(secret_id)
 
         mount_ids = []
-        for mount in self.mounts:
+        for mount in self._mounts:
             mount_ids.append(await mount)
 
-        if not isinstance(self.shared_volumes, dict):
+        if not isinstance(self._shared_volumes, dict):
             raise InvalidError("shared_volumes must be a dict[str, SharedVolume] where the keys are paths")
         shared_volume_mounts = []
         # Relies on dicts being ordered (true as of Python 3.6).
-        for path, shared_volume in self.shared_volumes.items():
+        for path, shared_volume in self._shared_volumes.items():
             # TODO: check paths client-side on Windows as well.
             if platform.system() != "Windows" and Path(path).resolve() != Path(path):
                 raise InvalidError("Shared volume remote directory must be an absolute path.")
@@ -322,40 +322,51 @@ class _Function(Object, type_prefix="fu"):
                 api_pb2.SharedVolumeMount(mount_path=path, shared_volume_id=await shared_volume)
             )
 
-        if self.is_generator:
+        if self._is_generator:
             function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
         else:
             function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
 
-        rate_limit = self.rate_limit.to_proto() if self.rate_limit else None
+        rate_limit = self._rate_limit.to_proto() if self._rate_limit else None
 
         # Create function remotely
         function_definition = api_pb2.Function(
-            module_name=self.info.module_name,
-            function_name=self.info.function_name,
+            module_name=self._info.module_name,
+            function_name=self._info.function_name,
             mount_ids=mount_ids,
             secret_ids=secret_ids,
             image_id=image_id,
-            definition_type=self.info.definition_type,
-            function_serialized=self.info.function_serialized,
+            definition_type=self._info.definition_type,
+            function_serialized=self._info.function_serialized,
             function_type=function_type,
-            resources=api_pb2.Resources(gpu=self.gpu, memory=self.memory),
+            resources=api_pb2.Resources(gpu=self._gpu, memory=self._memory),
             rate_limit=rate_limit,
-            webhook_config=self.webhook_config,
+            webhook_config=self._webhook_config,
             shared_volume_mounts=shared_volume_mounts,
         )
         request = api_pb2.FunctionCreateRequest(
             app_id=app_id,
             function=function_definition,
-            schedule=self.schedule.proto_message if self.schedule is not None else None,
+            schedule=self._schedule.proto_message if self._schedule is not None else None,
             existing_function_id=existing_function_id,
         )
         response = await client.stub.FunctionCreate(request)
 
         if response.web_url:
-            self.web_url = response.web_url
+            # TODO(erikbern): we really shouldn't mutate the object here
+            self._web_url = response.web_url
 
         return response.function_id
+
+    @property
+    def tag(self):
+        return self._tag
+
+    @property
+    def web_url(self):
+        # TODO(erikbern): it would be much better if this gets written to the "live" object,
+        # and then we look it up from the app.
+        return self._web_url
 
     def set_local_running_app(self, running_app):
         """mdmd:hidden"""
@@ -378,7 +389,7 @@ class _Function(Object, type_prefix="fu"):
         else:
             running_app = _container_app
         client = running_app.client
-        object_id = running_app[self.tag].object_id
+        object_id = running_app[self._tag].object_id
         return (client, object_id)
 
     async def map(self, inputs, window=100, kwargs={}):
