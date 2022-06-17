@@ -395,7 +395,7 @@ class _Function(Object, type_prefix="fu"):
     async def map(self, inputs, window=100, kwargs={}):
         client, object_id = self._get_context()
         input_stream = stream.iterate(inputs) | pipe.map(lambda arg: (arg,))
-        async for item in _MapInvocation(object_id, input_stream, kwargs, client, self.is_generator):
+        async for item in _MapInvocation(object_id, input_stream, kwargs, client, self._is_generator):
             yield item
 
     async def call_function(self, args, kwargs):
@@ -422,21 +422,21 @@ class _Function(Object, type_prefix="fu"):
         await Invocation.create(object_id, args, kwargs, client)
 
     def __call__(self, *args, **kwargs):
-        if self.is_generator:
+        if self._is_generator:
             return self.call_generator(args, kwargs)
         else:
             return self.call_function(args, kwargs)
 
     async def enqueue(self, *args, **kwargs):
         """Calls the function with the given arguments without waiting for the results"""
-        if self.is_generator:
+        if self._is_generator:
             await self.call_generator_nowait(args, kwargs)
         else:
             await self.call_function_nowait(args, kwargs)
 
     def get_raw_f(self):
         """Use by the container to get the code for the function."""
-        return self.raw_f
+        return self._raw_f
 
 
 Function, AioFunction = synchronize_apis(_Function)
