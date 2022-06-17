@@ -77,6 +77,7 @@ from sentry_sdk.integrations.atexit import AtexitIntegration
 
 import modal
 import modal_utils
+from modal.exception import AuthError, InvalidError, VersionError
 
 from .version import __version__
 
@@ -213,6 +214,7 @@ def sentry_exit_callback(pending, timeout):
 
 
 MODAL_PACKAGE_PATHS = [*modal.__path__, *modal_utils.__path__]
+FILTERED_ERROR_TYPES = [e.__name__ for e in (InvalidError, AuthError, VersionError)]
 
 
 def filter_exceptions(event, hint):
@@ -221,6 +223,11 @@ def filter_exceptions(event, hint):
         exc_origin_path: str = event["exception"]["values"][0]["stacktrace"]["frames"][-1]["abs_path"]
 
         if not any([exc_origin_path.startswith(p) for p in MODAL_PACKAGE_PATHS]):
+            return None
+
+        exc_type = event["exception"]["values"][0]["type"]
+
+        if exc_type in FILTERED_ERROR_TYPES:
             return None
     except KeyError:
         pass
