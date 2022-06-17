@@ -101,11 +101,11 @@ class _RunningApp:
             # TODO: should we just move this code to the Ref class?
             if obj.app_name is not None:
                 if obj.definition is not None:
-                    from .app import _App
+                    from .stub import _Stub
 
-                    _app = _App(obj.app_name)
-                    _app["_object"] = obj.definition
-                    await _app.deploy(client=self._client)
+                    _stub = _Stub(obj.app_name)
+                    _stub["_object"] = obj.definition
+                    await _stub.deploy(client=self._client)
                 # A different app
                 object_id = await _lookup_to_id(obj.app_name, obj.tag, obj.namespace, self._client)
             else:
