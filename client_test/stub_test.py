@@ -21,6 +21,19 @@ def test_deprecated_app():
 
 
 @pytest.mark.asyncio
+async def test_kwargs(servicer, aio_client):
+    stub = AioStub(
+        q1=AioQueue(),
+        q2=AioQueue(),
+    )
+    async with stub.run(client=aio_client) as app:
+        await app["q1"].put("foo")
+        await app["q2"].put("bar")
+        assert await app["q1"].get() == "foo"
+        assert await app["q2"].get() == "bar"
+
+
+@pytest.mark.asyncio
 async def test_create_object(servicer, aio_client):
     stub = AioStub()
     async with stub.run(client=aio_client) as running_app:
