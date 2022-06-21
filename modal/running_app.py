@@ -178,7 +178,11 @@ class _RunningApp:
         req_disconnect = api_pb2.AppClientDisconnectRequest(app_id=self._app_id)
         await self._client.stub.AppClientDisconnect(req_disconnect)
 
-    def __getitem__(self, tag):
+    def __getitem__(self, tag: str) -> Object:
+        # Deprecated?
+        return self._tag_to_object[tag]
+
+    def __getattr__(self, tag: str) -> Object:
         return self._tag_to_object[tag]
 
     def is_inside(self, image: Optional[Ref] = None):

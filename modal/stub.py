@@ -53,9 +53,13 @@ class _Stub:
     In this example, both `foo`, the secret and the schedule are registered with the app.
     """
 
+    _name: str
     _blueprint: Dict[str, Object]
+    _default_image: Optional[Union[_Image, Ref]]
+    _client_mount: Optional[Union[_Mount, Ref]]
+    _function_mounts: Dict[str, _Mount]
 
-    def __init__(self, name=None, **blueprint):
+    def __init__(self, name: str = None, **blueprint):
         if name is None:
             name = self._infer_app_name()
         self._name = name
@@ -75,12 +79,25 @@ class _Stub:
         return " ".join(args)
 
     def __getitem__(self, tag: str):
+        # Deprecated?
+        return ref(None, tag)
+
+    def __setitem__(self, tag: str, obj: Object):
+        # Deprecated ?
+        self._blueprint[tag] = obj
+
+    def __getattr__(self, tag: str):
         assert isinstance(tag, str)
         # Return a reference to an object that will be created in the future
         return ref(None, tag)
 
-    def __setitem__(self, tag, obj):
-        self._blueprint[tag] = obj
+    def __setattr__(self, tag: str, obj: Object):
+        # Note that only attributes defined in __annotations__ are set on the object itself,
+        # everything else is registered on the blueprint
+        if tag in self.__annotations__:
+            object.__setattr__(self, tag, obj)
+        else:
+            self._blueprint[tag] = obj
 
     def is_inside(self, image: Optional[Ref] = None):
         """Returns if the current code block is executed within the `image` container"""

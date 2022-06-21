@@ -34,6 +34,18 @@ async def test_kwargs(servicer, aio_client):
 
 
 @pytest.mark.asyncio
+async def test_attrs(servicer, aio_client):
+    stub = AioStub()
+    stub.q1 = AioQueue()
+    stub.q2 = AioQueue()
+    async with stub.run(client=aio_client) as app:
+        await app.q1.put("foo")
+        await app.q2.put("bar")
+        assert await app.q1.get() == "foo"
+        assert await app.q2.get() == "bar"
+
+
+@pytest.mark.asyncio
 async def test_create_object(servicer, aio_client):
     stub = AioStub()
     async with stub.run(client=aio_client) as running_app:
