@@ -186,8 +186,9 @@ class _RunningApp:
         return self._tag_to_object[tag]
 
     def is_inside(self, image: Optional[Ref] = None):
+        # TODO(erikbern): we need a unit test for this
         if image is None:
-            image = ref(None, "_image")
+            image = ref(None, "image")
         elif not isinstance(image, Ref):
             raise InvalidError(
                 inspect.cleandoc(

@@ -160,6 +160,6 @@ async def test_standalone_object(aio_client):
 
 
 @pytest.mark.asyncio
-async def test_is_inside():
+async def test_is_inside_basic():
     stub = AioStub()
     assert stub.is_inside() is False
