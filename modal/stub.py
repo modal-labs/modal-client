@@ -86,7 +86,7 @@ class _Stub:
         # Deprecated ?
         self._blueprint[tag] = obj
 
-    def __getattr__(self, tag: str):
+    def __getattr__(self, tag: str) -> Ref:
         assert isinstance(tag, str)
         # Return a reference to an object that will be created in the future
         return ref(None, tag)
