@@ -10,15 +10,15 @@ from synchronicity.interface import Interface
 import modal
 from modal_utils.async_utils import synchronize_apis, synchronizer
 
-pymc_app = modal.Stub(
+pymc_stub = modal.Stub(
     image=modal.Conda().conda_install(["theano-pymc==1.1.2", "pymc3==3.11.2", "scikit-learn", "mkl-service"])
 )
 
 # HACK: we need the aio version of the pymc app, so we can merge the sample processes
 # as async generators.
-aio_pymc_app = synchronizer._translate_out(synchronizer._translate_in(pymc_app), Interface.ASYNC)
+aio_pymc_stub = synchronizer._translate_out(synchronizer._translate_in(pymc_stub), Interface.ASYNC)
 
-if aio_pymc_app.is_inside():
+if aio_pymc_stub.is_inside():
     import numpy as np
     from fastprogress.fastprogress import progress_bar
     from pymc3 import theanof
@@ -59,7 +59,7 @@ def rebuild_exc(exc, tb):
     return exc
 
 
-@aio_pymc_app.generator
+@aio_pymc_stub.generator
 async def sample_process(
     draws: int,
     tune: int,
