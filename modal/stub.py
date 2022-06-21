@@ -1,7 +1,6 @@
 import asyncio
 import os
 import sys
-import warnings
 from typing import Collection, Dict, Optional, Union
 
 from rich.tree import Tree
@@ -14,7 +13,7 @@ from ._function_utils import FunctionInfo
 from ._output import OutputManager, step_completed, step_progress
 from .client import _Client
 from .config import config
-from .exception import InvalidError
+from .exception import InvalidError, VersionError
 from .functions import _Function
 from .image import _DebianSlim, _Image
 from .mount import _create_client_mount, _Mount, client_mount_name
@@ -400,10 +399,7 @@ class _App(_Stub):
     """Deprecated class, use Stub instead."""
 
     def __init__(self, name=None, *, image=None):
-        warnings.warn(
-            "App is a deprecated class name. Use Stub instead. See https://modal.com/docs/guide/apps for more info.",
-            DeprecationWarning,
-        )
+        raise VersionError("App is deprecated and will be removed in 0.0.18. Please use Stub instead")
         super().__init__(name, image=image)
 
 

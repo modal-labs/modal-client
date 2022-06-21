@@ -10,21 +10,14 @@ from modal.aio import (
     AioStub,
     aio_lookup,
 )
-from modal.exception import NotFoundError
+from modal.exception import NotFoundError, VersionError
 
 
 def test_deprecated_app():
-    with pytest.deprecated_call():
+    with pytest.raises(VersionError):
         App()
-    with pytest.deprecated_call():
+    with pytest.raises(VersionError):
         AioApp()
-
-
-@pytest.mark.xfail
-def test_deprecated_app_exc():
-    # Make sure uncaught warnings trigger exceptions
-    # See conftest.py in the root of the repo
-    App()
 
 
 @pytest.mark.asyncio
