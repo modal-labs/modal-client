@@ -415,7 +415,7 @@ class _Stub:
         """
         from ._image_pty import image_pty
 
-        await image_pty(image_ref or self._image, self, cmd, mounts, secrets, shared_volumes)
+        await image_pty(image_ref or self.image, self, cmd, mounts, secrets, shared_volumes)
 
 
 Stub, AioStub = synchronize_apis(_Stub)
