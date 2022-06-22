@@ -108,7 +108,7 @@ class _Stub:
             return container_app.is_inside(image)
 
     @synchronizer.asynccontextmanager
-    async def _run(self, client, output_mgr, existing_app_id, last_log_entry_id=None, name=None):
+    async def _run(self, client, output_mgr, existing_app_id, last_log_entry_id=None, name=None, deployment=False):
         if existing_app_id is not None:
             running_app = await _RunningApp.init_existing(self, client, existing_app_id)
         else:
@@ -137,7 +137,10 @@ class _Stub:
             finally:
                 await running_app.disconnect()
 
-        output_mgr.print_if_visible(step_completed("App completed."))
+        if deployment:
+            output_mgr.print_if_visible(step_completed("App deployed! 🎉"))
+        else:
+            output_mgr.print_if_visible(step_completed("App completed."))
 
     @synchronizer.asynccontextmanager
     async def _get_client(self, client=None):
@@ -210,7 +213,9 @@ class _Stub:
 
             # The `_run` method contains the logic for starting and running an app
             output_mgr = OutputManager(stdout, show_progress)
-            async with self._run(client, output_mgr, existing_app_id, last_log_entry_id, name=name) as running_app:
+            async with self._run(
+                client, output_mgr, existing_app_id, last_log_entry_id, name=name, deployment=True
+            ) as running_app:
                 deploy_req = api_pb2.AppDeployRequest(
                     app_id=running_app._app_id,
                     name=name,

@@ -104,8 +104,7 @@ def deploy(stub_ref: str, name: str = None):
         app_id = res
 
     console = Console()
-    console.print(f"App deployed! {Symbols.PARTY_POPPER}")
-    console.print(f"View Deployment: [magenta]https://modal.com/deployments/{app_id}[/magenta]")
+    console.print(f"\nView Deployment: [magenta]https://modal.com/deployments/{app_id}[/magenta]")
 
 
 if __name__ == "__main__":
