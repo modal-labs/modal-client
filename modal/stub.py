@@ -119,7 +119,9 @@ class _Stub:
             with output_mgr.ctx_if_visible(output_mgr.make_live(step_progress("Initializing..."))):
                 live_task_status = output_mgr.make_live(step_progress("Running app..."))
                 app_id = running_app.app_id
-                tc.create_task(output_mgr.get_logs_loop(app_id, client, live_task_status, last_log_entry_id or ""))
+                logs_loop = tc.create_task(
+                    output_mgr.get_logs_loop(app_id, client, live_task_status, last_log_entry_id or "")
+                )
             output_mgr.print_if_visible(step_completed("Initialized."))
 
             try:
@@ -129,6 +131,13 @@ class _Stub:
                     await running_app.create_all_objects(progress)
                 progress.label = step_completed("Created objects.")
                 output_mgr.print_if_visible(progress)
+
+                # Cancel logs loop after creating objects for a deployment.
+                # TODO: we can get rid of this once we have 1) a way to separate builder
+                # logs from runner logs and 2) a termination signal that's sent after object
+                # creation is complete, that is also triggered on exceptions (`app.disconnect()`)
+                if deployment:
+                    logs_loop.cancel()
 
                 # Yield to context
                 with output_mgr.ctx_if_visible(live_task_status):
