@@ -5,6 +5,7 @@ import sys
 import traceback
 
 import typer
+from rich.console import Console
 
 from modal_proto import api_pb2
 from modal_utils.package_utils import import_stub_by_ref
@@ -102,8 +103,9 @@ def deploy(stub_ref: str, name: str = None):
     else:
         app_id = res
 
-    print(f"App deployed! {Symbols.PARTY_POPPER}")
-    print(f"App ID: {app_id}")  # TODO: print URL instead
+    console = Console()
+    console.print(f"App deployed! {Symbols.PARTY_POPPER}")
+    console.print(f"View Deployment: [magenta]https://modal.com/deployments/{app_id}[/magenta]")
 
 
 if __name__ == "__main__":
