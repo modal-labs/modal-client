@@ -55,16 +55,17 @@ class _Stub:
 
     _name: str
     _blueprint: Dict[str, Object]
-    _default_image: Optional[Union[_Image, Ref]]
     _client_mount: Optional[Union[_Mount, Ref]]
     _function_mounts: Dict[str, _Mount]
 
     def __init__(self, name: str = None, **blueprint):
         if name is None:
             name = self._infer_app_name()
+        # Set default image if one was not provided.
+        if "image" not in blueprint:
+            blueprint["image"] = _DebianSlim()
         self._name = name
         self._blueprint = blueprint
-        self._default_image = _DebianSlim()
         self._client_mount = None
         self._function_mounts = {}
         super().__init__()
@@ -234,10 +235,7 @@ class _Stub:
                 return running_app._app_id
 
     def _get_default_image(self):
-        if "image" in self._blueprint:
-            return self._blueprint["image"]
-        else:
-            return self._default_image
+        return self._blueprint["image"]
 
     def _get_function_mounts(self, raw_f):
         mounts = []
