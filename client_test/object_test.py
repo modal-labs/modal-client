@@ -17,6 +17,7 @@ async def test_async_factory(servicer, client):
 @pytest.mark.asyncio
 async def test_use_object(servicer, client):
     stub = AioStub()
+    # Deprecation test for (modal<=0.0.14)
     with pytest.raises(InvalidError):
         stub["my_q"] = AioQueue.include(stub, "foo-queue")
     stub["my_q"] = ref("foo-queue")
