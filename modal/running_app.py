@@ -1,7 +1,6 @@
 import contextlib
-import inspect
 import warnings
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 
 from rich.tree import Tree
 
@@ -11,7 +10,7 @@ from modal_utils.async_utils import intercept_coro, synchronize_apis
 from ._output import step_completed, step_progress
 from .client import _Client
 from .config import logger
-from .exception import InvalidError, NotFoundError
+from .exception import NotFoundError
 from .functions import _Function
 from .image import _Image
 from .object import Object, Ref, ref
@@ -186,23 +185,15 @@ class _RunningApp:
     def __getattr__(self, tag: str) -> Object:
         return self._tag_to_object[tag]
 
-    def is_inside(self, image: Optional[Ref] = None):
-        if image is None:
-            image = ref(None, "image")
-        elif not isinstance(image, Ref):
-            raise InvalidError(
-                inspect.cleandoc(
-                    """`is_inside` only works for an image associated with an App. For instance:
-                app["image"] = DebianSlim()
-                if app.is_inside(app["image"]):
-                    print("I'm inside!")"""
-                )
-            )
-        if image.tag not in self._tag_to_object:
-            # This is some other image, which could belong to some unrelated
-            # app or whatever
-            return False
-        app_image = self._tag_to_object[image.tag]
+    def _is_inside(self, image: Union[Ref, _Image]):
+        if isinstance(image, Ref):
+            if image.tag not in self._tag_to_object:
+                # This is some other image, which could belong to some unrelated
+                # app or whatever
+                return False
+            app_image = self._tag_to_object[image.tag]
+        else:
+            app_image = image
         assert isinstance(app_image, _Image)
         return app_image._is_inside()
 

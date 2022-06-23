@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import os
 import sys
 from typing import Collection, Dict, Optional, Union
@@ -55,17 +56,16 @@ class _Stub:
 
     _name: str
     _blueprint: Dict[str, Object]
+    _default_image: _Image
     _client_mount: Optional[Union[_Mount, Ref]]
     _function_mounts: Dict[str, _Mount]
 
     def __init__(self, name: str = None, **blueprint):
         if name is None:
             name = self._infer_app_name()
-        # Set default image if one was not provided.
-        if "image" not in blueprint:
-            blueprint["image"] = _DebianSlim()
         self._name = name
         self._blueprint = blueprint
+        self._default_image = _DebianSlim()
         self._client_mount = None
         self._function_mounts = {}
         super().__init__()
@@ -102,11 +102,24 @@ class _Stub:
 
     def is_inside(self, image: Optional[Ref] = None):
         """Returns if the current code block is executed within the `image` container"""
-        # TODO: this should just be a global function
-        if is_local():
+        if image is not None and not isinstance(image, Ref):
+            raise InvalidError(
+                inspect.cleandoc(
+                    """`is_inside` only works for an image associated with an App. For instance:
+                stub.image = DebianSlim()
+                if stub.is_inside(stub.image):
+                    print("I'm inside!")"""
+                )
+            )
+
+        if is_local():  # TODO: this should just be a global function
             return False
-        else:
-            return container_app.is_inside(image)
+        if image is None:
+            if "image" in self._blueprint:
+                image = ref(None, "image")
+            else:
+                image = self._default_image
+        return container_app._is_inside(image)
 
     @synchronizer.asynccontextmanager
     async def _run(self, client, output_mgr, existing_app_id, last_log_entry_id=None, name=None, deployment=False):
@@ -235,7 +248,10 @@ class _Stub:
                 return running_app._app_id
 
     def _get_default_image(self):
-        return self._blueprint["image"]
+        if "image" in self._blueprint:
+            return self._blueprint["image"]
+        else:
+            return self._default_image
 
     def _get_function_mounts(self, raw_f):
         mounts = []
