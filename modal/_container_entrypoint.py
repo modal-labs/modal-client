@@ -332,7 +332,7 @@ def call_function(
         # local references that means we can't unpickle it. We *are*
         # serializing the exception, which may have some issues (there
         # was an earlier note about it that it might not be possible
-        # to unpickle it in some cases). Let's watch oout for issues.
+        # to unpickle it in some cases). Let's watch out for issues.
         function_context.enqueue_output(
             function_call_id,
             input_id,
