@@ -64,10 +64,6 @@ message ClientHeartbeatRequest {
   int32 num_connections = 2;
 }
 
-message ClientHeartbeatResponse {
-  double seconds_since_last = 2;
-}
-
 message AppCreateRequest {
   string client_id = 1;
   string name = 2;    // Human readable label for the website
@@ -578,7 +574,7 @@ message TaskLogsBatch {
 service ModalClient {
   // Clients
   rpc ClientCreate(ClientCreateRequest) returns (ClientCreateResponse);
-  rpc ClientHeartbeat(ClientHeartbeatRequest) returns (ClientHeartbeatResponse);
+  rpc ClientHeartbeat(ClientHeartbeatRequest) returns (google.protobuf.Empty);
 
   // Apps
   rpc AppCreate(AppCreateRequest) returns (AppCreateResponse);
