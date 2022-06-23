@@ -279,19 +279,16 @@ class _Function(Object, type_prefix="fu"):
         self._tag = self._info.get_tag()
         super().__init__()
 
-    def get_creating_message(self) -> str:
-        """mdmd:hidden"""
+    def _get_creating_message(self) -> str:
         return f"Creating {self._tag}..."
 
-    def get_created_message(self) -> str:
-        """mdmd:hidden"""
+    def _get_created_message(self) -> str:
         if self._web_url is not None:
             # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
             return f"Created {self._tag} => [magenta underline]{self._web_url}[/magenta underline]"
         return f"Created {self._tag}."
 
-    async def load(self, client, app_id, existing_function_id):
-        """mdmd:hidden"""
+    async def _load(self, client, app_id, existing_function_id):
         # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
         if self._image is not None:
             image_id = await self._image

@@ -41,8 +41,7 @@ class _Image(Object, type_prefix="im"):
         self._secrets = secrets
         super().__init__()
 
-    async def load(self, client, app_id, existing_image_id):
-        """mdmd:hidden"""
+    async def _load(self, client, app_id, existing_image_id):
         # Recursively build base images
         base_image_ids = []
         for image in self._base_images.values():
@@ -366,7 +365,7 @@ class _Conda(_Image):
         super().__init__()
 
     # Override load to just resolve a ref.
-    async def load(self, client, app_id, existing_image_id):
+    async def _load(self, client, app_id, existing_image_id):
         return await ref("conda", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
 
     def conda_install(

@@ -20,7 +20,7 @@ class Object(metaclass=ObjectMeta):
         self._object_id = object_id
         self._local_uuid = str(uuid.uuid4())
 
-    async def load(
+    async def _load(
         self,
         client: _Client,
         app_id: str,
@@ -28,8 +28,8 @@ class Object(metaclass=ObjectMeta):
     ):
         raise NotImplementedError(f"Object factory of class {type(self)} has no load method")
 
-    @classmethod
-    def from_id(cls, object_id, client):
+    @staticmethod
+    def from_id(object_id, client):
         parts = object_id.split("-")
         if len(parts) != 2:
             raise InvalidError(f"Object id {object_id} has no dash in it")
@@ -61,10 +61,10 @@ class Object(metaclass=ObjectMeta):
     def local_uuid(self):
         return self._local_uuid
 
-    def get_creating_message(self) -> Optional[str]:
+    def _get_creating_message(self) -> Optional[str]:
         return None
 
-    def get_created_message(self) -> Optional[str]:
+    def _get_created_message(self) -> Optional[str]:
         return None
 
     @classmethod

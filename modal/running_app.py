@@ -82,11 +82,11 @@ class _RunningApp:
 
     @contextlib.contextmanager
     def _progress_ctx(self, progress, obj):
-        creating_message = obj.get_creating_message()
+        creating_message = obj._get_creating_message()
         if progress and creating_message:
             step_node = progress.add(step_progress(creating_message))
             yield
-            created_message = obj.get_created_message()
+            created_message = obj._get_created_message()
             step_node.label = step_completed(created_message, is_substep=True)
         else:
             yield
@@ -126,7 +126,7 @@ class _RunningApp:
 
             with self._progress_ctx(progress, obj):
                 object_id = await intercept_coro(
-                    obj.load(self.client, self.app_id, existing_object_id),
+                    obj._load(self.client, self.app_id, existing_object_id),
                     interceptor,
                 )
 

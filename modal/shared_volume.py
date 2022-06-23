@@ -10,16 +10,13 @@ class _SharedVolume(Object, type_prefix="sv"):
     ):
         super().__init__()
 
-    def get_creating_message(self):
-        """mdmd:hidden"""
+    def _get_creating_message(self):
         return "Creating shared volume..."
 
-    def get_created_message(self):
-        """mdmd:hidden"""
+    def _get_created_message(self):
         return "Created shared volume."
 
-    async def load(self, client, app_id, existing_shared_volume_id):
-        """mdmd:hidden"""
+    async def _load(self, client, app_id, existing_shared_volume_id):
         if existing_shared_volume_id:
             # Volume already exists; do nothing.
             return existing_shared_volume_id

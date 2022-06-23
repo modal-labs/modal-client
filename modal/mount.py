@@ -46,13 +46,13 @@ class _Mount(Object, type_prefix="mo"):
         self._recursive = recursive
         super().__init__()
 
-    def get_creating_message(self):
+    def _get_creating_message(self):
         label = getattr(self, "_local_dir", None) or getattr(self, "_local_file", None)
         if label is None:
             return None
         return f"Mounting {label}..."
 
-    def get_created_message(self):
+    def _get_created_message(self):
         label = getattr(self, "_local_dir", None) or getattr(self, "_local_file", None)
         if label is None:
             return None
@@ -86,7 +86,7 @@ class _Mount(Object, type_prefix="mo"):
             for fut in asyncio.as_completed(futs):
                 yield await fut
 
-    async def load(self, client, app_id, existing_mount_id):
+    async def _load(self, client, app_id, existing_mount_id):
         # Run a threadpool to compute hash values, and use concurrent coroutines to register files.
         t0 = time.time()
         n_concurrent_uploads = 16
