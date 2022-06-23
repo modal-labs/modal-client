@@ -67,11 +67,6 @@ class Object(metaclass=ObjectMeta):
     def _get_created_message(self) -> Optional[str]:
         return None
 
-    @classmethod
-    def include(cls, app, app_name, object_label=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
-        """Use an object published with `modal.App.deploy`"""
-        raise InvalidError("The `Object.include` method is gone. Use `modal.ref` instead!")
-
     async def persist(self, label: str):
         """Deploy a Modal app containing this object. This object can then be imported from other apps using
         the returned reference, or by calling `modal.ref(label)`.

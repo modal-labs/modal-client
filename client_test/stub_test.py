@@ -66,6 +66,7 @@ async def test_persistent_object(servicer, aio_client):
     async with stub_2.run(client=aio_client) as running_app_2:
         assert isinstance(running_app_2, AioRunningApp)
 
+        # Supported in (modal<=0.0.18), remove after bumping version
         with pytest.deprecated_call():
             q_2 = await running_app_2.include("my-queue")
             assert isinstance(q_2, AioQueue)

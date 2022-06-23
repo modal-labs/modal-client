@@ -75,7 +75,7 @@ class _RunningApp:
     def app_id(self):
         return self._app_id
 
-    # Method with warning, keep in versions (modal<=0.0.14)
+    # Supported in (modal<=0.0.18), remove after bumping version
     async def include(self, app_name, tag=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
         """Looks up an object and return a newly constructed one."""
         warnings.warn("RunningApp.include is deprecated. Use modal.lookup instead", DeprecationWarning)

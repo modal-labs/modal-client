@@ -2,7 +2,6 @@ import pytest
 
 from modal import ref
 from modal.aio import AioQueue, AioStub
-from modal.exception import InvalidError
 
 
 @pytest.mark.asyncio
@@ -17,9 +16,6 @@ async def test_async_factory(servicer, client):
 @pytest.mark.asyncio
 async def test_use_object(servicer, client):
     stub = AioStub()
-    # Deprecation test for (modal<=0.0.14)
-    with pytest.raises(InvalidError):
-        stub["my_q"] = AioQueue.include(stub, "foo-queue")
     stub["my_q"] = ref("foo-queue")
     async with stub.run(client=client) as running_app:
         assert running_app["my_q"].object_id == "qu-foo"
