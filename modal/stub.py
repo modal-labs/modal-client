@@ -102,6 +102,7 @@ class _Stub:
 
     def is_inside(self, image: Optional[Ref] = None):
         """Returns if the current code block is executed within the `image` container"""
+        # TODO(erikbern): Add a client test for this function.
         if image is not None and not isinstance(image, Ref):
             raise InvalidError(
                 inspect.cleandoc(
@@ -118,7 +119,7 @@ class _Stub:
             if "image" in self._blueprint:
                 image = ref(None, "image")
             else:
-                image = self._default_image
+                return container_app._is_inside(self._default_image)
         return container_app._is_inside(image)
 
     @synchronizer.asynccontextmanager
