@@ -110,12 +110,14 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         return api_pb2.ClientHeartbeatResponse(seconds_since_last=1.0)
 
     async def ImageGetOrCreate(
-        self, request: api_pb2.ImageGetOrCreateRequest, context: ServicerContext
+        self, request: api_pb2.ImageGetOrCreateRequest, context: ServicerContext = None
     ) -> api_pb2.ImageGetOrCreateResponse:
         self.last_image = request.image
         return api_pb2.ImageGetOrCreateResponse(image_id="im-123")
 
-    async def ImageJoin(self, request: api_pb2.ImageJoinRequest, context: ServicerContext) -> api_pb2.ImageJoinResponse:
+    async def ImageJoin(
+        self, request: api_pb2.ImageJoinRequest, context: ServicerContext = None
+    ) -> api_pb2.ImageJoinResponse:
         return api_pb2.ImageJoinResponse(
             result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
         )
@@ -176,7 +178,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         return api_pb2.AppGetByDeploymentNameResponse(app_id=self.deployed_apps.get(request.name))
 
     async def AppLookupObject(
-        self, request: api_pb2.AppLookupObjectRequest, context: ServicerContext
+        self, request: api_pb2.AppLookupObjectRequest, context: ServicerContext = None
     ) -> api_pb2.AppLookupObjectResponse:
         object_id = None
         app_id = self.deployed_apps.get(request.app_name)
