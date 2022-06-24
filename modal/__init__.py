@@ -1,7 +1,7 @@
 from .dict import Dict
 from .functions import Function
 from .image import Conda, DebianSlim, DockerhubImage, Image
-from .mount import Mount
+from .mount import Mount, create_package_mount
 from .object import ref
 from .queue import Queue
 from .rate_limit import RateLimit
@@ -34,4 +34,5 @@ __all__ = [
     "is_local",
     "lookup",
     "ref",
+    "create_package_mount",
 ]

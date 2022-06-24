@@ -24,13 +24,38 @@ def client_mount_name():
 
 
 class _Mount(Object, type_prefix="mo"):
+    """Create a read-only mount for a local directory or file that can be attached
+    to one or more Modal functions.
+
+    **Usage**
+
+    ```python
+    import modal
+    import os
+    stub = modal.Stub()
+
+    @stub.function(mounts=[modal.Mount(remote_dir="/root/foo", local_dir="~/foo"]))
+    def f():
+        # `/root/foo` has the contents of `~/foo`.
+        print(os.listdir("/root/foo/))
+    ```
+
+    Modal syncs the contents of the local directory every time the app runs, but uses the hash of
+    the file's contents to skip uploading files that have been uploaded before.
+    """
+
     def __init__(
         self,
+        # Mount path within the container.
         remote_dir: Union[str, Path],
         *,
+        # Local directory to mount.
         local_dir: Optional[Union[str, Path]] = None,
+        # Local file to mount, if only a single file needs to be mounted. Note that exactly one of `local_dir` and `local_file` can be provided.
         local_file: Optional[Union[str, Path]] = None,
+        # Optional predicate to filter files while creating the mount. `condition` is any function that accepts an absolute local file path, and returns `True` if it should be mounted, and `False` otherwise.
         condition: Callable[[str], bool] = lambda path: True,
+        # Optional flag to toggle if subdirectories should be mounted recursively.
         recursive: bool = True,
     ):
         if local_file is not None and local_dir is not None:
@@ -156,7 +181,23 @@ def _create_client_mount():
 _, aio_create_client_mount = synchronize_apis(_create_client_mount)
 
 
-async def _create_package_mount(module_name):
+async def _create_package_mount(module_name: str):
+    """Returns a `modal.Mount` that makes a local module with name `module_name` available inside the container.
+    This works by mounting the local path of the package to a directory inside the container that's on `PYTHONPATH`.
+
+    **Usage**
+
+    ```python
+    import modal
+    import my_local_module
+
+    stub = modal.Stub()
+
+    @stub.function(mounts=[modal.create_package_mount("my_local_module")])
+    def f():
+        my_local_module.do_stuff()
+    ```
+    """
     mount_infos = get_module_mount_info(module_name)
 
     assert len(mount_infos) == 1
