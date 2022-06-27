@@ -56,8 +56,8 @@ class _FunctionContext:
         self.app_id = container_args.app_id
         self.function_def = container_args.function_def
         self.client = client
-        self.start_time = time.time()
         self.calls_completed = 0
+        self.total_user_time: float = 0
         self._client = synchronizer._translate_in(self.client)  # make it a _Client object
         assert isinstance(self._client, _Client)
 
@@ -102,8 +102,7 @@ class _FunctionContext:
         if self.calls_completed == 0:
             return 1
 
-        time_elapsed = time.time() - self.start_time
-        average_handling_time = time_elapsed / self.calls_completed
+        average_handling_time = self.total_user_time / self.calls_completed
 
         return math.ceil(RTT_S / max(average_handling_time, 1e-6))
 
@@ -216,6 +215,8 @@ class _FunctionContext:
         result = api_pb2.GenericResult(input_id=input_id, idx=idx, **kwargs)
         await self.output_queue.put((result, function_call_id))
 
+    def track_function_call_time(self, time_elapsed: float):
+        self.total_user_time += time_elapsed
         self.calls_completed += 1
 
 
@@ -381,9 +382,12 @@ def main(container_args, client):
 
     with function_context.send_outputs():
         for function_input in function_context.generate_inputs():  # type: ignore
+            t0 = time.time()
             # Note: this blocks the call_function as well. In the future we might want to stream outputs
             # back asynchronously, but then block the call_function if there is back-pressure.
             call_function(function_context, aio_function_context, function, function_type, function_input)  # type: ignore
+            time_elapsed = time.time() - t0
+            function_context.track_function_call_time(time_elapsed)
 
 
 if __name__ == "__main__":
