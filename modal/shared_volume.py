@@ -21,7 +21,7 @@ class _SharedVolume(Object, type_prefix="sv"):
     ```
 
     It is often the case that you would want to persist the Shared Volume object separately from the
-    current app. Refer to the guide to see how to easily persist the object across app runs.
+    current app. Refer to the [Guide section](/docs/guide/shared-volumes#persisting-volumes) to see how to easily persist the object across app runs.
     """
 
     def __init__(

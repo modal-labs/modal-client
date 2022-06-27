@@ -34,10 +34,10 @@ class _Mount(Object, type_prefix="mo"):
     import os
     stub = modal.Stub()
 
-    @stub.function(mounts=[modal.Mount(remote_dir="/root/foo", local_dir="~/foo"]))
+    @stub.function(mounts=[modal.Mount(remote_dir="/root/foo", local_dir="~/foo")])
     def f():
         # `/root/foo` has the contents of `~/foo`.
-        print(os.listdir("/root/foo/))
+        print(os.listdir("/root/foo/"))
     ```
 
     Modal syncs the contents of the local directory every time the app runs, but uses the hash of
@@ -187,7 +187,7 @@ async def _create_package_mount(module_name: str):
 
     **Usage**
 
-    ```python
+    ```python notest
     import modal
     import my_local_module
 

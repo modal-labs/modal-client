@@ -2,7 +2,7 @@ from .dict import Dict
 from .functions import Function
 from .image import Conda, DebianSlim, DockerhubImage, Image
 from .mount import Mount, create_package_mount
-from .object import ref
+from .object import Object, ref
 from .queue import Queue
 from .rate_limit import RateLimit
 from .running_app import RunningApp, container_app, is_local, lookup
@@ -24,6 +24,7 @@ __all__ = [
     "Function",
     "Image",
     "Mount",
+    "Object",
     "Period",
     "Queue",
     "RateLimit",
