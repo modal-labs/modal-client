@@ -24,7 +24,7 @@ def client_mount_name():
 
 
 class _Mount(Object, type_prefix="mo"):
-    """Create a read-only mount for a local directory or file that can be attached
+    """Create a mount for a local directory or file that can be attached
     to one or more Modal functions.
 
     **Usage**

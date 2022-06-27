@@ -5,6 +5,25 @@ from .object import Object
 
 
 class _SharedVolume(Object, type_prefix="sv"):
+    """Initialize a shared writable file system that can be attached simultaneously
+    to multiple Modal functions. This allows Modal functions to share data with each other.
+
+    **Usage**
+
+    ```python
+    import modal
+
+    stub = modal.Stub()
+
+    @stub.function(shared_volumes={"/root/foo": modal.SharedVolume()})
+    def f():
+        ...
+    ```
+
+    It is often the case that you would want to persist the Shared Volume object separately from the
+    current app. Refer to the guide to see how to easily persist the object across app runs.
+    """
+
     def __init__(
         self,
     ):
