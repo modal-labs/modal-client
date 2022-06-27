@@ -123,7 +123,15 @@ class _Stub:
         return container_app._is_inside(image)
 
     @synchronizer.asynccontextmanager
-    async def _run(self, client, output_mgr, existing_app_id, last_log_entry_id=None, name=None, deployment=False):
+    async def _run(
+        self,
+        client,
+        output_mgr: OutputManager,
+        existing_app_id: Optional[str],
+        last_log_entry_id: Optional[str] = None,
+        name: Optional[str] = None,
+        deployment: bool = False,
+    ):
         if existing_app_id is not None:
             running_app = await _RunningApp.init_existing(self, client, existing_app_id)
         else:

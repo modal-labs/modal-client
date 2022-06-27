@@ -84,7 +84,7 @@ class OutputManager:
         self._console = Console(file=stdout, highlight=False)
         self._task_states = {}
 
-    def print_if_visible(self, renderable):
+    def print_if_visible(self, renderable) -> None:
         if self._visible_progress:
             self._console.print(renderable)
 
