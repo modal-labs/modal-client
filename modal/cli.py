@@ -23,13 +23,22 @@ from .config import (
 app = typer.Typer()
 
 token_app = typer.Typer()
-app.add_typer(token_app, name="token")
+app.add_typer(token_app, name="token", help="Manage tokens")
 config_app = typer.Typer()
-app.add_typer(config_app, name="config")
+app.add_typer(
+    config_app,
+    name="config",
+    help=f"""
+    Manage client configuration
+    
+    Refer to https://modal.com/docs/reference/modal.config for a full explanation of what these
+    options mean, and how to set them.
+    """,
+)
 app_app = typer.Typer()
-app.add_typer(app_app, name="app")
+app.add_typer(app_app, name="app", help="Deploy a Modal app")
 env_app = typer.Typer()
-app.add_typer(env_app, name="env")
+app.add_typer(env_app, name="env", help="Manage currently activated Modal environment")
 
 
 class Symbols:
@@ -79,11 +88,6 @@ def current():
 def list():
     for env in _config_envs():
         print(f"{env} [active]" if _env == env else env)
-
-
-@app_app.command()
-def app_main():
-    app_app()
 
 
 @app_app.command("deploy")
