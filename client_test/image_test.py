@@ -2,7 +2,7 @@ import os
 import sys
 from typing import List
 
-from modal import Conda, DebianSlim, Stub
+from modal import Conda, DebianSlim, DockerfileImage, Stub
 from modal.image import _dockerhub_python_version
 from modal_proto import api_pb2
 
@@ -28,9 +28,13 @@ def get_image_layers(image_id: str, servicer) -> List[api_pb2.Image]:
             break
 
         image = servicer.images[idx]
-        image_id = image.base_images[0].image_id
 
         result.append(servicer.images[idx])
+
+        if not image.base_images:
+            break
+
+        image_id = image.base_images[0].image_id
 
     return result
 
@@ -78,3 +82,14 @@ def test_conda_install(servicer, client):
         assert any("pip install scikit-learn" in cmd for cmd in layers[0].dockerfile_commands)
         assert any("conda install pymc3 theano --yes" in cmd for cmd in layers[1].dockerfile_commands)
         assert any("pip install numpy" in cmd for cmd in layers[2].dockerfile_commands)
+
+
+def test_dockerfile_image(servicer, client):
+    path = os.path.join(os.path.dirname(__file__), "test-dockerfile")
+
+    stub = Stub(image=DockerfileImage(path))
+
+    with stub.run(client=client) as running_app:
+        layers = get_image_layers(running_app["image"].object_id, servicer)
+
+        assert any("RUN pip install numpy" in cmd for cmd in layers[0].dockerfile_commands)
