@@ -105,6 +105,14 @@ class _Image(Object, type_prefix="im"):
         logger.debug(f"Is image inside? env {env_image_id} image {self.object_id}")
         return self.object_id == env_image_id
 
+    def extend(self, **kwargs):
+        """Return a new image subclass of the same type as self, but that extends self as its
+        base layer with kwargs"""
+
+        obj = _Image.__new__(type(self))
+        _Image.__init__(obj, base_images={"base": self}, **kwargs)
+        return obj
+
     def pip_install(
         self,
         packages: List[str] = [],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
@@ -120,10 +128,7 @@ class _Image(Object, type_prefix="im"):
             f"RUN pip install {package_args} {find_links_arg}",
         ]
 
-        return _Image(
-            base_images={"base": self},
-            dockerfile_commands=dockerfile_commands,
-        )
+        return self.extend(dockerfile_commands=dockerfile_commands)
 
     def pip_install_from_requirements(
         self,
@@ -141,8 +146,7 @@ class _Image(Object, type_prefix="im"):
             f"RUN pip install -r /.requirements.txt {find_links_arg}",
         ]
 
-        return _Image(
-            base_images={"base": self},
+        return self.extend(
             dockerfile_commands=dockerfile_commands,
             context_files=context_files,
         )
@@ -172,8 +176,7 @@ class _Image(Object, type_prefix="im"):
             "  poetry install --no-root",
         ]
 
-        return _Image(
-            base_images={"base": self},
+        return self.extend(
             dockerfile_commands=dockerfile_commands,
             context_files=context_files,
         )
@@ -193,8 +196,7 @@ class _Image(Object, type_prefix="im"):
         else:
             _dockerfile_commands += dockerfile_commands
 
-        return _Image(
-            base_images={"base": self},
+        return self.extend(
             dockerfile_commands=_dockerfile_commands,
             context_files=context_files,
             secrets=secrets,
@@ -208,8 +210,7 @@ class _Image(Object, type_prefix="im"):
         """Extend an image with a list of run commands"""
         dockerfile_commands = ["FROM base"] + [f"RUN {cmd}" for cmd in commands]
 
-        return _Image(
-            base_images={"base": self},
+        return self.extend(
             dockerfile_commands=dockerfile_commands,
             secrets=secrets,
         )
@@ -307,7 +308,7 @@ class _DebianSlim(_Image):
         self,
         packages: List[str] = [],  # A list of Debian packages, eg. ["ssh", "libpq-dev"]
     ):
-        """Install a list of Debian using apt."""
+        """Install a list of Debian packages using apt."""
 
         package_args = " ".join(shlex.quote(pkg) for pkg in packages)
 
@@ -317,10 +318,7 @@ class _DebianSlim(_Image):
             f"RUN apt-get install -y {package_args}",
         ]
 
-        return _Image(
-            base_images={"base": self},
-            dockerfile_commands=dockerfile_commands,
-        )
+        return self.extend(dockerfile_commands=dockerfile_commands)
 
 
 def get_client_requirements_path():
@@ -381,10 +379,7 @@ class _Conda(_Image):
             f"RUN conda install {package_args} --yes",
         ]
 
-        return _Image(
-            base_images={"base": self},
-            dockerfile_commands=dockerfile_commands,
-        )
+        return self.extend(dockerfile_commands=dockerfile_commands)
 
 
 Conda, AioConda = synchronize_apis(_Conda)
