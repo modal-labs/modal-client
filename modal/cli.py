@@ -3,6 +3,7 @@ import getpass
 import inspect
 import sys
 import traceback
+from typing import Optional
 
 import typer
 from rich.console import Console
@@ -36,7 +37,7 @@ app.add_typer(
     """,
 )
 app_app = typer.Typer()
-app.add_typer(app_app, name="app", help="Deploy a Modal app")
+app.add_typer(app_app, name="app", help="Manage Modal applications")
 env_app = typer.Typer()
 app.add_typer(env_app, name="env", help="Manage currently activated Modal environment")
 
@@ -45,11 +46,21 @@ class Symbols:
     PARTY_POPPER = "\U0001F389"
 
 
-@token_app.command()
-def set(token_id: str = "-", token_secret: str = "-", env: str = None, no_verify: bool = False):
-    if token_id == "-":
+@token_app.command(
+    help="Set account credentials for connecting to Modal. If not provided with the command, you will be prompted to enter your credentials."
+)
+def set(
+    token_id: Optional[str] = typer.Argument(None, help="Token ID"),
+    token_secret: Optional[str] = typer.Argument(None, help="Token secret"),
+    env: Optional[str] = typer.Argument(
+        None,
+        help="Modal environment to set credentials for. You can switch the currently active Modal environment with the `modal env` command. If unspecified, uses `default` environment.  ",
+    ),
+    no_verify: bool = False,
+):
+    if token_id is None:
         token_id = getpass.getpass("Token ID:")
-    if token_secret == "-":
+    if token_secret is None:
         token_secret = getpass.getpass("Token secret:")
 
     if not no_verify:
@@ -63,7 +74,7 @@ def set(token_id: str = "-", token_secret: str = "-", env: str = None, no_verify
     print(f"Token written to {user_config_path} {Symbols.PARTY_POPPER}")
 
 
-@config_app.command()
+@config_app.command(help="[Debug command] show currently applied configuration values")
 def show():
     # This is just a test command
     print(config)
@@ -74,24 +85,27 @@ def main():
     app()
 
 
-@env_app.command()
-def activate(env: str):
+@env_app.command(help="Change the currently active Modal environment.")
+def activate(env: str = typer.Argument(..., help="Modal environment to activate")):
     _config_set_active_env(env)
 
 
-@env_app.command()
+@env_app.command(help="Print the active Modal environments.")
 def current():
     print(_env)
 
 
-@env_app.command()
+@env_app.command(help="List all Modal environments that are defined.")
 def list():
     for env in _config_envs():
         print(f"{env} [active]" if _env == env else env)
 
 
-@app_app.command("deploy")
-def deploy(stub_ref: str, name: str = None):
+@app_app.command("deploy", help="Deploy a Modal stub as an application.")
+def deploy(
+    stub_ref: str = typer.Argument(..., help="Path to a Modal stub."),
+    name: str = typer.Argument(None, help="Name of the deployment."),
+):
     try:
         stub = import_stub_by_ref(stub_ref)
     except Exception:
