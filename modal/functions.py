@@ -3,7 +3,7 @@ import platform
 from pathlib import Path
 from typing import Collection, Dict, Optional, Union
 
-from aiostream import pipe, stream
+from aiostream import stream
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import queue_batch_iterator, retry, synchronize_apis
@@ -389,10 +389,19 @@ class _Function(Object, type_prefix="fu"):
         object_id = running_app[self._tag].object_id
         return (client, object_id)
 
-    async def map(self, inputs, window=100, kwargs={}):
+    async def _map(self, input_stream, kwargs={}):
         client, object_id = self._get_context()
-        input_stream = stream.iterate(inputs) | pipe.map(lambda arg: (arg,))
         async for item in _MapInvocation(object_id, input_stream, kwargs, client, self._is_generator):
+            yield item
+
+    async def map(self, *input_iterators, kwargs={}):
+        input_stream = stream.zip(*(stream.iterate(it) for it in input_iterators))
+        async for item in self._map(input_stream, kwargs):
+            yield item
+
+    async def starmap(self, inputs, kwargs={}):
+        input_stream = stream.iterate(inputs)
+        async for item in self._map(input_stream, kwargs):
             yield item
 
     async def call_function(self, args, kwargs):

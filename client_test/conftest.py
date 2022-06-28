@@ -57,6 +57,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.function_create_error = False
         self.heartbeat_return_client_gone = False
         self.n_apps = 0
+        self.output_idx = 0
 
         self.shared_volume_files = []
 
@@ -242,6 +243,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         request: api_pb2.FunctionMapRequest,
         context: ServicerContext,
     ) -> api_pb2.FunctionMapResponse:
+        self.output_idx = 0
         return api_pb2.FunctionMapResponse(function_call_id="fc-out")
 
     async def FunctionPutInputs(
@@ -266,7 +268,9 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
             result = api_pb2.GenericResult(
                 status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
                 data=cloudpickle.dumps(res),
+                idx=self.output_idx,
             )
+            self.output_idx += 1
             return api_pb2.FunctionGetOutputsResponse(outputs=[result])
         else:
             await context.abort(StatusCode.DEADLINE_EXCEEDED, "Read timeout")
