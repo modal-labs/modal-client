@@ -29,9 +29,9 @@ config_app = typer.Typer()
 app.add_typer(
     config_app,
     name="config",
-    help=f"""
+    help="""
     Manage client configuration
-    
+
     Refer to https://modal.com/docs/reference/modal.config for a full explanation of what these
     options mean, and how to set them.
     """,
@@ -50,9 +50,9 @@ class Symbols:
     help="Set account credentials for connecting to Modal. If not provided with the command, you will be prompted to enter your credentials."
 )
 def set(
-    token_id: Optional[str] = typer.Argument(None, help="Token ID"),
-    token_secret: Optional[str] = typer.Argument(None, help="Token secret"),
-    env: Optional[str] = typer.Argument(
+    token_id: Optional[str] = typer.Option(None, help="Token ID"),
+    token_secret: Optional[str] = typer.Option(None, help="Token secret"),
+    env: Optional[str] = typer.Option(
         None,
         help="Modal environment to set credentials for. You can switch the currently active Modal environment with the `modal env` command. If unspecified, uses `default` environment.  ",
     ),
@@ -99,6 +99,11 @@ def current():
 def list():
     for env in _config_envs():
         print(f"{env} [active]" if _env == env else env)
+
+
+@app_app.command()
+def app_main():
+    app_app()
 
 
 @app_app.command("deploy", help="Deploy a Modal stub as an application.")
