@@ -41,11 +41,13 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
             client_mount_name(): "ap-x",
             "foo-queue": "ap-y",
             f"debian-slim-{_dockerhub_python_version()}": "ap-z",
+            "conda": "ap-c",
         }
         self.app_objects = {
             "ap-x": {"": "mo-123"},
             "ap-y": {"foo-queue": "qu-foo"},
             "ap-z": {"": "im-123"},
+            "ap-c": {"": "im-456"},
         }
         self.n_queues = 0
         self.files_name2sha = {}
@@ -60,6 +62,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.output_idx = 0
 
         self.shared_volume_files = []
+        self.images = {}
 
     async def BlobCreate(
         self, request: api_pb2.BlobCreateRequest, context: ServicerContext = None, timeout=None
@@ -113,8 +116,9 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     async def ImageGetOrCreate(
         self, request: api_pb2.ImageGetOrCreateRequest, context: ServicerContext = None
     ) -> api_pb2.ImageGetOrCreateResponse:
-        self.last_image = request.image
-        return api_pb2.ImageGetOrCreateResponse(image_id="im-123")
+        idx = len(self.images)
+        self.images[idx] = request.image
+        return api_pb2.ImageGetOrCreateResponse(image_id=f"im-{idx}")
 
     async def ImageJoin(
         self, request: api_pb2.ImageJoinRequest, context: ServicerContext = None
