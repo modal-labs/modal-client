@@ -1,7 +1,6 @@
 import os
 import shlex
 import sys
-import warnings
 from pathlib import Path
 from typing import Collection, Dict, List, Optional, Union
 
@@ -33,7 +32,12 @@ class _Image(Object, type_prefix="im"):
         dockerfile_commands=[],
         secrets=[],
         version=None,
+        ref=None,
     ):
+        if ref and (base_images or dockerfile_commands or context_files):
+            raise InvalidError("No other arguments can be provided when initializing an image from a ref.")
+
+        self._ref = ref
         self._base_images = base_images
         self._context_files = context_files
         self._dockerfile_commands = dockerfile_commands
@@ -42,6 +46,9 @@ class _Image(Object, type_prefix="im"):
         super().__init__()
 
     async def _load(self, client, app_id, existing_image_id):
+        if self._ref:
+            return await self._ref
+
         # Recursively build base images
         base_image_ids = []
         for image in self._base_images.values():
@@ -244,65 +251,12 @@ class _DebianSlim(_Image):
 
     def __init__(
         self,
-        app=None,
-        extra_commands: List[str] = [],  # A list of shell commands executed while building the image
-        python_packages: List[str] = [],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
         python_version: Optional[str] = None,  # Set a specific Python version
-        pip_find_links: Optional[str] = None,
-        requirements_txt: Optional[str] = None,  # File contents of a requirements.txt
-        context_files: Dict[
-            str, str
-        ] = {},  # A dict containing path to files that will be present during the build to use with COPY
-        secrets: List[
-            Object
-        ] = [],  # List of Modal secrets that will be available as environment variables during the build process
-        version: Optional[str] = None,  # Custom string to break the image hashing and force the image to be rebuilt
     ):
-        if app is not None:
-            raise InvalidError("The latest API does no longer require the `app` argument, so please update your code!")
-
         python_version = _dockerhub_python_version(python_version)
         base_image = ref(f"debian-slim-{python_version}", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
 
-        dockerfile_commands = ["FROM base as target"]
-        base_images = {"base": base_image}
-        dockerfile_commands += [f"RUN {cmd}" for cmd in extra_commands]
-
-        if requirements_txt is not None:
-            warnings.warn(
-                "Arguments to DebianSlim are deprecated. Use image.pip_install_from_requirements() instead",
-                DeprecationWarning,
-            )
-            context_files = context_files.copy()
-            context_files["/.requirements.txt"] = requirements_txt
-
-            dockerfile_commands += [
-                "COPY /.requirements.txt /.requirements.txt",
-                "RUN pip install -r /.requirements.txt",
-            ]
-
-        if python_packages:
-            warnings.warn("Arguments to DebianSlim are deprecated. Use image.pip_install() instead", DeprecationWarning)
-
-            find_links_arg = f"-f {pip_find_links}" if pip_find_links else ""
-            package_args = " ".join(shlex.quote(pkg) for pkg in python_packages)
-
-            dockerfile_commands += [
-                f"RUN pip install {package_args} {find_links_arg}",
-            ]
-
-        if extra_commands:
-            warnings.warn(
-                "Arguments to DebianSlim are deprecated. Use image.run_commands() instead", DeprecationWarning
-            )
-
-        super().__init__(
-            dockerfile_commands=dockerfile_commands,
-            context_files=context_files,
-            base_images=base_images,
-            version=version,
-            secrets=secrets,
-        )
+        super().__init__(ref=base_image)
 
     def apt_install(
         self,
@@ -360,11 +314,7 @@ class _Conda(_Image):
     """A Conda base image, built on the official miniconda3 Docker hub image."""
 
     def __init__(self):
-        super().__init__()
-
-    # Override load to just resolve a ref.
-    async def _load(self, client, app_id, existing_image_id):
-        return await ref("conda", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
+        super().__init__(ref=ref("conda", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL))
 
     def conda_install(
         self,

@@ -2,7 +2,7 @@ import os
 import sys
 from typing import List
 
-from modal import DebianSlim, Stub
+from modal import Conda, DebianSlim, Stub
 from modal.image import _dockerhub_python_version
 from modal_proto import api_pb2
 
@@ -65,4 +65,16 @@ def test_debian_slim_apt_install(servicer, client):
 
         assert any("pip install scikit-learn" in cmd for cmd in layers[0].dockerfile_commands)
         assert any("apt-get install -y git ssh" in cmd for cmd in layers[1].dockerfile_commands)
+        assert any("pip install numpy" in cmd for cmd in layers[2].dockerfile_commands)
+
+
+def test_conda_install(servicer, client):
+    stub = Stub(image=Conda().pip_install(["numpy"]).conda_install(["pymc3", "theano"]).pip_install(["scikit-learn"]))
+
+    with stub.run(client=client) as running_app:
+        layers = get_image_layers(running_app["image"].object_id, servicer)
+        print(layers, servicer.images)
+
+        assert any("pip install scikit-learn" in cmd for cmd in layers[0].dockerfile_commands)
+        assert any("conda install pymc3 theano --yes" in cmd for cmd in layers[1].dockerfile_commands)
         assert any("pip install numpy" in cmd for cmd in layers[2].dockerfile_commands)
