@@ -32,3 +32,11 @@ def test_debian_slim_requirements_txt(servicer, client):
         )
         assert any("pip install -r /.requirements.txt" in cmd for cmd in servicer.last_image.dockerfile_commands)
         assert any(b"banana" in f.data for f in servicer.last_image.context_files)
+
+
+def test_debian_slim_apt_install(servicer, client):
+    stub = Stub(image=DebianSlim().pip_install(["numpy"]).apt_install(["git", "ssh"]))
+
+    with stub.run(client=client) as running_app:
+        assert running_app["image"].object_id == "im-123"
+        assert any("apt-get install -y git ssh" in cmd for cmd in servicer.last_image.dockerfile_commands)
