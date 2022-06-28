@@ -1,6 +1,6 @@
 from .dict import Dict
 from .functions import Function
-from .image import Conda, DebianSlim, DockerhubImage, Image
+from .image import Conda, DebianSlim, DockerfileImage, DockerhubImage, Image
 from .mount import Mount, create_package_mount
 from .object import Object, ref
 from .queue import Queue
@@ -20,6 +20,7 @@ __all__ = [
     "Conda",
     "DebianSlim",
     "Dict",
+    "DockerfileImage",
     "DockerhubImage",
     "Function",
     "Image",

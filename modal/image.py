@@ -144,6 +144,8 @@ class _Image(Object, type_prefix="im"):
     ):
         """Install a list of packages using pip."""
 
+        requirements_txt = os.path.expanduser(requirements_txt)
+
         find_links_arg = f"-f {find_links}" if find_links else ""
         context_files = {"/.requirements.txt": requirements_txt}
 
@@ -164,6 +166,8 @@ class _Image(Object, type_prefix="im"):
     ):
         """Install poetry deps from a pyproject.toml file. Uses poetry.lock
         if it exists."""
+
+        poetry_pyproject_toml = os.path.expanduser(poetry_pyproject_toml)
 
         dockerfile_commands = ["FROM base", "RUN pip install poetry"]
 
@@ -285,7 +289,7 @@ def get_client_requirements_path():
 
 def _DockerhubImage(app=None, tag=None):
     """
-    Build a modal image from a pre-existing image on DockerHub.
+    Build a Modal image from a pre-existing image on DockerHub.
 
     This assumes the following about the image:
     - Python 3.7 or above is present, and is available as `python`
@@ -308,6 +312,17 @@ def _DockerhubImage(app=None, tag=None):
         dockerfile_commands=dockerfile_commands,
         context_files={"/modal_requirements.txt": requirements_path},
     )
+
+
+def _DockerfileImage(path: Union[str, Path]):
+    """Build a Modal image from a local Dockerfile."""
+
+    path = os.path.expanduser(path)
+
+    with open(path) as f:
+        dockerfile_commands = f.read().split("\n")
+
+    return _Image(dockerfile_commands=dockerfile_commands)
 
 
 class _Conda(_Image):
@@ -335,4 +350,5 @@ class _Conda(_Image):
 Conda, AioConda = synchronize_apis(_Conda)
 DebianSlim, AioDebianSlim = synchronize_apis(_DebianSlim)
 DockerhubImage, AioDockerhubImage = synchronize_apis(_DockerhubImage)
+DockerfileImage, AioDockerfileImage = synchronize_apis(_DockerfileImage)
 Image, AioImage = synchronize_apis(_Image)
