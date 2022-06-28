@@ -315,14 +315,33 @@ def _DockerhubImage(app=None, tag=None):
 
 
 def _DockerfileImage(path: Union[str, Path]):
-    """Build a Modal image from a local Dockerfile."""
+    """Build a Modal image from a local Dockerfile.
+
+    Note that the the following must be true about the image you provide:
+    - Python 3.7 or above needs to be present and available as `python`
+    - `pip` needs to be installed and available as `pip`
+    """
 
     path = os.path.expanduser(path)
 
     with open(path) as f:
         dockerfile_commands = f.read().split("\n")
 
-    return _Image(dockerfile_commands=dockerfile_commands)
+    base_image = _Image(dockerfile_commands=dockerfile_commands)
+
+    requirements_path = get_client_requirements_path()
+
+    dockerfile_commands = [
+        "FROM base",
+        "COPY /modal_requirements.txt /modal_requirements.txt",
+        "RUN pip install --upgrade pip",
+        "RUN pip install -r /modal_requirements.txt",
+    ]
+
+    return base_image.extend(
+        dockerfile_commands=dockerfile_commands,
+        context_files={"/modal_requirements.txt": requirements_path},
+    )
 
 
 class _Conda(_Image):

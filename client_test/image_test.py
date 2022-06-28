@@ -92,4 +92,4 @@ def test_dockerfile_image(servicer, client):
     with stub.run(client=client) as running_app:
         layers = get_image_layers(running_app["image"].object_id, servicer)
 
-        assert any("RUN pip install numpy" in cmd for cmd in layers[0].dockerfile_commands)
+        assert any("RUN pip install numpy" in cmd for cmd in layers[1].dockerfile_commands)
