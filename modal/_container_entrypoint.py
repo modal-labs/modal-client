@@ -21,7 +21,7 @@ from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._buffer_utils import buffered_rpc_read, buffered_rpc_write
 from ._serialization import deserialize, serialize
 from .client import Client, _Client
-from .config import config, logger
+from .config import logger
 from .exception import InvalidError
 from .functions import AioFunction, Function
 from .running_app import _RunningApp
@@ -118,9 +118,7 @@ class _FunctionContext:
             request.max_values = self.get_max_inputs_to_fetch()
 
             try:
-                response = await buffered_rpc_read(
-                    self.client.stub.FunctionGetInputs, request, timeout=config["container_input_timeout"]
-                )
+                response = await buffered_rpc_read(self.client.stub.FunctionGetInputs, request, timeout=50)
             except AioRpcError as exc:
                 if exc.code() == StatusCode.RESOURCE_EXHAUSTED:
                     logger.debug(f"Task {self.task_id} exceeded rate limit.")

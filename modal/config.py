@@ -142,7 +142,6 @@ _SETTINGS = {
     "logs_timeout": _Setting(10, float),
     "image_python_version": _Setting(),
     "image_id": _Setting(),
-    "container_input_timeout": _Setting(50, float),
     "sentry_dsn": _Setting("https://1343216d5d8e443f9f43896ecab24fd3@o1108641.ingest.sentry.io/6255134"),
     "run_forever_timeout": _Setting(transform=float),
 }
