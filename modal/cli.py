@@ -109,7 +109,7 @@ def app_main():
 @app_app.command("deploy", help="Deploy a Modal stub as an application.")
 def deploy(
     stub_ref: str = typer.Argument(..., help="Path to a Modal stub."),
-    name: str = typer.Argument(None, help="Name of the deployment."),
+    name: str = typer.Option(None, help="Name of the deployment."),
 ):
     try:
         stub = import_stub_by_ref(stub_ref)
