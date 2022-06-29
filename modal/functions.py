@@ -394,13 +394,50 @@ class _Function(Object, type_prefix="fu"):
         async for item in _MapInvocation(object_id, input_stream, kwargs, client, self._is_generator):
             yield item
 
-    async def map(self, *input_iterators, kwargs={}):
+    async def map(
+        self,
+        *input_iterators,  # one input iterator per argument in the mapped-over function/generator
+        kwargs={},  # any extra keyword arguments for the function
+    ):
+        """Parallel map over a set of inputs
+
+        Takes one iterator argument per argument in the function being mapped over.
+
+        Example:
+        ```python notest
+        @stub.function
+        def my_func(a):
+            return a ** 2
+
+        assert list(my_func.starmap([1, 2, 3, 4])) == [1, 4, 9, 16]
+        ```
+
+        If applied to a `stub.function`, `map()` returns one result per input and the output order
+        is guaranteed to be the same as the input order.
+
+        If applied to a `stub.generator`, the results are returned as they are finished and can be
+        out of order. By yielding zero or more than once, mapping over generators can also be used
+        as a "flat map".
+        """
         input_stream = stream.zip(*(stream.iterate(it) for it in input_iterators))
         async for item in self._map(input_stream, kwargs):
             yield item
 
-    async def starmap(self, inputs, kwargs={}):
-        input_stream = stream.iterate(inputs)
+    async def starmap(self, input_iterator, kwargs={}):
+        """Like `map` but spreads arguments over multiple function arguments
+
+        Assumes every input is a sequence (e.g. a tuple)
+
+        Example:
+        ```python notest
+        @stub.function
+        def my_func(a, b):
+            return a + b
+
+        assert list(my_func.starmap([(1, 2), (3, 4)])) == [3, 7]
+        ```
+        """
+        input_stream = stream.iterate(input_iterator)
         async for item in self._map(input_stream, kwargs):
             yield item
 
