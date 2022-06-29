@@ -1,6 +1,6 @@
 import pytest
 
-from modal._test_support import deprecated_function
+from modal._test_support.functions import deprecated_function
 
 
 def test_deprecation():

@@ -52,10 +52,10 @@ def _run_container(servicer, module_name, function_name):
 
         servicer.object_ids = {
             "image": "im-1",
-            "modal._test_support.square": "fu-2",
-            "modal._test_support.square_sync_returning_async": "fu-3",
-            "modal._test_support.square_async": "fu-4",
-            "modal._test_support.raises": "fu-5",
+            "modal._test_support.functions.square": "fu-2",
+            "modal._test_support.functions.square_sync_returning_async": "fu-3",
+            "modal._test_support.functions.square_async": "fu-4",
+            "modal._test_support.functions.raises": "fu-5",
         }
         main(container_args, client)
 
@@ -64,7 +64,7 @@ def _run_container(servicer, module_name, function_name):
 
 def test_container_entrypoint_success(servicer, event_loop):
     t0 = time.time()
-    client, outputs = _run_container(servicer, "modal._test_support", "square")
+    client, outputs = _run_container(servicer, "modal._test_support.functions", "square")
     assert 0 <= time.time() - t0 < EXTRA_TOLERANCE_DELAY
 
     assert len(outputs) == 1
@@ -78,7 +78,7 @@ def test_container_entrypoint_success(servicer, event_loop):
 @skip_non_linux
 def test_container_entrypoint_async(servicer):
     t0 = time.time()
-    client, outputs = _run_container(servicer, "modal._test_support", "square_async")
+    client, outputs = _run_container(servicer, "modal._test_support.functions", "square_async")
     assert SLEEP_DELAY <= time.time() - t0 < SLEEP_DELAY + EXTRA_TOLERANCE_DELAY
 
     assert len(outputs) == 1
@@ -92,7 +92,7 @@ def test_container_entrypoint_async(servicer):
 @skip_non_linux
 def test_container_entrypoint_sync_returning_async(servicer):
     t0 = time.time()
-    client, outputs = _run_container(servicer, "modal._test_support", "square_sync_returning_async")
+    client, outputs = _run_container(servicer, "modal._test_support.functions", "square_sync_returning_async")
     assert SLEEP_DELAY <= time.time() - t0 < SLEEP_DELAY + EXTRA_TOLERANCE_DELAY
 
     assert len(outputs) == 1
@@ -105,7 +105,7 @@ def test_container_entrypoint_sync_returning_async(servicer):
 
 @skip_non_linux
 def test_container_entrypoint_failure(servicer):
-    client, outputs = _run_container(servicer, "modal._test_support", "raises")
+    client, outputs = _run_container(servicer, "modal._test_support.functions", "raises")
 
     assert len(outputs) == 1
     assert isinstance(outputs[0], api_pb2.FunctionPutOutputsRequest)

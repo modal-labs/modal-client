@@ -1,7 +1,7 @@
 import asyncio
 import warnings
 
-from . import Stub
+from modal import Stub
 
 SLEEP_DELAY = 0.1
 
