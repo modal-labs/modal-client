@@ -111,7 +111,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.requests.append(request)
         if self.heartbeat_return_client_gone:
             await context.abort(StatusCode.NOT_FOUND, f"Client {request.client_id} not found")
-        return api_pb2.ClientHeartbeatResponse(seconds_since_last=1.0)
+        return Empty()
 
     async def ImageGetOrCreate(
         self, request: api_pb2.ImageGetOrCreateRequest, context: ServicerContext = None
