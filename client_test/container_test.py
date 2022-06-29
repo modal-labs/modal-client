@@ -1,3 +1,4 @@
+import os
 import platform
 import pytest
 import time
@@ -13,8 +14,9 @@ EXTRA_TOLERANCE_DELAY = 0.25
 FUNCTION_CALL_ID = "fc-123"
 SLEEP_DELAY = 0.1
 
-skip_non_linux = pytest.mark.skipif(
-    platform.system() != "Linux", reason="sleep is inaccurate on Github Actions runners."
+skip_github_actions_non_linux = pytest.mark.skipif(
+    os.environ.get("GITHUB_ACTIONS") and platform.system() != "Linux",
+    reason="sleep is inaccurate on Github Actions runners.",
 )
 
 
@@ -75,7 +77,7 @@ def test_container_entrypoint_success(servicer, event_loop):
     assert output.data == serialize(42**2)
 
 
-@skip_non_linux
+@skip_github_actions_non_linux
 def test_container_entrypoint_async(servicer):
     t0 = time.time()
     client, outputs = _run_container(servicer, "modal._test_support.functions", "square_async")
@@ -89,7 +91,7 @@ def test_container_entrypoint_async(servicer):
     assert output.data == serialize(42**2)
 
 
-@skip_non_linux
+@skip_github_actions_non_linux
 def test_container_entrypoint_sync_returning_async(servicer):
     t0 = time.time()
     client, outputs = _run_container(servicer, "modal._test_support.functions", "square_sync_returning_async")
@@ -103,7 +105,7 @@ def test_container_entrypoint_sync_returning_async(servicer):
     assert output.data == serialize(42**2)
 
 
-@skip_non_linux
+@skip_github_actions_non_linux
 def test_container_entrypoint_failure(servicer):
     client, outputs = _run_container(servicer, "modal._test_support.functions", "raises")
 
