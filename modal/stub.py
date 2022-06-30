@@ -55,15 +55,18 @@ class _Stub:
     """
 
     _name: str
+    _description: str
     _blueprint: Dict[str, Object]
     _default_image: _Image
     _client_mount: Optional[Union[_Mount, Ref]]
     _function_mounts: Dict[str, _Mount]
 
     def __init__(self, name: str = None, **blueprint):
-        if name is None:
-            name = self._infer_app_name()
         self._name = name
+        if name is not None:
+            self._description = name
+        else:
+            self._description = self._infer_app_desc()
         self._blueprint = blueprint
         self._default_image = _DebianSlim()
         self._client_mount = None
@@ -74,7 +77,11 @@ class _Stub:
     def name(self):
         return self._name
 
-    def _infer_app_name(self):
+    @property
+    def description(self):
+        return self._description
+
+    def _infer_app_desc(self):
         script_filename = os.path.split(sys.argv[0])[-1]
         args = [script_filename] + sys.argv[1:]
         return " ".join(args)
@@ -129,13 +136,15 @@ class _Stub:
         output_mgr: OutputManager,
         existing_app_id: Optional[str],
         last_log_entry_id: Optional[str] = None,
-        name: Optional[str] = None,
+        description: Optional[str] = None,
         deployment: bool = False,
     ):
         if existing_app_id is not None:
             running_app = await _RunningApp.init_existing(self, client, existing_app_id)
         else:
-            running_app = await _RunningApp.init_new(self, client, name if name is not None else self.name)
+            running_app = await _RunningApp.init_new(
+                self, client, description if description is not None else self.description
+            )
 
         # Start tracking logs and yield context
         async with TaskContext(grace=config["logs_timeout"]) as tc:
@@ -246,7 +255,7 @@ class _Stub:
             # The `_run` method contains the logic for starting and running an app
             output_mgr = OutputManager(stdout, show_progress)
             async with self._run(
-                client, output_mgr, existing_app_id, last_log_entry_id, name=name, deployment=True
+                client, output_mgr, existing_app_id, last_log_entry_id, description=name, deployment=True
             ) as running_app:
                 deploy_req = api_pb2.AppDeployRequest(
                     app_id=running_app._app_id,

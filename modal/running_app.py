@@ -225,10 +225,10 @@ class _RunningApp:
         return _RunningApp(app, client, existing_app_id, tag_to_existing_id=dict(obj_resp.object_ids))
 
     @staticmethod
-    async def init_new(app, client, name):
+    async def init_new(app, client, description):
         # Start app
         # TODO(erikbern): maybe this should happen outside of this method?
-        app_req = api_pb2.AppCreateRequest(client_id=client.client_id, name=name)
+        app_req = api_pb2.AppCreateRequest(client_id=client.client_id, description=description)
         app_resp = await client.stub.AppCreate(app_req)
         return _RunningApp(app, client, app_resp.app_id)
 
