@@ -389,7 +389,7 @@ message FunctionGetInputsRequest {
   string function_id = 1;
   string task_id = 2;
   int32 max_values = 3;
-  float timeout = 4;
+  float timeout = 4 [deprecated=true];
 }
 
 

@@ -16,6 +16,7 @@ from grpc.aio import AioRpcError
 from modal_proto import api_pb2
 from modal_utils.async_utils import (
     TaskContext,
+    retry,
     retry_until_successful,
     synchronize_apis,
     synchronizer,
@@ -23,7 +24,6 @@ from modal_utils.async_utils import (
 
 from ._asgi import asgi_app_wrapper, fastAPI_function_wrapper
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
-from ._buffer_utils import buffered_rpc_read
 from ._serialization import deserialize, serialize
 from .client import Client, _Client
 from .config import logger
@@ -123,18 +123,16 @@ class _FunctionContext:
             request.max_values = self.get_max_inputs_to_fetch()
 
             try:
-                response = await buffered_rpc_read(self.client.stub.FunctionGetInputs, request, timeout=50)
+                response = await retry(self.client.stub.FunctionGetInputs)(request)
             except AioRpcError as exc:
                 if exc.code() == StatusCode.RESOURCE_EXHAUSTED:
-                    logger.debug(f"Task {self.task_id} exceeded rate limit.")
+                    logger.info(f"Task exceeded rate limit.")
                     await asyncio.sleep(1)
                     continue
 
-                if exc.code() == StatusCode.DEADLINE_EXCEEDED:
-                    logger.debug(f"Task {self.task_id} input request timed out.")
-                    break
-
-                raise
+            if not response.inputs:
+                await asyncio.sleep(1)
+                continue
 
             for item in response.inputs:
                 if item.kill_switch:
