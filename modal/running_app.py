@@ -1,5 +1,4 @@
 import contextlib
-import warnings
 from typing import Dict, Optional, Union
 
 from rich.tree import Tree
@@ -10,7 +9,7 @@ from modal_utils.async_utils import intercept_coro, synchronize_apis
 from ._output import step_completed, step_progress
 from .client import _Client
 from .config import logger
-from .exception import NotFoundError
+from .exception import NotFoundError, VersionError
 from .functions import _Function
 from .image import _Image
 from .object import Object, Ref, ref
@@ -77,8 +76,7 @@ class _RunningApp:
     # Supported in (modal<=0.0.18), remove after bumping version
     async def include(self, app_name, tag=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
         """Looks up an object and return a newly constructed one."""
-        warnings.warn("RunningApp.include is deprecated. Use modal.lookup instead", DeprecationWarning)
-        return await _lookup(app_name, tag, namespace, self.client)
+        raise VersionError("RunningApp.include is deprecated. Use modal.lookup instead")
 
     @contextlib.contextmanager
     def _progress_ctx(self, progress, obj):

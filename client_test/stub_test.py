@@ -3,7 +3,7 @@ import pytest
 import modal.exception
 from modal import Stub
 from modal.aio import AioDebianSlim, AioQueue, AioRunningApp, AioStub, aio_lookup
-from modal.exception import NotFoundError
+from modal.exception import NotFoundError, VersionError
 
 
 @pytest.mark.asyncio
@@ -53,10 +53,8 @@ async def test_persistent_object(servicer, aio_client):
         assert isinstance(running_app_2, AioRunningApp)
 
         # Supported in (modal<=0.0.18), remove after bumping version
-        with pytest.deprecated_call():
-            q_2 = await running_app_2.include("my-queue")
-            assert isinstance(q_2, AioQueue)
-            assert q_2.object_id == "qu-1"
+        with pytest.raises(VersionError):
+            await running_app_2.include("my-queue")
 
         q_3 = await aio_lookup("my-queue", client=aio_client)
         assert isinstance(q_3, AioQueue)
