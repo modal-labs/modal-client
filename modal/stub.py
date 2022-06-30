@@ -14,7 +14,7 @@ from ._function_utils import FunctionInfo
 from ._output import OutputManager, step_completed, step_progress
 from .client import _Client
 from .config import config
-from .exception import InvalidError, VersionError
+from .exception import InvalidError
 from .functions import _Function
 from .image import _DebianSlim, _Image
 from .mount import _create_client_mount, _Mount, client_mount_name
@@ -451,14 +451,3 @@ class _Stub:
 
 
 Stub, AioStub = synchronize_apis(_Stub)
-
-
-class _App(_Stub):
-    """Deprecated class, use Stub instead."""
-
-    def __init__(self, name=None, *, image=None):
-        raise VersionError("App is deprecated and will be removed in 0.0.18. Please use Stub instead")
-        super().__init__(name, image=image)
-
-
-App, AioApp = synchronize_apis(_App)

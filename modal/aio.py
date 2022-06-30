@@ -9,10 +9,9 @@ from .mount import AioMount
 from .queue import AioQueue
 from .running_app import AioRunningApp, aio_container_app, aio_lookup
 from .secret import AioSecret
-from .stub import AioApp, AioStub
+from .stub import AioStub
 
 __all__ = [
-    "AioApp",
     "AioConda",
     "AioDebianSlim",
     "AioDict",

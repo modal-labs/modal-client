@@ -1,23 +1,9 @@
 import pytest
 
 import modal.exception
-from modal import App, Stub
-from modal.aio import (
-    AioApp,
-    AioDebianSlim,
-    AioQueue,
-    AioRunningApp,
-    AioStub,
-    aio_lookup,
-)
-from modal.exception import NotFoundError, VersionError
-
-
-def test_deprecated_app():
-    with pytest.raises(VersionError):
-        App()
-    with pytest.raises(VersionError):
-        AioApp()
+from modal import Stub
+from modal.aio import AioDebianSlim, AioQueue, AioRunningApp, AioStub, aio_lookup
+from modal.exception import NotFoundError
 
 
 @pytest.mark.asyncio
