@@ -179,7 +179,11 @@ class OutputManager:
                 logger.debug("Logging cancelled")
                 raise
             except grpc.aio.AioRpcError as exc:
-                if exc.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
+                if exc.code() in [
+                    grpc.StatusCode.DEADLINE_EXCEEDED,
+                    grpc.StatusCode.UNAVAILABLE,
+                    grpc.StatusCode.INTERNAL,
+                ]:
                     # try again if we had a temporary connection drop, for example if computer went to sleep
                     logger.debug("Log fetching timed out - retrying")
                     continue
