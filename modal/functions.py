@@ -6,10 +6,15 @@ from typing import Collection, Dict, Optional, Union
 from aiostream import stream
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import queue_batch_iterator, retry, synchronize_apis
+from modal_utils.async_utils import (
+    queue_batch_iterator,
+    retry,
+    retry_until_successful,
+    synchronize_apis,
+)
 
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
-from ._buffer_utils import buffered_rpc_read, buffered_rpc_write
+from ._buffer_utils import buffered_rpc_read
 from ._function_utils import FunctionInfo
 from ._serialization import deserialize, serialize
 from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError
@@ -99,7 +104,7 @@ class Invocation:
 
         inp = await _create_input(args, kwargs, client, function_call_id)
         request_put = api_pb2.FunctionPutInputsRequest(function_id=function_id, inputs=[inp])
-        await buffered_rpc_write(client.stub.FunctionPutInputs, request_put)
+        await retry_until_successful(client.stub.FunctionPutInputs, request_put)
 
         return Invocation(client.stub, function_id, function_call_id, client)
 
@@ -166,7 +171,7 @@ class _MapInvocation:
 
             async for inputs in queue_batch_iterator(input_queue, MAP_INVOCATION_CHUNK_SIZE):
                 request = api_pb2.FunctionPutInputsRequest(function_id=self.function_id, inputs=inputs)
-                await buffered_rpc_write(self.client.stub.FunctionPutInputs, request)
+                await retry_until_successful(self.client.stub.FunctionPutInputs, request)
 
             have_all_inputs = True
             yield

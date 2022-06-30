@@ -1,4 +1,3 @@
-import asyncio
 import time
 
 from grpc import StatusCode
@@ -7,27 +6,6 @@ from grpc.aio import AioRpcError
 from .config import logger
 
 INITIAL_STREAM_SIZE = 5
-
-
-async def buffered_rpc_write(fn, request):
-    """Writes requests to buffered RPC method."""
-
-    fn_name = fn.__name__  # for logging
-
-    # TODO: the idempotency tokens are not currently used by the server
-    # request.buffer_req.idempotency_key = str(uuid.uuid4())
-
-    while True:
-        try:
-            await fn(request)
-            return
-        except AioRpcError as exc:
-            if exc.code() == StatusCode.UNAVAILABLE:
-                logger.debug(f"{fn_name}: no space left in buffer. Sleeping.")
-                # TODO: maybe have some kind of exponential back-off and timeout.
-                await asyncio.sleep(1)
-            else:
-                raise
 
 
 async def buffered_rpc_read(fn, request, timeout=None, warn_on_cancel=True):

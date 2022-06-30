@@ -6,6 +6,8 @@ import time
 from typing import Any, List, Optional
 
 import synchronicity
+from grpc import StatusCode
+from grpc.aio import AioRpcError
 
 from .logger import logger
 
@@ -20,6 +22,12 @@ _FUNCTION_PREFIXES = {
     synchronicity.Interface.BLOCKING: "",
     synchronicity.Interface.ASYNC: "aio_",
 }
+
+RETRYABLE_GRPC_STATUS_CODES = [
+    StatusCode.DEADLINE_EXCEEDED,
+    StatusCode.UNAVAILABLE,
+    StatusCode.INTERNAL,
+]
 
 
 class Synchronizer(synchronicity.Synchronizer):
@@ -274,3 +282,19 @@ async def intercept_coro(coro, interceptor):
                 value_to_send = await interceptor(awaitable)
         except StopIteration as exc:
             return exc.value
+
+
+async def retry_until_successful(fn, request, base_delay=0.1, max_delay=1, delay_factor=2):
+    """Retry gRPC method call with back-off until it succeeds."""
+    delay = base_delay
+
+    while True:
+        try:
+            await fn(request)
+            return
+        except AioRpcError as exc:
+            if exc.code() in RETRYABLE_GRPC_STATUS_CODES:
+                await asyncio.sleep(delay)
+                delay = min(delay * delay_factor, max_delay)
+            else:
+                raise

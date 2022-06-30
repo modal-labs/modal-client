@@ -14,6 +14,7 @@ from rich.spinner import Spinner
 from rich.text import Text
 
 from modal_proto import api_pb2
+from modal_utils.async_utils import RETRYABLE_GRPC_STATUS_CODES
 
 from .client import _Client
 from .config import logger
@@ -179,11 +180,7 @@ class OutputManager:
                 logger.debug("Logging cancelled")
                 raise
             except grpc.aio.AioRpcError as exc:
-                if exc.code() in [
-                    grpc.StatusCode.DEADLINE_EXCEEDED,
-                    grpc.StatusCode.UNAVAILABLE,
-                    grpc.StatusCode.INTERNAL,
-                ]:
+                if exc.code() in RETRYABLE_GRPC_STATUS_CODES:
                     # try again if we had a temporary connection drop, for example if computer went to sleep
                     logger.debug("Log fetching timed out - retrying")
                     continue

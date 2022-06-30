@@ -14,11 +14,16 @@ from grpc import StatusCode
 from grpc.aio import AioRpcError
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import TaskContext, synchronize_apis, synchronizer
+from modal_utils.async_utils import (
+    TaskContext,
+    retry_until_successful,
+    synchronize_apis,
+    synchronizer,
+)
 
 from ._asgi import asgi_app_wrapper, fastAPI_function_wrapper
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
-from ._buffer_utils import buffered_rpc_read, buffered_rpc_write
+from ._buffer_utils import buffered_rpc_read
 from ._serialization import deserialize, serialize
 from .client import Client, _Client
 from .config import logger
@@ -164,7 +169,7 @@ class _FunctionContext:
                 outputs=outputs, function_call_id=cur_function_call_id, task_id=self.task_id
             )
             # No timeout so this can block forever.
-            await buffered_rpc_write(self.client.stub.FunctionPutOutputs, req)
+            await retry_until_successful(self.client.stub.FunctionPutOutputs, req)
 
             cur_function_call_id = None
             outputs = []
