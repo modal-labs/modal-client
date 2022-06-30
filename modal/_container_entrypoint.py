@@ -126,7 +126,7 @@ class _FunctionContext:
                 response = await retry(self.client.stub.FunctionGetInputs)(request)
             except AioRpcError as exc:
                 if exc.code() == StatusCode.RESOURCE_EXHAUSTED:
-                    logger.info(f"Task exceeded rate limit.")
+                    logger.info("Task exceeded rate limit.")
                     await asyncio.sleep(1)
                     continue
 
