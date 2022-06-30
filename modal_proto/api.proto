@@ -582,7 +582,6 @@ service ModalClient {
   rpc AppGetLogs(AppGetLogsRequest) returns (stream TaskLogsBatch);
   rpc AppSetObjects(AppSetObjectsRequest) returns (google.protobuf.Empty);
   rpc AppGetObjects(AppGetObjectsRequest) returns (AppGetObjectsResponse);
-  rpc AppIncludeObject(AppLookupObjectRequest) returns (AppLookupObjectResponse) { option deprecated = true; }
   rpc AppLookupObject(AppLookupObjectRequest) returns (AppLookupObjectResponse);
   rpc AppDeploy(AppDeployRequest) returns (google.protobuf.Empty);
   rpc AppDetach(AppDetachRequest) returns (google.protobuf.Empty);
