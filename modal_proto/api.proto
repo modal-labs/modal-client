@@ -527,11 +527,23 @@ message Schedule {
 
 enum AppState {
   APP_STATE_UNSPECIFIED = 0;
-  APP_STATE_EPHEMERAL = 1;             // Will be discharged when the client disconnects
-  APP_STATE_DETACHED = 2;              // Will be discharged when there's no more functions
-  APP_STATE_DEPLOYED = 3;              // Will be discharged when overwritten
-  APP_STATE_DRAINING_LOGS = 4;         // Will be stopped once there are no logs
-  APP_STATE_STOPPED = 5;               // Stopped
+
+  // Will be discharged when the client disconnects
+  APP_STATE_EPHEMERAL = 1;
+
+  // Will be discharged when there's no more functions
+  // Note: currently not used - might be un-deprecated in the future
+  APP_STATE_DETACHED = 2 [deprecated = true];
+
+  // Will be discharged when overwritten
+  APP_STATE_DEPLOYED = 3;
+
+  // Will be stopped once there are no logs
+  // No longer used, will be removed soon
+  APP_STATE_DRAINING_LOGS = 4 [deprecated = true];
+
+  // Stopped
+  APP_STATE_STOPPED = 5;
 }
 
 
@@ -567,7 +579,8 @@ message TaskLogsBatch {
   repeated TaskLogs items = 2;
   string entry_id = 5;
   bool task_done = 7;
-  AppState app_state = 9;
+  AppState app_state = 9 [deprecated = true];
+  bool app_done = 10;
 }
 
 

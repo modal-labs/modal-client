@@ -147,7 +147,12 @@ class OutputManager:
             log_batch: api_pb2.TaskLogsBatch
             line_buffers: Dict[int, LineBufferedOutput] = {}
             async for log_batch in client.stub.AppGetLogs(request):
-                if log_batch.app_state:
+                if log_batch.app_done:
+                    logger.debug("App logs are done")
+                    last_log_batch_entry_id = None
+                    return
+                elif log_batch.app_state:
+                    # TODO(erikbern): deprecated, can be deleted as soon as server updates are deployed
                     logger.debug(f"App state now {api_pb2.AppState.Name(log_batch.app_state)}")
                     if log_batch.app_state not in (
                         api_pb2.APP_STATE_EPHEMERAL,
