@@ -151,15 +151,6 @@ class OutputManager:
                     logger.debug("App logs are done")
                     last_log_batch_entry_id = None
                     return
-                elif log_batch.app_state:
-                    # TODO(erikbern): deprecated, can be deleted as soon as server updates are deployed
-                    logger.debug(f"App state now {api_pb2.AppState.Name(log_batch.app_state)}")
-                    if log_batch.app_state not in (
-                        api_pb2.APP_STATE_EPHEMERAL,
-                        api_pb2.APP_STATE_DRAINING_LOGS,
-                    ):
-                        last_log_batch_entry_id = None
-                        return
                 else:
                     if log_batch.entry_id != "":
                         # log_batch entry_id is empty for fd="server" messages from AppGetLogs
