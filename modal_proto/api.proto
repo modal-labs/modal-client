@@ -578,7 +578,7 @@ message TaskLogsBatch {
   string task_id = 1;
   repeated TaskLogs items = 2;
   string entry_id = 5;
-  bool task_done = 7;
+  bool task_done = 7 [deprecated = true];
   AppState app_state = 9 [deprecated = true];
   bool app_done = 10;
 }
