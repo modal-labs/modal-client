@@ -538,10 +538,6 @@ enum AppState {
   // Will be discharged when overwritten
   APP_STATE_DEPLOYED = 3;
 
-  // Will be stopped once there are no logs
-  // No longer used, will be removed soon
-  APP_STATE_DRAINING_LOGS = 4 [deprecated = true];
-
   // Stopped
   APP_STATE_STOPPED = 5;
 }
@@ -578,8 +574,6 @@ message TaskLogsBatch {
   string task_id = 1;
   repeated TaskLogs items = 2;
   string entry_id = 5;
-  bool task_done = 7 [deprecated = true];
-  AppState app_state = 9 [deprecated = true];
   bool app_done = 10;
 }
 
