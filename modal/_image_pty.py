@@ -1,9 +1,6 @@
 import asyncio
 import contextlib
-import pty
 import sys
-import termios
-import tty
 from typing import Optional
 
 from modal.queue import _Queue
@@ -12,6 +9,9 @@ from modal_utils.async_utils import TaskContext
 
 @contextlib.contextmanager
 def raw_terminal():
+    import termios
+    import tty
+
     fd = sys.stdin.fileno()
     old_settings = termios.tcgetattr(fd)
     try:
@@ -23,6 +23,7 @@ def raw_terminal():
 
 async def _pty(cmd: Optional[str], queue):  # queue is an AioQueue, but mypy doesn't like that
     import os
+    import pty
     import threading
 
     write_fd, read_fd = pty.openpty()
