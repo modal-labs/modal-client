@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import functools
 import io
 import platform
 import re
@@ -75,9 +76,10 @@ class OutputManager:
     _console: Console
     _task_states: Dict[str, int]
 
-    def __init__(self, stdout, show_progress: Optional[bool]):
+    def __init__(self, stdout, show_progress: Optional[bool], buffer: bool = True):
+        self.stdout = stdout or sys.stdout
         if show_progress is None:
-            self._visible_progress = (stdout or sys.stdout).isatty()
+            self._visible_progress = self.stdout.isatty()
         else:
             self._visible_progress = show_progress
 
@@ -160,14 +162,17 @@ class OutputManager:
                             message = self._update_task_state(log_batch.task_id, log.task_state)
                             live_task_status.update(step_progress(message))
                         if log.data:
-                            sys.stdout.write(log.data)
-                            sys.stdout.flush()
-                            # self._print_log(log.file_descriptor, log.data)
-                            # stream = line_buffers.get(log.file_descriptor)
-                            # if stream is None:
-                            #     stream = LineBufferedOutput(functools.partial(self._print_log, log.file_descriptor))
-                            #     line_buffers[log.file_descriptor] = stream
-                            # stream.write(log.data)
+                            if self._visible_progress:
+                                stream = line_buffers.get(log.file_descriptor)
+                                if stream is None:
+                                    stream = LineBufferedOutput(functools.partial(self._print_log, log.file_descriptor))
+                                    line_buffers[log.file_descriptor] = stream
+                                stream.write(log.data)
+                            else:
+                                # If we're not showing progress, there's no need to buffer lines,
+                                # because the progress spinner can't interfere with output.
+                                self.stdout.write(log.data)
+                                self.stdout.flush()
             for stream in line_buffers.values():
                 stream.finalize()
 

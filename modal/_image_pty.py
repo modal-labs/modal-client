@@ -38,11 +38,11 @@ async def _pty(cmd: Optional[str], queue):  # queue is an AioQueue, but mypy doe
             except asyncio.CancelledError:
                 return
 
-    threading.Thread(target=asyncio.run, args=(_read(),), daemon=True).start()
-
     run_cmd = cmd or os.environ.get("SHELL", "sh")
 
     print(f"Spawning {run_cmd}. Type 'exit' to exit. ")
+
+    threading.Thread(target=asyncio.run, args=(_read(),), daemon=True).start()
 
     pty.spawn(run_cmd)
     writer.close()
@@ -56,6 +56,7 @@ async def image_pty(image, app, cmd=None, mounts=[], secrets=[], shared_volumes=
         queue = running_app["queue"]
 
         async def _write():
+            await queue.put("\n")
             while True:
                 char = await asyncio.get_event_loop().run_in_executor(None, sys.stdin.read, 1)
                 await queue.put(char)
