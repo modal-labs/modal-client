@@ -1,14 +1,32 @@
 import asyncio
+import contextlib
+import pty
 import sys
+import termios
+import tty
 from typing import Optional
 
 from modal.queue import _Queue
 from modal_utils.async_utils import TaskContext
 
 
+@contextlib.contextmanager
+def raw_terminal():
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    try:
+        tty.setraw(fd, termios.TCSADRAIN)
+        yield
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
+
+def read_char():
+    return sys.stdin.read(1)
+
+
 async def _pty(cmd: Optional[str], queue):  # queue is an AioQueue, but mypy doesn't like that
     import os
-    import pty
     import threading
 
     write_fd, read_fd = pty.openpty()
@@ -42,11 +60,8 @@ async def image_pty(image, app, cmd=None, mounts=[], secrets=[], shared_volumes=
             tc.create_task(_pty_wrapped(cmd, queue))
 
             # TODO: figure out keyboard interrupts
-            while True:
-                loop = asyncio.get_event_loop()
-                line = await loop.run_in_executor(None, sys.stdin.readline)
-                if line == "exit\n":
-                    await queue.put(None)
-                    return
-
-                await queue.put(line)
+            with raw_terminal():
+                while True:
+                    loop = asyncio.get_event_loop()
+                    char = await loop.run_in_executor(None, read_char)
+                    await queue.put(char)
