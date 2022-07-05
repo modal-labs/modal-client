@@ -8,7 +8,7 @@ from .config import logger
 INITIAL_STREAM_SIZE = 5
 
 
-async def buffered_rpc_read(fn, request, timeout=None, warn_on_cancel=True):
+async def buffered_rpc_read(fn, request, timeout=None):
     """Reads from buffered method."""
 
     fn_name = getattr(fn, "__name__", None)  # for logging

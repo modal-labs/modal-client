@@ -184,9 +184,7 @@ class _MapInvocation:
 
             while True:
                 request = api_pb2.FunctionGetOutputsRequest(function_call_id=function_call_id)
-                response = await buffered_rpc_read(
-                    self.client.stub.FunctionGetOutputs, request, timeout=None, warn_on_cancel=False
-                )
+                response = await buffered_rpc_read(self.client.stub.FunctionGetOutputs, request, timeout=None)
 
                 for result in response.outputs:
                     if self.is_generator:

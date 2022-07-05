@@ -21,10 +21,6 @@ def raw_terminal():
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 
-def read_char():
-    return sys.stdin.read(1)
-
-
 async def _pty(cmd: Optional[str], queue):  # queue is an AioQueue, but mypy doesn't like that
     import os
     import threading
@@ -33,20 +29,23 @@ async def _pty(cmd: Optional[str], queue):  # queue is an AioQueue, but mypy doe
     os.dup2(read_fd, sys.stdin.fileno())
     writer = os.fdopen(write_fd, "wb")
 
+    async def _read():
+        while True:
+            try:
+                char = await queue.get()
+                writer.write(char.encode("utf-8"))
+                writer.flush()
+            except asyncio.CancelledError:
+                return
+
+    threading.Thread(target=asyncio.run, args=(_read(),), daemon=True).start()
+
     run_cmd = cmd or os.environ.get("SHELL", "sh")
 
     print(f"Spawning {run_cmd}. Type 'exit' to exit. ")
 
-    threading.Thread(target=pty.spawn, args=(run_cmd,), daemon=True).start()
-
-    while True:
-        line = await queue.get()
-
-        if line is None:
-            return
-
-        writer.write(line.encode("utf-8"))
-        writer.flush()
+    pty.spawn(run_cmd)
+    writer.close()
 
 
 async def image_pty(image, app, cmd=None, mounts=[], secrets=[], shared_volumes={}):
@@ -56,12 +55,14 @@ async def image_pty(image, app, cmd=None, mounts=[], secrets=[], shared_volumes=
     async with app.run(show_progress=False) as running_app:
         queue = running_app["queue"]
 
+        async def _write():
+            while True:
+                char = await asyncio.get_event_loop().run_in_executor(None, sys.stdin.read, 1)
+                await queue.put(char)
+
         async with TaskContext(grace=0) as tc:
-            tc.create_task(_pty_wrapped(cmd, queue))
+            tc.create_task(_write())
 
             # TODO: figure out keyboard interrupts
             with raw_terminal():
-                while True:
-                    loop = asyncio.get_event_loop()
-                    char = await loop.run_in_executor(None, read_char)
-                    await queue.put(char)
+                await _pty_wrapped(cmd, queue)
