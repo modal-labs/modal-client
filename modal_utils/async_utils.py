@@ -175,7 +175,7 @@ class TaskContext:
         self._tasks.add(task)
         return task
 
-    def infinite_loop(self, async_f, timeout=90, sleep=10) -> asyncio.Task:
+    def infinite_loop(self, async_f, timeout=90, sleep=10, continue_on_fail=False) -> asyncio.Task:
         function_name = async_f.__qualname__
 
         async def loop_coro() -> None:
@@ -188,6 +188,8 @@ class TaskContext:
                     break
                 except Exception:
                     logger.exception(f"Loop attempt failed for {function_name}")
+                    if continue_on_fail:
+                        continue
                 try:
                     await asyncio.wait_for(self._exited.wait(), timeout=sleep)
                 except asyncio.TimeoutError:
