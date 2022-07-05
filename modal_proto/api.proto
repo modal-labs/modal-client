@@ -574,6 +574,7 @@ message TaskLogsBatch {
   string task_id = 1;
   repeated TaskLogs items = 2;
   string entry_id = 5;
+  AppState app_state = 9 [deprecated = true];  // Only used in app.py for old clients, remove soon
   bool app_done = 10;
 }
 
