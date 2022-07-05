@@ -132,7 +132,7 @@ async def image_pty(image, app, cmd=None, mounts=[], secrets=[], shared_volumes=
             term_env = {
                 "TERM": os.environ.get("TERM"),
                 "COLORTERM": os.environ.get("COLORTERM"),
-                "TERMPROGRAM": os.environ.get("TERMPROGRAM"),
+                "TERM_PROGRAM": os.environ.get("TERM_PROGRAM"),
             }
 
             with raw_terminal():
