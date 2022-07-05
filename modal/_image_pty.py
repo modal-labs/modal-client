@@ -1,10 +1,35 @@
 import asyncio
 import contextlib
 import sys
-from typing import Optional
+from typing import Optional, Tuple
 
+import modal
 from modal.queue import _Queue
 from modal_utils.async_utils import TaskContext
+
+
+def get_winsz(fd):
+    try:
+        import fcntl
+        import struct
+        import termios
+
+        cr = struct.unpack("hh", fcntl.ioctl(fd, termios.TIOCGWINSZ, "1234"))
+        return cr
+    except:
+        return None
+
+
+def set_winsz(fd, rows, cols):
+    try:
+        import fcntl
+        import struct
+        import termios
+
+        s = struct.pack("HHHH", rows, cols, 0, 0)
+        fcntl.ioctl(fd, termios.TIOCSWINSZ, s)
+    except:
+        pass
 
 
 @contextlib.contextmanager
@@ -14,6 +39,7 @@ def raw_terminal():
 
     fd = sys.stdin.fileno()
     old_settings = termios.tcgetattr(fd)
+
     try:
         tty.setraw(fd, termios.TCSADRAIN)
         yield
@@ -21,10 +47,42 @@ def raw_terminal():
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 
-async def _pty(cmd: Optional[str], queue):  # queue is an AioQueue, but mypy doesn't like that
+async def _pty(
+    cmd: Optional[str], queue: modal.queue._Queue, winsz: Optional[Tuple[int, int]]
+):  # queue is an AioQueue, but mypy doesn't like that
     import os
     import pty
     import threading
+    import tty
+
+    def spawn(argv, master_read=pty._read, stdin_read=pty._read):
+        """Fork of pty.spawn, so we can set the window size on the forked FD"""
+
+        if type(argv) == type(""):
+            argv = (argv,)
+        sys.audit("pty.spawn", argv)
+        pid, master_fd = pty.fork()
+        if pid == pty.CHILD:
+            os.execlp(argv[0], *argv)
+
+        if winsz:
+            rows, cols = winsz
+            set_winsz(master_fd, rows, cols)
+
+        try:
+            mode = tty.tcgetattr(pty.STDIN_FILENO)
+            tty.setraw(pty.STDIN_FILENO)
+            restore = 1
+        except tty.error:  # This is the same as termios.error
+            restore = 0
+        try:
+            pty._copy(master_fd, master_read, stdin_read)
+        except OSError:
+            if restore:
+                tty.tcsetattr(pty.STDIN_FILENO, tty.TCSAFLUSH, mode)
+
+        os.close(master_fd)
+        return os.waitpid(pid, 0)[1]
 
     write_fd, read_fd = pty.openpty()
     os.dup2(read_fd, sys.stdin.fileno())
@@ -43,9 +101,10 @@ async def _pty(cmd: Optional[str], queue):  # queue is an AioQueue, but mypy doe
 
     print(f"Spawning {run_cmd}. Type 'exit' to exit. ")
 
+    # TODO use TaskContext and async task for this (runs into a weird synchroncity error on exit for now).
     threading.Thread(target=asyncio.run, args=(_read(),), daemon=True).start()
 
-    pty.spawn(run_cmd)
+    spawn(run_cmd)
     writer.close()
 
 
@@ -64,7 +123,8 @@ async def image_pty(image, app, cmd=None, mounts=[], secrets=[], shared_volumes=
 
         async with TaskContext(grace=0) as tc:
             tc.create_task(_write())
+            winsz = get_winsz(sys.stdin.fileno())
 
             # TODO: figure out keyboard interrupts
             with raw_terminal():
-                await _pty_wrapped(cmd, queue)
+                await _pty_wrapped(cmd, queue, winsz)
