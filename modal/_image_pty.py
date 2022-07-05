@@ -1,7 +1,8 @@
 import asyncio
 import contextlib
+import os
 import sys
-from typing import Optional, Tuple
+from typing import Optional, Tuple, no_type_check
 
 import modal
 from modal.queue import _Queue
@@ -14,9 +15,9 @@ def get_winsz(fd):
         import struct
         import termios
 
-        cr = struct.unpack("hh", fcntl.ioctl(fd, termios.TIOCGWINSZ, "1234"))
+        cr = struct.unpack("hh", fcntl.ioctl(fd, termios.TIOCGWINSZ, "1234"))  # type: ignore
         return cr
-    except:
+    except Exception:
         return None
 
 
@@ -28,7 +29,7 @@ def set_winsz(fd, rows, cols):
 
         s = struct.pack("HHHH", rows, cols, 0, 0)
         fcntl.ioctl(fd, termios.TIOCSWINSZ, s)
-    except:
+    except Exception:
         pass
 
 
@@ -48,19 +49,19 @@ def raw_terminal():
 
 
 async def _pty(
-    cmd: Optional[str], queue: modal.queue._Queue, winsz: Optional[Tuple[int, int]]
+    cmd: Optional[str], queue: modal.queue._Queue, winsz: Optional[Tuple[int, int]], term_env: dict
 ):  # queue is an AioQueue, but mypy doesn't like that
-    import os
     import pty
     import threading
     import tty
 
+    @no_type_check
     def spawn(argv, master_read=pty._read, stdin_read=pty._read):
         """Fork of pty.spawn, so we can set the window size on the forked FD"""
 
-        if type(argv) == type(""):
+        if not isinstance(argv, tuple):
             argv = (argv,)
-        sys.audit("pty.spawn", argv)
+
         pid, master_fd = pty.fork()
         if pid == pty.CHILD:
             os.execlp(argv[0], *argv)
@@ -104,6 +105,10 @@ async def _pty(
     # TODO use TaskContext and async task for this (runs into a weird synchroncity error on exit for now).
     threading.Thread(target=asyncio.run, args=(_read(),), daemon=True).start()
 
+    for key, value in term_env.items():
+        if value is not None:
+            os.environ[key] = value
+
     spawn(run_cmd)
     writer.close()
 
@@ -124,7 +129,11 @@ async def image_pty(image, app, cmd=None, mounts=[], secrets=[], shared_volumes=
         async with TaskContext(grace=0) as tc:
             tc.create_task(_write())
             winsz = get_winsz(sys.stdin.fileno())
+            term_env = {
+                "TERM": os.environ.get("TERM"),
+                "COLORTERM": os.environ.get("COLORTERM"),
+                "TERMPROGRAM": os.environ.get("TERMPROGRAM"),
+            }
 
-            # TODO: figure out keyboard interrupts
             with raw_terminal():
-                await _pty_wrapped(cmd, queue, winsz)
+                await _pty_wrapped(cmd, queue, winsz, term_env)
