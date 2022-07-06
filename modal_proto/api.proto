@@ -460,44 +460,6 @@ message MountBuildResponse {
   string mount_id = 1;
 }
 
-/// BEGIN DEPRECATED MOUNT CODE ///
-message MountCreateRequest {
-  string app_id = 2;
-  string existing_mount_id = 3;
-}
-
-message MountCreateResponse {
-  string mount_id = 1;
-}
-
-message MountRegisterFileRequest {
-  string filename = 1;
-  string sha256_hex = 2;
-  string mount_id = 3;
-}
-
-message MountRegisterFileResponse {
-  string filename = 1;  // TODO(erikbern): don't think this one is needed?
-  bool exists = 2;
-}
-
-message MountUploadFileRequest {
-  string sha256_hex = 1;
-  int64 size = 2;
-
-  string mount_id = 4;
-
-  oneof data_oneof {
-    bytes data = 3;
-    string data_blob_id = 5;
-  }
-}
-
-message MountDoneRequest {
-  string mount_id = 1;
-}
-/// END DEPRECATED MOUNT CODE ///
-
 message SharedVolumeCreateRequest {
   string app_id = 1;
 }
@@ -607,12 +569,6 @@ service ModalClient {
   // Mounts
   rpc MountPutFile(MountPutFileRequest) returns (MountPutFileResponse);
   rpc MountBuild(MountBuildRequest) returns (MountBuildResponse);
-
-  // Mounts, deprecated (modal<=0.0.14)
-  rpc MountCreate(MountCreateRequest) returns (MountCreateResponse) { option deprecated = true; }
-  rpc MountRegisterFile(MountRegisterFileRequest) returns (MountRegisterFileResponse) { option deprecated = true; }
-  rpc MountUploadFile(MountUploadFileRequest) returns (google.protobuf.Empty) { option deprecated = true; }
-  rpc MountDone(MountDoneRequest) returns (google.protobuf.Empty) { option deprecated = true; }
 
   // SharedVolumes
   rpc SharedVolumeCreate(SharedVolumeCreateRequest) returns (SharedVolumeCreateResponse);
