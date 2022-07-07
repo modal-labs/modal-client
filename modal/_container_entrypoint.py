@@ -16,7 +16,6 @@ from grpc.aio import AioRpcError
 from modal_proto import api_pb2
 from modal_utils.async_utils import (
     TaskContext,
-    retry,
     retry_until_successful,
     synchronize_apis,
     synchronizer,
@@ -46,6 +45,7 @@ def _path_to_function(module_name, function_name):
 
 MAX_OUTPUT_BATCH_SIZE = 100
 RTT_S = 0.5  # conservative estimate of RTT in seconds.
+RATE_LIMIT_DELAY = 0.25
 
 
 class _FunctionContext:
@@ -123,11 +123,11 @@ class _FunctionContext:
             request.max_values = self.get_max_inputs_to_fetch()
 
             try:
-                response = await retry(self.client.stub.FunctionGetInputs)(request)
+                response = await self.client.stub.FunctionGetInputs(request)
             except AioRpcError as exc:
                 if exc.code() == StatusCode.RESOURCE_EXHAUSTED:
                     logger.info("Task exceeded rate limit.")
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(RATE_LIMIT_DELAY)
                     continue
                 raise
 

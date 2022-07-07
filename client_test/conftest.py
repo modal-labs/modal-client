@@ -33,6 +33,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.blobs = blobs  # shared dict
         self.requests = []
         self.done = False
+        self.rate_limit_times = 0
         self.container_inputs = []
         self.container_outputs = []
         self.object_ids = None
@@ -137,7 +138,11 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     async def FunctionGetInputs(
         self, request: api_pb2.FunctionGetInputsRequest, context: ServicerContext = None
     ) -> api_pb2.FunctionGetInputsResponse:
-        return self.container_inputs.pop(0)
+        if self.rate_limit_times > 0:
+            self.rate_limit_times -= 1
+            await context.abort(StatusCode.RESOURCE_EXHAUSTED, "Rate limit exceeded")
+        else:
+            return self.container_inputs.pop(0)
 
     async def FunctionPutOutputs(
         self, request: api_pb2.FunctionPutOutputsRequest, context: ServicerContext = None
