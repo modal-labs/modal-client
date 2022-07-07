@@ -16,10 +16,10 @@ from google.protobuf.empty_pb2 import Empty
 from grpc import StatusCode
 from grpc.aio import ServicerContext
 
+from modal.app import _App
 from modal.client import AioClient, Client
 from modal.image import _dockerhub_python_version
 from modal.mount import client_mount_name
-from modal.running_app import _RunningApp
 from modal.version import __version__
 from modal_proto import api_pb2, api_pb2_grpc
 from modal_utils.async_utils import synchronize_apis
@@ -396,7 +396,7 @@ def reset_container_app():
     try:
         yield
     finally:
-        _RunningApp.reset_container()
+        _App.reset_container()
 
 
 @pytest.fixture(scope="module")

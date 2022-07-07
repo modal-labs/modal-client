@@ -25,11 +25,11 @@ from modal_utils.async_utils import (
 from ._asgi import asgi_app_wrapper, fastAPI_function_wrapper
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._serialization import deserialize, serialize
+from .app import _App
 from .client import Client, _Client
 from .config import logger
 from .exception import InvalidError
 from .functions import AioFunction, Function
-from .running_app import _RunningApp
 
 
 def _path_to_function(module_name, function_name):
@@ -76,7 +76,7 @@ class _FunctionContext:
             await self.output_queue.put((None, None))
 
     async def initialize_app(self):
-        await _RunningApp.init_container(self._client, self.app_id, self.task_id)
+        await _App.init_container(self._client, self.app_id, self.task_id)
 
     async def get_serialized_function(self) -> Callable:
         # Fetch the serialized function definition

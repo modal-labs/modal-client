@@ -277,7 +277,7 @@ class _Function(Object, type_prefix="fu"):
         self._webhook_config = webhook_config
         self._web_url = None
         self._memory = memory
-        self._local_running_app = None
+        self._local_app = None
         self._local_object_id = None
         self._tag = self._info.get_tag()
         super().__init__()
@@ -368,9 +368,9 @@ class _Function(Object, type_prefix="fu"):
         # and then we look it up from the app.
         return self._web_url
 
-    def set_local_running_app(self, running_app):
+    def set_local_app(self, app):
         """mdmd:hidden"""
-        self._local_running_app = running_app
+        self._local_app = app
 
     def _get_context(self):
         # Functions are sort of "special" in the sense that they are just global objects not attached to an app
@@ -382,14 +382,14 @@ class _Function(Object, type_prefix="fu"):
             return self._object_id
 
         # avoid circular import
-        from .running_app import _container_app, is_local
+        from .app import _container_app, is_local
 
         if is_local():
-            running_app = self._local_running_app
+            app = self._local_app
         else:
-            running_app = _container_app
-        client = running_app.client
-        object_id = running_app[self._tag].object_id
+            app = _container_app
+        client = app.client
+        object_id = app[self._tag].object_id
         return (client, object_id)
 
     async def _map(self, input_stream, kwargs={}):

@@ -41,17 +41,17 @@ class Object(metaclass=ObjectMeta):
         Object.__init__(obj, client, object_id=object_id)
         return obj
 
-    async def create(self, running_app=None):
-        # TOOD: should we just get rid of this one in favor of running_app.create(obj) ?
-        from .running_app import _container_app, _RunningApp  # avoid circular import
+    async def create(self, app=None):
+        # TOOD: should we just get rid of this one in favor of app.create(obj) ?
+        from .app import _App, _container_app  # avoid circular import
 
-        if running_app is None:
-            running_app = _container_app
-            if running_app is None:
+        if app is None:
+            app = _container_app
+            if app is None:
                 raise InvalidError(".create must be passed the app explicitly if not running in a container")
-        assert isinstance(running_app, _RunningApp)
-        object_id = await running_app.load(self)
-        return Object.from_id(object_id, running_app.client)
+        assert isinstance(app, _App)
+        object_id = await app.load(self)
+        return Object.from_id(object_id, app.client)
 
     @property
     def object_id(self):

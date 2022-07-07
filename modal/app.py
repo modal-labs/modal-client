@@ -9,7 +9,7 @@ from modal_utils.async_utils import intercept_coro, synchronize_apis
 from ._output import step_completed, step_progress
 from .client import _Client
 from .config import logger
-from .exception import NotFoundError, VersionError
+from .exception import NotFoundError
 from .functions import _Function
 from .image import _Image
 from .object import Object, Ref, ref
@@ -43,7 +43,7 @@ async def _lookup(
 lookup, aio_lookup = synchronize_apis(_lookup)
 
 
-class _RunningApp:
+class _App:
     _tag_to_object: Dict[str, Object]
     _tag_to_existing_id: Dict[str, str]
     _local_uuid_to_object_id: Dict[str, str]
@@ -72,11 +72,6 @@ class _RunningApp:
     @property
     def app_id(self):
         return self._app_id
-
-    # Supported in (modal<=0.0.18), remove after bumping version
-    async def include(self, app_name, tag=None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
-        """Looks up an object and return a newly constructed one."""
-        raise VersionError("RunningApp.include is deprecated. Use modal.lookup instead")
 
     @contextlib.contextmanager
     def _progress_ctx(self, progress, obj):
@@ -166,7 +161,7 @@ class _RunningApp:
         # Update all functions client-side to point to the running app
         for obj in self._app._blueprint.values():
             if isinstance(obj, _Function):
-                obj.set_local_running_app(self)
+                obj.set_local_app(self)
 
     async def disconnect(self):
         # Stop app server-side. This causes:
@@ -220,7 +215,7 @@ class _RunningApp:
         # Get all the objects first
         obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
         obj_resp = await client.stub.AppGetObjects(obj_req)
-        return _RunningApp(app, client, existing_app_id, tag_to_existing_id=dict(obj_resp.object_ids))
+        return _App(app, client, existing_app_id, tag_to_existing_id=dict(obj_resp.object_ids))
 
     @staticmethod
     async def init_new(app, client, description):
@@ -229,7 +224,7 @@ class _RunningApp:
         app_req = api_pb2.AppCreateRequest(client_id=client.client_id, description=description)
         app_resp = await client.stub.AppCreate(app_req)
         logger.debug(f"Created new app with id {app_resp.app_id}")
-        return _RunningApp(app, client, app_resp.app_id)
+        return _App(app, client, app_resp.app_id)
 
     @staticmethod
     def reset_container():
@@ -237,13 +232,13 @@ class _RunningApp:
         _is_container_app = False
 
 
-RunningApp, AioRunningApp = synchronize_apis(_RunningApp)
+App, AioApp = synchronize_apis(_App)
 
 _is_container_app = False
-_container_app = _RunningApp(None, None, None)
+_container_app = _App(None, None, None)
 container_app, aio_container_app = synchronize_apis(_container_app)
-assert isinstance(container_app, RunningApp)
-assert isinstance(aio_container_app, AioRunningApp)
+assert isinstance(container_app, App)
+assert isinstance(aio_container_app, AioApp)
 
 
 def is_local() -> bool:

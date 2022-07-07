@@ -2,8 +2,8 @@ import pytest
 
 import modal.exception
 from modal import Stub
-from modal.aio import AioDebianSlim, AioQueue, AioRunningApp, AioStub, aio_lookup
-from modal.exception import NotFoundError, VersionError
+from modal.aio import AioApp, AioDebianSlim, AioQueue, AioStub, aio_lookup
+from modal.exception import NotFoundError
 
 
 @pytest.mark.asyncio
@@ -34,8 +34,8 @@ async def test_attrs(servicer, aio_client):
 @pytest.mark.asyncio
 async def test_create_object(servicer, aio_client):
     stub = AioStub()
-    async with stub.run(client=aio_client) as running_app:
-        q = await AioQueue().create(running_app)
+    async with stub.run(client=aio_client) as app:
+        q = await AioQueue().create(app)
         await q.put("foo")
         await q.put("bar")
         assert await q.get() == "foo"
@@ -49,12 +49,8 @@ async def test_persistent_object(servicer, aio_client):
     await stub_1.deploy("my-queue", client=aio_client)
 
     stub_2 = AioStub()
-    async with stub_2.run(client=aio_client) as running_app_2:
-        assert isinstance(running_app_2, AioRunningApp)
-
-        # Supported in (modal<=0.0.18), remove after bumping version
-        with pytest.raises(VersionError):
-            await running_app_2.include("my-queue")
+    async with stub_2.run(client=aio_client) as app_2:
+        assert isinstance(app_2, AioApp)
 
         q_3 = await aio_lookup("my-queue", client=aio_client)
         assert isinstance(q_3, AioQueue)

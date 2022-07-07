@@ -12,6 +12,7 @@ from modal_utils.decorator_utils import decorator_with_options
 
 from ._function_utils import FunctionInfo
 from ._output import OutputManager, step_completed, step_progress
+from .app import _App, container_app, is_local
 from .client import _Client
 from .config import config
 from .exception import InvalidError
@@ -20,7 +21,6 @@ from .image import _DebianSlim, _Image
 from .mount import _create_client_mount, _Mount, client_mount_name
 from .object import Object, Ref, ref
 from .rate_limit import RateLimit
-from .running_app import _RunningApp, container_app, is_local
 from .schedule import Schedule
 from .secret import _Secret
 from .shared_volume import _SharedVolume
@@ -140,17 +140,15 @@ class _Stub:
         deployment: bool = False,
     ):
         if existing_app_id is not None:
-            running_app = await _RunningApp.init_existing(self, client, existing_app_id)
+            app = await _App.init_existing(self, client, existing_app_id)
         else:
-            running_app = await _RunningApp.init_new(
-                self, client, description if description is not None else self.description
-            )
+            app = await _App.init_new(self, client, description if description is not None else self.description)
 
         # Start tracking logs and yield context
         async with TaskContext(grace=config["logs_timeout"]) as tc:
             with output_mgr.ctx_if_visible(output_mgr.make_live(step_progress("Initializing..."))):
                 live_task_status = output_mgr.make_live(step_progress("Running app..."))
-                app_id = running_app.app_id
+                app_id = app.app_id
                 logs_loop = tc.create_task(
                     output_mgr.get_logs_loop(app_id, client, live_task_status, last_log_entry_id or "")
                 )
@@ -160,7 +158,7 @@ class _Stub:
                 # Create all members
                 progress = Tree(step_progress("Creating objects..."), guide_style="gray50")
                 with output_mgr.ctx_if_visible(output_mgr.make_live(progress)):
-                    await running_app.create_all_objects(progress)
+                    await app.create_all_objects(progress)
                 progress.label = step_completed("Created objects.")
                 output_mgr.print_if_visible(progress)
 
@@ -173,10 +171,10 @@ class _Stub:
 
                 # Yield to context
                 with output_mgr.ctx_if_visible(live_task_status):
-                    yield running_app
+                    yield app
 
             finally:
-                await running_app.disconnect()
+                await app.disconnect()
 
         if deployment:
             output_mgr.print_if_visible(step_completed("App deployed! 🎉"))
@@ -195,8 +193,8 @@ class _Stub:
     async def run(self, client=None, stdout=None, show_progress=None):
         async with self._get_client(client) as client:
             output_mgr = OutputManager(stdout, show_progress)
-            async with self._run(client, output_mgr, None) as running_app:
-                yield running_app
+            async with self._run(client, output_mgr, None) as app:
+                yield app
 
     async def run_forever(self, client=None, stdout=None, show_progress=None):
         async with self._get_client(client) as client:
@@ -256,14 +254,14 @@ class _Stub:
             output_mgr = OutputManager(stdout, show_progress)
             async with self._run(
                 client, output_mgr, existing_app_id, last_log_entry_id, description=name, deployment=True
-            ) as running_app:
+            ) as app:
                 deploy_req = api_pb2.AppDeployRequest(
-                    app_id=running_app._app_id,
+                    app_id=app._app_id,
                     name=name,
                     namespace=namespace,
                 )
                 await client.stub.AppDeploy(deploy_req)
-                return running_app._app_id
+                return app._app_id
 
     def _get_default_image(self):
         if "image" in self._blueprint:
