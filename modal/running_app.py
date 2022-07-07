@@ -228,6 +228,7 @@ class _RunningApp:
         # TODO(erikbern): maybe this should happen outside of this method?
         app_req = api_pb2.AppCreateRequest(client_id=client.client_id, description=description)
         app_resp = await client.stub.AppCreate(app_req)
+        logger.debug(f"Created new app with id {app_resp.app_id}")
         return _RunningApp(app, client, app_resp.app_id)
 
     @staticmethod
