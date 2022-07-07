@@ -2,6 +2,16 @@ import pytest
 
 from modal._test_support.functions import deprecated_function
 
+# Not a pytest unit test, but an extra assertion that we catch issues in global scope too
+# See #2228
+exc = None
+try:
+    deprecated_function(42)
+except Exception as e:
+    exc = e
+finally:
+    assert isinstance(exc, DeprecationWarning)
+
 
 def test_deprecation():
     # See conftest.py in the root of the repo
