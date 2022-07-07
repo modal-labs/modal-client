@@ -34,6 +34,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.requests = []
         self.done = False
         self.rate_limit_times = 0
+        self.fail_get_inputs = False
         self.container_inputs = []
         self.container_outputs = []
         self.object_ids = None
@@ -138,7 +139,9 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     async def FunctionGetInputs(
         self, request: api_pb2.FunctionGetInputsRequest, context: ServicerContext = None
     ) -> api_pb2.FunctionGetInputsResponse:
-        if self.rate_limit_times > 0:
+        if self.fail_get_inputs:
+            await context.abort(StatusCode.INTERNAL)
+        elif self.rate_limit_times > 0:
             self.rate_limit_times -= 1
             await context.abort(StatusCode.RESOURCE_EXHAUSTED, "Rate limit exceeded")
         else:

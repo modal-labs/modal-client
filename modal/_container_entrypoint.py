@@ -72,8 +72,10 @@ class _FunctionContext:
 
         async with TaskContext(grace=10) as tc:
             tc.create_task(self._send_outputs())
-            yield
-            await self.output_queue.put((None, None))
+            try:
+                yield
+            finally:
+                await self.output_queue.put((None, None))
 
     async def initialize_app(self):
         await _App.init_container(self._client, self.app_id, self.task_id)
