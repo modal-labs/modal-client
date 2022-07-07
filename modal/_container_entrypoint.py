@@ -129,9 +129,9 @@ class _FunctionContext:
                     logger.info("Task exceeded rate limit.")
                     await asyncio.sleep(1)
                     continue
+                raise
 
             if not response.inputs:
-                await asyncio.sleep(1)
                 continue
 
             for item in response.inputs:
