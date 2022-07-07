@@ -182,8 +182,8 @@ class _Image(Object, type_prefix="im"):
 
         dockerfile_commands += [
             "COPY /.pyproject.toml /tmp/poetry/pyproject.toml",
-            "RUN cd /tmp/poetry && \ ",  # noqa
-            "  poetry config virtualenvs.create false && \ ",  # noqa
+            "RUN cd /tmp/poetry && \\ ",
+            "  poetry config virtualenvs.create false && \\ ",
             "  poetry install --no-root",
         ]
 
