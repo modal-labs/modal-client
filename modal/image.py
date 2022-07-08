@@ -126,6 +126,8 @@ class _Image(Object, type_prefix="im"):
         find_links: Optional[str] = None,
     ):
         """Install a list of packages using pip."""
+        if not isinstance(packages, list) or any(not isinstance(package, str) for package in packages):
+            raise InvalidError("pip_install: packages must be a list of Python packages (as strings)")
 
         find_links_arg = f"-f {find_links}" if find_links else ""
         package_args = " ".join(shlex.quote(pkg) for pkg in packages)
