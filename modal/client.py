@@ -15,7 +15,7 @@ from .exception import AuthError, ConnectionError, InvalidError, VersionError
 from .version import __version__
 
 CLIENT_CREATE_TIMEOUT = 5.0
-HEARTBEAT_INTERVAL = 3.0
+HEARTBEAT_INTERVAL = 15.0
 
 
 class _Client:
