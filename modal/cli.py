@@ -42,10 +42,6 @@ env_app = typer.Typer()
 app.add_typer(env_app, name="env", help="Manage currently activated Modal environment")
 
 
-class Symbols:
-    PARTY_POPPER = "\U0001F389"
-
-
 @token_app.command(
     help="Set account credentials for connecting to Modal. If not provided with the command, you will be prompted to enter your credentials."
 )
@@ -71,7 +67,7 @@ def set(
         print("Token verified successfully")
 
     _store_user_config({"token_id": token_id, "token_secret": token_secret}, env=env)
-    print(f"Token written to {user_config_path} {Symbols.PARTY_POPPER}")
+    print(f"Token written to {user_config_path}")
 
 
 @config_app.command(help="[Debug command] show currently applied configuration values")
