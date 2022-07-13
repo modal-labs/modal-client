@@ -219,7 +219,9 @@ FILTERED_ERROR_TYPES = [InvalidError, AuthError, VersionError]
 def filter_exceptions(event, hint):
     """Filter out exceptions not originating from Modal, and also user errors."""
     try:
-        exc_origin_path: str = event["exception"]["values"][0]["stacktrace"]["frames"][-1]["abs_path"]
+        source = event.get("exception", event["threads"])
+
+        exc_origin_path: str = source["values"][0]["stacktrace"]["frames"][-1]["abs_path"]
 
         if not any([exc_origin_path.startswith(p) for p in MODAL_PACKAGE_PATHS]):
             return None
