@@ -8,7 +8,6 @@ from aiostream import stream
 from modal_proto import api_pb2
 from modal_utils.async_utils import (
     queue_batch_iterator,
-    retry,
     retry_transient_errors,
     synchronize_apis,
 )
@@ -98,7 +97,7 @@ class Invocation:
                 "    my_modal_function()\n"
             )
         request = api_pb2.FunctionMapRequest(function_id=function_id)
-        response = await retry(client.stub.FunctionMap)(request)
+        response = await retry_transient_errors(client.stub.FunctionMap, request)
 
         function_call_id = response.function_call_id
 
@@ -143,7 +142,7 @@ class _MapInvocation:
 
     async def __aiter__(self):
         request = api_pb2.FunctionMapRequest(function_id=self.function_id)
-        response = await retry(self.client.stub.FunctionMap)(request)
+        response = await retry_transient_errors(self.client.stub.FunctionMap, request)
 
         function_call_id = response.function_call_id
 

@@ -3,7 +3,7 @@ import uuid
 from typing import Any, List
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import retry, synchronize_apis
+from modal_utils.async_utils import retry_transient_errors, synchronize_apis
 
 from ._serialization import deserialize, serialize
 from .config import logger
@@ -38,7 +38,7 @@ class _Queue(Object, type_prefix="qu"):
                 n_values=n_values,
                 idempotency_key=str(uuid.uuid4()),
             )
-            response = await retry(self._client.stub.QueueGet)(request, timeout=60.0)
+            response = await retry_transient_errors(self._client.stub.QueueGet, request)
             if response.values:
                 return [deserialize(value, self._client) for value in response.values]
             logger.debug("Queue get for %s had empty results, trying again" % self.object_id)
@@ -61,7 +61,7 @@ class _Queue(Object, type_prefix="qu"):
             values=vs_encoded,
             idempotency_key=str(uuid.uuid4()),
         )
-        return await retry(self._client.stub.QueuePut)(request, timeout=5.0)
+        return await retry_transient_errors(self._client.stub.QueuePut, request)
 
     async def put(self, v):
         """Put an object"""

@@ -9,7 +9,7 @@ import aiostream
 
 import modal._blob_utils
 from modal_proto import api_pb2
-from modal_utils.async_utils import retry, synchronize_apis
+from modal_utils.async_utils import retry_transient_errors, synchronize_apis
 from modal_utils.package_utils import get_module_mount_info, module_mount_condition
 
 from ._blob_utils import FileUploadSpec, get_file_upload_spec
@@ -128,7 +128,7 @@ class _Mount(Object, type_prefix="mo"):
             files.append(api_pb2.MountFile(filename=remote_filename, sha256_hex=mount_file.sha256_hex))
 
             request = api_pb2.MountPutFileRequest(sha256_hex=mount_file.sha256_hex)
-            response = await retry(client.stub.MountPutFile, base_delay=1)(request)
+            response = await retry_transient_errors(client.stub.MountPutFile, request, base_delay=1)
 
             n_files += 1
             if response.exists or mount_file.sha256_hex in uploaded_hashes:
@@ -144,7 +144,7 @@ class _Mount(Object, type_prefix="mo"):
             else:
                 logger.debug(f"Uploading file {mount_file.filename} to {remote_filename} ({mount_file.size} bytes)")
                 request2 = api_pb2.MountPutFileRequest(data=mount_file.content, sha256_hex=mount_file.sha256_hex)
-            await retry(client.stub.MountPutFile, base_delay=1)(request2)
+            await retry_transient_errors(client.stub.MountPutFile, request2, base_delay=1)
 
         logger.debug(f"Uploading mount using {n_concurrent_uploads} uploads")
 
@@ -159,7 +159,7 @@ class _Mount(Object, type_prefix="mo"):
             logger.warn("Mount is empty.")
 
         req = api_pb2.MountBuildRequest(app_id=app_id, existing_mount_id=existing_mount_id, files=files)
-        resp = await retry(client.stub.MountBuild, base_delay=1)(req)
+        resp = await retry_transient_errors(client.stub.MountBuild, req, base_delay=1)
 
         logger.debug(f"Uploaded {len(uploaded_hashes)}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
         return resp.mount_id

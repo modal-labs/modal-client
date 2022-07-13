@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Collection, Dict, List, Optional, Union
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import retry, synchronize_apis
+from modal_utils.async_utils import retry_transient_errors, synchronize_apis
 
 from .config import config, logger
 from .exception import InvalidError, NotFoundError, RemoteError
@@ -93,7 +93,7 @@ class _Image(Object, type_prefix="im"):
         logger.debug("Waiting for image %s" % image_id)
         while True:
             request = api_pb2.ImageJoinRequest(image_id=image_id, timeout=60)
-            response = await retry(client.stub.ImageJoin)(request)
+            response = await retry_transient_errors(client.stub.ImageJoin, request)
             if not response.result.status:
                 continue
             elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
