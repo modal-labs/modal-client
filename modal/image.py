@@ -36,6 +36,8 @@ class _Image(Object, type_prefix="im"):
     ):
         if ref and (base_images or dockerfile_commands or context_files):
             raise InvalidError("No other arguments can be provided when initializing an image from a ref.")
+        if not ref and not dockerfile_commands:
+            raise InvalidError("No commands were provided for the image — have you tried using modal.DebianSlim()?")
 
         self._ref = ref
         self._base_images = base_images
