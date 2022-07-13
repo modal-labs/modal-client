@@ -2,11 +2,15 @@ import asyncio
 import platform
 import pytest
 
+from grpc import StatusCode
+from grpc.aio import AioRpcError, Metadata
+
 from modal_utils.async_utils import (
     TaskContext,
     intercept_coro,
     queue_batch_iterator,
     retry,
+    retry_transient_errors,
 )
 
 skip_non_linux = pytest.mark.skipif(
@@ -19,14 +23,15 @@ class SampleException(Exception):
 
 
 class FailNTimes:
-    def __init__(self, n_failures):
+    def __init__(self, n_failures, exc=SampleException("Something bad happened")):
         self.n_failures = n_failures
         self.n_calls = 0
+        self.exc = exc
 
     async def __call__(self, x):
         self.n_calls += 1
         if self.n_calls < self.n_failures:
-            raise SampleException("Something bad happened")
+            raise self.exc
         else:
             return x + 1
 
@@ -170,3 +175,15 @@ async def interceptor(thing):
 async def test_intercept_coro():
     coro = fib(10)
     assert await intercept_coro(coro, interceptor) == 55
+
+
+@pytest.mark.asyncio
+async def test_retry_transient_errors():
+    UNAVAILABLE = AioRpcError(StatusCode.UNAVAILABLE, Metadata(), Metadata())
+
+    assert await retry_transient_errors(FailNTimes(3, UNAVAILABLE), 42) == 43
+
+    with pytest.raises(AioRpcError):
+        await retry_transient_errors(FailNTimes(5, UNAVAILABLE), 42)
+
+    assert await retry_transient_errors(FailNTimes(10, UNAVAILABLE), 42, max_retries=None, base_delay=0) == 43

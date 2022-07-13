@@ -285,16 +285,21 @@ async def intercept_coro(coro, interceptor):
             return exc.value
 
 
-async def retry_transient_errors(fn, request, base_delay=0.1, max_delay=1, delay_factor=2, max_retries=None):
-    """Retry gRPC method call with back-off until it succeeds."""
+async def retry_transient_errors(fn, *args, base_delay=0.1, max_delay=1, delay_factor=2, max_retries=3):
+    """Retry on transient gRPC failures with back-off until max_retries is reached.
+    If max_retries is None, retry forever."""
+
     delay = base_delay
+    n_retries = 0
 
     while True:
         try:
-            await fn(request)
-            return
+            return await fn(*args)
         except AioRpcError as exc:
             if exc.code() in RETRYABLE_GRPC_STATUS_CODES:
+                if max_retries is not None and n_retries >= max_retries:
+                    raise
+                n_retries += 1
                 await asyncio.sleep(delay)
                 delay = min(delay * delay_factor, max_delay)
             else:
