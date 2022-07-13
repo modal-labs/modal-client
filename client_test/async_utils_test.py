@@ -30,7 +30,7 @@ class FailNTimes:
 
     async def __call__(self, x):
         self.n_calls += 1
-        if self.n_calls < self.n_failures:
+        if self.n_calls <= self.n_failures:
             raise self.exc
         else:
             return x + 1
@@ -38,18 +38,18 @@ class FailNTimes:
 
 @pytest.mark.asyncio
 async def test_retry():
-    f_retry = retry(FailNTimes(3))
+    f_retry = retry(FailNTimes(2))
     assert await f_retry(42) == 43
 
     with pytest.raises(SampleException):
-        f_retry = retry(FailNTimes(4))
+        f_retry = retry(FailNTimes(3))
         assert await f_retry(42) == 43
 
-    f_retry = retry(n_attempts=5)(FailNTimes(5))
+    f_retry = retry(n_attempts=5)(FailNTimes(4))
     assert await f_retry(42) == 43
 
     with pytest.raises(SampleException):
-        f_retry = retry(n_attempts=5)(FailNTimes(6))
+        f_retry = retry(n_attempts=5)(FailNTimes(5))
         assert await f_retry(42) == 43
 
 
@@ -184,6 +184,12 @@ async def test_retry_transient_errors():
     assert await retry_transient_errors(FailNTimes(3, UNAVAILABLE), 42) == 43
 
     with pytest.raises(AioRpcError):
-        await retry_transient_errors(FailNTimes(5, UNAVAILABLE), 42)
+        await retry_transient_errors(FailNTimes(4, UNAVAILABLE), 42)
 
     assert await retry_transient_errors(FailNTimes(10, UNAVAILABLE), 42, max_retries=None, base_delay=0) == 43
+
+    # Not a transient error.
+    PERMISSION_DENIED = AioRpcError(StatusCode.PERMISSION_DENIED, Metadata(), Metadata())
+
+    with pytest.raises(AioRpcError):
+        await retry_transient_errors(FailNTimes(2, PERMISSION_DENIED), 42)
