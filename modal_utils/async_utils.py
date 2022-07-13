@@ -88,7 +88,7 @@ def retry(direct_fn=None, *, n_attempts=3, base_delay=0, delay_factor=2, timeout
                 except Exception as e:
                     if i >= n_attempts - 1:
                         raise
-                    logger.warning(
+                    logger.exception(
                         f"Failed invoking function {fn}: {repr(e)}"
                         f" (took {time.time() - t0}s, sleeping {delay}s"
                         f" and trying {n_attempts - i - 1} more times)"

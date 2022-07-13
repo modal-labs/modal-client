@@ -249,7 +249,6 @@ if config["sentry_dsn"] and "localhost" not in config["server_url"]:
             {"token_id": config["token_id"], "client_version": __version__, "task_id": config["task_id"]}
         )
 
-
 # Make sure all deprecation warnings are shown
 # See https://docs.python.org/3/library/warnings.html#overriding-the-default-filter
 warnings.filterwarnings(
