@@ -214,14 +214,22 @@ def sentry_exit_callback(pending, timeout):
 
 MODAL_PACKAGE_PATHS = [*modal.__path__, *modal_utils.__path__]
 FILTERED_ERROR_TYPES = [InvalidError, AuthError, VersionError]
+FILTERED_FUNCTIONS = ["_process_result"]
 
 
 def filter_exceptions(event, hint):
     """Filter out exceptions not originating from Modal, and also user errors."""
     try:
-        source = event.get("exception", event["threads"])
+        source = event.get("exception") or event.get("threads")
+        if source is None:
+            return event
 
-        exc_origin_path: str = source["values"][0]["stacktrace"]["frames"][-1]["abs_path"]
+        last_frame = source["values"][0]["stacktrace"]["frames"][-1]
+        exc_origin_function: str = last_frame["function"]
+        exc_origin_path: str = last_frame["abs_path"]
+
+        if exc_origin_function in FILTERED_FUNCTIONS:
+            return None
 
         if not any([exc_origin_path.startswith(p) for p in MODAL_PACKAGE_PATHS]):
             return None
