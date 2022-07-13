@@ -147,4 +147,3 @@ def test_container_entrypoint_grpc_failure(servicer, event_loop):
     t0 = time.time()
     with pytest.raises(AioRpcError):
         _run_container(servicer, "modal._test_support.functions", "square", fail_get_inputs=True)
-    assert time.time() - t0 < EXTRA_TOLERANCE_DELAY
