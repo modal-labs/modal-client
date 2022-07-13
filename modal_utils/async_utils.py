@@ -285,7 +285,7 @@ async def intercept_coro(coro, interceptor):
             return exc.value
 
 
-async def grpc_retry(fn, request, base_delay=0.1, max_delay=1, delay_factor=2, max_retries=None):
+async def retry_transient_errors(fn, request, base_delay=0.1, max_delay=1, delay_factor=2, max_retries=None):
     """Retry gRPC method call with back-off until it succeeds."""
     delay = base_delay
 

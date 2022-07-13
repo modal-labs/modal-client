@@ -16,8 +16,8 @@ from grpc.aio import AioRpcError
 from modal_proto import api_pb2
 from modal_utils.async_utils import (
     TaskContext,
-    grpc_retry,
     retry,
+    retry_transient_errors,
     synchronize_apis,
     synchronizer,
 )
@@ -170,7 +170,7 @@ class _FunctionContext:
                 outputs=outputs, function_call_id=cur_function_call_id, task_id=self.task_id
             )
             # No timeout so this can block forever.
-            await grpc_retry(self.client.stub.FunctionPutOutputs, req, max_retries=None)
+            await retry_transient_errors(self.client.stub.FunctionPutOutputs, req, max_retries=None)
 
             cur_function_call_id = None
             outputs = []
