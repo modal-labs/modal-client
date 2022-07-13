@@ -16,7 +16,8 @@ from grpc.aio import AioRpcError
 from modal_proto import api_pb2
 from modal_utils.async_utils import (
     TaskContext,
-    retry_until_successful,
+    grpc_retry,
+    retry,
     synchronize_apis,
     synchronizer,
 )
@@ -125,7 +126,7 @@ class _FunctionContext:
             request.max_values = self.get_max_inputs_to_fetch()
 
             try:
-                response = await self.client.stub.FunctionGetInputs(request)
+                response = await retry(self.client.stub.FunctionGetInputs)(request)
             except AioRpcError as exc:
                 if exc.code() == StatusCode.RESOURCE_EXHAUSTED:
                     logger.info("Task exceeded rate limit.")
@@ -169,7 +170,7 @@ class _FunctionContext:
                 outputs=outputs, function_call_id=cur_function_call_id, task_id=self.task_id
             )
             # No timeout so this can block forever.
-            await retry_until_successful(self.client.stub.FunctionPutOutputs, req)
+            await grpc_retry(self.client.stub.FunctionPutOutputs, req, max_retries=None)
 
             cur_function_call_id = None
             outputs = []

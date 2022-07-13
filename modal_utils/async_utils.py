@@ -53,7 +53,7 @@ def synchronize_apis(obj):
     )
 
 
-def retry(direct_fn=None, *, n_attempts=3, base_delay=0, delay_factor=2, timeout=90, warn_on_cancel=True):
+def retry(direct_fn=None, *, n_attempts=3, base_delay=0, delay_factor=2, timeout=90):
     """Decorator that calls an async function multiple times, with a given timeout.
 
     If a `base_delay` is provided, the function is given an exponentially
@@ -285,7 +285,7 @@ async def intercept_coro(coro, interceptor):
             return exc.value
 
 
-async def retry_until_successful(fn, request, base_delay=0.1, max_delay=1, delay_factor=2):
+async def grpc_retry(fn, request, base_delay=0.1, max_delay=1, delay_factor=2, max_retries=None):
     """Retry gRPC method call with back-off until it succeeds."""
     delay = base_delay
 

@@ -7,9 +7,9 @@ from aiostream import stream
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import (
+    grpc_retry,
     queue_batch_iterator,
     retry,
-    retry_until_successful,
     synchronize_apis,
 )
 
@@ -104,7 +104,7 @@ class Invocation:
 
         inp = await _create_input(args, kwargs, client, function_call_id)
         request_put = api_pb2.FunctionPutInputsRequest(function_id=function_id, inputs=[inp])
-        await retry_until_successful(client.stub.FunctionPutInputs, request_put)
+        await grpc_retry(client.stub.FunctionPutInputs, request_put, max_retries=None)
 
         return Invocation(client.stub, function_id, function_call_id, client)
 
@@ -171,7 +171,7 @@ class _MapInvocation:
 
             async for inputs in queue_batch_iterator(input_queue, MAP_INVOCATION_CHUNK_SIZE):
                 request = api_pb2.FunctionPutInputsRequest(function_id=self.function_id, inputs=inputs)
-                await retry_until_successful(self.client.stub.FunctionPutInputs, request)
+                await grpc_retry(self.client.stub.FunctionPutInputs, request, max_retries=None)
 
             have_all_inputs = True
             yield
