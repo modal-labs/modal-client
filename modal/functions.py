@@ -6,11 +6,8 @@ from typing import Collection, Dict, Optional, Union
 from aiostream import stream
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import (
-    queue_batch_iterator,
-    retry_transient_errors,
-    synchronize_apis,
-)
+from modal_utils.async_utils import queue_batch_iterator, synchronize_apis
+from modal_utils.grpc_utils import retry_transient_errors
 
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._buffer_utils import buffered_rpc_read

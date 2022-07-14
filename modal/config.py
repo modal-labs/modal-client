@@ -71,6 +71,7 @@ import os
 import typing
 import warnings
 
+import grpc
 import sentry_sdk
 import toml
 from sentry_sdk.integrations.atexit import AtexitIntegration
@@ -212,7 +213,8 @@ def sentry_exit_callback(pending, timeout):
     pass
 
 
-MODAL_PACKAGE_PATHS = [*modal.__path__, *modal_utils.__path__]
+#  Don't ignore errors originating from gRPC.
+MODAL_PACKAGE_PATHS = [*modal.__path__, *modal_utils.__path__, *grpc.__path__]
 FILTERED_ERROR_TYPES = [InvalidError, AuthError, VersionError]
 FILTERED_FUNCTIONS = ["_process_result"]
 

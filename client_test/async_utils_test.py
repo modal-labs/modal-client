@@ -10,8 +10,8 @@ from modal_utils.async_utils import (
     intercept_coro,
     queue_batch_iterator,
     retry,
-    retry_transient_errors,
 )
+from modal_utils.grpc_utils import retry_transient_errors
 
 skip_non_linux = pytest.mark.skipif(
     platform.system() != "Linux", reason="sleep is inaccurate on Github Actions runners."

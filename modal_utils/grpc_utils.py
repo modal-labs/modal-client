@@ -3,12 +3,20 @@ import enum
 import re
 import time
 
-from grpc.aio import Channel
+from grpc import StatusCode
+from grpc.aio import AioRpcError, Channel
+from sentry_sdk import capture_exception
 
 from modal_utils.server_connection import GRPCConnectionFactory
 
 from .async_utils import TaskContext
 from .logger import logger
+
+RETRYABLE_GRPC_STATUS_CODES = [
+    StatusCode.DEADLINE_EXCEEDED,
+    StatusCode.UNAVAILABLE,
+    StatusCode.INTERNAL,
+]
 
 
 class RPCType(enum.Enum):
@@ -162,3 +170,25 @@ class ChannelPool:
 
     def stream_stream(self, method, request_serializer, response_deserializer):
         return self._wrap_generator(RPCType.STREAM_STREAM, method, request_serializer, response_deserializer)
+
+
+async def retry_transient_errors(fn, *args, base_delay=0.1, max_delay=1, delay_factor=2, max_retries=3):
+    """Retry on transient gRPC failures with back-off until max_retries is reached.
+    If max_retries is None, retry forever."""
+
+    delay = base_delay
+    n_retries = 0
+
+    while True:
+        try:
+            return await fn(*args)
+        except AioRpcError as exc:
+            if exc.code() in RETRYABLE_GRPC_STATUS_CODES:
+                if max_retries is not None and n_retries >= max_retries:
+                    raise
+                n_retries += 1
+                capture_exception(exc)
+                await asyncio.sleep(delay)
+                delay = min(delay * delay_factor, max_delay)
+            else:
+                raise

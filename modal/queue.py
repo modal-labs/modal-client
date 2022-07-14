@@ -3,7 +3,8 @@ import uuid
 from typing import Any, List
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import retry_transient_errors, synchronize_apis
+from modal_utils.async_utils import synchronize_apis
+from modal_utils.grpc_utils import retry_transient_errors
 
 from ._serialization import deserialize, serialize
 from .config import logger

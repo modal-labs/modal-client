@@ -14,7 +14,7 @@ from rich.spinner import Spinner
 from rich.text import Text
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import RETRYABLE_GRPC_STATUS_CODES
+from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES
 
 from .client import _Client
 from .config import logger

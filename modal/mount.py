@@ -9,7 +9,8 @@ import aiostream
 
 import modal._blob_utils
 from modal_proto import api_pb2
-from modal_utils.async_utils import retry_transient_errors, synchronize_apis
+from modal_utils.async_utils import synchronize_apis
+from modal_utils.grpc_utils import retry_transient_errors
 from modal_utils.package_utils import get_module_mount_info, module_mount_condition
 
 from ._blob_utils import FileUploadSpec, get_file_upload_spec
