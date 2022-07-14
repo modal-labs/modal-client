@@ -550,7 +550,6 @@ message TaskLogsBatch {
   bool app_done = 10;
 }
 
-
 service ModalClient {
   // Clients
   rpc ClientCreate(ClientCreateRequest) returns (ClientCreateResponse);
