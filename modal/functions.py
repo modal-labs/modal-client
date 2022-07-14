@@ -240,6 +240,7 @@ class _Function(Object, type_prefix="fu"):
         shared_volumes: Dict[str, Union[_SharedVolume, Ref]] = {},
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         memory: Optional[int] = None,
+        proxy: Optional[Ref] = None,
     ):
         assert callable(raw_f)
         self._info = FunctionInfo(raw_f, serialized)
@@ -273,6 +274,7 @@ class _Function(Object, type_prefix="fu"):
         self._webhook_config = webhook_config
         self._web_url = None
         self._memory = memory
+        self._proxy = proxy
         self._local_app = None
         self._local_object_id = None
         self._tag = self._info.get_tag()
@@ -325,6 +327,11 @@ class _Function(Object, type_prefix="fu"):
 
         rate_limit = self._rate_limit.to_proto() if self._rate_limit else None
 
+        if self._proxy:
+            proxy_id = await self._proxy
+        else:
+            proxy_id = None
+
         # Create function remotely
         function_definition = api_pb2.Function(
             module_name=self._info.module_name,
@@ -339,6 +346,7 @@ class _Function(Object, type_prefix="fu"):
             rate_limit=rate_limit,
             webhook_config=self._webhook_config,
             shared_volume_mounts=shared_volume_mounts,
+            proxy_id=proxy_id,
         )
         request = api_pb2.FunctionCreateRequest(
             app_id=app_id,

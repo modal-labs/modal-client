@@ -10,6 +10,7 @@ message ContainerArguments {  // This is used to pass data from the worker to th
   string function_id = 2;
   string app_id = 4;
   Function function_def = 7;
+  ProxyInfo proxy = 8;
 }
 
 message GenericResult {  // Used for both tasks and function outputs
@@ -138,6 +139,13 @@ message AppGetByDeploymentNameRequest {
 message AppGetByDeploymentNameResponse {
   string app_id = 1;
   string last_log_entry_id = 2; // Last log entry as a starting point for the client.
+}
+
+message ProxyInfo {
+  string elastic_ip = 1;
+  string proxy_key = 2;
+  string remote_addr = 3;
+  int32 remote_port = 4;
 }
 
 message QueueCreateRequest {
@@ -337,6 +345,8 @@ message Function {
   WebhookConfig webhook_config = 15;
 
   repeated SharedVolumeMount shared_volume_mounts = 16;
+
+  optional string proxy_id = 17;
 }
 
 message FunctionCreateRequest {

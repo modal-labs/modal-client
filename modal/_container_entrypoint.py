@@ -356,6 +356,7 @@ def main(container_args, client):
     function_context, aio_function_context = synchronize_apis(_function_context)
     function_context.initialize_app()
 
+    print(container_args)
     if container_args.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
         function = function_context.get_serialized_function()
     else:
