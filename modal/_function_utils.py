@@ -95,7 +95,10 @@ class FunctionInfo:
             for m in modules:
                 if getattr(m, "__package__", None):
                     for path in __import__(m.__package__).__path__:
-                        if path in packages or not path.startswith(self.base_dir) or path.startswith(sys.prefix):
+                        if path in packages or any(
+                            path.startswith(p)
+                            for p in [sys.prefix, sys.base_prefix, sys.exec_prefix, sys.base_exec_prefix]
+                        ):
                             continue
 
                         packages.add(path)

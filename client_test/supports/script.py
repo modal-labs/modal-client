@@ -14,10 +14,12 @@ def f():
 
 async def get_files():
     fn_info = FunctionInfo(f)
+    import modal
 
     for _, mount in fn_info.get_mounts().items():
         async for file_info in mount._get_files():
-            print(file_info.rel_filename)
+            if not file_info.filename.startswith(modal.__path__[0]):
+                print(file_info.rel_filename)
 
 
 if __name__ == "__main__":
