@@ -12,6 +12,8 @@ from .mount import _Mount
 
 ROOT_DIR = "/root"
 
+SYS_PREFIXES = [sys.prefix, sys.base_prefix, sys.exec_prefix, sys.base_exec_prefix]
+
 
 def package_mount_condition(filename):
     if filename.startswith(sys.prefix):
@@ -72,8 +74,7 @@ class FunctionInfo:
 
     def get_mounts(self) -> Dict[str, _Mount]:
         if self.is_package:
-            print("ADDDING", self.base_dir)
-            return {
+            mounts = {
                 self.base_dir: _Mount(
                     local_dir=self.base_dir,
                     remote_dir=self.remote_dir,
@@ -88,40 +89,35 @@ class FunctionInfo:
                     remote_dir=ROOT_DIR,
                 )
             }
-
-            packages = set()
-
-            # Note: sys.modules may change during the iteration
-            modules = list(sys.modules.values())
-            for m in modules:
-                if getattr(m, "__package__", None):
-                    for path in __import__(m.__package__).__path__:
-                        if path in packages or any(
-                            path.startswith(p)
-                            for p in [sys.prefix, sys.base_prefix, sys.exec_prefix, sys.base_exec_prefix]
-                        ):
-                            continue
-
-                        packages.add(path)
-                        relpath = os.path.relpath(path, self.base_dir)
-                        mounts[path] = _Mount(
-                            local_dir=path,
-                            remote_dir=os.path.join(ROOT_DIR, relpath),
-                            condition=package_mount_condition,
-                            recursive=True,
-                        )
-                elif getattr(m, "__file__", None):
-                    path = m.__file__
-                    if path == self.file or not path.startswith(self.base_dir) or path.startswith(sys.prefix):
-                        continue
-                    relpath = os.path.relpath(os.path.dirname(path), self.base_dir)
-                    mounts[path] = _Mount(
-                        local_file=path,
-                        remote_dir=os.path.join(ROOT_DIR, relpath),
-                    )
-            return mounts
         else:
             return {}
+
+        # Auto-mount local modules that have been imported in global scope.
+        # Note: sys.modules may change during the iteration
+        modules = list(sys.modules.values())
+        for m in modules:
+            if getattr(m, "__package__", None):
+                for path in __import__(m.__package__).__path__:
+                    if path in mounts or any(path.startswith(p) for p in SYS_PREFIXES):
+                        continue
+
+                    relpath = os.path.relpath(path, self.base_dir)
+                    mounts[path] = _Mount(
+                        local_dir=path,
+                        remote_dir=os.path.join(ROOT_DIR, relpath),
+                        condition=package_mount_condition,
+                        recursive=True,
+                    )
+            elif getattr(m, "__file__", None):
+                path = m.__file__
+                if path in mounts or any(path.startswith(p) for p in SYS_PREFIXES):
+                    continue
+                relpath = os.path.relpath(os.path.dirname(path), self.base_dir)
+                mounts[path] = _Mount(
+                    local_file=path,
+                    remote_dir=os.path.join(ROOT_DIR, relpath),
+                )
+        return mounts
 
     def get_tag(self):
         return f"{self.module_name}.{self.function_name}"

@@ -57,7 +57,7 @@ def test_mounted_files_package(test_dir):
     print("stderr: ", stderr)
     files = stdout.splitlines()
 
-    assert len(files) == 11
+    assert len(files) == 10
 
     # Assert everything from `pkg_a` is in the output.
     assert any(["a.py" in f for f in files])
@@ -83,7 +83,8 @@ def test_mounted_files_sys_prefix(test_dir, venv_path):
     p = subprocess.run(
         [venv_path / "bin" / "python", script_path],
         capture_output=True,
-        cwd=test_dir,
+        cwd=test_dir / Path("supports"),
+        env={"PYTHONPATH": str(test_dir / Path("supports"))},
     )
     stdout = p.stdout.decode("utf-8")
     stderr = p.stderr.decode("utf-8")
@@ -91,9 +92,19 @@ def test_mounted_files_sys_prefix(test_dir, venv_path):
     print("stderr: ", stderr)
     files = stdout.splitlines()
 
-    assert len(files) == 4
+    assert len(files) == 7
+    # Assert everything from `pkg_a` is in the output.
     assert any(["a.py" in f for f in files])
     assert any(["c.py" in f for f in files])
     assert not any(["d.py" in f for f in files])
     assert any(["e.py" in f for f in files])
     assert any(["script.py" in f for f in files])
+
+    # Assert everything from `pkg_b` is in the output.
+    assert any(["__init__.py" in f for f in files])
+    assert any(["f.py" in f for f in files])
+    assert any(["h.py" in f for f in files])
+
+    # Assert nothing from `pkg_c` is in the output.
+    assert not any(["i.py" in f for f in files])
+    assert not any(["k.py" in f for f in files])
