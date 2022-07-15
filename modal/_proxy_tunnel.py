@@ -1,14 +1,13 @@
 import contextlib
 import subprocess
 import tempfile
-from typing import Optional
 
 from modal_proto import api_pb2
 
 
 @contextlib.contextmanager
-def proxy_tunnel(info: Optional[api_pb2.ProxyInfo]):
-    if info is None:
+def proxy_tunnel(info: api_pb2.ProxyInfo):
+    if not info.elastic_ip:
         yield
         return
 

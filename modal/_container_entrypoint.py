@@ -400,7 +400,7 @@ if __name__ == "__main__":
     # This is good because if the function is long running then we the client can still send heartbeats
     # The only caveat is a bunch of calls will now cross threads, which adds a bit of overhead?
     with Client.from_env() as client:
-        with proxy_tunnel(container_args.proxy):
+        with proxy_tunnel(container_args.proxy_info):
             main(container_args, client)
 
     logger.debug("Container: done")
