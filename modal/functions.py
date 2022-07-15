@@ -290,6 +290,14 @@ class _Function(Object, type_prefix="fu"):
         return f"Created {self._tag}."
 
     async def _load(self, client, app_id, existing_function_id):
+        if self._proxy:
+            proxy_id = await self._proxy
+            # HACK: remove this once we stop using ssh tunnels for this.
+            if self._image:
+                self._image = self._image.run_commands(["apt-get install -yq ssh"])
+        else:
+            proxy_id = None
+
         # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
         if self._image is not None:
             image_id = await self._image
@@ -326,11 +334,6 @@ class _Function(Object, type_prefix="fu"):
             function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
 
         rate_limit = self._rate_limit.to_proto() if self._rate_limit else None
-
-        if self._proxy:
-            proxy_id = await self._proxy
-        else:
-            proxy_id = None
 
         # Create function remotely
         function_definition = api_pb2.Function(

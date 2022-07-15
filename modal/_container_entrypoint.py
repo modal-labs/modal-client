@@ -19,6 +19,7 @@ from modal_utils.grpc_utils import retry_transient_errors
 
 from ._asgi import asgi_app_wrapper, fastAPI_function_wrapper
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
+from ._proxy_tunnel import proxy_tunnel
 from ._serialization import deserialize, serialize
 from .app import _App
 from .client import Client, _Client
@@ -356,7 +357,6 @@ def main(container_args, client):
     function_context, aio_function_context = synchronize_apis(_function_context)
     function_context.initialize_app()
 
-    print(container_args)
     if container_args.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
         function = function_context.get_serialized_function()
     else:
@@ -400,6 +400,7 @@ if __name__ == "__main__":
     # This is good because if the function is long running then we the client can still send heartbeats
     # The only caveat is a bunch of calls will now cross threads, which adds a bit of overhead?
     with Client.from_env() as client:
-        main(container_args, client)
+        with proxy_tunnel(container_args.proxy):
+            main(container_args, client)
 
     logger.debug("Container: done")
