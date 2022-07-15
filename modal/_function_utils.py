@@ -72,6 +72,7 @@ class FunctionInfo:
 
     def get_mounts(self) -> Dict[str, _Mount]:
         if self.is_package:
+            print("ADDDING", self.base_dir)
             return {
                 self.base_dir: _Mount(
                     local_dir=self.base_dir,
