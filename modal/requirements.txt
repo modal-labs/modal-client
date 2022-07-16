@@ -12,3 +12,5 @@ synchronicity==0.2.7
 toml==0.10.2
 typer==0.4.1
 types-toml==0.10.4
+
+dumb-init==1.2.5.post1 # init system for containers
