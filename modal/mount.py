@@ -157,7 +157,7 @@ class _Mount(Object, type_prefix="mo"):
         try:
             await uploads_stream
         except aiostream.StreamEmpty:
-            logger.warn("Mount is empty.")
+            logger.warning("Mount is empty.")
 
         req = api_pb2.MountBuildRequest(app_id=app_id, existing_mount_id=existing_mount_id, files=files)
         resp = await retry_transient_errors(client.stub.MountBuild, req, base_delay=1)

@@ -1,3 +1,4 @@
+import os
 import platform
 import pytest
 import subprocess
@@ -23,13 +24,13 @@ def test_mounted_files_script(test_dir):
         [sys.executable, str(script_path)],
         capture_output=True,
         cwd=test_dir / Path("supports"),
-        env={"PYTHONPATH": str(test_dir / Path("supports"))},
+        env={**os.environ, "PYTHONPATH": str(test_dir / Path("supports"))},
     )
     stdout = p.stdout.decode("utf-8")
     stderr = p.stderr.decode("utf-8")
     print("stdout: ", stdout)
     print("stderr: ", stderr)
-    files = stdout.splitlines()
+    files = set(stdout.splitlines())
 
     assert len(files) == 7
     # Assert everything from `pkg_a` is in the output.
@@ -55,9 +56,9 @@ def test_mounted_files_package(test_dir):
     stderr = p.stderr.decode("utf-8")
     print("stdout: ", stdout)
     print("stderr: ", stderr)
-    files = stdout.splitlines()
+    files = set(stdout.splitlines())
 
-    assert len(files) == 10
+    assert len(files) == 9
 
     # Assert everything from `pkg_a` is in the output.
     assert any(["a.py" in f for f in files])
@@ -84,13 +85,13 @@ def test_mounted_files_sys_prefix(test_dir, venv_path):
         [venv_path / "bin" / "python", script_path],
         capture_output=True,
         cwd=test_dir / Path("supports"),
-        env={"PYTHONPATH": str(test_dir / Path("supports"))},
+        env={**os.environ, "PYTHONPATH": str(test_dir / Path("supports"))},
     )
     stdout = p.stdout.decode("utf-8")
     stderr = p.stderr.decode("utf-8")
     print("stdout: ", stdout)
     print("stderr: ", stderr)
-    files = stdout.splitlines()
+    files = set(stdout.splitlines())
 
     assert len(files) == 7
     # Assert everything from `pkg_a` is in the output.

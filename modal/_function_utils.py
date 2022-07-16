@@ -98,7 +98,7 @@ class FunctionInfo:
         for m in modules:
             if getattr(m, "__package__", None):
                 for path in __import__(m.__package__).__path__:
-                    if path in mounts or any(path.startswith(p) for p in SYS_PREFIXES):
+                    if path in mounts or any(path.startswith(p) for p in SYS_PREFIXES) or not os.path.exists(path):
                         continue
 
                     relpath = os.path.relpath(path, self.base_dir)
@@ -110,7 +110,7 @@ class FunctionInfo:
                     )
             elif getattr(m, "__file__", None):
                 path = m.__file__
-                if path in mounts or any(path.startswith(p) for p in SYS_PREFIXES):
+                if path in mounts or any(path.startswith(p) for p in SYS_PREFIXES) or not os.path.exists(path):
                     continue
                 relpath = os.path.relpath(os.path.dirname(path), self.base_dir)
                 mounts[path] = _Mount(
