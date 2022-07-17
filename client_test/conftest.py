@@ -59,7 +59,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.n_schedules = 0
         self.function2schedule = {}
         self.function_create_error = False
-        self.heartbeat_return_client_gone = False
+        self.heartbeat_status_code = None
         self.n_apps = 0
         self.output_idx = 0
 
@@ -111,8 +111,8 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
 
     async def ClientHeartbeat(self, request: api_pb2.ClientHeartbeatRequest, context: ServicerContext = None) -> Empty:
         self.requests.append(request)
-        if self.heartbeat_return_client_gone:
-            await context.abort(StatusCode.NOT_FOUND, f"Client {request.client_id} not found")
+        if self.heartbeat_status_code:
+            await context.abort(self.heartbeat_status_code, f"Client {request.client_id} heartbeat failed.")
         return Empty()
 
     async def ImageGetOrCreate(

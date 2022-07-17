@@ -1,6 +1,9 @@
 import asyncio
 import pytest
 
+from grpc import StatusCode
+from grpc.aio import AioRpcError
+
 import modal.exception
 from modal.client import AioClient
 from modal.exception import ConnectionError, VersionError
@@ -54,9 +57,24 @@ async def test_client_deprecated(servicer):
 @pytest.mark.asyncio
 async def test_server_client_gone_disconnects_client(servicer):
     async with AioClient(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
-        servicer.heartbeat_return_client_gone = True
+        servicer.heartbeat_status_code = StatusCode.NOT_FOUND
         await client._heartbeat()
         await asyncio.sleep(0)  # let event loop take care of cleanup
 
         with pytest.raises(modal.exception.ConnectionError):
             client.stub
+
+
+@pytest.mark.asyncio
+async def test_client_heartbeat_retry(servicer):
+    async with AioClient(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
+        servicer.heartbeat_status_code = StatusCode.UNAVAILABLE
+        # No error.
+        await client._heartbeat()
+        servicer.heartbeat_status_code = StatusCode.DEADLINE_EXCEEDED
+        # No error.
+        await client._heartbeat()
+        servicer.heartbeat_status_code = StatusCode.UNAUTHENTICATED
+        # Raises.
+        with pytest.raises(AioRpcError):
+            await client._heartbeat()
