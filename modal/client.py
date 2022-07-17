@@ -7,7 +7,7 @@ from grpc.aio import AioRpcError
 
 from modal_proto import api_pb2, api_pb2_grpc
 from modal_utils.async_utils import TaskContext, retry, synchronize_apis
-from modal_utils.grpc_utils import ChannelPool
+from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, ChannelPool
 from modal_utils.server_connection import GRPCConnectionFactory
 
 from .config import config, logger
@@ -113,7 +113,7 @@ class _Client:
                     # server has deleted this client - perform graceful shutdown
                     # can't simply await self._stop here since it recursively wait for this task as well
                     asyncio.ensure_future(self._stop())
-                else:
+                elif exc.code() not in RETRYABLE_GRPC_STATUS_CODES:
                     raise
 
     async def __aenter__(self):
