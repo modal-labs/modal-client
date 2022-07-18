@@ -67,6 +67,9 @@ class ChannelPool:
     # Maximum number of concurrent requests per channel.
     MAX_REQUESTS_PER_CHANNEL = 64
 
+    # Don't accept more connections on this channel after this many seconds
+    MAX_CHANNEL_LIFETIME = 90
+
     def __init__(self, task_context: TaskContext, conn_factory: GRPCConnectionFactory) -> None:
         # Only used by start()
         self._task_context = task_context
@@ -103,7 +106,10 @@ class ChannelPool:
     async def _get_channel(self) -> ChannelStruct:
         async with self._lock:
             eligible_channels = [
-                ch for ch in self._channels if ch.n_concurrent_requests < self.MAX_REQUESTS_PER_CHANNEL
+                ch
+                for ch in self._channels
+                if ch.n_concurrent_requests < self.MAX_REQUESTS_PER_CHANNEL
+                and time.time() - ch.created_at < self.MAX_CHANNEL_LIFETIME
             ]
             if eligible_channels:
                 ch = eligible_channels[0]
