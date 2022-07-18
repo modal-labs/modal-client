@@ -145,3 +145,13 @@ async def test_standalone_object(aio_client):
 async def test_is_inside_basic():
     stub = AioStub()
     assert stub.is_inside() is False
+
+
+@pytest.mark.asyncio
+async def test_missing_attr():
+    """Trying to call a non-existent function on the Stub should produce
+    an understandable error message."""
+
+    stub = AioStub()
+    with pytest.raises(NotFoundError):
+        stub.fun()

@@ -5,7 +5,7 @@ from modal_proto import api_pb2
 
 from ._object_meta import ObjectMeta
 from .client import _Client
-from .exception import InvalidError
+from .exception import InvalidError, NotFoundError
 
 
 class Object(metaclass=ObjectMeta):
@@ -107,6 +107,9 @@ class Ref(Object):
         self.namespace = namespace
         self.definition = definition
         super().__init__()
+
+    def __call__(self, *args, **kwargs):
+        raise NotFoundError(f"Stub has no function named {self.tag}.")
 
 
 def ref(app_name: Optional[str], tag: Optional[str] = None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT) -> Ref:
