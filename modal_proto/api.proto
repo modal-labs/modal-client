@@ -605,7 +605,4 @@ service ModalClient {
   rpc FunctionPutOutputs(FunctionPutOutputsRequest) returns (google.protobuf.Empty);  // For containers to return result
   rpc FunctionGetInputs(FunctionGetInputsRequest) returns (FunctionGetInputsResponse);  // For containers to request next call
   rpc FunctionGetOutputs(FunctionGetOutputsRequest) returns (FunctionGetOutputsResponse);  // Returns the next result
-
-  // Usage metrics
-  rpc FunctionGetMetrics(FunctionMetricsRequest) returns (FunctionMetricsResponse)
 }
