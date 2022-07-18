@@ -392,6 +392,10 @@ class _Function(Object, type_prefix="fu"):
         from .app import _container_app, is_local
 
         if is_local():
+            if self._local_app is None:
+                raise InvalidError(
+                    "App is not running. You might need to put the function call inside a `with stub.run():` block."
+                )
             app = self._local_app
         else:
             app = _container_app

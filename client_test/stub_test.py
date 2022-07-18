@@ -115,7 +115,6 @@ def test_deploy_uses_deployment_name_if_specified(servicer, client):
     assert "foo_app" not in servicer.deployed_apps
 
 
-@pytest.mark.skip(reason="revisit in a sec once the app state stuff is fixed")
 def test_run_function_without_app_error():
     stub = Stub()
 
@@ -123,8 +122,10 @@ def test_run_function_without_app_error():
     def foo():
         pass
 
-    with pytest.raises(modal.exception.InvalidError):
+    with pytest.raises(modal.exception.InvalidError) as excinfo:
         foo()
+
+    assert "stub.run" in str(excinfo.value)
 
 
 @pytest.mark.asyncio
