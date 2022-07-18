@@ -68,7 +68,7 @@ class ChannelPool:
     MAX_REQUESTS_PER_CHANNEL = 64
 
     # Don't accept more connections on this channel after this many seconds
-    MAX_CHANNEL_LIFETIME = 90
+    MAX_CHANNEL_LIFETIME = 30
 
     def __init__(self, task_context: TaskContext, conn_factory: GRPCConnectionFactory) -> None:
         # Only used by start()
