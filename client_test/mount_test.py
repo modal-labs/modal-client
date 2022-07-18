@@ -1,8 +1,9 @@
 import hashlib
 import os
 import pytest
+import sys
 
-from modal import Stub
+from modal import Stub, create_package_mounts
 from modal._blob_utils import LARGE_FILE_LIMIT
 from modal.aio import AioStub
 from modal.mount import AioMount, Mount
@@ -76,3 +77,22 @@ def test_create_mount_file_errors(servicer, client):
         m = Mount(local_dir="abc", remote_dir="/abc")
         with pytest.raises(NotADirectoryError):
             running_app.load(m)
+
+
+def test_create_package_mount(servicer, client, test_dir):
+    stub = Stub()
+
+    sys.path.append((test_dir / "supports").as_posix())
+
+    @stub.function(mounts=create_package_mounts(["pkg_a", "pkg_b"]))
+    def f():
+        pass
+
+    with stub.run(client=client):
+        files = servicer.files_name2sha.keys()
+        assert any(["/pkg/pkg_a/a.py" in f for f in files])
+        assert any(["/pkg/pkg_a/b/c.py" in f for f in files])
+        assert any(["/pkg/pkg_b/f.py" in f for f in files])
+        assert any(["/pkg/pkg_b/g/h.py" in f for f in files])
+        assert not any(["/pkg/pkg_c/i.py" in f for f in files])
+        assert not any(["/pkg/pkg_c/j/k.py" in f for f in files])

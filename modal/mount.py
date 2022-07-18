@@ -4,7 +4,7 @@ import os
 import time
 import warnings
 from pathlib import Path
-from typing import Callable, Collection, Iterable, Optional, Union
+from typing import AsyncIterable, Callable, Collection, Optional, Union
 
 import aiostream
 
@@ -183,7 +183,7 @@ def _create_client_mount():
 _, aio_create_client_mount = synchronize_apis(_create_client_mount)
 
 
-async def _create_package_mounts(module_names: Collection[str]) -> Iterable[_Mount]:
+async def _create_package_mounts(module_names: Collection[str]) -> AsyncIterable[_Mount]:
     """Returns a `modal.Mount` that makes local modules listed in `module_names` available inside the container.
     This works by mounting the local path of each module's package to a directory inside the container that's on `PYTHONPATH`.
 
