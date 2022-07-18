@@ -96,3 +96,22 @@ def test_create_package_mount(servicer, client, test_dir):
         assert any(["/pkg/pkg_b/g/h.py" in f for f in files])
         assert not any(["/pkg/pkg_c/i.py" in f for f in files])
         assert not any(["/pkg/pkg_c/j/k.py" in f for f in files])
+
+
+def test_stub_mounts(servicer, client, test_dir):
+    sys.path.append((test_dir / "supports").as_posix())
+
+    stub = Stub(mounts=create_package_mounts(["pkg_a", "pkg_b"]))
+
+    @stub.function()
+    def f():
+        pass
+
+    with stub.run(client=client):
+        files = servicer.files_name2sha.keys()
+        assert any(["/pkg/pkg_a/a.py" in f for f in files])
+        assert any(["/pkg/pkg_a/b/c.py" in f for f in files])
+        assert any(["/pkg/pkg_b/f.py" in f for f in files])
+        assert any(["/pkg/pkg_b/g/h.py" in f for f in files])
+        assert not any(["/pkg/pkg_c/i.py" in f for f in files])
+        assert not any(["/pkg/pkg_c/j/k.py" in f for f in files])
