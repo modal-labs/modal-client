@@ -2,8 +2,9 @@ import asyncio
 import concurrent.futures
 import os
 import time
+import warnings
 from pathlib import Path
-from typing import Callable, Optional, Union
+from typing import Callable, Collection, Iterable, Optional, Union
 
 import aiostream
 
@@ -182,9 +183,9 @@ def _create_client_mount():
 _, aio_create_client_mount = synchronize_apis(_create_client_mount)
 
 
-async def _create_package_mount(module_name: str):
-    """Returns a `modal.Mount` that makes a local module with name `module_name` available inside the container.
-    This works by mounting the local path of the package to a directory inside the container that's on `PYTHONPATH`.
+async def _create_package_mounts(module_names: Collection[str]) -> Iterable[_Mount]:
+    """Returns a `modal.Mount` that makes local modules listed in `module_names` available inside the container.
+    This works by mounting the local path of each module's package to a directory inside the container that's on `PYTHONPATH`.
 
     **Usage**
 
@@ -194,19 +195,32 @@ async def _create_package_mount(module_name: str):
 
     stub = modal.Stub()
 
-    @stub.function(mounts=[modal.create_package_mount("my_local_module")])
+    @stub.function(mounts=[
+        *modal.create_package_mounts(["my_local_module", "my_other_module"]),
+        modal.Mount(local_dir="/my_local_dir", remote_dir="/"),
+    ])
     def f():
         my_local_module.do_stuff()
     ```
     """
-    mount_infos = get_module_mount_info(module_name)
+    for module_name in module_names:
+        mount_infos = get_module_mount_info(module_name)
 
-    assert len(mount_infos) == 1
+        for mount_info in mount_infos:
+            _, base_path, module_mount_condition = mount_info
+            yield _Mount(
+                local_dir=base_path, remote_dir=f"/pkg/{module_name}", condition=module_mount_condition, recursive=True
+            )
 
-    _, base_path, module_mount_condition = mount_infos[0]
-    return _Mount(
-        local_dir=base_path, remote_dir=f"/pkg/{module_name}", condition=module_mount_condition, recursive=True
+
+async def _create_package_mount(module_name: str):
+    warnings.warn(
+        "`create_package_mount` is deprecated. Please use `create_package_mounts` instead.", DeprecationWarning
     )
+    mounts = [m async for m in _create_package_mounts([module_name])]
+    assert len(mounts) == 1
+    return mounts[0]
 
 
 create_package_mount, aio_create_package_mount = synchronize_apis(_create_package_mount)
+create_package_mounts, aio_create_package_mounts = synchronize_apis(_create_package_mounts)
