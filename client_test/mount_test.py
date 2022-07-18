@@ -101,9 +101,9 @@ def test_create_package_mount(servicer, client, test_dir):
 def test_stub_mounts(servicer, client, test_dir):
     sys.path.append((test_dir / "supports").as_posix())
 
-    stub = Stub(mounts=create_package_mounts(["pkg_a", "pkg_b"]))
+    stub = Stub(mounts=create_package_mounts(["pkg_b"]))
 
-    @stub.function()
+    @stub.function(mounts=create_package_mounts(["pkg_a"]))
     def f():
         pass
 

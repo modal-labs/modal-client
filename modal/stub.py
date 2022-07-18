@@ -60,8 +60,9 @@ class _Stub:
     _default_image: _Image
     _client_mount: Optional[Union[_Mount, Ref]]
     _function_mounts: Dict[str, _Mount]
+    _mounts: Collection[Union[_Mount, Ref]]
 
-    def __init__(self, name: str = None, **blueprint):
+    def __init__(self, name: str = None, *, mounts: Collection[Union[_Mount, Ref]] = [], **blueprint):
         self._name = name
         if name is not None:
             self._description = name
@@ -71,6 +72,7 @@ class _Stub:
         self._default_image = _DebianSlim()
         self._client_mount = None
         self._function_mounts = {}
+        self._mounts = mounts
         super().__init__()
 
     @property
@@ -270,7 +272,8 @@ class _Stub:
             return self._default_image
 
     def _get_function_mounts(self, raw_f):
-        mounts = []
+        # Get the common mounts for the stub.
+        mounts = list(self._mounts)
 
         # Create client mount
         if self._client_mount is None:
