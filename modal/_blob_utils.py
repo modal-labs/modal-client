@@ -1,8 +1,10 @@
 import dataclasses
 import os
+import ssl
 from typing import Optional
 
-import aiohttp
+import certifi
+from aiohttp import ClientSession, TCPConnector
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import retry
@@ -17,9 +19,24 @@ MAX_OBJECT_SIZE_BYTES = 64 * 1024  # 64 kb
 LARGE_FILE_LIMIT = 1024 * 1024  # 1MB
 
 
+def http_client_with_tls() -> ClientSession:
+    """Create a new HTTP client session with standard, bundled TLS certificates.
+
+    This is necessary to prevent client issues on some system where Python does
+    not come pre-installed with specific TLS certificates that are necessary to
+    connect to AWS S3 bucket URLs.
+
+    Specifically: the error "unable to get local issuer certificate" when making
+    an aiohttp request.
+    """
+    ssl_context = ssl.create_default_context(cafile=certifi.where())
+    connector = TCPConnector(ssl=ssl_context)
+    return ClientSession(connector=connector)
+
+
 @retry(n_attempts=5, base_delay=0.1, timeout=None)
-async def _upload_to_url(upload_url, content_md5, aiohttp_payload):
-    async with aiohttp.ClientSession() as session:
+async def _upload_to_url(upload_url: str, content_md5: str, aiohttp_payload) -> None:
+    async with http_client_with_tls() as session:
         headers = {"content-type": "application/octet-stream"}
 
         if use_md5(upload_url):
@@ -31,7 +48,7 @@ async def _upload_to_url(upload_url, content_md5, aiohttp_payload):
                 raise Exception(f"Put to {upload_url} failed with status {resp.status}: {text}")
 
 
-async def _blob_upload(content_md5: str, aiohttp_payload, stub):
+async def _blob_upload(content_md5: str, aiohttp_payload, stub) -> str:
     req = api_pb2.BlobCreateRequest(content_md5=content_md5)
     resp = await stub.BlobCreate(req)
 
@@ -43,12 +60,12 @@ async def _blob_upload(content_md5: str, aiohttp_payload, stub):
     return blob_id
 
 
-async def blob_upload(payload: bytes, stub):
+async def blob_upload(payload: bytes, stub) -> str:
     content_md5 = get_md5_base64(payload)
     return await _blob_upload(content_md5, payload, stub)
 
 
-async def blob_upload_file(filename: str, stub):
+async def blob_upload_file(filename: str, stub) -> str:
     content_md5 = get_md5_base64(open(filename, "rb"))
     with open(filename, "rb") as fp:
         return await _blob_upload(content_md5, fp, stub)
@@ -56,7 +73,7 @@ async def blob_upload_file(filename: str, stub):
 
 @retry(n_attempts=5, base_delay=0.1, timeout=None)
 async def _download_from_url(download_url):
-    async with aiohttp.ClientSession() as session:
+    async with http_client_with_tls() as session:
         async with session.get(download_url) as resp:
             if resp.status != 200:
                 text = await resp.text()
