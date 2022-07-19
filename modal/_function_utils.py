@@ -7,7 +7,7 @@ import cloudpickle
 
 from modal_proto import api_pb2
 
-from .config import logger
+from .config import config, logger
 from .mount import _Mount
 
 ROOT_DIR = "/root"
@@ -91,6 +91,9 @@ class FunctionInfo:
             }
         else:
             return {}
+
+        if not config.get("automount"):
+            return
 
         # Auto-mount local modules that have been imported in global scope.
         # Note: sys.modules may change during the iteration

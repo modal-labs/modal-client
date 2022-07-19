@@ -109,3 +109,22 @@ def test_mounted_files_sys_prefix(test_dir, venv_path):
     # Assert nothing from `pkg_c` is in the output.
     assert not any(["i.py" in f for f in files])
     assert not any(["k.py" in f for f in files])
+
+
+def test_mounted_files_config(test_dir):
+    p = subprocess.run(
+        [sys.executable, str(script_path)],
+        capture_output=True,
+        cwd=test_dir / Path("supports"),
+        env={**os.environ, "PYTHONPATH": str(test_dir / Path("supports")), "MODAL_AUTOMOUNT": ""},
+    )
+    stdout = p.stdout.decode("utf-8")
+    stderr = p.stderr.decode("utf-8")
+    print("stdout: ", stdout)
+    print("stderr: ", stderr)
+    files = set(stdout.splitlines())
+
+    assert len(files) == 0
+    # Assert everything from `pkg_a` is in the output.
+    assert not any(["a.py" in f for f in files])
+    assert not any(["f.py" in f for f in files])
