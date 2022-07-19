@@ -93,7 +93,7 @@ class FunctionInfo:
             return {}
 
         if not config.get("automount"):
-            return
+            return mounts
 
         # Auto-mount local modules that have been imported in global scope.
         # Note: sys.modules may change during the iteration

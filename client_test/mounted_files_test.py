@@ -124,7 +124,8 @@ def test_mounted_files_config(test_dir):
     print("stderr: ", stderr)
     files = set(stdout.splitlines())
 
-    assert len(files) == 0
+    assert len(files) == 1
     # Assert everything from `pkg_a` is in the output.
+    assert any(["script.py" in f for f in files])
     assert not any(["a.py" in f for f in files])
     assert not any(["f.py" in f for f in files])

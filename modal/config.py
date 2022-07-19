@@ -51,6 +51,10 @@ Other possible configuration options are:
   Defaults to 10.
   Number of seconds to wait for logs to drain when closing the session,
   before giving up.
+* ``automount`` (in the .toml file) / ``MODAL_AUTOMOUNT`` (as an env var).
+  Defaults to True.
+  By default, Modal automatically mounts modules imported in the current scope, that
+  are deemed to be "local". This can be turned off by setting this to False.
 * ``server_url`` (in the .toml file) / ``MODAL_SERVER_URL`` (as an env var).
   Defaults to ``https://api.modal.com``.
   Not typically meant to be used.
