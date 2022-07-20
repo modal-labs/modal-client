@@ -7,7 +7,7 @@ from grpc.aio import AioRpcError
 
 from modal._container_entrypoint import RATE_LIMIT_DELAY, main
 
-# from modal._test_support import SLEEP_DELAY
+# from modal_test_support import SLEEP_DELAY
 from modal._serialization import serialize
 from modal.client import Client
 from modal.exception import InvalidError
@@ -60,11 +60,11 @@ def _run_container(servicer, module_name, function_name, rate_limit_times=0, fai
 
         servicer.object_ids = {
             "image": "im-1",
-            "modal._test_support.functions.square": "fu-2",
-            "modal._test_support.functions.square_sync_returning_async": "fu-3",
-            "modal._test_support.functions.square_async": "fu-4",
-            "modal._test_support.functions.raises": "fu-5",
-            "modal._test_support.missing_main_conditional.square": "fu-6",
+            "modal_test_support.functions.square": "fu-2",
+            "modal_test_support.functions.square_sync_returning_async": "fu-3",
+            "modal_test_support.functions.square_async": "fu-4",
+            "modal_test_support.functions.raises": "fu-5",
+            "modal_test_support.missing_main_conditional.square": "fu-6",
         }
         main(container_args, client)
 
@@ -73,7 +73,7 @@ def _run_container(servicer, module_name, function_name, rate_limit_times=0, fai
 
 def test_container_entrypoint_success(servicer, event_loop):
     t0 = time.time()
-    client, outputs = _run_container(servicer, "modal._test_support.functions", "square")
+    client, outputs = _run_container(servicer, "modal_test_support.functions", "square")
     assert 0 <= time.time() - t0 < EXTRA_TOLERANCE_DELAY
 
     assert len(outputs) == 1
@@ -87,7 +87,7 @@ def test_container_entrypoint_success(servicer, event_loop):
 @skip_github_actions_non_linux
 def test_container_entrypoint_async(servicer):
     t0 = time.time()
-    client, outputs = _run_container(servicer, "modal._test_support.functions", "square_async")
+    client, outputs = _run_container(servicer, "modal_test_support.functions", "square_async")
     assert SLEEP_DELAY <= time.time() - t0 < SLEEP_DELAY + EXTRA_TOLERANCE_DELAY
 
     assert len(outputs) == 1
@@ -101,7 +101,7 @@ def test_container_entrypoint_async(servicer):
 @skip_github_actions_non_linux
 def test_container_entrypoint_sync_returning_async(servicer):
     t0 = time.time()
-    client, outputs = _run_container(servicer, "modal._test_support.functions", "square_sync_returning_async")
+    client, outputs = _run_container(servicer, "modal_test_support.functions", "square_sync_returning_async")
     assert SLEEP_DELAY <= time.time() - t0 < SLEEP_DELAY + EXTRA_TOLERANCE_DELAY
 
     assert len(outputs) == 1
@@ -114,7 +114,7 @@ def test_container_entrypoint_sync_returning_async(servicer):
 
 @skip_github_actions_non_linux
 def test_container_entrypoint_failure(servicer):
-    client, outputs = _run_container(servicer, "modal._test_support.functions", "raises")
+    client, outputs = _run_container(servicer, "modal_test_support.functions", "raises")
 
     assert len(outputs) == 1
     assert isinstance(outputs[0], api_pb2.FunctionPutOutputsRequest)
@@ -129,7 +129,7 @@ def test_container_entrypoint_rate_limited(servicer, event_loop):
     rate_limit_times = 3
     t0 = time.time()
     client, outputs = _run_container(
-        servicer, "modal._test_support.functions", "square", rate_limit_times=rate_limit_times
+        servicer, "modal_test_support.functions", "square", rate_limit_times=rate_limit_times
     )
     assert (
         rate_limit_times * RATE_LIMIT_DELAY
@@ -147,12 +147,12 @@ def test_container_entrypoint_rate_limited(servicer, event_loop):
 
 def test_container_entrypoint_grpc_failure(servicer, event_loop):
     with pytest.raises(AioRpcError):
-        _run_container(servicer, "modal._test_support.functions", "square", fail_get_inputs=True)
+        _run_container(servicer, "modal_test_support.functions", "square", fail_get_inputs=True)
 
 
 def test_container_entrypoint_missing_main_conditional(servicer, event_loop):
     with pytest.raises(InvalidError) as excinfo:
-        _run_container(servicer, "modal._test_support.missing_main_conditional", "square")
+        _run_container(servicer, "modal_test_support.missing_main_conditional", "square")
 
     # TODO(erikbern): a container that fails during imports will not propagate the exception
     # back to the user. We should fix this.

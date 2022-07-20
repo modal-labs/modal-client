@@ -1,6 +1,6 @@
 import pytest
 
-from modal._test_support.functions import deprecated_function
+from modal_test_support.functions import deprecated_function
 
 # Not a pytest unit test, but an extra assertion that we catch issues in global scope too
 # See #2228
