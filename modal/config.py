@@ -79,6 +79,7 @@ import grpc
 import sentry_sdk
 import toml
 from sentry_sdk.integrations.atexit import AtexitIntegration
+from sentry_sdk.integrations.logging import LoggingIntegration
 
 import modal
 import modal_utils
@@ -252,10 +253,14 @@ if config["sentry_dsn"] and "localhost" not in config["server_url"]:
         logger.debug("Skipping Sentry initialization, because Hub already exists.")
     else:
         logger.debug("Initializing Sentry with sample rate 1.")
+        sentry_logging = LoggingIntegration(
+            level=logging.DEBUG,  # Capture debug and above as breadcrumbs
+            event_level=logging.ERROR,  # Send errors as events
+        )
         sentry_sdk.init(
             # Sentry DSN for the client project; not secret.
             config["sentry_dsn"],
-            integrations=[AtexitIntegration(callback=sentry_exit_callback)],
+            integrations=[AtexitIntegration(callback=sentry_exit_callback), sentry_logging],
             traces_sample_rate=1,
             before_send=filter_exceptions,
             ignore_errors=FILTERED_ERROR_TYPES,  # type: ignore
