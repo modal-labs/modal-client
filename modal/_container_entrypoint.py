@@ -362,6 +362,8 @@ def main(container_args, client):
     else:
         # This is not in function_context, so that any global scope code that runs during import
         # runs on the main thread.
+        # TODO(erikbern): this function call will import user code. If there's a failure at this
+        # point, we don't pass the exception back to the caller. We should consider doing that.
         imported_function = _path_to_function(
             container_args.function_def.module_name, container_args.function_def.function_name
         )

@@ -10,7 +10,7 @@ try:
 except Exception as e:
     exc = e
 finally:
-    assert isinstance(exc, DeprecationWarning)
+    assert isinstance(exc, DeprecationWarning)  # If you see this, try running `pytest client/client_test`
 
 
 def test_deprecation():

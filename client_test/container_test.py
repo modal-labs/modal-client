@@ -10,6 +10,7 @@ from modal._container_entrypoint import RATE_LIMIT_DELAY, main
 # from modal._test_support import SLEEP_DELAY
 from modal._serialization import serialize
 from modal.client import Client
+from modal.exception import InvalidError
 from modal_proto import api_pb2
 
 EXTRA_TOLERANCE_DELAY = 0.25
@@ -63,6 +64,7 @@ def _run_container(servicer, module_name, function_name, rate_limit_times=0, fai
             "modal._test_support.functions.square_sync_returning_async": "fu-3",
             "modal._test_support.functions.square_async": "fu-4",
             "modal._test_support.functions.raises": "fu-5",
+            "modal._test_support.missing_main_conditional.square": "fu-6",
         }
         main(container_args, client)
 
@@ -146,3 +148,12 @@ def test_container_entrypoint_rate_limited(servicer, event_loop):
 def test_container_entrypoint_grpc_failure(servicer, event_loop):
     with pytest.raises(AioRpcError):
         _run_container(servicer, "modal._test_support.functions", "square", fail_get_inputs=True)
+
+
+def test_container_entrypoint_missing_main_conditional(servicer, event_loop):
+    with pytest.raises(InvalidError) as excinfo:
+        _run_container(servicer, "modal._test_support.missing_main_conditional", "square")
+
+    # TODO(erikbern): a container that fails during imports will not propagate the exception
+    # back to the user. We should fix this.
+    assert 'if __name__ == "__main__":' in str(excinfo.value)

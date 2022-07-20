@@ -193,12 +193,26 @@ class _Stub:
 
     @synchronizer.asynccontextmanager
     async def run(self, client=None, stdout=None, show_progress=None):
+        if not is_local():
+            raise InvalidError(
+                "Can not run an app from within a container. You might need to do something like this: \n"
+                'if __name__ == "__main__":\n'
+                "    with stub.run():\n"
+                "        ...\n"
+            )
         async with self._get_client(client) as client:
             output_mgr = OutputManager(stdout, show_progress)
             async with self._run(client, output_mgr, None) as app:
                 yield app
 
     async def run_forever(self, client=None, stdout=None, show_progress=None):
+        if not is_local():
+            raise InvalidError(
+                "Can not run an app from within a container. You might need to do something like this: \n"
+                'if __name__ == "__main__":\n'
+                "    with stub.run_forever():\n"
+                "        ...\n"
+            )
         async with self._get_client(client) as client:
             output_mgr = OutputManager(stdout, show_progress)
             async with self._run(client, output_mgr, None):
@@ -221,6 +235,8 @@ class _Stub:
     ):
         """Deploys and exports objects in the app
 
+        Typically, using the command line tool `modal app deploy <module or script>` would be used rather than this method.
+
         Usage:
         ```python
         if __name__ == "__main__":
@@ -233,6 +249,8 @@ class _Stub:
           the client has closed.
         * Allows for certain of these objects, *deployment objects*, to be referred to and used by other apps
         """
+        if not is_local():
+            raise InvalidError("Can not run an deploy from within a container.")
         if name is None:
             name = self.name
         if name is None:
