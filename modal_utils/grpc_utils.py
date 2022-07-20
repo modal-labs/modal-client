@@ -145,6 +145,10 @@ class ChannelPool:
             try:
                 fn = ch.get_method(rpc_type, method, request_serializer, response_deserializer)
                 ret = await fn(req, **kwargs)
+            except AioRpcError:
+                channel_age = time.time() - ch.created_at
+                logger.debug(f"Error calling {method} on channel of age {channel_age:.4f}s")
+                raise
             finally:
                 ch.n_concurrent_requests -= 1
             return ret
@@ -160,6 +164,10 @@ class ChannelPool:
                 gen = fn(req, **kwargs)
                 async for ret in gen:
                     yield ret
+            except AioRpcError:
+                channel_age = time.time() - ch.created_at
+                logger.debug(f"Error calling {method} on channel of age {channel_age:.4f}s")
+                raise
             finally:
                 ch.n_concurrent_requests -= 1
 
