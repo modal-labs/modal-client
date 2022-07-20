@@ -13,11 +13,11 @@ from modal_utils.package_utils import import_stub_by_ref
 
 from .client import Client
 from .config import (
-    _config_envs,
-    _config_set_active_env,
     _env,
-    _store_user_config,
     config,
+    config_envs,
+    config_set_active_env,
+    store_user_config,
     user_config_path,
 )
 
@@ -66,7 +66,7 @@ def set(
         client.verify()
         print("Token verified successfully")
 
-    _store_user_config({"token_id": token_id, "token_secret": token_secret}, env=env)
+    store_user_config({"token_id": token_id, "token_secret": token_secret}, env=env)
     print(f"Token written to {user_config_path}")
 
 
@@ -83,7 +83,7 @@ def main():
 
 @env_app.command(help="Change the currently active Modal environment.")
 def activate(env: str = typer.Argument(..., help="Modal environment to activate")):
-    _config_set_active_env(env)
+    config_set_active_env(env)
 
 
 @env_app.command(help="Print the active Modal environments.")
@@ -93,7 +93,7 @@ def current():
 
 @env_app.command(help="List all Modal environments that are defined.")
 def list():
-    for env in _config_envs():
+    for env in config_envs():
         print(f"{env} [active]" if _env == env else env)
 
 

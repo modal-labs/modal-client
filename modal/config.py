@@ -103,7 +103,7 @@ def _read_user_config():
 _user_config = _read_user_config()
 
 
-def _config_envs():
+def config_envs():
     return _user_config.keys()
 
 
@@ -115,7 +115,7 @@ def _config_active_env():
         return "default"
 
 
-def _config_set_active_env(env: str):
+def config_set_active_env(env: str):
     if env not in _user_config:
         raise KeyError(env)
 
@@ -197,7 +197,7 @@ logger.setLevel(log_level_numeric)
 # Utils to write config
 
 
-def _store_user_config(new_settings, env=None):
+def store_user_config(new_settings, env=None):
     """Internal method, used by the CLI to set tokens."""
     if env is None:
         env = _env
