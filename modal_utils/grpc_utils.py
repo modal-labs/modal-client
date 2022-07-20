@@ -178,18 +178,22 @@ class ChannelPool:
         return self._wrap_generator(RPCType.STREAM_STREAM, method, request_serializer, response_deserializer)
 
 
-async def retry_transient_errors(fn, *args, base_delay=0.1, max_delay=1, delay_factor=2, max_retries=3):
+async def retry_transient_errors(
+    fn, *args, base_delay=0.1, max_delay=1, delay_factor=2, max_retries=3, additional_status_codes=[]
+):
     """Retry on transient gRPC failures with back-off until max_retries is reached.
     If max_retries is None, retry forever."""
 
     delay = base_delay
     n_retries = 0
 
+    status_codes = [*RETRYABLE_GRPC_STATUS_CODES, *additional_status_codes]
+
     while True:
         try:
             return await fn(*args)
         except AioRpcError as exc:
-            if exc.code() in RETRYABLE_GRPC_STATUS_CODES:
+            if exc.code() in status_codes:
                 if max_retries is not None and n_retries >= max_retries:
                     raise
                 n_retries += 1

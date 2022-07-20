@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Collection, Dict, Optional, Union
 
 from aiostream import stream
+from grpc import StatusCode
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import queue_batch_iterator, synchronize_apis
@@ -100,7 +101,12 @@ class Invocation:
 
         inp = await _create_input(args, kwargs, client, function_call_id)
         request_put = api_pb2.FunctionPutInputsRequest(function_id=function_id, inputs=[inp])
-        await retry_transient_errors(client.stub.FunctionPutInputs, request_put, max_retries=None)
+        await retry_transient_errors(
+            client.stub.FunctionPutInputs,
+            request_put,
+            max_retries=None,
+            additional_status_codes=[StatusCode.RESOURCE_EXHAUSTED],
+        )
 
         return Invocation(client.stub, function_id, function_call_id, client)
 
@@ -167,7 +173,12 @@ class _MapInvocation:
 
             async for inputs in queue_batch_iterator(input_queue, MAP_INVOCATION_CHUNK_SIZE):
                 request = api_pb2.FunctionPutInputsRequest(function_id=self.function_id, inputs=inputs)
-                await retry_transient_errors(self.client.stub.FunctionPutInputs, request, max_retries=None)
+                await retry_transient_errors(
+                    self.client.stub.FunctionPutInputs,
+                    request,
+                    max_retries=None,
+                    additional_status_codes=[StatusCode.RESOURCE_EXHAUSTED],
+                )
 
             have_all_inputs = True
             yield
