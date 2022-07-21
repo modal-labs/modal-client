@@ -5,7 +5,7 @@ import time
 
 from grpc import StatusCode
 from grpc.aio import AioRpcError, Channel
-from sentry_sdk import capture_exception
+from sentry_sdk import add_breadcrumb, capture_exception
 
 from modal_utils.server_connection import GRPCConnectionFactory
 
@@ -147,7 +147,10 @@ class ChannelPool:
                 ret = await fn(req, **kwargs)
             except AioRpcError:
                 channel_age = time.time() - ch.created_at
-                logger.debug(f"Error calling {method} on channel of age {channel_age:.4f}s")
+                add_breadcrumb(
+                    message=f"Error calling {method} on channel of age {channel_age:.4f}s",
+                    level="warning",
+                )
                 raise
             finally:
                 ch.n_concurrent_requests -= 1
@@ -166,7 +169,10 @@ class ChannelPool:
                     yield ret
             except AioRpcError:
                 channel_age = time.time() - ch.created_at
-                logger.debug(f"Error calling {method} on channel of age {channel_age:.4f}s")
+                add_breadcrumb(
+                    message=f"Error calling {method} on channel of age {channel_age:.4f}s",
+                    level="warning",
+                )
                 raise
             finally:
                 ch.n_concurrent_requests -= 1
