@@ -44,6 +44,8 @@ MAX_OUTPUT_BATCH_SIZE = 100
 RTT_S = 0.5  # conservative estimate of RTT in seconds.
 RATE_LIMIT_DELAY = 0.25
 
+CONTAINER_IDLE_TIMEOUT = 60
+
 
 class _FunctionContext:
     """This class isn't much more than a helper method for some gRPC calls.
@@ -118,8 +120,16 @@ class _FunctionContext:
             task_id=self.task_id,
         )
         eof_received = False
+        last_input = time.time()
         while not eof_received:
+            time_left = last_input + CONTAINER_IDLE_TIMEOUT - time.time()
+
+            if time_left < 0:
+                logger.debug(f"Task {self.task_id} reached idle time-out.")
+                break
+
             request.max_values = self.get_max_inputs_to_fetch()
+            request.timeout = min(time_left, 15)
 
             try:
                 response = await retry_transient_errors(self.client.stub.FunctionGetInputs, request)
@@ -132,6 +142,8 @@ class _FunctionContext:
 
             if not response.inputs:
                 continue
+
+            last_input = time.time()
 
             for item in response.inputs:
                 if item.kill_switch:
