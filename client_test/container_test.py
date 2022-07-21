@@ -39,11 +39,15 @@ def _get_output(function_output_req: api_pb2.FunctionPutOutputsRequest) -> api_p
     return function_output_req.outputs[0]
 
 
-def _run_container(servicer, module_name, function_name, rate_limit_times=0, fail_get_inputs=False):
+def _run_container(servicer, module_name, function_name, rate_limit_times=0, fail_get_inputs=False, inputs=None):
     with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
-        servicer.container_inputs = _get_inputs(client)
+        if inputs is None:
+            servicer.container_inputs = _get_inputs(client)
+        else:
+            servicer.container_inputs = inputs
         servicer.rate_limit_times = rate_limit_times
         servicer.fail_get_inputs = fail_get_inputs
+        print("setting", servicer.container_inputs)
 
         function_def = api_pb2.Function(
             module_name=module_name,
@@ -143,6 +147,16 @@ def test_container_entrypoint_rate_limited(servicer, event_loop):
     output = _get_output(outputs[0])
     assert output.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     assert output.data == serialize(42**2)
+
+
+def test_container_entrypoint_idle_timeout(servicer, event_loop, monkeypatch):
+    monkeypatch.setattr("modal._container_entrypoint.CONTAINER_IDLE_TIMEOUT", 0.1)
+    t0 = time.time()
+    # Run container with no inputs, so it hits idle timeout.
+    client, outputs = _run_container(servicer, "modal_test_support.functions", "square", inputs=[])
+    assert 0 <= time.time() - t0 < EXTRA_TOLERANCE_DELAY
+
+    assert len(outputs) == 0
 
 
 def test_container_entrypoint_grpc_failure(servicer, event_loop):

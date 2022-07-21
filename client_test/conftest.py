@@ -144,6 +144,9 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         elif self.rate_limit_times > 0:
             self.rate_limit_times -= 1
             await context.abort(StatusCode.RESOURCE_EXHAUSTED, "Rate limit exceeded")
+        elif not self.container_inputs:
+            await asyncio.sleep(request.timeout)
+            return api_pb2.FunctionGetInputsResponse(inputs=[])
         else:
             return self.container_inputs.pop(0)
 
