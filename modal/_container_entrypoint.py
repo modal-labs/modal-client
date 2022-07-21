@@ -74,7 +74,7 @@ class _FunctionContext:
             try:
                 yield
             finally:
-                await self.output_queue.put((None, None))
+                await self.output_queue.put(None)
 
     async def initialize_app(self):
         await _App.init_container(self._client, self.app_id, self.task_id)
@@ -165,22 +165,19 @@ class _FunctionContext:
         """Background task that tries to drain output queue until it's empty,
         or the output buffer changes, and then sends the entire batch in one request.
         """
-        cur_function_call_id = None
         outputs: List[Any] = []
 
         async def _send():
-            nonlocal outputs, cur_function_call_id
+            nonlocal outputs
 
             if not outputs:
                 return
 
-            req = api_pb2.FunctionPutOutputsRequest(
-                outputs=outputs, function_call_id=cur_function_call_id, task_id=self.task_id
-            )
+            req = api_pb2.FunctionPutOutputsRequest(outputs=outputs)
+
             # No timeout so this can block forever.
             await retry_transient_errors(self.client.stub.FunctionPutOutputs, req, max_retries=None)
 
-            cur_function_call_id = None
             outputs = []
 
         def _try_get_output():
@@ -190,33 +187,27 @@ class _FunctionContext:
                 return None
 
         while True:
-            output = _try_get_output()
+            item = _try_get_output()
 
-            if output is None:
+            if item is None:
                 # Queue is empty, send what we have so far.
                 await _send()
                 # Block until the queue has values again.
-                output = await self.output_queue.get()
-
-            (item, function_call_id) = output
+                item = await self.output_queue.get()
 
             # No more inputs coming.
             if item is None:
                 await _send()
                 break
 
-            function_call_id_changed = cur_function_call_id is not None and function_call_id != cur_function_call_id
-
             # Send what we have so far for this output buffer and switch tracks
-            if function_call_id_changed or len(outputs) >= MAX_OUTPUT_BATCH_SIZE:
+            if len(outputs) >= MAX_OUTPUT_BATCH_SIZE:
                 await _send()
                 outputs = [item]
             else:
                 outputs.append(item)
 
-            cur_function_call_id = function_call_id
-
-    async def enqueue_output(self, function_call_id, input_id, idx, **kwargs):
+    async def enqueue_output(self, input_id, idx, **kwargs):
         # upload data to S3 if too big.
         if "data" in kwargs and kwargs["data"] and len(kwargs["data"]) > MAX_OBJECT_SIZE_BYTES:
             data_blob_id = await blob_upload(kwargs["data"], self.client.stub)
@@ -225,7 +216,7 @@ class _FunctionContext:
             kwargs["data_blob_id"] = data_blob_id
 
         result = api_pb2.GenericResult(input_id=input_id, idx=idx, **kwargs)
-        await self.output_queue.put((result, function_call_id))
+        await self.output_queue.put(result)
 
     def track_function_call_time(self, time_elapsed: float):
         self.total_user_time += time_elapsed
@@ -236,10 +227,9 @@ class _FunctionContext:
 FunctionContext, AioFunctionContext = synchronize_apis(_FunctionContext)
 
 
-def _call_function_generator(function_context, function_call_id, input_id, res, idx):
+def _call_function_generator(function_context, input_id, res, idx):
     for value in res:
         function_context.enqueue_output(
-            function_call_id,
             input_id,
             idx,
             status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
@@ -249,7 +239,6 @@ def _call_function_generator(function_context, function_call_id, input_id, res, 
 
     # send EOF
     function_context.enqueue_output(
-        function_call_id,
         input_id,
         idx,
         status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
@@ -257,11 +246,10 @@ def _call_function_generator(function_context, function_call_id, input_id, res, 
     )
 
 
-def _call_function_asyncgen(function_context, function_call_id, input_id, res, idx):
+def _call_function_asyncgen(function_context, input_id, res, idx):
     async def run_asyncgen():
         async for value in res:
             await function_context.enqueue_output(
-                function_call_id,
                 input_id,
                 idx,
                 status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
@@ -271,7 +259,6 @@ def _call_function_asyncgen(function_context, function_call_id, input_id, res, i
 
         # send EOF
         await function_context.enqueue_output(
-            function_call_id,
             input_id,
             idx,
             status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
@@ -290,7 +277,6 @@ def call_function(
 ):
     input_id = function_input.input_id
     idx = function_input.idx
-    function_call_id = function_input.function_call_id
 
     # TODO: this is somewhat hacky. We need to know whether the function is async or not in order to
     # coerce the input arguments to the right type. The proper way to do is to call the function and
@@ -310,9 +296,9 @@ def call_function(
 
         if function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR:
             if inspect.isgenerator(res):
-                _call_function_generator(function_context, function_call_id, input_id, res, idx)
+                _call_function_generator(function_context, input_id, res, idx)
             elif inspect.isasyncgen(res):
-                _call_function_asyncgen(aio_function_context, function_call_id, input_id, res, idx)
+                _call_function_asyncgen(aio_function_context, input_id, res, idx)
             else:
                 raise InvalidError("Function of type generator returned a non-generator output")
 
@@ -324,7 +310,6 @@ def call_function(
                 raise InvalidError("Function which is not a generator returned a generator output")
 
             function_context.enqueue_output(
-                function_call_id,
                 input_id,
                 idx,
                 status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
@@ -347,7 +332,6 @@ def call_function(
         # was an earlier note about it that it might not be possible
         # to unpickle it in some cases). Let's watch out for issues.
         function_context.enqueue_output(
-            function_call_id,
             input_id,
             idx,
             status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,

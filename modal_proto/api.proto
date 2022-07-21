@@ -378,7 +378,7 @@ message FunctionMapResponse {
 }
 
 message FunctionInput {
-  string function_call_id = 3;
+  string function_call_id = 3 [deprecated=true];
   string input_id = 4;
   int32 idx = 5;
   // serialized (args, kwargs).
@@ -408,8 +408,8 @@ message FunctionGetInputsResponse {
 }
 
 message FunctionPutOutputsRequest {
-  string function_call_id = 1;
-  string task_id = 2;
+  string function_call_id = 1 [deprecated=true];
+  string task_id = 2 [deprecated=true];
   repeated GenericResult outputs = 3;
 }
 
