@@ -13,7 +13,8 @@ from modal.client import Client
 from modal.exception import InvalidError
 from modal_proto import api_pb2
 
-EXTRA_TOLERANCE_DELAY = 0.25
+# Something with timing is flaky in OSX tests
+EXTRA_TOLERANCE_DELAY = 0.25 if platform.system() != "Darwin" else 1.0
 FUNCTION_CALL_ID = "fc-123"
 SLEEP_DELAY = 0.1
 
