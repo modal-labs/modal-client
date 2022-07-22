@@ -23,7 +23,7 @@ class _Image(Object, type_prefix="im"):
     """Base class for container images to run functions in.
 
     Do not construct this class directly; instead use
-    `modal.image.DebianSlim`, `modal.image.DockerHubImage` or `modal.image.Conda`.
+    `modal.image.DebianSlim`, `modal.image.DockerhubImage` or `modal.image.Conda`.
     """
 
     def __init__(
@@ -252,7 +252,7 @@ def _dockerhub_python_version(python_version=None):
 
 
 class _DebianSlim(_Image):
-    """A default base image, built on the official python:x.y.z-slim-bullseye Docker hub images
+    """A default base image, built on the official python:x.y.z-slim-bullseye DockerHub images
 
     Can also be called as a function to build a new image with additional bash
     commands or python packages.
