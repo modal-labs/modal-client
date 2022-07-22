@@ -193,6 +193,8 @@ class _MapInvocation:
                 request = api_pb2.FunctionGetOutputsRequest(function_call_id=function_call_id)
                 response = await buffered_rpc_read(self.client.stub.FunctionGetOutputs, request, timeout=None)
 
+                # TODO(erikbern): enable this very shortly
+                # for idx, result in zip(response.idxs, response.outputs):
                 for result in response.outputs:
                     if self.is_generator:
                         if result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
@@ -203,6 +205,7 @@ class _MapInvocation:
                             yield output
                     else:
                         # hold on to outputs for function maps, so we can reorder them correctly.
+                        # TODO(erikbern): idx not result.idx
                         pending_outputs[result.idx] = await _process_result(result, self.client.stub, self.client)
 
                 # send outputs sequentially while we can

@@ -37,7 +37,7 @@ message GenericResult {  // Used for both tasks and function outputs
   }
   GeneratorStatus gen_status = 7;
   string input_id = 8;
-  int32 idx = 9; // TODO
+  int32 idx = 9 [deprecated=true];
 }
 
 enum ClientType {
@@ -380,7 +380,7 @@ message FunctionMapResponse {
 message FunctionInput {
   string function_call_id = 3 [deprecated=true];
   string input_id = 4;
-  int32 idx = 5;
+  int32 idx = 5 [deprecated=true];
   // serialized (args, kwargs).
   oneof args_oneof {
     bytes args = 1;
@@ -421,6 +421,7 @@ message FunctionGetOutputsRequest {
 
 message FunctionGetOutputsResponse {
   repeated GenericResult outputs = 2;
+  repeated int32 idxs = 3;
 }
 
 message BlobCreateRequest {
