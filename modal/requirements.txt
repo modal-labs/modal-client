@@ -4,7 +4,7 @@ certifi==2021.10.8
 cloudpickle==2.0.0
 fastapi==0.75.2
 fastprogress==1.0.0
-grpcio>=1.47.0
+grpcio==1.48.0rc1
 importlib_metadata==4.8.1
 protobuf>=3.19.4
 rich==12.3.0
