@@ -250,7 +250,8 @@ async def queue_batch_iterator(q: asyncio.Queue, max_batch_size=100, debounce_ti
             item_list = []
 
         if res is None:
-            yield item_list
+            if len(item_list) > 0:
+                yield item_list
             break
         item_list.append(res)
 

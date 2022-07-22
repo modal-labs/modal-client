@@ -171,10 +171,9 @@ class _FunctionContext:
         or the output buffer changes, and then sends the entire batch in one request.
         """
         async for outputs in queue_batch_iterator(self.output_queue, MAX_OUTPUT_BATCH_SIZE, 0):
-            if outputs:
-                req = api_pb2.FunctionPutOutputsRequest(outputs=outputs)
-                # No timeout so this can block forever.
-                await retry_transient_errors(self.client.stub.FunctionPutOutputs, req, max_retries=None)
+            req = api_pb2.FunctionPutOutputsRequest(outputs=outputs)
+            # No timeout so this can block forever.
+            await retry_transient_errors(self.client.stub.FunctionPutOutputs, req, max_retries=None)
 
     async def enqueue_output(self, input_id, idx, **kwargs):
         # upload data to S3 if too big.
