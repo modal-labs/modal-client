@@ -1,6 +1,7 @@
 import inspect
 import os
 import sys
+import sysconfig
 from typing import Dict
 
 import cloudpickle
@@ -12,7 +13,11 @@ from .mount import _Mount
 
 ROOT_DIR = "/root"
 
-SYS_PREFIXES = [sys.prefix, sys.base_prefix, sys.exec_prefix, sys.base_exec_prefix]
+# Expand symlinks in paths (homebrew Python paths are all symlinks).
+SYS_PREFIXES = [
+    os.path.realpath(p)
+    for p in (sys.prefix, sys.base_prefix, sys.exec_prefix, sys.base_exec_prefix, *sysconfig.get_paths().values())
+]
 
 
 def package_mount_condition(filename):
@@ -101,6 +106,8 @@ class FunctionInfo:
         for m in modules:
             if getattr(m, "__package__", None):
                 for path in __import__(m.__package__).__path__:
+                    path = os.path.realpath(path)
+
                     if path in mounts or any(path.startswith(p) for p in SYS_PREFIXES) or not os.path.exists(path):
                         continue
 
@@ -113,6 +120,7 @@ class FunctionInfo:
                     )
             elif getattr(m, "__file__", None):
                 path = os.path.abspath(m.__file__)
+
                 if path in mounts or any(path.startswith(p) for p in SYS_PREFIXES) or not os.path.exists(path):
                     continue
                 relpath = os.path.relpath(os.path.dirname(path), self.base_dir)
