@@ -403,7 +403,6 @@ message FunctionGetInputsRequest {
   float timeout = 4;
 }
 
-
 message FunctionGetInputsResponse {
   repeated FunctionInput inputs = 2;
 }
