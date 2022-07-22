@@ -23,4 +23,4 @@ class NotFoundError(Exception):
 
 
 class ExecutionError(Exception):
-    pass
+    """Something unexpected happen during runtime."""
