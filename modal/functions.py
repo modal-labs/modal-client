@@ -53,7 +53,7 @@ async def _process_result(result, stub, client=None):
     return deserialize(data, client)
 
 
-async def _create_input(args, kwargs, client, function_call_id, idx=None) -> api_pb2.FunctionInput:
+async def _create_input(args, kwargs, client, idx=None) -> api_pb2.FunctionInput:
     """Serialize function arguments and create a FunctionInput protobuf,
     uploading to blob storage if needed.
     """
@@ -65,13 +65,11 @@ async def _create_input(args, kwargs, client, function_call_id, idx=None) -> api
 
         return api_pb2.FunctionInput(
             args_blob_id=args_blob_id,
-            function_call_id=function_call_id,
             idx=idx,
         )
     else:
         return api_pb2.FunctionInput(
             args=args_serialized,
-            function_call_id=function_call_id,
             idx=idx,
         )
 
@@ -99,8 +97,10 @@ class Invocation:
 
         function_call_id = response.function_call_id
 
-        inp = await _create_input(args, kwargs, client, function_call_id)
-        request_put = api_pb2.FunctionPutInputsRequest(function_id=function_id, inputs=[inp])
+        inp = await _create_input(args, kwargs, client)
+        request_put = api_pb2.FunctionPutInputsRequest(
+            function_id=function_id, inputs=[inp], function_call_id=function_call_id
+        )
         await retry_transient_errors(
             client.stub.FunctionPutInputs,
             request_put,
@@ -159,9 +159,7 @@ class _MapInvocation:
             nonlocal num_inputs, input_queue
             async with self.input_stream.stream() as streamer:
                 async for arg in streamer:
-                    function_input = await _create_input(
-                        arg, self.kwargs, self.client, function_call_id, idx=num_inputs
-                    )
+                    function_input = await _create_input(arg, self.kwargs, self.client, idx=num_inputs)
                     num_inputs += 1
                     await input_queue.put(function_input)
             # close queue iterator
@@ -172,7 +170,9 @@ class _MapInvocation:
             nonlocal num_inputs, have_all_inputs, input_queue
 
             async for inputs in queue_batch_iterator(input_queue, MAP_INVOCATION_CHUNK_SIZE):
-                request = api_pb2.FunctionPutInputsRequest(function_id=self.function_id, inputs=inputs)
+                request = api_pb2.FunctionPutInputsRequest(
+                    function_id=self.function_id, inputs=inputs, function_call_id=function_call_id
+                )
                 await retry_transient_errors(
                     self.client.stub.FunctionPutInputs,
                     request,

@@ -393,6 +393,7 @@ message FunctionInput {
 message FunctionPutInputsRequest {
   string function_id = 1;
   repeated FunctionInput inputs = 2;
+  string function_call_id = 3;
 }
 
 message FunctionGetInputsRequest {
