@@ -14,10 +14,10 @@ from .mount import _Mount
 ROOT_DIR = "/root"
 
 # Expand symlinks in paths (homebrew Python paths are all symlinks).
-SYS_PREFIXES = [
+SYS_PREFIXES = set(
     os.path.realpath(p)
     for p in (sys.prefix, sys.base_prefix, sys.exec_prefix, sys.base_exec_prefix, *sysconfig.get_paths().values())
-]
+)
 
 
 def package_mount_condition(filename):
