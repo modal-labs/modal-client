@@ -48,7 +48,6 @@ def _run_container(servicer, module_name, function_name, rate_limit_times=0, fai
             servicer.container_inputs = inputs
         servicer.rate_limit_times = rate_limit_times
         servicer.fail_get_inputs = fail_get_inputs
-        print("setting", servicer.container_inputs)
 
         function_def = api_pb2.Function(
             module_name=module_name,

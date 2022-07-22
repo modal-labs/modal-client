@@ -7,14 +7,19 @@ import os
 import sys
 import time
 import traceback
-from typing import Any, AsyncIterator, Callable, List
+from typing import Any, AsyncIterator, Callable
 
 import cloudpickle
 from grpc import StatusCode
 from grpc.aio import AioRpcError
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import TaskContext, synchronize_apis, synchronizer
+from modal_utils.async_utils import (
+    TaskContext,
+    queue_batch_iterator,
+    synchronize_apis,
+    synchronizer,
+)
 from modal_utils.grpc_utils import retry_transient_errors
 
 from ._asgi import asgi_app_wrapper, fastAPI_function_wrapper
@@ -165,47 +170,11 @@ class _FunctionContext:
         """Background task that tries to drain output queue until it's empty,
         or the output buffer changes, and then sends the entire batch in one request.
         """
-        outputs: List[Any] = []
-
-        async def _send():
-            nonlocal outputs
-
-            if not outputs:
-                return
-
-            req = api_pb2.FunctionPutOutputsRequest(outputs=outputs)
-
-            # No timeout so this can block forever.
-            await retry_transient_errors(self.client.stub.FunctionPutOutputs, req, max_retries=None)
-
-            outputs = []
-
-        def _try_get_output():
-            try:
-                return self.output_queue.get_nowait()
-            except asyncio.QueueEmpty:
-                return None
-
-        while True:
-            item = _try_get_output()
-
-            if item is None:
-                # Queue is empty, send what we have so far.
-                await _send()
-                # Block until the queue has values again.
-                item = await self.output_queue.get()
-
-            # No more inputs coming.
-            if item is None:
-                await _send()
-                break
-
-            # Send what we have so far for this output buffer and switch tracks
-            if len(outputs) >= MAX_OUTPUT_BATCH_SIZE:
-                await _send()
-                outputs = [item]
-            else:
-                outputs.append(item)
+        async for outputs in queue_batch_iterator(self.output_queue, MAX_OUTPUT_BATCH_SIZE, 0):
+            if outputs:
+                req = api_pb2.FunctionPutOutputsRequest(outputs=outputs)
+                # No timeout so this can block forever.
+                await retry_transient_errors(self.client.stub.FunctionPutOutputs, req, max_retries=None)
 
     async def enqueue_output(self, input_id, idx, **kwargs):
         # upload data to S3 if too big.
