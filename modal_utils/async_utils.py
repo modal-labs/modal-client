@@ -3,7 +3,7 @@ import concurrent.futures
 import functools
 import inspect
 import time
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Union
 
 import synchronicity
 
@@ -150,7 +150,7 @@ class TaskContext:
                 if task.done() or task in self._loops:
                     continue
 
-                logger.warning(f"Canceling unfinished task {task}")
+                logger.warning(f"Canceling remaining unfinished task {task}")
                 task.cancel()
 
     async def __aexit__(self, exc_type, value, tb):
@@ -167,7 +167,7 @@ class TaskContext:
         self._tasks.add(task)
         return task
 
-    def infinite_loop(self, async_f, timeout=90, sleep=10) -> asyncio.Task:
+    def infinite_loop(self, async_f, timeout: Union[float, None] = 90, sleep: float = 10) -> asyncio.Task:
         function_name = async_f.__qualname__
 
         async def loop_coro() -> None:
