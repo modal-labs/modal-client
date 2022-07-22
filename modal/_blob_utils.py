@@ -6,6 +6,7 @@ from typing import Optional
 import certifi
 from aiohttp import ClientSession, TCPConnector
 
+from modal.exception import ExecutionError
 from modal_proto import api_pb2
 from modal_utils.async_utils import retry
 from modal_utils.blob_utils import use_md5
@@ -45,7 +46,7 @@ async def _upload_to_url(upload_url: str, content_md5: str, aiohttp_payload) -> 
         async with session.put(upload_url, data=aiohttp_payload, headers=headers) as resp:
             if resp.status != 200:
                 text = await resp.text()
-                raise Exception(f"Put to {upload_url} failed with status {resp.status}: {text}")
+                raise ExecutionError(f"Put to url failed with status {resp.status}: {text}")
 
 
 async def _blob_upload(content_md5: str, aiohttp_payload, stub) -> str:
@@ -77,7 +78,7 @@ async def _download_from_url(download_url):
         async with session.get(download_url) as resp:
             if resp.status != 200:
                 text = await resp.text()
-                raise Exception(f"Get from {download_url} failed with status {resp.status}: {text}")
+                raise ExecutionError(f"Get from url failed with status {resp.status}: {text}")
             return await resp.read()
 
 

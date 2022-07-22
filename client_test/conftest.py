@@ -305,11 +305,15 @@ async def blob_server(event_loop):
     async def upload(request):
         blob_id = request.query["blob_id"]
         content = await request.content.read()
+        if content == b"FAILURE":
+            return aiohttp.web.Response(status=500)
         blobs[blob_id] = content
         return aiohttp.web.Response(text="Hello, world")
 
     async def download(request):
         blob_id = request.query["blob_id"]
+        if blob_id == "bl-failure":
+            return aiohttp.web.Response(status=500)
         return aiohttp.web.Response(body=blobs[blob_id])
 
     app = aiohttp.web.Application()
