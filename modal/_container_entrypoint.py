@@ -175,7 +175,7 @@ class _FunctionContext:
             # No timeout so this can block forever.
             await retry_transient_errors(self.client.stub.FunctionPutOutputs, req, max_retries=None)
 
-    async def enqueue_output(self, input_id, idx, **kwargs):
+    async def enqueue_output(self, input_id, **kwargs):
         # upload data to S3 if too big.
         if "data" in kwargs and kwargs["data"] and len(kwargs["data"]) > MAX_OBJECT_SIZE_BYTES:
             data_blob_id = await blob_upload(kwargs["data"], self.client.stub)
@@ -183,7 +183,7 @@ class _FunctionContext:
             kwargs.pop("data")
             kwargs["data_blob_id"] = data_blob_id
 
-        result = api_pb2.GenericResult(input_id=input_id, idx=idx, **kwargs)
+        result = api_pb2.GenericResult(input_id=input_id, **kwargs)
         await self.output_queue.put(result)
 
     def track_function_call_time(self, time_elapsed: float):
@@ -195,11 +195,10 @@ class _FunctionContext:
 FunctionContext, AioFunctionContext = synchronize_apis(_FunctionContext)
 
 
-def _call_function_generator(function_context, input_id, res, idx):
+def _call_function_generator(function_context, input_id, res):
     for value in res:
         function_context.enqueue_output(
             input_id,
-            idx,
             status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
             data=function_context.serialize(value),
             gen_status=api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE,
@@ -208,18 +207,16 @@ def _call_function_generator(function_context, input_id, res, idx):
     # send EOF
     function_context.enqueue_output(
         input_id,
-        idx,
         status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
         gen_status=api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE,
     )
 
 
-def _call_function_asyncgen(function_context, input_id, res, idx):
+def _call_function_asyncgen(function_context, input_id, res):
     async def run_asyncgen():
         async for value in res:
             await function_context.enqueue_output(
                 input_id,
-                idx,
                 status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
                 data=await function_context.serialize(value),
                 gen_status=api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE,
@@ -228,7 +225,6 @@ def _call_function_asyncgen(function_context, input_id, res, idx):
         # send EOF
         await function_context.enqueue_output(
             input_id,
-            idx,
             status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
             gen_status=api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE,
         )
@@ -244,7 +240,6 @@ def call_function(
     function_input: api_pb2.FunctionInput,
 ):
     input_id = function_input.input_id
-    idx = function_input.idx
 
     # TODO: this is somewhat hacky. We need to know whether the function is async or not in order to
     # coerce the input arguments to the right type. The proper way to do is to call the function and
@@ -264,9 +259,9 @@ def call_function(
 
         if function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR:
             if inspect.isgenerator(res):
-                _call_function_generator(function_context, input_id, res, idx)
+                _call_function_generator(function_context, input_id, res)
             elif inspect.isasyncgen(res):
-                _call_function_asyncgen(aio_function_context, input_id, res, idx)
+                _call_function_asyncgen(aio_function_context, input_id, res)
             else:
                 raise InvalidError("Function of type generator returned a non-generator output")
 
@@ -279,7 +274,6 @@ def call_function(
 
             function_context.enqueue_output(
                 input_id,
-                idx,
                 status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
                 data=function_context.serialize(res),
             )
@@ -301,7 +295,6 @@ def call_function(
         # to unpickle it in some cases). Let's watch out for issues.
         function_context.enqueue_output(
             input_id,
-            idx,
             status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
             data=serialized_exc,
             exception=repr(exc),
