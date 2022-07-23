@@ -398,7 +398,7 @@ message FunctionPutInputsRequest {
 
 message FunctionGetInputsRequest {
   string function_id = 1;
-  string task_id = 2;
+  string task_id = 2 [deprecated=true];
   int32 max_values = 3;
   float timeout = 4;
 }

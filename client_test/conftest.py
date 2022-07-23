@@ -139,7 +139,6 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     async def FunctionGetInputs(
         self, request: api_pb2.FunctionGetInputsRequest, context: ServicerContext = None
     ) -> api_pb2.FunctionGetInputsResponse:
-        assert request.task_id
         assert request.function_id
         if self.fail_get_inputs:
             await context.abort(StatusCode.INTERNAL)
