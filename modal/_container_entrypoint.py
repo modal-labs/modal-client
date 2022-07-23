@@ -122,6 +122,7 @@ class _FunctionContext:
     ) -> AsyncIterator[api_pb2.FunctionInput]:
         request = api_pb2.FunctionGetInputsRequest(
             function_id=self.function_id,
+            task_id=self.task_id,
         )
         eof_received = False
         last_input = time.time()
