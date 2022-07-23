@@ -407,16 +407,27 @@ message FunctionGetInputsResponse {
   repeated FunctionInput inputs = 2;
 }
 
+message FunctionPutOutputsItem {
+  string input_id = 1;
+  GenericResult result = 2;
+}
+
 message FunctionPutOutputsRequest {
   string function_call_id = 1 [deprecated=true];
   string task_id = 2 [deprecated=true];
-  repeated GenericResult outputs = 3;
+  repeated GenericResult outputs_old = 3 [deprecated=true];
+  repeated FunctionPutOutputsItem outputs = 4;
 }
 
 message FunctionGetOutputsRequest {
   string function_call_id = 1;
   int32 max_values = 2;
   float timeout = 3;
+}
+
+message FunctionGetOutputsItem {
+  GenericResult result = 1;
+  int32 idx = 2;
 }
 
 message FunctionGetOutputsResponse {

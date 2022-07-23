@@ -171,7 +171,7 @@ class _FunctionContext:
         or the output buffer changes, and then sends the entire batch in one request.
         """
         async for outputs in queue_batch_iterator(self.output_queue, MAX_OUTPUT_BATCH_SIZE, 0):
-            req = api_pb2.FunctionPutOutputsRequest(outputs=outputs)
+            req = api_pb2.FunctionPutOutputsRequest(outputs_old=outputs)
             # No timeout so this can block forever.
             await retry_transient_errors(self.client.stub.FunctionPutOutputs, req, max_retries=None)
 

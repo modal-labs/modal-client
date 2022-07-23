@@ -36,8 +36,8 @@ def _get_inputs(client):
 
 
 def _get_output(function_output_req: api_pb2.FunctionPutOutputsRequest) -> api_pb2.GenericResult:
-    assert len(function_output_req.outputs) == 1
-    return function_output_req.outputs[0]
+    assert len(function_output_req.outputs_old) == 1
+    return function_output_req.outputs_old[0]
 
 
 def _run_container(servicer, module_name, function_name, rate_limit_times=0, fail_get_inputs=False, inputs=None):
