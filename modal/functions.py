@@ -99,7 +99,7 @@ class Invocation:
 
         inp = await _create_input(args, kwargs, client)
         request_put = api_pb2.FunctionPutInputsRequest(
-            function_id=function_id, inputs=[inp], function_call_id=function_call_id
+            function_id=function_id, inputs_old=[inp], function_call_id=function_call_id
         )
         await retry_transient_errors(
             client.stub.FunctionPutInputs,
@@ -113,7 +113,7 @@ class Invocation:
     async def get_items(self):
         request = api_pb2.FunctionGetOutputsRequest(function_call_id=self.function_call_id)
         response = await buffered_rpc_read(self.stub.FunctionGetOutputs, request, timeout=None)
-        for output in response.outputs:
+        for output in response.outputs_old:
             yield output
 
     async def run_function(self):
@@ -171,7 +171,7 @@ class _MapInvocation:
 
             async for inputs in queue_batch_iterator(input_queue, MAP_INVOCATION_CHUNK_SIZE):
                 request = api_pb2.FunctionPutInputsRequest(
-                    function_id=self.function_id, inputs=inputs, function_call_id=function_call_id
+                    function_id=self.function_id, inputs_old=inputs, function_call_id=function_call_id
                 )
                 await retry_transient_errors(
                     self.client.stub.FunctionPutInputs,
@@ -193,9 +193,7 @@ class _MapInvocation:
                 request = api_pb2.FunctionGetOutputsRequest(function_call_id=function_call_id)
                 response = await buffered_rpc_read(self.client.stub.FunctionGetOutputs, request, timeout=None)
 
-                # TODO(erikbern): enable this very shortly
-                # for idx, result in zip(response.idxs, response.outputs):
-                for result in response.outputs:
+                for result in response.outputs_old:
                     if self.is_generator:
                         if result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
                             num_outputs += 1
@@ -205,7 +203,6 @@ class _MapInvocation:
                             yield output
                     else:
                         # hold on to outputs for function maps, so we can reorder them correctly.
-                        # TODO(erikbern): idx not result.idx
                         pending_outputs[result.idx] = await _process_result(result, self.client.stub, self.client)
 
                 # send outputs sequentially while we can

@@ -30,8 +30,8 @@ def _get_inputs(client):
     function_input = api_pb2.FunctionInput(args=serialize(args), function_call_id=FUNCTION_CALL_ID)
 
     return [
-        api_pb2.FunctionGetInputsResponse(inputs=[function_input]),
-        api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionInput(kill_switch=True)]),
+        api_pb2.FunctionGetInputsResponse(inputs_old=[function_input]),
+        api_pb2.FunctionGetInputsResponse(inputs_old=[api_pb2.FunctionInput(kill_switch=True)]),
     ]
 
 

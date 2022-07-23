@@ -142,12 +142,12 @@ class _FunctionContext:
                     continue
                 raise
 
-            if not response.inputs:
+            if not response.inputs_old:
                 continue
 
             last_input = time.time()
 
-            for item in response.inputs:
+            for item in response.inputs_old:
                 if item.kill_switch:
                     logger.debug(f"Task {self.task_id} input received kill signal.")
                     eof_received = True

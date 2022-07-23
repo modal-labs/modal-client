@@ -388,11 +388,11 @@ message FunctionInput {
   }
   bool final_input = 9;
   bool kill_switch = 10;
-}
+} 
 
 message FunctionPutInputsRequest {
   string function_id = 1;
-  repeated FunctionInput inputs = 2;
+  repeated FunctionInput inputs_old = 2;
   string function_call_id = 3;
 }
 
@@ -404,7 +404,7 @@ message FunctionGetInputsRequest {
 }
 
 message FunctionGetInputsResponse {
-  repeated FunctionInput inputs = 2;
+  repeated FunctionInput inputs_old = 2;
 }
 
 message FunctionPutOutputsItem {
@@ -431,7 +431,7 @@ message FunctionGetOutputsItem {
 }
 
 message FunctionGetOutputsResponse {
-  repeated GenericResult outputs = 2;
+  repeated GenericResult outputs_old = 2;
   repeated int32 idxs = 3;
 }
 

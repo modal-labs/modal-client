@@ -147,7 +147,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
             await context.abort(StatusCode.RESOURCE_EXHAUSTED, "Rate limit exceeded")
         elif not self.container_inputs:
             await asyncio.sleep(request.timeout)
-            return api_pb2.FunctionGetInputsResponse(inputs=[])
+            return api_pb2.FunctionGetInputsResponse(inputs_old=[])
         else:
             return self.container_inputs.pop(0)
 
@@ -267,7 +267,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         request: api_pb2.FunctionPutInputsRequest,
         context: ServicerContext,
     ) -> Empty:
-        for function_input in request.inputs:
+        for function_input in request.inputs_old:
             args, kwargs = cloudpickle.loads(function_input.args) if function_input.args else ((), {})
             self.client_calls.append((args, kwargs))
         return Empty()
@@ -287,7 +287,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
                 idx=self.output_idx,
             )
             self.output_idx += 1
-            return api_pb2.FunctionGetOutputsResponse(outputs=[result])
+            return api_pb2.FunctionGetOutputsResponse(outputs_old=[result])
         else:
             await context.abort(StatusCode.DEADLINE_EXCEEDED, "Read timeout")
 
