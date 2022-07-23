@@ -122,7 +122,6 @@ class _FunctionContext:
     ) -> AsyncIterator[api_pb2.FunctionInput]:
         request = api_pb2.FunctionGetInputsRequest(
             function_id=self.function_id,
-            task_id=self.task_id,
         )
         eof_received = False
         last_input = time.time()
@@ -171,7 +170,7 @@ class _FunctionContext:
         or the output buffer changes, and then sends the entire batch in one request.
         """
         async for outputs in queue_batch_iterator(self.output_queue, MAX_OUTPUT_BATCH_SIZE, 0):
-            req = api_pb2.FunctionPutOutputsRequest(outputs_old=outputs)
+            req = api_pb2.FunctionPutOutputsRequest(outputs=outputs)
             # No timeout so this can block forever.
             await retry_transient_errors(self.client.stub.FunctionPutOutputs, req, max_retries=None)
 
@@ -183,8 +182,8 @@ class _FunctionContext:
             kwargs.pop("data")
             kwargs["data_blob_id"] = data_blob_id
 
-        result = api_pb2.GenericResult(input_id=input_id, **kwargs)
-        await self.output_queue.put(result)
+        output = api_pb2.FunctionPutOutputsItem(input_id=input_id, result=api_pb2.GenericResult(**kwargs))
+        await self.output_queue.put(output)
 
     def track_function_call_time(self, time_elapsed: float):
         self.total_user_time += time_elapsed
