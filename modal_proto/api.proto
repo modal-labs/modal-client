@@ -388,12 +388,18 @@ message FunctionInput {
   }
   bool final_input = 9;
   bool kill_switch = 10;
-} 
+}
+
+message FunctionPutInputsItem {
+  int32 idx = 1;
+  FunctionInput input = 2;
+}
 
 message FunctionPutInputsRequest {
   string function_id = 1;
   repeated FunctionInput inputs_old = 2;
   string function_call_id = 3;
+  repeated FunctionPutInputsItem inputs = 4;
 }
 
 message FunctionGetInputsRequest {
@@ -401,10 +407,17 @@ message FunctionGetInputsRequest {
   string task_id = 2 [deprecated=true];
   int32 max_values = 3;
   float timeout = 4;
+  bool new_method = 5;
+}
+
+message FunctionGetInputsItem {
+  string input_id = 1;
+  FunctionInput input = 2;
 }
 
 message FunctionGetInputsResponse {
   repeated FunctionInput inputs_old = 2;
+  repeated FunctionGetInputsItem inputs = 3;
 }
 
 message FunctionPutOutputsItem {
@@ -423,6 +436,7 @@ message FunctionGetOutputsRequest {
   string function_call_id = 1;
   int32 max_values = 2;
   float timeout = 3;
+  bool new_method = 4;
 }
 
 message FunctionGetOutputsItem {
@@ -433,6 +447,7 @@ message FunctionGetOutputsItem {
 message FunctionGetOutputsResponse {
   repeated GenericResult outputs_old = 2;
   repeated int32 idxs = 3;
+  repeated FunctionGetOutputsItem outputs = 4;
 }
 
 message BlobCreateRequest {
