@@ -11,7 +11,6 @@ from modal_utils.async_utils import queue_batch_iterator, synchronize_apis
 from modal_utils.grpc_utils import retry_transient_errors
 
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
-from ._buffer_utils import buffered_rpc_read
 from ._function_utils import FunctionInfo
 from ._serialization import deserialize, serialize
 from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError
@@ -111,8 +110,8 @@ class Invocation:
         return Invocation(client.stub, function_id, function_call_id, client)
 
     async def get_items(self):
-        request = api_pb2.FunctionGetOutputsRequest(function_call_id=self.function_call_id)
-        response = await buffered_rpc_read(self.stub.FunctionGetOutputs, request, timeout=None)
+        request = api_pb2.FunctionGetOutputsRequest(function_call_id=self.function_call_id, timeout=60)
+        response = await retry_transient_errors(self.stub.FunctionGetOutputs, request, max_retries=None, base_delay=0)
         for output in response.outputs_old:
             yield output
 
@@ -190,8 +189,10 @@ class _MapInvocation:
             pending_outputs = {}
 
             while True:
-                request = api_pb2.FunctionGetOutputsRequest(function_call_id=function_call_id)
-                response = await buffered_rpc_read(self.client.stub.FunctionGetOutputs, request, timeout=None)
+                request = api_pb2.FunctionGetOutputsRequest(function_call_id=function_call_id, timeout=60)
+                response = await retry_transient_errors(
+                    self.client.stub.FunctionGetOutputs, request, max_retries=None, base_delay=0
+                )
 
                 for result in response.outputs_old:
                     if self.is_generator:
