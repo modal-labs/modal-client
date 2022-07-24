@@ -126,12 +126,9 @@ class _FunctionContext:
         while not eof_received:
             time_left = last_input + CONTAINER_IDLE_TIMEOUT - time.time()
 
-            if time_left < 0:
-                logger.debug(f"Task {self.task_id} reached idle time-out.")
-                break
-
             request.max_values = self.get_max_inputs_to_fetch()
-            request.timeout = min(time_left, 15)
+            # clamp to between 0.01 and 15s.
+            request.timeout = min(max(time_left, 0.01), 15)
 
             try:
                 response = await retry_transient_errors(self.client.stub.FunctionGetInputs, request)
@@ -143,6 +140,10 @@ class _FunctionContext:
                 raise
 
             if not response.inputs_old:
+                if time_left < 0:
+                    logger.debug(f"Task {self.task_id} reached idle time-out.")
+                    break
+
                 continue
 
             last_input = time.time()
