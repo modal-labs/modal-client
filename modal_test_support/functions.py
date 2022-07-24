@@ -1,4 +1,5 @@
 import asyncio
+import time
 import warnings
 
 from modal import Stub
@@ -11,6 +12,11 @@ stub = Stub()
 @stub.function()
 def square(x):
     return x * x
+
+
+@stub.function()
+def delay(t):
+    time.sleep(t)
 
 
 @stub.function()

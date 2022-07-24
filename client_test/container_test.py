@@ -159,6 +159,29 @@ def test_container_entrypoint_idle_timeout(servicer, event_loop, monkeypatch):
     assert len(outputs) == 0
 
 
+def test_container_entrypoint_slow_function(servicer, event_loop, monkeypatch):
+    """Ensure that the container doesn't exit early if the input is longer than the idle timeout."""
+
+    monkeypatch.setattr("modal._container_entrypoint.CONTAINER_IDLE_TIMEOUT", 0.1)
+
+    # call function that sleeps for 0.5s, twice.
+    DELAY = 0.5
+    args = ((DELAY,), {})
+    function_input = api_pb2.FunctionInput(args=serialize(args), function_call_id=FUNCTION_CALL_ID)
+
+    inputs = [
+        api_pb2.FunctionGetInputsResponse(inputs_old=[function_input]),
+        api_pb2.FunctionGetInputsResponse(inputs_old=[function_input]),
+        api_pb2.FunctionGetInputsResponse(inputs_old=[api_pb2.FunctionInput(kill_switch=True)]),
+    ]
+
+    t0 = time.time()
+    # Run container with no inputs, so it hits idle timeout.
+    client, outputs = _run_container(servicer, "modal_test_support.functions", "delay", inputs=inputs)
+    assert len(outputs) == 2
+    assert 2 * DELAY <= time.time() - t0 < 2 * DELAY + EXTRA_TOLERANCE_DELAY
+
+
 def test_container_entrypoint_grpc_failure(servicer, event_loop):
     with pytest.raises(AioRpcError):
         _run_container(servicer, "modal_test_support.functions", "square", fail_get_inputs=True)
