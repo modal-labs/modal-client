@@ -2,6 +2,7 @@ import asyncio
 import enum
 import re
 import time
+import uuid
 
 from grpc import StatusCode
 from grpc.aio import AioRpcError, Channel
@@ -203,9 +204,12 @@ async def retry_transient_errors(
 
     status_codes = [*RETRYABLE_GRPC_STATUS_CODES, *additional_status_codes]
 
+    idempotency_key = str(uuid.uuid4())
+
     while True:
+        metadata = [("x-idempotency-key", idempotency_key), ("x-retry-attempt", str(n_retries))]
         try:
-            return await fn(*args)
+            return await fn(*args, metadata=metadata)
         except AioRpcError as exc:
             if exc.code() in status_codes:
                 if max_retries is not None and n_retries >= max_retries:

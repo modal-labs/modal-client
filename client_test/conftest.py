@@ -65,14 +65,23 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
 
         self.shared_volume_files = []
         self.images = {}
+        self.fail_blob_create = []
+        self.blob_create_metadata = None
 
     async def BlobCreate(
         self, request: api_pb2.BlobCreateRequest, context: ServicerContext = None, timeout=None
     ) -> api_pb2.BlobCreateResponse:
-        self.n_blobs += 1
-        blob_id = f"bl-{self.n_blobs}"
-        upload_url = f"{self.blob_host}/upload?blob_id={blob_id}"
-        return api_pb2.BlobCreateResponse(blob_id=blob_id, upload_url=upload_url)
+        # This is used to test retry_transient_errors, see grpc_utils_test.py
+        self.blob_create_metadata = {m.key: m.value for m in context.invocation_metadata()}
+        print(self.blob_create_metadata)
+        if len(self.fail_blob_create) > 0:
+            status_code = self.fail_blob_create.pop()
+            await context.abort(status_code, "foobar")
+        else:
+            self.n_blobs += 1
+            blob_id = f"bl-{self.n_blobs}"
+            upload_url = f"{self.blob_host}/upload?blob_id={blob_id}"
+            return api_pb2.BlobCreateResponse(blob_id=blob_id, upload_url=upload_url)
 
     async def BlobGet(
         self, request: api_pb2.BlobGetRequest, context: ServicerContext = None, timeout=None
@@ -154,6 +163,9 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     async def FunctionPutOutputs(
         self, request: api_pb2.FunctionPutOutputsRequest, context: ServicerContext = None
     ) -> Empty:
+        # Check that the idempotency key exists
+        metadata = {m.key: m.value for m in context.invocation_metadata()}
+        assert metadata["x-idempotency-key"]
         self.container_outputs.append(request)
         return Empty()
 

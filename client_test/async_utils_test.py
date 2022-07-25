@@ -2,16 +2,12 @@ import asyncio
 import platform
 import pytest
 
-from grpc import StatusCode
-from grpc.aio import AioRpcError, Metadata
-
 from modal_utils.async_utils import (
     TaskContext,
     intercept_coro,
     queue_batch_iterator,
     retry,
 )
-from modal_utils.grpc_utils import retry_transient_errors
 
 skip_non_linux = pytest.mark.skipif(
     platform.system() != "Linux", reason="sleep is inaccurate on Github Actions runners."
@@ -175,21 +171,3 @@ async def interceptor(thing):
 async def test_intercept_coro():
     coro = fib(10)
     assert await intercept_coro(coro, interceptor) == 55
-
-
-@pytest.mark.asyncio
-async def test_retry_transient_errors():
-    UNAVAILABLE = AioRpcError(StatusCode.UNAVAILABLE, Metadata(), Metadata())
-
-    assert await retry_transient_errors(FailNTimes(3, UNAVAILABLE), 42) == 43
-
-    with pytest.raises(AioRpcError):
-        await retry_transient_errors(FailNTimes(4, UNAVAILABLE), 42)
-
-    assert await retry_transient_errors(FailNTimes(10, UNAVAILABLE), 42, max_retries=None, base_delay=0) == 43
-
-    # Not a transient error.
-    PERMISSION_DENIED = AioRpcError(StatusCode.PERMISSION_DENIED, Metadata(), Metadata())
-
-    with pytest.raises(AioRpcError):
-        await retry_transient_errors(FailNTimes(2, PERMISSION_DENIED), 42)
