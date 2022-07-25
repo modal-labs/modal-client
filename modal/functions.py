@@ -7,7 +7,11 @@ from aiostream import stream
 from grpc import StatusCode
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import queue_batch_iterator, synchronize_apis
+from modal_utils.async_utils import (
+    queue_batch_iterator,
+    synchronize_apis,
+    warn_if_generator_is_not_consumed,
+)
 from modal_utils.grpc_utils import retry_transient_errors
 
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
@@ -411,6 +415,7 @@ class _Function(Object, type_prefix="fu"):
         async for item in map_invocation(object_id, input_stream, kwargs, client, self._is_generator):
             yield item
 
+    @warn_if_generator_is_not_consumed
     async def map(
         self,
         *input_iterators,  # one input iterator per argument in the mapped-over function/generator
@@ -440,6 +445,7 @@ class _Function(Object, type_prefix="fu"):
         async for item in self._map(input_stream, kwargs):
             yield item
 
+    @warn_if_generator_is_not_consumed
     async def starmap(self, input_iterator, kwargs={}):
         """Like `map` but spreads arguments over multiple function arguments
 
@@ -469,6 +475,7 @@ class _Function(Object, type_prefix="fu"):
         client, object_id = self._get_context()
         await Invocation.create(object_id, args, kwargs, client)
 
+    @warn_if_generator_is_not_consumed
     async def call_generator(self, args, kwargs):
         """mdmd:hidden"""
         client, object_id = self._get_context()
