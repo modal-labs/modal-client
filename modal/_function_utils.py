@@ -1,5 +1,6 @@
 import inspect
 import os
+import site
 import sys
 import sysconfig
 from typing import Dict
@@ -16,7 +17,15 @@ ROOT_DIR = "/root"
 # Expand symlinks in paths (homebrew Python paths are all symlinks).
 SYS_PREFIXES = set(
     os.path.realpath(p)
-    for p in (sys.prefix, sys.base_prefix, sys.exec_prefix, sys.base_exec_prefix, *sysconfig.get_paths().values())
+    for p in (
+        sys.prefix,
+        sys.base_prefix,
+        sys.exec_prefix,
+        sys.base_exec_prefix,
+        *sysconfig.get_paths().values(),
+        *site.getsitepackages(),
+        site.getusersitepackages(),
+    )
 )
 
 
