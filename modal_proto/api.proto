@@ -36,7 +36,7 @@ message GenericResult {  // Used for both tasks and function outputs
     GENERATOR_STATUS_COMPLETE = 2;
   }
   GeneratorStatus gen_status = 7;
-  string input_id = 8;
+  string input_id = 8 [deprecated=true];
   int32 idx = 9 [deprecated=true];
 }
 
@@ -386,8 +386,8 @@ message FunctionInput {
     bytes args = 1;
     string args_blob_id = 7;
   }
-  bool final_input = 9;
-  bool kill_switch = 10;
+  bool final_input = 9; // TODO(erikbern): deprecate?
+  bool kill_switch = 10 [deprecated=true];
 }
 
 message FunctionPutInputsItem {
@@ -413,8 +413,7 @@ message FunctionGetInputsRequest {
 message FunctionGetInputsItem {
   string input_id = 1;
   FunctionInput input = 2;
-  bool final_input = 3;
-  bool kill_switch = 4;
+  bool kill_switch = 3;
 }
 
 message FunctionGetInputsResponse {

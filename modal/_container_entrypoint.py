@@ -162,7 +162,7 @@ class _FunctionContext:
 
                 yield (item.input_id, input_pb)
 
-                if item.final_input:
+                if item.input.final_input:
                     eof_received = True
                     break
 
