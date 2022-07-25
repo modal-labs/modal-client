@@ -413,6 +413,8 @@ message FunctionGetInputsRequest {
 message FunctionGetInputsItem {
   string input_id = 1;
   FunctionInput input = 2;
+  bool final_input = 3;
+  bool kill_switch = 4;
 }
 
 message FunctionGetInputsResponse {

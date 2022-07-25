@@ -7,7 +7,7 @@ import os
 import sys
 import time
 import traceback
-from typing import Any, AsyncIterator, Callable
+from typing import Any, AsyncIterator, Callable, Tuple
 
 import cloudpickle
 from grpc import StatusCode
@@ -119,8 +119,8 @@ class _FunctionContext:
 
     async def generate_inputs(
         self,
-    ) -> AsyncIterator[api_pb2.FunctionInput]:
-        request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
+    ) -> AsyncIterator[Tuple[str, api_pb2.FunctionInput]]:
+        request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id, new_method=True)
         eof_received = False
         last_input = time.time()
         while not eof_received:
@@ -139,7 +139,7 @@ class _FunctionContext:
                     continue
                 raise
 
-            if not response.inputs_old:
+            if not response.inputs:
                 if time_left < 0:
                     logger.debug(f"Task {self.task_id} reached idle time-out.")
                     break
@@ -148,17 +148,19 @@ class _FunctionContext:
 
             last_input = time.time()
 
-            for item in response.inputs_old:
+            for item in response.inputs:
                 if item.kill_switch:
                     logger.debug(f"Task {self.task_id} input received kill signal.")
                     eof_received = True
                     break
 
                 # If we got a pointer to a blob, download it from S3.
-                if item.WhichOneof("args_oneof") == "args_blob_id":
-                    yield await self.populate_input_blobs(item)
+                if item.input.WhichOneof("args_oneof") == "args_blob_id":
+                    input_pb = await self.populate_input_blobs(item.input)
                 else:
-                    yield item
+                    input_pb = item.input
+
+                yield (item.input_id, input_pb)
 
                 if item.final_input:
                     eof_received = True
@@ -235,9 +237,9 @@ def call_function(
     aio_function_context,  #: AioFunctionContext,  # TODO: this one too
     function: Callable,
     function_type: api_pb2.Function.FunctionType,
-    function_input: api_pb2.FunctionInput,
+    input_id: str,
+    input_pb: api_pb2.FunctionInput,
 ):
-    input_id = function_input.input_id
 
     # TODO: this is somewhat hacky. We need to know whether the function is async or not in order to
     # coerce the input arguments to the right type. The proper way to do is to call the function and
@@ -246,9 +248,9 @@ def call_function(
     # This sometimes isn't correct, since a "vanilla" Python function can return a coroutine if it
     # wraps async code or similar. Let's revisit this shortly.
     if inspect.iscoroutinefunction(function) or inspect.isasyncgenfunction(function):
-        args, kwargs = aio_function_context.deserialize(function_input.args) if function_input.args else ((), {})
+        args, kwargs = aio_function_context.deserialize(input_pb.args) if input_pb.args else ((), {})
     elif inspect.isfunction(function) or inspect.isgeneratorfunction(function):
-        args, kwargs = function_context.deserialize(function_input.args) if function_input.args else ((), {})
+        args, kwargs = function_context.deserialize(input_pb.args) if input_pb.args else ((), {})
     else:
         raise RuntimeError(f"Function {function} is a strange type {type(function)}")
 
@@ -338,11 +340,11 @@ def main(container_args, client):
             function = fastAPI_function_wrapper(function, container_args.function_def.webhook_config.method)
 
     with function_context.send_outputs():
-        for function_input in function_context.generate_inputs():  # type: ignore
+        for input_id, input_pb in function_context.generate_inputs():  # type: ignore
             t0 = time.time()
             # Note: this blocks the call_function as well. In the future we might want to stream outputs
             # back asynchronously, but then block the call_function if there is back-pressure.
-            call_function(function_context, aio_function_context, function, function_type, function_input)  # type: ignore
+            call_function(function_context, aio_function_context, function, function_type, input_id, input_pb)  # type: ignore
             time_elapsed = time.time() - t0
             function_context.track_function_call_time(time_elapsed)
 

@@ -27,11 +27,11 @@ skip_github_actions_non_linux = pytest.mark.skipif(
 
 def _get_inputs(client):
     args = ((42,), {})
-    function_input = api_pb2.FunctionInput(args=serialize(args), function_call_id=FUNCTION_CALL_ID)
+    input_pb = api_pb2.FunctionInput(args=serialize(args))
 
     return [
-        api_pb2.FunctionGetInputsResponse(inputs_old=[function_input]),
-        api_pb2.FunctionGetInputsResponse(inputs_old=[api_pb2.FunctionInput(kill_switch=True)]),
+        api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(input_id="in-xyz", input=input_pb)]),
+        api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(kill_switch=True)]),
     ]
 
 
@@ -167,12 +167,12 @@ def test_container_entrypoint_slow_function(servicer, event_loop, monkeypatch):
     # call function that sleeps for 0.5s, twice.
     DELAY = 0.5
     args = ((DELAY,), {})
-    function_input = api_pb2.FunctionInput(args=serialize(args), function_call_id=FUNCTION_CALL_ID)
+    input_pb = api_pb2.FunctionInput(args=serialize(args), function_call_id=FUNCTION_CALL_ID)
 
     inputs = [
-        api_pb2.FunctionGetInputsResponse(inputs_old=[function_input]),
-        api_pb2.FunctionGetInputsResponse(inputs_old=[function_input]),
-        api_pb2.FunctionGetInputsResponse(inputs_old=[api_pb2.FunctionInput(kill_switch=True)]),
+        api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(input_id="in-1", input=input_pb)]),
+        api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(input_id="in-2", input=input_pb)]),
+        api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(kill_switch=True)]),
     ]
 
     t0 = time.time()
