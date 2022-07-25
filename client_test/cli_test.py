@@ -1,7 +1,9 @@
+import pytest
+
 import typer.testing
 
-import modal_proto.api_pb2_grpc
 from modal import cli
+from modal.client import Client
 
 dummy_app_file = """
 import modal
@@ -10,9 +12,16 @@ stub = modal.Stub("my_app")
 """
 
 
-def test_app_deploy_success(servicer, mock_dir, monkeypatch):
-    monkeypatch.setattr(modal_proto.api_pb2_grpc, "ModalClientStub", lambda _: servicer)
+@pytest.fixture
+async def set_env_client(aio_client):
+    try:
+        Client.set_env_client(aio_client)
+        yield
+    finally:
+        Client.set_env_client(None)
 
+
+def test_app_deploy_success(servicer, mock_dir, monkeypatch, set_env_client):
     runner = typer.testing.CliRunner()
     with mock_dir({"myapp.py": dummy_app_file}) as root_dir:
         monkeypatch.chdir(root_dir)
@@ -22,9 +31,7 @@ def test_app_deploy_success(servicer, mock_dir, monkeypatch):
     assert "my_app" in servicer.deployed_apps
 
 
-def test_app_deploy_with_name(servicer, mock_dir, monkeypatch):
-    monkeypatch.setattr(modal_proto.api_pb2_grpc, "ModalClientStub", lambda _: servicer)
-
+def test_app_deploy_with_name(servicer, mock_dir, monkeypatch, set_env_client):
     runner = typer.testing.CliRunner()
     with mock_dir({"myapp.py": dummy_app_file}) as root_dir:
         monkeypatch.chdir(root_dir)
@@ -41,9 +48,7 @@ stub = AioStub("my_aio_app")
 """
 
 
-def test_aio_app_deploy_success(servicer, mock_dir, monkeypatch):
-    monkeypatch.setattr(modal_proto.api_pb2_grpc, "ModalClientStub", lambda _: servicer)
-
+def test_aio_app_deploy_success(servicer, mock_dir, monkeypatch, set_env_client):
     runner = typer.testing.CliRunner()
     with mock_dir({"myaioapp.py": dummy_aio_app_file}) as root_dir:
         monkeypatch.chdir(root_dir)

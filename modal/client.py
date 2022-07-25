@@ -160,5 +160,10 @@ class _Client:
         cls._client_from_env = _Client(server_url, client_type, credentials)
         return cls._client_from_env
 
+    @classmethod
+    def set_env_client(cls, client):
+        """Just used from tests."""
+        cls._client_from_env = client
+
 
 Client, AioClient = synchronize_apis(_Client)
