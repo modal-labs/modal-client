@@ -133,105 +133,94 @@ class Invocation:
 MAP_INVOCATION_CHUNK_SIZE = 100
 
 
-class _MapInvocation:
-    # TODO: should this be an object?
-    def __init__(self, function_id, input_stream, kwargs, client, is_generator):
-        self.function_id = function_id
-        self.input_stream = input_stream
-        self.kwargs = kwargs
-        self.client = client
-        self.is_generator = is_generator
+async def map_invocation(function_id, input_stream, kwargs, client, is_generator):
+    request = api_pb2.FunctionMapRequest(function_id=function_id)
+    response = await retry_transient_errors(client.stub.FunctionMap, request)
 
-    async def __aiter__(self):
-        request = api_pb2.FunctionMapRequest(function_id=self.function_id)
-        response = await retry_transient_errors(self.client.stub.FunctionMap, request)
+    function_call_id = response.function_call_id
 
-        function_call_id = response.function_call_id
+    have_all_inputs = False
+    num_outputs = 0
+    num_inputs = 0
 
-        have_all_inputs = False
-        num_outputs = 0
-        num_inputs = 0
+    input_queue: asyncio.Queue = asyncio.Queue()
 
-        input_queue: asyncio.Queue = asyncio.Queue()
+    async def drain_input_generator():
+        nonlocal num_inputs, input_queue
+        async with input_stream.stream() as streamer:
+            async for arg in streamer:
+                item = await _create_input(arg, kwargs, client, idx=num_inputs)
+                num_inputs += 1
+                await input_queue.put(item)
+        # close queue iterator
+        await input_queue.put(None)
+        yield
 
-        async def drain_input_generator():
-            nonlocal num_inputs, input_queue
-            async with self.input_stream.stream() as streamer:
-                async for arg in streamer:
-                    item = await _create_input(arg, self.kwargs, self.client, idx=num_inputs)
-                    num_inputs += 1
-                    await input_queue.put(item)
-            # close queue iterator
-            await input_queue.put(None)
-            yield
+    async def pump_inputs():
+        nonlocal num_inputs, have_all_inputs, input_queue
 
-        async def pump_inputs():
-            nonlocal num_inputs, have_all_inputs, input_queue
+        async for items in queue_batch_iterator(input_queue, MAP_INVOCATION_CHUNK_SIZE):
+            request = api_pb2.FunctionPutInputsRequest(
+                function_id=function_id, inputs=items, function_call_id=function_call_id
+            )
+            await retry_transient_errors(
+                client.stub.FunctionPutInputs,
+                request,
+                max_retries=None,
+                additional_status_codes=[StatusCode.RESOURCE_EXHAUSTED],
+            )
 
-            async for items in queue_batch_iterator(input_queue, MAP_INVOCATION_CHUNK_SIZE):
-                request = api_pb2.FunctionPutInputsRequest(
-                    function_id=self.function_id, inputs=items, function_call_id=function_call_id
-                )
-                await retry_transient_errors(
-                    self.client.stub.FunctionPutInputs,
-                    request,
-                    max_retries=None,
-                    additional_status_codes=[StatusCode.RESOURCE_EXHAUSTED],
-                )
+        have_all_inputs = True
+        yield
 
-            have_all_inputs = True
-            yield
+    async def poll_outputs():
+        nonlocal num_inputs, num_outputs, have_all_inputs
 
-        async def poll_outputs():
-            nonlocal num_inputs, num_outputs, have_all_inputs
+        # map to store out-of-order outputs received
+        pending_outputs = {}
 
-            # map to store out-of-order outputs received
-            pending_outputs = {}
+        while True:
+            request = api_pb2.FunctionGetOutputsRequest(function_call_id=function_call_id, timeout=60, new_method=True)
+            response = await retry_transient_errors(
+                client.stub.FunctionGetOutputs, request, max_retries=None, base_delay=0
+            )
 
-            while True:
-                request = api_pb2.FunctionGetOutputsRequest(
-                    function_call_id=function_call_id, timeout=60, new_method=True
-                )
-                response = await retry_transient_errors(
-                    self.client.stub.FunctionGetOutputs, request, max_retries=None, base_delay=0
-                )
-
-                for item in response.outputs:
-                    if self.is_generator:
-                        if item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
-                            num_outputs += 1
-                        else:
-                            output = await _process_result(item.result, self.client.stub, self.client)
-                            # yield output directly for generators.
-                            yield output
+            for item in response.outputs:
+                if is_generator:
+                    if item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
+                        num_outputs += 1
                     else:
-                        # hold on to outputs for function maps, so we can reorder them correctly.
-                        pending_outputs[item.idx] = await _process_result(item.result, self.client.stub, self.client)
+                        output = await _process_result(item.result, client.stub, client)
+                        # yield output directly for generators.
+                        yield output
+                else:
+                    # hold on to outputs for function maps, so we can reorder them correctly.
+                    pending_outputs[item.idx] = await _process_result(item.result, client.stub, client)
 
-                # send outputs sequentially while we can
-                while num_outputs in pending_outputs:
-                    output = pending_outputs.pop(num_outputs)
-                    yield output
-                    num_outputs += 1
+            # send outputs sequentially while we can
+            while num_outputs in pending_outputs:
+                output = pending_outputs.pop(num_outputs)
+                yield output
+                num_outputs += 1
 
-                if have_all_inputs:
-                    assert num_outputs <= num_inputs
-                    if num_outputs == num_inputs:
-                        break
+            if have_all_inputs:
+                assert num_outputs <= num_inputs
+                if num_outputs == num_inputs:
+                    break
 
-            assert len(pending_outputs) == 0
+        assert len(pending_outputs) == 0
 
-        response_gen = stream.merge(drain_input_generator(), pump_inputs(), poll_outputs())
+    response_gen = stream.merge(drain_input_generator(), pump_inputs(), poll_outputs())
 
-        async with response_gen.stream() as streamer:
-            async for response in streamer:
-                # Handle yield at the end of pump_inputs, in case
-                # that finishes after all outputs have been polled.
-                if response is None:
-                    if have_all_inputs and num_outputs == num_inputs:
-                        break
-                    continue
-                yield response
+    async with response_gen.stream() as streamer:
+        async for response in streamer:
+            # Handle yield at the end of pump_inputs, in case
+            # that finishes after all outputs have been polled.
+            if response is None:
+                if have_all_inputs and num_outputs == num_inputs:
+                    break
+                continue
+            yield response
 
 
 class _Function(Object, type_prefix="fu"):
@@ -419,7 +408,7 @@ class _Function(Object, type_prefix="fu"):
 
     async def _map(self, input_stream, kwargs={}):
         client, object_id = self._get_context()
-        async for item in _MapInvocation(object_id, input_stream, kwargs, client, self._is_generator):
+        async for item in map_invocation(object_id, input_stream, kwargs, client, self._is_generator):
             yield item
 
     async def map(
