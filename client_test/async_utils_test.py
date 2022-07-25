@@ -7,6 +7,7 @@ from modal_utils.async_utils import (
     intercept_coro,
     queue_batch_iterator,
     retry,
+    warn_if_generator_is_not_consumed,
 )
 
 skip_non_linux = pytest.mark.skipif(
@@ -171,3 +172,19 @@ async def interceptor(thing):
 async def test_intercept_coro():
     coro = fib(10)
     assert await intercept_coro(coro, interceptor) == 55
+
+
+@pytest.mark.asyncio
+async def test_warn_if_generator_is_not_consumed():
+    @warn_if_generator_is_not_consumed
+    async def my_generator():
+        yield 42
+
+    with pytest.warns(UserWarning) as warnings:
+        g = my_generator()
+        del g  # Force destructor
+
+    assert len(warnings) == 1
+    assert "my_generator" in str(warnings[0].message)
+    assert "for" in str(warnings[0].message)
+    assert "list" in str(warnings[0].message)

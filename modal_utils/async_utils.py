@@ -3,6 +3,7 @@ import concurrent.futures
 import functools
 import inspect
 import time
+import warnings
 from typing import Any, List, Optional, Union
 
 import synchronicity
@@ -275,3 +276,32 @@ async def intercept_coro(coro, interceptor):
                 value_to_send = await interceptor(awaitable)
         except StopIteration as exc:
             return exc.value
+
+
+class WarnIfGeneratorIsNotConsumed:
+    def __init__(self, gen, gen_f):
+        self.gen = gen
+        self.gen_f = gen_f
+        self.iterated = False
+
+    def __iter__(self):
+        self.iterated = True
+        return self.gen
+
+    def __del__(self):
+        if not self.iterated:
+            name = self.gen_f.__name__
+            warnings.warn(
+                f"Warning: the results of a call to {name} was not consumed, so the call will never be executed."
+                f" Consider a for-loop like `for x in {name}(...)` or unpacking the generator using `list(...)`"
+            )
+
+
+def warn_if_generator_is_not_consumed(gen_f):
+    # https://gist.github.com/erikbern/01ae78d15f89edfa7f77e5c0a827a94d
+    @functools.wraps(gen_f)
+    def f_wrapped(*args, **kwargs):
+        gen = gen_f(*args, **kwargs)
+        return WarnIfGeneratorIsNotConsumed(gen, gen_f)
+
+    return f_wrapped
