@@ -267,6 +267,7 @@ if config["sentry_dsn"] and "localhost" not in config["server_url"]:
         )  # type: ignore
 
         sentry_sdk.set_tag("token_id", config["token_id"])
+        sentry_sdk.set_tag("task_id", config["task_id"])
         sentry_sdk.set_user(
             {"token_id": config["token_id"], "client_version": __version__, "task_id": config["task_id"]}
         )
