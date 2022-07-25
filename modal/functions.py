@@ -52,7 +52,7 @@ async def _process_result(result, stub, client=None):
     return deserialize(data, client)
 
 
-async def _create_input(args, kwargs, client, idx=None) -> api_pb2.FunctionInput:
+async def _create_input(args, kwargs, client, idx=None) -> api_pb2.FunctionPutInputsItem:
     """Serialize function arguments and create a FunctionInput protobuf,
     uploading to blob storage if needed.
     """
@@ -62,13 +62,13 @@ async def _create_input(args, kwargs, client, idx=None) -> api_pb2.FunctionInput
     if len(args_serialized) > MAX_OBJECT_SIZE_BYTES:
         args_blob_id = await blob_upload(args_serialized, client.stub)
 
-        return api_pb2.FunctionInput(
-            args_blob_id=args_blob_id,
+        return api_pb2.FunctionPutInputsItem(
+            input=api_pb2.FunctionInput(args_blob_id=args_blob_id),
             idx=idx,
         )
     else:
-        return api_pb2.FunctionInput(
-            args=args_serialized,
+        return api_pb2.FunctionPutInputsItem(
+            input=api_pb2.FunctionInput(args=args_serialized),
             idx=idx,
         )
 
@@ -96,9 +96,9 @@ class Invocation:
 
         function_call_id = response.function_call_id
 
-        inp = await _create_input(args, kwargs, client)
+        item = await _create_input(args, kwargs, client)
         request_put = api_pb2.FunctionPutInputsRequest(
-            function_id=function_id, inputs_old=[inp], function_call_id=function_call_id
+            function_id=function_id, inputs=[item], function_call_id=function_call_id
         )
         await retry_transient_errors(
             client.stub.FunctionPutInputs,
@@ -110,10 +110,10 @@ class Invocation:
         return Invocation(client.stub, function_id, function_call_id, client)
 
     async def get_items(self):
-        request = api_pb2.FunctionGetOutputsRequest(function_call_id=self.function_call_id, timeout=60)
+        request = api_pb2.FunctionGetOutputsRequest(function_call_id=self.function_call_id, timeout=60, new_method=True)
         response = await retry_transient_errors(self.stub.FunctionGetOutputs, request, max_retries=None, base_delay=0)
-        for output in response.outputs_old:
-            yield output
+        for item in response.outputs:
+            yield item.result
 
     async def run_function(self):
         result = (await stream.list(self.get_items()))[0]
@@ -158,9 +158,9 @@ class _MapInvocation:
             nonlocal num_inputs, input_queue
             async with self.input_stream.stream() as streamer:
                 async for arg in streamer:
-                    function_input = await _create_input(arg, self.kwargs, self.client, idx=num_inputs)
+                    item = await _create_input(arg, self.kwargs, self.client, idx=num_inputs)
                     num_inputs += 1
-                    await input_queue.put(function_input)
+                    await input_queue.put(item)
             # close queue iterator
             await input_queue.put(None)
             yield
@@ -168,9 +168,9 @@ class _MapInvocation:
         async def pump_inputs():
             nonlocal num_inputs, have_all_inputs, input_queue
 
-            async for inputs in queue_batch_iterator(input_queue, MAP_INVOCATION_CHUNK_SIZE):
+            async for items in queue_batch_iterator(input_queue, MAP_INVOCATION_CHUNK_SIZE):
                 request = api_pb2.FunctionPutInputsRequest(
-                    function_id=self.function_id, inputs_old=inputs, function_call_id=function_call_id
+                    function_id=self.function_id, inputs=items, function_call_id=function_call_id
                 )
                 await retry_transient_errors(
                     self.client.stub.FunctionPutInputs,
@@ -189,22 +189,24 @@ class _MapInvocation:
             pending_outputs = {}
 
             while True:
-                request = api_pb2.FunctionGetOutputsRequest(function_call_id=function_call_id, timeout=60)
+                request = api_pb2.FunctionGetOutputsRequest(
+                    function_call_id=function_call_id, timeout=60, new_method=True
+                )
                 response = await retry_transient_errors(
                     self.client.stub.FunctionGetOutputs, request, max_retries=None, base_delay=0
                 )
 
-                for result in response.outputs_old:
+                for item in response.outputs:
                     if self.is_generator:
-                        if result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
+                        if item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
                             num_outputs += 1
                         else:
-                            output = await _process_result(result, self.client.stub, self.client)
+                            output = await _process_result(item.result, self.client.stub, self.client)
                             # yield output directly for generators.
                             yield output
                     else:
                         # hold on to outputs for function maps, so we can reorder them correctly.
-                        pending_outputs[result.idx] = await _process_result(result, self.client.stub, self.client)
+                        pending_outputs[item.idx] = await _process_result(item.result, self.client.stub, self.client)
 
                 # send outputs sequentially while we can
                 while num_outputs in pending_outputs:

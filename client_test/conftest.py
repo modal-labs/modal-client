@@ -266,8 +266,8 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         request: api_pb2.FunctionPutInputsRequest,
         context: ServicerContext,
     ) -> Empty:
-        for function_input in request.inputs_old:
-            args, kwargs = cloudpickle.loads(function_input.args) if function_input.args else ((), {})
+        for item in request.inputs:
+            args, kwargs = cloudpickle.loads(item.input.args) if item.input.args else ((), {})
             self.client_calls.append((args, kwargs))
         return Empty()
 
@@ -283,10 +283,13 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
             result = api_pb2.GenericResult(
                 status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
                 data=cloudpickle.dumps(res),
+            )
+            item = api_pb2.FunctionGetOutputsItem(
                 idx=self.output_idx,
+                result=result,
             )
             self.output_idx += 1
-            return api_pb2.FunctionGetOutputsResponse(outputs_old=[result])
+            return api_pb2.FunctionGetOutputsResponse(outputs=[item])
         else:
             await context.abort(StatusCode.DEADLINE_EXCEEDED, "Read timeout")
 
