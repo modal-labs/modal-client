@@ -69,7 +69,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.blob_create_metadata = None
 
     async def BlobCreate(
-        self, request: api_pb2.BlobCreateRequest, context: ServicerContext = None, timeout=None
+        self, request: api_pb2.BlobCreateRequest, context: ServicerContext
     ) -> api_pb2.BlobCreateResponse:
         # This is used to test retry_transient_errors, see grpc_utils_test.py
         self.blob_create_metadata = {m.key: m.value for m in context.invocation_metadata()}
@@ -83,14 +83,12 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
             upload_url = f"{self.blob_host}/upload?blob_id={blob_id}"
             return api_pb2.BlobCreateResponse(blob_id=blob_id, upload_url=upload_url)
 
-    async def BlobGet(
-        self, request: api_pb2.BlobGetRequest, context: ServicerContext = None, timeout=None
-    ) -> api_pb2.BlobGetResponse:
+    async def BlobGet(self, request: api_pb2.BlobGetRequest, context: ServicerContext) -> api_pb2.BlobGetResponse:
         download_url = f"{self.blob_host}/download?blob_id={request.blob_id}"
         return api_pb2.BlobGetResponse(download_url=download_url)
 
     async def ClientCreate(
-        self, request: api_pb2.ClientCreateRequest, context: ServicerContext = None, timeout=None
+        self, request: api_pb2.ClientCreateRequest, context: ServicerContext
     ) -> api_pb2.ClientCreateResponse:
         self.requests.append(request)
         client_id = "cl-123"
@@ -104,49 +102,45 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     async def AppCreate(
         self,
         request: api_pb2.AppCreateRequest,
-        context: ServicerContext = None,
+        context: ServicerContext,
     ) -> api_pb2.AppCreateResponse:
         self.requests.append(request)
         self.n_apps += 1
         app_id = f"ap-{self.n_apps}"
         return api_pb2.AppCreateResponse(app_id=app_id)
 
-    async def AppClientDisconnect(
-        self, request: api_pb2.AppClientDisconnectRequest, context: ServicerContext = None
-    ) -> Empty:
+    async def AppClientDisconnect(self, request: api_pb2.AppClientDisconnectRequest, context: ServicerContext) -> Empty:
         self.requests.append(request)
         self.done = True
         return Empty()
 
-    async def ClientHeartbeat(self, request: api_pb2.ClientHeartbeatRequest, context: ServicerContext = None) -> Empty:
+    async def ClientHeartbeat(self, request: api_pb2.ClientHeartbeatRequest, context: ServicerContext) -> Empty:
         self.requests.append(request)
         if self.heartbeat_status_code:
             await context.abort(self.heartbeat_status_code, f"Client {request.client_id} heartbeat failed.")
         return Empty()
 
     async def ImageGetOrCreate(
-        self, request: api_pb2.ImageGetOrCreateRequest, context: ServicerContext = None
+        self, request: api_pb2.ImageGetOrCreateRequest, context: ServicerContext
     ) -> api_pb2.ImageGetOrCreateResponse:
         idx = len(self.images)
         self.images[idx] = request.image
         return api_pb2.ImageGetOrCreateResponse(image_id=f"im-{idx}")
 
-    async def ImageJoin(
-        self, request: api_pb2.ImageJoinRequest, context: ServicerContext = None
-    ) -> api_pb2.ImageJoinResponse:
+    async def ImageJoin(self, request: api_pb2.ImageJoinRequest, context: ServicerContext) -> api_pb2.ImageJoinResponse:
         return api_pb2.ImageJoinResponse(
             result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
         )
 
     async def AppGetLogs(
-        self, request: api_pb2.AppGetLogsRequest, context: ServicerContext = None, timeout=None
+        self, request: api_pb2.AppGetLogsRequest, context: ServicerContext
     ) -> typing.AsyncIterator[api_pb2.TaskLogsBatch]:
         await asyncio.sleep(0.1)
         if self.done:
             yield api_pb2.TaskLogsBatch(app_done=True)
 
     async def FunctionGetInputs(
-        self, request: api_pb2.FunctionGetInputsRequest, context: ServicerContext = None
+        self, request: api_pb2.FunctionGetInputsRequest, context: ServicerContext
     ) -> api_pb2.FunctionGetInputsResponse:
         assert request.function_id
         if self.fail_get_inputs:
@@ -160,17 +154,12 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         else:
             return self.container_inputs.pop(0)
 
-    async def FunctionPutOutputs(
-        self, request: api_pb2.FunctionPutOutputsRequest, context: ServicerContext = None
-    ) -> Empty:
-        # Check that the idempotency key exists
-        metadata = {m.key: m.value for m in context.invocation_metadata()}
-        assert metadata["x-idempotency-key"]
+    async def FunctionPutOutputs(self, request: api_pb2.FunctionPutOutputsRequest, context: ServicerContext) -> Empty:
         self.container_outputs.append(request)
         return Empty()
 
     async def AppGetObjects(
-        self, request: api_pb2.AppGetObjectsRequest, context: ServicerContext = None
+        self, request: api_pb2.AppGetObjectsRequest, context: ServicerContext
     ) -> api_pb2.AppGetObjectsResponse:
         if self.object_ids:
             object_ids = self.object_ids
@@ -178,36 +167,34 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
             object_ids = self.app_objects.get(request.app_id, {})
         return api_pb2.AppGetObjectsResponse(object_ids=object_ids)
 
-    async def AppSetObjects(self, request: api_pb2.AppSetObjectsRequest, context: ServicerContext = None) -> Empty:
+    async def AppSetObjects(self, request: api_pb2.AppSetObjectsRequest, context: ServicerContext) -> Empty:
         self.app_objects[request.app_id] = dict(request.object_ids)
         return Empty()
 
     async def QueueCreate(
-        self, request: api_pb2.QueueCreateRequest, context: ServicerContext = None
+        self, request: api_pb2.QueueCreateRequest, context: ServicerContext
     ) -> api_pb2.QueueCreateResponse:
         self.n_queues += 1
         return api_pb2.QueueCreateResponse(queue_id=f"qu-{self.n_queues}")
 
-    async def QueuePut(self, request: api_pb2.QueuePutRequest, context: ServicerContext = None) -> Empty:
+    async def QueuePut(self, request: api_pb2.QueuePutRequest, context: ServicerContext) -> Empty:
         self.queue += request.values
         return Empty()
 
-    async def QueueGet(
-        self, request: api_pb2.QueueGetRequest, context: ServicerContext = None
-    ) -> api_pb2.QueueGetResponse:
+    async def QueueGet(self, request: api_pb2.QueueGetRequest, context: ServicerContext) -> api_pb2.QueueGetResponse:
         return api_pb2.QueueGetResponse(values=[self.queue.pop(0)])
 
-    async def AppDeploy(self, request: api_pb2.AppDeployRequest, context: ServicerContext = None) -> Empty:
+    async def AppDeploy(self, request: api_pb2.AppDeployRequest, context: ServicerContext) -> Empty:
         self.deployed_apps[request.name] = request.app_id
         return Empty()
 
     async def AppGetByDeploymentName(
-        self, request: api_pb2.AppGetByDeploymentNameRequest, context: ServicerContext = None
+        self, request: api_pb2.AppGetByDeploymentNameRequest, context: ServicerContext
     ) -> api_pb2.AppGetByDeploymentNameResponse:
         return api_pb2.AppGetByDeploymentNameResponse(app_id=self.deployed_apps.get(request.name))
 
     async def AppLookupObject(
-        self, request: api_pb2.AppLookupObjectRequest, context: ServicerContext = None
+        self, request: api_pb2.AppLookupObjectRequest, context: ServicerContext
     ) -> api_pb2.AppLookupObjectResponse:
         object_id = None
         app_id = self.deployed_apps.get(request.app_name)
