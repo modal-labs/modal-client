@@ -115,7 +115,13 @@ class Invocation:
 
     async def get_items(self):
         request = api_pb2.FunctionGetOutputsRequest(function_call_id=self.function_call_id, timeout=60, new_method=True)
-        response = await retry_transient_errors(self.stub.FunctionGetOutputs, request, max_retries=None, base_delay=0)
+        response = await retry_transient_errors(
+            self.stub.FunctionGetOutputs,
+            request,
+            max_retries=None,
+            base_delay=0,
+            ignore_errors=[StatusCode.DEADLINE_EXCEEDED],
+        )
         for item in response.outputs:
             yield item.result
 
@@ -186,7 +192,11 @@ async def map_invocation(function_id, input_stream, kwargs, client, is_generator
         while True:
             request = api_pb2.FunctionGetOutputsRequest(function_call_id=function_call_id, timeout=60, new_method=True)
             response = await retry_transient_errors(
-                client.stub.FunctionGetOutputs, request, max_retries=None, base_delay=0
+                client.stub.FunctionGetOutputs,
+                request,
+                max_retries=None,
+                base_delay=0,
+                ignore_errors=[StatusCode.DEADLINE_EXCEEDED],
             )
 
             for item in response.outputs:

@@ -194,7 +194,7 @@ class ChannelPool:
 
 
 async def retry_transient_errors(
-    fn, *args, base_delay=0.1, max_delay=1, delay_factor=2, max_retries=3, additional_status_codes=[]
+    fn, *args, base_delay=0.1, max_delay=1, delay_factor=2, max_retries=3, additional_status_codes=[], ignore_errors=[]
 ):
     """Retry on transient gRPC failures with back-off until max_retries is reached.
     If max_retries is None, retry forever."""
@@ -215,7 +215,8 @@ async def retry_transient_errors(
                 if max_retries is not None and n_retries >= max_retries:
                     raise
                 n_retries += 1
-                capture_exception(exc)
+                if exc.code() not in ignore_errors:
+                    capture_exception(exc)
                 await asyncio.sleep(delay)
                 delay = min(delay * delay_factor, max_delay)
             else:
