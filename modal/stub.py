@@ -342,6 +342,7 @@ class _Stub:
         shared_volumes: Dict[str, Union[_SharedVolume, Ref]] = {},
         memory: Optional[int] = None,  # How much memory to request, in MB. This is a soft limit.
         proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
+        retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
     ) -> _Function:  # Function object - callable as a regular function within a Modal app
         """Decorator to create Modal functions"""
         if image is None:
@@ -361,6 +362,7 @@ class _Stub:
             shared_volumes=shared_volumes,
             memory=memory,
             proxy=proxy,
+            retries=retries,
         )
         return self._add_function(function)
 
@@ -381,6 +383,7 @@ class _Stub:
         shared_volumes: Dict[str, Union[_SharedVolume, Ref]] = {},
         memory: Optional[int] = None,  # How much memory to request, in MB. This is a soft limit.
         proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
+        retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
     ) -> _Function:
         """Decorator to create Modal generators"""
         if image is None:
@@ -399,6 +402,7 @@ class _Stub:
             shared_volumes=shared_volumes,
             memory=memory,
             proxy=proxy,
+            retries=retries,
         )
         return self._add_function(function)
 
@@ -418,6 +422,7 @@ class _Stub:
         shared_volumes: Dict[str, Union[_SharedVolume, Ref]] = {},
         memory: Optional[int] = None,  # How much memory to request, in MB. This is a soft limit.
         proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
+        retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
     ):
         if image is None:
             image = self._get_default_image()
@@ -436,6 +441,7 @@ class _Stub:
             ),
             memory=memory,
             proxy=proxy,
+            retries=retries,
         )
         return self._add_function(function)
 
@@ -456,6 +462,7 @@ class _Stub:
         shared_volumes: Dict[str, Union[_SharedVolume, Ref]] = {},
         memory: Optional[int] = None,  # How much memory to request, in MB. This is a soft limit.
         proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
+        retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
     ):
         if image is None:
             image = self._get_default_image()
@@ -474,6 +481,7 @@ class _Stub:
             ),
             memory=memory,
             proxy=proxy,
+            retries=retries,
         )
         return self._add_function(function)
 

@@ -346,6 +346,8 @@ message Function {
   repeated SharedVolumeMount shared_volume_mounts = 16;
 
   optional string proxy_id = 17;
+
+  uint32 retries = 18;
 }
 
 message FunctionCreateRequest {

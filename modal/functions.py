@@ -258,6 +258,7 @@ class _Function(Object, type_prefix="fu"):
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         memory: Optional[int] = None,
         proxy: Optional[Ref] = None,
+        retries: Optional[int] = None,
     ):
         assert callable(raw_f)
         self._info = FunctionInfo(raw_f, serialized)
@@ -282,6 +283,9 @@ class _Function(Object, type_prefix="fu"):
         elif memory is not None and memory >= MAX_MEMORY_MB:
             raise InvalidError(f"Function {raw_f} memory request must be less than {MAX_MEMORY_MB} MB")
 
+        if retries is not None and (not isinstance(retries, int) or retries < 0 or retries > 10):
+            raise InvalidError(f"Function {raw_f} retries must be an integer between 0 and 10.")
+
         self._schedule = schedule
         self._is_generator = is_generator
         self._gpu = gpu
@@ -292,6 +296,7 @@ class _Function(Object, type_prefix="fu"):
         self._web_url = None
         self._memory = memory
         self._proxy = proxy
+        self._retries = retries
         self._local_app = None
         self._local_object_id = None
         self._tag = self._info.get_tag()
@@ -367,6 +372,7 @@ class _Function(Object, type_prefix="fu"):
             webhook_config=self._webhook_config,
             shared_volume_mounts=shared_volume_mounts,
             proxy_id=proxy_id,
+            retries=self._retries,
         )
         request = api_pb2.FunctionCreateRequest(
             app_id=app_id,
