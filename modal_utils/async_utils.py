@@ -288,6 +288,9 @@ class _WarnIfGeneratorIsNotConsumed:
         self.iterated = True
         return self.gen
 
+    def __repr__(self):
+        return repr(self.gen)
+
     def __del__(self):
         if not self.iterated and not self.warned:
             self.warned = True

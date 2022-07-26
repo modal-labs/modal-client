@@ -183,6 +183,7 @@ async def test_warn_if_generator_is_not_consumed(caplog):
 
     with caplog.at_level(logging.WARNING):
         g = my_generator()
+        assert "my_generator" in repr(g)
         del g  # Force destructor
 
     assert len(caplog.records) == 1
