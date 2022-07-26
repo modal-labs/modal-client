@@ -62,14 +62,6 @@ def _run_container(servicer, module_name, function_name, rate_limit_times=0, fai
             function_def=function_def,
         )
 
-        servicer.object_ids = {
-            "image": "im-1",
-            "modal_test_support.functions.square": "fu-2",
-            "modal_test_support.functions.square_sync_returning_async": "fu-3",
-            "modal_test_support.functions.square_async": "fu-4",
-            "modal_test_support.functions.raises": "fu-5",
-            "modal_test_support.missing_main_conditional.square": "fu-6",
-        }
         main(container_args, client)
 
         return client, servicer.container_outputs

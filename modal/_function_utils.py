@@ -140,7 +140,7 @@ class FunctionInfo:
         return mounts
 
     def get_tag(self):
-        return f"{self.module_name}.{self.function_name}"
+        return self.function_name
 
     def is_nullary(self):
         return all(param.default is not param.empty for param in self.signature.parameters.values())
