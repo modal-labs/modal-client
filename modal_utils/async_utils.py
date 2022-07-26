@@ -278,13 +278,13 @@ async def intercept_coro(coro, interceptor):
             return exc.value
 
 
-class WarnIfGeneratorIsNotConsumed:
+class _WarnIfGeneratorIsNotConsumed:
     def __init__(self, gen, gen_f):
         self.gen = gen
         self.gen_f = gen_f
         self.iterated = False
 
-    def __iter__(self):
+    def __aiter__(self):
         self.iterated = True
         return self.gen
 
@@ -297,11 +297,14 @@ class WarnIfGeneratorIsNotConsumed:
             )
 
 
+synchronize_apis(_WarnIfGeneratorIsNotConsumed)
+
+
 def warn_if_generator_is_not_consumed(gen_f):
     # https://gist.github.com/erikbern/01ae78d15f89edfa7f77e5c0a827a94d
     @functools.wraps(gen_f)
     def f_wrapped(*args, **kwargs):
         gen = gen_f(*args, **kwargs)
-        return WarnIfGeneratorIsNotConsumed(gen, gen_f)
+        return _WarnIfGeneratorIsNotConsumed(gen, gen_f)
 
     return f_wrapped
