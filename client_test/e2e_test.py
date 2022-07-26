@@ -1,4 +1,3 @@
-import os
 import pathlib
 import subprocess
 import sys
@@ -8,10 +7,8 @@ def _cli(module, server_url):
     lib_dir = pathlib.Path(__file__).parent.parent
     args = [sys.executable, "-m", module]
     env = {
-        **os.environ,
         "MODAL_SERVER_URL": server_url,
-        # For windows
-        "PYTHONUTF8": "1",
+        "PYTHONUTF8": "1",  # for windows
     }
     ret = subprocess.run(args, cwd=lib_dir, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if ret.returncode != 0:
@@ -23,7 +20,7 @@ def test_run_e2e(servicer):
     _cli("modal_test_support.script", servicer.remote_addr)
 
 
-def test_run_uncomsumed_map(servicer):
+def test_run_unconsumed_map(servicer):
     _, err = _cli("modal_test_support.unconsumed_map", servicer.remote_addr)
     assert b"map" in err
     assert b"for-loop" in err

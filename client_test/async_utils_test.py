@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import platform
 import pytest
 
@@ -175,16 +176,16 @@ async def test_intercept_coro():
 
 
 @pytest.mark.asyncio
-async def test_warn_if_generator_is_not_consumed():
+async def test_warn_if_generator_is_not_consumed(caplog):
     @warn_if_generator_is_not_consumed
     async def my_generator():
         yield 42
 
-    with pytest.warns(UserWarning) as warnings:
+    with caplog.at_level(logging.WARNING):
         g = my_generator()
         del g  # Force destructor
 
-    assert len(warnings) == 1
-    assert "my_generator" in str(warnings[0].message)
-    assert "for" in str(warnings[0].message)
-    assert "list" in str(warnings[0].message)
+    assert len(caplog.records) == 1
+    assert "my_generator" in caplog.text
+    assert "for" in caplog.text
+    assert "list" in caplog.text

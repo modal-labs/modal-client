@@ -3,7 +3,6 @@ import concurrent.futures
 import functools
 import inspect
 import time
-import warnings
 from typing import Any, List, Optional, Union
 
 import synchronicity
@@ -283,15 +282,17 @@ class _WarnIfGeneratorIsNotConsumed:
         self.gen = gen
         self.gen_f = gen_f
         self.iterated = False
+        self.warned = False
 
     def __aiter__(self):
         self.iterated = True
         return self.gen
 
     def __del__(self):
-        if not self.iterated:
+        if not self.iterated and not self.warned:
+            self.warned = True
             name = self.gen_f.__name__
-            warnings.warn(
+            logger.warning(
                 f"Warning: the results of a call to {name} was not consumed, so the call will never be executed."
                 f" Consider a for-loop like `for x in {name}(...)` or unpacking the generator using `list(...)`"
             )
