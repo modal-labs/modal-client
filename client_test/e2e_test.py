@@ -16,8 +16,18 @@ def _cli(module, server_url):
     ret = subprocess.run(args, cwd=lib_dir, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if ret.returncode != 0:
         raise Exception(f"Failed with {ret.returncode} stdout: {ret.stdout} stderr: {ret.stderr}")
-    return ret.stdout
+    return ret.stdout, ret.stderr
 
 
 def test_run_e2e(servicer):
     _cli("modal_test_support.script", servicer.remote_addr)
+
+
+def test_run_uncomsumed_map(servicer):
+    _, err = _cli("modal_test_support.unconsumed_map", servicer.remote_addr)
+    assert b"map" in err
+    assert b"for-loop" in err
+
+    _, err = _cli("modal_test_support.consumed_map", servicer.remote_addr)
+    assert b"map" not in err
+    assert b"for-loop" not in err
