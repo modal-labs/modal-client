@@ -1,3 +1,4 @@
+import os
 import pathlib
 import subprocess
 import sys
@@ -8,7 +9,8 @@ def _cli(module, server_url):
     args = [sys.executable, "-m", module]
     env = {
         "MODAL_SERVER_URL": server_url,
-        "PYTHONUTF8": "1",  # for windows
+        **os.environ,
+        "PYTHONUTF8": "1",  # For windows
     }
     ret = subprocess.run(args, cwd=lib_dir, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if ret.returncode != 0:
