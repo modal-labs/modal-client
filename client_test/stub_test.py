@@ -1,8 +1,8 @@
 import pytest
 
 import modal.exception
-from modal import Stub
-from modal.aio import AioApp, AioDebianSlim, AioQueue, AioStub, aio_lookup
+from modal import DebianSlim, Stub
+from modal.aio import AioApp, AioQueue, AioStub, aio_lookup
 from modal.exception import NotFoundError
 
 
@@ -127,30 +127,27 @@ def test_run_function_without_app_error():
     assert "stub.run" in str(excinfo.value)
 
 
-@pytest.mark.asyncio
-async def test_standalone_object(aio_client):
-    stub = AioStub()
-    image = AioDebianSlim()
+def test_standalone_object(client):
+    stub = Stub()
+    image = DebianSlim()
 
     @stub.function
     def foo(image=image):
         pass
 
-    async with stub.run(client=aio_client):
+    with stub.run(client=client):
         pass
 
 
-@pytest.mark.asyncio
-async def test_is_inside_basic():
-    stub = AioStub()
+def test_is_inside_basic():
+    stub = Stub()
     assert stub.is_inside() is False
 
 
-@pytest.mark.asyncio
-async def test_missing_attr():
+def test_missing_attr():
     """Trying to call a non-existent function on the Stub should produce
     an understandable error message."""
 
-    stub = AioStub()
+    stub = Stub()
     with pytest.raises(NotFoundError):
         stub.fun()
