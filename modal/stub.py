@@ -14,7 +14,7 @@ from ._function_utils import FunctionInfo
 from ._output import OutputManager, step_completed, step_progress
 from .app import _App, container_app, is_local
 from .client import _Client
-from .config import config
+from .config import config, logger
 from .exception import InvalidError
 from .functions import _Function
 from .image import _DebianSlim, _Image
@@ -310,6 +310,20 @@ class _Stub:
 
         return mounts
 
+    def _add_function(self, function):
+        if function.tag in self._blueprint:
+            old_function = self._blueprint[function.tag]
+            if isinstance(old_function, _Function):
+                logger.warning(
+                    f"Warning: Tag {function.tag} collision!"
+                    f" Overriding existing function [{old_function._info.module_name}].{old_function._info.function_name}"
+                    f" with new function [{function._info.module_name}].{function._info.function_name}"
+                )
+            else:
+                logger.warning(f"Warning: tag {function.tag} exists but is overriden by function")
+        self._blueprint[function.tag] = function
+        return function
+
     @decorator_with_options
     def function(
         self,
@@ -348,8 +362,7 @@ class _Stub:
             memory=memory,
             proxy=proxy,
         )
-        self._blueprint[function.tag] = function
-        return function
+        return self._add_function(function)
 
     @decorator_with_options
     def generator(
@@ -387,8 +400,7 @@ class _Stub:
             memory=memory,
             proxy=proxy,
         )
-        self._blueprint[function.tag] = function
-        return function
+        return self._add_function(function)
 
     @decorator_with_options
     def asgi(
@@ -425,8 +437,7 @@ class _Stub:
             memory=memory,
             proxy=proxy,
         )
-        self._blueprint[function.tag] = function
-        return function
+        return self._add_function(function)
 
     @decorator_with_options
     def webhook(
@@ -464,8 +475,7 @@ class _Stub:
             memory=memory,
             proxy=proxy,
         )
-        self._blueprint[function.tag] = function
-        return function
+        return self._add_function(function)
 
     async def interactive_shell(self, cmd=None, mounts=[], secrets=[], image_ref=None, shared_volumes={}):
         """Run `cmd` interactively within this image. Similar to `docker run -it --entrypoint={cmd}`.

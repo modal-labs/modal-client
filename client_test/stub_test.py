@@ -1,4 +1,7 @@
+import logging
 import pytest
+
+from modal_test_support import module_1, module_2
 
 import modal.exception
 from modal import DebianSlim, Stub
@@ -151,3 +154,20 @@ def test_missing_attr():
     stub = Stub()
     with pytest.raises(NotFoundError):
         stub.fun()
+
+
+def test_same_function_name(caplog):
+    stub = Stub()
+
+    # Add first function
+    with caplog.at_level(logging.WARNING):
+        stub.function(module_1.square)
+    assert len(caplog.records) == 0
+
+    # Add second function: check warning
+    with caplog.at_level(logging.WARNING):
+        stub.function(module_2.square)
+    assert len(caplog.records) == 1
+    assert "module_1" in caplog.text
+    assert "module_2" in caplog.text
+    assert "square" in caplog.text
