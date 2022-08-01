@@ -74,7 +74,11 @@ class _Image(Object, type_prefix="im"):
             with open(path, "rb") as f:
                 context_file_pb2s.append(api_pb2.ImageContextFile(filename=filename, data=f.read()))
 
-        dockerfile_commands = [_make_bytes(s) for s in self._dockerfile_commands]
+        dockerfile_commands = self._dockerfile_commands
+        if callable(dockerfile_commands):
+            # It's a closure (see DockerfileImage)
+            dockerfile_commands = dockerfile_commands()
+        dockerfile_commands = [_make_bytes(s) for s in dockerfile_commands]
         image_definition = api_pb2.Image(
             base_images=base_images_pb2s,
             dockerfile_commands=dockerfile_commands,
@@ -329,8 +333,9 @@ def _DockerfileImage(path: Union[str, Path]):
 
     path = os.path.expanduser(path)
 
-    with open(path) as f:
-        dockerfile_commands = f.read().split("\n")
+    def dockerfile_commands():
+        with open(path) as f:
+            return f.read().split("\n")
 
     base_image = _Image(dockerfile_commands=dockerfile_commands)
 
