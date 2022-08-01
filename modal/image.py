@@ -2,7 +2,7 @@ import os
 import shlex
 import sys
 from pathlib import Path
-from typing import Collection, Dict, List, Optional, Union
+from typing import Callable, Collection, Dict, List, Optional, Union
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
@@ -12,11 +12,6 @@ from .config import config, logger
 from .exception import InvalidError, NotFoundError, RemoteError
 from .object import Object, ref
 from .secret import _Secret
-
-
-def _make_bytes(s):
-    assert type(s) in (str, bytes)
-    return s.encode("utf-8") if type(s) is str else s
 
 
 class _Image(Object, type_prefix="im"):
@@ -30,7 +25,7 @@ class _Image(Object, type_prefix="im"):
         self,
         base_images={},
         context_files={},
-        dockerfile_commands=[],
+        dockerfile_commands: Union[List[str], Callable[[], List[str]]] = [],
         secrets=[],
         version=None,
         ref=None,
@@ -74,11 +69,12 @@ class _Image(Object, type_prefix="im"):
             with open(path, "rb") as f:
                 context_file_pb2s.append(api_pb2.ImageContextFile(filename=filename, data=f.read()))
 
-        dockerfile_commands = self._dockerfile_commands
-        if callable(dockerfile_commands):
+        dockerfile_commands: List[str]
+        if callable(self._dockerfile_commands):
             # It's a closure (see DockerfileImage)
-            dockerfile_commands = dockerfile_commands()
-        dockerfile_commands = [_make_bytes(s) for s in dockerfile_commands]
+            dockerfile_commands = self._dockerfile_commands()
+        else:
+            dockerfile_commands = self._dockerfile_commands
         image_definition = api_pb2.Image(
             base_images=base_images_pb2s,
             dockerfile_commands=dockerfile_commands,
@@ -333,11 +329,12 @@ def _DockerfileImage(path: Union[str, Path]):
 
     path = os.path.expanduser(path)
 
-    def dockerfile_commands():
+    def base_dockerfile_commands():
+        # Make it a closure so that it's only invoked locally
         with open(path) as f:
             return f.read().split("\n")
 
-    base_image = _Image(dockerfile_commands=dockerfile_commands)
+    base_image = _Image(dockerfile_commands=base_dockerfile_commands)
 
     requirements_path = get_client_requirements_path()
 
