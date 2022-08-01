@@ -538,6 +538,9 @@ enum AppState {
   // Will be discharged when overwritten
   APP_STATE_DEPLOYED = 3;
 
+  // Winding down app due to user termination.
+  APP_STATE_STOPPING = 4;
+
   // Stopped
   APP_STATE_STOPPED = 5;
 }
