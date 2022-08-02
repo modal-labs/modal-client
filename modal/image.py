@@ -123,7 +123,7 @@ class _Image(Object, type_prefix="im"):
 
         **Example**
 
-        ```python
+        ```python notest
         image = modal.DebianSlim().extend(
             dockerfile_commands=[
                 "FROM base",
@@ -271,7 +271,7 @@ def _dockerhub_python_version(python_version=None):
 
 
 class _DebianSlim(_Image):
-    """A default base image, built on the official python:x.y.z-slim-bullseye Docker images.
+    """Default image, based on the official `python:X.Y.Z-slim-bullseye` Docker images.
 
     This image also be called as a function and customized, which allows you to
     extend the image with additional shell commands or Python packages.

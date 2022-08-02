@@ -1,7 +1,7 @@
 import asyncio
 import platform
 from pathlib import Path
-from typing import Collection, Dict, Optional, Union
+from typing import Callable, Collection, Dict, Optional, Union
 
 from aiostream import stream
 from grpc import StatusCode
@@ -238,6 +238,12 @@ async def map_invocation(function_id, input_stream, kwargs, client, is_generator
 
 
 class _Function(Object, type_prefix="fu"):
+    """Functions are the basic units of serverless execution on Modal.
+
+    Generally, you will not construct a `Function` directly. Instead, use the
+    `@stub.function` decorator on the `Stub` object for your application.
+    """
+
     # TODO: more type annotations
     _secrets: Collection[Union[Ref, _Secret]]
 
@@ -259,7 +265,8 @@ class _Function(Object, type_prefix="fu"):
         memory: Optional[int] = None,
         proxy: Optional[Ref] = None,
         retries: Optional[int] = None,
-    ):
+    ) -> None:
+        """mdmd:hidden"""
         assert callable(raw_f)
         self._info = FunctionInfo(raw_f, serialized)
         if schedule is not None:
@@ -437,7 +444,7 @@ class _Function(Object, type_prefix="fu"):
         *input_iterators,  # one input iterator per argument in the mapped-over function/generator
         kwargs={},  # any extra keyword arguments for the function
     ):
-        """Parallel map over a set of inputs
+        """Parallel map over a set of inputs.
 
         Takes one iterator argument per argument in the function being mapped over.
 
@@ -511,14 +518,14 @@ class _Function(Object, type_prefix="fu"):
             return self.call_function(args, kwargs)
 
     async def enqueue(self, *args, **kwargs):
-        """Calls the function with the given arguments without waiting for the results"""
+        """Calls the function with the given arguments, without waiting for the results."""
         if self._is_generator:
             await self.call_generator_nowait(args, kwargs)
         else:
             await self.call_function_nowait(args, kwargs)
 
-    def get_raw_f(self):
-        """Use by the container to get the code for the function."""
+    def get_raw_f(self) -> Callable:
+        """Return the inner Python object wrapped by this function."""
         return self._raw_f
 
 
