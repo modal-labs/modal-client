@@ -372,7 +372,7 @@ class _Function(Object, type_prefix="fu"):
             webhook_config=self._webhook_config,
             shared_volume_mounts=shared_volume_mounts,
             proxy_id=proxy_id,
-            retries=self._retries,
+            retry_policy=api_pb2.FunctionRetryPolicy(retries=self._retries),
         )
         request = api_pb2.FunctionCreateRequest(
             app_id=app_id,
