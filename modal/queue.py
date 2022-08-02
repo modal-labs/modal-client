@@ -12,9 +12,9 @@ from .object import Object
 
 
 class _Queue(Object, type_prefix="qu"):
-    """A distributed FIFO Queue.
+    """A distributed, FIFO Queue available to Modal apps.
 
-    The contents of the Queue can be any serializable object.
+    The queue can contain any object serializable by `cloudpickle`.
     """
 
     def __init__(self):
@@ -45,28 +45,28 @@ class _Queue(Object, type_prefix="qu"):
             logger.debug("Queue get for %s had empty results, trying again" % self.object_id)
         raise queue.Empty()
 
-    async def get(self, block=True, timeout=None):
-        """Get and pop the next object"""
+    async def get(self, block=True, timeout=None) -> Any:
+        """Get and pop the next object."""
         values = await self._get(block, timeout, 1)
         return values[0]
 
-    async def get_many(self, n_values, block=True, timeout=None):
-        """Get up to n_values multiple objects"""
+    async def get_many(self, n_values: int, block=True, timeout=None) -> List[Any]:
+        """Get up to multiple objects, up to `n_values`."""
         return await self._get(block, timeout, n_values)
 
-    async def put_many(self, vs: List[Any]):
-        """Put several objects"""
+    async def put(self, v: Any) -> None:
+        """Add a single object to the queue."""
+        await self.put_many([v])
+
+    async def put_many(self, vs: List[Any]) -> None:
+        """Add several objects to the queue."""
         vs_encoded = [serialize(v) for v in vs]
         request = api_pb2.QueuePutRequest(
             queue_id=self.object_id,
             values=vs_encoded,
             idempotency_key=str(uuid.uuid4()),
         )
-        return await retry_transient_errors(self._client.stub.QueuePut, request)
-
-    async def put(self, v):
-        """Put an object"""
-        return await self.put_many([v])
+        await retry_transient_errors(self._client.stub.QueuePut, request)
 
 
 Queue, AioQueue = synchronize_apis(_Queue)

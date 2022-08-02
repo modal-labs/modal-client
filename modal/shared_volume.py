@@ -6,8 +6,10 @@ from .object import Object
 
 
 class _SharedVolume(Object, type_prefix="sv"):
-    """Initialize a shared writable file system that can be attached simultaneously
-    to multiple Modal functions. This allows Modal functions to share data with each other.
+    """A shared, writable file system accessible by one or more Modal functions.
+
+    By attaching this file system as a mount to one or more functions, they can
+    share and persist data with each other.
 
     **Usage**
 
@@ -18,22 +20,23 @@ class _SharedVolume(Object, type_prefix="sv"):
 
     @stub.function(shared_volumes={"/root/foo": modal.SharedVolume()})
     def f():
-        ...
+        pass
     ```
 
-    It is often the case that you would want to persist the Shared Volume object separately from the
-    current app. Refer to the [Guide section](/docs/guide/shared-volumes#persisting-volumes) to see how to easily persist the object across app runs.
+    It is often the case that you would want to persist a shared volume object
+    separately from the currently attached app. Refer to the persistence
+    [guide section](/docs/guide/shared-volumes#persisting-volumes) to see how to
+    persist this object across app runs.
     """
 
-    def __init__(
-        self,
-    ):
+    def __init__(self) -> None:
+        """Construct a new shared volume, which is empty by default."""
         super().__init__()
 
-    def _get_creating_message(self):
+    def _get_creating_message(self) -> str:
         return "Creating shared volume..."
 
-    def _get_created_message(self):
+    def _get_created_message(self) -> str:
         return "Created shared volume."
 
     async def _load(self, client, app_id, existing_shared_volume_id):

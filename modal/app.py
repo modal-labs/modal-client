@@ -44,6 +44,26 @@ lookup, aio_lookup = synchronize_apis(_lookup)
 
 
 class _App:
+    """Apps are the user representation of an actively running Modal process.
+
+    You can obtain an `App` from the `Stub.run()` context manager. While the app
+    is running, you can get its `app_id`, `client`, and other useful properties
+    from this object.
+
+    ```
+    import modal
+
+    stub = modal.Stub()
+    stub.my_secret_object = modal.ref("my-secret")
+
+    if __name__ == "__main__":
+        with stub.run() as app:
+            print(app.client)
+            print(app.app_id)
+            print(app.my_secret_object)
+    ```
+    """
+
     _tag_to_object: Dict[str, Object]
     _tag_to_existing_id: Dict[str, str]
     _local_uuid_to_object_id: Dict[str, str]
@@ -58,6 +78,7 @@ class _App:
         tag_to_object: Optional[Dict[str, Object]] = None,
         tag_to_existing_id: Optional[Dict[str, str]] = None,
     ):
+        """mdmd:hidden This is the app constructor. Users should not call this directly."""
         self._app = app
         self._app_id = app_id
         self._client = client
@@ -85,7 +106,7 @@ class _App:
             yield
 
     async def load(self, obj: Object, progress: Optional[Tree] = None, existing_object_id: Optional[str] = None) -> str:
-        """Takes an object as input, create it, and return an object id."""
+        """Send a server request to create an object in this app, and return its ID."""
         if obj.local_uuid in self._local_uuid_to_object_id:
             # We already created this object before, shortcut this method
             return self._local_uuid_to_object_id[obj.local_uuid]
@@ -163,11 +184,9 @@ class _App:
             if isinstance(obj, _Function):
                 obj.set_local_app(self)
 
-    async def disconnect(self):
-        # Stop app server-side. This causes:
-        # 1. Server to kill any running task
-        # 2. Logs to drain (stopping the _get_logs_loop coroutine)
-        logger.debug("Stopping the app server-side")
+    async def disconnect(self) -> None:
+        """Tell the server to stop this app, terminating all running tasks."""
+        logger.debug("Sending app disconnect request")
         req_disconnect = api_pb2.AppClientDisconnectRequest(app_id=self._app_id)
         await self._client.stub.AppClientDisconnect(req_disconnect)
 
@@ -178,7 +197,7 @@ class _App:
     def __getattr__(self, tag: str) -> Object:
         return self._tag_to_object[tag]
 
-    def _is_inside(self, image: Union[Ref, _Image]):
+    def _is_inside(self, image: Union[Ref, _Image]) -> bool:
         if isinstance(image, Ref):
             if image.tag not in self._tag_to_object:
                 # This is some other image, which could belong to some unrelated

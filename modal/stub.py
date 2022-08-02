@@ -27,31 +27,37 @@ from .shared_volume import _SharedVolume
 
 
 class _Stub:
-    """An App manages Objects (Functions, Images, Secrets, Schedules etc.) associated with your applications
+    """A `Stub` is a description of how to create a Modal application.
 
-    A stub is a description of how to create an app.
+    The stub object principally describes Modal objects (`Function`, `Image`,
+    `Secret`, etc.) associated with the application. It has three responsibilities:
 
-    The App has three main responsibilities:
-    * Syncing of identities across processes (your local Python interpreter and every Modal worker active in your application)
-    * Making Objects stay alive and not be garbage collected for as long as the app lives (see App lifetime below)
-    * Manage log collection for everything that happens inside your code
+    * Syncing of identities across processes (your local Python interpreter and
+      every Modal worker active in your application).
+    * Making Objects stay alive and not be garbage collected for as long as the
+      app lives (see App lifetime below).
+    * Manage log collection for everything that happens inside your code.
 
-    **Registering Functions with an app**
+    **Registering functions with an app**
 
-    The most common way to explicitly register an Object with an app is through the `app.function()` decorator.
-    It both registers the annotated function itself and other passed objects like Schedules and Secrets with the
-    specified app:
+    The most common way to explicitly register an Object with an app is through the
+    `@stub.function` decorator. It both registers the annotated function itself and
+    other passed objects, like schedules and secrets, with the app:
 
     ```python
     import modal
 
     stub = modal.Stub()
 
-    @stub.function(secret=modal.ref("some_secret"), schedule=modal.Period(days=1))
+    @stub.function(
+        secret=modal.ref("some_secret"),
+        schedule=modal.Period(days=1),
+    )
     def foo():
-        ...
+        pass
     ```
-    In this example, both `foo`, the secret and the schedule are registered with the app.
+
+    In this example, the secret and schedule are registered with the app.
     """
 
     _name: str
@@ -62,7 +68,9 @@ class _Stub:
     _function_mounts: Dict[str, _Mount]
     _mounts: Collection[Union[_Mount, Ref]]
 
-    def __init__(self, name: str = None, *, mounts: Collection[Union[_Mount, Ref]] = [], **blueprint):
+    def __init__(self, name: str = None, *, mounts: Collection[Union[_Mount, Ref]] = [], **blueprint) -> None:
+        """Construct a new app stub, optionally with default mounts."""
+
         self._name = name
         if name is not None:
             self._description = name
@@ -109,8 +117,8 @@ class _Stub:
         else:
             self._blueprint[tag] = obj
 
-    def is_inside(self, image: Optional[Ref] = None):
-        """Returns if the current code block is executed within the `image` container"""
+    def is_inside(self, image: Optional[Ref] = None) -> bool:
+        """Returns if the program is currently running inside a container for this app."""
         # TODO(erikbern): Add a client test for this function.
         if image is not None and not isinstance(image, Ref):
             raise InvalidError(
@@ -233,21 +241,26 @@ class _Stub:
         stdout=None,
         show_progress=None,
     ):
-        """Deploys and exports objects in the app
+        """Deploy an app and export its objects persistently.
 
-        Typically, using the command line tool `modal app deploy <module or script>` would be used rather than this method.
+        Typically, using the command-line tool `modal app deploy <module or script>`
+        should be used, instead of this method.
 
-        Usage:
+        **Usage:**
+
         ```python
         if __name__ == "__main__":
             stub.deploy()
         ```
 
         Deployment has two primary purposes:
-        * Persists all of the objects (Functions, Images, Schedules etc.) in the app, allowing them to live past the current app run
-          Notably for Schedules this enables headless "cron"-like functionality where scheduled functions continue to be invoked after
-          the client has closed.
-        * Allows for certain of these objects, *deployment objects*, to be referred to and used by other apps
+
+        * Persists all of the objects in the app, allowing them to live past the
+          current app run. For schedules this enables headless "cron"-like
+          functionality where scheduled functions continue to be invoked after
+          the client has disconnected.
+        * Allows for certain kinds of these objects, _deployment objects_, to be
+          referred to and used by other apps.
         """
         if not is_local():
             raise InvalidError("Can not run an deploy from within a container.")
@@ -344,7 +357,7 @@ class _Stub:
         proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
     ) -> _Function:  # Function object - callable as a regular function within a Modal app
-        """Decorator to create Modal functions"""
+        """Decorator to register a new Modal function with this stub."""
         if image is None:
             image = self._get_default_image()
         mounts = [*self._get_function_mounts(raw_f), *mounts]
@@ -385,7 +398,7 @@ class _Stub:
         proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
     ) -> _Function:
-        """Decorator to create Modal generators"""
+        """Decorator similar to `@modal.function`, but it wraps Python generators."""
         if image is None:
             image = self._get_default_image()
         mounts = [*self._get_function_mounts(raw_f), *mounts]

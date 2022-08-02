@@ -9,8 +9,8 @@ class Schedule:
 
 
 class Cron(Schedule):
-    """Cron jobs are specified using the standard
-    [Unix cron tabs](https://crontab.guru/)
+    """Cron jobs are a type of schedule, specified using the
+    [Unix cron tab](https://crontab.guru/) syntax.
 
     **Usage**
 
@@ -18,16 +18,22 @@ class Cron(Schedule):
     import modal
     stub = modal.Stub()
 
+
     @stub.function(schedule=modal.Cron("* * * * *"))
     def f():
         print("This function will run every minute")
+    ```
 
+    We can specify different schedules with cron strings, for example:
+
+    ```
     modal.Cron("5 4 * * *")  # run at 4:05am every night
     modal.Cron("0 9 * * 4")  # runs every Thursday 9am
     ```
     """
 
-    def __init__(self, cron_string: str):
+    def __init__(self, cron_string: str) -> None:
+        """Construct a schedule that runs according to a cron expression string."""
         cron = api_pb2.Schedule.Cron(cron_string=cron_string)
         super().__init__(api_pb2.Schedule(cron=cron))
 
@@ -71,7 +77,7 @@ class Period(Schedule):
         hours: int = 0,
         minutes: int = 0,
         seconds: float = 0,
-    ):
+    ) -> None:
         period = api_pb2.Schedule.Period(
             years=years,
             months=months,
