@@ -34,6 +34,7 @@ async def _lookup(
     namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT,
     client: Optional[_Client] = None,
 ) -> Object:
+    """Returns a handle to a tagged object in a deployment on Modal."""
     if client is None:
         client = _Client.from_env()
     object_id = await _lookup_to_id(app_name, tag, namespace, client)

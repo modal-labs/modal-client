@@ -1,13 +1,13 @@
 class RemoteError(Exception):
-    pass
+    """An error was raised on the Modal server."""
 
 
 class AuthError(Exception):
-    pass
+    """The client has missing or invalid authentication."""
 
 
 class ConnectionError(Exception):
-    pass
+    """An issue was raised while connecting to the Modal servers."""
 
 
 class InvalidError(Exception):
@@ -15,11 +15,11 @@ class InvalidError(Exception):
 
 
 class VersionError(Exception):
-    pass
+    """The current client version of Modal is unsupported."""
 
 
 class NotFoundError(Exception):
-    pass
+    """A requested resource was not found."""
 
 
 class ExecutionError(Exception):
