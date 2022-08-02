@@ -123,7 +123,7 @@ def deploy(
         app_id = res
 
     console = Console()
-    console.print(f"\nView Deployment: [magenta]https://modal.com/deployments/{app_id}[/magenta]")
+    console.print(f"\nView Deployment: [magenta]https://modal.com/deployments/{name}[/magenta]")
 
 
 if __name__ == "__main__":
