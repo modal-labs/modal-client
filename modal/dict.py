@@ -20,6 +20,7 @@ class _Dict(Object, type_prefix="di"):
         return [api_pb2.DictEntry(key=serialize(k), value=serialize(v)) for k, v in data.items()]
 
     def __init__(self, data={}):
+        """Create a new dictionary, optionally filled with initial data."""
         self._data = data
         super().__init__()
 
@@ -33,7 +34,7 @@ class _Dict(Object, type_prefix="di"):
     async def get(self, key: Any) -> Any:
         """Get the value associated with the key.
 
-        Raises KeyError if the key does not exist.
+        Raises `KeyError` if the key does not exist.
         """
         req = api_pb2.DictGetRequest(dict_id=self.object_id, key=serialize(key))
         resp = await self._client.stub.DictGet(req)
@@ -42,19 +43,19 @@ class _Dict(Object, type_prefix="di"):
         return deserialize(resp.value, self._client)
 
     async def contains(self, key: Any) -> bool:
-        """Check if the key exists"""
+        """Check if the key exists."""
         req = api_pb2.DictContainsRequest(dict_id=self.object_id, key=serialize(key))
         resp = await self._client.stub.DictContains(req)
         return resp.found
 
     async def len(self) -> int:
-        """The length of the dictionary"""
+        """Returns the length of the dictionary."""
         req = api_pb2.DictLenRequest(dict_id=self.object_id)
         resp = await self._client.stub.DictLen(req)
         return resp.len
 
     async def __getitem__(self, key: Any) -> Any:
-        """Get an item from the dictionary"""
+        """Get an item from the dictionary."""
         return await self.get(key)
 
     async def update(self, **kwargs) -> None:
