@@ -102,10 +102,9 @@ message AppGetObjectsResponse {
   map<string, string> object_ids = 1;
 }
 
-enum DeploymentNamespace {  // TODO: rename this to something else?
+enum DeploymentNamespace {
   DEPLOYMENT_NAMESPACE_UNSPECIFIED = 0;
   DEPLOYMENT_NAMESPACE_ACCOUNT = 1;
-  DEPLOYMENT_NAMESPACE_ORGANIZATION = 2; // Not used at this point
   DEPLOYMENT_NAMESPACE_GLOBAL = 3;
 }
 
