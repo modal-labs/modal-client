@@ -118,9 +118,7 @@ def deploy(
 
     res = stub.deploy(name=name)
     if inspect.iscoroutine(res):
-        app_id = asyncio.run(res)
-    else:
-        app_id = res
+        asyncio.run(res)
 
     console = Console()
     console.print(f"\nView Deployment: [magenta]https://modal.com/deployments/{name}[/magenta]")
