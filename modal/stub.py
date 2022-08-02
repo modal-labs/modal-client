@@ -201,6 +201,14 @@ class _Stub:
 
     @synchronizer.asynccontextmanager
     async def run(self, client=None, stdout=None, show_progress=None):
+        """Context manager that runs an app on Modal.
+
+        Use this as the main entry point for your Modal application. All calls
+        to Modal functions should be made within the scope of this context
+        manager, and they will correspond to the current app.
+
+        See the documentation for the [`App`](modal.App) class for more details.
+        """
         if not is_local():
             raise InvalidError(
                 "Can not run an app from within a container. You might need to do something like this: \n"
@@ -213,7 +221,13 @@ class _Stub:
             async with self._run(client, output_mgr, None) as app:
                 yield app
 
-    async def run_forever(self, client=None, stdout=None, show_progress=None):
+    async def run_forever(self, client=None, stdout=None, show_progress=None) -> None:
+        """Run an app until the program is interrupted.
+
+        This function is useful for testing schedules and webhooks, since they
+        will run at a regular cadence until the program is interrupted with
+        `Ctrl + C` or other means.
+        """
         if not is_local():
             raise InvalidError(
                 "Can not run an app from within a container. You might need to do something like this: \n"
@@ -420,6 +434,55 @@ class _Stub:
         return self._add_function(function)
 
     @decorator_with_options
+    def webhook(
+        self,
+        raw_f,
+        *,
+        method: str = "GET",  # REST method for the created endpoint.
+        wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
+        image: Union[_Image, Ref] = None,  # The image to run as the container for the function
+        secret: Optional[
+            Union[_Secret, Ref]
+        ] = None,  # An optional Modal Secret with environment variables for the container
+        secrets: Collection[Union[_Secret, Ref]] = (),  # Plural version of `secret` when multiple secrets are needed
+        gpu: bool = False,  # Whether a GPU is required
+        mounts: Collection[Union[_Mount, Ref]] = (),
+        shared_volumes: Dict[str, Union[_SharedVolume, Ref]] = {},
+        memory: Optional[int] = None,  # How much memory to request, in MB. This is a soft limit.
+        proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
+        retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
+    ):
+        """Register a basic web endpoint with this application.
+
+        This is the simplest way to create a web endpoint on Modal. The function
+        behaves as a [FastAPI](https://fastapi.tiangolo.com/) handler and should
+        return a response object to the caller.
+
+        To learn how to use Modal with popular web frameworks, see the
+        [guide on web endpoints](https://modal.com/docs/guide/webhooks).
+        """
+        if image is None:
+            image = self._get_default_image()
+        mounts = [*self._get_function_mounts(raw_f), *mounts]
+        function = _Function(
+            raw_f,
+            image=image,
+            secret=secret,
+            secrets=secrets,
+            is_generator=True,
+            gpu=gpu,
+            mounts=mounts,
+            shared_volumes=shared_volumes,
+            webhook_config=api_pb2.WebhookConfig(
+                type=api_pb2.WEBHOOK_TYPE_FUNCTION, method=method, wait_for_response=wait_for_response
+            ),
+            memory=memory,
+            proxy=proxy,
+            retries=retries,
+        )
+        return self._add_function(function)
+
+    @decorator_with_options
     def asgi(
         self,
         asgi_app,  # The asgi app
@@ -458,50 +521,23 @@ class _Stub:
         )
         return self._add_function(function)
 
-    @decorator_with_options
-    def webhook(
-        self,
-        raw_f,
-        *,
-        method: str = "GET",  # REST method for the created endpoint.
-        wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-        image: Union[_Image, Ref] = None,  # The image to run as the container for the function
-        secret: Optional[
-            Union[_Secret, Ref]
-        ] = None,  # An optional Modal Secret with environment variables for the container
-        secrets: Collection[Union[_Secret, Ref]] = (),  # Plural version of `secret` when multiple secrets are needed
-        gpu: bool = False,  # Whether a GPU is required
-        mounts: Collection[Union[_Mount, Ref]] = (),
-        shared_volumes: Dict[str, Union[_SharedVolume, Ref]] = {},
-        memory: Optional[int] = None,  # How much memory to request, in MB. This is a soft limit.
-        proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
-        retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
-    ):
-        if image is None:
-            image = self._get_default_image()
-        mounts = [*self._get_function_mounts(raw_f), *mounts]
-        function = _Function(
-            raw_f,
-            image=image,
-            secret=secret,
-            secrets=secrets,
-            is_generator=True,
-            gpu=gpu,
-            mounts=mounts,
-            shared_volumes=shared_volumes,
-            webhook_config=api_pb2.WebhookConfig(
-                type=api_pb2.WEBHOOK_TYPE_FUNCTION, method=method, wait_for_response=wait_for_response
-            ),
-            memory=memory,
-            proxy=proxy,
-            retries=retries,
-        )
-        return self._add_function(function)
-
     async def interactive_shell(self, cmd=None, mounts=[], secrets=[], image_ref=None, shared_volumes={}):
-        """Run `cmd` interactively within this image. Similar to `docker run -it --entrypoint={cmd}`.
+        """Run an interactive shell (like `bash`) within the image for this app.
 
-        If `cmd` is `None`, this falls back to the default shell within the image.
+        This is useful for online debugging and interactive exploration of the
+        contents of this image. If `cmd` is optionally provided, it will be run
+        instead of the default shell inside this image.
+
+        **Example**
+
+        ```python
+        import modal
+
+        stub = modal.Stub(image=modal.DebianSlim().apt_install(["vim"]))
+
+        if __name__ == "__main__":
+            stub.interactive_shell("/bin/bash")
+        ```
         """
         from ._image_pty import image_pty
 
