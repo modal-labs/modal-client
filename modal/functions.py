@@ -355,7 +355,7 @@ class _Function(Object, type_prefix="fu"):
         else:
             function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
 
-        rate_limit = self._rate_limit.to_proto() if self._rate_limit else None
+        rate_limit = self._rate_limit._to_proto() if self._rate_limit else None
 
         # Create function remotely
         function_definition = api_pb2.Function(
