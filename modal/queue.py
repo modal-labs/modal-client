@@ -51,7 +51,7 @@ class _Queue(Object, type_prefix="qu"):
         return values[0]
 
     async def get_many(self, n_values: int, block=True, timeout=None) -> List[Any]:
-        """Get up to multiple objects, up to `n_values`."""
+        """Get multiple objects, up to `n_values`."""
         return await self._get(block, timeout, n_values)
 
     async def put(self, v: Any) -> None:
