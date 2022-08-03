@@ -71,11 +71,10 @@ class _Dict(Object, type_prefix="di"):
         req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized)
         await self._client.stub.DictUpdate(req)
 
-    # NOTE: setitem only works in a synchronous context.
     async def __setitem__(self, key: Any, value: Any) -> None:
         """Set a specific key-value pair in the dictionary.
 
-        Currently, this function only works in a synchronous context.
+        This function only works in a synchronous context.
         """
         return await self.put(key, value)
 
@@ -90,14 +89,14 @@ class _Dict(Object, type_prefix="di"):
     async def __delitem__(self, key: Any) -> Any:
         """Delete a key from the dictionary.
 
-        Currently, this function only works in a synchronous context.
+        This function only works in a synchronous context.
         """
         return await self.pop(key)
 
     async def __contains__(self, key: Any) -> bool:
         """Check if key in the dictionary exists.
 
-        Currently, this function only works in a synchronous context.
+        This function only works in a synchronous context.
         """
         return await self.contains(key)
 
