@@ -179,7 +179,7 @@ class TaskContext:
                 except asyncio.CancelledError:
                     break
                 except Exception:
-                    logger.warning(f"Loop attempt failed for {function_name}")
+                    logger.exception(f"Loop attempt failed for {function_name}")
                 try:
                     await asyncio.wait_for(self._exited.wait(), timeout=sleep)
                 except asyncio.TimeoutError:
