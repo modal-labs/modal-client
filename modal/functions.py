@@ -5,6 +5,7 @@ from typing import Callable, Collection, Dict, Optional, Union
 
 from aiostream import stream
 from grpc import StatusCode
+from grpc.aio import AioRpcError
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import (
@@ -24,9 +25,6 @@ from .rate_limit import RateLimit
 from .schedule import Schedule
 from .secret import _Secret
 from .shared_volume import _SharedVolume
-
-MIN_MEMORY_MB = 1024
-MAX_MEMORY_MB = 16 * 1024
 
 
 async def _process_result(result, stub, client=None):
@@ -285,11 +283,6 @@ class _Function(Object, type_prefix="fu"):
         else:
             self._secrets = secrets
 
-        if memory is not None and memory < MIN_MEMORY_MB:
-            raise InvalidError(f"Function {raw_f} memory request must be at least {MIN_MEMORY_MB} MB")
-        elif memory is not None and memory >= MAX_MEMORY_MB:
-            raise InvalidError(f"Function {raw_f} memory request must be less than {MAX_MEMORY_MB} MB")
-
         if retries is not None and (not isinstance(retries, int) or retries < 0 or retries > 10):
             raise InvalidError(f"Function {raw_f} retries must be an integer between 0 and 10.")
 
@@ -387,7 +380,12 @@ class _Function(Object, type_prefix="fu"):
             schedule=self._schedule.proto_message if self._schedule is not None else None,
             existing_function_id=existing_function_id,
         )
-        response = await client.stub.FunctionCreate(request)
+        try:
+            response = await client.stub.FunctionCreate(request)
+        except AioRpcError as exc:
+            if exc.code() == StatusCode.INVALID_ARGUMENT:
+                raise InvalidError(exc.details())
+            raise
 
         if response.web_url:
             # TODO(erikbern): we really shouldn't mutate the object here
