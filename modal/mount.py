@@ -4,7 +4,7 @@ import os
 import time
 import warnings
 from pathlib import Path
-from typing import AsyncIterable, Callable, Collection, Optional, Union
+from typing import Callable, Collection, List, Optional, Union
 
 import aiostream
 
@@ -183,7 +183,7 @@ def _create_client_mount():
 _, aio_create_client_mount = synchronize_apis(_create_client_mount)
 
 
-async def _create_package_mounts(module_names: Collection[str]) -> AsyncIterable[_Mount]:
+async def _create_package_mounts(module_names: Collection[str]) -> List[_Mount]:
     """Returns a `modal.Mount` that makes local modules listed in `module_names` available inside the container.
     This works by mounting the local path of each module's package to a directory inside the container that's on `PYTHONPATH`.
 
@@ -203,21 +203,28 @@ async def _create_package_mounts(module_names: Collection[str]) -> AsyncIterable
         my_local_module.do_stuff()
     ```
     """
+    mounts = []
     for module_name in module_names:
         mount_infos = get_module_mount_info(module_name)
 
         for mount_info in mount_infos:
             _, base_path, module_mount_condition = mount_info
-            yield _Mount(
-                local_dir=base_path, remote_dir=f"/pkg/{module_name}", condition=module_mount_condition, recursive=True
+            mounts.append(
+                _Mount(
+                    local_dir=base_path,
+                    remote_dir=f"/pkg/{module_name}",
+                    condition=module_mount_condition,
+                    recursive=True,
+                )
             )
+    return mounts
 
 
 async def _create_package_mount(module_name: str):
     warnings.warn(
         "`create_package_mount` is deprecated. Please use `create_package_mounts` instead.", DeprecationWarning
     )
-    mounts = [m async for m in _create_package_mounts([module_name])]
+    mounts = await _create_package_mounts([module_name])
     assert len(mounts) == 1
     return mounts[0]
 
