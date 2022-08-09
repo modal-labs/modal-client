@@ -65,16 +65,16 @@ def test_create_mount(servicer, client):
         assert servicer.files_sha2data[sha256_hex]["data"] == open(__file__, "rb").read()
 
 
-def test_create_mount_file_errors(servicer, client):
+def test_create_mount_file_errors(servicer, tmpdir, client):
     stub = Stub()
     with stub.run(client=client) as running_app:
         m = Mount(local_dir="xyz", remote_dir="/xyz")
         with pytest.raises(FileNotFoundError):
             running_app.load(m)
 
-        with open("abc", "w"):
+        with open(tmpdir / "abc", "w"):
             pass
-        m = Mount(local_dir="abc", remote_dir="/abc")
+        m = Mount(local_dir=tmpdir / "abc", remote_dir="/abc")
         with pytest.raises(NotADirectoryError):
             running_app.load(m)
 
