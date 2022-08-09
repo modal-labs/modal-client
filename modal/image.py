@@ -309,7 +309,7 @@ def get_client_requirements_path():
     return os.path.join(modal_path, "requirements.txt")
 
 
-def _DockerhubImage(app=None, tag=None):
+def _DockerhubImage(tag=None):
     """
     Build a Modal image from a pre-existing image on Docker Hub.
 
@@ -319,8 +319,6 @@ def _DockerhubImage(app=None, tag=None):
     - `pip` is installed correctly.
     - The image is built for the `linux/amd64` platform.
     """
-    if app is not None:
-        raise InvalidError("The latest API does no longer require the `app` argument, so please update your code!")
 
     requirements_path = get_client_requirements_path()
 
