@@ -330,11 +330,12 @@ class _Function(Object, type_prefix="fu"):
             try:
                 secret_id = await loader(secret)
             except NotFoundError as ex:
-                raise NotFoundError(
-                    "A secret was not found. "
-                    + "You can add secrets to your account at https://modal.com/secrets"
-                    + f" (caused by: {ex})."
-                )
+                if isinstance(secret, Ref) and secret.tag is None:
+                    msg = "Secret {!r} was not found".format(secret.app_name)
+                else:
+                    msg = str(ex)
+                msg += ". You can add secrets to your account at https://modal.com/secrets"
+                raise NotFoundError(msg)
             secret_ids.append(secret_id)
 
         mount_ids = []

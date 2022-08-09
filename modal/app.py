@@ -108,14 +108,12 @@ class _App:
 
     async def load(self, obj: Object, progress: Optional[Tree] = None, existing_object_id: Optional[str] = None) -> str:
         """Send a server request to create an object in this app, and return its ID."""
-        print("New object:", obj)
         if obj.local_uuid in self._local_uuid_to_object_id:
             # We already created this object before, shortcut this method
             return self._local_uuid_to_object_id[obj.local_uuid]
 
         if isinstance(obj, Ref):
             # TODO: should we just move this code to the Ref class?
-            print("ref:", obj.app_name)
             if obj.app_name is not None:
                 if obj.definition is not None:
                     from .stub import _Stub
@@ -154,7 +152,6 @@ class _App:
                     raise Exception(
                         f"Tried creating an object using existing id {existing_object_id} but it has id {object_id}"
                     )
-            print("done with not ref!", obj)
 
         self._local_uuid_to_object_id[obj.local_uuid] = object_id
 
