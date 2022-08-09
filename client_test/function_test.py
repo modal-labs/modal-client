@@ -33,3 +33,11 @@ def test_starmap(client):
 
     with stub.run(client=client):
         assert list(dummy.starmap([[5, 2], [4, 3]])) == [29, 25]
+
+
+def test_function_memory_request(client):
+    stub = Stub()
+
+    @stub.function(memory=2048)
+    def f1():
+        pass
