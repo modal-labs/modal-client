@@ -148,14 +148,6 @@ async def test_queue_batch_iterator():
         assert len(drained_items) == 3
 
 
-class Thing:
-    def __init__(self, n):
-        self._n = n
-
-    def __await__(self):
-        return (yield self)
-
-
 @pytest.mark.asyncio
 async def test_warn_if_generator_is_not_consumed(caplog):
     @warn_if_generator_is_not_consumed

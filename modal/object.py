@@ -90,10 +90,6 @@ class Object(metaclass=ObjectMeta):
         """
         return Ref(label, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT, definition=self)
 
-    def __await__(self):
-        """Make objects awaitable from the load() method."""
-        return (yield self)
-
 
 class Ref(Object):
     def __init__(
