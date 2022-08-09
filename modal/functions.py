@@ -330,7 +330,11 @@ class _Function(Object, type_prefix="fu"):
             try:
                 secret_id = await loader(secret)
             except NotFoundError as ex:
-                raise NotFoundError(str(ex) + "\n" + "You can add secrets to your account at https://modal.com/secrets")
+                raise NotFoundError(
+                    "A secret was not found. "
+                    + "You can add secrets to your account at https://modal.com/secrets"
+                    + f" (caused by: {ex})."
+                )
             secret_ids.append(secret_id)
 
         mount_ids = []
