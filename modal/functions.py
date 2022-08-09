@@ -311,9 +311,9 @@ class _Function(Object, type_prefix="fu"):
             return f"Created {self._tag} => [magenta underline]{self._web_url}[/magenta underline]"
         return f"Created {self._tag}."
 
-    async def _load(self, client, app_id, existing_function_id):
+    async def _load(self, client, app_id, loader, existing_function_id):
         if self._proxy:
-            proxy_id = await self._proxy
+            proxy_id = await loader(self._proxy)
             # HACK: remove this once we stop using ssh tunnels for this.
             if self._image:
                 self._image = self._image.run_commands(["apt-get install -yq ssh"])
@@ -322,20 +322,20 @@ class _Function(Object, type_prefix="fu"):
 
         # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
         if self._image is not None:
-            image_id = await self._image
+            image_id = await loader(self._image)
         else:
             image_id = None  # Happens if it's a notebook function
         secret_ids = []
         for secret in self._secrets:
             try:
-                secret_id = await secret
+                secret_id = await loader(secret)
             except NotFoundError as ex:
                 raise NotFoundError(str(ex) + "\n" + "You can add secrets to your account at https://modal.com/secrets")
             secret_ids.append(secret_id)
 
         mount_ids = []
         for mount in self._mounts:
-            mount_ids.append(await mount)
+            mount_ids.append(await loader(mount))
 
         if not isinstance(self._shared_volumes, dict):
             raise InvalidError("shared_volumes must be a dict[str, SharedVolume] where the keys are paths")
@@ -347,7 +347,7 @@ class _Function(Object, type_prefix="fu"):
                 raise InvalidError("Shared volume remote directory must be an absolute path.")
 
             shared_volume_mounts.append(
-                api_pb2.SharedVolumeMount(mount_path=path, shared_volume_id=await shared_volume)
+                api_pb2.SharedVolumeMount(mount_path=path, shared_volume_id=await loader(shared_volume))
             )
 
         if self._is_generator:

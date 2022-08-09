@@ -39,7 +39,7 @@ class _SharedVolume(Object, type_prefix="sv"):
     def _get_created_message(self) -> str:
         return "Created shared volume."
 
-    async def _load(self, client, app_id, existing_shared_volume_id):
+    async def _load(self, client, app_id, loader, existing_shared_volume_id):
         if existing_shared_volume_id:
             # Volume already exists; do nothing.
             return existing_shared_volume_id

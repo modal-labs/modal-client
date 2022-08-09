@@ -1,5 +1,5 @@
 import uuid
-from typing import Optional
+from typing import Awaitable, Callable, Optional
 
 from modal_proto import api_pb2
 
@@ -24,8 +24,9 @@ class Object(metaclass=ObjectMeta):
         self,
         client: _Client,
         app_id: str,
+        loader: Callable[["Object"], Awaitable[str]],
         existing_object_id: Optional[str] = None,
-    ):
+    ) -> str:
         raise NotImplementedError(f"Object factory of class {type(self)} has no load method")
 
     @staticmethod

@@ -5,7 +5,6 @@ import pytest
 
 from modal_utils.async_utils import (
     TaskContext,
-    intercept_coro,
     queue_batch_iterator,
     retry,
     warn_if_generator_is_not_consumed,
@@ -155,24 +154,6 @@ class Thing:
 
     def __await__(self):
         return (yield self)
-
-
-async def fib(n):
-    if n <= 1:
-        await asyncio.sleep(1e-6)
-        return await Thing(n)
-    else:
-        return await fib(n - 2) + await fib(n - 1)
-
-
-async def interceptor(thing):
-    return thing._n
-
-
-@pytest.mark.asyncio
-async def test_intercept_coro():
-    coro = fib(10)
-    assert await intercept_coro(coro, interceptor) == 55
 
 
 @pytest.mark.asyncio

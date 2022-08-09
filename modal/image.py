@@ -43,14 +43,14 @@ class _Image(Object, type_prefix="im"):
         self._secrets = secrets
         super().__init__()
 
-    async def _load(self, client, app_id, existing_image_id):
+    async def _load(self, client, app_id, loader, existing_image_id):
         if self._ref:
-            return await self._ref
+            return await loader(self._ref)
 
         # Recursively build base images
-        base_image_ids = []
+        base_image_ids: List[str] = []
         for image in self._base_images.values():
-            base_image_ids.append(await image)
+            base_image_ids.append(await loader(image))
         base_images_pb2s = [
             api_pb2.BaseImage(docker_tag=docker_tag, image_id=image_id)
             for docker_tag, image_id in zip(self._base_images.keys(), base_image_ids)
@@ -59,7 +59,7 @@ class _Image(Object, type_prefix="im"):
         secret_ids = []
         for secret in self._secrets:
             try:
-                secret_id = await secret
+                secret_id = await loader(secret)
             except NotFoundError as ex:
                 raise NotFoundError(str(ex) + "\n" + "You can add secrets to your account at https://modal.com/secrets")
             secret_ids.append(secret_id)

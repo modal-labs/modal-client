@@ -4,7 +4,7 @@ from typing import Dict, Optional, Union
 from rich.tree import Tree
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import intercept_coro, synchronize_apis
+from modal_utils.async_utils import synchronize_apis
 
 from ._output import step_completed, step_progress
 from .client import _Client
@@ -108,12 +108,14 @@ class _App:
 
     async def load(self, obj: Object, progress: Optional[Tree] = None, existing_object_id: Optional[str] = None) -> str:
         """Send a server request to create an object in this app, and return its ID."""
+        print("New object:", obj)
         if obj.local_uuid in self._local_uuid_to_object_id:
             # We already created this object before, shortcut this method
             return self._local_uuid_to_object_id[obj.local_uuid]
 
         if isinstance(obj, Ref):
             # TODO: should we just move this code to the Ref class?
+            print("ref:", obj.app_name)
             if obj.app_name is not None:
                 if obj.definition is not None:
                     from .stub import _Stub
@@ -135,15 +137,12 @@ class _App:
                     self._tag_to_object[obj.tag] = Object.from_id(object_id, self.client)
         else:
 
-            async def interceptor(awaitable):
-                assert isinstance(awaitable, Object)
-                return await self.load(awaitable, progress=progress)
+            async def loader(obj: Object) -> str:
+                assert isinstance(obj, Object)
+                return await self.load(obj, progress=progress)
 
             with self._progress_ctx(progress, obj):
-                object_id = await intercept_coro(
-                    obj._load(self.client, self.app_id, existing_object_id),
-                    interceptor,
-                )
+                object_id = await obj._load(self.client, self.app_id, loader, existing_object_id)
 
             if existing_object_id is not None and object_id != existing_object_id:
                 # TODO(erikbern): this is a very ugly fix to a problem that's on the server side.
@@ -155,6 +154,7 @@ class _App:
                     raise Exception(
                         f"Tried creating an object using existing id {existing_object_id} but it has id {object_id}"
                     )
+            print("done with not ref!", obj)
 
         self._local_uuid_to_object_id[obj.local_uuid] = object_id
 

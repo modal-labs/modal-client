@@ -113,7 +113,7 @@ class _Mount(Object, type_prefix="mo"):
             for fut in asyncio.as_completed(futs):
                 yield await fut
 
-    async def _load(self, client, app_id, existing_mount_id):
+    async def _load(self, client, app_id, loader, existing_mount_id):
         # Run a threadpool to compute hash values, and use concurrent coroutines to register files.
         t0 = time.time()
         n_concurrent_uploads = 16
