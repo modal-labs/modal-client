@@ -67,6 +67,17 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.fail_blob_create = []
         self.blob_create_metadata = None
 
+        self.app_functions = {}
+
+        @self.function_body
+        def default_function_body(*args, **kwargs):
+            return sum(arg**2 for arg in args) + sum(value**2 for key, value in kwargs.items())
+
+    def function_body(self, func):
+        """Decorator for setting the function that will be called for any FunctionGetOutputs calls"""
+        self._function_body = func
+        return func
+
     async def BlobCreate(
         self, request: api_pb2.BlobCreateRequest, context: ServicerContext
     ) -> api_pb2.BlobCreateResponse:
@@ -275,7 +286,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         if self.client_calls:
             args, kwargs = self.client_calls.pop(0)
             # Just return the sum of squares of all args
-            res = sum(arg**2 for arg in args) + sum(value**2 for key, value in kwargs.items())
+            res = self._function_body(*args, **kwargs)
             result = api_pb2.GenericResult(
                 status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
                 data=cloudpickle.dumps(res),

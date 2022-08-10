@@ -1,7 +1,8 @@
 import asyncio
 import platform
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Collection, Dict, Optional, Union
+from typing import Any, Callable, Collection, Dict, Optional, Union
 
 from aiostream import stream
 from grpc import StatusCode
@@ -141,6 +142,11 @@ class Invocation:
 MAP_INVOCATION_CHUNK_SIZE = 100
 
 
+@dataclass
+class OutputValue:
+    value: Any
+
+
 async def map_invocation(function_id, input_stream, kwargs, client, is_generator):
     request = api_pb2.FunctionMapRequest(function_id=function_id)
     response = await retry_transient_errors(client.stub.FunctionMap, request)
@@ -204,7 +210,7 @@ async def map_invocation(function_id, input_stream, kwargs, client, is_generator
                     else:
                         output = await _process_result(item.result, client.stub, client)
                         # yield output directly for generators.
-                        yield output
+                        yield OutputValue(output)
                 else:
                     # hold on to outputs for function maps, so we can reorder them correctly.
                     pending_outputs[item.idx] = await _process_result(item.result, client.stub, client)
@@ -212,7 +218,7 @@ async def map_invocation(function_id, input_stream, kwargs, client, is_generator
             # send outputs sequentially while we can
             while num_outputs in pending_outputs:
                 output = pending_outputs.pop(num_outputs)
-                yield output
+                yield OutputValue(output)
                 num_outputs += 1
 
             if have_all_inputs:
@@ -232,7 +238,7 @@ async def map_invocation(function_id, input_stream, kwargs, client, is_generator
                 if have_all_inputs and num_outputs == num_inputs:
                     break
                 continue
-            yield response
+            yield response.value
 
 
 class _Function(Object, type_prefix="fu"):

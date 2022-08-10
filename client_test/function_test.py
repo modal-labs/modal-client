@@ -24,6 +24,19 @@ def test_map(client):
         assert list(dummy.map([5, 2], [4, 3])) == [41, 13]
 
 
+def test_map_none_values(client, servicer):
+    stub = Stub()
+
+    @stub.function
+    @servicer.function_body
+    def custom_function(x):
+        if x % 2 == 0:
+            return x
+
+    with stub.run(client=client):
+        assert list(custom_function.map(range(4))) == [0, None, 2, None]
+
+
 def test_starmap(client):
     stub = Stub()
 
