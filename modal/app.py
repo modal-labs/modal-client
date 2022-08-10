@@ -73,14 +73,14 @@ class _App:
 
     def __init__(
         self,
-        app,  # : _App,
+        stub,  # : _Stub,
         client: _Client,
         app_id: str,
         tag_to_object: Optional[Dict[str, Object]] = None,
         tag_to_existing_id: Optional[Dict[str, str]] = None,
     ):
         """mdmd:hidden This is the app constructor. Users should not call this directly."""
-        self._app = app
+        self._stub = stub
         self._app_id = app_id
         self._client = client
         self._tag_to_object = tag_to_object or {}
@@ -129,7 +129,7 @@ class _App:
                 if obj.tag in self._tag_to_object:
                     object_id = self._tag_to_object[obj.tag].object_id
                 else:
-                    real_obj = self._app._blueprint[obj.tag]
+                    real_obj = self._stub._blueprint[obj.tag]
                     existing_object_id = self._tag_to_existing_id.get(obj.tag)
                     object_id = await self.load(real_obj, progress, existing_object_id)
                     self._tag_to_object[obj.tag] = Object.from_id(object_id, self.client)
@@ -162,7 +162,7 @@ class _App:
 
     async def create_all_objects(self, progress: Tree):
         """Create objects that have been defined but not created on the server."""
-        for tag in self._app._blueprint.keys():
+        for tag in self._stub._blueprint.keys():
             obj = ref(None, tag)
             await self.load(obj, progress)
 
@@ -178,7 +178,7 @@ class _App:
         await self._client.stub.AppSetObjects(req_set)
 
         # Update all functions client-side to point to the running app
-        for obj in self._app._blueprint.values():
+        for obj in self._stub._blueprint.values():
             if isinstance(obj, _Function):
                 obj.set_local_app(self)
 
@@ -228,20 +228,20 @@ class _App:
         return self
 
     @staticmethod
-    async def init_existing(app, client, existing_app_id):
+    async def init_existing(stub, client, existing_app_id):
         # Get all the objects first
         obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
         obj_resp = await client.stub.AppGetObjects(obj_req)
-        return _App(app, client, existing_app_id, tag_to_existing_id=dict(obj_resp.object_ids))
+        return _App(stub, client, existing_app_id, tag_to_existing_id=dict(obj_resp.object_ids))
 
     @staticmethod
-    async def init_new(app, client, description):
+    async def init_new(stub, client, description):
         # Start app
         # TODO(erikbern): maybe this should happen outside of this method?
         app_req = api_pb2.AppCreateRequest(client_id=client.client_id, description=description)
         app_resp = await client.stub.AppCreate(app_req)
         logger.debug(f"Created new app with id {app_resp.app_id}")
-        return _App(app, client, app_resp.app_id)
+        return _App(stub, client, app_resp.app_id)
 
     @staticmethod
     def reset_container():
