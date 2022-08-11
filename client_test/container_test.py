@@ -5,7 +5,7 @@ import time
 
 from grpc.aio import AioRpcError
 
-from modal._container_entrypoint import RATE_LIMIT_DELAY, main
+from modal._container_entrypoint import main
 
 # from modal_test_support import SLEEP_DELAY
 from modal._serialization import serialize
@@ -40,13 +40,12 @@ def _get_output(function_output_req: api_pb2.FunctionPutOutputsRequest) -> api_p
     return function_output_req.outputs[0].result
 
 
-def _run_container(servicer, module_name, function_name, rate_limit_times=0, fail_get_inputs=False, inputs=None):
+def _run_container(servicer, module_name, function_name, fail_get_inputs=False, inputs=None):
     with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         if inputs is None:
             servicer.container_inputs = _get_inputs(client)
         else:
             servicer.container_inputs = inputs
-        servicer.rate_limit_times = rate_limit_times
         servicer.fail_get_inputs = fail_get_inputs
 
         function_def = api_pb2.Function(
@@ -122,16 +121,10 @@ def test_container_entrypoint_failure(servicer):
 
 
 def test_container_entrypoint_rate_limited(servicer, event_loop):
-    rate_limit_times = 3
     t0 = time.time()
-    client, outputs = _run_container(
-        servicer, "modal_test_support.functions", "square", rate_limit_times=rate_limit_times
-    )
-    assert (
-        rate_limit_times * RATE_LIMIT_DELAY
-        <= time.time() - t0
-        < rate_limit_times * RATE_LIMIT_DELAY + EXTRA_TOLERANCE_DELAY
-    )
+    servicer.rate_limit_sleep_duration = 0.25
+    client, outputs = _run_container(servicer, "modal_test_support.functions", "square")
+    assert 0.25 <= time.time() - t0 < 0.25 + EXTRA_TOLERANCE_DELAY
 
     assert len(outputs) == 1
     assert isinstance(outputs[0], api_pb2.FunctionPutOutputsRequest)

@@ -424,6 +424,7 @@ message FunctionGetInputsItem {
 message FunctionGetInputsResponse {
   repeated FunctionInput inputs_old = 2;
   repeated FunctionGetInputsItem inputs = 3;
+  float rate_limit_sleep_duration = 4; // How long to sleep before requesting another input.
 }
 
 message FunctionPutOutputsItem {

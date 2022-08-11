@@ -10,8 +10,6 @@ import traceback
 from typing import Any, AsyncIterator, Callable, Tuple
 
 import cloudpickle
-from grpc import StatusCode
-from grpc.aio import AioRpcError
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import (
@@ -47,7 +45,6 @@ def _path_to_function(module_name, function_name):
 
 MAX_OUTPUT_BATCH_SIZE = 100
 RTT_S = 0.5  # conservative estimate of RTT in seconds.
-RATE_LIMIT_DELAY = 0.25
 
 CONTAINER_IDLE_TIMEOUT = 60
 
@@ -130,14 +127,14 @@ class _FunctionContext:
             # clamp to between 0.01 and 15s.
             request.timeout = min(max(time_left, 0.01), 15)
 
-            try:
-                response = await retry_transient_errors(self.client.stub.FunctionGetInputs, request)
-            except AioRpcError as exc:
-                if exc.code() == StatusCode.RESOURCE_EXHAUSTED:
-                    logger.info("Task exceeded rate limit.")
-                    await asyncio.sleep(RATE_LIMIT_DELAY)
-                    continue
-                raise
+            response = await retry_transient_errors(self.client.stub.FunctionGetInputs, request)
+            if response.rate_limit_sleep_duration:
+                logger.info(
+                    "Task exceeded rate limit, sleeping for %.2fs before trying again."
+                    % response.rate_limit_sleep_duration
+                )
+                await asyncio.sleep(response.rate_limit_sleep_duration)
+                continue
 
             if not response.inputs:
                 if time_left < 0:

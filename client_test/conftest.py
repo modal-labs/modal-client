@@ -33,7 +33,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.blobs = blobs  # shared dict
         self.requests = []
         self.done = False
-        self.rate_limit_times = 0
+        self.rate_limit_sleep_duration = None
         self.fail_get_inputs = False
         self.container_inputs = []
         self.container_outputs = []
@@ -155,9 +155,10 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         assert request.function_id
         if self.fail_get_inputs:
             await context.abort(StatusCode.INTERNAL)
-        elif self.rate_limit_times > 0:
-            self.rate_limit_times -= 1
-            await context.abort(StatusCode.RESOURCE_EXHAUSTED, "Rate limit exceeded")
+        elif self.rate_limit_sleep_duration is not None:
+            s = self.rate_limit_sleep_duration
+            self.rate_limit_sleep_duration = None
+            return api_pb2.FunctionGetInputsResponse(rate_limit_sleep_duration=s)
         elif not self.container_inputs:
             await asyncio.sleep(request.timeout)
             return api_pb2.FunctionGetInputsResponse(inputs=[])
