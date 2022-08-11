@@ -7,6 +7,7 @@ from typing import Collection, Dict, Optional, Union
 from rich.tree import Tree
 
 from modal_proto import api_pb2
+from modal_utils.app_utils import is_valid_app_name
 from modal_utils.async_utils import TaskContext, synchronize_apis, synchronizer
 from modal_utils.decorator_utils import decorator_with_options
 
@@ -288,6 +289,11 @@ class _Stub:
                 'stub.deploy("some_name")\n\n'
                 "or\n"
                 'stub = Stub("some-name")'
+            )
+
+        if not is_valid_app_name(name):
+            raise InvalidError(
+                f"Invalid app name {name}. App names may only contain alphanumeric characters, dashes, periods, and underscores, and must be less than 64 characters in length. "
             )
 
         async with self._get_client(client) as client:

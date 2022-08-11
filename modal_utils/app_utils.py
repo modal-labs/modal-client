@@ -10,3 +10,7 @@ def is_valid_subdomain_label(label: str):
 
 def replace_invalid_subdomain_chars(label: str):
     return re.sub("[^a-z0-9-]", "-", label.lower())
+
+
+def is_valid_app_name(name: str):
+    return len(name) <= 64 and re.match("^[a-zA-Z0-9-_.]+$", name) is not None
