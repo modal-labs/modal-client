@@ -457,6 +457,11 @@ message FunctionGetOutputsResponse {
   repeated FunctionGetOutputsItem outputs = 4;
 }
 
+message TaskResultRequest {
+  string task_id = 1;
+  modal.client.GenericResult result = 2;
+}
+
 message BlobCreateRequest {
   // TODO(erikbern): how are these garbage collected?
   // Shouldn't they belong to an app?
@@ -641,4 +646,7 @@ service ModalClient {
   rpc FunctionPutOutputs(FunctionPutOutputsRequest) returns (google.protobuf.Empty);  // For containers to return result
   rpc FunctionGetInputs(FunctionGetInputsRequest) returns (FunctionGetInputsResponse);  // For containers to request next call
   rpc FunctionGetOutputs(FunctionGetOutputsRequest) returns (FunctionGetOutputsResponse);  // Returns the next result
+
+  // Tasks
+  rpc TaskResult(TaskResultRequest) returns (google.protobuf.Empty);
 }

@@ -8,7 +8,7 @@ from grpc.aio import AioRpcError
 from modal._container_entrypoint import main
 
 # from modal_test_support import SLEEP_DELAY
-from modal._serialization import serialize
+from modal._serialization import deserialize, serialize
 from modal.client import Client
 from modal.exception import InvalidError
 from modal_proto import api_pb2
@@ -173,9 +173,19 @@ def test_container_entrypoint_grpc_failure(servicer, event_loop):
 
 
 def test_container_entrypoint_missing_main_conditional(servicer, event_loop):
-    with pytest.raises(InvalidError) as excinfo:
-        _run_container(servicer, "modal_test_support.missing_main_conditional", "square")
+    _run_container(servicer, "modal_test_support.missing_main_conditional", "square")
 
-    # TODO(erikbern): a container that fails during imports will not propagate the exception
-    # back to the user. We should fix this.
-    assert 'if __name__ == "__main__":' in str(excinfo.value)
+    assert servicer.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
+    assert 'if __name__ == "__main__":' in servicer.task_result.traceback
+
+    exc = deserialize(servicer.task_result.data, None)
+    assert isinstance(exc, InvalidError)
+
+
+def test_container_entrypoint_startup_failure(servicer, event_loop):
+    _run_container(servicer, "modal_test_support.startup_failure", "f")
+
+    assert servicer.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
+
+    exc = deserialize(servicer.task_result.data, None)
+    assert isinstance(exc, ImportError)

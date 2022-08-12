@@ -3,7 +3,6 @@ import base64
 import importlib
 import inspect
 import math
-import os
 import sys
 import time
 import traceback
@@ -32,15 +31,8 @@ from .functions import AioFunction, Function
 
 
 def _path_to_function(module_name, function_name):
-    try:
-        module = importlib.import_module(module_name)
-        return getattr(module, function_name)
-    except ModuleNotFoundError:
-        # Just print some debug stuff, then re-raise
-        logger.info(f"cwd: {os.getcwd()}")
-        logger.info(f"path: {sys.path}")
-        logger.info(f"ls: {os.listdir()}")
-        raise
+    module = importlib.import_module(module_name)
+    return getattr(module, function_name)
 
 
 MAX_OUTPUT_BATCH_SIZE = 100
@@ -183,6 +175,26 @@ class _FunctionContext:
         output = api_pb2.FunctionPutOutputsItem(input_id=input_id, result=api_pb2.GenericResult(**kwargs))
         await self.output_queue.put(output)
 
+    async def notify_task_failure(self, exc: Exception):
+        # Since this is on a different thread, sys.exc_info() can't find the exception in the stack.
+        traceback.print_exception(type(exc), exc, exc.__traceback__)
+
+        try:
+            serialized_exc = await self.serialize(exc)
+        except Exception:
+            # We can't always serialize exceptions.
+            serialized_exc = None
+
+        result = api_pb2.GenericResult(
+            status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
+            data=serialized_exc,
+            exception=repr(exc),
+            traceback="".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+        )
+
+        req = api_pb2.TaskResultRequest(task_id=self.task_id, result=result)
+        await retry_transient_errors(self.client.stub.TaskResult, req)
+
     def track_function_call_time(self, time_elapsed: float):
         self.total_user_time += time_elapsed
         self.calls_completed += 1
@@ -316,11 +328,14 @@ def main(container_args, client):
     else:
         # This is not in function_context, so that any global scope code that runs during import
         # runs on the main thread.
-        # TODO(erikbern): this function call will import user code. If there's a failure at this
-        # point, we don't pass the exception back to the caller. We should consider doing that.
-        imported_function = _path_to_function(
-            container_args.function_def.module_name, container_args.function_def.function_name
-        )
+        try:
+            imported_function = _path_to_function(
+                container_args.function_def.module_name, container_args.function_def.function_name
+            )
+        except Exception as exc:
+            function_context.notify_task_failure(exc)
+            return
+
         if isinstance(imported_function, (Function, AioFunction)):
             # We want the internal type of this, not the external
             _function_proxy = synchronizer._translate_in(imported_function)

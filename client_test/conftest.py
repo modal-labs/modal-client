@@ -61,6 +61,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.heartbeat_status_code = None
         self.n_apps = 0
         self.output_idx = 0
+        self.task_result = None
 
         self.shared_volume_files = []
         self.images = {}
@@ -307,6 +308,14 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         context: ServicerContext,
     ) -> api_pb2.SecretCreateResponse:
         return api_pb2.SecretCreateResponse(secret_id="st-123")
+
+    async def TaskResult(
+        self,
+        request: api_pb2.TaskResultRequest,
+        context: ServicerContext,
+    ) -> Empty:
+        self.task_result = request.result
+        return Empty()
 
 
 @pytest.fixture(scope="session")
