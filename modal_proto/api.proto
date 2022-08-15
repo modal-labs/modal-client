@@ -458,7 +458,7 @@ message FunctionGetOutputsResponse {
 }
 
 message TaskResultRequest {
-  string task_id = 1;
+  string task_id = 1; // TODO: deprecate once old clients have been flushed.
   modal.client.GenericResult result = 2;
 }
 
