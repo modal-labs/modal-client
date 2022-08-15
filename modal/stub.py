@@ -183,7 +183,11 @@ class _Stub:
                 # Yield to context
                 with output_mgr.ctx_if_visible(live_task_status):
                     yield app
-
+            except KeyboardInterrupt:
+                print(
+                    "Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n"
+                    "Stick around for remote tracebacks..."
+                )
             finally:
                 await app.disconnect()
 
