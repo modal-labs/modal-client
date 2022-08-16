@@ -36,8 +36,6 @@ message GenericResult {  // Used for both tasks and function outputs
     GENERATOR_STATUS_COMPLETE = 2;
   }
   GeneratorStatus gen_status = 7;
-  string input_id = 8 [deprecated=true];
-  int32 idx = 9 [deprecated=true];
 }
 
 enum ClientType {
@@ -379,16 +377,13 @@ message FunctionMapResponse {
 }
 
 message FunctionInput {
-  string function_call_id = 3 [deprecated=true];
   string input_id = 4;
-  int32 idx = 5 [deprecated=true];
   // serialized (args, kwargs).
   oneof args_oneof {
     bytes args = 1;
     string args_blob_id = 7;
   }
   bool final_input = 9; // TODO(erikbern): deprecate?
-  bool kill_switch = 10 [deprecated=true];
 }
 
 message FunctionPutInputsItem {
@@ -398,17 +393,14 @@ message FunctionPutInputsItem {
 
 message FunctionPutInputsRequest {
   string function_id = 1;
-  repeated FunctionInput inputs_old = 2;
   string function_call_id = 3;
   repeated FunctionPutInputsItem inputs = 4;
 }
 
 message FunctionGetInputsRequest {
   string function_id = 1;
-  string task_id = 2 [deprecated=true];
   int32 max_values = 3;
   float timeout = 4;
-  bool new_method = 5;
 }
 
 message FunctionGetInputsItem {
@@ -418,7 +410,6 @@ message FunctionGetInputsItem {
 }
 
 message FunctionGetInputsResponse {
-  repeated FunctionInput inputs_old = 2;
   repeated FunctionGetInputsItem inputs = 3;
   float rate_limit_sleep_duration = 4; // How long to sleep before requesting another input.
 }
@@ -429,9 +420,6 @@ message FunctionPutOutputsItem {
 }
 
 message FunctionPutOutputsRequest {
-  string function_call_id = 1 [deprecated=true];
-  string task_id = 2 [deprecated=true];
-  repeated GenericResult outputs_old = 3 [deprecated=true];
   repeated FunctionPutOutputsItem outputs = 4;
 }
 
@@ -439,7 +427,6 @@ message FunctionGetOutputsRequest {
   string function_call_id = 1;
   int32 max_values = 2;
   float timeout = 3;
-  bool new_method = 4;
 }
 
 message FunctionGetOutputsItem {
@@ -448,7 +435,6 @@ message FunctionGetOutputsItem {
 }
 
 message FunctionGetOutputsResponse {
-  repeated GenericResult outputs_old = 2;
   repeated int32 idxs = 3;
   repeated FunctionGetOutputsItem outputs = 4;
 }

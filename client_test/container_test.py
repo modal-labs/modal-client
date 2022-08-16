@@ -152,7 +152,7 @@ def test_container_entrypoint_slow_function(servicer, event_loop, monkeypatch):
     # call function that sleeps for 0.5s, twice.
     DELAY = 0.5
     args = ((DELAY,), {})
-    input_pb = api_pb2.FunctionInput(args=serialize(args), function_call_id=FUNCTION_CALL_ID)
+    input_pb = api_pb2.FunctionInput(args=serialize(args))
 
     inputs = [
         api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(input_id="in-1", input=input_pb)]),

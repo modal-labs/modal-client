@@ -109,7 +109,7 @@ class _FunctionContext:
     async def generate_inputs(
         self,
     ) -> AsyncIterator[Tuple[str, api_pb2.FunctionInput]]:
-        request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id, new_method=True)
+        request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         eof_received = False
         last_input = time.time()
         while not eof_received:
