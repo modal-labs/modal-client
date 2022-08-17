@@ -311,11 +311,27 @@ def call_function(
         )
 
 
-def main(container_args, client):
+def _wait_for_gpu_init():
+    from cuda import cuda
+
+    for i in range(3):
+        try:
+            cuda.cuInit(0)
+            logger.info("CUDA device initialized successfully.")
+            return
+        except Exception:
+            time.sleep(1)
+    logger.info("Failed to initialize CUDA device.")
+
+
+def main(container_args: api_pb2.ContainerArguments, client: Client):
     # TODO: if there's an exception in this scope (in particular when we import code dynamically),
     # we could catch that exception and set it properly serialized to the client. Right now the
     # whole container fails with a non-zero exit code and we send back a more opaque error message.
     function_type = container_args.function_def.function_type
+
+    if container_args.function_def.resources.gpu:
+        _wait_for_gpu_init()
 
     # This is a bit weird but we need both the blocking and async versions of FunctionContext.
     # At some point, we should fix that by having built-in support for running "user code"
