@@ -386,8 +386,8 @@ if __name__ == "__main__":
     # Note that we're creating the client in a synchronous context, but it will be running in a separate thread.
     # This is good because if the function is long running then we the client can still send heartbeats
     # The only caveat is a bunch of calls will now cross threads, which adds a bit of overhead?
-    with Client.from_env() as client:
-        with proxy_tunnel(container_args.proxy_info):
-            main(container_args, client)
+    client = Client.from_env()
+    with proxy_tunnel(container_args.proxy_info):
+        main(container_args, client)
 
     logger.debug("Container: done")
