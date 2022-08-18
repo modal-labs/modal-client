@@ -34,6 +34,7 @@ async def _http_check(url: str, timeout: float) -> int:
 
 class _Client:
     _client_from_env = None
+    _client_from_env_lock = asyncio.Lock()
 
     def __init__(
         self,
@@ -58,6 +59,8 @@ class _Client:
 
     async def _start(self):
         logger.debug("Client: Starting")
+        if self._stub:
+            raise Exception("Client is already running")
         self.stopped = asyncio.Event()
         self._task_context = TaskContext(grace=1)
         await self._task_context.start()
@@ -154,9 +157,6 @@ class _Client:
 
     @classmethod
     async def from_env(cls, _override_config=None) -> "_Client":
-        if cls._client_from_env:
-            return cls._client_from_env
-
         if _override_config:
             # Only used for testing
             c = _override_config
@@ -179,10 +179,15 @@ class _Client:
             client_type = api_pb2.CLIENT_TYPE_CLIENT
             credentials = None
 
-        client = cls._client_from_env = _Client(server_url, client_type, credentials)
-        await client._start()
-        atexit.register(cls._stop_env_client)
-        return client
+        async with cls._client_from_env_lock:
+            if cls._client_from_env:
+                return cls._client_from_env
+            else:
+                client = _Client(server_url, client_type, credentials)
+                await client._start()
+                cls._client_from_env = client
+                atexit.register(cls._stop_env_client)
+                return client
 
     @classmethod
     def set_env_client(cls, client):

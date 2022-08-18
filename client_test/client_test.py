@@ -112,12 +112,19 @@ async def test_client_heartbeat_retry(servicer):
 
 def test_client_from_env(servicer):
     _override_config = {
-        "server_url": servicer.remote_addr,
+        "server_url": "https://foo.invalid",
         "token_id": "foo-id",
         "token_secret": "foo-secret",
         "task_id": None,
         "task_secret": None,
     }
+
+    # First, a failing one
+    with pytest.raises(ConnectionError):
+        Client.from_env(_override_config=_override_config)
+
+    # Make sure later clients can still succeed
+    _override_config["server_url"] = servicer.remote_addr
     client_1 = Client.from_env(_override_config=_override_config)
     client_2 = Client.from_env(_override_config=_override_config)
     assert isinstance(client_1, Client)
