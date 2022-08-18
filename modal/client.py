@@ -1,13 +1,14 @@
 import asyncio
-import time
 import warnings
 
+from aiohttp import ClientConnectorError, ClientResponseError
 from grpc import StatusCode
 from grpc.aio import AioRpcError
 
 from modal_proto import api_pb2, api_pb2_grpc
-from modal_utils.async_utils import TaskContext, retry, synchronize_apis
+from modal_utils.async_utils import TaskContext, synchronize_apis
 from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, ChannelPool
+from modal_utils.http_utils import http_client_with_tls
 from modal_utils.server_connection import GRPCConnectionFactory
 
 from .config import config, logger
@@ -16,6 +17,18 @@ from .version import __version__
 
 CLIENT_CREATE_TIMEOUT = 5.0
 HEARTBEAT_INTERVAL = 15.0
+
+
+async def _http_check(url: str, timeout: float) -> int:
+    # Used for sanity checking connection issues
+    try:
+        async with http_client_with_tls(timeout=timeout) as session:
+            async with session.get(url) as resp:
+                return resp.status
+    except ClientResponseError as exc:
+        return exc.status
+    except ClientConnectorError as exc:
+        raise exc.os_error
 
 
 class _Client:
@@ -56,29 +69,31 @@ class _Client:
         await self._channel_pool.start()
         self._stub = api_pb2_grpc.ModalClientStub(self._channel_pool)
         try:
-            t0 = time.time()
             req = api_pb2.ClientCreateRequest(
                 client_type=self.client_type,
                 version=self.version,
             )
-            resp = await retry(self.stub.ClientCreate, timeout=CLIENT_CREATE_TIMEOUT)(req)
+            resp = await self.stub.ClientCreate(req, timeout=CLIENT_CREATE_TIMEOUT)
             if resp.deprecation_warning:
                 ALARM_EMOJI = chr(0x1F6A8)
                 warnings.warn(f"{ALARM_EMOJI} {resp.deprecation_warning} {ALARM_EMOJI}", DeprecationWarning)
             self._client_id = resp.client_id
         except AioRpcError as exc:
-            ms = int(1000 * (time.time() - t0))
             if exc.code() == StatusCode.UNAUTHENTICATED:
-                raise AuthError(f"Connecting to {self.server_url}: {exc.details()} (after {ms} ms)")
-            elif exc.code() in [StatusCode.UNAVAILABLE, StatusCode.DEADLINE_EXCEEDED]:
-                raise ConnectionError(f"Connecting to {self.server_url}: {exc.details()} (after {ms} ms)")
+                raise AuthError(f"Connecting to {self.server_url}: {exc.details()}")
             elif exc.code() == StatusCode.FAILED_PRECONDITION:
                 # TODO: include a link to the latest package
                 raise VersionError(
                     f"The client version {self.version} is too old. Please update to the latest package."
                 )
             else:
-                raise
+                # Some GRPC error: raise this to the user, and include a HTTP sanity check for extra debug
+                try:
+                    http_status_code = await _http_check(self.server_url, timeout=CLIENT_CREATE_TIMEOUT)
+                    http_status = f"HTTP status: {http_status_code}"
+                except Exception as http_exc:
+                    http_status = f"HTTP failed with exception {http_exc.__class__.__name__}"
+                raise ConnectionError(f"{self.server_url}: {exc.details()} ({http_status})")
         if not self._client_id:
             raise InvalidError("Did not get a client id from server")
 

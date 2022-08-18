@@ -1,12 +1,30 @@
 import contextlib
 import socket
+import ssl
 
-import aiohttp.web
-import aiohttp.web_runner
+import certifi
+from aiohttp import ClientSession, ClientTimeout, TCPConnector
+from aiohttp.web import Application
+from aiohttp.web_runner import AppRunner, SockSite
+
+
+def http_client_with_tls(timeout: float = 10) -> ClientSession:
+    """Create a new HTTP client session with standard, bundled TLS certificates.
+
+    This is necessary to prevent client issues on some system where Python does
+    not come pre-installed with specific TLS certificates that are necessary to
+    connect to AWS S3 bucket URLs.
+
+    Specifically: the error "unable to get local issuer certificate" when making
+    an aiohttp request.
+    """
+    ssl_context = ssl.create_default_context(cafile=certifi.where())
+    connector = TCPConnector(ssl=ssl_context)
+    return ClientSession(connector=connector, timeout=ClientTimeout(total=timeout))
 
 
 @contextlib.asynccontextmanager
-async def run_temporary_http_server(app: aiohttp.web.Application):
+async def run_temporary_http_server(app: Application):
     # Allocates a random port, runs a server in a context manager
     # This is used in various tests
     sock = socket.socket()
@@ -14,9 +32,9 @@ async def run_temporary_http_server(app: aiohttp.web.Application):
     port = sock.getsockname()[1]
     host = f"http://127.0.0.1:{port}"
 
-    runner = aiohttp.web_runner.AppRunner(app)
+    runner = AppRunner(app)
     await runner.setup()
-    site = aiohttp.web_runner.SockSite(runner, sock=sock)
+    site = SockSite(runner, sock=sock)
     await site.start()
     try:
         yield host

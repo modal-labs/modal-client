@@ -1,16 +1,13 @@
 import dataclasses
 import os
-import ssl
 from typing import Optional
-
-import certifi
-from aiohttp import ClientSession, TCPConnector
 
 from modal.exception import ExecutionError
 from modal_proto import api_pb2
 from modal_utils.async_utils import retry
 from modal_utils.blob_utils import use_md5
 from modal_utils.hash_utils import get_md5_base64, get_sha256_hex
+from modal_utils.http_utils import http_client_with_tls
 
 # Max size for function inputs and outputs.
 MAX_OBJECT_SIZE_BYTES = 64 * 1024  # 64 kb
@@ -18,21 +15,6 @@ MAX_OBJECT_SIZE_BYTES = 64 * 1024  # 64 kb
 #  If a file is LARGE_FILE_LIMIT bytes or larger, it's uploaded to blob store (s3) instead of going through grpc
 #  It will also make sure to chunk the hash calculation to avoid reading the entire file into memory
 LARGE_FILE_LIMIT = 1024 * 1024  # 1MB
-
-
-def http_client_with_tls() -> ClientSession:
-    """Create a new HTTP client session with standard, bundled TLS certificates.
-
-    This is necessary to prevent client issues on some system where Python does
-    not come pre-installed with specific TLS certificates that are necessary to
-    connect to AWS S3 bucket URLs.
-
-    Specifically: the error "unable to get local issuer certificate" when making
-    an aiohttp request.
-    """
-    ssl_context = ssl.create_default_context(cafile=certifi.where())
-    connector = TCPConnector(ssl=ssl_context)
-    return ClientSession(connector=connector)
 
 
 @retry(n_attempts=5, base_delay=0.1, timeout=None)

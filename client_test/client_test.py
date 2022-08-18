@@ -29,10 +29,40 @@ async def test_container_client(servicer, aio_container_client):
 
 
 @pytest.mark.asyncio
-async def test_client_connection_failure():
-    with pytest.raises(ConnectionError):
+async def test_client_dns_failure():
+    with pytest.raises(ConnectionError) as excinfo:
         async with AioClient("https://xyz.invalid", api_pb2.CLIENT_TYPE_CLIENT, None):
             pass
+    assert "DNS resolution failed for xyz.invalid" in str(excinfo.value)
+    assert "HTTP failed with exception" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_client_connection_failure():
+    with pytest.raises(ConnectionError) as excinfo:
+        async with AioClient("https://localhost:443", api_pb2.CLIENT_TYPE_CLIENT, None):
+            pass
+    assert "failed to connect" in str(excinfo.value).lower()
+    assert "HTTP failed with exception ConnectionRefusedError" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_client_connection_timeout(servicer):
+    with pytest.raises(ConnectionError) as excinfo:
+        async with AioClient(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, None, version="timeout"):
+            pass
+    # The HTTP lookup will return 400 because the GRPC server rejects the http request
+    assert "Deadline Exceeded" in str(excinfo.value)
+    assert "HTTP status: 400" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_client_server_error(servicer):
+    with pytest.raises(ConnectionError) as excinfo:
+        async with AioClient("https://github.com", api_pb2.CLIENT_TYPE_CLIENT, None):
+            pass
+    # Can't connect over GRPC, but the HTTP lookup should succeed
+    assert "HTTP status: 200" in str(excinfo.value)
 
 
 @pytest.mark.asyncio

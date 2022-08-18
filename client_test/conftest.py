@@ -103,7 +103,10 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     ) -> api_pb2.ClientCreateResponse:
         self.requests.append(request)
         client_id = "cl-123"
-        if request.version == "deprecated":
+        if request.version == "timeout":
+            await asyncio.sleep(60)
+            return api_pb2.ClientCreateResponse(client_id=client_id)
+        elif request.version == "deprecated":
             return api_pb2.ClientCreateResponse(client_id=client_id, deprecation_warning="SUPER OLD")
         elif pkg_resources.parse_version(request.version) < pkg_resources.parse_version(__version__):
             await context.abort(StatusCode.FAILED_PRECONDITION, "Old client")
