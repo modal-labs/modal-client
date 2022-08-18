@@ -186,7 +186,7 @@ class _Client:
                 client = _Client(server_url, client_type, credentials)
                 await client._start()
                 cls._client_from_env = client
-                atexit.register(cls._stop_env_client)
+                atexit.register(Client.stop_env_client)  # Note that we use the blocking interface
                 return client
 
     @classmethod
@@ -195,13 +195,11 @@ class _Client:
         cls._client_from_env = client
 
     @classmethod
-    def _stop_env_client(cls):
-        # This is called from the atexit handler
-        # Note that this gets run "outside" the synchronicity barrier, so we use a
-        # bit of a hack to run asynchronous code: use the blocking interface
-        client = Client.from_env()  # return the singleton client
-        assert isinstance(client, Client)
-        client._stop()  # blocking
+    async def stop_env_client(cls):
+        # Only called from atexit handler and from tests
+        if cls._client_from_env is not None:
+            await cls._client_from_env._stop()
+            cls._client_from_env = None
 
 
 Client, AioClient = synchronize_apis(_Client)

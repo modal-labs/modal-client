@@ -119,15 +119,25 @@ def test_client_from_env(servicer):
         "task_secret": None,
     }
 
-    # First, a failing one
-    with pytest.raises(ConnectionError):
-        Client.from_env(_override_config=_override_config)
+    try:
+        # First, a failing one
+        with pytest.raises(ConnectionError):
+            Client.from_env(_override_config=_override_config)
 
-    # Make sure later clients can still succeed
-    _override_config["server_url"] = servicer.remote_addr
-    client_1 = Client.from_env(_override_config=_override_config)
-    client_2 = Client.from_env(_override_config=_override_config)
-    assert isinstance(client_1, Client)
-    assert isinstance(client_2, Client)
-    assert client_1.client_id == client_2.client_id
-    assert client_1 == client_2
+        # Make sure later clients can still succeed
+        _override_config["server_url"] = servicer.remote_addr
+        client_1 = Client.from_env(_override_config=_override_config)
+        client_2 = Client.from_env(_override_config=_override_config)
+        assert isinstance(client_1, Client)
+        assert isinstance(client_2, Client)
+        assert client_1 == client_2
+
+    finally:
+        Client.stop_env_client()
+
+    try:
+        # After stopping, creating a new client should return a new one
+        client_3 = Client.from_env(_override_config=_override_config)
+        assert client_3 != client_1
+    finally:
+        Client.stop_env_client()
