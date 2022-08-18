@@ -3,7 +3,7 @@ import concurrent.futures
 import functools
 import inspect
 import time
-from typing import Any, List, Optional, Union
+from typing import Any, List, Optional
 
 import synchronicity
 
@@ -167,7 +167,7 @@ class TaskContext:
         self._tasks.add(task)
         return task
 
-    def infinite_loop(self, async_f, timeout: Union[float, None] = 90, sleep: float = 10) -> asyncio.Task:
+    def infinite_loop(self, async_f, timeout: Optional[float] = 90, sleep: float = 10) -> asyncio.Task:
         function_name = async_f.__qualname__
 
         async def loop_coro() -> None:

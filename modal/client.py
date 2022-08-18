@@ -18,18 +18,26 @@ from .version import __version__
 
 CLIENT_CREATE_TIMEOUT = 5.0
 HEARTBEAT_INTERVAL = 15.0
+HEARTBEAT_TIMEOUT = 5.0
 
 
-async def _http_check(url: str, timeout: float) -> int:
+async def _http_check(url: str, timeout: float) -> str:
     # Used for sanity checking connection issues
     try:
         async with http_client_with_tls(timeout=timeout) as session:
             async with session.get(url) as resp:
-                return resp.status
+                return f"HTTP status: {resp.status}"
     except ClientResponseError as exc:
-        return exc.status
+        return f"HTTP status: {exc.status}"
     except ClientConnectorError as exc:
-        raise exc.os_error
+        return f"HTTP exception: {exc.os_error.__class__.__name__}"
+    except Exception as exc:
+        return f"HTTP exception: {exc.__class__.__name__}"
+
+
+async def _grpc_exc_string(exc: AioRpcError, method_name: str, server_url: str, timeout: float) -> str:
+    http_status = await _http_check(server_url, timeout=timeout)
+    return f"{method_name}: {exc.details()} [GRPC status: {exc.code().name}, {http_status}]"
 
 
 class _Client:
@@ -83,21 +91,16 @@ class _Client:
                 warnings.warn(f"{ALARM_EMOJI} {resp.deprecation_warning} {ALARM_EMOJI}", DeprecationWarning)
             self._client_id = resp.client_id
         except AioRpcError as exc:
-            if exc.code() == StatusCode.UNAUTHENTICATED:
-                raise AuthError(f"Connecting to {self.server_url}: {exc.details()}")
-            elif exc.code() == StatusCode.FAILED_PRECONDITION:
+            if exc.code() == StatusCode.FAILED_PRECONDITION:
                 # TODO: include a link to the latest package
                 raise VersionError(
                     f"The client version {self.version} is too old. Please update to the latest package."
                 )
+            elif exc.code() == StatusCode.UNAUTHENTICATED:
+                raise AuthError(exc.details())
             else:
-                # Some GRPC error: raise this to the user, and include a HTTP sanity check for extra debug
-                try:
-                    http_status_code = await _http_check(self.server_url, timeout=CLIENT_CREATE_TIMEOUT)
-                    http_status = f"HTTP status: {http_status_code}"
-                except Exception as http_exc:
-                    http_status = f"HTTP failed with exception {http_exc.__class__.__name__}"
-                raise ConnectionError(f"{self.server_url}: {exc.details()} ({http_status})")
+                exc_string = await _grpc_exc_string(exc, "ClientCreate", self.server_url, CLIENT_CREATE_TIMEOUT)
+                raise ConnectionError(exc_string)
         if not self._client_id:
             raise InvalidError("Did not get a client id from server")
 
@@ -126,14 +129,17 @@ class _Client:
         if self._stub is not None:
             req = api_pb2.ClientHeartbeatRequest(client_id=self._client_id, num_connections=self._channel_pool.size())
             try:
-                await self.stub.ClientHeartbeat(req)
+                await self.stub.ClientHeartbeat(req, timeout=HEARTBEAT_TIMEOUT)
             except AioRpcError as exc:
+                exc_string = await _grpc_exc_string(exc, "ClientHeartbeat", self.server_url, HEARTBEAT_TIMEOUT)
                 if exc.code() == StatusCode.NOT_FOUND:
                     # server has deleted this client - perform graceful shutdown
                     # can't simply await self._stop here since it recursively wait for this task as well
                     asyncio.ensure_future(self._stop())
                 elif exc.code() not in RETRYABLE_GRPC_STATUS_CODES:
-                    raise
+                    raise ConnectionError(exc_string)
+                else:
+                    logger.warning(exc_string)
 
     async def __aenter__(self):
         try:

@@ -2,11 +2,10 @@ import asyncio
 import pytest
 
 from grpc import StatusCode
-from grpc.aio import AioRpcError
 
 import modal.exception
 from modal.client import AioClient, Client
-from modal.exception import ConnectionError, VersionError
+from modal.exception import AuthError, ConnectionError, VersionError
 from modal_proto import api_pb2
 
 
@@ -34,7 +33,7 @@ async def test_client_dns_failure():
         async with AioClient("https://xyz.invalid", api_pb2.CLIENT_TYPE_CLIENT, None):
             pass
     assert "DNS resolution failed for xyz.invalid" in str(excinfo.value)
-    assert "HTTP failed with exception" in str(excinfo.value)
+    assert "HTTP exception" in str(excinfo.value)
 
 
 @pytest.mark.asyncio
@@ -43,7 +42,7 @@ async def test_client_connection_failure():
         async with AioClient("https://localhost:443", api_pb2.CLIENT_TYPE_CLIENT, None):
             pass
     assert "failed to connect" in str(excinfo.value).lower()
-    assert "HTTP failed with exception ConnectionRefusedError" in str(excinfo.value)
+    assert "HTTP exception: ConnectionRefusedError" in str(excinfo.value)
 
 
 @pytest.mark.asyncio
@@ -83,6 +82,13 @@ async def test_client_deprecated(servicer):
             pass
 
 
+@pytest.mark.asyncio
+async def test_client_unauthenticated(servicer):
+    with pytest.raises(AuthError):
+        async with AioClient(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, None, version="unauthenticated"):
+            pass
+
+
 @pytest.mark.skip("TODO: flakes in Github Actions")
 @pytest.mark.asyncio
 async def test_server_client_gone_disconnects_client(servicer):
@@ -106,8 +112,10 @@ async def test_client_heartbeat_retry(servicer):
         await client._heartbeat()
         servicer.heartbeat_status_code = StatusCode.UNAUTHENTICATED
         # Raises.
-        with pytest.raises(AioRpcError):
+        with pytest.raises(ConnectionError) as excinfo:
             await client._heartbeat()
+        assert "UNAUTHENTICATED" in str(excinfo.value)
+        assert "HTTP status" in str(excinfo.value)
 
 
 def test_client_from_env(servicer):

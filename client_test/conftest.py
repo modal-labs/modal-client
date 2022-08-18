@@ -106,6 +106,8 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         if request.version == "timeout":
             await asyncio.sleep(60)
             return api_pb2.ClientCreateResponse(client_id=client_id)
+        if request.version == "unauthenticated":
+            await context.abort(StatusCode.UNAUTHENTICATED, "failed authentication")
         elif request.version == "deprecated":
             return api_pb2.ClientCreateResponse(client_id=client_id, deprecation_warning="SUPER OLD")
         elif pkg_resources.parse_version(request.version) < pkg_resources.parse_version(__version__):
