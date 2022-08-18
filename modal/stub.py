@@ -376,6 +376,7 @@ class _Stub:
         memory: Optional[int] = None,  # How much memory to request, in MB. This is a soft limit.
         proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
+        concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
     ) -> _Function:  # Function object - callable as a regular function within a Modal app
         """Decorator to register a new Modal function with this stub."""
         if image is None:
@@ -396,6 +397,7 @@ class _Stub:
             memory=memory,
             proxy=proxy,
             retries=retries,
+            concurrency_limit=concurrency_limit,
         )
         return self._add_function(function)
 
@@ -417,6 +419,7 @@ class _Stub:
         memory: Optional[int] = None,  # How much memory to request, in MB. This is a soft limit.
         proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
+        concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
     ) -> _Function:
         """Decorator similar to `@modal.function`, but it wraps Python generators."""
         if image is None:
@@ -436,6 +439,7 @@ class _Stub:
             memory=memory,
             proxy=proxy,
             retries=retries,
+            concurrency_limit=concurrency_limit,
         )
         return self._add_function(function)
 
@@ -457,6 +461,7 @@ class _Stub:
         memory: Optional[int] = None,  # How much memory to request, in MB. This is a soft limit.
         proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
+        concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
     ):
         """Register a basic web endpoint with this application.
 
@@ -485,6 +490,7 @@ class _Stub:
             memory=memory,
             proxy=proxy,
             retries=retries,
+            concurrency_limit=concurrency_limit,
         )
         return self._add_function(function)
 
@@ -505,6 +511,7 @@ class _Stub:
         memory: Optional[int] = None,  # How much memory to request, in MB. This is a soft limit.
         proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
+        concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
     ):
         if image is None:
             image = self._get_default_image()
@@ -524,6 +531,7 @@ class _Stub:
             memory=memory,
             proxy=proxy,
             retries=retries,
+            concurrency_limit=concurrency_limit,
         )
         return self._add_function(function)
 

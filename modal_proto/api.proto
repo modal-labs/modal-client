@@ -346,6 +346,8 @@ message Function {
   optional string proxy_id = 17;
 
   FunctionRetryPolicy retry_policy = 18;
+
+  uint32 concurrency_limit = 19;
 }
 
 message FunctionCreateRequest {

@@ -269,6 +269,7 @@ class _Function(Object, type_prefix="fu"):
         memory: Optional[int] = None,
         proxy: Optional[Ref] = None,
         retries: Optional[int] = None,
+        concurrency_limit: Optional[int] = None,
     ) -> None:
         """mdmd:hidden"""
         assert callable(raw_f)
@@ -303,6 +304,7 @@ class _Function(Object, type_prefix="fu"):
         self._memory = memory
         self._proxy = proxy
         self._retries = retries
+        self._concurrency_limit = concurrency_limit
         self._local_app = None
         self._local_object_id = None
         self._tag = self._info.get_tag()
@@ -384,6 +386,7 @@ class _Function(Object, type_prefix="fu"):
             shared_volume_mounts=shared_volume_mounts,
             proxy_id=proxy_id,
             retry_policy=api_pb2.FunctionRetryPolicy(retries=self._retries),
+            concurrency_limit=self._concurrency_limit,
         )
         request = api_pb2.FunctionCreateRequest(
             app_id=app_id,
