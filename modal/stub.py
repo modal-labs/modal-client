@@ -197,14 +197,6 @@ class _Stub:
             output_mgr.print_if_visible(step_completed("App completed."))
 
     @synchronizer.asynccontextmanager
-    async def _get_client(self, client=None):
-        if client is None:
-            async with _Client.from_env() as client:
-                yield client
-        else:
-            yield client
-
-    @synchronizer.asynccontextmanager
     async def run(self, client=None, stdout=None, show_progress=None):
         """Context manager that runs an app on Modal.
 
@@ -221,10 +213,11 @@ class _Stub:
                 "    with stub.run():\n"
                 "        ...\n"
             )
-        async with self._get_client(client) as client:
-            output_mgr = OutputManager(stdout, show_progress)
-            async with self._run(client, output_mgr, None) as app:
-                yield app
+        if client is None:
+            client = await _Client.from_env()
+        output_mgr = OutputManager(stdout, show_progress)
+        async with self._run(client, output_mgr, None) as app:
+            yield app
 
     async def run_forever(self, client=None, stdout=None, show_progress=None) -> None:
         """Run an app until the program is interrupted.
@@ -240,17 +233,18 @@ class _Stub:
                 "    with stub.run_forever():\n"
                 "        ...\n"
             )
-        async with self._get_client(client) as client:
-            output_mgr = OutputManager(stdout, show_progress)
-            async with self._run(client, output_mgr, None):
-                timeout = config["run_forever_timeout"]
-                if timeout:
-                    output_mgr.print_if_visible(step_completed(f"Running for {timeout} seconds... hit Ctrl-C to stop!"))
-                    await asyncio.sleep(timeout)
-                else:
-                    output_mgr.print_if_visible(step_completed("Running forever... hit Ctrl-C to stop!"))
-                    while True:
-                        await asyncio.sleep(1.0)
+        if client is None:
+            client = await _Client.from_env()
+        output_mgr = OutputManager(stdout, show_progress)
+        async with self._run(client, output_mgr, None):
+            timeout = config["run_forever_timeout"]
+            if timeout:
+                output_mgr.print_if_visible(step_completed(f"Running for {timeout} seconds... hit Ctrl-C to stop!"))
+                await asyncio.sleep(timeout)
+            else:
+                output_mgr.print_if_visible(step_completed("Running forever... hit Ctrl-C to stop!"))
+                while True:
+                    await asyncio.sleep(1.0)
 
     async def deploy(
         self,
@@ -300,25 +294,27 @@ class _Stub:
                 f"Invalid app name {name}. App names may only contain alphanumeric characters, dashes, periods, and underscores, and must be less than 64 characters in length. "
             )
 
-        async with self._get_client(client) as client:
-            # Look up any existing deployment
-            app_req = api_pb2.AppGetByDeploymentNameRequest(name=name, namespace=namespace, client_id=client.client_id)
-            app_resp = await client.stub.AppGetByDeploymentName(app_req)
-            existing_app_id = app_resp.app_id or None
-            last_log_entry_id = app_resp.last_log_entry_id
+        if client is None:
+            client = await _Client.from_env()
 
-            # The `_run` method contains the logic for starting and running an app
-            output_mgr = OutputManager(stdout, show_progress)
-            async with self._run(
-                client, output_mgr, existing_app_id, last_log_entry_id, description=name, deployment=True
-            ) as app:
-                deploy_req = api_pb2.AppDeployRequest(
-                    app_id=app._app_id,
-                    name=name,
-                    namespace=namespace,
-                )
-                await client.stub.AppDeploy(deploy_req)
-                return app._app_id
+        # Look up any existing deployment
+        app_req = api_pb2.AppGetByDeploymentNameRequest(name=name, namespace=namespace, client_id=client.client_id)
+        app_resp = await client.stub.AppGetByDeploymentName(app_req)
+        existing_app_id = app_resp.app_id or None
+        last_log_entry_id = app_resp.last_log_entry_id
+
+        # The `_run` method contains the logic for starting and running an app
+        output_mgr = OutputManager(stdout, show_progress)
+        async with self._run(
+            client, output_mgr, existing_app_id, last_log_entry_id, description=name, deployment=True
+        ) as app:
+            deploy_req = api_pb2.AppDeployRequest(
+                app_id=app._app_id,
+                name=name,
+                namespace=namespace,
+            )
+            await client.stub.AppDeploy(deploy_req)
+            return app._app_id
 
     def _get_default_image(self):
         if "image" in self._blueprint:

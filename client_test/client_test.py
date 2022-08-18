@@ -5,7 +5,7 @@ from grpc import StatusCode
 from grpc.aio import AioRpcError
 
 import modal.exception
-from modal.client import AioClient
+from modal.client import AioClient, Client
 from modal.exception import ConnectionError, VersionError
 from modal_proto import api_pb2
 
@@ -108,3 +108,19 @@ async def test_client_heartbeat_retry(servicer):
         # Raises.
         with pytest.raises(AioRpcError):
             await client._heartbeat()
+
+
+def test_client_from_env(servicer):
+    _override_config = {
+        "server_url": servicer.remote_addr,
+        "token_id": "foo-id",
+        "token_secret": "foo-secret",
+        "task_id": None,
+        "task_secret": None,
+    }
+    client_1 = Client.from_env(_override_config=_override_config)
+    client_2 = Client.from_env(_override_config=_override_config)
+    assert isinstance(client_1, Client)
+    assert isinstance(client_2, Client)
+    assert client_1.client_id == client_2.client_id
+    assert client_1 == client_2

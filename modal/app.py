@@ -36,7 +36,7 @@ async def _lookup(
 ) -> Object:
     """Returns a handle to a tagged object in a deployment on Modal."""
     if client is None:
-        client = _Client.from_env()
+        client = await _Client.from_env()
     object_id = await _lookup_to_id(app_name, tag, namespace, client)
     return Object.from_id(object_id, client)
 

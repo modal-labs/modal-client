@@ -1,4 +1,5 @@
 import asyncio
+import atexit
 import warnings
 
 from aiohttp import ClientConnectorError, ClientResponseError
@@ -152,15 +153,21 @@ class _Client:
         return self._client_id
 
     @classmethod
-    def from_env(cls) -> "_Client":
+    async def from_env(cls, _override_config=None) -> "_Client":
         if cls._client_from_env:
             return cls._client_from_env
 
-        server_url = config["server_url"]
-        token_id = config["token_id"]
-        token_secret = config["token_secret"]
-        task_id = config["task_id"]
-        task_secret = config["task_secret"]
+        if _override_config:
+            # Only used for testing
+            c = _override_config
+        else:
+            c = config
+
+        server_url = c["server_url"]
+        token_id = c["token_id"]
+        token_secret = c["token_secret"]
+        task_id = c["task_id"]
+        task_secret = c["task_secret"]
 
         if task_id and task_secret:
             client_type = api_pb2.CLIENT_TYPE_CONTAINER
@@ -172,13 +179,24 @@ class _Client:
             client_type = api_pb2.CLIENT_TYPE_CLIENT
             credentials = None
 
-        cls._client_from_env = _Client(server_url, client_type, credentials)
-        return cls._client_from_env
+        client = cls._client_from_env = _Client(server_url, client_type, credentials)
+        await client._start()
+        atexit.register(cls._stop_env_client)
+        return client
 
     @classmethod
     def set_env_client(cls, client):
         """Just used from tests."""
         cls._client_from_env = client
+
+    @classmethod
+    def _stop_env_client(cls):
+        # This is called from the atexit handler
+        # Note that this gets run "outside" the synchronicity barrier, so we use a
+        # bit of a hack to run asynchronous code: use the blocking interface
+        client = Client.from_env()  # return the singleton client
+        assert isinstance(client, Client)
+        client._stop()  # blocking
 
 
 Client, AioClient = synchronize_apis(_Client)
