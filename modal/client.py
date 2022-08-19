@@ -17,9 +17,9 @@ from .config import config, logger
 from .exception import AuthError, ConnectionError, InvalidError, VersionError
 from .version import __version__
 
-CLIENT_CREATE_TIMEOUT = 5.0
+CLIENT_CREATE_TIMEOUT = 10.1
 HEARTBEAT_INTERVAL = 15.0
-HEARTBEAT_TIMEOUT = 5.0
+HEARTBEAT_TIMEOUT = 10.1
 
 
 async def _http_check(url: str, timeout: float) -> str:
