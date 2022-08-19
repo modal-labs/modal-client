@@ -135,7 +135,9 @@ class _Client:
                 if exc.code() == StatusCode.NOT_FOUND:
                     # server has deleted this client - perform graceful shutdown
                     # can't simply await self._stop here since it recursively wait for this task as well
+                    logger.warning(exc_string)
                     asyncio.ensure_future(self._stop())
+                    # TODO(erikbern): if this is the singleton client, we should remove it
                 elif exc.code() not in RETRYABLE_GRPC_STATUS_CODES:
                     raise ConnectionError(exc_string)
                 else:
