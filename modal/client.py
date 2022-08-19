@@ -1,5 +1,6 @@
 import asyncio
 import atexit
+import time
 import warnings
 
 from aiohttp import ClientConnectorError, ClientResponseError
@@ -69,7 +70,6 @@ class _Client:
         logger.debug("Client: Starting")
         if self._stub:
             raise Exception("Client is already running")
-        self.stopped = asyncio.Event()
         self._task_context = TaskContext(grace=1)
         await self._task_context.start()
         self._connection_factory = GRPCConnectionFactory(
@@ -105,6 +105,7 @@ class _Client:
             raise InvalidError("Did not get a client id from server")
 
         # Start heartbeats
+        self._last_heartbeat = time.time()
         self._task_context.infinite_loop(self._heartbeat, sleep=HEARTBEAT_INTERVAL)
 
         logger.debug("Client: Done starting")
@@ -123,13 +124,13 @@ class _Client:
         # Needed to catch straggling CancelledErrors and GeneratorExits that propagate
         # through our chains of async generators.
         await asyncio.sleep(0.01)
-        self.stopped.set()
 
     async def _heartbeat(self):
         if self._stub is not None:
             req = api_pb2.ClientHeartbeatRequest(client_id=self._client_id, num_connections=self._channel_pool.size())
             try:
                 await self.stub.ClientHeartbeat(req, timeout=HEARTBEAT_TIMEOUT)
+                self._last_heartbeat = time.time()
             except AioRpcError as exc:
                 exc_string = await _grpc_exc_string(exc, "ClientHeartbeat", self.server_url, HEARTBEAT_TIMEOUT)
                 if exc.code() == StatusCode.NOT_FOUND:
@@ -137,11 +138,10 @@ class _Client:
                     # can't simply await self._stop here since it recursively wait for this task as well
                     logger.warning(exc_string)
                     asyncio.ensure_future(self._stop())
-                    # TODO(erikbern): if this is the singleton client, we should remove it
-                elif exc.code() not in RETRYABLE_GRPC_STATUS_CODES:
-                    raise ConnectionError(exc_string)
-                else:
+                elif exc.code() in RETRYABLE_GRPC_STATUS_CODES:
                     logger.warning(exc_string)
+                else:
+                    raise ConnectionError(exc_string)
 
     async def __aenter__(self):
         try:
@@ -159,12 +159,24 @@ class _Client:
             # Just connect and disconnect
             pass
 
+    def _ok_to_recycle(self, override_time):
+        # Used to check if a singleton client can be reused safely
+        if not self._stub:
+            # Client has ben stopped
+            return False
+        elif self._last_heartbeat < override_time - (HEARTBEAT_INTERVAL + HEARTBEAT_TIMEOUT):
+            # This can happen if a process goes into hibernation and then wakes up
+            # (eg AWS Lambdas between requests, or closing the lid of a laptop)
+            return False
+        else:
+            return True
+
     @property
     def client_id(self):
         return self._client_id
 
     @classmethod
-    async def from_env(cls, _override_config=None) -> "_Client":
+    async def from_env(cls, _override_config=None, _override_time=None) -> "_Client":
         if _override_config:
             # Only used for testing
             c = _override_config
@@ -187,8 +199,12 @@ class _Client:
             client_type = api_pb2.CLIENT_TYPE_CLIENT
             credentials = None
 
+        if _override_time is None:
+            # Only used for testing
+            _override_time = time.time()
+
         async with cls._client_from_env_lock:
-            if cls._client_from_env:
+            if cls._client_from_env and cls._client_from_env._ok_to_recycle(_override_time):
                 return cls._client_from_env
             else:
                 client = _Client(server_url, client_type, credentials)

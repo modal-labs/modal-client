@@ -1,5 +1,6 @@
 import asyncio
 import pytest
+import time
 
 from grpc import StatusCode
 
@@ -118,24 +119,26 @@ async def test_client_heartbeat_retry(servicer):
         assert "HTTP status" in str(excinfo.value)
 
 
-def test_client_from_env(servicer):
+def client_from_env(remote_addr, _override_time=None):
     _override_config = {
-        "server_url": "https://foo.invalid",
+        "server_url": remote_addr,
         "token_id": "foo-id",
         "token_secret": "foo-secret",
         "task_id": None,
         "task_secret": None,
     }
+    return Client.from_env(_override_config=_override_config, _override_time=_override_time)
 
+
+def test_client_from_env(servicer):
     try:
         # First, a failing one
         with pytest.raises(ConnectionError):
-            Client.from_env(_override_config=_override_config)
+            client_from_env("https://foo.invalid")
 
         # Make sure later clients can still succeed
-        _override_config["server_url"] = servicer.remote_addr
-        client_1 = Client.from_env(_override_config=_override_config)
-        client_2 = Client.from_env(_override_config=_override_config)
+        client_1 = client_from_env(servicer.remote_addr)
+        client_2 = client_from_env(servicer.remote_addr)
         assert isinstance(client_1, Client)
         assert isinstance(client_2, Client)
         assert client_1 == client_2
@@ -145,7 +148,25 @@ def test_client_from_env(servicer):
 
     try:
         # After stopping, creating a new client should return a new one
-        client_3 = Client.from_env(_override_config=_override_config)
+        client_3 = client_from_env(servicer.remote_addr)
+        client_4 = client_from_env(servicer.remote_addr)
         assert client_3 != client_1
+        assert client_4 == client_3
+
+        # Inject a heartbeat failure in the client
+        servicer.heartbeat_status_code = StatusCode.NOT_FOUND
+        client_3._heartbeat()
+
+        # Make sure the new env client is different
+        client_5 = client_from_env(servicer.remote_addr)
+        assert client_5 != client_4
+
+        # Fetch another one seconds later
+        client_6 = client_from_env(servicer.remote_addr, time.time() + 1)
+        assert client_6 == client_5
+
+        # Fetch another much later, should be different
+        client_7 = client_from_env(servicer.remote_addr, time.time() + 999)
+        assert client_7 != client_6
     finally:
         Client.stop_env_client()
