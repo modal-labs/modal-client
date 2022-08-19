@@ -128,7 +128,7 @@ class FunctionInfo:
                         recursive=True,
                     )
             elif getattr(m, "__file__", None):
-                path = os.path.abspath(m.__file__)
+                path = os.path.abspath(os.path.realpath(m.__file__))
 
                 if path in mounts or any(path.startswith(p) for p in SYS_PREFIXES) or not os.path.exists(path):
                     continue
