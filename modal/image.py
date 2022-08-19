@@ -17,8 +17,8 @@ from .secret import _Secret
 class _Image(Object, type_prefix="im"):
     """Base class for container images to run functions in.
 
-    Do not construct this class directly; instead use
-    `modal.image.DebianSlim`, `modal.image.DockerhubImage` or `modal.image.Conda`.
+    Do not construct this class directly; instead use `modal.DebianSlim`,
+    `modal.DockerhubImage` or `modal.Conda`.
     """
 
     def __init__(
