@@ -113,13 +113,20 @@ class Invocation:
         return Invocation(client.stub, function_id, function_call_id, client)
 
     async def get_items(self):
-        request = api_pb2.FunctionGetOutputsRequest(function_call_id=self.function_call_id, timeout=60)
-        response = await retry_transient_errors(
-            self.stub.FunctionGetOutputs,
-            request,
-            max_retries=None,
-            base_delay=0,
+        request = api_pb2.FunctionGetOutputsRequest(
+            function_call_id=self.function_call_id, timeout=60, return_empty_on_timeout=True
         )
+        while True:
+            # loop until there is an output
+            response = await retry_transient_errors(
+                self.stub.FunctionGetOutputs,
+                request,
+                max_retries=None,
+                base_delay=0,
+            )
+            if len(response.outputs) > 0:
+                break
+
         for item in response.outputs:
             yield item.result
 
@@ -193,7 +200,9 @@ async def map_invocation(function_id, input_stream, kwargs, client, is_generator
         pending_outputs = {}
 
         while True:
-            request = api_pb2.FunctionGetOutputsRequest(function_call_id=function_call_id, timeout=60)
+            request = api_pb2.FunctionGetOutputsRequest(
+                function_call_id=function_call_id, timeout=60, return_empty_on_timeout=True
+            )
             response = await retry_transient_errors(
                 client.stub.FunctionGetOutputs,
                 request,

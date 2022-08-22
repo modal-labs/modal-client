@@ -320,6 +320,7 @@ message FunctionGetOutputsRequest {
   string function_call_id = 1;
   int32 max_values = 2;
   float timeout = 3;
+  bool return_empty_on_timeout = 4;
 }
 
 message FunctionGetOutputsResponse {
