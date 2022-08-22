@@ -123,6 +123,9 @@ message AppLookupObjectRequest {
 message AppLookupObjectResponse {
   string object_id = 1;
   string error_message = 2;
+  oneof object_oneof {
+    Function function = 3;
+  }
 }
 
 message AppSetObjectsRequest {
