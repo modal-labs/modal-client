@@ -8,7 +8,7 @@ from aiohttp.web import Application
 from aiohttp.web_runner import AppRunner, SockSite
 
 
-def http_client_with_tls(timeout: float = 10) -> ClientSession:
+def http_client_with_tls(timeout: float) -> ClientSession:
     """Create a new HTTP client session with standard, bundled TLS certificates.
 
     This is necessary to prevent client issues on some system where Python does

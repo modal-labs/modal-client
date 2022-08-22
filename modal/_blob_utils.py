@@ -19,7 +19,7 @@ LARGE_FILE_LIMIT = 1024 * 1024  # 1MB
 
 @retry(n_attempts=5, base_delay=0.1, timeout=None)
 async def _upload_to_url(upload_url: str, content_md5: str, aiohttp_payload) -> None:
-    async with http_client_with_tls() as session:
+    async with http_client_with_tls(timeout=None) as session:
         headers = {"content-type": "application/octet-stream"}
 
         if use_md5(upload_url):
@@ -56,7 +56,7 @@ async def blob_upload_file(filename: str, stub) -> str:
 
 @retry(n_attempts=5, base_delay=0.1, timeout=None)
 async def _download_from_url(download_url):
-    async with http_client_with_tls() as session:
+    async with http_client_with_tls(timeout=None) as session:
         async with session.get(download_url) as resp:
             if resp.status != 200:
                 text = await resp.text()
