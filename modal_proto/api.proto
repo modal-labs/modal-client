@@ -4,38 +4,24 @@ package modal.client;
 
 import "google/protobuf/empty.proto";
 
+enum AppState {
+  APP_STATE_UNSPECIFIED = 0;
 
-message ContainerArguments {  // This is used to pass data from the worker to the container
-  string task_id = 1;
-  string function_id = 2;
-  string app_id = 4;
-  Function function_def = 7;
-  ProxyInfo proxy_info = 8;
-}
+  // Will be discharged when the client disconnects
+  APP_STATE_EPHEMERAL = 1;
 
-message GenericResult {  // Used for both tasks and function outputs
-  enum GenericStatus {
-    GENERIC_STATUS_UNSPECIFIED = 0;
-    GENERIC_STATUS_SUCCESS = 1;
-    GENERIC_STATUS_FAILURE = 2;
-  }
+  // Will be discharged when there's no more functions
+  // Note: currently not used - might be un-deprecated in the future
+  APP_STATE_DETACHED = 2 [deprecated = true];
 
-  GenericStatus status = 1;
-  string exception = 2;
-  int32 exitcode = 3;
-  string traceback = 4;
+  // Will be discharged when overwritten
+  APP_STATE_DEPLOYED = 3;
 
-  oneof data_oneof {
-    bytes data = 5;
-    string data_blob_id = 10;
-  }
+  // Winding down app due to user termination.
+  APP_STATE_STOPPING = 4;
 
-  enum GeneratorStatus {
-    GENERATOR_STATUS_UNSPECIFIED = 0;
-    GENERATOR_STATUS_INCOMPLETE = 1;
-    GENERATOR_STATUS_COMPLETE = 2;
-  }
-  GeneratorStatus gen_status = 7;
+  // Stopped
+  APP_STATE_STOPPED = 5;
 }
 
 enum ClientType {
@@ -45,6 +31,131 @@ enum ClientType {
   CLIENT_TYPE_CONTAINER = 3;
   CLIENT_TYPE_SERVER = 4;
   CLIENT_TYPE_WEB_SERVER = 5;
+}
+
+enum DeploymentNamespace {
+  DEPLOYMENT_NAMESPACE_UNSPECIFIED = 0;
+  DEPLOYMENT_NAMESPACE_ACCOUNT = 1;
+  DEPLOYMENT_NAMESPACE_GLOBAL = 3;
+}
+
+enum FileDescriptor {
+  FILE_DESCRIPTOR_UNSPECIFIED = 0;
+  FILE_DESCRIPTOR_STDOUT = 1;
+  FILE_DESCRIPTOR_STDERR = 2;
+  FILE_DESCRIPTOR_INFO = 3;
+}
+
+enum RateLimitInterval {
+  RATE_LIMIT_INTERVAL_UNSPECIFIED = 0;
+  RATE_LIMIT_INTERVAL_SECOND = 1;
+  RATE_LIMIT_INTERVAL_MINUTE = 2;
+}
+
+enum TaskState {
+  TASK_STATE_UNSPECIFIED = 0;
+  TASK_STATE_CREATED = 6;
+  TASK_STATE_QUEUED = 1;
+  TASK_STATE_WORKER_ASSIGNED = 2;
+  TASK_STATE_LOADING_IMAGE = 3;
+  TASK_STATE_RUNNING = 4;
+  TASK_STATE_COMPLETED = 5;
+  TASK_STATE_CREATING_CONTAINER = 7;
+}
+
+enum WebhookType {
+  WEBHOOK_TYPE_UNSPECIFIED = 0;
+  WEBHOOK_TYPE_ASGI_APP = 1;
+  WEBHOOK_TYPE_FUNCTION = 2;
+}
+
+message AppClientDisconnectRequest {
+  string app_id = 1;
+}
+
+message AppCreateRequest {
+  string client_id = 1;
+  string description = 2;    // Human readable label for the website
+}
+
+message AppCreateResponse {
+  string app_id = 1;
+}
+
+message AppDeployRequest {
+  string app_id = 1;
+  DeploymentNamespace namespace = 2;
+  string name = 3;
+}
+
+message AppGetByDeploymentNameRequest {
+  DeploymentNamespace namespace = 1;
+  string name = 2;
+  string client_id = 3;  // todo, not strictly needed
+}
+
+message AppGetByDeploymentNameResponse {
+  string app_id = 1;
+  string last_log_entry_id = 2; // Last log entry as a starting point for the client.
+}
+
+message AppGetLogsRequest {
+  string app_id = 1;
+  float timeout = 2;
+  string last_entry_id = 4;
+}
+
+message AppGetObjectsRequest {
+  string app_id = 1;
+  string task_id = 2;
+}
+
+message AppGetObjectsResponse {
+  map<string, string> object_ids = 1;
+}
+
+message AppLookupObjectRequest {
+  DeploymentNamespace namespace = 2;
+  string app_name = 3;
+  string object_tag = 4;
+}
+
+message AppLookupObjectResponse {
+  string object_id = 1;
+  string error_message = 2;
+}
+
+message AppSetObjectsRequest {
+  // TODO: this is a bit of a hacky request meant to be somewhat temporary
+  // At some point, every object should be assigned to a app/namespace when created,
+  // so this method won't be necessary.
+  string app_id = 1;
+  map<string, string> object_ids = 2;
+  string client_id = 3;
+}
+
+message BaseImage {
+  string image_id = 1;
+  string docker_tag = 2;
+}
+
+message BlobCreateRequest {
+  // TODO(erikbern): how are these garbage collected?
+  // Shouldn't they belong to an app?
+  string content_md5 = 1;
+}
+
+message BlobCreateResponse {
+  string upload_url = 1;
+  string blob_id = 2;
+}
+
+message BlobGetRequest {
+  string blob_id = 1;
+}
+
+message BlobGetResponse {
+  string download_url = 1;
 }
 
 message ClientCreateRequest {
@@ -63,151 +174,21 @@ message ClientHeartbeatRequest {
   int32 num_connections = 2;
 }
 
-message AppCreateRequest {
-  string client_id = 1;
-  string description = 2;    // Human readable label for the website
-}
-
-message AppCreateResponse {
-  string app_id = 1;
-}
-
-message AppClientDisconnectRequest {
-  string app_id = 1;
-}
-
-message AppGetLogsRequest {
-  string app_id = 1;
-  float timeout = 2;
-  string last_entry_id = 4;
-}
-
-message AppSetObjectsRequest {
-  // TODO: this is a bit of a hacky request meant to be somewhat temporary
-  // At some point, every object should be assigned to a app/namespace when created,
-  // so this method won't be necessary.
-  string app_id = 1;
-  map<string, string> object_ids = 2;
-  string client_id = 3;
-}
-
-message AppGetObjectsRequest {
-  string app_id = 1;
-  string task_id = 2;
-}
-
-message AppGetObjectsResponse {
-  map<string, string> object_ids = 1;
-}
-
-enum DeploymentNamespace {
-  DEPLOYMENT_NAMESPACE_UNSPECIFIED = 0;
-  DEPLOYMENT_NAMESPACE_ACCOUNT = 1;
-  DEPLOYMENT_NAMESPACE_GLOBAL = 3;
-}
-
-message AppDeployRequest {
-  string app_id = 1;
-  DeploymentNamespace namespace = 2;
-  string name = 3;
-}
-
-message AppLookupObjectRequest {
-  DeploymentNamespace namespace = 2;
-  string app_name = 3;
-  string object_tag = 4;
-}
-
-message AppLookupObjectResponse {
-  string object_id = 1;
-  string error_message = 2;
-}
-
-message AppGetByDeploymentNameRequest {
-  DeploymentNamespace namespace = 1;
-  string name = 2;
-  string client_id = 3;  // todo, not strictly needed
-}
-
-message AppGetByDeploymentNameResponse {
-  string app_id = 1;
-  string last_log_entry_id = 2; // Last log entry as a starting point for the client.
-}
-
-message ProxyInfo {
-  string elastic_ip = 1;
-  string proxy_key = 2;
-  string remote_addr = 3;
-  int32 remote_port = 4;
-}
-
-message QueueCreateRequest {
-  string app_id = 1;
-  string existing_queue_id = 2;
-}
-
-message QueueCreateResponse {
-  string queue_id = 1;
-}
-
-message QueueGetRequest {
-  string queue_id = 1;
-  bool block = 2;
-  float timeout = 3;
-  int32 n_values = 4;
-  string idempotency_key = 5;
-}
-
-message QueueGetResponse {
-  repeated bytes values = 2;
-}
-
-message QueuePutRequest {
-  string queue_id = 1;
-  string idempotency_key = 3;
-  repeated bytes values = 4;
-}
-
-message BaseImage {
-  string image_id = 1;
-  string docker_tag = 2;
-}
-
-message ImageContextFile {
-  string filename = 1;
-  bytes data = 2;
-}
-
-message Image {
-  repeated BaseImage base_images = 5;
-  repeated string dockerfile_commands = 6;
-  repeated ImageContextFile context_files = 7;
-  string version = 11;
-  repeated string secret_ids = 12;
-}
-
-message ImageGetOrCreateRequest {
-  Image image = 2;
+message ContainerArguments {  // This is used to pass data from the worker to the container
+  string task_id = 1;
+  string function_id = 2;
   string app_id = 4;
-  string existing_image_id = 5;  // ignored
+  Function function_def = 7;
+  ProxyInfo proxy_info = 8;
 }
 
-message ImageGetOrCreateResponse {
-  string image_id = 1;
+message DictContainsRequest {
+  string dict_id = 1;
+  bytes key = 2;
 }
 
-message ImageJoinRequest {
-  string image_id = 1;
-  float timeout = 2;
-}
-
-message ImageJoinResponse {
-  GenericResult result = 1;
-}
-
-message DictEntry {
-  bytes key = 1;
-  bytes value = 2;
+message DictContainsResponse {
+  bool found = 1;
 }
 
 message DictCreateRequest {
@@ -220,6 +201,11 @@ message DictCreateResponse {
   string dict_id = 1;
 }
 
+message DictEntry {
+  bytes key = 1;
+  bytes value = 2;
+}
+
 message DictGetRequest {
   string dict_id = 1;
   bytes key = 2;
@@ -230,29 +216,12 @@ message DictGetResponse {
   optional bytes value = 2;
 }
 
-message DictContainsRequest {
-  string dict_id = 1;
-  bytes key = 2;
-}
-
-message DictContainsResponse {
-  bool found = 1;
-}
-
 message DictLenRequest {
   string dict_id = 1;
 }
 
 message DictLenResponse {
   int32 len = 1;
-}
-
-message DictUpdateRequest {
-  string dict_id = 1;
-  repeated DictEntry updates = 2;
-}
-
-message DictUpdateResponse {
 }
 
 message DictPopRequest {
@@ -265,52 +234,12 @@ message DictPopResponse {
   optional bytes value = 2;
 }
 
-message SecretCreateRequest {
-  map<string, string> env_dict = 1;
-  string app_id = 2;
-  string template_type = 3;
-  string existing_secret_id = 4;
+message DictUpdateRequest {
+  string dict_id = 1;
+  repeated DictEntry updates = 2;
 }
 
-message SecretCreateResponse {
-  string secret_id = 1;
-}
-
-message Resources {
-  bool gpu = 1;
-  uint32 memory = 2; // Memory requested in MB.
-}
-
-enum RateLimitInterval {
-  RATE_LIMIT_INTERVAL_UNSPECIFIED = 0;
-  RATE_LIMIT_INTERVAL_SECOND = 1;
-  RATE_LIMIT_INTERVAL_MINUTE = 2;
-}
-
-message RateLimit {
-  int32 limit = 1;
-  RateLimitInterval interval = 2;
-}
-
-enum WebhookType {
-  WEBHOOK_TYPE_UNSPECIFIED = 0;
-  WEBHOOK_TYPE_ASGI_APP = 1;
-  WEBHOOK_TYPE_FUNCTION = 2;
-}
-
-message WebhookConfig {
-  WebhookType type = 1;
-  string method = 2;
-  bool wait_for_response = 3;
-}
-
-message SharedVolumeMount {
-  string mount_path = 1;
-  string shared_volume_id = 2;
-}
-
-message FunctionRetryPolicy {
-  uint32 retries = 18;
+message DictUpdateResponse {
 }
 
 message Function {
@@ -362,20 +291,45 @@ message FunctionCreateResponse {
   string web_url = 2;
 }
 
+message FunctionGetInputsItem {
+  string input_id = 1;
+  FunctionInput input = 2;
+  bool kill_switch = 3;
+}
+
+message FunctionGetInputsRequest {
+  string function_id = 1;
+  int32 max_values = 3;
+  float timeout = 4;
+}
+
+message FunctionGetInputsResponse {
+  repeated FunctionGetInputsItem inputs = 3;
+  float rate_limit_sleep_duration = 4; // How long to sleep before requesting another input.
+}
+
+message FunctionGetOutputsItem {
+  GenericResult result = 1;
+  int32 idx = 2;
+}
+
+message FunctionGetOutputsRequest {
+  string function_call_id = 1;
+  int32 max_values = 2;
+  float timeout = 3;
+}
+
+message FunctionGetOutputsResponse {
+  repeated int32 idxs = 3;
+  repeated FunctionGetOutputsItem outputs = 4;
+}
+
 message FunctionGetSerializedRequest {
   string function_id = 1;
 }
 
 message FunctionGetSerializedResponse {
   bytes function_serialized = 1;
-}
-
-message FunctionMapRequest {
-  string function_id = 1;
-}
-
-message FunctionMapResponse {
-  string function_call_id = 1;
 }
 
 message FunctionInput {
@@ -386,6 +340,14 @@ message FunctionInput {
     string args_blob_id = 7;
   }
   bool final_input = 9; // TODO(erikbern): deprecate?
+}
+
+message FunctionMapRequest {
+  string function_id = 1;
+}
+
+message FunctionMapResponse {
+  string function_call_id = 1;
 }
 
 message FunctionPutInputsItem {
@@ -399,23 +361,6 @@ message FunctionPutInputsRequest {
   repeated FunctionPutInputsItem inputs = 4;
 }
 
-message FunctionGetInputsRequest {
-  string function_id = 1;
-  int32 max_values = 3;
-  float timeout = 4;
-}
-
-message FunctionGetInputsItem {
-  string input_id = 1;
-  FunctionInput input = 2;
-  bool kill_switch = 3;
-}
-
-message FunctionGetInputsResponse {
-  repeated FunctionGetInputsItem inputs = 3;
-  float rate_limit_sleep_duration = 4; // How long to sleep before requesting another input.
-}
-
 message FunctionPutOutputsItem {
   string input_id = 1;
   GenericResult result = 2;
@@ -425,44 +370,80 @@ message FunctionPutOutputsRequest {
   repeated FunctionPutOutputsItem outputs = 4;
 }
 
-message FunctionGetOutputsRequest {
-  string function_call_id = 1;
-  int32 max_values = 2;
-  float timeout = 3;
+message FunctionRetryPolicy {
+  uint32 retries = 18;
 }
 
-message FunctionGetOutputsItem {
+message GenericResult {  // Used for both tasks and function outputs
+  enum GenericStatus {
+    GENERIC_STATUS_UNSPECIFIED = 0;
+    GENERIC_STATUS_SUCCESS = 1;
+    GENERIC_STATUS_FAILURE = 2;
+  }
+
+  GenericStatus status = 1;
+  string exception = 2;
+  int32 exitcode = 3;
+  string traceback = 4;
+
+  oneof data_oneof {
+    bytes data = 5;
+    string data_blob_id = 10;
+  }
+
+  enum GeneratorStatus {
+    GENERATOR_STATUS_UNSPECIFIED = 0;
+    GENERATOR_STATUS_INCOMPLETE = 1;
+    GENERATOR_STATUS_COMPLETE = 2;
+  }
+  GeneratorStatus gen_status = 7;
+}
+
+message Image {
+  repeated BaseImage base_images = 5;
+  repeated string dockerfile_commands = 6;
+  repeated ImageContextFile context_files = 7;
+  string version = 11;
+  repeated string secret_ids = 12;
+}
+
+message ImageContextFile {
+  string filename = 1;
+  bytes data = 2;
+}
+
+message ImageGetOrCreateRequest {
+  Image image = 2;
+  string app_id = 4;
+  string existing_image_id = 5;  // ignored
+}
+
+message ImageGetOrCreateResponse {
+  string image_id = 1;
+}
+
+message ImageJoinRequest {
+  string image_id = 1;
+  float timeout = 2;
+}
+
+message ImageJoinResponse {
   GenericResult result = 1;
-  int32 idx = 2;
 }
 
-message FunctionGetOutputsResponse {
-  repeated int32 idxs = 3;
-  repeated FunctionGetOutputsItem outputs = 4;
+message MountBuildRequest {
+  string app_id = 2;
+  string existing_mount_id = 3;
+  repeated MountFile files = 4;
 }
 
-message TaskResultRequest {
-  string task_id = 1; // TODO: deprecate once old clients have been flushed.
-  modal.client.GenericResult result = 2;
+message MountBuildResponse {
+  string mount_id = 1;
 }
 
-message BlobCreateRequest {
-  // TODO(erikbern): how are these garbage collected?
-  // Shouldn't they belong to an app?
-  string content_md5 = 1;
-}
-
-message BlobCreateResponse {
-  string upload_url = 1;
-  string blob_id = 2;
-}
-
-message BlobGetRequest {
-  string blob_id = 1;
-}
-
-message BlobGetResponse {
-  string download_url = 1;
+message MountFile {
+  string filename = 1;
+  string sha256_hex = 3;
 }
 
 message MountPutFileRequest {
@@ -478,27 +459,48 @@ message MountPutFileResponse {
   bool exists = 2;
 }
 
-message MountFile {
-  string filename = 1;
-  string sha256_hex = 3;
+message ProxyInfo {
+  string elastic_ip = 1;
+  string proxy_key = 2;
+  string remote_addr = 3;
+  int32 remote_port = 4;
 }
 
-message MountBuildRequest {
-  string app_id = 2;
-  string existing_mount_id = 3;
-  repeated MountFile files = 4;
-}
-
-message MountBuildResponse {
-  string mount_id = 1;
-}
-
-message SharedVolumeCreateRequest {
+message QueueCreateRequest {
   string app_id = 1;
+  string existing_queue_id = 2;
 }
 
-message SharedVolumeCreateResponse {
-  string shared_volume_id = 1;
+message QueueCreateResponse {
+  string queue_id = 1;
+}
+
+message QueueGetRequest {
+  string queue_id = 1;
+  bool block = 2;
+  float timeout = 3;
+  int32 n_values = 4;
+  string idempotency_key = 5;
+}
+
+message QueueGetResponse {
+  repeated bytes values = 2;
+}
+
+message QueuePutRequest {
+  string queue_id = 1;
+  string idempotency_key = 3;
+  repeated bytes values = 4;
+}
+
+message RateLimit {
+  int32 limit = 1;
+  RateLimitInterval interval = 2;
+}
+
+message Resources {
+  bool gpu = 1;
+  uint32 memory = 2; // Memory requested in MB.
 }
 
 message Schedule {
@@ -520,46 +522,29 @@ message Schedule {
   }
 }
 
-enum AppState {
-  APP_STATE_UNSPECIFIED = 0;
-
-  // Will be discharged when the client disconnects
-  APP_STATE_EPHEMERAL = 1;
-
-  // Will be discharged when there's no more functions
-  // Note: currently not used - might be un-deprecated in the future
-  APP_STATE_DETACHED = 2 [deprecated = true];
-
-  // Will be discharged when overwritten
-  APP_STATE_DEPLOYED = 3;
-
-  // Winding down app due to user termination.
-  APP_STATE_STOPPING = 4;
-
-  // Stopped
-  APP_STATE_STOPPED = 5;
+message SecretCreateRequest {
+  map<string, string> env_dict = 1;
+  string app_id = 2;
+  string template_type = 3;
+  string existing_secret_id = 4;
 }
 
-
-enum FileDescriptor {
-  FILE_DESCRIPTOR_UNSPECIFIED = 0;
-  FILE_DESCRIPTOR_STDOUT = 1;
-  FILE_DESCRIPTOR_STDERR = 2;
-  FILE_DESCRIPTOR_INFO = 3;
+message SecretCreateResponse {
+  string secret_id = 1;
 }
 
-
-enum TaskState {
-  TASK_STATE_UNSPECIFIED = 0;
-  TASK_STATE_CREATED = 6;
-  TASK_STATE_QUEUED = 1;
-  TASK_STATE_WORKER_ASSIGNED = 2;
-  TASK_STATE_LOADING_IMAGE = 3;
-  TASK_STATE_RUNNING = 4;
-  TASK_STATE_COMPLETED = 5;
-  TASK_STATE_CREATING_CONTAINER = 7;
+message SharedVolumeCreateRequest {
+  string app_id = 1;
 }
 
+message SharedVolumeCreateResponse {
+  string shared_volume_id = 1;
+}
+
+message SharedVolumeMount {
+  string mount_path = 1;
+  string shared_volume_id = 2;
+}
 
 message TaskLogs {
   string data = 1;
@@ -575,11 +560,18 @@ message TaskLogsBatch {
   bool app_done = 10;
 }
 
-service ModalClient {
-  // Clients
-  rpc ClientCreate(ClientCreateRequest) returns (ClientCreateResponse);
-  rpc ClientHeartbeat(ClientHeartbeatRequest) returns (google.protobuf.Empty);
+message TaskResultRequest {
+  string task_id = 1; // TODO: deprecate once old clients have been flushed.
+  modal.client.GenericResult result = 2;
+}
 
+message WebhookConfig {
+  WebhookType type = 1;
+  string method = 2;
+  bool wait_for_response = 3;
+}
+
+service ModalClient {
   // Apps
   rpc AppCreate(AppCreateRequest) returns (AppCreateResponse);
   rpc AppClientDisconnect(AppClientDisconnectRequest) returns (google.protobuf.Empty);
@@ -590,25 +582,13 @@ service ModalClient {
   rpc AppDeploy(AppDeployRequest) returns (google.protobuf.Empty);
   rpc AppGetByDeploymentName(AppGetByDeploymentNameRequest) returns (AppGetByDeploymentNameResponse);
 
-  // Queues
-  rpc QueueCreate(QueueCreateRequest) returns (QueueCreateResponse);
-  rpc QueueGet(QueueGetRequest) returns (QueueGetResponse);
-  rpc QueuePut(QueuePutRequest) returns (google.protobuf.Empty);
-
   // Blobs
   rpc BlobCreate(BlobCreateRequest) returns (BlobCreateResponse);
   rpc BlobGet(BlobGetRequest) returns (BlobGetResponse);
 
-  // Mounts
-  rpc MountPutFile(MountPutFileRequest) returns (MountPutFileResponse);
-  rpc MountBuild(MountBuildRequest) returns (MountBuildResponse);
-
-  // SharedVolumes
-  rpc SharedVolumeCreate(SharedVolumeCreateRequest) returns (SharedVolumeCreateResponse);
-
-  // Images
-  rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);
-  rpc ImageJoin(ImageJoinRequest) returns (ImageJoinResponse);
+  // Clients
+  rpc ClientCreate(ClientCreateRequest) returns (ClientCreateResponse);
+  rpc ClientHeartbeat(ClientHeartbeatRequest) returns (google.protobuf.Empty);
 
   // Dicts
   rpc DictCreate(DictCreateRequest) returns (DictCreateResponse);
@@ -618,9 +598,6 @@ service ModalClient {
   rpc DictContains(DictContainsRequest) returns (DictContainsResponse);
   rpc DictLen(DictLenRequest) returns (DictLenResponse);
 
-  // Secrets
-  rpc SecretCreate(SecretCreateRequest) returns (SecretCreateResponse);
-
   // Functions
   rpc FunctionCreate(FunctionCreateRequest) returns (FunctionCreateResponse);
   rpc FunctionGetSerialized(FunctionGetSerializedRequest) returns (FunctionGetSerializedResponse);
@@ -629,6 +606,25 @@ service ModalClient {
   rpc FunctionPutOutputs(FunctionPutOutputsRequest) returns (google.protobuf.Empty);  // For containers to return result
   rpc FunctionGetInputs(FunctionGetInputsRequest) returns (FunctionGetInputsResponse);  // For containers to request next call
   rpc FunctionGetOutputs(FunctionGetOutputsRequest) returns (FunctionGetOutputsResponse);  // Returns the next result
+
+  // Images
+  rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);
+  rpc ImageJoin(ImageJoinRequest) returns (ImageJoinResponse);
+
+  // Mounts
+  rpc MountPutFile(MountPutFileRequest) returns (MountPutFileResponse);
+  rpc MountBuild(MountBuildRequest) returns (MountBuildResponse);
+
+  // Queues
+  rpc QueueCreate(QueueCreateRequest) returns (QueueCreateResponse);
+  rpc QueueGet(QueueGetRequest) returns (QueueGetResponse);
+  rpc QueuePut(QueuePutRequest) returns (google.protobuf.Empty);
+
+  // Secrets
+  rpc SecretCreate(SecretCreateRequest) returns (SecretCreateResponse);
+
+  // SharedVolumes
+  rpc SharedVolumeCreate(SharedVolumeCreateRequest) returns (SharedVolumeCreateResponse);
 
   // Tasks
   rpc TaskResult(TaskResultRequest) returns (google.protobuf.Empty);
