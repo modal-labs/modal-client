@@ -119,7 +119,6 @@ class Invocation:
             request,
             max_retries=None,
             base_delay=0,
-            ignore_errors=[StatusCode.DEADLINE_EXCEEDED],
         )
         for item in response.outputs:
             yield item.result
@@ -200,7 +199,6 @@ async def map_invocation(function_id, input_stream, kwargs, client, is_generator
                 request,
                 max_retries=None,
                 base_delay=0,
-                ignore_errors=[StatusCode.DEADLINE_EXCEEDED],
             )
 
             for item in response.outputs:

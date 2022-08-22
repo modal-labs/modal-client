@@ -305,7 +305,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
             self.output_idx += 1
             return api_pb2.FunctionGetOutputsResponse(outputs=[item])
         else:
-            await context.abort(StatusCode.DEADLINE_EXCEEDED, "Read timeout")
+            return api_pb2.FunctionGetOutputsResponse(outputs=[])
 
     async def SecretCreate(
         self,
