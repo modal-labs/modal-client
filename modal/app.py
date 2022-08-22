@@ -15,7 +15,7 @@ from .image import _Image
 from .object import Object, Ref, ref
 
 
-async def _lookup_to_id(app_name: str, tag: str, namespace, client: _Client) -> str:
+async def _lookup_to_resp(app_name: str, tag: str, namespace, client: _Client) -> api_pb2.AppLookupObjectResponse:
     """Internal method to resolve to an object id."""
     request = api_pb2.AppLookupObjectRequest(
         app_name=app_name,
@@ -25,7 +25,7 @@ async def _lookup_to_id(app_name: str, tag: str, namespace, client: _Client) -> 
     response = await client.stub.AppLookupObject(request)
     if not response.object_id:
         raise NotFoundError(response.error_message)
-    return response.object_id
+    return response
 
 
 async def _lookup(
@@ -37,8 +37,12 @@ async def _lookup(
     """Returns a handle to a tagged object in a deployment on Modal."""
     if client is None:
         client = await _Client.from_env()
-    object_id = await _lookup_to_id(app_name, tag, namespace, client)
-    return Object.from_id(object_id, client)
+    response = await _lookup_to_resp(app_name, tag, namespace, client)
+    obj = Object.from_id(response.object_id, client)
+    if isinstance(obj, _Function):
+        # TODO(erikbern): treating this as a special case right now, but we should generalize it
+        obj.initialize_from_proto(response.function)
+    return obj
 
 
 lookup, aio_lookup = synchronize_apis(_lookup)
@@ -122,7 +126,8 @@ class _App:
                     _stub["_object"] = obj.definition
                     await _stub.deploy(client=self._client)
                 # A different app
-                object_id = await _lookup_to_id(obj.app_name, obj.tag, obj.namespace, self._client)
+                resp = await _lookup_to_resp(obj.app_name, obj.tag, obj.namespace, self._client)
+                object_id = resp.object_id
             else:
                 assert not obj.definition
                 # Same app

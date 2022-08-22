@@ -317,6 +317,9 @@ class _Function(Object, type_prefix="fu"):
         self._tag = self._info.get_tag()
         super().__init__()
 
+    def initialize_from_proto(self, function: api_pb2.Function):
+        self._is_generator = function.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
+
     def _get_creating_message(self) -> str:
         return f"Creating {self._tag}..."
 
@@ -435,7 +438,7 @@ class _Function(Object, type_prefix="fu"):
         # in which case we can set the running app on all functions when we run the app.
         if self._client and self._object_id:
             # Can happen if this is a function loaded from a different app or something
-            return self._object_id
+            return (self._client, self._object_id)
 
         # avoid circular import
         from .app import _container_app, is_local
