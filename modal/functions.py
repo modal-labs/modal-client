@@ -115,6 +115,7 @@ class Invocation:
             request_put,
             max_retries=None,
             additional_status_codes=[StatusCode.RESOURCE_EXHAUSTED],
+            ignore_errors=[StatusCode.RESOURCE_EXHAUSTED],
         )
 
         return Invocation(client.stub, function_call_id, client)
