@@ -1,5 +1,7 @@
 import asyncio
 import platform
+import time
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Collection, Dict, Optional, Union
@@ -76,11 +78,16 @@ async def _create_input(args, kwargs, client, idx=None) -> api_pb2.FunctionPutIn
         )
 
 
+@dataclass
+class OutputValue:
+    # box class for distinguishing None results from non-existing/None markers
+    value: Any
+
+
 class Invocation:
-    def __init__(self, stub, function_id, function_call_id, client=None):
+    def __init__(self, stub, function_call_id, client=None):
         self.stub = stub
         self.client = client  # Used by the deserializer.
-        self.function_id = function_id
         self.function_call_id = function_call_id
 
     @staticmethod
@@ -110,30 +117,47 @@ class Invocation:
             additional_status_codes=[StatusCode.RESOURCE_EXHAUSTED],
         )
 
-        return Invocation(client.stub, function_id, function_call_id, client)
+        return Invocation(client.stub, function_call_id, client)
 
-    async def get_items(self):
-        request = api_pb2.FunctionGetOutputsRequest(
-            function_call_id=self.function_call_id, timeout=60, return_empty_on_timeout=True
-        )
+    async def get_items(self, timeout: float = None):
+        t0 = time.time()
+        if timeout is None:
+            backend_timeout = 60.0
+        else:
+            backend_timeout = min(60.0, timeout)  # refresh backend call every 60s
+
         while True:
-            # loop until there is an output
+            # always execute at least one poll for results, regardless if timeout is 0
+            request = api_pb2.FunctionGetOutputsRequest(
+                function_call_id=self.function_call_id, timeout=backend_timeout, return_empty_on_timeout=True
+            )
             response = await retry_transient_errors(
                 self.stub.FunctionGetOutputs,
                 request,
-                max_retries=None,
-                base_delay=0,
             )
             if len(response.outputs) > 0:
-                break
+                for item in response.outputs:
+                    yield item.result
+                return
 
-        for item in response.outputs:
-            yield item.result
+            if timeout is not None:
+                # update timeout in retry loop
+                backend_timeout = min(60.0, t0 + timeout - time.time())
+                if backend_timeout < 0:
+                    break
 
     async def run_function(self):
         result = (await stream.list(self.get_items()))[0]
         assert not result.gen_status
         return await _process_result(result, self.stub, self.client)
+
+    async def poll_function(self, timeout: float = 0):
+        results = await stream.list(self.get_items(timeout=timeout))
+
+        if len(results) == 0:
+            raise TimeoutError()
+
+        return await _process_result(results[0], self.stub, self.client)
 
     async def run_generator(self):
         completed = False
@@ -148,9 +172,30 @@ class Invocation:
 MAP_INVOCATION_CHUNK_SIZE = 100
 
 
-@dataclass
-class OutputValue:
-    value: Any
+class _FunctionCall(Object, type_prefix="fc"):
+    """A reference to an executed function call
+
+    Constructed using `.submit(...)` on a Modal function with the same
+    arguments that a function normally takes. Acts as a reference to
+    an ongoing function call that can be passed around and used to
+    poll or fetch function results at some later time.
+
+    Conceptually similar to a Future/Promise/AsyncResult in other contexts and languages.
+    """
+
+    def _invocation(self):
+        return Invocation(self._client.stub, self.object_id, self._client)
+
+    async def get(self, timeout: Optional[float] = None):
+        """Gets the result of the future
+
+        Raises `TimeoutError` if no results are returned within `timeout` seconds.
+        Setting `timeout` to None (the default) waits indefinitely until there is a result
+        """
+        return await self._invocation().poll_function(timeout=timeout)
+
+
+FunctionCall, AioFunctionCall = synchronize_apis(_FunctionCall)
 
 
 async def map_invocation(function_id, input_stream, kwargs, client, is_generator):
@@ -518,7 +563,7 @@ class _Function(Object, type_prefix="fu"):
     async def call_function_nowait(self, args, kwargs):
         """mdmd:hidden"""
         client, object_id = self._get_context()
-        await Invocation.create(object_id, args, kwargs, client)
+        return await Invocation.create(object_id, args, kwargs, client)
 
     @warn_if_generator_is_not_consumed
     async def call_generator(self, args, kwargs):
@@ -531,7 +576,7 @@ class _Function(Object, type_prefix="fu"):
     async def call_generator_nowait(self, args, kwargs):
         """mdmd:hidden"""
         client, object_id = self._get_context()
-        await Invocation.create(object_id, args, kwargs, client)
+        return await Invocation.create(object_id, args, kwargs, client)
 
     def __call__(self, *args, **kwargs):
         if self._is_generator:
@@ -540,11 +585,31 @@ class _Function(Object, type_prefix="fu"):
             return self.call_function(args, kwargs)
 
     async def enqueue(self, *args, **kwargs):
-        """Calls the function with the given arguments, without waiting for the results."""
+        """Calls the function with the given arguments, without waiting for the results.
+
+        **Deprecated.** Use `.submit()` instead when possible.
+        """
+        warnings.warn("Function.enqueue is deprecated, use .submit() instead", DeprecationWarning)
         if self._is_generator:
             await self.call_generator_nowait(args, kwargs)
         else:
             await self.call_function_nowait(args, kwargs)
+
+    async def submit(self, *args, **kwargs) -> Optional[_FunctionCall]:
+        """Calls the function with the given arguments, without waiting for the results.
+
+        Returns a `modal.functions.FunctionCall` object, that can later be polled or waited for using `.get(timeout=...)`.
+        Conceptually similar to `multiprocessing.pool.apply_async`, or a Future/Promise in other contexts.
+
+        *Note:* `.submit()` on a modal generator function does call and execute the generator, but does not currently
+        return a function handle for polling the result.
+        """
+        if self._is_generator:
+            await self.call_generator_nowait(args, kwargs)
+            return None
+
+        invocation = await self.call_function_nowait(args, kwargs)
+        return _FunctionCall(invocation.client, invocation.function_call_id)
 
     def get_raw_f(self) -> Callable:
         """Return the inner Python object wrapped by this function."""

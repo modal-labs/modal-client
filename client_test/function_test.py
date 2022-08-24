@@ -1,4 +1,8 @@
+import pytest
+
 from modal import Stub
+from modal.functions import FunctionCall
+from modal.stub import AioStub
 
 stub = Stub()
 
@@ -54,3 +58,57 @@ def test_function_memory_request(client):
     @stub.function(memory=2048)
     def f1():
         pass
+
+
+def test_function_future(client, servicer):
+    stub = Stub()
+
+    @stub.function()
+    @servicer.function_body
+    def later():
+        return "hello"
+
+    with stub.run(client=client):
+        future = later.submit()
+        assert isinstance(future, FunctionCall)
+
+        servicer.function_is_running = True
+        assert future.object_id == "fc-out"
+
+        with pytest.raises(TimeoutError):
+            future.get(0.01)
+
+        servicer.function_is_running = False
+        assert future.get(0.01) == "hello"
+
+
+@pytest.mark.asyncio
+async def test_function_future_async(client, servicer):
+    stub = AioStub()
+
+    @stub.function()
+    @servicer.function_body
+    def later():
+        return "foo"
+
+    async with stub.run(client=client):
+        future = await later.submit()
+        servicer.function_is_running = True
+
+        with pytest.raises(TimeoutError):
+            await future.get(0.01)
+
+        servicer.function_is_running = False
+        assert await future.get(0.01) == "foo"
+
+
+@pytest.mark.asyncio
+async def test_generator_future(client, servicer):
+    stub = Stub()
+
+    @stub.generator()
+    def later():
+        yield "foo"
+
+    with stub.run(client=client):
+        assert later.submit() is None  # until we have a nice interface for polling generator futures

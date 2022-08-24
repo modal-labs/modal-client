@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import inspect
 import os
 import pytest
 import shutil
@@ -54,6 +55,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.files_name2sha = {}
         self.files_sha2data = {}
         self.client_calls = []
+        self.function_is_running = False
         self.n_functions = 0
         self.n_schedules = 0
         self.function2schedule = {}
@@ -290,20 +292,29 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         request: api_pb2.FunctionGetOutputsRequest,
         context: ServicerContext,
     ) -> api_pb2.FunctionGetOutputsResponse:
-        if self.client_calls:
+        if self.client_calls and not self.function_is_running:
             args, kwargs = self.client_calls.pop(0)
             # Just return the sum of squares of all args
             res = self._function_body(*args, **kwargs)
-            result = api_pb2.GenericResult(
-                status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
-                data=cloudpickle.dumps(res),
-            )
-            item = api_pb2.FunctionGetOutputsItem(
-                idx=self.output_idx,
-                result=result,
-            )
-            self.output_idx += 1
-            return api_pb2.FunctionGetOutputsResponse(outputs=[item])
+            if inspect.isgenerator(res):
+                results = list(res)
+            else:
+                results = [res]
+
+            outputs = []
+            for value in results:
+                result = api_pb2.GenericResult(
+                    status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
+                    data=cloudpickle.dumps(value),
+                )
+                item = api_pb2.FunctionGetOutputsItem(
+                    idx=self.output_idx,
+                    result=result,
+                )
+                outputs.append(item)
+                self.output_idx += 1
+
+            return api_pb2.FunctionGetOutputsResponse(outputs=outputs)
         else:
             return api_pb2.FunctionGetOutputsResponse(outputs=[])
 
