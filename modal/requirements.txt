@@ -9,6 +9,7 @@ fastprogress==1.0.0
 grpcio==1.48.0rc1
 importlib_metadata==4.8.1
 protobuf>=3.19.4
+python-multipart>=0.0.5
 rich==12.3.0
 sentry-sdk==1.5.1
 synchronicity==0.2.7
