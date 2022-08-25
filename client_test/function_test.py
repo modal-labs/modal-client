@@ -26,6 +26,24 @@ def test_map(client):
 
     with stub.run(client=client):
         assert list(dummy.map([5, 2], [4, 3])) == [41, 13]
+        assert set(dummy.map([5, 2], [4, 3], order_outputs=False)) == {13, 41}
+
+
+def test_for_each(client, servicer):
+    stub = Stub()
+
+    res = 0
+
+    @stub.function
+    @servicer.function_body
+    def side_effect(_):
+        nonlocal res
+        res += 1
+
+    with stub.run(client=client):
+        side_effect.for_each(range(10))
+
+    assert res == 10
 
 
 def test_map_none_values(client, servicer):

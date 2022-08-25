@@ -62,7 +62,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self.function_create_error = False
         self.heartbeat_status_code = None
         self.n_apps = 0
-        self.output_idx = 0
+
         self.task_result = None
 
         self.shared_volume_files = []
@@ -274,7 +274,6 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         request: api_pb2.FunctionMapRequest,
         context: ServicerContext,
     ) -> api_pb2.FunctionMapResponse:
-        self.output_idx = 0
         return api_pb2.FunctionMapResponse(function_call_id="fc-out")
 
     async def FunctionPutInputs(
@@ -284,7 +283,7 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
     ) -> Empty:
         for item in request.inputs:
             args, kwargs = cloudpickle.loads(item.input.args) if item.input.args else ((), {})
-            self.client_calls.append((args, kwargs))
+            self.client_calls.append((item.idx, (args, kwargs)))
         return Empty()
 
     async def FunctionGetOutputs(
@@ -293,7 +292,8 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         context: ServicerContext,
     ) -> api_pb2.FunctionGetOutputsResponse:
         if self.client_calls and not self.function_is_running:
-            args, kwargs = self.client_calls.pop(0)
+            popidx = len(self.client_calls) // 2  # simulate that results don't always come in order
+            idx, (args, kwargs) = self.client_calls.pop(popidx)
             # Just return the sum of squares of all args
             res = self._function_body(*args, **kwargs)
             if inspect.isgenerator(res):
@@ -308,11 +308,10 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
                     data=cloudpickle.dumps(value),
                 )
                 item = api_pb2.FunctionGetOutputsItem(
-                    idx=self.output_idx,
+                    idx=idx,
                     result=result,
                 )
                 outputs.append(item)
-                self.output_idx += 1
 
             return api_pb2.FunctionGetOutputsResponse(outputs=outputs)
         else:

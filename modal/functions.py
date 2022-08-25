@@ -199,7 +199,7 @@ class _FunctionCall(Object, type_prefix="fc"):
 FunctionCall, AioFunctionCall = synchronize_apis(_FunctionCall)
 
 
-async def map_invocation(function_id, input_stream, kwargs, client, is_generator):
+async def map_invocation(function_id, input_stream, kwargs, client, is_generator, order_outputs):
     request = api_pb2.FunctionMapRequest(function_id=function_id)
     response = await retry_transient_errors(client.stub.FunctionMap, request)
 
@@ -264,6 +264,10 @@ async def map_invocation(function_id, input_stream, kwargs, client, is_generator
                         output = await _process_result(item.result, client.stub, client)
                         # yield output directly for generators.
                         yield OutputValue(output)
+                elif not order_outputs:
+                    output = await _process_result(item.result, client.stub, client)
+                    yield OutputValue(output)
+                    num_outputs += 1
                 else:
                     # hold on to outputs for function maps, so we can reorder them correctly.
                     pending_outputs[item.idx] = await _process_result(item.result, client.stub, client)
@@ -501,9 +505,12 @@ class _Function(Object, type_prefix="fu"):
         object_id = app[self._tag].object_id
         return (client, object_id)
 
-    async def _map(self, input_stream, kwargs={}):
+    async def _map(self, input_stream, order_outputs: bool, kwargs={}):
+        if order_outputs and self._is_generator:
+            raise ValueError("Can't return ordered results for a generator")
+
         client, object_id = self._get_context()
-        async for item in map_invocation(object_id, input_stream, kwargs, client, self._is_generator):
+        async for item in map_invocation(object_id, input_stream, kwargs, client, self._is_generator, order_outputs):
             yield item
 
     @warn_if_generator_is_not_consumed
@@ -511,6 +518,7 @@ class _Function(Object, type_prefix="fu"):
         self,
         *input_iterators,  # one input iterator per argument in the mapped-over function/generator
         kwargs={},  # any extra keyword arguments for the function
+        order_outputs=None,  # defaults to True for regular functions, False for generators
     ):
         """Parallel map over a set of inputs.
 
@@ -522,22 +530,35 @@ class _Function(Object, type_prefix="fu"):
         def my_func(a):
             return a ** 2
 
-        assert list(my_func.starmap([1, 2, 3, 4])) == [1, 4, 9, 16]
+        assert list(my_func.map([1, 2, 3, 4])) == [1, 4, 9, 16]
         ```
 
         If applied to a `stub.function`, `map()` returns one result per input and the output order
-        is guaranteed to be the same as the input order.
+        is guaranteed to be the same as the input order. Set `order_output=False` to return results
+        in the order that they are completed instead.
 
         If applied to a `stub.generator`, the results are returned as they are finished and can be
         out of order. By yielding zero or more than once, mapping over generators can also be used
         as a "flat map".
         """
+        if order_outputs is None:
+            order_outputs = not self._is_generator
+
         input_stream = stream.zip(*(stream.iterate(it) for it in input_iterators))
-        async for item in self._map(input_stream, kwargs):
+        async for item in self._map(input_stream, order_outputs, kwargs):
             yield item
 
+    async def for_each(self, *input_iterators, **kwargs):
+        """Execute function for all outputs, ignoring outputs
+
+        Convenient alias for `.map()` in cases where the function just needs to be called.
+        as the caller doesn't have to consume the generator to process the inputs.
+        """
+        async for _ in self.map(*input_iterators, order_outputs=False, **kwargs):
+            pass
+
     @warn_if_generator_is_not_consumed
-    async def starmap(self, input_iterator, kwargs={}):
+    async def starmap(self, input_iterator, kwargs={}, order_outputs=None):
         """Like `map` but spreads arguments over multiple function arguments
 
         Assumes every input is a sequence (e.g. a tuple)
@@ -551,8 +572,11 @@ class _Function(Object, type_prefix="fu"):
         assert list(my_func.starmap([(1, 2), (3, 4)])) == [3, 7]
         ```
         """
+        if order_outputs is None:
+            order_outputs = not self._is_generator
+
         input_stream = stream.iterate(input_iterator)
-        async for item in self._map(input_stream, kwargs):
+        async for item in self._map(input_stream, order_outputs, kwargs):
             yield item
 
     async def call_function(self, args, kwargs):
