@@ -42,8 +42,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.deployed_apps = {
             client_mount_name(): "ap-x",
             "foo-queue": "ap-y",
-            f"debian-slim-{_dockerhub_python_version()}": "ap-z",
-            "conda": "ap-c",
+            f"debian-slim-{_dockerhub_python_version()}-{__version__}": "ap-z",
+            f"conda-{__version__}": "ap-c",
         }
         self.app_objects = {
             "ap-x": {"": "mo-123"},

@@ -12,6 +12,7 @@ from .config import config, logger
 from .exception import InvalidError, NotFoundError, RemoteError
 from .object import Object, ref
 from .secret import _Secret
+from .version import __version__
 
 
 class _Image(Object, type_prefix="im"):
@@ -280,7 +281,7 @@ class _DebianSlim(_Image):
     def __init__(self, python_version: Optional[str] = None):
         """Construct a default Modal image based on Debian-Slim."""
         python_version = _dockerhub_python_version(python_version)
-        base_image = ref(f"debian-slim-{python_version}", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
+        base_image = ref(f"debian-slim-{python_version}-{__version__}", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
 
         super().__init__(ref=base_image)
 
@@ -373,7 +374,7 @@ class _Conda(_Image):
 
     def __init__(self):
         """Construct the default base Conda image."""
-        super().__init__(ref=ref("conda", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL))
+        super().__init__(ref=ref(f"conda-{__version__}", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL))
 
     def conda_install(
         self,
