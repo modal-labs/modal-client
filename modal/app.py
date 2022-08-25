@@ -12,20 +12,7 @@ from .config import logger
 from .exception import NotFoundError
 from .functions import _Function
 from .image import _Image
-from .object import Object, Ref, ref
-
-
-async def _lookup_to_resp(app_name: str, tag: str, namespace, client: _Client) -> api_pb2.AppLookupObjectResponse:
-    """Internal method to resolve to an object id."""
-    request = api_pb2.AppLookupObjectRequest(
-        app_name=app_name,
-        object_tag=tag,
-        namespace=namespace,
-    )
-    response = await client.stub.AppLookupObject(request)
-    if not response.object_id:
-        raise NotFoundError(response.error_message)
-    return response
+from .object import LocalRef, Object, PersistedRef, RemoteRef
 
 
 async def _lookup(
@@ -37,7 +24,14 @@ async def _lookup(
     """Returns a handle to a tagged object in a deployment on Modal."""
     if client is None:
         client = await _Client.from_env()
-    response = await _lookup_to_resp(app_name, tag, namespace, client)
+    request = api_pb2.AppLookupObjectRequest(
+        app_name=app_name,
+        object_tag=tag,
+        namespace=namespace,
+    )
+    response = await client.stub.AppLookupObject(request)
+    if not response.object_id:
+        raise NotFoundError(response.error_message)
     obj = Object.from_id(response.object_id, client)
     if isinstance(obj, _Function):
         # TODO(erikbern): treating this as a special case right now, but we should generalize it
@@ -71,7 +65,7 @@ class _App:
 
     _tag_to_object: Dict[str, Object]
     _tag_to_existing_id: Dict[str, str]
-    _local_uuid_to_object_id: Dict[str, str]
+    _local_uuid_to_object: Dict[str, Object]
     _client: _Client
     _app_id: str
 
@@ -89,7 +83,7 @@ class _App:
         self._client = client
         self._tag_to_object = tag_to_object or {}
         self._tag_to_existing_id = tag_to_existing_id or {}
-        self._local_uuid_to_object_id = {}
+        self._local_uuid_to_object = {}
 
     @property
     def client(self):
@@ -110,39 +104,40 @@ class _App:
         else:
             yield
 
-    async def load(self, obj: Object, progress: Optional[Tree] = None, existing_object_id: Optional[str] = None) -> str:
+    async def load(
+        self, obj: Object, progress: Optional[Tree] = None, existing_object_id: Optional[str] = None
+    ) -> Object:
         """Send a server request to create an object in this app, and return its ID."""
-        if obj.local_uuid in self._local_uuid_to_object_id:
+        if obj.local_uuid in self._local_uuid_to_object:
             # We already created this object before, shortcut this method
-            return self._local_uuid_to_object_id[obj.local_uuid]
+            return self._local_uuid_to_object[obj.local_uuid]
 
-        if isinstance(obj, Ref):
-            # TODO: should we just move this code to the Ref class?
-            if obj.app_name is not None:
-                if obj.definition is not None:
-                    from .stub import _Stub
+        # TODO: should we just move most of this code to the Ref classes?
+        if isinstance(obj, PersistedRef):
+            from .stub import _Stub
 
-                    _stub = _Stub(obj.app_name)
-                    _stub["_object"] = obj.definition
-                    await _stub.deploy(client=self._client)
-                # A different app
-                resp = await _lookup_to_resp(obj.app_name, obj.tag, obj.namespace, self._client)
-                object_id = resp.object_id
+            _stub = _Stub(obj.app_name)
+            _stub["_object"] = obj.definition
+            await _stub.deploy(client=self._client)
+            created_obj = await _lookup(obj.app_name, client=self._client)
+
+        elif isinstance(obj, RemoteRef):
+            created_obj = await _lookup(obj.app_name, obj.tag, obj.namespace, client=self._client)
+
+        elif isinstance(obj, LocalRef):
+            if obj.tag in self._tag_to_object:
+                created_obj = self._tag_to_object[obj.tag]
             else:
-                assert not obj.definition
-                # Same app
-                if obj.tag in self._tag_to_object:
-                    object_id = self._tag_to_object[obj.tag].object_id
-                else:
-                    real_obj = self._stub._blueprint[obj.tag]
-                    existing_object_id = self._tag_to_existing_id.get(obj.tag)
-                    object_id = await self.load(real_obj, progress, existing_object_id)
-                    self._tag_to_object[obj.tag] = Object.from_id(object_id, self.client)
+                real_obj = self._stub._blueprint[obj.tag]
+                existing_object_id = self._tag_to_existing_id.get(obj.tag)
+                created_obj = await self.load(real_obj, progress, existing_object_id)
+                self._tag_to_object[obj.tag] = created_obj
         else:
 
             async def loader(obj: Object) -> str:
                 assert isinstance(obj, Object)
-                return await self.load(obj, progress=progress)
+                created_obj = await self.load(obj, progress=progress)
+                return created_obj.object_id
 
             with self._progress_ctx(progress, obj):
                 object_id = await obj._load(self.client, self.app_id, loader, existing_object_id)
@@ -158,17 +153,15 @@ class _App:
                         f"Tried creating an object using existing id {existing_object_id} but it has id {object_id}"
                     )
 
-        self._local_uuid_to_object_id[obj.local_uuid] = object_id
+            created_obj = Object.from_id(object_id, self.client)
 
-        if object_id is None:
-            raise Exception(f"object_id for object of type {type(obj)} is None")
-
-        return object_id
+        self._local_uuid_to_object[obj.local_uuid] = created_obj
+        return created_obj
 
     async def create_all_objects(self, progress: Tree):
         """Create objects that have been defined but not created on the server."""
         for tag in self._stub._blueprint.keys():
-            obj = ref(None, tag)
+            obj = LocalRef(tag)
             await self.load(obj, progress)
 
         # Create the app (and send a list of all tagged obs)
@@ -200,8 +193,8 @@ class _App:
     def __getattr__(self, tag: str) -> Object:
         return self._tag_to_object[tag]
 
-    def _is_inside(self, image: Union[Ref, _Image]) -> bool:
-        if isinstance(image, Ref):
+    def _is_inside(self, image: Union[LocalRef, _Image]) -> bool:
+        if isinstance(image, LocalRef):
             if image.tag not in self._tag_to_object:
                 # This is some other image, which could belong to some unrelated
                 # app or whatever

@@ -51,8 +51,7 @@ class Object(metaclass=ObjectMeta):
             if app is None:
                 raise InvalidError(".create must be passed the app explicitly if not running in a container")
         assert isinstance(app, _App)
-        object_id = await app.load(self)
-        return Object.from_id(object_id, app.client)
+        return await app.load(self)
 
     @property
     def object_id(self):
@@ -88,25 +87,40 @@ class Object(metaclass=ObjectMeta):
         ```
 
         """
-        return Ref(label, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT, definition=self)
+        return PersistedRef(label, definition=self)
 
 
 class Ref(Object):
+    pass
+
+
+class RemoteRef(Ref):
     def __init__(
         self,
-        app_name: Optional[str] = None,  # If it's none then it's the same app
+        app_name: str,
         tag: Optional[str] = None,
         namespace: Optional[int] = None,  # api_pb2.DEPLOYMENT_NAMESPACE
-        definition: Optional[Object] = None,  # Object definition to deploy to this ref.
     ):
         self.app_name = app_name
         self.tag = tag
         self.namespace = namespace
-        self.definition = definition
+        super().__init__()
+
+
+class LocalRef(Ref):
+    def __init__(self, tag: str):
+        self.tag = tag
         super().__init__()
 
     def __call__(self, *args, **kwargs):
         raise NotFoundError(f"Stub has no function named {self.tag}.")
+
+
+class PersistedRef(Ref):
+    def __init__(self, app_name: str, definition: Object):
+        self.app_name = app_name
+        self.definition = definition
+        super().__init__()
 
 
 def ref(app_name: Optional[str], tag: Optional[str] = None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT) -> Ref:
@@ -125,4 +139,4 @@ def ref(app_name: Optional[str], tag: Optional[str] = None, namespace=api_pb2.DE
     ```
     """
     # TODO(erikbern): we should probably get rid of this function since it's just a dumb wrapper
-    return Ref(app_name, tag, namespace)
+    return RemoteRef(app_name, tag, namespace)

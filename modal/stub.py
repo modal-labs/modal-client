@@ -20,7 +20,7 @@ from .exception import InvalidError
 from .functions import _Function
 from .image import _DebianSlim, _Image
 from .mount import _create_client_mount, _Mount, client_mount_name
-from .object import Object, Ref, ref
+from .object import LocalRef, Object, Ref, RemoteRef
 from .rate_limit import RateLimit
 from .schedule import Schedule
 from .secret import _Secret
@@ -99,7 +99,7 @@ class _Stub:
 
     def __getitem__(self, tag: str):
         # Deprecated?
-        return ref(None, tag)
+        return LocalRef(tag)
 
     def __setitem__(self, tag: str, obj: Object):
         # Deprecated ?
@@ -108,7 +108,7 @@ class _Stub:
     def __getattr__(self, tag: str) -> Ref:
         assert isinstance(tag, str)
         # Return a reference to an object that will be created in the future
-        return ref(None, tag)
+        return LocalRef(tag)
 
     def __setattr__(self, tag: str, obj: Object):
         # Note that only attributes defined in __annotations__ are set on the object itself,
@@ -135,7 +135,7 @@ class _Stub:
             return False
         if image is None:
             if "image" in self._blueprint:
-                image = ref(None, "image")
+                image = LocalRef("image")
             else:
                 return container_app._is_inside(self._default_image)
         return container_app._is_inside(image)
@@ -331,7 +331,7 @@ class _Stub:
             if config["sync_entrypoint"]:
                 self._client_mount = _create_client_mount()
             else:
-                self._client_mount = ref(client_mount_name(), namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
+                self._client_mount = RemoteRef(client_mount_name(), namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
         mounts.append(self._client_mount)
 
         # Create function mounts

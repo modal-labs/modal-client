@@ -57,8 +57,8 @@ def test_create_mount(servicer, client):
             return fn.endswith(".py")
 
         m = Mount(local_dir=local_dir, remote_dir=remote_dir, condition=condition)
-        obj_id = running_app.load(m)
-        assert obj_id == "mo-123"
+        obj = running_app.load(m)
+        assert obj.object_id == "mo-123"
         assert f"/foo/{cur_filename}" in servicer.files_name2sha
         sha256_hex = servicer.files_name2sha[f"/foo/{cur_filename}"]
         assert sha256_hex in servicer.files_sha2data

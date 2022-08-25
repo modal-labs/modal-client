@@ -22,7 +22,7 @@ from ._function_utils import FunctionInfo
 from ._serialization import deserialize, serialize
 from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError
 from .mount import _Mount
-from .object import Object, Ref
+from .object import Object, Ref, RemoteRef
 from .rate_limit import RateLimit
 from .schedule import Schedule
 from .secret import _Secret
@@ -397,7 +397,7 @@ class _Function(Object, type_prefix="fu"):
             try:
                 secret_id = await loader(secret)
             except NotFoundError as ex:
-                if isinstance(secret, Ref) and secret.tag is None:
+                if isinstance(secret, RemoteRef) and secret.tag is None:
                     msg = "Secret {!r} was not found".format(secret.app_name)
                 else:
                     msg = str(ex)
