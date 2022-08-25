@@ -390,6 +390,24 @@ class _Conda(_Image):
 
         return self.extend(dockerfile_commands=dockerfile_commands)
 
+    def conda_update_from_environment(
+        self,
+        environment_yml: str,
+    ):
+        """Update conda environment using dependencies from a given environment.yml file."""
+
+        environment_yml = os.path.expanduser(environment_yml)
+
+        context_files = {"/environment.yml": environment_yml}
+
+        dockerfile_commands = [
+            "FROM base",
+            "COPY /environment.yml /environment.yml",
+            "RUN conda env update --name base -f /environment.yml",
+        ]
+
+        return self.extend(dockerfile_commands=dockerfile_commands, context_files=context_files)
+
 
 Conda, AioConda = synchronize_apis(_Conda)
 DebianSlim, AioDebianSlim = synchronize_apis(_DebianSlim)

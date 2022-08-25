@@ -49,7 +49,7 @@ def test_image_python_packages(client, servicer):
 
 
 def test_image_requirements_txt(servicer, client):
-    requirements_txt = os.path.join(os.path.dirname(__file__), "test-requirements.txt")
+    requirements_txt = os.path.join(os.path.dirname(__file__), "supports/test-requirements.txt")
 
     stub = Stub()
     stub["image"] = DebianSlim().pip_install_from_requirements(requirements_txt)
@@ -85,7 +85,7 @@ def test_conda_install(servicer, client):
 
 
 def test_dockerfile_image(servicer, client):
-    path = os.path.join(os.path.dirname(__file__), "test-dockerfile")
+    path = os.path.join(os.path.dirname(__file__), "supports/test-dockerfile")
 
     stub = Stub(image=DockerfileImage(path))
 
@@ -93,3 +93,16 @@ def test_dockerfile_image(servicer, client):
         layers = get_image_layers(running_app["image"].object_id, servicer)
 
         assert any("RUN pip install numpy" in cmd for cmd in layers[1].dockerfile_commands)
+
+
+def test_conda_update_from_environment(servicer, client):
+    path = os.path.join(os.path.dirname(__file__), "supports/test-conda-environment.yml")
+
+    stub = Stub(image=Conda().conda_update_from_environment(path))
+
+    with stub.run(client=client) as running_app:
+        layers = get_image_layers(running_app["image"].object_id, servicer)
+
+        assert any("RUN conda env update" in cmd for cmd in layers[0].dockerfile_commands)
+        assert any(b"foo=1.0" in f.data for f in layers[0].context_files)
+        assert any(b"bar=2.1" in f.data for f in layers[0].context_files)

@@ -1,0 +1,9 @@
+name: env1
+channels:
+  - pytorch
+  - defaults
+dependencies:
+  - python=3.8.5
+  - foo=1.0
+  - pip:
+      - bar=2.1
