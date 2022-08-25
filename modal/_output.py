@@ -7,14 +7,14 @@ import re
 import sys
 from typing import Callable, Dict, Optional
 
-import grpc
+from grpclib import GRPCError
 from rich.console import Console, RenderableType
 from rich.live import Live
 from rich.spinner import Spinner
 from rich.text import Text
 
 from modal_proto import api_pb2
-from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES
+from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, unary_stream
 
 from .client import _Client
 from .config import logger
@@ -147,7 +147,7 @@ class OutputManager:
             )
             log_batch: api_pb2.TaskLogsBatch
             line_buffers: Dict[int, LineBufferedOutput] = {}
-            async for log_batch in client.stub.AppGetLogs(request):
+            async for log_batch in unary_stream(client.stub.AppGetLogs, request):
                 if log_batch.app_done:
                     logger.debug("App logs are done")
                     last_log_batch_entry_id = None
@@ -182,8 +182,8 @@ class OutputManager:
             except asyncio.CancelledError:
                 logger.debug("Logging cancelled")
                 raise
-            except grpc.aio.AioRpcError as exc:
-                if exc.code() in RETRYABLE_GRPC_STATUS_CODES:
+            except GRPCError as exc:
+                if exc.status in RETRYABLE_GRPC_STATUS_CODES:
                     # try again if we had a temporary connection drop, for example if computer went to sleep
                     logger.debug("Log fetching timed out - retrying")
                     continue

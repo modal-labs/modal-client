@@ -1,30 +1,27 @@
 import asyncio
-import enum
-import re
+import contextlib
+import socket
 import time
 import uuid
+from typing import Any, AsyncIterator, Optional, TypeVar
 
-from grpc import StatusCode
-from grpc.aio import AioRpcError, Channel
+from grpclib import GRPCError, Status
+from grpclib.client import Channel, Stream, UnaryStreamMethod
+from grpclib.const import Cardinality
 from sentry_sdk import add_breadcrumb, capture_exception
-
-from modal_utils.server_connection import GRPCConnectionFactory
 
 from .async_utils import TaskContext
 from .logger import logger
+from .server_connection import GRPCConnectionFactory
+
+_SendType = TypeVar("_SendType")
+_RecvType = TypeVar("_RecvType")
 
 RETRYABLE_GRPC_STATUS_CODES = [
-    StatusCode.DEADLINE_EXCEEDED,
-    StatusCode.UNAVAILABLE,
-    StatusCode.INTERNAL,
+    Status.DEADLINE_EXCEEDED,
+    Status.UNAVAILABLE,
+    Status.INTERNAL,
 ]
-
-
-class RPCType(enum.Enum):
-    UNARY_UNARY = 1
-    UNARY_STREAM = 2
-    STREAM_UNARY = 3
-    STREAM_STREAM = 4
 
 
 class ChannelStruct:
@@ -33,23 +30,6 @@ class ChannelStruct:
         self.n_concurrent_requests = 0
         self.created_at = time.time()
         self.last_active = self.created_at
-        self._callables = {}
-        self._constructors = {
-            RPCType.UNARY_UNARY: channel.unary_unary,
-            RPCType.UNARY_STREAM: channel.unary_stream,
-            RPCType.STREAM_UNARY: channel.stream_unary,
-            RPCType.STREAM_STREAM: channel.stream_stream,
-        }
-
-    def closed(self) -> bool:
-        return self.channel._channel.closed()
-
-    def get_method(self, rpc_type, method, request_serializer, response_deserializer):
-        if (rpc_type, method) not in self._callables:
-            self._callables[(rpc_type, method)] = self._constructors[rpc_type](
-                method, request_serializer, response_deserializer
-            )
-        return self._callables[(rpc_type, method)]
 
 
 class ChannelPool:
@@ -88,10 +68,7 @@ class ChannelPool:
             for ch in self._channels:
                 now = time.time()
                 inactive_time = now - ch.last_active
-                if ch.closed():
-                    logger.debug("Purging channel that's already closed.")
-                    self._channels.remove(ch)
-                elif ch.n_concurrent_requests > 0:
+                if ch.n_concurrent_requests > 0:
                     ch.last_active = now
                 elif inactive_time >= self.CHANNEL_KEEP_ALIVE:
                     logger.debug(f"Closing channel of age {now - ch.created_at}s, inactive for {inactive_time}s")
@@ -99,7 +76,7 @@ class ChannelPool:
             for ch in to_close:
                 self._channels.remove(ch)
         for ch in to_close:
-            await ch.channel.close()
+            ch.channel.close()
 
     async def start(self) -> None:
         self._task_context.infinite_loop(self._purge_channels, sleep=10.0)
@@ -124,73 +101,47 @@ class ChannelPool:
 
         return ch
 
-    async def close(self) -> None:
+    def close(self) -> None:
         logger.debug("Pool: Shutting down")
         for ch in self._channels:
-            await ch.channel.close()
+            ch.channel.close()
         self._channels = []
 
     def size(self) -> int:
         return len(self._channels)
 
-    def _wrap_base(self, coro, method):
-        # Put a name on the coroutine so that stack traces are a bit more readable
-        coro.__name__ = "__wrapped_" + re.sub(r"\W", "", method)
-        coro.__qualname__ = "ChannelPool." + coro.__name__
-        return coro
+    @contextlib.asynccontextmanager
+    async def request(
+        self, name: str, cardinality: Cardinality, request_type, reply_type, timeout, metadata
+    ) -> AsyncIterator[Stream]:
+        ch = await self._get_channel()
+        ch.n_concurrent_requests += 1
+        try:
+            async with ch.channel.request(
+                name, cardinality, request_type, reply_type, timeout=timeout, metadata=metadata
+            ) as stream:
+                yield stream
+        except GRPCError:
+            channel_age = time.time() - ch.created_at
+            add_breadcrumb(
+                message=f"Error calling {name} on channel of age {channel_age:.4f}s",
+                level="warning",
+            )
+            raise
+        finally:
+            ch.n_concurrent_requests -= 1
 
-    def _wrap_function(self, rpc_type, method, request_serializer, response_deserializer):
-        async def coro(req, **kwargs):
-            ch = await self._get_channel()
-            ch.n_concurrent_requests += 1
-            try:
-                fn = ch.get_method(rpc_type, method, request_serializer, response_deserializer)
-                ret = await fn(req, **kwargs)
-            except AioRpcError:
-                channel_age = time.time() - ch.created_at
-                add_breadcrumb(
-                    message=f"Error calling {method} on channel of age {channel_age:.4f}s",
-                    level="warning",
-                )
-                raise
-            finally:
-                ch.n_concurrent_requests -= 1
-            return ret
 
-        return self._wrap_base(coro, method)
-
-    def _wrap_generator(self, rpc_type, method, request_serializer, response_deserializer):
-        async def coro_gen(req, **kwargs):
-            ch = await self._get_channel()
-            ch.n_concurrent_requests += 1
-            try:
-                fn = ch.get_method(rpc_type, method, request_serializer, response_deserializer)
-                gen = fn(req, **kwargs)
-                async for ret in gen:
-                    yield ret
-            except AioRpcError:
-                channel_age = time.time() - ch.created_at
-                add_breadcrumb(
-                    message=f"Error calling {method} on channel of age {channel_age:.4f}s",
-                    level="warning",
-                )
-                raise
-            finally:
-                ch.n_concurrent_requests -= 1
-
-        return self._wrap_base(coro_gen, method)
-
-    def unary_unary(self, method, request_serializer, response_deserializer):
-        return self._wrap_function(RPCType.UNARY_UNARY, method, request_serializer, response_deserializer)
-
-    def stream_unary(self, method, request_serializer, response_deserializer):
-        return self._wrap_function(RPCType.STREAM_UNARY, method, request_serializer, response_deserializer)
-
-    def unary_stream(self, method, request_serializer, response_deserializer):
-        return self._wrap_generator(RPCType.UNARY_STREAM, method, request_serializer, response_deserializer)
-
-    def stream_stream(self, method, request_serializer, response_deserializer):
-        return self._wrap_generator(RPCType.STREAM_STREAM, method, request_serializer, response_deserializer)
+async def unary_stream(
+    method: UnaryStreamMethod[_SendType, _RecvType],
+    request: _SendType,
+    metadata: Optional[Any] = None,
+) -> AsyncIterator[_RecvType]:
+    """Helper for making a unary-streaming gRPC request."""
+    async with method.open(metadata=metadata) as stream:
+        await stream.send_message(request, end=True)
+        async for item in stream:
+            yield item
 
 
 async def retry_transient_errors(
@@ -210,14 +161,38 @@ async def retry_transient_errors(
         metadata = [("x-idempotency-key", idempotency_key), ("x-retry-attempt", str(n_retries))]
         try:
             return await fn(*args, metadata=metadata)
-        except AioRpcError as exc:
-            if exc.code() in status_codes:
+        except GRPCError as exc:
+            if exc.status in status_codes:
                 if max_retries is not None and n_retries >= max_retries:
                     raise
                 n_retries += 1
-                if exc.code() not in ignore_errors:
+                if exc.status not in ignore_errors:
                     capture_exception(exc)
                 await asyncio.sleep(delay)
                 delay = min(delay * delay_factor, max_delay)
             else:
                 raise
+
+
+def find_free_port() -> int:
+    """Find a free TCP port, useful for testing."""
+    with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+        s.bind(("", 0))
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        return s.getsockname()[1]
+
+
+def patch_mock_servicer(cls):
+    """Patches all unimplemented abstract methods in a mock servicer."""
+
+    async def fallback(self, stream) -> None:
+        raise GRPCError(Status.UNIMPLEMENTED, "Not implemented in mock servicer " + repr(cls))
+
+    # Fill in the remaining methods on the class
+    for name in dir(cls):
+        method = getattr(cls, name)
+        if getattr(method, "__isabstractmethod__", False):
+            setattr(cls, name, fallback)
+
+    cls.__abstractmethods__ = frozenset()
+    return cls

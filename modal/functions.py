@@ -7,8 +7,7 @@ from pathlib import Path
 from typing import Any, Callable, Collection, Dict, Optional, Union
 
 from aiostream import stream
-from grpc import StatusCode
-from grpc.aio import AioRpcError
+from grpclib import GRPCError, Status
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import (
@@ -114,8 +113,8 @@ class Invocation:
             client.stub.FunctionPutInputs,
             request_put,
             max_retries=None,
-            additional_status_codes=[StatusCode.RESOURCE_EXHAUSTED],
-            ignore_errors=[StatusCode.RESOURCE_EXHAUSTED],
+            additional_status_codes=[Status.RESOURCE_EXHAUSTED],
+            ignore_errors=[Status.RESOURCE_EXHAUSTED],
         )
 
         return Invocation(client.stub, function_call_id, client)
@@ -233,7 +232,7 @@ async def map_invocation(function_id, input_stream, kwargs, client, is_generator
                 client.stub.FunctionPutInputs,
                 request,
                 max_retries=None,
-                additional_status_codes=[StatusCode.RESOURCE_EXHAUSTED],
+                additional_status_codes=[Status.RESOURCE_EXHAUSTED],
             )
 
         have_all_inputs = True
@@ -456,9 +455,9 @@ class _Function(Object, type_prefix="fu"):
         )
         try:
             response = await client.stub.FunctionCreate(request)
-        except AioRpcError as exc:
-            if exc.code() == StatusCode.INVALID_ARGUMENT:
-                raise InvalidError(exc.details())
+        except GRPCError as exc:
+            if exc.status == Status.INVALID_ARGUMENT:
+                raise InvalidError(exc.message)
             raise
 
         if response.web_url:

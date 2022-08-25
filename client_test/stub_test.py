@@ -1,6 +1,7 @@
 import logging
 import pytest
 
+from grpclib import GRPCError, Status
 from modal_test_support import module_1, module_2
 
 import modal.exception
@@ -88,8 +89,8 @@ async def test_redeploy(servicer, aio_client):
     assert servicer.app_objects["ap-2"]["square"] == "fu-2"
 
 
-# Should exit without waiting for the logs grace period.
-@pytest.mark.timeout(1)
+# Should exit without waiting for the "logs_timeout" grace period.
+@pytest.mark.timeout(5)
 def test_create_object_exception(servicer, client):
     servicer.function_create_error = True
 
@@ -99,9 +100,11 @@ def test_create_object_exception(servicer, client):
     def f():
         pass
 
-    with pytest.raises(Exception):
+    with pytest.raises(GRPCError) as excinfo:
         with stub.run(client=client):
             pass
+
+    assert excinfo.value.status == Status.INTERNAL
 
 
 def test_deploy_falls_back_to_app_name(servicer, client):

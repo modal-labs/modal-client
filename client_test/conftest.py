@@ -5,29 +5,29 @@ import os
 import pytest
 import shutil
 import tempfile
-import typing
 from pathlib import Path
 
 import aiohttp.web
 import aiohttp.web_runner
 import cloudpickle
-import grpc
+import grpclib.server
 import pkg_resources
 from google.protobuf.empty_pb2 import Empty
-from grpc import StatusCode
-from grpc.aio import ServicerContext
+from grpclib import GRPCError, Status
 
 from modal.app import _App
 from modal.client import AioClient, Client
 from modal.image import _dockerhub_python_version
 from modal.mount import client_mount_name
 from modal.version import __version__
-from modal_proto import api_pb2, api_pb2_grpc
+from modal_proto import api_grpc, api_pb2
 from modal_utils.async_utils import synchronize_apis
+from modal_utils.grpc_utils import find_free_port, patch_mock_servicer
 from modal_utils.http_utils import run_temporary_http_server
 
 
-class GRPCClientServicer(api_pb2_grpc.ModalClient):
+@patch_mock_servicer
+class MockClientServicer(api_grpc.ModalClientBase):
     def __init__(self, blob_host, blobs):
         self.n_blobs = 0
         self.blob_host = blob_host
@@ -81,137 +81,136 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
         self._function_body = func
         return func
 
-    async def BlobCreate(
-        self, request: api_pb2.BlobCreateRequest, context: ServicerContext
-    ) -> api_pb2.BlobCreateResponse:
+    async def BlobCreate(self, stream):
+        await stream.recv_message()
         # This is used to test retry_transient_errors, see grpc_utils_test.py
-        self.blob_create_metadata = {m.key: m.value for m in context.invocation_metadata()}
+        self.blob_create_metadata = stream.metadata
         print(self.blob_create_metadata)
         if len(self.fail_blob_create) > 0:
             status_code = self.fail_blob_create.pop()
-            await context.abort(status_code, "foobar")
+            raise GRPCError(status_code, "foobar")
         else:
             self.n_blobs += 1
             blob_id = f"bl-{self.n_blobs}"
             upload_url = f"{self.blob_host}/upload?blob_id={blob_id}"
-            return api_pb2.BlobCreateResponse(blob_id=blob_id, upload_url=upload_url)
+            await stream.send_message(api_pb2.BlobCreateResponse(blob_id=blob_id, upload_url=upload_url))
 
-    async def BlobGet(self, request: api_pb2.BlobGetRequest, context: ServicerContext) -> api_pb2.BlobGetResponse:
+    async def BlobGet(self, stream):
+        request = await stream.recv_message()
         download_url = f"{self.blob_host}/download?blob_id={request.blob_id}"
-        return api_pb2.BlobGetResponse(download_url=download_url)
+        await stream.send_message(api_pb2.BlobGetResponse(download_url=download_url))
 
-    async def ClientCreate(
-        self, request: api_pb2.ClientCreateRequest, context: ServicerContext
-    ) -> api_pb2.ClientCreateResponse:
+    async def ClientCreate(self, stream):
+        request = await stream.recv_message()
         self.requests.append(request)
         client_id = "cl-123"
         if request.version == "timeout":
             await asyncio.sleep(60)
-            return api_pb2.ClientCreateResponse(client_id=client_id)
-        if request.version == "unauthenticated":
-            await context.abort(StatusCode.UNAUTHENTICATED, "failed authentication")
+            await stream.send_message(api_pb2.ClientCreateResponse(client_id=client_id))
+        elif request.version == "unauthenticated":
+            raise GRPCError(Status.UNAUTHENTICATED, "failed authentication")
         elif request.version == "deprecated":
-            return api_pb2.ClientCreateResponse(client_id=client_id, deprecation_warning="SUPER OLD")
+            await stream.send_message(
+                api_pb2.ClientCreateResponse(client_id=client_id, deprecation_warning="SUPER OLD")
+            )
         elif pkg_resources.parse_version(request.version) < pkg_resources.parse_version(__version__):
-            await context.abort(StatusCode.FAILED_PRECONDITION, "Old client")
+            raise GRPCError(Status.FAILED_PRECONDITION, "Old client")
         else:
-            return api_pb2.ClientCreateResponse(client_id=client_id)
+            await stream.send_message(api_pb2.ClientCreateResponse(client_id=client_id))
 
-    async def AppCreate(
-        self,
-        request: api_pb2.AppCreateRequest,
-        context: ServicerContext,
-    ) -> api_pb2.AppCreateResponse:
+    async def AppCreate(self, stream):
+        request = await stream.recv_message()
         self.requests.append(request)
         self.n_apps += 1
         app_id = f"ap-{self.n_apps}"
-        return api_pb2.AppCreateResponse(app_id=app_id)
+        await stream.send_message(api_pb2.AppCreateResponse(app_id=app_id))
 
-    async def AppClientDisconnect(self, request: api_pb2.AppClientDisconnectRequest, context: ServicerContext) -> Empty:
+    async def AppClientDisconnect(self, stream):
+        request = await stream.recv_message()
         self.requests.append(request)
         self.done = True
-        return Empty()
+        await stream.send_message(Empty())
 
-    async def ClientHeartbeat(self, request: api_pb2.ClientHeartbeatRequest, context: ServicerContext) -> Empty:
+    async def ClientHeartbeat(self, stream) -> Empty:
+        request = await stream.recv_message()
         self.requests.append(request)
         if self.heartbeat_status_code:
-            await context.abort(self.heartbeat_status_code, f"Client {request.client_id} heartbeat failed.")
-        return Empty()
+            raise GRPCError(self.heartbeat_status_code, f"Client {request.client_id} heartbeat failed.")
+        await stream.send_message(Empty())
 
-    async def ImageGetOrCreate(
-        self, request: api_pb2.ImageGetOrCreateRequest, context: ServicerContext
-    ) -> api_pb2.ImageGetOrCreateResponse:
+    async def ImageGetOrCreate(self, stream):
+        request = await stream.recv_message()
         idx = len(self.images)
         self.images[idx] = request.image
-        return api_pb2.ImageGetOrCreateResponse(image_id=f"im-{idx}")
+        await stream.send_message(api_pb2.ImageGetOrCreateResponse(image_id=f"im-{idx}"))
 
-    async def ImageJoin(self, request: api_pb2.ImageJoinRequest, context: ServicerContext) -> api_pb2.ImageJoinResponse:
-        return api_pb2.ImageJoinResponse(
-            result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
+    async def ImageJoin(self, stream):
+        await stream.recv_message()
+        await stream.send_message(
+            api_pb2.ImageJoinResponse(result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS))
         )
 
-    async def AppGetLogs(
-        self, request: api_pb2.AppGetLogsRequest, context: ServicerContext
-    ) -> typing.AsyncIterator[api_pb2.TaskLogsBatch]:
+    async def AppGetLogs(self, stream):
+        await stream.recv_message()
         await asyncio.sleep(0.1)
         if self.done:
-            yield api_pb2.TaskLogsBatch(app_done=True)
+            await stream.send_message(api_pb2.TaskLogsBatch(app_done=True))
 
-    async def FunctionGetInputs(
-        self, request: api_pb2.FunctionGetInputsRequest, context: ServicerContext
-    ) -> api_pb2.FunctionGetInputsResponse:
+    async def FunctionGetInputs(self, stream):
+        request = await stream.recv_message()
         assert request.function_id
         if self.fail_get_inputs:
-            await context.abort(StatusCode.INTERNAL)
+            raise GRPCError(Status.INTERNAL)
         elif self.rate_limit_sleep_duration is not None:
             s = self.rate_limit_sleep_duration
             self.rate_limit_sleep_duration = None
-            return api_pb2.FunctionGetInputsResponse(rate_limit_sleep_duration=s)
+            await stream.send_message(api_pb2.FunctionGetInputsResponse(rate_limit_sleep_duration=s))
         elif not self.container_inputs:
             await asyncio.sleep(request.timeout)
-            return api_pb2.FunctionGetInputsResponse(inputs=[])
+            await stream.send_message(api_pb2.FunctionGetInputsResponse(inputs=[]))
         else:
-            return self.container_inputs.pop(0)
+            await stream.send_message(self.container_inputs.pop(0))
 
-    async def FunctionPutOutputs(self, request: api_pb2.FunctionPutOutputsRequest, context: ServicerContext) -> Empty:
+    async def FunctionPutOutputs(self, stream):
+        request = await stream.recv_message()
         self.container_outputs.append(request)
-        return Empty()
+        await stream.send_message(Empty())
 
-    async def AppGetObjects(
-        self, request: api_pb2.AppGetObjectsRequest, context: ServicerContext
-    ) -> api_pb2.AppGetObjectsResponse:
+    async def AppGetObjects(self, stream):
+        request = await stream.recv_message()
         object_ids = self.app_objects.get(request.app_id, {})
-        return api_pb2.AppGetObjectsResponse(object_ids=object_ids)
+        await stream.send_message(api_pb2.AppGetObjectsResponse(object_ids=object_ids))
 
-    async def AppSetObjects(self, request: api_pb2.AppSetObjectsRequest, context: ServicerContext) -> Empty:
+    async def AppSetObjects(self, stream):
+        request = await stream.recv_message()
         self.app_objects[request.app_id] = dict(request.object_ids)
-        return Empty()
+        await stream.send_message(Empty())
 
-    async def QueueCreate(
-        self, request: api_pb2.QueueCreateRequest, context: ServicerContext
-    ) -> api_pb2.QueueCreateResponse:
+    async def QueueCreate(self, stream):
+        await stream.recv_message()
         self.n_queues += 1
-        return api_pb2.QueueCreateResponse(queue_id=f"qu-{self.n_queues}")
+        await stream.send_message(api_pb2.QueueCreateResponse(queue_id=f"qu-{self.n_queues}"))
 
-    async def QueuePut(self, request: api_pb2.QueuePutRequest, context: ServicerContext) -> Empty:
+    async def QueuePut(self, stream):
+        request = await stream.recv_message()
         self.queue += request.values
-        return Empty()
+        await stream.send_message(Empty())
 
-    async def QueueGet(self, request: api_pb2.QueueGetRequest, context: ServicerContext) -> api_pb2.QueueGetResponse:
-        return api_pb2.QueueGetResponse(values=[self.queue.pop(0)])
+    async def QueueGet(self, stream):
+        await stream.recv_message()
+        await stream.send_message(api_pb2.QueueGetResponse(values=[self.queue.pop(0)]))
 
-    async def AppDeploy(self, request: api_pb2.AppDeployRequest, context: ServicerContext) -> Empty:
+    async def AppDeploy(self, stream):
+        request = await stream.recv_message()
         self.deployed_apps[request.name] = request.app_id
-        return Empty()
+        await stream.send_message(Empty())
 
-    async def AppGetByDeploymentName(
-        self, request: api_pb2.AppGetByDeploymentNameRequest, context: ServicerContext
-    ) -> api_pb2.AppGetByDeploymentNameResponse:
-        return api_pb2.AppGetByDeploymentNameResponse(app_id=self.deployed_apps.get(request.name))
+    async def AppGetByDeploymentName(self, stream):
+        request = await stream.recv_message()
+        await stream.send_message(api_pb2.AppGetByDeploymentNameResponse(app_id=self.deployed_apps.get(request.name)))
 
-    async def AppLookupObject(
-        self, request: api_pb2.AppLookupObjectRequest, context: ServicerContext
-    ) -> api_pb2.AppLookupObjectResponse:
+    async def AppLookupObject(self, stream):
+        request = await stream.recv_message()
         object_id = None
         app_id = self.deployed_apps.get(request.app_name)
         if app_id is not None:
@@ -220,42 +219,30 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
                 object_id = app_objects.get(request.object_tag)
             else:
                 (object_id,) = list(app_objects.values())
-        return api_pb2.AppLookupObjectResponse(object_id=object_id)
+        await stream.send_message(api_pb2.AppLookupObjectResponse(object_id=object_id))
 
-    async def MountPutFile(
-        self,
-        request: api_pb2.MountPutFileRequest,
-        context: ServicerContext,
-    ) -> api_pb2.MountPutFileResponse:
+    async def MountPutFile(self, stream):
+        request = await stream.recv_message()
         if request.WhichOneof("data_oneof") is not None:
             self.files_sha2data[request.sha256_hex] = {"data": request.data, "data_blob_id": request.data_blob_id}
-            return api_pb2.MountPutFileResponse(exists=True)
+            await stream.send_message(api_pb2.MountPutFileResponse(exists=True))
         else:
-            return api_pb2.MountPutFileResponse(exists=False)
+            await stream.send_message(api_pb2.MountPutFileResponse(exists=False))
 
-    async def MountBuild(
-        self,
-        request: api_pb2.MountBuildRequest,
-        context: ServicerContext,
-    ) -> api_pb2.MountBuildResponse:
+    async def MountBuild(self, stream):
+        request = await stream.recv_message()
         for file in request.files:
             self.files_name2sha[file.filename] = file.sha256_hex
-        return api_pb2.MountBuildResponse(mount_id="mo-123")
+        await stream.send_message(api_pb2.MountBuildResponse(mount_id="mo-123"))
 
-    async def SharedVolumeCreate(
-        self,
-        request: api_pb2.SharedVolumeCreateRequest,
-        context: ServicerContext,
-    ) -> api_pb2.SharedVolumeCreateResponse:
-        return api_pb2.SharedVolumeCreateResponse(shared_volume_id="sv-123")
+    async def SharedVolumeCreate(self, stream):
+        await stream.recv_message()
+        await stream.send_message(api_pb2.SharedVolumeCreateResponse(shared_volume_id="sv-123"))
 
-    async def FunctionCreate(
-        self,
-        request: api_pb2.FunctionCreateRequest,
-        context: ServicerContext,
-    ) -> api_pb2.FunctionCreateResponse:
+    async def FunctionCreate(self, stream):
+        request = await stream.recv_message()
         if self.function_create_error:
-            raise Exception("Function create failed")
+            raise GRPCError(Status.INTERNAL, "Function create failed")
         if request.existing_function_id:
             function_id = request.existing_function_id
         else:
@@ -267,30 +254,22 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
             web_url = "http://xyz.internal"
         else:
             web_url = None
-        return api_pb2.FunctionCreateResponse(function_id=function_id, web_url=web_url)
+        await stream.send_message(api_pb2.FunctionCreateResponse(function_id=function_id, web_url=web_url))
 
-    async def FunctionMap(
-        self,
-        request: api_pb2.FunctionMapRequest,
-        context: ServicerContext,
-    ) -> api_pb2.FunctionMapResponse:
-        return api_pb2.FunctionMapResponse(function_call_id="fc-out")
+    async def FunctionMap(self, stream):
+        await stream.recv_message()
+        self.output_idx = 0
+        await stream.send_message(api_pb2.FunctionMapResponse(function_call_id="fc-out"))
 
-    async def FunctionPutInputs(
-        self,
-        request: api_pb2.FunctionPutInputsRequest,
-        context: ServicerContext,
-    ) -> Empty:
+    async def FunctionPutInputs(self, stream):
+        request = await stream.recv_message()
         for item in request.inputs:
             args, kwargs = cloudpickle.loads(item.input.args) if item.input.args else ((), {})
             self.client_calls.append((item.idx, (args, kwargs)))
-        return Empty()
+        await stream.send_message(Empty())
 
-    async def FunctionGetOutputs(
-        self,
-        request: api_pb2.FunctionGetOutputsRequest,
-        context: ServicerContext,
-    ) -> api_pb2.FunctionGetOutputsResponse:
+    async def FunctionGetOutputs(self, stream):
+        await stream.recv_message()
         if self.client_calls and not self.function_is_running:
             popidx = len(self.client_calls) // 2  # simulate that results don't always come in order
             idx, (args, kwargs) = self.client_calls.pop(popidx)
@@ -313,24 +292,18 @@ class GRPCClientServicer(api_pb2_grpc.ModalClient):
                 )
                 outputs.append(item)
 
-            return api_pb2.FunctionGetOutputsResponse(outputs=outputs)
+            await stream.send_message(api_pb2.FunctionGetOutputsResponse(outputs=outputs))
         else:
-            return api_pb2.FunctionGetOutputsResponse(outputs=[])
+            await stream.send_message(api_pb2.FunctionGetOutputsResponse(outputs=[]))
 
-    async def SecretCreate(
-        self,
-        request: api_pb2.SecretCreateRequest,
-        context: ServicerContext,
-    ) -> api_pb2.SecretCreateResponse:
-        return api_pb2.SecretCreateResponse(secret_id="st-123")
+    async def SecretCreate(self, stream):
+        await stream.recv_message()
+        await stream.send_message(api_pb2.SecretCreateResponse(secret_id="st-123"))
 
-    async def TaskResult(
-        self,
-        request: api_pb2.TaskResultRequest,
-        context: ServicerContext,
-    ) -> Empty:
+    async def TaskResult(self, stream):
+        request = await stream.recv_message()
         self.task_result = request.result
-        return Empty()
+        await stream.send_message(Empty())
 
 
 @pytest.fixture(scope="session")
@@ -362,19 +335,19 @@ async def blob_server(event_loop):
 @pytest.fixture(scope="function")
 async def servicer(blob_server):
     blob_host, blobs = blob_server
-    servicer = GRPCClientServicer(blob_host, blobs)
+    servicer = MockClientServicer(blob_host, blobs)
     server = None
 
     async def _start_servicer():
         nonlocal server
-        server = grpc.aio.server()
-        api_pb2_grpc.add_ModalClientServicer_to_server(servicer, server)
-        port = server.add_insecure_port("[::]:0")
+        server = grpclib.server.Server([servicer])
+        port = find_free_port()
         servicer.remote_addr = "http://localhost:%d" % port
-        await server.start()
+        await server.start("0.0.0.0", port)
 
     async def _stop_servicer():
-        await server.stop(0)
+        server.close()
+        await server.wait_closed()
 
     _, aio_start_servicer = synchronize_apis(_start_servicer)
     _, aio_stop_servicer = synchronize_apis(_stop_servicer)

@@ -4,10 +4,9 @@ import time
 import warnings
 
 from aiohttp import ClientConnectorError, ClientResponseError
-from grpc import StatusCode
-from grpc.aio import AioRpcError
+from grpclib import GRPCError, Status
 
-from modal_proto import api_pb2, api_pb2_grpc
+from modal_proto import api_grpc, api_pb2
 from modal_utils.async_utils import TaskContext, synchronize_apis
 from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, ChannelPool
 from modal_utils.http_utils import http_client_with_tls
@@ -36,9 +35,9 @@ async def _http_check(url: str, timeout: float) -> str:
         return f"HTTP exception: {exc.__class__.__name__}"
 
 
-async def _grpc_exc_string(exc: AioRpcError, method_name: str, server_url: str, timeout: float) -> str:
+async def _grpc_exc_string(exc: GRPCError, method_name: str, server_url: str, timeout: float) -> str:
     http_status = await _http_check(server_url, timeout=timeout)
-    return f"{method_name}: {exc.details()} [GRPC status: {exc.code().name}, {http_status}]"
+    return f"{method_name}: {exc.message} [GRPC status: {exc.status.name}, {http_status}]"
 
 
 class _Client:
@@ -79,7 +78,7 @@ class _Client:
         )
         self._channel_pool = ChannelPool(self._task_context, self._connection_factory)
         await self._channel_pool.start()
-        self._stub = api_pb2_grpc.ModalClientStub(self._channel_pool)
+        self._stub = api_grpc.ModalClientStub(self._channel_pool)  # type: ignore
         try:
             req = api_pb2.ClientCreateRequest(
                 client_type=self.client_type,
@@ -90,17 +89,19 @@ class _Client:
                 ALARM_EMOJI = chr(0x1F6A8)
                 warnings.warn(f"{ALARM_EMOJI} {resp.deprecation_warning} {ALARM_EMOJI}", DeprecationWarning)
             self._client_id = resp.client_id
-        except AioRpcError as exc:
-            if exc.code() == StatusCode.FAILED_PRECONDITION:
+        except GRPCError as exc:
+            if exc.status == Status.FAILED_PRECONDITION:
                 # TODO: include a link to the latest package
                 raise VersionError(
                     f"The client version {self.version} is too old. Please update to the latest package."
                 )
-            elif exc.code() == StatusCode.UNAUTHENTICATED:
-                raise AuthError(exc.details())
+            elif exc.status == Status.UNAUTHENTICATED:
+                raise AuthError(exc.message)
             else:
                 exc_string = await _grpc_exc_string(exc, "ClientCreate", self.server_url, CLIENT_CREATE_TIMEOUT)
                 raise ConnectionError(exc_string)
+        except (OSError, asyncio.TimeoutError) as exc:
+            raise ConnectionError(str(exc))
         if not self._client_id:
             raise InvalidError("Did not get a client id from server")
 
@@ -118,7 +119,7 @@ class _Client:
             await self._task_context.stop()
             self._task_context = None
         if self._channel_pool:
-            await self._channel_pool.close()
+            self._channel_pool.close()
             self._channel_pool = None
         logger.debug("Client: Done shutting down")
         # Needed to catch straggling CancelledErrors and GeneratorExits that propagate
@@ -131,14 +132,14 @@ class _Client:
             try:
                 await self.stub.ClientHeartbeat(req, timeout=HEARTBEAT_TIMEOUT)
                 self._last_heartbeat = time.time()
-            except AioRpcError as exc:
+            except GRPCError as exc:
                 exc_string = await _grpc_exc_string(exc, "ClientHeartbeat", self.server_url, HEARTBEAT_TIMEOUT)
-                if exc.code() == StatusCode.NOT_FOUND:
+                if exc.status == Status.NOT_FOUND:
                     # server has deleted this client - perform graceful shutdown
                     # can't simply await self._stop here since it recursively wait for this task as well
                     logger.warning(exc_string)
                     asyncio.ensure_future(self._stop())
-                elif exc.code() in RETRYABLE_GRPC_STATUS_CODES:
+                elif exc.status in RETRYABLE_GRPC_STATUS_CODES:
                     logger.warning(exc_string)
                 else:
                     raise ConnectionError(exc_string)

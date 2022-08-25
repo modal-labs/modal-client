@@ -6,7 +6,7 @@ cloudpickle==2.0.0
 cuda-python==11.7.1
 fastapi==0.75.2
 fastprogress==1.0.0
-grpcio==1.48.0rc1
+grpclib==0.4.3
 importlib_metadata==4.8.1
 protobuf>=3.19.4
 python-multipart>=0.0.5

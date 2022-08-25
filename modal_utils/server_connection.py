@@ -1,40 +1,29 @@
 import urllib.parse
-from typing import Iterable, Tuple
+from typing import Dict
 
-import grpc
-from grpc.aio import Channel, insecure_channel, secure_channel
+import grpclib.events
+from grpclib.client import Channel
 
 from modal_proto import api_pb2
 
 from .logger import logger
 
 
-class BasicAuth(grpc.AuthMetadataPlugin):
-    # See https://www.grpc.io/docs/guides/auth/
-    _metadata: Iterable[Tuple[str, str]]
-
-    def __init__(self, client_type: api_pb2.ClientType, credentials):
-        if credentials and (client_type == api_pb2.CLIENT_TYPE_CLIENT or client_type == api_pb2.CLIENT_TYPE_WEB_SERVER):
-            token_id, token_secret = credentials
-            self._metadata = (
-                ("x-modal-token-id", token_id),
-                ("x-modal-token-secret", token_secret),
-            )
-        elif credentials and client_type == api_pb2.CLIENT_TYPE_CONTAINER:
-            task_id, task_secret = credentials
-            self._metadata = (
-                ("x-modal-task-id", task_id),
-                ("x-modal-task-secret", task_secret),
-            )
-        else:
-            self._metadata = tuple()
-
-    def __call__(self, context, callback):
-        # TODO: we really shouldn't send the id/secret here, but instead sign the requests
-        callback(self._metadata, None)
-
-
-MAX_MESSAGE_LENGTH = 1000000000  # 100 MB
+def auth_metadata(client_type: api_pb2.ClientType, credentials) -> Dict[str, str]:
+    if credentials and (client_type == api_pb2.CLIENT_TYPE_CLIENT or client_type == api_pb2.CLIENT_TYPE_WEB_SERVER):
+        token_id, token_secret = credentials
+        return {
+            "x-modal-token-id": token_id,
+            "x-modal-token-secret": token_secret,
+        }
+    elif credentials and client_type == api_pb2.CLIENT_TYPE_CONTAINER:
+        task_id, task_secret = credentials
+        return {
+            "x-modal-task-id": task_id,
+            "x-modal-task-secret": task_secret,
+        }
+    else:
+        return {}
 
 
 class GRPCConnectionFactory:
@@ -48,45 +37,24 @@ class GRPCConnectionFactory:
             raise
 
         self.target = o.netloc
-        is_tls = o.scheme.endswith("s")
-        host = o.netloc.split(":")[0]
-        if credentials or is_tls:
-            basic_auth = BasicAuth(client_type, credentials)
-            if is_tls:
-                channel_credentials = grpc.ssl_channel_credentials()
-            else:
-                assert host == "localhost", f"TLS should be enabled for gRPC target {self.target}"
-                channel_credentials = grpc.local_channel_credentials()
-            call_credentials = grpc.metadata_call_credentials(basic_auth)
-            self.credentials = grpc.composite_channel_credentials(
-                channel_credentials,
-                call_credentials,
-            )
-        else:
-            self.credentials = None
+        self.is_tls = o.scheme.endswith("s")
 
-        logger.debug(
-            f"Connecting to {self.target} using scheme {o.scheme}, credentials? {self.credentials is not None}"
-        )
-
-        self.options = [
-            ("grpc.max_send_message_length", MAX_MESSAGE_LENGTH),
-            ("grpc.max_receive_message_length", MAX_MESSAGE_LENGTH),
-        ]
+        self.metadata = auth_metadata(client_type, credentials)
+        logger.debug(f"Connecting to {self.target} using scheme {o.scheme}")
 
     def create(self) -> Channel:
-        if self.credentials is None:
-            return insecure_channel(
-                target=self.target,
-                options=self.options,
-                compression=None,
-                interceptors=[],
-            )
-        else:
-            return secure_channel(
-                target=self.target,
-                credentials=self.credentials,
-                options=self.options,
-                compression=None,
-                interceptors=[],
-            )
+        parts = self.target.split(":")
+        assert len(parts) <= 2, "Invalid target location: " + self.target
+        channel = Channel(
+            host=parts[0],
+            port=parts[1] if len(parts) == 2 else 443 if self.is_tls else 80,
+            ssl=self.is_tls,
+        )
+
+        # Inject metadata for the client.
+        async def send_request(event: grpclib.events.SendRequest) -> None:
+            for k, v in self.metadata.items():
+                event.metadata[k] = v
+
+        grpclib.events.listen(channel, grpclib.events.SendRequest, send_request)
+        return channel

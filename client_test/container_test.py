@@ -3,7 +3,7 @@ import platform
 import pytest
 import time
 
-from grpc.aio import AioRpcError
+from grpclib import GRPCError
 
 from modal._container_entrypoint import main
 
@@ -13,8 +13,8 @@ from modal.client import Client
 from modal.exception import InvalidError
 from modal_proto import api_pb2
 
-# Something with timing is flaky in OSX tests
-EXTRA_TOLERANCE_DELAY = 0.25 if platform.system() != "Darwin" else 1.0
+# Something with timing is flaky in OSX & Windows tests
+EXTRA_TOLERANCE_DELAY = {"Darwin": 1.0, "Windows": 3.0}.get(platform.system(), 0.25)
 FUNCTION_CALL_ID = "fc-123"
 SLEEP_DELAY = 0.1
 
@@ -168,7 +168,7 @@ def test_container_entrypoint_slow_function(servicer, event_loop, monkeypatch):
 
 
 def test_container_entrypoint_grpc_failure(servicer, event_loop):
-    with pytest.raises(AioRpcError):
+    with pytest.raises(GRPCError):
         _run_container(servicer, "modal_test_support.functions", "square", fail_get_inputs=True)
 
 
