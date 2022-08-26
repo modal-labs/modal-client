@@ -26,6 +26,8 @@ from .schedule import Schedule
 from .secret import _Secret
 from .shared_volume import _SharedVolume
 
+_default_image = _DebianSlim()
+
 
 class _Stub:
     """A `Stub` is a description of how to create a Modal application.
@@ -64,7 +66,6 @@ class _Stub:
     _name: str
     _description: str
     _blueprint: Dict[str, Object]
-    _default_image: _Image
     _client_mount: Optional[Union[_Mount, Ref]]
     _function_mounts: Dict[str, _Mount]
     _mounts: Collection[Union[_Mount, Ref]]
@@ -78,7 +79,6 @@ class _Stub:
         else:
             self._description = self._infer_app_desc()
         self._blueprint = blueprint
-        self._default_image = _DebianSlim()
         self._client_mount = None
         self._function_mounts = {}
         self._mounts = mounts
@@ -137,7 +137,20 @@ class _Stub:
             if "image" in self._blueprint:
                 image = LocalRef("image")
             else:
-                return container_app._is_inside(self._default_image)
+                # At this point in the code, we are sure that the app is running
+                # remotely, so it needs be able to load the ID of the default image.
+                # However, we cannot call `self.load(_default_image)` because it is
+                # an async function.
+                #
+                # Instead we load the image in App.init_container(), and this allows
+                # us to retrieve its object ID from cache here.
+                assert _default_image.object_id is None
+                image = container_app.load_cached(_default_image)
+
+                # Check to make sure internal invariants are upheld.
+                assert image is not None, "fatal: default image should be loaded in App.init_container()"
+                assert image.object_id is not None, "fatal: loaded image should have object_id"
+
         return container_app._is_inside(image)
 
     @synchronizer.asynccontextmanager
@@ -320,7 +333,7 @@ class _Stub:
         if "image" in self._blueprint:
             return self._blueprint["image"]
         else:
-            return self._default_image
+            return _default_image
 
     def _get_function_mounts(self, raw_f):
         # Get the common mounts for the stub.

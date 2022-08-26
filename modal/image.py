@@ -113,7 +113,7 @@ class _Image(Object, type_prefix="im"):
         This is not meant to be called directly: see app.is_inside(image)
         """
         env_image_id = config.get("image_id")
-        logger.debug(f"Is image inside? env {env_image_id} image {self.object_id}")
+        logger.debug(f"Image._is_inside(): env_image_id={env_image_id} self.object_id={self.object_id}")
         return self.object_id == env_image_id
 
     def extend(self, **kwargs) -> "_Image":

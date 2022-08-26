@@ -108,9 +108,10 @@ class _App:
         self, obj: Object, progress: Optional[Tree] = None, existing_object_id: Optional[str] = None
     ) -> Object:
         """Send a server request to create an object in this app, and return its ID."""
-        if obj.local_uuid in self._local_uuid_to_object:
+        cached_obj = self.load_cached(obj)
+        if cached_obj is not None:
             # We already created this object before, shortcut this method
-            return self._local_uuid_to_object[obj.local_uuid]
+            return cached_obj
 
         # TODO: should we just move most of this code to the Ref classes?
         if isinstance(obj, PersistedRef):
@@ -157,6 +158,13 @@ class _App:
 
         self._local_uuid_to_object[obj.local_uuid] = created_obj
         return created_obj
+
+    def load_cached(self, obj: Object) -> Optional[Object]:
+        """Try to load a previously-loaded object, without making network requests.
+
+        Returns `None` if the object has not been previously loaded.
+        """
+        return self._local_uuid_to_object.get(obj.local_uuid)
 
     async def create_all_objects(self, progress: Tree):
         """Create objects that have been defined but not created on the server."""
@@ -217,11 +225,13 @@ class _App:
 
         req = api_pb2.AppGetObjectsRequest(app_id=app_id, task_id=task_id)
         resp = await self._client.stub.AppGetObjects(req)
-        for (
-            tag,
-            object_id,
-        ) in resp.object_ids.items():
+        for tag, object_id in resp.object_ids.items():
             self._tag_to_object[tag] = Object.from_id(object_id, self._client)
+
+        if "image" not in self._tag_to_object:
+            from .stub import _default_image
+
+            await self.load(_default_image)
 
         return self
 
