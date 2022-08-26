@@ -147,8 +147,8 @@ def test_sync_parallelism(client, servicer):
 
     with stub.run(client=client):
         t0 = time.time()
-        # NOTE tests breaks in macOS CI if the smaller time is smaller than ~100ms
-        res = gather(slo1.submit(0.15), slo1.submit(0.1))
+        # NOTE tests breaks in macOS CI if the smaller time is smaller than ~300ms
+        res = gather(slo1.submit(0.31), slo1.submit(0.3))
         t1 = time.time()
-        assert res == [0.15, 0.1]  # results should be ordered as inputs, not by completion time
-        assert t1 - t0 < 0.24  # less than the combined runtime, make sure they run in parallel
+        assert res == [0.31, 0.3]  # results should be ordered as inputs, not by completion time
+        assert t1 - t0 < 0.6  # less than the combined runtime, make sure they run in parallel
