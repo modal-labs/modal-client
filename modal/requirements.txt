@@ -6,12 +6,6 @@ cloudpickle==2.0.0
 cuda-python==11.7.1
 fastapi==0.75.2
 fastprogress==1.0.0
-
-### TODO(akshat): Remove this `grpcio` dependency. This is needed for backwards-compatibility with client versions
-### <=0.0.23, since we don't version our base images currently, so the base image needs to still work for _all_
-### currently supported client versions unfortunately.
-grpcio==1.48.0rc1
-
 grpclib==0.4.3
 importlib_metadata==4.8.1
 protobuf>=3.19.4
