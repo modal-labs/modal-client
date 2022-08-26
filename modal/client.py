@@ -1,5 +1,4 @@
 import asyncio
-import atexit
 import time
 import warnings
 
@@ -7,6 +6,7 @@ from aiohttp import ClientConnectorError, ClientResponseError
 from grpclib import GRPCError, Status
 
 from modal_proto import api_grpc, api_pb2
+from modal_utils import async_utils
 from modal_utils.async_utils import TaskContext, synchronize_apis
 from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, ChannelPool
 from modal_utils.http_utils import http_client_with_tls
@@ -163,7 +163,7 @@ class _Client:
     def _ok_to_recycle(self, override_time):
         # Used to check if a singleton client can be reused safely
         if not self._stub:
-            # Client has ben stopped
+            # Client has been stopped
             return False
         elif self._last_heartbeat < override_time - (HEARTBEAT_INTERVAL + HEARTBEAT_TIMEOUT):
             # This can happen if a process goes into hibernation and then wakes up
@@ -211,7 +211,7 @@ class _Client:
                 client = _Client(server_url, client_type, credentials)
                 await client._start()
                 cls._client_from_env = client
-                atexit.register(Client.stop_env_client)  # Note that we use the blocking interface
+                async_utils.on_shutdown(AioClient.stop_env_client())
                 return client
 
     @classmethod

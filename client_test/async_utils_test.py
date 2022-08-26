@@ -3,6 +3,9 @@ import logging
 import platform
 import pytest
 
+from synchronicity import Interface, Synchronizer
+
+from modal_utils import async_utils
 from modal_utils.async_utils import (
     TaskContext,
     queue_batch_iterator,
@@ -163,3 +166,21 @@ async def test_warn_if_generator_is_not_consumed(caplog):
     assert "my_generator" in caplog.text
     assert "for" in caplog.text
     assert "list" in caplog.text
+
+
+def test_exit_handler():
+    result = None
+    sync = Synchronizer()
+
+    async def cleanup():
+        nonlocal result
+        result = "bye"
+
+    async def _setup_code():
+        async_utils.on_shutdown(cleanup())
+
+    setup_code = sync.create(_setup_code)[Interface.BLOCKING]
+    setup_code()
+
+    sync._close_loop()  # this is called on exit by synchronicity, which shuts down the event loop
+    assert result == "bye"

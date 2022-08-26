@@ -291,3 +291,15 @@ def warn_if_generator_is_not_consumed(gen_f):
         return _WarnIfGeneratorIsNotConsumed(gen, gen_f)
 
     return f_wrapped
+
+
+def on_shutdown(coro):
+    # hook into event loop shutdown when all active tasks get cancelled
+    async def wrapper():
+        try:
+            await asyncio.sleep(1e10)  # never awake except for exceptions
+        finally:
+            await coro
+            raise
+
+    asyncio.create_task(wrapper())
