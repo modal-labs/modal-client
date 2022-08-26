@@ -641,3 +641,30 @@ class _Function(Object, type_prefix="fu"):
 
 
 Function, AioFunction = synchronize_apis(_Function)
+
+
+async def _gather(*function_calls: _FunctionCall):
+    """Wait until all Modal function calls have results before returning
+
+    Accepts a variable number of FunctionCall objects as returned by `Function.submit()`.
+
+    Returns a list of results from each function call, or raises an exception
+    of the first failing function call.
+
+    E.g.
+
+    ```python notest
+    function_call_1 = slow_func_1.submit()
+    function_call_2 = slow_func_2.submit()
+
+    result_1, result_2 = gather(function_call_1, function_call_2)
+    ```
+    """
+    try:
+        return await asyncio.gather(*[fc.get() for fc in function_calls])
+    except Exception as exc:
+        # TODO: kill all running function calls
+        raise exc
+
+
+gather, aio_gather = synchronize_apis(_gather)

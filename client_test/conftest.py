@@ -54,7 +54,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.n_queues = 0
         self.files_name2sha = {}
         self.files_sha2data = {}
-        self.client_calls = []
+        self.client_calls = {}
         self.function_is_running = False
         self.n_functions = 0
         self.n_schedules = 0
@@ -71,6 +71,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.blob_create_metadata = None
 
         self.app_functions = {}
+        self.fcidx = 0
 
         @self.function_body
         def default_function_body(*args, **kwargs):
@@ -257,25 +258,28 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(api_pb2.FunctionCreateResponse(function_id=function_id, web_url=web_url))
 
     async def FunctionMap(self, stream):
+        self.fcidx += 1
         await stream.recv_message()
-        self.output_idx = 0
-        await stream.send_message(api_pb2.FunctionMapResponse(function_call_id="fc-out"))
+        await stream.send_message(api_pb2.FunctionMapResponse(function_call_id=f"fc-{self.fcidx}"))
 
     async def FunctionPutInputs(self, stream):
         request = await stream.recv_message()
         for item in request.inputs:
             args, kwargs = cloudpickle.loads(item.input.args) if item.input.args else ((), {})
-            self.client_calls.append((item.idx, (args, kwargs)))
+            self.client_calls.setdefault(request.function_call_id, []).append((item.idx, (args, kwargs)))
         await stream.send_message(Empty())
 
     async def FunctionGetOutputs(self, stream):
-        await stream.recv_message()
-        if self.client_calls and not self.function_is_running:
-            popidx = len(self.client_calls) // 2  # simulate that results don't always come in order
-            idx, (args, kwargs) = self.client_calls.pop(popidx)
+        request = await stream.recv_message()
+        client_calls = self.client_calls.get(request.function_call_id, [])
+        if client_calls and not self.function_is_running:
+            popidx = len(client_calls) // 2  # simulate that results don't always come in order
+            idx, (args, kwargs) = client_calls.pop(popidx)
             # Just return the sum of squares of all args
             res = self._function_body(*args, **kwargs)
-            if inspect.isgenerator(res):
+            if inspect.iscoroutine(res):
+                results = [await res]
+            elif inspect.isgenerator(res):
                 results = list(res)
             else:
                 results = [res]
