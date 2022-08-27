@@ -110,8 +110,17 @@ message AppGetObjectsRequest {
   string task_id = 2;
 }
 
+message AppGetObjectsItem {
+  string tag = 1;
+  string object_id = 2;
+  oneof object_oneof {
+    Function function = 3;
+  }
+}
+
 message AppGetObjectsResponse {
-  map<string, string> object_ids = 1;
+  map<string, string> object_ids = 1 [deprecated=true];  // remove once support for 0.0.22 is dropped
+  repeated AppGetObjectsItem items = 2;
 }
 
 message AppLookupObjectRequest {

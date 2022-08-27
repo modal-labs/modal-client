@@ -225,8 +225,12 @@ class _App:
 
         req = api_pb2.AppGetObjectsRequest(app_id=app_id, task_id=task_id)
         resp = await self._client.stub.AppGetObjects(req)
-        for tag, object_id in resp.object_ids.items():
-            self._tag_to_object[tag] = Object.from_id(object_id, self._client)
+        for item in resp.items:
+            obj = Object.from_id(item.object_id, self._client)
+            if isinstance(obj, _Function):
+                # TODO(erikbern): treating this as a special case right now, but we should generalize it
+                obj.initialize_from_proto(item.function)
+            self._tag_to_object[item.tag] = obj
 
         if "image" not in self._tag_to_object:
             from .stub import _default_image
