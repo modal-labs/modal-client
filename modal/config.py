@@ -149,7 +149,7 @@ _SETTINGS = {
     "image_python_version": _Setting(),
     "image_id": _Setting(),
     "sentry_dsn": _Setting("https://1343216d5d8e443f9f43896ecab24fd3@o1108641.ingest.sentry.io/6255134"),
-    "run_forever_timeout": _Setting(transform=float),
+    "serve_timeout": _Setting(transform=float),
     "automount": _Setting(True, transform=lambda x: x not in ("", "0")),
 }
 

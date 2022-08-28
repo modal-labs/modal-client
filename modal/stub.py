@@ -1,7 +1,7 @@
-import asyncio
 import inspect
 import os
 import sys
+import warnings
 from typing import Collection, Dict, Optional, Union
 
 from rich.tree import Tree
@@ -233,31 +233,48 @@ class _Stub:
             yield app
 
     async def run_forever(self, client=None, stdout=None, show_progress=None) -> None:
-        """Run an app until the program is interrupted.
+        """**Deprecated.** Use `.serve()` instead."""
 
-        This function is useful for testing schedules and webhooks, since they
-        will run at a regular cadence until the program is interrupted with
-        `Ctrl + C` or other means.
+        warnings.warn("Stub.run_forever is deprecated, use .serve() instead", DeprecationWarning)
+        await self.serve(client, stdout, show_progress)
+
+    async def serve(self, client=None, stdout=None, show_progress=None) -> None:
+        """Run an app until the program is interrupted. Modal watches source files
+        and mounts for the app, and live updates the app when any changes are detected.
+
+        This function is useful for developing and testing schedules and webhooks, since they
+        will run until the program is interrupted with `Ctrl + C` or other means. Any changes
+        made to webhook handlers will show up almost immediately the next time the route is hit.
         """
+        from ._watcher import TIMEOUT, watch
+
         if not is_local():
             raise InvalidError(
                 "Can not run an app from within a container. You might need to do something like this: \n"
                 'if __name__ == "__main__":\n'
-                "    with stub.run_forever():\n"
+                "    with stub.serve():\n"
                 "        ...\n"
             )
+
         if client is None:
             client = await _Client.from_env()
+
         output_mgr = OutputManager(stdout, show_progress)
-        async with self._run(client, output_mgr, None):
-            timeout = config["run_forever_timeout"]
-            if timeout:
-                output_mgr.print_if_visible(step_completed(f"Running for {timeout} seconds... hit Ctrl-C to stop!"))
-                await asyncio.sleep(timeout)
-            else:
-                output_mgr.print_if_visible(step_completed("Running forever... hit Ctrl-C to stop!"))
-                while True:
-                    await asyncio.sleep(1.0)
+
+        event_agen = watch(self, output_mgr, config["serve_timeout"])
+        event = await event_agen.__anext__()
+
+        existing_app_id = None
+
+        while event != TIMEOUT:
+            if existing_app_id:
+                output_mgr.print_if_visible(f"⚡️ Updating app {existing_app_id}...")
+
+            async with self._run(client, output_mgr, existing_app_id) as app:
+                existing_app_id = app.app_id
+                event = await event_agen.__anext__()
+
+        await event_agen.aclose()
 
     async def deploy(
         self,
