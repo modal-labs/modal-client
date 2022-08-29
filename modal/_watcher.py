@@ -22,8 +22,12 @@ async def _sleep(timeout: float):
 
 
 async def _watch_paths(paths: Set[Union[str, Path]]):
-    async for changes in awatch(*paths, step=500):
-        yield changes
+    try:
+        async for changes in awatch(*paths, step=500):
+            yield changes
+    except RuntimeError:
+        # Thrown by watchfiles from Rust, when the generator is closed externally.
+        pass
 
 
 def _print_watched_paths(paths: Set[Union[str, Path]], output_mgr: OutputManager, timeout: Optional[float]):

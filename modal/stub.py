@@ -2,6 +2,7 @@ import inspect
 import os
 import sys
 import warnings
+from enum import Enum
 from typing import Collection, Dict, Optional, Union
 
 from rich.tree import Tree
@@ -27,6 +28,12 @@ from .secret import _Secret
 from .shared_volume import _SharedVolume
 
 _default_image = _DebianSlim()
+
+
+class StubRunMode(Enum):
+    RUN = "run"
+    DEPLOY = "deploy"
+    SERVE = "serve"
 
 
 class _Stub:
@@ -161,7 +168,7 @@ class _Stub:
         existing_app_id: Optional[str],
         last_log_entry_id: Optional[str] = None,
         description: Optional[str] = None,
-        deployment: bool = False,
+        mode: StubRunMode = StubRunMode.RUN,
     ):
         if existing_app_id is not None:
             app = await _App.init_existing(self, client, existing_app_id)
@@ -190,7 +197,7 @@ class _Stub:
                 # TODO: we can get rid of this once we have 1) a way to separate builder
                 # logs from runner logs and 2) a termination signal that's sent after object
                 # creation is complete, that is also triggered on exceptions (`app.disconnect()`)
-                if deployment:
+                if mode == StubRunMode.DEPLOY:
                     logs_loop.cancel()
 
                 # Yield to context
@@ -202,9 +209,13 @@ class _Stub:
                     "Stick around for remote tracebacks..."
                 )
             finally:
-                await app.disconnect()
+                # Cancel logs loop since we're going to start another one.
+                if mode == StubRunMode.SERVE:
+                    logs_loop.cancel()
+                else:
+                    await app.disconnect()
 
-        if deployment:
+        if mode == StubRunMode.DEPLOY:
             output_mgr.print_if_visible(step_completed("App deployed! 🎉"))
         else:
             output_mgr.print_if_visible(step_completed("App completed."))
@@ -264,17 +275,21 @@ class _Stub:
         event_agen = watch(self, output_mgr, config["serve_timeout"])
         event = await event_agen.__anext__()
 
+        app = None
         existing_app_id = None
 
-        while event != TIMEOUT:
-            if existing_app_id:
-                output_mgr.print_if_visible(f"⚡️ Updating app {existing_app_id}...")
+        try:
+            while event != TIMEOUT:
+                if existing_app_id:
+                    output_mgr.print_if_visible(f"⚡️ Updating app {existing_app_id}...")
 
-            async with self._run(client, output_mgr, existing_app_id) as app:
-                existing_app_id = app.app_id
-                event = await event_agen.__anext__()
-
-        await event_agen.aclose()
+                async with self._run(client, output_mgr, existing_app_id, mode=StubRunMode.SERVE) as app:
+                    existing_app_id = app.app_id
+                    event = await event_agen.__anext__()
+        finally:
+            await event_agen.aclose()
+            if app:
+                await app.disconnect()
 
     async def deploy(
         self,
@@ -336,7 +351,7 @@ class _Stub:
         # The `_run` method contains the logic for starting and running an app
         output_mgr = OutputManager(stdout, show_progress)
         async with self._run(
-            client, output_mgr, existing_app_id, last_log_entry_id, description=name, deployment=True
+            client, output_mgr, existing_app_id, last_log_entry_id, description=name, mode=StubRunMode.DEPLOY
         ) as app:
             deploy_req = api_pb2.AppDeployRequest(
                 app_id=app._app_id,
