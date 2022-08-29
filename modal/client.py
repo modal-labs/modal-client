@@ -42,7 +42,7 @@ async def _grpc_exc_string(exc: GRPCError, method_name: str, server_url: str, ti
 
 class _Client:
     _client_from_env = None
-    _client_from_env_lock = asyncio.Lock()
+    _client_from_env_lock = None
 
     def __init__(
         self,
@@ -203,6 +203,9 @@ class _Client:
         if _override_time is None:
             # Only used for testing
             _override_time = time.time()
+
+        if cls._client_from_env_lock is None:
+            cls._client_from_env_lock = asyncio.Lock()
 
         async with cls._client_from_env_lock:
             if cls._client_from_env and cls._client_from_env._ok_to_recycle(_override_time):
