@@ -4,6 +4,7 @@ import warnings
 
 from aiohttp import ClientConnectorError, ClientResponseError
 from grpclib import GRPCError, Status
+from grpclib.exceptions import StreamTerminatedError
 
 from modal_proto import api_grpc, api_pb2
 from modal_utils import async_utils
@@ -132,6 +133,8 @@ class _Client:
             try:
                 await self.stub.ClientHeartbeat(req, timeout=HEARTBEAT_TIMEOUT)
                 self._last_heartbeat = time.time()
+            except StreamTerminatedError:
+                logger.warning("Client heartbeat: Stream terminated")
             except GRPCError as exc:
                 exc_string = await _grpc_exc_string(exc, "ClientHeartbeat", self.server_url, HEARTBEAT_TIMEOUT)
                 if exc.status == Status.NOT_FOUND:

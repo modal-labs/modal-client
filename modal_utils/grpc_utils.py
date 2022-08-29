@@ -8,6 +8,7 @@ from typing import Any, AsyncIterator, Optional, TypeVar
 from grpclib import GRPCError, Status
 from grpclib.client import Channel, Stream, UnaryStreamMethod
 from grpclib.const import Cardinality
+from grpclib.exceptions import StreamTerminatedError
 from sentry_sdk import add_breadcrumb, capture_exception
 
 from .async_utils import TaskContext
@@ -161,17 +162,18 @@ async def retry_transient_errors(
         metadata = [("x-idempotency-key", idempotency_key), ("x-retry-attempt", str(n_retries))]
         try:
             return await fn(*args, metadata=metadata)
-        except GRPCError as exc:
-            if exc.status in status_codes:
-                if max_retries is not None and n_retries >= max_retries:
-                    raise
-                n_retries += 1
-                if exc.status not in ignore_errors:
-                    capture_exception(exc)
-                await asyncio.sleep(delay)
-                delay = min(delay * delay_factor, max_delay)
-            else:
+        except (StreamTerminatedError, GRPCError) as exc:
+            if isinstance(exc, GRPCError) and exc.status not in status_codes:
                 raise
+
+            if max_retries is not None and n_retries >= max_retries:
+                raise
+
+            n_retries += 1
+            if isinstance(exc, StreamTerminatedError) or exc.status not in ignore_errors:
+                capture_exception(exc)
+            await asyncio.sleep(delay)
+            delay = min(delay * delay_factor, max_delay)
 
 
 def find_free_port() -> int:
