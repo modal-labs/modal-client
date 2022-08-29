@@ -16,6 +16,9 @@ MAX_OBJECT_SIZE_BYTES = 64 * 1024  # 64 kb
 #  It will also make sure to chunk the hash calculation to avoid reading the entire file into memory
 LARGE_FILE_LIMIT = 1024 * 1024  # 1MB
 
+# Max parallelism during map calls
+BLOB_MAX_PARALLELISM = 10
+
 
 @retry(n_attempts=5, base_delay=0.1, timeout=None)
 async def _upload_to_url(upload_url: str, content_md5: str, aiohttp_payload) -> None:
