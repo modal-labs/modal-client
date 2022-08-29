@@ -173,13 +173,15 @@ class TaskContext:
         async def loop_coro() -> None:
             logger.debug(f"Starting infinite loop {function_name}")
             while True:
+                t0 = time.time()
                 try:
                     await asyncio.wait_for(async_f(), timeout=timeout)
                 # pre Python3.8, CancelledErrors were a subclass of exception
                 except asyncio.CancelledError:
                     break
                 except Exception:
-                    logger.exception(f"Loop attempt failed for {function_name}")
+                    time_elapsed = time.time() - t0
+                    logger.exception(f"Loop attempt failed for {function_name} (time_elapsed={time_elapsed})")
                 try:
                     await asyncio.wait_for(self._exited.wait(), timeout=sleep)
                 except asyncio.TimeoutError:
