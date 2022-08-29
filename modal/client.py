@@ -5,6 +5,7 @@ import warnings
 from aiohttp import ClientConnectorError, ClientResponseError
 from grpclib import GRPCError, Status
 from grpclib.exceptions import StreamTerminatedError
+from sentry_sdk import capture_exception
 
 from modal_proto import api_grpc, api_pb2
 from modal_utils import async_utils
@@ -133,8 +134,13 @@ class _Client:
             try:
                 await self.stub.ClientHeartbeat(req, timeout=HEARTBEAT_TIMEOUT)
                 self._last_heartbeat = time.time()
-            except StreamTerminatedError:
-                logger.warning("Client heartbeat: Stream terminated")
+            # Raised by grpclib when the connection is closed.
+            except asyncio.CancelledError as exc:
+                capture_exception(exc)
+                logger.warning("Client heartbeat: deadline exceeded")
+            except StreamTerminatedError as exc:
+                capture_exception(exc)
+                logger.warning("Client heartbeat: stream terminated")
             except GRPCError as exc:
                 exc_string = await _grpc_exc_string(exc, "ClientHeartbeat", self.server_url, HEARTBEAT_TIMEOUT)
                 if exc.status == Status.NOT_FOUND:
@@ -143,6 +149,7 @@ class _Client:
                     logger.warning(exc_string)
                     asyncio.ensure_future(self._stop())
                 elif exc.status in RETRYABLE_GRPC_STATUS_CODES:
+                    capture_exception(exc)
                     logger.warning(exc_string)
                 else:
                     raise ConnectionError(exc_string)
