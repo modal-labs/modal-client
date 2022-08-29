@@ -2,7 +2,7 @@ import asyncio
 import pytest
 import time
 
-from modal import Stub
+from modal import Stub, ref
 from modal.functions import FunctionCall, gather
 from modal.stub import AioStub
 
@@ -152,3 +152,14 @@ def test_sync_parallelism(client, servicer):
         t1 = time.time()
         assert res == [0.31, 0.3]  # results should be ordered as inputs, not by completion time
         assert t1 - t0 < 0.6  # less than the combined runtime, make sure they run in parallel
+
+
+def test_proxy(client, servicer):
+    stub = Stub()
+
+    @stub.function(proxy=ref("my-proxy"))
+    def f():
+        pass
+
+    with stub.run(client=client):
+        pass

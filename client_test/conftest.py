@@ -44,12 +44,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
             "foo-queue": "ap-y",
             f"debian-slim-{_dockerhub_python_version()}-{__version__}": "ap-z",
             f"conda-{__version__}": "ap-c",
+            "my-proxy": "ap-proxy",
         }
         self.app_objects = {
             "ap-x": {"": "mo-123"},
             "ap-y": {"foo-queue": "qu-foo"},
             "ap-z": {"": "im-123"},
             "ap-c": {"": "im-456"},
+            "ap-proxy": {"": "pr-123"},
         }
         self.n_queues = 0
         self.files_name2sha = {}
