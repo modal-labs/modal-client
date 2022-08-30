@@ -36,17 +36,6 @@ async def test_attrs(servicer, aio_client):
 
 
 @pytest.mark.asyncio
-async def test_create_object(servicer, aio_client):
-    stub = AioStub()
-    async with stub.run(client=aio_client) as app:
-        q = await AioQueue().create(app)
-        await q.put("foo")
-        await q.put("bar")
-        assert await q.get() == "foo"
-        assert await q.get() == "bar"
-
-
-@pytest.mark.asyncio
 async def test_persistent_object(servicer, aio_client):
     stub_1 = AioStub()
     stub_1["q_1"] = AioQueue()
