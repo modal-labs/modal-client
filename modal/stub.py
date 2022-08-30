@@ -359,7 +359,7 @@ class _Stub:
                 namespace=namespace,
             )
             await client.stub.AppDeploy(deploy_req)
-            return app._app_id
+            return app
 
     def _get_default_image(self):
         if "image" in self._blueprint:

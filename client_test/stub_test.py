@@ -63,18 +63,18 @@ async def test_redeploy(servicer, aio_client):
     stub.function(square)
 
     # Deploy app
-    app_id = await stub.deploy("my-app", client=aio_client)
-    assert app_id == "ap-1"
+    app = await stub.deploy("my-app", client=aio_client)
+    assert app.app_id == "ap-1"
     assert servicer.app_objects["ap-1"]["square"] == "fu-1"
 
     # Redeploy, make sure all ids are the same
-    app_id = await stub.deploy("my-app", client=aio_client)
-    assert app_id == "ap-1"
+    app = await stub.deploy("my-app", client=aio_client)
+    assert app.app_id == "ap-1"
     assert servicer.app_objects["ap-1"]["square"] == "fu-1"
 
     # Deploy to a different name, ids should change
-    app_id = await stub.deploy("my-app-xyz", client=aio_client)
-    assert app_id == "ap-2"
+    app = await stub.deploy("my-app-xyz", client=aio_client)
+    assert app.app_id == "ap-2"
     assert servicer.app_objects["ap-2"]["square"] == "fu-2"
 
 
