@@ -74,6 +74,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.app_functions = {}
         self.fcidx = 0
+        self.created_secrets = 0
 
         @self.function_body
         def default_function_body(*args, **kwargs):
@@ -304,7 +305,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SecretCreate(self, stream):
         await stream.recv_message()
+        self.created_secrets += 1
         await stream.send_message(api_pb2.SecretCreateResponse(secret_id="st-123"))
+
+    async def SecretList(self, stream):
+        await stream.recv_message()
+        items = [api_pb2.SecretListItem(label=f"dummy-secret-{i}") for i in range(self.created_secrets)]
+        await stream.send_message(api_pb2.SecretListResponse(items=items))
 
     async def TaskResult(self, stream):
         request = await stream.recv_message()

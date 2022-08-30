@@ -9,7 +9,7 @@ import modal
 
 def _cli(args, env={}):
     lib_dir = pathlib.Path(modal.__file__).parent.parent
-    args = [sys.executable, "-m", "modal.cli"] + args
+    args = [sys.executable, "-m", "modal.cli.entry_point"] + args
     env = {
         **os.environ,
         **env,
