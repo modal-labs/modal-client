@@ -557,6 +557,7 @@ class _Stub:
         proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
+        _webhook_type: api_pb2.WebhookType.ValueType = api_pb2.WEBHOOK_TYPE_ASGI_APP,
     ):
         if image is None:
             image = self._get_default_image()
@@ -570,15 +571,23 @@ class _Stub:
             gpu=gpu,
             mounts=mounts,
             shared_volumes=shared_volumes,
-            webhook_config=api_pb2.WebhookConfig(
-                type=api_pb2.WEBHOOK_TYPE_ASGI_APP, wait_for_response=wait_for_response
-            ),
+            webhook_config=api_pb2.WebhookConfig(type=_webhook_type, wait_for_response=wait_for_response),
             memory=memory,
             proxy=proxy,
             retries=retries,
             concurrency_limit=concurrency_limit,
         )
         return self._add_function(function)
+
+    @decorator_with_options
+    def wsgi(
+        self,
+        wsgi_app,
+        **kwargs,
+    ):
+        """Exposes a WSGI app. For a list of arguments, see the documentation for `asgi`."""
+        asgi_decorator = self.asgi(_webhook_type=api_pb2.WEBHOOK_TYPE_WSGI_APP, **kwargs)
+        return asgi_decorator(wsgi_app)
 
     async def interactive_shell(self, cmd=None, mounts=[], secrets=[], image_ref=None, shared_volumes={}):
         """Run an interactive shell (like `bash`) within the image for this app.

@@ -1,6 +1,7 @@
 # Pins Modal dependencies installed within the container runtime.
 aiohttp==3.8.1
 aiostream==0.4.4
+asgiref==3.5.2
 certifi==2021.10.8
 cloudpickle==2.0.0
 cuda-python==11.7.1

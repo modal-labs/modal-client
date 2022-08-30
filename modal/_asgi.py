@@ -1,6 +1,8 @@
 import asyncio
 from typing import Any, Callable, Dict
 
+from asgiref.wsgi import WsgiToAsgi
+
 from modal_utils.async_utils import TaskContext
 
 
@@ -37,6 +39,11 @@ def asgi_app_wrapper(asgi_app):
                     break
 
     return fn
+
+
+def wsgi_app_wrapper(wsgi_app):
+    asgi_app = WsgiToAsgi(wsgi_app)
+    return asgi_app_wrapper(asgi_app)
 
 
 def fastAPI_function_wrapper(fn: Callable, method: str):

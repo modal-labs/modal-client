@@ -19,7 +19,7 @@ from modal_utils.async_utils import (
 )
 from modal_utils.grpc_utils import retry_transient_errors
 
-from ._asgi import asgi_app_wrapper, fastAPI_function_wrapper
+from ._asgi import asgi_app_wrapper, fastAPI_function_wrapper, wsgi_app_wrapper
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._proxy_tunnel import proxy_tunnel
 from ._serialization import deserialize, serialize
@@ -363,6 +363,10 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             # function returns an asgi_app, that we can use as a callable.
             asgi_app = function()
             function = asgi_app_wrapper(asgi_app)
+        elif container_args.function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_WSGI_APP:
+            # function returns an wsgi_app, that we can use as a callable.
+            wsgi_app = function()
+            function = wsgi_app_wrapper(wsgi_app)
         elif container_args.function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
             # function is webhook without an ASGI app. Create one for it.
             function = fastAPI_function_wrapper(function, container_args.function_def.webhook_config.method)
