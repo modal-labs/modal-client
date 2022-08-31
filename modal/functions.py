@@ -471,6 +471,10 @@ class _Function(Object, type_prefix="fu"):
         return response.function_id
 
     @property
+    def raw_f(self):
+        return self._raw_f
+
+    @property
     def tag(self):
         return self._tag
 
