@@ -187,6 +187,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def AppSetObjects(self, stream):
         request = await stream.recv_message()
+        # TODO(gongy): rename to indexed_object_ids in protobuf
         self.app_objects[request.app_id] = dict(request.object_ids)
         await stream.send_message(Empty())
 
