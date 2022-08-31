@@ -321,7 +321,6 @@ class _Function(Object, type_prefix="fu"):
         self,
         raw_f,
         image=None,
-        secret: Optional[Union[Ref, _Secret]] = None,
         secrets: Collection[Union[Ref, _Secret]] = (),
         schedule: Optional[Schedule] = None,
         is_generator=False,
@@ -349,12 +348,7 @@ class _Function(Object, type_prefix="fu"):
 
         self._raw_f = raw_f
         self._image = image
-        if secret and secrets:
-            raise InvalidError(f"Function {raw_f} has both singular `secret` and plural `secrets` attached")
-        if secret:
-            self._secrets = [secret]
-        else:
-            self._secrets = secrets
+        self._secrets = secrets
 
         if retries is not None and (not isinstance(retries, int) or retries < 0 or retries > 10):
             raise InvalidError(f"Function {raw_f} retries must be an integer between 0 and 10.")

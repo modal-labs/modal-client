@@ -76,8 +76,16 @@ class _Stub:
     _client_mount: Optional[Union[_Mount, Ref]]
     _function_mounts: Dict[str, _Mount]
     _mounts: Collection[Union[_Mount, Ref]]
+    _secrets: Collection[Union[_Secret, Ref]]
 
-    def __init__(self, name: str = None, *, mounts: Collection[Union[_Mount, Ref]] = [], **blueprint) -> None:
+    def __init__(
+        self,
+        name: str = None,
+        *,
+        mounts: Collection[Union[_Mount, Ref]] = [],
+        secrets: Collection[Union[_Secret, Ref]] = [],
+        **blueprint,
+    ) -> None:
         """Construct a new app stub, optionally with default mounts."""
 
         self._name = name
@@ -89,6 +97,7 @@ class _Stub:
         self._client_mount = None
         self._function_mounts = {}
         self._mounts = mounts
+        self._secrets = secrets
         super().__init__()
 
     @property
@@ -388,6 +397,16 @@ class _Stub:
 
         return mounts
 
+    def _get_function_secrets(
+        self, raw_f, secret: Optional[Union[_Secret, Ref]] = None, secrets: Collection[Union[_Secret, Ref]] = ()
+    ):
+        if secret and secrets:
+            raise InvalidError(f"Function {raw_f} has both singular `secret` and plural `secrets` attached")
+        if secret:
+            return [secret, *self._secrets]
+        else:
+            return [*secrets, *self._secrets]
+
     def _add_function(self, function):
         if function.tag in self._blueprint:
             old_function = self._blueprint[function.tag]
@@ -427,10 +446,10 @@ class _Stub:
         if image is None:
             image = self._get_default_image()
         mounts = [*self._get_function_mounts(raw_f), *mounts]
+        secrets = self._get_function_secrets(raw_f, secret, secrets)
         function = _Function(
             raw_f,
             image=image,
-            secret=secret,
             secrets=secrets,
             schedule=schedule,
             is_generator=False,
@@ -470,10 +489,10 @@ class _Stub:
         if image is None:
             image = self._get_default_image()
         mounts = [*self._get_function_mounts(raw_f), *mounts]
+        secrets = self._get_function_secrets(raw_f, secret, secrets)
         function = _Function(
             raw_f,
             image=image,
-            secret=secret,
             secrets=secrets,
             is_generator=True,
             gpu=gpu,
@@ -520,10 +539,10 @@ class _Stub:
         if image is None:
             image = self._get_default_image()
         mounts = [*self._get_function_mounts(raw_f), *mounts]
+        secrets = self._get_function_secrets(raw_f, secret, secrets)
         function = _Function(
             raw_f,
             image=image,
-            secret=secret,
             secrets=secrets,
             is_generator=True,
             gpu=gpu,
@@ -562,10 +581,10 @@ class _Stub:
         if image is None:
             image = self._get_default_image()
         mounts = [*self._get_function_mounts(asgi_app), *mounts]
+        secrets = self._get_function_secrets(asgi_app, secret, secrets)
         function = _Function(
             asgi_app,
             image=image,
-            secret=secret,
             secrets=secrets,
             is_generator=True,
             gpu=gpu,
