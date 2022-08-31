@@ -32,7 +32,7 @@ async def _lookup(
     response = await client.stub.AppLookupObject(request)
     if not response.object_id:
         raise NotFoundError(response.error_message)
-    obj = Object.from_id(response.object_id, client)
+    obj = Object._from_id(response.object_id, client)
     if isinstance(obj, _Function):
         # TODO(erikbern): treating this as a special case right now, but we should generalize it
         obj.initialize_from_proto(response.function)
@@ -154,7 +154,7 @@ class _App:
                         f"Tried creating an object using existing id {existing_object_id} but it has id {object_id}"
                     )
 
-            created_obj = Object.from_id(object_id, self.client)
+            created_obj = Object._from_id(object_id, self.client)
 
         self._local_uuid_to_object[obj.local_uuid] = created_obj
         return created_obj
@@ -226,7 +226,7 @@ class _App:
         req = api_pb2.AppGetObjectsRequest(app_id=app_id, task_id=task_id)
         resp = await self._client.stub.AppGetObjects(req)
         for item in resp.items:
-            obj = Object.from_id(item.object_id, self._client)
+            obj = Object._from_id(item.object_id, self._client)
             if isinstance(obj, _Function):
                 # TODO(erikbern): treating this as a special case right now, but we should generalize it
                 obj.initialize_from_proto(item.function)

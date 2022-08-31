@@ -1,11 +1,13 @@
 import uuid
-from typing import Awaitable, Callable, Optional
+from typing import Awaitable, Callable, Optional, Type, TypeVar
 
 from modal_proto import api_pb2
 
 from ._object_meta import ObjectMeta
 from .client import _Client
 from .exception import InvalidError, NotFoundError
+
+T = TypeVar("T")
 
 
 class Object(metaclass=ObjectMeta):
@@ -30,7 +32,7 @@ class Object(metaclass=ObjectMeta):
         raise NotImplementedError(f"Object factory of class {type(self)} has no load method")
 
     @staticmethod
-    def from_id(object_id, client):
+    def _from_id(object_id, client):
         parts = object_id.split("-")
         if len(parts) != 2:
             raise InvalidError(f"Object id {object_id} has no dash in it")
@@ -41,6 +43,11 @@ class Object(metaclass=ObjectMeta):
         obj = Object.__new__(object_cls)
         Object.__init__(obj, client, object_id=object_id)
         return obj
+
+    @classmethod
+    async def from_id(cls: Type[T], object_id: str) -> T:
+        client = await _Client.from_env()
+        return Object._from_id(object_id, client)
 
     @property
     def object_id(self):

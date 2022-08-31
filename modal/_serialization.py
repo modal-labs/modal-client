@@ -28,7 +28,7 @@ class Unpickler(pickle.Unpickler):
 
     def persistent_load(self, pid):
         object_id = pid
-        return Object.from_id(object_id, self.client)
+        return Object._from_id(object_id, self.client)
 
 
 def serialize(obj):
