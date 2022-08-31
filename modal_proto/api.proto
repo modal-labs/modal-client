@@ -146,7 +146,7 @@ message AppSetObjectsRequest {
   // TODO(gongy): rename to indexed_object_ids
   map<string, string> object_ids = 2;
   string client_id = 3;
-  // repeated string unindexed_object_ids = 4;
+  repeated string unindexed_object_ids = 4;
 }
 
 message BaseImage {

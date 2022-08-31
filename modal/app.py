@@ -175,11 +175,17 @@ class _App:
         # Create the app (and send a list of all tagged obs)
         # TODO(erikbern): we should delete objects from a previous version that are no longer needed
         # We just delete them from the app, but the actual objects will stay around
-        object_ids = {tag: obj.object_id for tag, obj in self._tag_to_object.items()}
+        indexed_object_ids = {tag: obj.object_id for tag, obj in self._tag_to_object.items()}
+        unindexed_object_ids = list(
+            set(obj.object_id for obj in self._local_uuid_to_object.values())
+            - set(obj.object_id for obj in self._tag_to_object.values())
+        )
         req_set = api_pb2.AppSetObjectsRequest(
             app_id=self._app_id,
-            object_ids=object_ids,
             client_id=self._client.client_id,
+            # TODO(gongy): rename to indexed_object_ids in protobuf
+            object_ids=indexed_object_ids,
+            unindexed_object_ids=unindexed_object_ids,
         )
         await self._client.stub.AppSetObjects(req_set)
 
