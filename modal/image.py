@@ -310,7 +310,7 @@ def get_client_requirements_path():
     return os.path.join(modal_path, "requirements.txt")
 
 
-def _DockerhubImage(tag=None):
+def _DockerhubImage(tag: str, setup_commands: List[str] = []):
     """
     Build a Modal image from a pre-existing image on Docker Hub.
 
@@ -319,12 +319,24 @@ def _DockerhubImage(tag=None):
     - Python 3.7 or above is present, and is available as `python`.
     - `pip` is installed correctly.
     - The image is built for the `linux/amd64` platform.
+
+    You can use the `setup_commands` argument to run any
+    commands in the image before Modal is installed.
+    This might be useful if Python or pip is not installed.
+    For instance:
+    ```python
+    modal.DockerhubImage(
+        "gisops/valhalla:latest",
+        setup_commands=["apt-get update", "apt-get install -y python3-pip"]
+    )
+    ```
     """
 
     requirements_path = get_client_requirements_path()
 
     dockerfile_commands = [
         f"FROM {tag}",
+        *(f"RUN {cmd}" for cmd in setup_commands),
         "COPY /modal_requirements.txt /modal_requirements.txt",
         "RUN pip install --upgrade pip",
         "RUN pip install -r /modal_requirements.txt",
