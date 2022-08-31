@@ -557,7 +557,7 @@ class _Stub:
         proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
-        _webhook_type: api_pb2.WebhookType.ValueType = api_pb2.WEBHOOK_TYPE_ASGI_APP,
+        _webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
     ):
         if image is None:
             image = self._get_default_image()
