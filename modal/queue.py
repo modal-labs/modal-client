@@ -8,23 +8,14 @@ from modal_utils.grpc_utils import retry_transient_errors
 
 from ._serialization import deserialize, serialize
 from .config import logger
-from .object import Object
+from .object import Handle, Provider
 
 
-class _Queue(Object, type_prefix="qu"):
+class _QueueHandle(Handle, type_prefix="qu"):
     """A distributed, FIFO Queue available to Modal apps.
 
     The queue can contain any object serializable by `cloudpickle`.
     """
-
-    def __init__(self):
-        super().__init__()
-
-    async def _load(self, client, app_id, loader, existing_queue_id):
-        request = api_pb2.QueueCreateRequest(app_id=app_id, existing_queue_id=existing_queue_id)
-        response = await client.stub.QueueCreate(request)
-        logger.debug("Created queue with id %s" % response.queue_id)
-        return response.queue_id
 
     async def _get(self, block, timeout, n_values):
         while timeout is None or timeout > 0:
@@ -67,6 +58,17 @@ class _Queue(Object, type_prefix="qu"):
             idempotency_key=str(uuid.uuid4()),
         )
         await retry_transient_errors(self._client.stub.QueuePut, request)
+
+
+QueueHandle, AioQueueHandle = synchronize_apis(_QueueHandle)
+
+
+class _Queue(Provider[_QueueHandle]):
+    async def _load(self, client, app_id, loader, existing_object_id):
+        request = api_pb2.QueueCreateRequest(app_id=app_id, existing_queue_id=existing_object_id)
+        response = await client.stub.QueueCreate(request)
+        logger.debug("Created queue with id %s" % response.queue_id)
+        return _QueueHandle(client, response.queue_id)
 
 
 Queue, AioQueue = synchronize_apis(_Queue)

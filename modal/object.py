@@ -1,5 +1,5 @@
 import uuid
-from typing import Awaitable, Callable, Optional, Type, TypeVar
+from typing import Awaitable, Callable, Generic, Optional, Type, TypeVar
 
 from modal_proto import api_pb2
 
@@ -10,7 +10,7 @@ from .exception import InvalidError, NotFoundError
 T = TypeVar("T")
 
 
-class Object(metaclass=ObjectMeta):
+class Handle(metaclass=ObjectMeta):
     """The shared base class of any synced/distributed object in Modal.
 
     Examples of objects include Modal primitives like Images and Functions, as
@@ -20,16 +20,9 @@ class Object(metaclass=ObjectMeta):
     def __init__(self, client=None, object_id=None):
         self._client = client
         self._object_id = object_id
-        self._local_uuid = str(uuid.uuid4())
 
-    async def _load(
-        self,
-        client: _Client,
-        app_id: str,
-        loader: Callable[["Object"], Awaitable[str]],
-        existing_object_id: Optional[str] = None,
-    ) -> str:
-        raise NotImplementedError(f"Object factory of class {type(self)} has no load method")
+    def _get_created_message(self) -> Optional[str]:
+        return None
 
     @staticmethod
     def _from_id(object_id, client):
@@ -40,27 +33,32 @@ class Object(metaclass=ObjectMeta):
         if prefix not in ObjectMeta.prefix_to_type:
             raise InvalidError(f"Object prefix {prefix} does not correspond to a type")
         object_cls = ObjectMeta.prefix_to_type[prefix]
-        obj = Object.__new__(object_cls)
-        Object.__init__(obj, client, object_id=object_id)
+        obj = Handle.__new__(object_cls)
+        Handle.__init__(obj, client, object_id=object_id)
         return obj
 
     @classmethod
     async def from_id(cls: Type[T], object_id: str) -> T:
         client = await _Client.from_env()
-        return Object._from_id(object_id, client)
+        return Handle._from_id(object_id, client)
 
     @property
     def object_id(self):
         return self._object_id
+
+
+H = TypeVar("H")
+
+
+class Provider(Generic[H]):
+    def __init__(self):
+        self._local_uuid = str(uuid.uuid4())
 
     @property
     def local_uuid(self):
         return self._local_uuid
 
     def _get_creating_message(self) -> Optional[str]:
-        return None
-
-    def _get_created_message(self) -> Optional[str]:
         return None
 
     async def persist(self, label: str):
@@ -85,12 +83,21 @@ class Object(metaclass=ObjectMeta):
         """
         return PersistedRef(label, definition=self)
 
+    async def _load(
+        self,
+        client: _Client,
+        app_id: str,
+        loader: Callable[["Provider"], Awaitable[str]],
+        existing_object_id: Optional[str] = None,
+    ) -> H:
+        raise NotImplementedError(f"Object factory of class {type(self)} has no load method")
 
-class Ref(Object):
+
+class Ref(Provider[H]):
     pass
 
 
-class RemoteRef(Ref):
+class RemoteRef(Ref[H]):
     def __init__(
         self,
         app_name: str,
@@ -103,7 +110,7 @@ class RemoteRef(Ref):
         super().__init__()
 
 
-class LocalRef(Ref):
+class LocalRef(Ref[H]):
     def __init__(self, tag: str):
         self.tag = tag
         super().__init__()
@@ -112,8 +119,8 @@ class LocalRef(Ref):
         raise NotFoundError(f"Stub has no function named {self.tag}.")
 
 
-class PersistedRef(Ref):
-    def __init__(self, app_name: str, definition: Object):
+class PersistedRef(Ref[H]):
+    def __init__(self, app_name: str, definition: H):
         self.app_name = app_name
         self.definition = definition
         super().__init__()

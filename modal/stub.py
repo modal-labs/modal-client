@@ -18,10 +18,10 @@ from .app import _App, container_app, is_local
 from .client import _Client
 from .config import config, logger
 from .exception import InvalidError
-from .functions import _Function
+from .functions import _Function, _FunctionHandle
 from .image import _DebianSlim, _Image
 from .mount import _create_client_mount, _Mount, client_mount_name
-from .object import LocalRef, Object, Ref, RemoteRef
+from .object import LocalRef, Provider, Ref, RemoteRef
 from .rate_limit import RateLimit
 from .schedule import Schedule
 from .secret import _Secret
@@ -72,11 +72,12 @@ class _Stub:
 
     _name: str
     _description: str
-    _blueprint: Dict[str, Object]
+    _blueprint: Dict[str, Provider]
     _client_mount: Optional[Union[_Mount, Ref]]
     _function_mounts: Dict[str, _Mount]
     _mounts: Collection[Union[_Mount, Ref]]
     _secrets: Collection[Union[_Secret, Ref]]
+    _function_handles: Dict[str, _FunctionHandle]
 
     def __init__(
         self,
@@ -98,6 +99,7 @@ class _Stub:
         self._function_mounts = {}
         self._mounts = mounts
         self._secrets = secrets
+        self._function_handles = {}
         super().__init__()
 
     @property
@@ -117,7 +119,7 @@ class _Stub:
         # Deprecated?
         return LocalRef(tag)
 
-    def __setitem__(self, tag: str, obj: Object):
+    def __setitem__(self, tag: str, obj: Provider):
         # Deprecated ?
         self._blueprint[tag] = obj
 
@@ -126,7 +128,7 @@ class _Stub:
         # Return a reference to an object that will be created in the future
         return LocalRef(tag)
 
-    def __setattr__(self, tag: str, obj: Object):
+    def __setattr__(self, tag: str, obj: Provider):
         # Note that only attributes defined in __annotations__ are set on the object itself,
         # everything else is registered on the blueprint
         if tag in self.__annotations__:
@@ -160,12 +162,10 @@ class _Stub:
                 #
                 # Instead we load the image in App.init_container(), and this allows
                 # us to retrieve its object ID from cache here.
-                assert _default_image.object_id is None
                 image = container_app.load_cached(_default_image)
 
                 # Check to make sure internal invariants are upheld.
                 assert image is not None, "fatal: default image should be loaded in App.init_container()"
-                assert image.object_id is not None, "fatal: loaded image should have object_id"
 
         return container_app._is_inside(image)
 
@@ -201,6 +201,10 @@ class _Stub:
                     await app.create_all_objects(progress)
                 progress.label = step_completed("Created objects.")
                 output_mgr.print_if_visible(progress)
+
+                # Update all functions client-side to point to the running app
+                for tag, obj in self._function_handles.items():
+                    obj.set_local_app(app)
 
                 # Cancel logs loop after creating objects for a deployment.
                 # TODO: we can get rid of this once we have 1) a way to separate builder
@@ -407,7 +411,7 @@ class _Stub:
         else:
             return [*secrets, *self._secrets]
 
-    def _add_function(self, function):
+    def _add_function(self, function: _Function) -> _FunctionHandle:
         if function.tag in self._blueprint:
             old_function = self._blueprint[function.tag]
             if isinstance(old_function, _Function):
@@ -419,7 +423,14 @@ class _Stub:
             else:
                 logger.warning(f"Warning: tag {function.tag} exists but is overriden by function")
         self._blueprint[function.tag] = function
-        return function
+
+        # We now need to create an actual handle.
+        # This is a bit weird since the object isn't actually created yet,
+        # but functions are weird and live and the global scope
+        # These will be set with the correct object id when the app starts.
+        function_handle = _FunctionHandle(function)
+        self._function_handles[function.tag] = function_handle
+        return function_handle
 
     @decorator_with_options
     def function(
@@ -441,7 +452,7 @@ class _Stub:
         proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
-    ) -> _Function:  # Function object - callable as a regular function within a Modal app
+    ) -> _FunctionHandle:  # Function object - callable as a regular function within a Modal app
         """Decorator to register a new Modal function with this stub."""
         if image is None:
             image = self._get_default_image()
@@ -484,7 +495,7 @@ class _Stub:
         proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
-    ) -> _Function:
+    ) -> _FunctionHandle:
         """Decorator similar to `@modal.function`, but it wraps Python generators."""
         if image is None:
             image = self._get_default_image()

@@ -10,12 +10,23 @@ from modal_utils.grpc_utils import retry_transient_errors
 
 from .config import config, logger
 from .exception import InvalidError, NotFoundError, RemoteError
-from .object import Object, ref
+from .object import Handle, Provider, ref
 from .secret import _Secret
 from .version import __version__
 
 
-class _Image(Object, type_prefix="im"):
+class _ImageHandle(Handle, type_prefix="im"):
+    def _is_inside(self) -> bool:
+        """Returns whether this container is active or not.
+
+        This is not meant to be called directly: see app.is_inside(image)
+        """
+        env_image_id = config.get("image_id")
+        logger.debug(f"Image._is_inside(): env_image_id={env_image_id} self.object_id={self.object_id}")
+        return self.object_id == env_image_id
+
+
+class _Image(Provider[_ImageHandle]):
     """Base class for container images to run functions in.
 
     Do not construct this class directly; instead use `modal.DebianSlim`,
@@ -30,7 +41,7 @@ class _Image(Object, type_prefix="im"):
         secrets=[],
         version=None,
         ref=None,
-    ) -> None:
+    ):
         if ref and (base_images or dockerfile_commands or context_files):
             raise InvalidError("No other arguments can be provided when initializing an image from a ref.")
         if not ref and not dockerfile_commands:
@@ -46,7 +57,8 @@ class _Image(Object, type_prefix="im"):
 
     async def _load(self, client, app_id, loader, existing_image_id):
         if self._ref:
-            return await loader(self._ref)
+            image_id = await loader(self._ref)
+            return _ImageHandle._from_id(image_id, client)
 
         # Recursively build base images
         base_image_ids: List[str] = []
@@ -105,16 +117,7 @@ class _Image(Object, type_prefix="im"):
             else:
                 raise RemoteError("Unknown status %s!" % response.result.status)
 
-        return image_id
-
-    def _is_inside(self) -> bool:
-        """Returns whether this container is active or not.
-
-        This is not meant to be called directly: see app.is_inside(image)
-        """
-        env_image_id = config.get("image_id")
-        logger.debug(f"Image._is_inside(): env_image_id={env_image_id} self.object_id={self.object_id}")
-        return self.object_id == env_image_id
+        return _ImageHandle(client, image_id)
 
     def extend(self, **kwargs) -> "_Image":
         """Extend an image (named "base") with additional options or commands.
@@ -424,8 +427,9 @@ class _Conda(_Image):
         return self.extend(dockerfile_commands=dockerfile_commands, context_files=context_files)
 
 
+synchronize_apis(_ImageHandle)
+Image, AioImage = synchronize_apis(_Image)
 Conda, AioConda = synchronize_apis(_Conda)
 DebianSlim, AioDebianSlim = synchronize_apis(_DebianSlim)
 DockerhubImage, AioDockerhubImage = synchronize_apis(_DockerhubImage)
 DockerfileImage, AioDockerfileImage = synchronize_apis(_DockerfileImage)
-Image, AioImage = synchronize_apis(_Image)

@@ -17,7 +17,7 @@ from modal_utils.package_utils import get_module_mount_info, module_mount_condit
 from ._blob_utils import FileUploadSpec, get_file_upload_spec
 from .config import logger
 from .exception import InvalidError
-from .object import Object
+from .object import Handle, Provider
 from .version import __version__
 
 
@@ -25,7 +25,20 @@ def client_mount_name():
     return f"modal-client-mount-{__version__}"
 
 
-class _Mount(Object, type_prefix="mo"):
+class _MountHandle(Handle, type_prefix="mo"):
+    def __init__(self, local_dir=None, local_file=None, client=None, object_id=None):
+        self._local_dir = local_dir
+        self._local_file = local_file
+        super().__init__(client=client, object_id=object_id)
+
+    def _get_created_message(self):
+        label = getattr(self, "_local_dir", None) or getattr(self, "_local_file", None)
+        if label is None:
+            return None
+        return f"Mounted {label}."
+
+
+class _Mount(Provider[_MountHandle]):
     """Create a mount for a local directory or file that can be attached
     to one or more Modal functions.
 
@@ -78,12 +91,6 @@ class _Mount(Object, type_prefix="mo"):
         if label is None:
             return None
         return f"Mounting {label}..."
-
-    def _get_created_message(self):
-        label = getattr(self, "_local_dir", None) or getattr(self, "_local_file", None)
-        if label is None:
-            return None
-        return f"Mounted {label}."
 
     async def _get_files(self):
         if self._local_file:
@@ -164,7 +171,7 @@ class _Mount(Object, type_prefix="mo"):
         resp = await retry_transient_errors(client.stub.MountBuild, req, base_delay=1)
 
         logger.debug(f"Uploaded {len(uploaded_hashes)}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
-        return resp.mount_id
+        return _MountHandle(self._local_dir, self._local_file, client, resp.mount_id)
 
 
 Mount, AioMount = synchronize_apis(_Mount)

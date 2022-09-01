@@ -49,7 +49,7 @@ def raw_terminal():
 
 
 async def _pty(
-    cmd: Optional[str], queue: modal.queue._Queue, winsz: Optional[Tuple[int, int]], term_env: dict
+    cmd: Optional[str], queue: modal.queue._QueueHandle, winsz: Optional[Tuple[int, int]], term_env: dict
 ):  # queue is an AioQueue, but mypy doesn't like that
     import pty
     import threading

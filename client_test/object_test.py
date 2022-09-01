@@ -9,7 +9,7 @@ async def test_async_factory(servicer, client):
     stub = AioStub()
     stub["my_factory"] = AioQueue()
     async with stub.run(client=client) as running_app:
-        assert isinstance(running_app["my_factory"], AioQueue)
+        # assert isinstance(running_app["my_factory"], AioQueue)  # TODO(erikbern(): is a handle now
         assert running_app["my_factory"].object_id == "qu-1"
 
 

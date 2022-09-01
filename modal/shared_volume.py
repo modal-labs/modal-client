@@ -2,10 +2,18 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 from modal_utils.grpc_utils import retry_transient_errors
 
-from .object import Object
+from .object import Handle, Provider
 
 
-class _SharedVolume(Object, type_prefix="sv"):
+class _SharedVolumeHandle(Handle, type_prefix="sv"):
+    def _get_created_message(self) -> str:
+        return "Created shared volume."
+
+
+synchronize_apis(_SharedVolumeHandle)
+
+
+class _SharedVolume(Provider[_SharedVolumeHandle]):
     """A shared, writable file system accessible by one or more Modal functions.
 
     By attaching this file system as a mount to one or more functions, they can
@@ -36,9 +44,6 @@ class _SharedVolume(Object, type_prefix="sv"):
     def _get_creating_message(self) -> str:
         return "Creating shared volume..."
 
-    def _get_created_message(self) -> str:
-        return "Created shared volume."
-
     async def _load(self, client, app_id, loader, existing_shared_volume_id):
         if existing_shared_volume_id:
             # Volume already exists; do nothing.
@@ -46,7 +51,7 @@ class _SharedVolume(Object, type_prefix="sv"):
 
         req = api_pb2.SharedVolumeCreateRequest(app_id=app_id)
         resp = await retry_transient_errors(client.stub.SharedVolumeCreate, req)
-        return resp.shared_volume_id
+        return _SharedVolumeHandle(client, resp.shared_volume_id)
 
 
 SharedVolume, AioSharedVolume = synchronize_apis(_SharedVolume)

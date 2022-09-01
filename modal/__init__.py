@@ -3,8 +3,8 @@ from .dict import Dict
 from .functions import Function
 from .image import Conda, DebianSlim, DockerfileImage, DockerhubImage, Image
 from .mount import Mount, create_package_mount, create_package_mounts
-from .object import Object, ref
-from .proxy import Proxy
+from .object import ref
+from .proxy import *  # noqa
 from .queue import Queue
 from .rate_limit import RateLimit
 from .schedule import Cron, Period
@@ -25,9 +25,7 @@ __all__ = [
     "Function",
     "Image",
     "Mount",
-    "Object",
     "Period",
-    "Proxy",
     "Queue",
     "RateLimit",
     "Secret",

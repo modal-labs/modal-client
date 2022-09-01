@@ -27,7 +27,7 @@ from .app import _App
 from .client import Client, _Client
 from .config import logger
 from .exception import InvalidError
-from .functions import AioFunction, Function
+from .functions import AioFunctionHandle, FunctionHandle
 
 
 def _path_to_function(module_name, function_name):
@@ -352,7 +352,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             function_context.notify_task_failure(exc)
             return
 
-        if isinstance(imported_function, (Function, AioFunction)):
+        if isinstance(imported_function, (FunctionHandle, AioFunctionHandle)):
             # We want the internal type of this, not the external
             _function_proxy = synchronizer._translate_in(imported_function)
             function = _function_proxy.get_raw_f()

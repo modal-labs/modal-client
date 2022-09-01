@@ -13,7 +13,6 @@ from .image import (
     AioImage,
 )
 from .mount import AioMount
-from .proxy import AioProxy
 from .queue import AioQueue
 from .secret import AioSecret
 from .stub import AioStub
@@ -27,7 +26,6 @@ __all__ = [
     "AioDockerhubImage",
     "AioImage",
     "AioMount",
-    "AioProxy",
     "AioQueue",
     "AioSecret",
     "AioStub",

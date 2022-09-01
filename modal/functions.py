@@ -4,7 +4,7 @@ import time
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Collection, Dict, Optional, Union
+from typing import Any, Callable, Collection, Dict, Optional, Tuple, Union
 
 from aiostream import pipe, stream
 from grpclib import GRPCError, Status
@@ -25,9 +25,10 @@ from ._blob_utils import (
 )
 from ._function_utils import FunctionInfo
 from ._serialization import deserialize, serialize
+from .client import _Client
 from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError
 from .mount import _Mount
-from .object import Object, Ref, RemoteRef
+from .object import Handle, Provider, Ref, RemoteRef
 from .rate_limit import RateLimit
 from .schedule import Schedule
 from .secret import _Secret
@@ -177,7 +178,7 @@ class Invocation:
 MAP_INVOCATION_CHUNK_SIZE = 100
 
 
-class _FunctionCall(Object, type_prefix="fc"):
+class _FunctionCall(Handle, type_prefix="fc"):
     """A reference to an executed function call
 
     Constructed using `.submit(...)` on a Modal function with the same
@@ -307,74 +308,20 @@ async def map_invocation(function_id, input_stream, kwargs, client, is_generator
                 yield response.value
 
 
-class _Function(Object, type_prefix="fu"):
-    """Functions are the basic units of serverless execution on Modal.
-
-    Generally, you will not construct a `Function` directly. Instead, use the
-    `@stub.function` decorator on the `Stub` object for your application.
-    """
-
-    # TODO: more type annotations
-    _secrets: Collection[Union[Ref, _Secret]]
-
-    def __init__(
-        self,
-        raw_f,
-        image=None,
-        secrets: Collection[Union[Ref, _Secret]] = (),
-        schedule: Optional[Schedule] = None,
-        is_generator=False,
-        gpu: bool = False,
-        rate_limit: Optional[RateLimit] = None,
-        # TODO: maybe break this out into a separate decorator for notebooks.
-        serialized: bool = False,
-        mounts: Collection[Union[Ref, _Mount]] = (),
-        shared_volumes: Dict[str, Union[_SharedVolume, Ref]] = {},
-        webhook_config: Optional[api_pb2.WebhookConfig] = None,
-        memory: Optional[int] = None,
-        proxy: Optional[Ref] = None,
-        retries: Optional[int] = None,
-        concurrency_limit: Optional[int] = None,
-    ) -> None:
-        """mdmd:hidden"""
-        assert callable(raw_f)
-        self._info = FunctionInfo(raw_f, serialized)
-        if schedule is not None:
-            if not self._info.is_nullary():
-                raise InvalidError(
-                    f"Function {raw_f} has a schedule, so it needs to support calling it with no arguments"
-                )
-        # assert not synchronizer.is_synchronized(image)
-
-        self._raw_f = raw_f
-        self._image = image
-        self._secrets = secrets
-
-        if retries is not None and (not isinstance(retries, int) or retries < 0 or retries > 10):
-            raise InvalidError(f"Function {raw_f} retries must be an integer between 0 and 10.")
-
-        self._schedule = schedule
-        self._is_generator = is_generator
-        self._gpu = gpu
-        self._rate_limit = rate_limit
-        self._mounts = mounts
-        self._shared_volumes = shared_volumes
-        self._webhook_config = webhook_config
-        self._web_url = None
-        self._memory = memory
-        self._proxy = proxy
-        self._retries = retries
-        self._concurrency_limit = concurrency_limit
+class _FunctionHandle(Handle, type_prefix="fu"):
+    def __init__(self, function, web_url=None, client=None, object_id=None):
         self._local_app = None
-        self._local_object_id = None
-        self._tag = self._info.get_tag()
-        super().__init__()
+
+        # These are some stupid lines, let's rethink
+        self._tag = function._tag
+        self._is_generator = function._is_generator
+        self._raw_f = function._raw_f
+        self._web_url = web_url
+
+        super().__init__(client=client, object_id=object_id)
 
     def initialize_from_proto(self, function: api_pb2.Function):
         self._is_generator = function.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
-
-    def _get_creating_message(self) -> str:
-        return f"Creating {self._tag}..."
 
     def _get_created_message(self) -> str:
         if self._web_url is not None:
@@ -382,120 +329,18 @@ class _Function(Object, type_prefix="fu"):
             return f"Created {self._tag} => [magenta underline]{self._web_url}[/magenta underline]"
         return f"Created {self._tag}."
 
-    async def _load(self, client, app_id, loader, existing_function_id):
-        if self._proxy:
-            proxy_id = await loader(self._proxy)
-            # HACK: remove this once we stop using ssh tunnels for this.
-            if self._image:
-                self._image = self._image.run_commands(["apt-get install -yq ssh"])
-        else:
-            proxy_id = None
-
-        # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
-        if self._image is not None:
-            image_id = await loader(self._image)
-        else:
-            image_id = None  # Happens if it's a notebook function
-        secret_ids = []
-        for secret in self._secrets:
-            try:
-                secret_id = await loader(secret)
-            except NotFoundError as ex:
-                if isinstance(secret, RemoteRef) and secret.tag is None:
-                    msg = "Secret {!r} was not found".format(secret.app_name)
-                else:
-                    msg = str(ex)
-                msg += ". You can add secrets to your account at https://modal.com/secrets"
-                raise NotFoundError(msg)
-            secret_ids.append(secret_id)
-
-        mount_ids = []
-        for mount in self._mounts:
-            mount_ids.append(await loader(mount))
-
-        if not isinstance(self._shared_volumes, dict):
-            raise InvalidError("shared_volumes must be a dict[str, SharedVolume] where the keys are paths")
-        shared_volume_mounts = []
-        # Relies on dicts being ordered (true as of Python 3.6).
-        for path, shared_volume in self._shared_volumes.items():
-            # TODO: check paths client-side on Windows as well.
-            if platform.system() != "Windows" and Path(path).resolve() != Path(path):
-                raise InvalidError("Shared volume remote directory must be an absolute path.")
-
-            shared_volume_mounts.append(
-                api_pb2.SharedVolumeMount(mount_path=path, shared_volume_id=await loader(shared_volume))
-            )
-
-        if self._is_generator:
-            function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
-        else:
-            function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
-
-        rate_limit = self._rate_limit._to_proto() if self._rate_limit else None
-
-        # Create function remotely
-        function_definition = api_pb2.Function(
-            module_name=self._info.module_name,
-            function_name=self._info.function_name,
-            mount_ids=mount_ids,
-            secret_ids=secret_ids,
-            image_id=image_id,
-            definition_type=self._info.definition_type,
-            function_serialized=self._info.function_serialized,
-            function_type=function_type,
-            resources=api_pb2.Resources(gpu=self._gpu, memory=self._memory),
-            rate_limit=rate_limit,
-            webhook_config=self._webhook_config,
-            shared_volume_mounts=shared_volume_mounts,
-            proxy_id=proxy_id,
-            retry_policy=api_pb2.FunctionRetryPolicy(retries=self._retries),
-            concurrency_limit=self._concurrency_limit,
-        )
-        request = api_pb2.FunctionCreateRequest(
-            app_id=app_id,
-            function=function_definition,
-            schedule=self._schedule.proto_message if self._schedule is not None else None,
-            existing_function_id=existing_function_id,
-        )
-        try:
-            response = await client.stub.FunctionCreate(request)
-        except GRPCError as exc:
-            if exc.status == Status.INVALID_ARGUMENT:
-                raise InvalidError(exc.message)
-            raise
-
-        if response.web_url:
-            # TODO(erikbern): we really shouldn't mutate the object here
-            self._web_url = response.web_url
-
-        return response.function_id
-
-    @property
-    def raw_f(self):
-        return self._raw_f
-
-    @property
-    def tag(self):
-        return self._tag
-
-    @property
-    def web_url(self):
-        # TODO(erikbern): it would be much better if this gets written to the "live" object,
-        # and then we look it up from the app.
-        return self._web_url
-
     def set_local_app(self, app):
         """mdmd:hidden"""
         self._local_app = app
 
-    def _get_context(self):
+    def _get_live_handle(self) -> "_FunctionHandle":
         # Functions are sort of "special" in the sense that they are just global objects not attached to an app
         # the way other objects are. So in order to work with functions, we need to look up the running app
         # in runtime. Either we're inside a container, in which case it's a singleton, or we're in the client,
         # in which case we can set the running app on all functions when we run the app.
         if self._client and self._object_id:
             # Can happen if this is a function loaded from a different app or something
-            return (self._client, self._object_id)
+            return self
 
         # avoid circular import
         from .app import _container_app, is_local
@@ -508,9 +353,18 @@ class _Function(Object, type_prefix="fu"):
             app = self._local_app
         else:
             app = _container_app
-        client = app.client
-        object_id = app[self._tag].object_id
-        return (client, object_id)
+        obj = app[self._tag]
+        assert isinstance(obj, _FunctionHandle)
+        return obj
+
+    def _get_context(self) -> Tuple[_Client, str]:
+        function_handle = self._get_live_handle()
+        return (function_handle._client, function_handle._object_id)
+
+    @property
+    def web_url(self):
+        function_handle = self._get_live_handle()
+        return function_handle._web_url
 
     async def _map(self, input_stream, order_outputs: bool, kwargs={}):
         if order_outputs and self._is_generator:
@@ -646,6 +500,161 @@ class _Function(Object, type_prefix="fu"):
     def get_raw_f(self) -> Callable:
         """Return the inner Python object wrapped by this function."""
         return self._raw_f
+
+
+FunctionHandle, AioFunctionHandle = synchronize_apis(_FunctionHandle)
+
+
+class _Function(Provider[_FunctionHandle]):
+    """Functions are the basic units of serverless execution on Modal.
+
+    Generally, you will not construct a `Function` directly. Instead, use the
+    `@stub.function` decorator on the `Stub` object for your application.
+    """
+
+    # TODO: more type annotations
+    _secrets: Collection[Union[Ref, _Secret]]
+
+    def __init__(
+        self,
+        raw_f,
+        image=None,
+        secrets: Collection[Union[Ref, _Secret]] = (),
+        schedule: Optional[Schedule] = None,
+        is_generator=False,
+        gpu: bool = False,
+        rate_limit: Optional[RateLimit] = None,
+        # TODO: maybe break this out into a separate decorator for notebooks.
+        serialized: bool = False,
+        mounts: Collection[Union[Ref, _Mount]] = (),
+        shared_volumes: Dict[str, Union[_SharedVolume, Ref]] = {},
+        webhook_config: Optional[api_pb2.WebhookConfig] = None,
+        memory: Optional[int] = None,
+        proxy: Optional[Ref] = None,
+        retries: Optional[int] = None,
+        concurrency_limit: Optional[int] = None,
+    ) -> None:
+        """mdmd:hidden"""
+        assert callable(raw_f)
+        self._info = FunctionInfo(raw_f, serialized)
+        if schedule is not None:
+            if not self._info.is_nullary():
+                raise InvalidError(
+                    f"Function {raw_f} has a schedule, so it needs to support calling it with no arguments"
+                )
+        # assert not synchronizer.is_synchronized(image)
+
+        self._raw_f = raw_f
+        self._image = image
+        self._secrets = secrets
+
+        if retries is not None and (not isinstance(retries, int) or retries < 0 or retries > 10):
+            raise InvalidError(f"Function {raw_f} retries must be an integer between 0 and 10.")
+
+        self._schedule = schedule
+        self._is_generator = is_generator
+        self._gpu = gpu
+        self._rate_limit = rate_limit
+        self._mounts = mounts
+        self._shared_volumes = shared_volumes
+        self._webhook_config = webhook_config
+        self._memory = memory
+        self._proxy = proxy
+        self._retries = retries
+        self._concurrency_limit = concurrency_limit
+        self._tag = self._info.get_tag()
+        super().__init__()
+
+    def _get_creating_message(self) -> str:
+        return f"Creating {self._tag}..."
+
+    async def _load(self, client, app_id, loader, existing_function_id):
+        if self._proxy:
+            proxy_id = await loader(self._proxy)
+            # HACK: remove this once we stop using ssh tunnels for this.
+            if self._image:
+                self._image = self._image.run_commands(["apt-get install -yq ssh"])
+        else:
+            proxy_id = None
+
+        # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
+        if self._image is not None:
+            image_id = await loader(self._image)
+        else:
+            image_id = None  # Happens if it's a notebook function
+        secret_ids = []
+        for secret in self._secrets:
+            try:
+                secret_id = await loader(secret)
+            except NotFoundError as ex:
+                if isinstance(secret, RemoteRef) and secret.tag is None:
+                    msg = "Secret {!r} was not found".format(secret.app_name)
+                else:
+                    msg = str(ex)
+                msg += ". You can add secrets to your account at https://modal.com/secrets"
+                raise NotFoundError(msg)
+            secret_ids.append(secret_id)
+
+        mount_ids = []
+        for mount in self._mounts:
+            mount_ids.append(await loader(mount))
+
+        if not isinstance(self._shared_volumes, dict):
+            raise InvalidError("shared_volumes must be a dict[str, SharedVolume] where the keys are paths")
+        shared_volume_mounts = []
+        # Relies on dicts being ordered (true as of Python 3.6).
+        for path, shared_volume in self._shared_volumes.items():
+            # TODO: check paths client-side on Windows as well.
+            if platform.system() != "Windows" and Path(path).resolve() != Path(path):
+                raise InvalidError("Shared volume remote directory must be an absolute path.")
+
+            shared_volume_mounts.append(
+                api_pb2.SharedVolumeMount(mount_path=path, shared_volume_id=await loader(shared_volume))
+            )
+
+        if self._is_generator:
+            function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
+        else:
+            function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
+
+        rate_limit = self._rate_limit._to_proto() if self._rate_limit else None
+
+        # Create function remotely
+        function_definition = api_pb2.Function(
+            module_name=self._info.module_name,
+            function_name=self._info.function_name,
+            mount_ids=mount_ids,
+            secret_ids=secret_ids,
+            image_id=image_id,
+            definition_type=self._info.definition_type,
+            function_serialized=self._info.function_serialized,
+            function_type=function_type,
+            resources=api_pb2.Resources(gpu=self._gpu, memory=self._memory),
+            rate_limit=rate_limit,
+            webhook_config=self._webhook_config,
+            shared_volume_mounts=shared_volume_mounts,
+            proxy_id=proxy_id,
+            retry_policy=api_pb2.FunctionRetryPolicy(retries=self._retries),
+            concurrency_limit=self._concurrency_limit,
+        )
+        request = api_pb2.FunctionCreateRequest(
+            app_id=app_id,
+            function=function_definition,
+            schedule=self._schedule.proto_message if self._schedule is not None else None,
+            existing_function_id=existing_function_id,
+        )
+        try:
+            response = await client.stub.FunctionCreate(request)
+        except GRPCError as exc:
+            if exc.status == Status.INVALID_ARGUMENT:
+                raise InvalidError(exc.message)
+            raise
+
+        return _FunctionHandle(self, response.web_url, client, response.function_id)
+
+    @property
+    def tag(self):
+        return self._tag
 
 
 Function, AioFunction = synchronize_apis(_Function)

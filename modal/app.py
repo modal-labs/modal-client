@@ -1,4 +1,3 @@
-import contextlib
 from typing import Dict, Optional, Union
 
 from rich.tree import Tree
@@ -10,9 +9,9 @@ from ._output import step_completed, step_progress
 from .client import _Client
 from .config import logger
 from .exception import NotFoundError
-from .functions import _Function
-from .image import _Image
-from .object import LocalRef, Object, PersistedRef, RemoteRef
+from .functions import _FunctionHandle
+from .image import _ImageHandle
+from .object import Handle, LocalRef, PersistedRef, Provider, RemoteRef
 
 
 async def _lookup(
@@ -20,7 +19,7 @@ async def _lookup(
     tag: Optional[str] = None,
     namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT,
     client: Optional[_Client] = None,
-) -> Object:
+) -> Handle:
     """Returns a handle to a tagged object in a deployment on Modal."""
     if client is None:
         client = await _Client.from_env()
@@ -32,8 +31,8 @@ async def _lookup(
     response = await client.stub.AppLookupObject(request)
     if not response.object_id:
         raise NotFoundError(response.error_message)
-    obj = Object._from_id(response.object_id, client)
-    if isinstance(obj, _Function):
+    obj = Handle._from_id(response.object_id, client)
+    if isinstance(obj, _FunctionHandle):
         # TODO(erikbern): treating this as a special case right now, but we should generalize it
         obj.initialize_from_proto(response.function)
     return obj
@@ -63,9 +62,9 @@ class _App:
     ```
     """
 
-    _tag_to_object: Dict[str, Object]
+    _tag_to_object: Dict[str, Handle]
     _tag_to_existing_id: Dict[str, str]
-    _local_uuid_to_object: Dict[str, Object]
+    _local_uuid_to_object: Dict[str, Handle]
     _client: _Client
     _app_id: str
 
@@ -74,7 +73,7 @@ class _App:
         stub,  # : _Stub,
         client: _Client,
         app_id: str,
-        tag_to_object: Optional[Dict[str, Object]] = None,
+        tag_to_object: Optional[Dict[str, Handle]] = None,
         tag_to_existing_id: Optional[Dict[str, str]] = None,
     ):
         """mdmd:hidden This is the app constructor. Users should not call this directly."""
@@ -93,20 +92,9 @@ class _App:
     def app_id(self):
         return self._app_id
 
-    @contextlib.contextmanager
-    def _progress_ctx(self, progress, obj):
-        creating_message = obj._get_creating_message()
-        if progress and creating_message:
-            step_node = progress.add(step_progress(creating_message))
-            yield
-            created_message = obj._get_created_message()
-            step_node.label = step_completed(created_message, is_substep=True)
-        else:
-            yield
-
     async def load(
-        self, obj: Object, progress: Optional[Tree] = None, existing_object_id: Optional[str] = None
-    ) -> Object:
+        self, obj: Provider, progress: Optional[Tree] = None, existing_object_id: Optional[str] = None
+    ) -> Handle:
         """Send a server request to create an object in this app, and return its ID."""
         cached_obj = self.load_cached(obj)
         if cached_obj is not None:
@@ -135,15 +123,28 @@ class _App:
                 self._tag_to_object[obj.tag] = created_obj
         else:
 
-            async def loader(obj: Object) -> str:
-                assert isinstance(obj, Object)
+            async def loader(obj: Provider) -> str:
+                assert isinstance(obj, Provider)
                 created_obj = await self.load(obj, progress=progress)
+                assert isinstance(created_obj, Handle)
                 return created_obj.object_id
 
-            with self._progress_ctx(progress, obj):
-                object_id = await obj._load(self.client, self.app_id, loader, existing_object_id)
+            # Set creating message
+            creating_message = obj._get_creating_message()
+            if progress and creating_message:
+                step_node = progress.add(step_progress(creating_message))
+            else:
+                step_node = None
 
-            if existing_object_id is not None and object_id != existing_object_id:
+            # Create object
+            created_obj = await obj._load(self.client, self.app_id, loader, existing_object_id)
+
+            # Set created message
+            if step_node:
+                created_message = created_obj._get_created_message()
+                step_node.label = step_completed(created_message, is_substep=True)
+
+            if existing_object_id is not None and created_obj.object_id != existing_object_id:
                 # TODO(erikbern): this is a very ugly fix to a problem that's on the server side.
                 # Unlike every other object, images are not assigned random ids, but rather an
                 # id given by the hash of its contents. This means we can't _force_ an image to
@@ -151,15 +152,14 @@ class _App:
                 # from "image definitions" or something like that, but that's a big project.
                 if not existing_object_id.startswith("im-"):
                     raise Exception(
-                        f"Tried creating an object using existing id {existing_object_id} but it has id {object_id}"
+                        f"Tried creating an object using existing id {existing_object_id}"
+                        f" but it has id {created_obj.object_id}"
                     )
-
-            created_obj = Object._from_id(object_id, self.client)
 
         self._local_uuid_to_object[obj.local_uuid] = created_obj
         return created_obj
 
-    def load_cached(self, obj: Object) -> Optional[Object]:
+    def load_cached(self, obj: Provider) -> Optional[Handle]:
         """Try to load a previously-loaded object, without making network requests.
 
         Returns `None` if the object has not been previously loaded.
@@ -169,7 +169,7 @@ class _App:
     async def create_all_objects(self, progress: Tree):
         """Create objects that have been defined but not created on the server."""
         for tag in self._stub._blueprint.keys():
-            obj = LocalRef(tag)
+            obj: Provider = LocalRef(tag)
             await self.load(obj, progress)
 
         # Create the app (and send a list of all tagged obs)
@@ -187,11 +187,7 @@ class _App:
             unindexed_object_ids=unindexed_object_ids,
         )
         await self._client.stub.AppSetObjects(req_set)
-
-        # Update all functions client-side to point to the running app
-        for obj in self._stub._blueprint.values():
-            if isinstance(obj, _Function):
-                obj.set_local_app(self)
+        return self._tag_to_object
 
     async def disconnect(self) -> None:
         """Tell the server to stop this app, terminating all running tasks."""
@@ -199,14 +195,14 @@ class _App:
         req_disconnect = api_pb2.AppClientDisconnectRequest(app_id=self._app_id)
         await self._client.stub.AppClientDisconnect(req_disconnect)
 
-    def __getitem__(self, tag: str) -> Object:
+    def __getitem__(self, tag: str) -> Handle:
         # Deprecated?
         return self._tag_to_object[tag]
 
-    def __getattr__(self, tag: str) -> Object:
+    def __getattr__(self, tag: str) -> Handle:
         return self._tag_to_object[tag]
 
-    def _is_inside(self, image: Union[LocalRef, _Image]) -> bool:
+    def _is_inside(self, image: Union[LocalRef, _ImageHandle]) -> bool:
         if isinstance(image, LocalRef):
             if image.tag not in self._tag_to_object:
                 # This is some other image, which could belong to some unrelated
@@ -215,7 +211,7 @@ class _App:
             app_image = self._tag_to_object[image.tag]
         else:
             app_image = image
-        assert isinstance(app_image, _Image)
+        assert isinstance(app_image, _ImageHandle)
         return app_image._is_inside()
 
     @staticmethod
@@ -231,8 +227,8 @@ class _App:
         req = api_pb2.AppGetObjectsRequest(app_id=app_id, task_id=task_id)
         resp = await self._client.stub.AppGetObjects(req)
         for item in resp.items:
-            obj = Object._from_id(item.object_id, self._client)
-            if isinstance(obj, _Function):
+            obj = Handle._from_id(item.object_id, self._client)
+            if isinstance(obj, _FunctionHandle):
                 # TODO(erikbern): treating this as a special case right now, but we should generalize it
                 obj.initialize_from_proto(item.function)
             self._tag_to_object[item.tag] = obj

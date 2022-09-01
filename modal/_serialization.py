@@ -4,7 +4,7 @@ import pickle
 import cloudpickle
 
 from .exception import InvalidError
-from .object import Object
+from .object import Handle
 
 PICKLE_PROTOCOL = 4  # Support older Python versions.
 
@@ -14,7 +14,7 @@ class Pickler(cloudpickle.Pickler):
         super().__init__(buf, protocol=PICKLE_PROTOCOL)
 
     def persistent_id(self, obj):
-        if not isinstance(obj, Object):
+        if not isinstance(obj, Handle):
             return
         if not obj.object_id:
             raise InvalidError(f"Can't serialize object {obj} which hasn't been created.")
@@ -28,7 +28,7 @@ class Unpickler(pickle.Unpickler):
 
     def persistent_load(self, pid):
         object_id = pid
-        return Object._from_id(object_id, self.client)
+        return Handle._from_id(object_id, self.client)
 
 
 def serialize(obj):
