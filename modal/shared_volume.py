@@ -47,7 +47,7 @@ class _SharedVolume(Provider[_SharedVolumeHandle]):
     async def _load(self, client, app_id, loader, existing_shared_volume_id):
         if existing_shared_volume_id:
             # Volume already exists; do nothing.
-            return existing_shared_volume_id
+            return _SharedVolumeHandle(client, existing_shared_volume_id)
 
         req = api_pb2.SharedVolumeCreateRequest(app_id=app_id)
         resp = await retry_transient_errors(client.stub.SharedVolumeCreate, req)
