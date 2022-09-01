@@ -215,6 +215,8 @@ class _Image(Object, type_prefix="im"):
         return self.extend(
             dockerfile_commands=dockerfile_commands,
             context_files=context_files,
+            # Temporary fix for https://github.com/python-poetry/install.python-poetry.org#debianubuntu
+            secrets=[_Secret({"DEB_PYTHON_INSTALL_LAYOUT": "deb"})],
         )
 
     def dockerfile_commands(
