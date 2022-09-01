@@ -183,8 +183,7 @@ class _App:
         req_set = api_pb2.AppSetObjectsRequest(
             app_id=self._app_id,
             client_id=self._client.client_id,
-            # TODO(gongy): rename to indexed_object_ids in protobuf
-            object_ids=indexed_object_ids,
+            indexed_object_ids=indexed_object_ids,
             unindexed_object_ids=unindexed_object_ids,
         )
         await self._client.stub.AppSetObjects(req_set)

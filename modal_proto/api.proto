@@ -143,8 +143,7 @@ message AppSetObjectsRequest {
   // At some point, every object should be assigned to a app/namespace when created,
   // so this method won't be necessary.
   string app_id = 1;
-  // TODO(gongy): rename to indexed_object_ids
-  map<string, string> object_ids = 2;
+  map<string, string> indexed_object_ids = 2;
   string client_id = 3;
   repeated string unindexed_object_ids = 4;
 }
