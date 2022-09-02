@@ -1,4 +1,3 @@
-import contextlib
 import socket
 import ssl
 
@@ -6,6 +5,8 @@ import certifi
 from aiohttp import ClientSession, ClientTimeout, TCPConnector
 from aiohttp.web import Application
 from aiohttp.web_runner import AppRunner, SockSite
+
+from modal_utils.async_utils import synchronizer
 
 
 def http_client_with_tls(timeout: float) -> ClientSession:
@@ -23,7 +24,7 @@ def http_client_with_tls(timeout: float) -> ClientSession:
     return ClientSession(connector=connector, timeout=ClientTimeout(total=timeout))
 
 
-@contextlib.asynccontextmanager
+@synchronizer.asynccontextmanager
 async def run_temporary_http_server(app: Application):
     # Allocates a random port, runs a server in a context manager
     # This is used in various tests

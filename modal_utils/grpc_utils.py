@@ -11,7 +11,7 @@ from grpclib.const import Cardinality
 from grpclib.exceptions import StreamTerminatedError
 from sentry_sdk import add_breadcrumb, capture_exception
 
-from .async_utils import TaskContext
+from .async_utils import TaskContext, synchronizer
 from .logger import logger
 from .server_connection import GRPCConnectionFactory
 
@@ -111,7 +111,7 @@ class ChannelPool:
     def size(self) -> int:
         return len(self._channels)
 
-    @contextlib.asynccontextmanager
+    @synchronizer.asynccontextmanager
     async def request(
         self, name: str, cardinality: Cardinality, request_type, reply_type, timeout, metadata
     ) -> AsyncIterator[Stream]:
