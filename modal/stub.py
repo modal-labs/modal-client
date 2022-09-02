@@ -125,6 +125,9 @@ class _Stub:
 
     def __getattr__(self, tag: str) -> Ref:
         assert isinstance(tag, str)
+        if tag.startswith("__"):
+            # Hacky way to avoid certain issues, e.g. pickle will try to look this up
+            raise AttributeError(f"Stub has no member {tag}")
         # Return a reference to an object that will be created in the future
         return LocalRef(tag)
 
