@@ -157,7 +157,7 @@ class _Image(Provider[_ImageHandle]):
 
         dockerfile_commands = [
             "FROM base",
-            f"RUN pip install {package_args} {find_links_arg}",
+            f"RUN python -m pip install {package_args} {find_links_arg}",
         ]
 
         return self.extend(dockerfile_commands=dockerfile_commands)
@@ -177,7 +177,7 @@ class _Image(Provider[_ImageHandle]):
         dockerfile_commands = [
             "FROM base",
             "COPY /.requirements.txt /.requirements.txt",
-            f"RUN pip install -r /.requirements.txt {find_links_arg}",
+            f"RUN python -m pip install -r /.requirements.txt {find_links_arg}",
         ]
 
         return self.extend(
@@ -197,7 +197,7 @@ class _Image(Provider[_ImageHandle]):
 
         poetry_pyproject_toml = os.path.expanduser(poetry_pyproject_toml)
 
-        dockerfile_commands = ["FROM base", "RUN pip install poetry"]
+        dockerfile_commands = ["FROM base", "RUN python -m pip install poetry"]
 
         context_files = {"/.pyproject.toml": poetry_pyproject_toml}
 
@@ -315,7 +315,7 @@ def get_client_requirements_path():
     return os.path.join(modal_path, "requirements.txt")
 
 
-def _DockerhubImage(tag: str, setup_commands: List[str] = []):
+def _DockerhubImage(tag: str, setup_commands: List[str] = [], **kwargs):
     """
     Build a Modal image from a pre-existing image on Docker Hub.
 
@@ -343,13 +343,14 @@ def _DockerhubImage(tag: str, setup_commands: List[str] = []):
         f"FROM {tag}",
         *(f"RUN {cmd}" for cmd in setup_commands),
         "COPY /modal_requirements.txt /modal_requirements.txt",
-        "RUN pip install --upgrade pip",
-        "RUN pip install -r /modal_requirements.txt",
+        "RUN python -m pip install --upgrade pip",
+        "RUN python -m pip install -r /modal_requirements.txt",
     ]
 
     return _Image(
         dockerfile_commands=dockerfile_commands,
         context_files={"/modal_requirements.txt": requirements_path},
+        **kwargs,
     )
 
 
@@ -376,8 +377,8 @@ def _DockerfileImage(path: Union[str, Path]):
     dockerfile_commands = [
         "FROM base",
         "COPY /modal_requirements.txt /modal_requirements.txt",
-        "RUN pip install --upgrade pip",
-        "RUN pip install -r /modal_requirements.txt",
+        "RUN python -m pip install --upgrade pip",
+        "RUN python -m pip install -r /modal_requirements.txt",
     ]
 
     return base_image.extend(
