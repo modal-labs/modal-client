@@ -197,7 +197,12 @@ class _Image(Provider[_ImageHandle]):
 
         poetry_pyproject_toml = os.path.expanduser(poetry_pyproject_toml)
 
-        dockerfile_commands = ["FROM base", "RUN python -m pip install poetry"]
+        dockerfile_commands = [
+            "FROM base",
+            "RUN python -m pip install poetry",
+            # See https://github.com/python-poetry/poetry/issues/3336
+            "RUN poetry config experimental.new-installer false",
+        ]
 
         context_files = {"/.pyproject.toml": poetry_pyproject_toml}
 
@@ -218,8 +223,6 @@ class _Image(Provider[_ImageHandle]):
         return self.extend(
             dockerfile_commands=dockerfile_commands,
             context_files=context_files,
-            # Temporary fix for https://github.com/python-poetry/install.python-poetry.org#debianubuntu
-            secrets=[_Secret({"DEB_PYTHON_INSTALL_LAYOUT": "deb"})],
         )
 
     def dockerfile_commands(
