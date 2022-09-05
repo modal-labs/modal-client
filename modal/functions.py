@@ -324,7 +324,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         self._is_generator = function.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
 
     def _get_created_message(self) -> str:
-        if self._web_url is not None:
+        if self._web_url:
             # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
             return f"Created {self._tag} => [magenta underline]{self._web_url}[/magenta underline]"
         return f"Created {self._tag}."
