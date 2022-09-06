@@ -10,9 +10,8 @@ from modal_utils.grpc_utils import retry_transient_errors
 
 from .config import config, logger
 from .exception import InvalidError, NotFoundError, RemoteError
-from .object import Handle, Provider, ref
+from .object import Handle, Provider
 from .secret import _Secret
-from .version import __version__
 
 
 class _ImageHandle(Handle, type_prefix="im"):
@@ -289,9 +288,21 @@ class _DebianSlim(_Image):
     def __init__(self, python_version: Optional[str] = None):
         """Construct a default Modal image based on Debian-Slim."""
         python_version = _dockerhub_python_version(python_version)
-        base_image = ref(f"debian-slim-{python_version}-{__version__}", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
 
-        super().__init__(ref=base_image)
+        requirements_path = _get_client_requirements_path()
+        dockerfile_commands = [
+            f"FROM python:{python_version}-slim-bullseye",
+            "COPY /modal_requirements.txt /modal_requirements.txt",
+            "RUN apt-get update",
+            "RUN apt-get install -y gcc gfortran build-essential",
+            "RUN pip install --upgrade pip",
+            "RUN pip install -r /modal_requirements.txt",
+        ]
+
+        super().__init__(
+            dockerfile_commands=dockerfile_commands,
+            context_files={"/modal_requirements.txt": requirements_path},
+        )
 
     def apt_install(
         self,
@@ -310,7 +321,7 @@ class _DebianSlim(_Image):
         return self.extend(dockerfile_commands=dockerfile_commands)
 
 
-def get_client_requirements_path():
+def _get_client_requirements_path():
     # Locate Modal client requirements.txt
     import modal
 
@@ -340,7 +351,7 @@ def _DockerhubImage(tag: str, setup_commands: List[str] = [], **kwargs):
     ```
     """
 
-    requirements_path = get_client_requirements_path()
+    requirements_path = _get_client_requirements_path()
 
     dockerfile_commands = [
         f"FROM {tag}",
@@ -375,7 +386,7 @@ def _DockerfileImage(path: Union[str, Path]):
 
     base_image = _Image(dockerfile_commands=base_dockerfile_commands)
 
-    requirements_path = get_client_requirements_path()
+    requirements_path = _get_client_requirements_path()
 
     dockerfile_commands = [
         "FROM base",
@@ -395,7 +406,30 @@ class _Conda(_Image):
 
     def __init__(self):
         """Construct the default base Conda image."""
-        super().__init__(ref=ref(f"conda-{__version__}", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL))
+        requirements_path = _get_client_requirements_path()
+        dockerfile_commands = [
+            "FROM conda/miniconda3",
+            "COPY /modal_requirements.txt /modal_requirements.txt",
+            "RUN conda init bash ",
+            "RUN echo $0 \\ ",
+            "&& . /root/.bashrc \\ ",
+            "&& conda activate base \\ ",
+            "&& conda info \\ ",
+            "&& conda config --add channels conda-forge \\ ",
+            "&& conda config --set channel_priority strict \\ ",
+            "&& conda install -c conda-forge mamba python=3.9 --yes ",
+            "RUN echo $0 \\ ",
+            "&& . /root/.bashrc \\ ",
+            "&& conda activate base \\ ",
+            "&& conda info \\ ",
+            "&& pip install --upgrade pip \\ ",
+            "&& pip install -r /modal_requirements.txt",
+        ]
+
+        super().__init__(
+            dockerfile_commands=dockerfile_commands,
+            context_files={"/modal_requirements.txt": requirements_path},
+        )
 
     def conda_install(
         self,
