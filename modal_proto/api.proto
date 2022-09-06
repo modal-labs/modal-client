@@ -593,6 +593,7 @@ message TaskLogsBatch {
   repeated TaskLogs items = 2;
   string entry_id = 5;
   bool app_done = 10;
+  string function_id = 11;
 }
 
 message TaskResultRequest {
