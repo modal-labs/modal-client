@@ -12,9 +12,15 @@ from .object import Handle, Provider
 
 
 class _QueueHandle(Handle, type_prefix="qu"):
-    """A distributed, FIFO Queue available to Modal apps.
+    """Handle for interacting with the contents of a `Queue`
 
-    The queue can contain any object serializable by `cloudpickle`.
+    ```python
+    stub.some_dict = modal.Queue()
+
+    if __name__ == "__main__":
+        with stub.run() as app:
+            app.some_dict.put({"some": "object"})
+    ```
     """
 
     async def _get(self, block, timeout, n_values):
@@ -64,6 +70,11 @@ QueueHandle, AioQueueHandle = synchronize_apis(_QueueHandle)
 
 
 class _Queue(Provider[_QueueHandle]):
+    """A distributed, FIFO Queue available to Modal apps.
+
+    The queue can contain any object serializable by `cloudpickle`.
+    """
+
     async def _load(self, client, app_id, loader, existing_object_id):
         request = api_pb2.QueueCreateRequest(app_id=app_id, existing_queue_id=existing_object_id)
         response = await client.stub.QueueCreate(request)

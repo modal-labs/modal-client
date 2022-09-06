@@ -432,7 +432,7 @@ def reset_container_app():
     try:
         yield
     finally:
-        _App.reset_container()
+        _App._reset_container()
 
 
 @pytest.fixture(scope="module")

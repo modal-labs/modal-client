@@ -22,7 +22,7 @@ async def test_get_files(servicer, client, tmpdir):
     stub = AioStub()
     async with stub.run(client=client) as running_app:
         m = AioMount("/", local_dir=tmpdir, condition=lambda fn: fn.endswith(".py"), recursive=True)
-        await running_app.load(m)
+        await running_app._load(m)  # TODO: is this something we want to expose?
         async for upload_spec in m._get_files():
             files[upload_spec.rel_filename] = upload_spec
 
@@ -57,7 +57,7 @@ def test_create_mount(servicer, client):
             return fn.endswith(".py")
 
         m = Mount(local_dir=local_dir, remote_dir=remote_dir, condition=condition)
-        obj = running_app.load(m)
+        obj = running_app._load(m)  # TODO: is this something we want to expose?
         assert obj.object_id == "mo-123"
         assert f"/foo/{cur_filename}" in servicer.files_name2sha
         sha256_hex = servicer.files_name2sha[f"/foo/{cur_filename}"]
@@ -70,13 +70,13 @@ def test_create_mount_file_errors(servicer, tmpdir, client):
     with stub.run(client=client) as running_app:
         m = Mount(local_dir="xyz", remote_dir="/xyz")
         with pytest.raises(FileNotFoundError):
-            running_app.load(m)
+            running_app._load(m)
 
         with open(tmpdir / "abc", "w"):
             pass
         m = Mount(local_dir=tmpdir / "abc", remote_dir="/abc")
         with pytest.raises(NotADirectoryError):
-            running_app.load(m)
+            running_app._load(m)
 
 
 def test_create_package_mount(servicer, client, test_dir):

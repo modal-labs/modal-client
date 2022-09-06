@@ -34,7 +34,7 @@ async def _lookup(
     obj = Handle._from_id(response.object_id, client)
     if isinstance(obj, _FunctionHandle):
         # TODO(erikbern): treating this as a special case right now, but we should generalize it
-        obj.initialize_from_proto(response.function)
+        obj._initialize_from_proto(response.function)
     return obj
 
 
@@ -92,11 +92,11 @@ class _App:
     def app_id(self):
         return self._app_id
 
-    async def load(
+    async def _load(
         self, obj: Provider, progress: Optional[Tree] = None, existing_object_id: Optional[str] = None
     ) -> Handle:
         """Send a server request to create an object in this app, and return its ID."""
-        cached_obj = self.load_cached(obj)
+        cached_obj = self._load_cached(obj)
         if cached_obj is not None:
             # We already created this object before, shortcut this method
             return cached_obj
@@ -119,13 +119,13 @@ class _App:
             else:
                 real_obj = self._stub._blueprint[obj.tag]
                 existing_object_id = self._tag_to_existing_id.get(obj.tag)
-                created_obj = await self.load(real_obj, progress, existing_object_id)
+                created_obj = await self._load(real_obj, progress, existing_object_id)
                 self._tag_to_object[obj.tag] = created_obj
         else:
 
             async def loader(obj: Provider) -> str:
                 assert isinstance(obj, Provider)
-                created_obj = await self.load(obj, progress=progress)
+                created_obj = await self._load(obj, progress=progress)
                 assert isinstance(created_obj, Handle)
                 return created_obj.object_id
 
@@ -159,18 +159,18 @@ class _App:
         self._local_uuid_to_object[obj.local_uuid] = created_obj
         return created_obj
 
-    def load_cached(self, obj: Provider) -> Optional[Handle]:
+    def _load_cached(self, obj: Provider) -> Optional[Handle]:
         """Try to load a previously-loaded object, without making network requests.
 
         Returns `None` if the object has not been previously loaded.
         """
         return self._local_uuid_to_object.get(obj.local_uuid)
 
-    async def create_all_objects(self, progress: Tree):
+    async def _create_all_objects(self, progress: Tree):
         """Create objects that have been defined but not created on the server."""
         for tag in self._stub._blueprint.keys():
             obj: Provider = LocalRef(tag)
-            await self.load(obj, progress)
+            await self._load(obj, progress)
 
         # Create the app (and send a list of all tagged obs)
         # TODO(erikbern): we should delete objects from a previous version that are no longer needed
@@ -189,7 +189,7 @@ class _App:
         await self._client.stub.AppSetObjects(req_set)
         return self._tag_to_object
 
-    async def disconnect(self) -> None:
+    async def disconnect(self):
         """Tell the server to stop this app, terminating all running tasks."""
         logger.debug("Sending app disconnect request")
         req_disconnect = api_pb2.AppClientDisconnectRequest(app_id=self._app_id)
@@ -215,7 +215,7 @@ class _App:
         return app_image._is_inside()
 
     @staticmethod
-    async def init_container(client, app_id, task_id):
+    async def _init_container(client, app_id, task_id):
         """Used by the container to bootstrap the app and all its objects."""
         # This is a bit of a hacky thing:
         global _container_app, _is_container_app
@@ -230,25 +230,25 @@ class _App:
             obj = Handle._from_id(item.object_id, self._client)
             if isinstance(obj, _FunctionHandle):
                 # TODO(erikbern): treating this as a special case right now, but we should generalize it
-                obj.initialize_from_proto(item.function)
+                obj._initialize_from_proto(item.function)
             self._tag_to_object[item.tag] = obj
 
         if "image" not in self._tag_to_object:
             from .stub import _default_image
 
-            await self.load(_default_image)
+            await self._load(_default_image)
 
         return self
 
     @staticmethod
-    async def init_existing(stub, client, existing_app_id):
+    async def _init_existing(stub, client, existing_app_id):
         # Get all the objects first
         obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
         obj_resp = await client.stub.AppGetObjects(obj_req)
         return _App(stub, client, existing_app_id, tag_to_existing_id=dict(obj_resp.object_ids))
 
     @staticmethod
-    async def init_new(stub, client, description):
+    async def _init_new(stub, client, description):
         # Start app
         # TODO(erikbern): maybe this should happen outside of this method?
         app_req = api_pb2.AppCreateRequest(client_id=client.client_id, description=description)
@@ -257,7 +257,7 @@ class _App:
         return _App(stub, client, app_resp.app_id)
 
     @staticmethod
-    def reset_container():
+    def _reset_container():
         global _is_container_app
         _is_container_app = False
 

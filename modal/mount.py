@@ -228,6 +228,7 @@ async def _create_package_mounts(module_names: Collection[str]) -> List[_Mount]:
 
 
 async def _create_package_mount(module_name: str):
+    """mdmd:hidden"""
     warnings.warn(
         "`create_package_mount` is deprecated. Please use `create_package_mounts` instead.", DeprecationWarning
     )

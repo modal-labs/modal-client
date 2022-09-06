@@ -71,7 +71,7 @@ class _FunctionContext:
                 await self.output_queue.put(None)
 
     async def initialize_app(self):
-        await _App.init_container(self._client, self.app_id, self.task_id)
+        await _App._init_container(self._client, self.app_id, self.task_id)
 
     async def get_serialized_function(self) -> Callable:
         # Fetch the serialized function definition

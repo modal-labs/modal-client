@@ -165,7 +165,7 @@ class _Stub:
                 #
                 # Instead we load the image in App.init_container(), and this allows
                 # us to retrieve its object ID from cache here.
-                image = container_app.load_cached(_default_image)
+                image = container_app._load_cached(_default_image)
 
                 # Check to make sure internal invariants are upheld.
                 assert image is not None, "fatal: default image should be loaded in App.init_container()"
@@ -183,9 +183,9 @@ class _Stub:
         mode: StubRunMode = StubRunMode.RUN,
     ):
         if existing_app_id is not None:
-            app = await _App.init_existing(self, client, existing_app_id)
+            app = await _App._init_existing(self, client, existing_app_id)
         else:
-            app = await _App.init_new(self, client, description if description is not None else self.description)
+            app = await _App._init_new(self, client, description if description is not None else self.description)
 
         # Start tracking logs and yield context
         async with TaskContext(grace=config["logs_timeout"]) as tc:
@@ -201,13 +201,13 @@ class _Stub:
                 # Create all members
                 progress = Tree(step_progress("Creating objects..."), guide_style="gray50")
                 with output_mgr.ctx_if_visible(output_mgr.make_live(progress)):
-                    await app.create_all_objects(progress)
+                    await app._create_all_objects(progress)
                 progress.label = step_completed("Created objects.")
                 output_mgr.print_if_visible(progress)
 
                 # Update all functions client-side to point to the running app
                 for tag, obj in self._function_handles.items():
-                    obj.set_local_app(app)
+                    obj._set_local_app(app)
 
                 # Cancel logs loop after creating objects for a deployment.
                 # TODO: we can get rid of this once we have 1) a way to separate builder

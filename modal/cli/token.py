@@ -4,7 +4,7 @@ from typing import Optional
 import typer
 
 from modal.client import Client
-from modal.config import config, store_user_config, user_config_path
+from modal.config import _store_user_config, config, user_config_path
 from modal_proto import api_pb2
 
 token_cli = typer.Typer(no_args_is_help=True)
@@ -34,5 +34,5 @@ def set(
         client.verify()
         print("Token verified successfully")
 
-    store_user_config({"token_id": token_id, "token_secret": token_secret}, env=env)
+    _store_user_config({"token_id": token_id, "token_secret": token_secret}, env=env)
     print(f"Token written to {user_config_path}")

@@ -105,6 +105,7 @@ _user_config = _read_user_config()
 
 
 def config_envs():
+    """List the available modal envs in the .modal.toml file"""
     return _user_config.keys()
 
 
@@ -117,6 +118,7 @@ def _config_active_env():
 
 
 def config_set_active_env(env: str):
+    """Set the user's active modal env by writing it to the .modal.toml file"""
     if env not in _user_config:
         raise KeyError(env)
 
@@ -198,7 +200,7 @@ logger.setLevel(log_level_numeric)
 # Utils to write config
 
 
-def store_user_config(new_settings, env=None):
+def _store_user_config(new_settings, env=None):
     """Internal method, used by the CLI to set tokens."""
     if env is None:
         env = _env
@@ -215,7 +217,7 @@ def _write_user_config(user_config):
 # Initialize sentry
 
 # Needed to silence "Sentry is attempting to send..." message
-def sentry_exit_callback(pending, timeout):
+def _sentry_exit_callback(pending, timeout):
     pass
 
 
@@ -226,7 +228,7 @@ FILTERED_FUNCTIONS = ["_process_result"]
 ACCEPTED_MESSAGES = ["CUDA", "NVIDIA"]
 
 
-def filter_exceptions(event, hint):
+def _filter_exceptions(event, hint):
     """Filter out exceptions not originating from Modal, and also user errors."""
 
     try:
@@ -267,9 +269,9 @@ if config["sentry_dsn"] and "localhost" not in config["server_url"]:
         sentry_sdk.init(
             # Sentry DSN for the client project; not secret.
             config["sentry_dsn"],
-            integrations=[AtexitIntegration(callback=sentry_exit_callback), sentry_logging],
+            integrations=[AtexitIntegration(callback=_sentry_exit_callback), sentry_logging],
             traces_sample_rate=1,
-            before_send=filter_exceptions,
+            before_send=_filter_exceptions,
             ignore_errors=FILTERED_ERROR_TYPES,  # type: ignore
         )  # type: ignore
 

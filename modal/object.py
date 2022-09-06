@@ -11,7 +11,7 @@ T = TypeVar("T")
 
 
 class Handle(metaclass=ObjectMeta):
-    """The shared base class of any synced/distributed object in Modal.
+    """mdmd:hidden The shared base class of any synced/distributed object in Modal.
 
     Examples of objects include Modal primitives like Images and Functions, as
     well as distributed data structures like Queues or Dicts.

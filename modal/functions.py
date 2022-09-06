@@ -84,12 +84,12 @@ async def _create_input(args, kwargs, client, idx=None) -> api_pb2.FunctionPutIn
 
 
 @dataclass
-class OutputValue:
+class _OutputValue:
     # box class for distinguishing None results from non-existing/None markers
     value: Any
 
 
-class Invocation:
+class _Invocation:
     def __init__(self, stub, function_call_id, client=None):
         self.stub = stub
         self.client = client  # Used by the deserializer.
@@ -123,7 +123,7 @@ class Invocation:
             ignore_errors=[Status.RESOURCE_EXHAUSTED],
         )
 
-        return Invocation(client.stub, function_call_id, client)
+        return _Invocation(client.stub, function_call_id, client)
 
     async def get_items(self, timeout: float = None):
         t0 = time.time()
@@ -178,33 +178,7 @@ class Invocation:
 MAP_INVOCATION_CHUNK_SIZE = 100
 
 
-class _FunctionCall(Handle, type_prefix="fc"):
-    """A reference to an executed function call
-
-    Constructed using `.submit(...)` on a Modal function with the same
-    arguments that a function normally takes. Acts as a reference to
-    an ongoing function call that can be passed around and used to
-    poll or fetch function results at some later time.
-
-    Conceptually similar to a Future/Promise/AsyncResult in other contexts and languages.
-    """
-
-    def _invocation(self):
-        return Invocation(self._client.stub, self.object_id, self._client)
-
-    async def get(self, timeout: Optional[float] = None):
-        """Gets the result of the future
-
-        Raises `TimeoutError` if no results are returned within `timeout` seconds.
-        Setting `timeout` to None (the default) waits indefinitely until there is a result
-        """
-        return await self._invocation().poll_function(timeout=timeout)
-
-
-FunctionCall, AioFunctionCall = synchronize_apis(_FunctionCall)
-
-
-async def map_invocation(function_id, input_stream, kwargs, client, is_generator, order_outputs):
+async def _map_invocation(function_id, input_stream, kwargs, client, is_generator, order_outputs):
     request = api_pb2.FunctionMapRequest(function_id=function_id)
     response = await retry_transient_errors(client.stub.FunctionMap, request)
 
@@ -287,15 +261,15 @@ async def map_invocation(function_id, input_stream, kwargs, client, is_generator
         async with outputs_fetched.stream() as streamer:
             async for idx, output in streamer:
                 if is_generator:
-                    yield OutputValue(output)
+                    yield _OutputValue(output)
                 elif not order_outputs:
-                    yield OutputValue(output)
+                    yield _OutputValue(output)
                 else:
                     # hold on to outputs for function maps, so we can reorder them correctly.
                     pending_outputs[idx] = output
                     while output_idx in pending_outputs:
                         output = pending_outputs.pop(output_idx)
-                        yield OutputValue(output)
+                        yield _OutputValue(output)
                         output_idx += 1
 
         assert len(pending_outputs) == 0
@@ -309,6 +283,8 @@ async def map_invocation(function_id, input_stream, kwargs, client, is_generator
 
 
 class _FunctionHandle(Handle, type_prefix="fu"):
+    """Interact with a Modal Function of a live app."""
+
     def __init__(self, function, web_url=None, client=None, object_id=None):
         self._local_app = None
 
@@ -320,7 +296,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
 
         super().__init__(client=client, object_id=object_id)
 
-    def initialize_from_proto(self, function: api_pb2.Function):
+    def _initialize_from_proto(self, function: api_pb2.Function):
         self._is_generator = function.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
 
     def _get_created_message(self) -> str:
@@ -329,7 +305,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
             return f"Created {self._tag} => [magenta underline]{self._web_url}[/magenta underline]"
         return f"Created {self._tag}."
 
-    def set_local_app(self, app):
+    def _set_local_app(self, app):
         """mdmd:hidden"""
         self._local_app = app
 
@@ -371,7 +347,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
             raise ValueError("Can't return ordered results for a generator")
 
         client, object_id = self._get_context()
-        async for item in map_invocation(object_id, input_stream, kwargs, client, self._is_generator, order_outputs):
+        async for item in _map_invocation(object_id, input_stream, kwargs, client, self._is_generator, order_outputs):
             yield item
 
     @warn_if_generator_is_not_consumed
@@ -443,26 +419,26 @@ class _FunctionHandle(Handle, type_prefix="fu"):
     async def call_function(self, args, kwargs):
         """mdmd:hidden"""
         client, object_id = self._get_context()
-        invocation = await Invocation.create(object_id, args, kwargs, client)
+        invocation = await _Invocation.create(object_id, args, kwargs, client)
         return await invocation.run_function()
 
     async def call_function_nowait(self, args, kwargs):
         """mdmd:hidden"""
         client, object_id = self._get_context()
-        return await Invocation.create(object_id, args, kwargs, client)
+        return await _Invocation.create(object_id, args, kwargs, client)
 
     @warn_if_generator_is_not_consumed
     async def call_generator(self, args, kwargs):
         """mdmd:hidden"""
         client, object_id = self._get_context()
-        invocation = await Invocation.create(object_id, args, kwargs, client)
+        invocation = await _Invocation.create(object_id, args, kwargs, client)
         async for res in invocation.run_generator():
             yield res
 
     async def call_generator_nowait(self, args, kwargs):
         """mdmd:hidden"""
         client, object_id = self._get_context()
-        return await Invocation.create(object_id, args, kwargs, client)
+        return await _Invocation.create(object_id, args, kwargs, client)
 
     def __call__(self, *args, **kwargs):
         if self._is_generator:
@@ -471,9 +447,9 @@ class _FunctionHandle(Handle, type_prefix="fu"):
             return self.call_function(args, kwargs)
 
     async def enqueue(self, *args, **kwargs):
-        """Calls the function with the given arguments, without waiting for the results.
+        """**Deprecated.** Use `.submit()` instead when possible.
 
-        **Deprecated.** Use `.submit()` instead when possible.
+        Calls the function with the given arguments, without waiting for the results.
         """
         warnings.warn("Function.enqueue is deprecated, use .submit() instead", DeprecationWarning)
         if self._is_generator:
@@ -481,7 +457,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         else:
             await self.call_function_nowait(args, kwargs)
 
-    async def submit(self, *args, **kwargs) -> Optional[_FunctionCall]:
+    async def submit(self, *args, **kwargs) -> Optional["_FunctionCall"]:
         """Calls the function with the given arguments, without waiting for the results.
 
         Returns a `modal.functions.FunctionCall` object, that can later be polled or waited for using `.get(timeout=...)`.
@@ -498,7 +474,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         return _FunctionCall(invocation.client, invocation.function_call_id)
 
     def get_raw_f(self) -> Callable:
-        """Return the inner Python object wrapped by this function."""
+        """Return the inner Python object wrapped by this Modal Function."""
         return self._raw_f
 
 
@@ -658,6 +634,32 @@ class _Function(Provider[_FunctionHandle]):
 
 
 Function, AioFunction = synchronize_apis(_Function)
+
+
+class _FunctionCall(Handle, type_prefix="fc"):
+    """A reference to an executed function call
+
+    Constructed using `.submit(...)` on a Modal function with the same
+    arguments that a function normally takes. Acts as a reference to
+    an ongoing function call that can be passed around and used to
+    poll or fetch function results at some later time.
+
+    Conceptually similar to a Future/Promise/AsyncResult in other contexts and languages.
+    """
+
+    def _invocation(self):
+        return _Invocation(self._client.stub, self.object_id, self._client)
+
+    async def get(self, timeout: Optional[float] = None):
+        """Gets the result of the function call
+
+        Raises `TimeoutError` if no results are returned within `timeout` seconds.
+        Setting `timeout` to None (the default) waits indefinitely until there is a result
+        """
+        return await self._invocation().poll_function(timeout=timeout)
+
+
+FunctionCall, AioFunctionCall = synchronize_apis(_FunctionCall)
 
 
 async def _gather(*function_calls: _FunctionCall):

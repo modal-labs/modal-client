@@ -13,6 +13,17 @@ def _serialize_dict(data):
 
 
 class _DictHandle(Handle, type_prefix="di"):
+    """Handle for interacting with the contents of a `Dict`
+
+    ```python
+    stub.some_dict = modal.Dict()
+
+    if __name__ == "__main__":
+        with stub.run() as app:
+            app.some_dict["message"] = "hello world"
+    ```
+    """
+
     async def get(self, key: Any) -> Any:
         """Get the value associated with the key.
 
@@ -83,7 +94,7 @@ class _DictHandle(Handle, type_prefix="di"):
         return await self.contains(key)
 
 
-synchronize_apis(_DictHandle)
+DictHandle, AioDictHandle = synchronize_apis(_DictHandle)
 
 
 class _Dict(Provider[_DictHandle]):
@@ -91,6 +102,9 @@ class _Dict(Provider[_DictHandle]):
 
     Keys and values can be essentially any object, so long as it can be
     serialized by `cloudpickle`, including Modal objects.
+
+    This is the constructor object, which can not be interacted with. Use the `DictHandle` that
+    gets attached to the live app once an app is running to interact with the Dict contents
     """
 
     def __init__(self, data={}):
