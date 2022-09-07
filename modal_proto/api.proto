@@ -104,6 +104,7 @@ message AppGetLogsRequest {
   string app_id = 1;
   float timeout = 2;
   string last_entry_id = 4;
+  string function_id = 5;
 }
 
 message AppGetObjectsRequest {
