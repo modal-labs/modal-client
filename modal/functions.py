@@ -687,3 +687,32 @@ async def _gather(*function_calls: _FunctionCall):
 
 
 gather, aio_gather = synchronize_apis(_gather)
+
+
+_current_input_id: Optional[str] = None
+
+
+def current_input_id() -> str:
+    """Returns the input id for the currently processed input
+
+    Can only be called from Modal function (i.e. in a container context)
+
+    ```python
+    from modal import current_input_id
+
+    @stub.function
+    def process_stuff():
+        print(f"Starting to process {current_input_id()}")
+    ```
+    """
+    global _current_input_id
+
+    if _current_input_id is None:
+        raise Exception("current_input_id is only available within a container-executed Modal function")
+
+    return _current_input_id
+
+
+def _set_current_input_id(input_id: str):
+    global _current_input_id
+    _current_input_id = input_id

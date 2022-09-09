@@ -27,7 +27,7 @@ from .app import _App
 from .client import Client, _Client
 from .config import logger
 from .exception import InvalidError
-from .functions import AioFunctionHandle, FunctionHandle
+from .functions import AioFunctionHandle, FunctionHandle, _set_current_input_id
 
 
 def _path_to_function(module_name, function_name):
@@ -269,6 +269,7 @@ def call_function(
         raise RuntimeError(f"Function {function} is a strange type {type(function)}")
 
     try:
+        _set_current_input_id(input_id)
         res = function(*args, **kwargs)
 
         if function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR:
