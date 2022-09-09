@@ -59,17 +59,6 @@ class _FunctionContext:
         self._client = synchronizer._translate_in(self.client)  # make it a _Client object
         assert isinstance(self._client, _Client)
 
-    @synchronizer.asynccontextmanager
-    async def send_outputs(self):
-        self.output_queue: asyncio.Queue = asyncio.Queue()
-
-        async with TaskContext(grace=10) as tc:
-            tc.create_task(self._send_outputs())
-            try:
-                yield
-            finally:
-                await self.output_queue.put(None)
-
     async def initialize_app(self):
         await _App._init_container(self._client, self.app_id, self.task_id)
 
@@ -106,7 +95,7 @@ class _FunctionContext:
 
         return math.ceil(RTT_S / max(average_handling_time, 1e-6))
 
-    async def generate_inputs(
+    async def _generate_inputs(
         self,
     ) -> AsyncIterator[Tuple[str, api_pb2.FunctionInput]]:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
@@ -163,6 +152,24 @@ class _FunctionContext:
             req = api_pb2.FunctionPutOutputsRequest(outputs=outputs)
             # No timeout so this can block forever.
             await retry_transient_errors(self.client.stub.FunctionPutOutputs, req, max_retries=None)
+
+    async def run_inputs_outputs(self):
+        # This also makes sure to terminate the outputs
+        self.output_queue: asyncio.Queue = asyncio.Queue()
+
+        async with TaskContext(grace=10) as tc:
+            tc.create_task(self._send_outputs())
+            try:
+                async for input_id, input_pb in self._generate_inputs():
+                    _set_current_input_id(input_id)
+                    t0 = time.time()
+                    try:
+                        yield input_id, input_pb
+                    finally:
+                        self.total_user_time += time.time() - t0
+                        self.calls_completed += 1
+            finally:
+                await self.output_queue.put(None)
 
     async def enqueue_output(self, input_id, **kwargs):
         # upload data to S3 if too big.
@@ -228,15 +235,6 @@ class _FunctionContext:
                 traceback=traceback.format_exc(),
             )
 
-    @synchronizer.asynccontextmanager
-    async def track_function_call_time(self):
-        t0 = time.time()
-        try:
-            yield
-        finally:
-            self.total_user_time += time.time() - t0
-            self.calls_completed += 1
-
 
 # just to mark the class as synchronized, we don't care about the interfaces
 FunctionContext, AioFunctionContext = synchronize_apis(_FunctionContext)
@@ -301,7 +299,6 @@ def call_function(
     else:
         raise RuntimeError(f"Function {function} is a strange type {type(function)}")
 
-    _set_current_input_id(input_id)
     res = function(*args, **kwargs)
 
     if function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR:
@@ -387,12 +384,11 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         else:
             function = import_function(container_args.function_def)
 
-        with function_context.send_outputs():
-            for input_id, input_pb in function_context.generate_inputs():  # type: ignore
-                with function_context.handle_input_exception(input_id), function_context.track_function_call_time():
-                    # Note: this blocks the call_function as well. In the future we might want to stream outputs
-                    # back asynchronously, but then block the call_function if there is back-pressure.
-                    call_function(function_context, aio_function_context, function, function_type, input_id, input_pb)  # type: ignore
+        for input_id, input_pb in function_context.run_inputs_outputs():  # type: ignore
+            with function_context.handle_input_exception(input_id):
+                # Note: this blocks the call_function as well. In the future we might want to stream outputs
+                # back asynchronously, but then block the call_function if there is back-pressure.
+                call_function(function_context, aio_function_context, function, function_type, input_id, input_pb)  # type: ignore
 
 
 if __name__ == "__main__":
