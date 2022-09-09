@@ -92,20 +92,6 @@ def test_container_entrypoint_async(servicer):
 
 
 @skip_github_actions_non_linux
-def test_container_entrypoint_sync_returning_async(servicer):
-    t0 = time.time()
-    client, outputs = _run_container(servicer, "modal_test_support.functions", "square_sync_returning_async")
-    assert SLEEP_DELAY <= time.time() - t0 < SLEEP_DELAY + EXTRA_TOLERANCE_DELAY
-
-    assert len(outputs) == 1
-    assert isinstance(outputs[0], api_pb2.FunctionPutOutputsRequest)
-
-    output = _get_output(outputs[0])
-    assert output.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert output.data == serialize(42**2)
-
-
-@skip_github_actions_non_linux
 def test_container_entrypoint_failure(servicer):
     client, outputs = _run_container(servicer, "modal_test_support.functions", "raises")
 

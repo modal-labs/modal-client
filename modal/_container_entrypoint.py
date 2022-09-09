@@ -257,35 +257,24 @@ def _call_function_generator(function_context, input_id, res):
     )
 
 
-def _call_function_asyncgen(function_context, input_id, res):
-    async def run_asyncgen():
-        async for value in res:
-            await function_context.enqueue_output(
-                input_id,
-                status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
-                data=function_context.serialize(value),
-                gen_status=api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE,
-            )
-
-        # send EOF
-        await function_context.enqueue_output(
+async def _call_function_asyncgen(aio_function_context, input_id, res):
+    async for value in res:
+        await aio_function_context.enqueue_output(
             input_id,
             status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
-            gen_status=api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE,
+            data=aio_function_context.serialize(value),
+            gen_status=api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE,
         )
 
-    asyncio.run(run_asyncgen())
+    # send EOF
+    await aio_function_context.enqueue_output(
+        input_id,
+        status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
+        gen_status=api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE,
+    )
 
 
-def call_function(
-    function_context,  #: FunctionContext,  # TODO: this type is generated in runtime
-    aio_function_context,  #: AioFunctionContext,  # TODO: this one too
-    function: Callable,
-    function_type: api_pb2.Function.FunctionType,
-    input_id: str,
-    input_pb: api_pb2.FunctionInput,
-):
-
+def is_async(function):
     # TODO: this is somewhat hacky. We need to know whether the function is async or not in order to
     # coerce the input arguments to the right type. The proper way to do is to call the function and
     # see if you get a coroutine (or async generator) back. However at this point, it's too late to
@@ -293,33 +282,61 @@ def call_function(
     # This sometimes isn't correct, since a "vanilla" Python function can return a coroutine if it
     # wraps async code or similar. Let's revisit this shortly.
     if inspect.iscoroutinefunction(function) or inspect.isasyncgenfunction(function):
-        args, kwargs = aio_function_context.deserialize(input_pb.args) if input_pb.args else ((), {})
+        return True
     elif inspect.isfunction(function) or inspect.isgeneratorfunction(function):
-        args, kwargs = function_context.deserialize(input_pb.args) if input_pb.args else ((), {})
+        return False
     else:
         raise RuntimeError(f"Function {function} is a strange type {type(function)}")
+
+
+def call_function_sync(
+    function_context,  #: FunctionContext,  # TODO: this type is generated in runtime
+    function: Callable,
+    function_type: api_pb2.Function.FunctionType,
+    input_id: str,
+    input_pb: api_pb2.FunctionInput,
+):
+    args, kwargs = function_context.deserialize(input_pb.args) if input_pb.args else ((), {})
 
     res = function(*args, **kwargs)
 
     if function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR:
-        if inspect.isgenerator(res):
-            _call_function_generator(function_context, input_id, res)
-        elif inspect.isasyncgen(res):
-            _call_function_asyncgen(aio_function_context, input_id, res)
-        else:
-            raise InvalidError("Function of type generator returned a non-generator output")
-
+        if not inspect.isgenerator(res):
+            raise InvalidError(f"Generator function returned value of type {type(res)}")
+        _call_function_generator(function_context, input_id, res)
     else:
-        if inspect.iscoroutine(res):
-            res = asyncio.run(res)
-
-        if inspect.isgenerator(res) or inspect.isasyncgen(res):
-            raise InvalidError("Function which is not a generator returned a generator output")
-
+        if inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
+            raise InvalidError(f"Sync (non-generator) function return value of type {type(res)}")
         function_context.enqueue_output(
             input_id,
             status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
             data=function_context.serialize(res),
+        )
+
+
+async def call_function_async(
+    aio_function_context,  #: AioFunctionContext,  # TODO: this one too
+    function: Callable,
+    function_type: api_pb2.Function.FunctionType,
+    input_id: str,
+    input_pb: api_pb2.FunctionInput,
+):
+    args, kwargs = aio_function_context.deserialize(input_pb.args) if input_pb.args else ((), {})
+
+    res = function(*args, **kwargs)
+
+    if function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR:
+        if not inspect.isasyncgen(res):
+            raise InvalidError(f"Async generator function returned value of type {type(res)}")
+        await _call_function_asyncgen(aio_function_context, input_id, res)
+    else:
+        if not inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
+            raise InvalidError(f"Async (non-generator) function returned value of type {type(res)}")
+        value = await res
+        await aio_function_context.enqueue_output(
+            input_id,
+            status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
+            data=aio_function_context.serialize(value),
         )
 
 
@@ -388,7 +405,10 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             with function_context.handle_input_exception(input_id):
                 # Note: this blocks the call_function as well. In the future we might want to stream outputs
                 # back asynchronously, but then block the call_function if there is back-pressure.
-                call_function(function_context, aio_function_context, function, function_type, input_id, input_pb)  # type: ignore
+                if not is_async(function):
+                    call_function_sync(function_context, function, function_type, input_id, input_pb)  # type: ignore
+                else:
+                    asyncio.run(call_function_async(aio_function_context, function, function_type, input_id, input_pb))  # type: ignore
 
 
 if __name__ == "__main__":

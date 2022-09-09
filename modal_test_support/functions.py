@@ -26,15 +26,6 @@ async def square_async(x):
 
 
 @stub.function()
-def square_sync_returning_async(x):
-    async def square():
-        await asyncio.sleep(SLEEP_DELAY)
-        return x * x
-
-    return square()
-
-
-@stub.function()
 def raises(x):
     raise Exception("Failure!")
 
