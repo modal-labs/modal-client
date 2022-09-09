@@ -3,8 +3,6 @@ import platform
 import pytest
 import time
 
-from grpclib import GRPCError
-
 from modal._container_entrypoint import main
 
 # from modal_test_support import SLEEP_DELAY
@@ -168,8 +166,10 @@ def test_container_entrypoint_slow_function(servicer, event_loop, monkeypatch):
 
 
 def test_container_entrypoint_grpc_failure(servicer, event_loop):
-    with pytest.raises(GRPCError):
-        _run_container(servicer, "modal_test_support.functions", "square", fail_get_inputs=True)
+    _run_container(servicer, "modal_test_support.functions", "square", fail_get_inputs=True)
+
+    assert servicer.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
+    assert "GRPCError" in servicer.task_result.exception
 
 
 def test_container_entrypoint_missing_main_conditional(servicer, event_loop):

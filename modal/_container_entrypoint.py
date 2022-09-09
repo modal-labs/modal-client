@@ -175,25 +175,30 @@ class _FunctionContext:
         output = api_pb2.FunctionPutOutputsItem(input_id=input_id, result=api_pb2.GenericResult(**kwargs))
         await self.output_queue.put(output)
 
-    async def notify_task_failure(self, exc: Exception):
-        # Since this is on a different thread, sys.exc_info() can't find the exception in the stack.
-        traceback.print_exception(type(exc), exc, exc.__traceback__)
-
+    @synchronizer.asynccontextmanager
+    async def handle_general_exception(self):
         try:
-            serialized_exc = await self.serialize(exc)
-        except Exception:
-            # We can't always serialize exceptions.
-            serialized_exc = None
+            yield
+        except Exception as exc:
+            # Since this is on a different thread, sys.exc_info() can't find the exception in the stack.
+            traceback.print_exception(type(exc), exc, exc.__traceback__)
 
-        result = api_pb2.GenericResult(
-            status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
-            data=serialized_exc,
-            exception=repr(exc),
-            traceback="".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
-        )
+            try:
+                serialized_exc = await self.serialize(exc)
+            except Exception as serialization_exc:
+                logger.info(f"Failed to serialize exception {exc}: {serialization_exc}")
+                # We can't always serialize exceptions.
+                serialized_exc = None
 
-        req = api_pb2.TaskResultRequest(task_id=self.task_id, result=result)
-        await retry_transient_errors(self.client.stub.TaskResult, req)
+            result = api_pb2.GenericResult(
+                status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
+                data=serialized_exc,
+                exception=repr(exc),
+                traceback="".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+            )
+
+            req = api_pb2.TaskResultRequest(task_id=self.task_id, result=result)
+            await retry_transient_errors(self.client.stub.TaskResult, req)
 
     def track_function_call_time(self, time_elapsed: float):
         self.total_user_time += time_elapsed
@@ -337,48 +342,45 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     # At some point, we should fix that by having built-in support for running "user code"
     _function_context = _FunctionContext(container_args, client)
     function_context, aio_function_context = synchronize_apis(_function_context)
-    function_context.initialize_app()
 
-    if container_args.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
-        function = function_context.get_serialized_function()
-    else:
-        # This is not in function_context, so that any global scope code that runs during import
-        # runs on the main thread.
-        try:
+    with function_context.handle_general_exception():
+        function_context.initialize_app()
+
+        if container_args.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
+            function = function_context.get_serialized_function()
+        else:
+            # This is not in function_context, so that any global scope code that runs during import
+            # runs on the main thread.
             imported_function = _path_to_function(
                 container_args.function_def.module_name, container_args.function_def.function_name
             )
-        except Exception as exc:
-            function_context.notify_task_failure(exc)
-            return
+            if isinstance(imported_function, (FunctionHandle, AioFunctionHandle)):
+                # We want the internal type of this, not the external
+                _function_proxy = synchronizer._translate_in(imported_function)
+                function = _function_proxy.get_raw_f()
+            else:
+                function = imported_function
 
-        if isinstance(imported_function, (FunctionHandle, AioFunctionHandle)):
-            # We want the internal type of this, not the external
-            _function_proxy = synchronizer._translate_in(imported_function)
-            function = _function_proxy.get_raw_f()
-        else:
-            function = imported_function
+            if container_args.function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP:
+                # function returns an asgi_app, that we can use as a callable.
+                asgi_app = function()
+                function = asgi_app_wrapper(asgi_app)
+            elif container_args.function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_WSGI_APP:
+                # function returns an wsgi_app, that we can use as a callable.
+                wsgi_app = function()
+                function = wsgi_app_wrapper(wsgi_app)
+            elif container_args.function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
+                # function is webhook without an ASGI app. Create one for it.
+                function = fastAPI_function_wrapper(function, container_args.function_def.webhook_config.method)
 
-        if container_args.function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP:
-            # function returns an asgi_app, that we can use as a callable.
-            asgi_app = function()
-            function = asgi_app_wrapper(asgi_app)
-        elif container_args.function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_WSGI_APP:
-            # function returns an wsgi_app, that we can use as a callable.
-            wsgi_app = function()
-            function = wsgi_app_wrapper(wsgi_app)
-        elif container_args.function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
-            # function is webhook without an ASGI app. Create one for it.
-            function = fastAPI_function_wrapper(function, container_args.function_def.webhook_config.method)
-
-    with function_context.send_outputs():
-        for input_id, input_pb in function_context.generate_inputs():  # type: ignore
-            t0 = time.time()
-            # Note: this blocks the call_function as well. In the future we might want to stream outputs
-            # back asynchronously, but then block the call_function if there is back-pressure.
-            call_function(function_context, aio_function_context, function, function_type, input_id, input_pb)  # type: ignore
-            time_elapsed = time.time() - t0
-            function_context.track_function_call_time(time_elapsed)
+        with function_context.send_outputs():
+            for input_id, input_pb in function_context.generate_inputs():  # type: ignore
+                t0 = time.time()
+                # Note: this blocks the call_function as well. In the future we might want to stream outputs
+                # back asynchronously, but then block the call_function if there is back-pressure.
+                call_function(function_context, aio_function_context, function, function_type, input_id, input_pb)  # type: ignore
+                time_elapsed = time.time() - t0
+                function_context.track_function_call_time(time_elapsed)
 
 
 if __name__ == "__main__":
