@@ -84,7 +84,7 @@ class _FunctionContext:
         # will go back to it once we fix notebooks.
         return raw_f
 
-    async def serialize(self, obj: Any) -> bytes:
+    def serialize(self, obj: Any) -> bytes:
         return serialize(obj)
 
     def deserialize(self, data: bytes) -> Any:
@@ -184,7 +184,7 @@ class _FunctionContext:
             traceback.print_exception(type(exc), exc, exc.__traceback__)
 
             try:
-                serialized_exc = await self.serialize(exc)
+                serialized_exc = self.serialize(exc)
             except Exception as serialization_exc:
                 logger.info(f"Failed to serialize exception {exc}: {serialization_exc}")
                 # We can't always serialize exceptions.
@@ -200,9 +200,42 @@ class _FunctionContext:
             req = api_pb2.TaskResultRequest(task_id=self.task_id, result=result)
             await retry_transient_errors(self.client.stub.TaskResult, req)
 
-    def track_function_call_time(self, time_elapsed: float):
-        self.total_user_time += time_elapsed
-        self.calls_completed += 1
+    @synchronizer.asynccontextmanager
+    async def handle_input_exception(self, input_id):
+        try:
+            yield
+        except Exception as exc:
+            # print exception so it's logged
+            traceback.print_exc()
+
+            try:
+                serialized_exc = self.serialize(exc)
+            except Exception as serialization_exc:
+                logger.info(f"Failed serializing exception {exc}: {serialization_exc}")
+                # We can't always serialize exceptions.
+                serialized_exc = None
+
+            # Note: we're not serializing the traceback since it contains
+            # local references that means we can't unpickle it. We *are*
+            # serializing the exception, which may have some issues (there
+            # was an earlier note about it that it might not be possible
+            # to unpickle it in some cases). Let's watch out for issues.
+            await self.enqueue_output(
+                input_id,
+                status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
+                data=serialized_exc,
+                exception=repr(exc),
+                traceback=traceback.format_exc(),
+            )
+
+    @synchronizer.asynccontextmanager
+    async def track_function_call_time(self):
+        t0 = time.time()
+        try:
+            yield
+        finally:
+            self.total_user_time += time.time() - t0
+            self.calls_completed += 1
 
 
 # just to mark the class as synchronized, we don't care about the interfaces
@@ -232,7 +265,7 @@ def _call_function_asyncgen(function_context, input_id, res):
             await function_context.enqueue_output(
                 input_id,
                 status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
-                data=await function_context.serialize(value),
+                data=function_context.serialize(value),
                 gen_status=api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE,
             )
 
@@ -268,52 +301,28 @@ def call_function(
     else:
         raise RuntimeError(f"Function {function} is a strange type {type(function)}")
 
-    try:
-        _set_current_input_id(input_id)
-        res = function(*args, **kwargs)
+    _set_current_input_id(input_id)
+    res = function(*args, **kwargs)
 
-        if function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR:
-            if inspect.isgenerator(res):
-                _call_function_generator(function_context, input_id, res)
-            elif inspect.isasyncgen(res):
-                _call_function_asyncgen(aio_function_context, input_id, res)
-            else:
-                raise InvalidError("Function of type generator returned a non-generator output")
-
+    if function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR:
+        if inspect.isgenerator(res):
+            _call_function_generator(function_context, input_id, res)
+        elif inspect.isasyncgen(res):
+            _call_function_asyncgen(aio_function_context, input_id, res)
         else:
-            if inspect.iscoroutine(res):
-                res = asyncio.run(res)
+            raise InvalidError("Function of type generator returned a non-generator output")
 
-            if inspect.isgenerator(res) or inspect.isasyncgen(res):
-                raise InvalidError("Function which is not a generator returned a generator output")
+    else:
+        if inspect.iscoroutine(res):
+            res = asyncio.run(res)
 
-            function_context.enqueue_output(
-                input_id,
-                status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
-                data=function_context.serialize(res),
-            )
+        if inspect.isgenerator(res) or inspect.isasyncgen(res):
+            raise InvalidError("Function which is not a generator returned a generator output")
 
-    except Exception as exc:
-        # print exception so it's logged
-        traceback.print_exc()
-
-        try:
-            serialized_exc = function_context.serialize(exc)
-        except Exception:
-            # We can't always serialize exceptions.
-            serialized_exc = None
-
-        # Note: we're not serializing the traceback since it contains
-        # local references that means we can't unpickle it. We *are*
-        # serializing the exception, which may have some issues (there
-        # was an earlier note about it that it might not be possible
-        # to unpickle it in some cases). Let's watch out for issues.
         function_context.enqueue_output(
             input_id,
-            status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
-            data=serialized_exc,
-            exception=repr(exc),
-            traceback=traceback.format_exc(),
+            status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
+            data=function_context.serialize(res),
         )
 
 
@@ -380,12 +389,10 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         with function_context.send_outputs():
             for input_id, input_pb in function_context.generate_inputs():  # type: ignore
-                t0 = time.time()
-                # Note: this blocks the call_function as well. In the future we might want to stream outputs
-                # back asynchronously, but then block the call_function if there is back-pressure.
-                call_function(function_context, aio_function_context, function, function_type, input_id, input_pb)  # type: ignore
-                time_elapsed = time.time() - t0
-                function_context.track_function_call_time(time_elapsed)
+                with function_context.handle_input_exception(input_id), function_context.track_function_call_time():
+                    # Note: this blocks the call_function as well. In the future we might want to stream outputs
+                    # back asynchronously, but then block the call_function if there is back-pressure.
+                    call_function(function_context, aio_function_context, function, function_type, input_id, input_pb)  # type: ignore
 
 
 if __name__ == "__main__":
