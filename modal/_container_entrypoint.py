@@ -329,6 +329,32 @@ def _wait_for_gpu_init():
     logger.info("Failed to initialize CUDA device.")
 
 
+def import_function(function_def: api_pb2.Function) -> Callable:
+    # This is not in function_context, so that any global scope code that runs during import
+    # runs on the main thread.
+    imported_function = _path_to_function(function_def.module_name, function_def.function_name)
+    if isinstance(imported_function, (FunctionHandle, AioFunctionHandle)):
+        # We want the internal type of this, not the external
+        _function_proxy = synchronizer._translate_in(imported_function)
+        function = _function_proxy.get_raw_f()
+    else:
+        function = imported_function
+
+    if function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP:
+        # function returns an asgi_app, that we can use as a callable.
+        asgi_app = function()
+        return asgi_app_wrapper(asgi_app)
+    elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_WSGI_APP:
+        # function returns an wsgi_app, that we can use as a callable.
+        wsgi_app = function()
+        return wsgi_app_wrapper(wsgi_app)
+    elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
+        # function is webhook without an ASGI app. Create one for it.
+        return fastAPI_function_wrapper(function, function_def.webhook_config.method)
+    else:
+        return function
+
+
 def main(container_args: api_pb2.ContainerArguments, client: Client):
     # TODO: if there's an exception in this scope (in particular when we import code dynamically),
     # we could catch that exception and set it properly serialized to the client. Right now the
@@ -349,29 +375,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         if container_args.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
             function = function_context.get_serialized_function()
         else:
-            # This is not in function_context, so that any global scope code that runs during import
-            # runs on the main thread.
-            imported_function = _path_to_function(
-                container_args.function_def.module_name, container_args.function_def.function_name
-            )
-            if isinstance(imported_function, (FunctionHandle, AioFunctionHandle)):
-                # We want the internal type of this, not the external
-                _function_proxy = synchronizer._translate_in(imported_function)
-                function = _function_proxy.get_raw_f()
-            else:
-                function = imported_function
-
-            if container_args.function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP:
-                # function returns an asgi_app, that we can use as a callable.
-                asgi_app = function()
-                function = asgi_app_wrapper(asgi_app)
-            elif container_args.function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_WSGI_APP:
-                # function returns an wsgi_app, that we can use as a callable.
-                wsgi_app = function()
-                function = wsgi_app_wrapper(wsgi_app)
-            elif container_args.function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
-                # function is webhook without an ASGI app. Create one for it.
-                function = fastAPI_function_wrapper(function, container_args.function_def.webhook_config.method)
+            function = import_function(container_args.function_def)
 
         with function_context.send_outputs():
             for input_id, input_pb in function_context.generate_inputs():  # type: ignore
