@@ -267,17 +267,21 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def FunctionPutInputs(self, stream):
         request = await stream.recv_message()
+        response_items = []
+        function_calls = self.client_calls.setdefault(request.function_call_id, [])
         for item in request.inputs:
             args, kwargs = cloudpickle.loads(item.input.args) if item.input.args else ((), {})
-            self.client_calls.setdefault(request.function_call_id, []).append((item.idx, (args, kwargs)))
-        await stream.send_message(Empty())
+            input_id = f"in-{len(function_calls)}"
+            response_items.append(api_pb2.FunctionPutInputsResponseItem(input_id=input_id, idx=item.idx))
+            function_calls.append(((item.idx, input_id), (args, kwargs)))
+        await stream.send_message(api_pb2.FunctionPutInputsResponse(inputs=response_items))
 
     async def FunctionGetOutputs(self, stream):
         request = await stream.recv_message()
         client_calls = self.client_calls.get(request.function_call_id, [])
         if client_calls and not self.function_is_running:
             popidx = len(client_calls) // 2  # simulate that results don't always come in order
-            idx, (args, kwargs) = client_calls.pop(popidx)
+            (idx, input_id), (args, kwargs) = client_calls.pop(popidx)
             # Just return the sum of squares of all args
             res = self._function_body(*args, **kwargs)
             if inspect.iscoroutine(res):

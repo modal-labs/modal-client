@@ -349,7 +349,6 @@ message FunctionGetSerializedResponse {
 }
 
 message FunctionInput {
-  string input_id = 4;
   // serialized (args, kwargs).
   oneof args_oneof {
     bytes args = 1;
@@ -375,6 +374,15 @@ message FunctionPutInputsRequest {
   string function_id = 1;
   string function_call_id = 3;
   repeated FunctionPutInputsItem inputs = 4;
+}
+
+message FunctionPutInputsResponseItem {
+  int32 idx = 1;
+  string input_id = 2;
+}
+
+message FunctionPutInputsResponse {
+  repeated FunctionPutInputsResponseItem inputs = 1;
 }
 
 message FunctionPutOutputsItem {
@@ -639,7 +647,7 @@ service ModalClient {
   rpc FunctionCreate(FunctionCreateRequest) returns (FunctionCreateResponse);
   rpc FunctionGetSerialized(FunctionGetSerializedRequest) returns (FunctionGetSerializedResponse);
   rpc FunctionMap(FunctionMapRequest) returns (FunctionMapResponse);
-  rpc FunctionPutInputs(FunctionPutInputsRequest) returns (google.protobuf.Empty);
+  rpc FunctionPutInputs(FunctionPutInputsRequest) returns (FunctionPutInputsResponse);
   rpc FunctionPutOutputs(FunctionPutOutputsRequest) returns (google.protobuf.Empty);  // For containers to return result
   rpc FunctionGetInputs(FunctionGetInputsRequest) returns (FunctionGetInputsResponse);  // For containers to request next call
   rpc FunctionGetOutputs(FunctionGetOutputsRequest) returns (FunctionGetOutputsResponse);  // Returns the next result
