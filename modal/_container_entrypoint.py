@@ -41,7 +41,7 @@ RTT_S = 0.5  # conservative estimate of RTT in seconds.
 CONTAINER_IDLE_TIMEOUT = 60
 
 
-class _FunctionContext:
+class _FunctionIOManager:
     """This class isn't much more than a helper method for some gRPC calls.
 
     TODO: maybe we shouldn't synchronize the whole class.
@@ -162,16 +162,15 @@ class _FunctionContext:
             try:
                 async for input_id, input_pb in self._generate_inputs():
                     _set_current_input_id(input_id)
+                    args, kwargs = self.deserialize(input_pb.args) if input_pb.args else ((), {})
                     t0 = time.time()
-                    try:
-                        yield input_id, input_pb
-                    finally:
-                        self.total_user_time += time.time() - t0
-                        self.calls_completed += 1
+                    yield input_id, args, kwargs
+                    self.total_user_time += time.time() - t0
+                    self.calls_completed += 1
             finally:
                 await self.output_queue.put(None)
 
-    async def enqueue_output(self, input_id, **kwargs):
+    async def _enqueue_output(self, input_id, **kwargs):
         # upload data to S3 if too big.
         if "data" in kwargs and kwargs["data"] and len(kwargs["data"]) > MAX_OBJECT_SIZE_BYTES:
             data_blob_id = await blob_upload(kwargs["data"], self.client.stub)
@@ -227,7 +226,7 @@ class _FunctionContext:
             # serializing the exception, which may have some issues (there
             # was an earlier note about it that it might not be possible
             # to unpickle it in some cases). Let's watch out for issues.
-            await self.enqueue_output(
+            await self._enqueue_output(
                 input_id,
                 status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
                 data=serialized_exc,
@@ -235,43 +234,31 @@ class _FunctionContext:
                 traceback=traceback.format_exc(),
             )
 
+    async def enqueue_output(self, input_id, data):
+        await self._enqueue_output(
+            input_id,
+            status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
+            data=self.serialize(data),
+        )
+
+    async def enqueue_generator_value(self, input_id, data):
+        await self._enqueue_output(
+            input_id,
+            status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
+            data=self.serialize(data),
+            gen_status=api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE,
+        )
+
+    async def enqueue_generator_eof(self, input_id):
+        await self._enqueue_output(
+            input_id,
+            status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
+            gen_status=api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE,
+        )
+
 
 # just to mark the class as synchronized, we don't care about the interfaces
-FunctionContext, AioFunctionContext = synchronize_apis(_FunctionContext)
-
-
-def _call_function_generator(function_context, input_id, res):
-    for value in res:
-        function_context.enqueue_output(
-            input_id,
-            status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
-            data=function_context.serialize(value),
-            gen_status=api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE,
-        )
-
-    # send EOF
-    function_context.enqueue_output(
-        input_id,
-        status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
-        gen_status=api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE,
-    )
-
-
-async def _call_function_asyncgen(aio_function_context, input_id, res):
-    async for value in res:
-        await aio_function_context.enqueue_output(
-            input_id,
-            status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
-            data=aio_function_context.serialize(value),
-            gen_status=api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE,
-        )
-
-    # send EOF
-    await aio_function_context.enqueue_output(
-        input_id,
-        status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
-        gen_status=api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE,
-    )
+FunctionIOManager, AioFunctionIOManager = synchronize_apis(_FunctionIOManager)
 
 
 def is_async(function):
@@ -290,54 +277,46 @@ def is_async(function):
 
 
 def call_function_sync(
-    function_context,  #: FunctionContext,  # TODO: this type is generated in runtime
+    function_io_manager,  #: FunctionIOManager,  # TODO: this type is generated in runtime
     function: Callable,
-    function_type: api_pb2.Function.FunctionType,
-    input_id: str,
-    input_pb: api_pb2.FunctionInput,
+    is_generator: bool,
 ):
-    args, kwargs = function_context.deserialize(input_pb.args) if input_pb.args else ((), {})
+    for input_id, args, kwargs in function_io_manager.run_inputs_outputs():
+        with function_io_manager.handle_input_exception(input_id):
+            res = function(*args, **kwargs)
 
-    res = function(*args, **kwargs)
-
-    if function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR:
-        if not inspect.isgenerator(res):
-            raise InvalidError(f"Generator function returned value of type {type(res)}")
-        _call_function_generator(function_context, input_id, res)
-    else:
-        if inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
-            raise InvalidError(f"Sync (non-generator) function return value of type {type(res)}")
-        function_context.enqueue_output(
-            input_id,
-            status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
-            data=function_context.serialize(res),
-        )
+            if is_generator:
+                if not inspect.isgenerator(res):
+                    raise InvalidError(f"Generator function returned value of type {type(res)}")
+                for value in res:
+                    function_io_manager.enqueue_generator_value(input_id, value)
+                function_io_manager.enqueue_generator_eof(input_id)
+            else:
+                if inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
+                    raise InvalidError(f"Sync (non-generator) function return value of type {type(res)}")
+                function_io_manager.enqueue_output(input_id, res)
 
 
 async def call_function_async(
-    aio_function_context,  #: AioFunctionContext,  # TODO: this one too
+    aio_function_io_manager,  #: AioFunctionIOManager,  # TODO: this one too
     function: Callable,
-    function_type: api_pb2.Function.FunctionType,
-    input_id: str,
-    input_pb: api_pb2.FunctionInput,
+    is_generator: bool,
 ):
-    args, kwargs = aio_function_context.deserialize(input_pb.args) if input_pb.args else ((), {})
+    async for input_id, args, kwargs in aio_function_io_manager.run_inputs_outputs():
+        async with aio_function_io_manager.handle_input_exception(input_id):
+            res = function(*args, **kwargs)
 
-    res = function(*args, **kwargs)
-
-    if function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR:
-        if not inspect.isasyncgen(res):
-            raise InvalidError(f"Async generator function returned value of type {type(res)}")
-        await _call_function_asyncgen(aio_function_context, input_id, res)
-    else:
-        if not inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
-            raise InvalidError(f"Async (non-generator) function returned value of type {type(res)}")
-        value = await res
-        await aio_function_context.enqueue_output(
-            input_id,
-            status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
-            data=aio_function_context.serialize(value),
-        )
+            if is_generator:
+                if not inspect.isasyncgen(res):
+                    raise InvalidError(f"Async generator function returned value of type {type(res)}")
+                async for value in res:
+                    await aio_function_io_manager.enqueue_generator_value(input_id, value)
+                await aio_function_io_manager.enqueue_generator_eof(input_id)
+            else:
+                if not inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
+                    raise InvalidError(f"Async (non-generator) function returned value of type {type(res)}")
+                value = await res
+                await aio_function_io_manager.enqueue_output(input_id, value)
 
 
 def _wait_for_gpu_init():
@@ -354,7 +333,7 @@ def _wait_for_gpu_init():
 
 
 def import_function(function_def: api_pb2.Function) -> Callable:
-    # This is not in function_context, so that any global scope code that runs during import
+    # This is not in function_io_manager, so that any global scope code that runs during import
     # runs on the main thread.
     imported_function = _path_to_function(function_def.module_name, function_def.function_name)
     if isinstance(imported_function, (FunctionHandle, AioFunctionHandle)):
@@ -388,27 +367,24 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     if container_args.function_def.resources.gpu:
         _wait_for_gpu_init()
 
-    # This is a bit weird but we need both the blocking and async versions of FunctionContext.
+    # This is a bit weird but we need both the blocking and async versions of FunctionIOManager.
     # At some point, we should fix that by having built-in support for running "user code"
-    _function_context = _FunctionContext(container_args, client)
-    function_context, aio_function_context = synchronize_apis(_function_context)
+    _function_io_manager = _FunctionIOManager(container_args, client)
+    function_io_manager, aio_function_io_manager = synchronize_apis(_function_io_manager)
 
-    with function_context.handle_general_exception():
-        function_context.initialize_app()
+    with function_io_manager.handle_general_exception():
+        function_io_manager.initialize_app()
 
+        is_generator = function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
         if container_args.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
-            function = function_context.get_serialized_function()
+            function = function_io_manager.get_serialized_function()
         else:
             function = import_function(container_args.function_def)
 
-        for input_id, input_pb in function_context.run_inputs_outputs():  # type: ignore
-            with function_context.handle_input_exception(input_id):
-                # Note: this blocks the call_function as well. In the future we might want to stream outputs
-                # back asynchronously, but then block the call_function if there is back-pressure.
-                if not is_async(function):
-                    call_function_sync(function_context, function, function_type, input_id, input_pb)  # type: ignore
-                else:
-                    asyncio.run(call_function_async(aio_function_context, function, function_type, input_id, input_pb))  # type: ignore
+        if not is_async(function):
+            call_function_sync(function_io_manager, function, is_generator)
+        else:
+            asyncio.run(call_function_async(aio_function_io_manager, function, is_generator))
 
 
 if __name__ == "__main__":
