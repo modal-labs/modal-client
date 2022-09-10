@@ -35,5 +35,11 @@ def deprecated_function(x):
     return x**2
 
 
+class Cube:
+    @stub.function()
+    def f(x):
+        return x**3
+
+
 if __name__ == "__main__":
     raise Exception("This line is not supposed to be reachable")

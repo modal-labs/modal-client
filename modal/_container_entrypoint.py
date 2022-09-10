@@ -32,7 +32,11 @@ from .functions import AioFunctionHandle, FunctionHandle, _set_current_input_id
 
 def _path_to_function(module_name, function_name):
     module = importlib.import_module(module_name)
-    return getattr(module, function_name)
+    obj = module
+    for path in function_name.split("."):
+        # In case the function is defined inside a class scope (e.g MyClass.f)
+        obj = getattr(obj, path)
+    return obj
 
 
 MAX_OUTPUT_BATCH_SIZE = 100
