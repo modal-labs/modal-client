@@ -338,7 +338,8 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         return (function_handle._client, function_handle._object_id)
 
     @property
-    def web_url(self):
+    def web_url(self) -> str:
+        """URL of a Function running as a web endpoint."""
         function_handle = self._get_live_handle()
         return function_handle._web_url
 
@@ -630,6 +631,7 @@ class _Function(Provider[_FunctionHandle]):
 
     @property
     def tag(self):
+        """mdmd:hidden"""
         return self._tag
 
 

@@ -85,11 +85,13 @@ class _App:
         self._local_uuid_to_object = {}
 
     @property
-    def client(self):
+    def client(self) -> _Client:
+        """A reference to the running App's server client."""
         return self._client
 
     @property
-    def app_id(self):
+    def app_id(self) -> str:
+        """A unique identifier for this running App."""
         return self._app_id
 
     async def _load(

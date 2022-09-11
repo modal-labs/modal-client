@@ -103,11 +103,13 @@ class _Stub:
         super().__init__()
 
     @property
-    def name(self):
+    def name(self) -> str:
+        """The user-provided name of the Stub."""
         return self._name
 
     @property
-    def description(self):
+    def description(self) -> str:
+        """The Stub's `name`, if available, or a fallback descriptive identifier."""
         return self._description
 
     def _infer_app_desc(self):

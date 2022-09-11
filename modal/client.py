@@ -184,6 +184,7 @@ class _Client:
 
     @property
     def client_id(self):
+        """A unique identifier for the Client."""
         return self._client_id
 
     @classmethod
