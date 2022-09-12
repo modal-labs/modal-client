@@ -60,6 +60,7 @@ class _FunctionIOManager:
         self.client = client
         self.calls_completed = 0
         self.total_user_time: float = 0
+        self.input_started_at: float = 0
         self._client = synchronizer._translate_in(self.client)  # make it a _Client object
         assert isinstance(self._client, _Client)
 
@@ -167,9 +168,9 @@ class _FunctionIOManager:
                 async for input_id, input_pb in self._generate_inputs():
                     _set_current_input_id(input_id)
                     args, kwargs = self.deserialize(input_pb.args) if input_pb.args else ((), {})
-                    t0 = time.time()
+                    self.input_started_at = time.time()
                     yield input_id, args, kwargs
-                    self.total_user_time += time.time() - t0
+                    self.total_user_time += time.time() - self.input_started_at
                     self.calls_completed += 1
             finally:
                 await self.output_queue.put(None)
@@ -182,7 +183,12 @@ class _FunctionIOManager:
             kwargs.pop("data")
             kwargs["data_blob_id"] = data_blob_id
 
-        output = api_pb2.FunctionPutOutputsItem(input_id=input_id, result=api_pb2.GenericResult(**kwargs))
+        output = api_pb2.FunctionPutOutputsItem(
+            input_id=input_id,
+            input_started_at=self.input_started_at,
+            output_created_at=time.time(),
+            result=api_pb2.GenericResult(**kwargs),
+        )
         await self.output_queue.put(output)
 
     @synchronizer.asynccontextmanager

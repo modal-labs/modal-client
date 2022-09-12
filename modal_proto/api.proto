@@ -388,6 +388,8 @@ message FunctionPutInputsResponse {
 message FunctionPutOutputsItem {
   string input_id = 1;
   GenericResult result = 2;
+  double input_started_at = 3;
+  double output_created_at = 4;
 }
 
 message FunctionPutOutputsRequest {
