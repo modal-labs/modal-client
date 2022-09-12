@@ -25,9 +25,13 @@ else:
     default_spinner = "dots"
 
 
-def step_progress(message: str) -> RenderableType:
+def step_progress(text: str = "") -> Spinner:
     """Returns the element to be rendered when a step is in progress."""
-    return Spinner(default_spinner, Text(message, style="blue"), style="default")
+    return Spinner(default_spinner, text, style="default")
+
+
+def step_progress_update(spinner: Spinner, message: str):
+    spinner.update(text=Text(message, style="blue"))
 
 
 def step_completed(message: str, is_substep: bool = False) -> RenderableType:

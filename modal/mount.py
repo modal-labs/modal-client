@@ -31,12 +31,6 @@ class _MountHandle(Handle, type_prefix="mo"):
         self._local_file = local_file
         super().__init__(client=client, object_id=object_id)
 
-    def _get_created_message(self):
-        label = getattr(self, "_local_dir", None) or getattr(self, "_local_file", None)
-        if label is None:
-            return None
-        return f"Mounted {label}."
-
 
 class _Mount(Provider[_MountHandle]):
     """Create a mount for a local directory or file that can be attached
@@ -123,10 +117,11 @@ class _Mount(Provider[_MountHandle]):
         uploaded_hashes: set[str] = set()
         files: list[api_pb2.MountFile] = []
         total_bytes = 0
+        message_label = self._local_dir or self._local_file
 
         async def _put_file(mount_file: FileUploadSpec):
             nonlocal n_files, uploaded_hashes, total_bytes
-            message_callback(f"Mounting {self._local_dir}: Uploaded {len(uploaded_hashes)}/{n_files} inspected files")
+            message_callback(f"Mounting {message_label}: Uploaded {len(uploaded_hashes)}/{n_files} inspected files")
 
             remote_filename = (Path(self._remote_dir) / Path(mount_file.rel_filename)).as_posix()
             files.append(api_pb2.MountFile(filename=remote_filename, sha256_hex=mount_file.sha256_hex))
@@ -162,10 +157,10 @@ class _Mount(Provider[_MountHandle]):
         except aiostream.StreamEmpty:
             logger.warning("Mount is empty.")
 
-        message_callback(f"Mounting {self._local_dir}: Building mount")
+        message_callback(f"Mounting {message_label}: Building mount")
         req = api_pb2.MountBuildRequest(app_id=app_id, existing_mount_id=existing_mount_id, files=files)
         resp = await retry_transient_errors(client.stub.MountBuild, req, base_delay=1)
-        message_callback(f"Mounting {self._local_dir}: [green]Done[/green]")
+        message_callback(f"Mounted {message_label}")
 
         logger.debug(f"Uploaded {len(uploaded_hashes)}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
         return _MountHandle(self._local_dir, self._local_file, client, resp.mount_id)

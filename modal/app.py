@@ -5,7 +5,7 @@ from rich.tree import Tree
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 
-from ._output import step_progress
+from ._output import step_completed, step_progress, step_progress_update
 from .client import _Client
 from .config import logger
 from .exception import NotFoundError
@@ -131,18 +131,23 @@ class _App:
                 assert isinstance(created_obj, Handle)
                 return created_obj.object_id
 
-            step_node = None
+            last_message, spinner, step_node = None, None, None
 
             def set_message(message):
-                nonlocal step_node
+                nonlocal last_message, spinner, step_node
+                last_message = message
                 if progress:
                     if step_node is None:
-                        step_node = progress.add(step_progress(message))
-                    else:
-                        step_node.label = message
+                        spinner = step_progress()
+                        step_node = progress.add(spinner)
+                    step_progress_update(spinner, message)
 
             # Create object
             created_obj = await obj._load(self.client, self.app_id, loader, set_message, existing_object_id)
+
+            # Change message to a completed step
+            if progress and last_message:
+                step_node.label = step_completed(last_message, is_substep=True)
 
             if existing_object_id is not None and created_obj.object_id != existing_object_id:
                 # TODO(erikbern): this is a very ugly fix to a problem that's on the server side.
