@@ -7,18 +7,18 @@ from modal.client import Client
 from modal.config import _store_user_config, config, user_config_path
 from modal_proto import api_pb2
 
-token_cli = typer.Typer(no_args_is_help=True)
+token_cli = typer.Typer(name="token", help="Manage tokens.", no_args_is_help=True)
 
 
 @token_cli.command(
     help="Set account credentials for connecting to Modal. If not provided with the command, you will be prompted to enter your credentials."
 )
 def set(
-    token_id: Optional[str] = typer.Option(None, help="Token ID"),
-    token_secret: Optional[str] = typer.Option(None, help="Token secret"),
+    token_id: Optional[str] = typer.Option(None, help="Account token ID."),
+    token_secret: Optional[str] = typer.Option(None, help="Account token secret."),
     env: Optional[str] = typer.Option(
         None,
-        help="Modal environment to set credentials for. You can switch the currently active Modal environment with the `modal env` command. If unspecified, uses `default` environment.  ",
+        help="Modal environment to set credentials for. You can switch the currently active Modal environment with the `modal env` command. If unspecified, uses `default` environment.",
     ),
     no_verify: bool = False,
 ):

@@ -16,10 +16,10 @@ import modal
 from modal.client import AioClient
 from modal_utils.async_utils import synchronizer
 
-volume_cli = Typer(no_args_is_help=True, help="Manage read/write shared volumes")
+volume_cli = Typer(name="volume", help="Read and edit shared volumes.", no_args_is_help=True)
 
 
-@volume_cli.command(name="list")
+@volume_cli.command(name="list", help="List the names of all shared volumes.")
 @synchronizer
 async def list():
     client = await AioClient.from_env()
@@ -46,7 +46,7 @@ def some_func():
 """
 
 
-@volume_cli.command(name="create", help="Create a named volume")
+@volume_cli.command(name="create", help="Create a shared volume.")
 def create(volume_name: str):
     stub = modal.Stub()
     stub.entity = modal.SharedVolume()
@@ -70,7 +70,7 @@ def shared_volume_stub(volume_name):
         yield functions
 
 
-@volume_cli.command(name="ls", help="List files and directories in a named volume")
+@volume_cli.command(name="ls", help="List files and directories in a shared volume.")
 def ls(volume_name: str, path: str = typer.Argument(default="/")):
     console = Console()
     console.print(f"Directory listing of '{path}' in '{volume_name}':")
@@ -83,7 +83,7 @@ def copy(src, dst, overwrite):
     shutil.copytree(src, dst, dirs_exist_ok=overwrite)
 
 
-@volume_cli.command(name="put", help="Upload a file or directory to a named volume")
+@volume_cli.command(name="put", help="Upload files to a shared volume.")
 def put(volume_name: str, local_dir: str, remote_path: str = typer.Argument(default="/"), overwrite: bool = False):
     stub = modal.Stub()
     local_basename = os.path.basename(local_dir)
@@ -100,7 +100,7 @@ def put(volume_name: str, local_dir: str, remote_path: str = typer.Argument(defa
         modal_copy(remote_mount_dir, destination, overwrite)
 
 
-@volume_cli.command(name="cat", help="Print a file from a named volume to stdout")
+@volume_cli.command(name="cat", help="Print a file from a shared volume to standard output.")
 def cat(volume_name: str, remote_path: str):
     full_remote_path = os.path.join("/vol", remote_path.lstrip("/"))
     with shared_volume_stub(volume_name) as functions:

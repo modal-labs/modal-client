@@ -16,10 +16,10 @@ import modal
 from modal.client import Client, _Client
 from modal_utils.async_utils import synchronizer
 
-secret_cli = typer.Typer(no_args_is_help=True)
+secret_cli = typer.Typer(name="secret", help="Manage secrets.", no_args_is_help=True)
 
 
-@secret_cli.command("list", help="List your published secrets")
+@secret_cli.command("list", help="List your published secrets.")
 @synchronizer
 async def list():
     client = await _Client.from_env()
@@ -40,7 +40,7 @@ async def list():
     console.print(table)
 
 
-@secret_cli.command("create", help="Create or overwrite a secret")
+@secret_cli.command("create", help="Create a new secret, or overwrite an existing one.")
 def create(secret_name, keyvalues: List[str]):
     env_dict = {}
 
