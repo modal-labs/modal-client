@@ -112,7 +112,7 @@ class _Dict(Provider[_DictHandle]):
         self._data = data
         super().__init__()
 
-    async def _load(self, client, app_id, loader, existing_dict_id):
+    async def _load(self, client, app_id, loader, message_callback, existing_dict_id):
         serialized = _serialize_dict(self._data)
         req = api_pb2.DictCreateRequest(app_id=app_id, data=serialized, existing_dict_id=existing_dict_id)
         response = await client.stub.DictCreate(req)

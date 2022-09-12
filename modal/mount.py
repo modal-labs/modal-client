@@ -86,12 +86,6 @@ class _Mount(Provider[_MountHandle]):
         self._recursive = recursive
         super().__init__()
 
-    def _get_creating_message(self):
-        label = getattr(self, "_local_dir", None) or getattr(self, "_local_file", None)
-        if label is None:
-            return None
-        return f"Mounting {label}..."
-
     async def _get_files(self):
         if self._local_file:
             relpath = os.path.basename(self._local_file)
@@ -117,10 +111,10 @@ class _Mount(Provider[_MountHandle]):
                 if self._condition(filename):
                     futs.append(loop.run_in_executor(exe, get_file_upload_spec, filename, rel_filename))
             logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} workers")
-            for fut in asyncio.as_completed(futs):
+            for i, fut in enumerate(asyncio.as_completed(futs)):
                 yield await fut
 
-    async def _load(self, client, app_id, loader, existing_mount_id):
+    async def _load(self, client, app_id, loader, message_callback, existing_mount_id):
         # Run a threadpool to compute hash values, and use concurrent coroutines to register files.
         t0 = time.time()
         n_concurrent_uploads = 16
@@ -132,6 +126,7 @@ class _Mount(Provider[_MountHandle]):
 
         async def _put_file(mount_file: FileUploadSpec):
             nonlocal n_files, uploaded_hashes, total_bytes
+            message_callback(f"Mounting {self._local_dir}: Uploaded {len(uploaded_hashes)}/{n_files} inspected files")
 
             remote_filename = (Path(self._remote_dir) / Path(mount_file.rel_filename)).as_posix()
             files.append(api_pb2.MountFile(filename=remote_filename, sha256_hex=mount_file.sha256_hex))
@@ -167,8 +162,10 @@ class _Mount(Provider[_MountHandle]):
         except aiostream.StreamEmpty:
             logger.warning("Mount is empty.")
 
+        message_callback(f"Mounting {self._local_dir}: Building mount")
         req = api_pb2.MountBuildRequest(app_id=app_id, existing_mount_id=existing_mount_id, files=files)
         resp = await retry_transient_errors(client.stub.MountBuild, req, base_delay=1)
+        message_callback(f"Mounting {self._local_dir}: [green]Done[/green]")
 
         logger.debug(f"Uploaded {len(uploaded_hashes)}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
         return _MountHandle(self._local_dir, self._local_file, client, resp.mount_id)

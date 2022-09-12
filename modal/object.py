@@ -21,9 +21,6 @@ class Handle(metaclass=ObjectMeta):
         self._client = client
         self._object_id = object_id
 
-    def _get_created_message(self) -> Optional[str]:
-        return None
-
     @staticmethod
     def _from_id(object_id, client):
         parts = object_id.split("-")
@@ -58,9 +55,6 @@ class Provider(Generic[H]):
     def local_uuid(self):
         return self._local_uuid
 
-    def _get_creating_message(self) -> Optional[str]:
-        return None
-
     async def persist(self, label: str):
         """Deploy a Modal app containing this object. This object can then be imported from other apps using
         the returned reference, or by calling `modal.ref(label)`.
@@ -88,6 +82,7 @@ class Provider(Generic[H]):
         client: _Client,
         app_id: str,
         loader: Callable[["Provider"], Awaitable[str]],
+        message_callback: Callable[[str], None],
         existing_object_id: Optional[str] = None,
     ) -> H:
         raise NotImplementedError(f"Object factory of class {type(self)} has no load method")

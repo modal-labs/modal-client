@@ -299,12 +299,6 @@ class _FunctionHandle(Handle, type_prefix="fu"):
     def _initialize_from_proto(self, function: api_pb2.Function):
         self._is_generator = function.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
 
-    def _get_created_message(self) -> str:
-        if self._web_url:
-            # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
-            return f"Created {self._tag} => [magenta underline]{self._web_url}[/magenta underline]"
-        return f"Created {self._tag}."
-
     def _set_local_app(self, app):
         """mdmd:hidden"""
         self._local_app = app
@@ -544,10 +538,9 @@ class _Function(Provider[_FunctionHandle]):
         self._tag = self._info.get_tag()
         super().__init__()
 
-    def _get_creating_message(self) -> str:
-        return f"Creating {self._tag}..."
+    async def _load(self, client, app_id, loader, message_callback, existing_function_id):
+        message_callback(f"Creating {self._tag}...")
 
-    async def _load(self, client, app_id, loader, existing_function_id):
         if self._proxy:
             proxy_id = await loader(self._proxy)
             # HACK: remove this once we stop using ssh tunnels for this.
@@ -632,6 +625,12 @@ class _Function(Provider[_FunctionHandle]):
             if exc.status == Status.INVALID_ARGUMENT:
                 raise InvalidError(exc.message)
             raise
+
+        if response.web_url:
+            # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
+            message_callback(f"Created {self._tag} => [magenta underline]{response.web_url}[/magenta underline]")
+        else:
+            message_callback(f"Created {self._tag}.")
 
         return _FunctionHandle(self, response.web_url, client, response.function_id)
 

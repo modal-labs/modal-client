@@ -26,7 +26,7 @@ class _Secret(Provider[_SecretHandle]):
         self._template_type = template_type
         super().__init__()
 
-    async def _load(self, client, app_id, loader, existing_secret_id):
+    async def _load(self, client, app_id, loader, message_callback, existing_secret_id):
         req = api_pb2.SecretCreateRequest(
             app_id=app_id,
             env_dict=self._env_dict,

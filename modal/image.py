@@ -54,7 +54,7 @@ class _Image(Provider[_ImageHandle]):
         self._secrets = secrets
         super().__init__()
 
-    async def _load(self, client, app_id, loader, existing_image_id):
+    async def _load(self, client, app_id, loader, message_callback, existing_image_id):
         if self._ref:
             image_id = await loader(self._ref)
             return _ImageHandle._from_id(image_id, client)
