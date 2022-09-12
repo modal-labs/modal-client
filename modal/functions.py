@@ -510,6 +510,7 @@ class _Function(Provider[_FunctionHandle]):
         proxy: Optional[Ref] = None,
         retries: Optional[int] = None,
         concurrency_limit: Optional[int] = None,
+        cpu: Optional[float] = None,
     ) -> None:
         """mdmd:hidden"""
         assert callable(raw_f)
@@ -535,6 +536,7 @@ class _Function(Provider[_FunctionHandle]):
         self._mounts = mounts
         self._shared_volumes = shared_volumes
         self._webhook_config = webhook_config
+        self._cpu = cpu
         self._memory = memory
         self._proxy = proxy
         self._retries = retries
@@ -596,6 +598,10 @@ class _Function(Provider[_FunctionHandle]):
 
         rate_limit = self._rate_limit._to_proto() if self._rate_limit else None
 
+        if self._cpu is not None and self._cpu < 0.0:
+            raise InvalidError(f"Invalid fractional CPU value {self._cpu}. Cannot have negative CPU resources.")
+        milli_cpu = int(1000 * self._cpu) if self._cpu is not None else None
+
         # Create function remotely
         function_definition = api_pb2.Function(
             module_name=self._info.module_name,
@@ -606,7 +612,7 @@ class _Function(Provider[_FunctionHandle]):
             definition_type=self._info.definition_type,
             function_serialized=self._info.function_serialized,
             function_type=function_type,
-            resources=api_pb2.Resources(gpu=self._gpu, memory=self._memory),
+            resources=api_pb2.Resources(milli_cpu=milli_cpu, gpu=self._gpu, memory=self._memory),
             rate_limit=rate_limit,
             webhook_config=self._webhook_config,
             shared_volume_mounts=shared_volume_mounts,

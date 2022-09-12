@@ -80,6 +80,14 @@ def test_function_memory_request(client):
         pass
 
 
+def test_function_cpu_request(client):
+    stub = Stub()
+
+    @stub.function(cpu=2.0)
+    def f1():
+        pass
+
+
 def test_function_future(client, servicer):
     stub = Stub()
 

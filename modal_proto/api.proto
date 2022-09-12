@@ -525,6 +525,7 @@ message RateLimit {
 message Resources {
   bool gpu = 1;
   uint32 memory = 2; // Memory requested in MB.
+  uint32 milli_cpu = 3;
 }
 
 message Schedule {

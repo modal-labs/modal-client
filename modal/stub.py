@@ -453,6 +453,7 @@ class _Stub:
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Collection[Union[_Mount, Ref]] = (),
         shared_volumes: Dict[str, Union[_SharedVolume, Ref]] = {},
+        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MB. This is a soft limit.
         proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
@@ -478,6 +479,7 @@ class _Stub:
             proxy=proxy,
             retries=retries,
             concurrency_limit=concurrency_limit,
+            cpu=cpu,
         )
         return self._add_function(function)
 
@@ -496,6 +498,7 @@ class _Stub:
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Collection[Union[_Mount, Ref]] = (),
         shared_volumes: Dict[str, Union[_SharedVolume, Ref]] = {},
+        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MB. This is a soft limit.
         proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
@@ -520,6 +523,7 @@ class _Stub:
             proxy=proxy,
             retries=retries,
             concurrency_limit=concurrency_limit,
+            cpu=cpu,
         )
         return self._add_function(function)
 
@@ -538,6 +542,7 @@ class _Stub:
         gpu: bool = False,  # Whether a GPU is required
         mounts: Collection[Union[_Mount, Ref]] = (),
         shared_volumes: Dict[str, Union[_SharedVolume, Ref]] = {},
+        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MB. This is a soft limit.
         proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
@@ -571,6 +576,7 @@ class _Stub:
             proxy=proxy,
             retries=retries,
             concurrency_limit=concurrency_limit,
+            cpu=cpu,
         )
         return self._add_function(function)
 
@@ -588,6 +594,7 @@ class _Stub:
         gpu: bool = False,  # Whether a GPU is required
         mounts: Collection[Union[_Mount, Ref]] = (),
         shared_volumes: Dict[str, Union[_SharedVolume, Ref]] = {},
+        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MB. This is a soft limit.
         proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
@@ -611,6 +618,7 @@ class _Stub:
             proxy=proxy,
             retries=retries,
             concurrency_limit=concurrency_limit,
+            cpu=cpu,
         )
         return self._add_function(function)
 
