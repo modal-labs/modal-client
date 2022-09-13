@@ -185,3 +185,21 @@ def test_container_entrypoint_class_scoped_function(servicer, event_loop):
     output = _get_output(outputs[0])
     assert output.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     assert output.data == serialize(42**3)
+
+    from modal_test_support.functions import Cube
+
+    assert Cube._events == ["init", "enter", "call", "exit"]
+
+
+def test_container_entrypoint_class_scoped_function_async(servicer, event_loop):
+    client, outputs = _run_container(servicer, "modal_test_support.functions", "CubeAsync.f")
+    assert len(outputs) == 1
+    assert isinstance(outputs[0], api_pb2.FunctionPutOutputsRequest)
+
+    output = _get_output(outputs[0])
+    assert output.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert output.data == serialize(42**3)
+
+    from modal_test_support.functions import CubeAsync
+
+    assert CubeAsync._events == ["init", "enter", "call", "exit"]

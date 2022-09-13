@@ -6,7 +6,7 @@ import math
 import sys
 import time
 import traceback
-from typing import Any, AsyncIterator, Callable, Tuple
+from typing import Any, AsyncIterator, Callable, Optional, Tuple, Type
 
 import cloudpickle
 
@@ -28,16 +28,6 @@ from .client import Client, _Client
 from .config import logger
 from .exception import InvalidError
 from .functions import AioFunctionHandle, FunctionHandle, _set_current_input_id
-
-
-def _path_to_function(module_name, function_name):
-    module = importlib.import_module(module_name)
-    obj = module
-    for path in function_name.split("."):
-        # In case the function is defined inside a class scope (e.g MyClass.f)
-        obj = getattr(obj, path)
-    return obj
-
 
 MAX_OUTPUT_BATCH_SIZE = 100
 RTT_S = 0.5  # conservative estimate of RTT in seconds.
@@ -288,45 +278,86 @@ def is_async(function):
 
 def call_function_sync(
     function_io_manager,  #: FunctionIOManager,  # TODO: this type is generated in runtime
-    function: Callable,
+    cls: Optional[Type],
+    fun: Callable,
     is_generator: bool,
 ):
-    for input_id, args, kwargs in function_io_manager.run_inputs_outputs():
-        with function_io_manager.handle_input_exception(input_id):
-            res = function(*args, **kwargs)
+    # If this function is on a class, instantiate it and enter it
+    if cls is not None:
+        self = cls()
+        if hasattr(cls, "__enter__"):
+            # Call a user-defined method
+            cls.__enter__(self)
+        elif hasattr(cls, "__aenter__"):
+            logger.warning("Not running asynchronous enter/exit handlers with a sync function")
+    else:
+        self = None
 
-            if is_generator:
-                if not inspect.isgenerator(res):
-                    raise InvalidError(f"Generator function returned value of type {type(res)}")
-                for value in res:
-                    function_io_manager.enqueue_generator_value(input_id, value)
-                function_io_manager.enqueue_generator_eof(input_id)
-            else:
-                if inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
-                    raise InvalidError(f"Sync (non-generator) function return value of type {type(res)}")
-                function_io_manager.enqueue_output(input_id, res)
+    try:
+        for input_id, args, kwargs in function_io_manager.run_inputs_outputs():
+            with function_io_manager.handle_input_exception(input_id):
+                if self is not None:
+                    res = fun(self, *args, **kwargs)
+                else:
+                    res = fun(*args, **kwargs)
+
+                if is_generator:
+                    if not inspect.isgenerator(res):
+                        raise InvalidError(f"Generator function returned value of type {type(res)}")
+                    for value in res:
+                        function_io_manager.enqueue_generator_value(input_id, value)
+                    function_io_manager.enqueue_generator_eof(input_id)
+                else:
+                    if inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
+                        raise InvalidError(f"Sync (non-generator) function return value of type {type(res)}")
+                    function_io_manager.enqueue_output(input_id, res)
+    finally:
+        if cls is not None and hasattr(cls, "__exit__"):
+            cls.__exit__(self, *sys.exc_info())
 
 
 async def call_function_async(
     aio_function_io_manager,  #: AioFunctionIOManager,  # TODO: this one too
-    function: Callable,
+    cls: Optional[Type],
+    fun: Callable,
     is_generator: bool,
 ):
-    async for input_id, args, kwargs in aio_function_io_manager.run_inputs_outputs():
-        async with aio_function_io_manager.handle_input_exception(input_id):
-            res = function(*args, **kwargs)
+    # If this function is on a class, instantiate it and enter it
+    if cls is not None:
+        self = cls()
+        if hasattr(cls, "__aenter__"):
+            # Call a user-defined method
+            await cls.__aenter__(self)
+        elif hasattr(cls, "__enter__"):
+            cls.__enter__(self)
+    else:
+        self = None
 
-            if is_generator:
-                if not inspect.isasyncgen(res):
-                    raise InvalidError(f"Async generator function returned value of type {type(res)}")
-                async for value in res:
-                    await aio_function_io_manager.enqueue_generator_value(input_id, value)
-                await aio_function_io_manager.enqueue_generator_eof(input_id)
-            else:
-                if not inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
-                    raise InvalidError(f"Async (non-generator) function returned value of type {type(res)}")
-                value = await res
-                await aio_function_io_manager.enqueue_output(input_id, value)
+    try:
+        async for input_id, args, kwargs in aio_function_io_manager.run_inputs_outputs():
+            async with aio_function_io_manager.handle_input_exception(input_id):
+                if self:
+                    res = fun(self, *args, **kwargs)
+                else:
+                    res = fun(*args, **kwargs)
+
+                if is_generator:
+                    if not inspect.isasyncgen(res):
+                        raise InvalidError(f"Async generator function returned value of type {type(res)}")
+                    async for value in res:
+                        await aio_function_io_manager.enqueue_generator_value(input_id, value)
+                    await aio_function_io_manager.enqueue_generator_eof(input_id)
+                else:
+                    if not inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
+                        raise InvalidError(f"Async (non-generator) function returned value of type {type(res)}")
+                    value = await res
+                    await aio_function_io_manager.enqueue_output(input_id, value)
+    finally:
+        if cls is not None:
+            if hasattr(cls, "__aexit__"):
+                await cls.__aexit__(self, *sys.exc_info())
+            elif hasattr(cls, "__exit__"):
+                cls.__exit__(self, *sys.exc_info())
 
 
 def _wait_for_gpu_init():
@@ -342,30 +373,40 @@ def _wait_for_gpu_init():
     logger.info("Failed to initialize CUDA device.")
 
 
-def import_function(function_def: api_pb2.Function) -> Callable:
+def import_function(function_def: api_pb2.Function) -> Tuple[Optional[Type], Callable]:
     # This is not in function_io_manager, so that any global scope code that runs during import
     # runs on the main thread.
-    imported_function = _path_to_function(function_def.module_name, function_def.function_name)
-    if isinstance(imported_function, (FunctionHandle, AioFunctionHandle)):
-        # We want the internal type of this, not the external
-        _function_proxy = synchronizer._translate_in(imported_function)
-        function = _function_proxy.get_raw_f()
-    else:
-        function = imported_function
+    module = importlib.import_module(function_def.module_name)
+
+    # The function might be defined inside a class scope (e.g mymodule.MyClass.f)
+    objs: list[Any] = [module]
+    for path in function_def.function_name.split("."):
+        objs.append(getattr(objs[-1], path))
+
+    # If this function is defined on a class, return that too
+    cls: Optional[Type] = None
+    fun: Callable = objs[-1]
+    if len(objs) >= 3:
+        cls = objs[-2]
+
+    # The decorator is typically in global scope, but may have been applied independently
+    if isinstance(fun, (FunctionHandle, AioFunctionHandle)):
+        _function_proxy = synchronizer._translate_in(fun)
+        fun = _function_proxy.get_raw_f()
 
     if function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP:
         # function returns an asgi_app, that we can use as a callable.
-        asgi_app = function()
-        return asgi_app_wrapper(asgi_app)
+        asgi_app = fun()
+        return cls, asgi_app_wrapper(asgi_app)
     elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_WSGI_APP:
         # function returns an wsgi_app, that we can use as a callable.
-        wsgi_app = function()
-        return wsgi_app_wrapper(wsgi_app)
+        wsgi_app = fun()
+        return cls, wsgi_app_wrapper(wsgi_app)
     elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
         # function is webhook without an ASGI app. Create one for it.
-        return fastAPI_function_wrapper(function, function_def.webhook_config.method)
+        return cls, fastAPI_function_wrapper(fun, function_def.webhook_config.method)
     else:
-        return function
+        return cls, fun
 
 
 def main(container_args: api_pb2.ContainerArguments, client: Client):
@@ -387,14 +428,15 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         is_generator = function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
         if container_args.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
-            function = function_io_manager.get_serialized_function()
+            cls = None
+            fun = function_io_manager.get_serialized_function()
         else:
-            function = import_function(container_args.function_def)
+            cls, fun = import_function(container_args.function_def)
 
-        if not is_async(function):
-            call_function_sync(function_io_manager, function, is_generator)
+        if not is_async(fun):
+            call_function_sync(function_io_manager, cls, fun, is_generator)
         else:
-            asyncio.run(call_function_async(aio_function_io_manager, function, is_generator))
+            asyncio.run(call_function_async(aio_function_io_manager, cls, fun, is_generator))
 
 
 if __name__ == "__main__":
