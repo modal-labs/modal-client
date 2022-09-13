@@ -112,8 +112,8 @@ class TaskContext:
 
     async def start(self):
         # TODO: this only exists as a standalone method because Client doesn't have a proper ctx mgr
-        self._tasks = set()
-        self._exited = asyncio.Event()  # Used to stop infinite loops
+        self._tasks: set[asyncio.Task] = set()
+        self._exited: asyncio.Event = asyncio.Event()  # Used to stop infinite loops
 
     async def __aenter__(self):
         await self.start()

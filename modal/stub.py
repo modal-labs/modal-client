@@ -3,7 +3,7 @@ import os
 import sys
 import warnings
 from enum import Enum
-from typing import Collection, Dict, Optional, Union
+from typing import AsyncGenerator, Collection, Dict, Optional, Union
 
 from rich.tree import Tree
 
@@ -183,7 +183,7 @@ class _Stub:
         last_log_entry_id: Optional[str] = None,
         description: Optional[str] = None,
         mode: StubRunMode = StubRunMode.RUN,
-    ):
+    ) -> AsyncGenerator[_App, None]:
         if existing_app_id is not None:
             app = await _App._init_existing(self, client, existing_app_id)
         else:
@@ -239,7 +239,7 @@ class _Stub:
             output_mgr.print_if_visible(step_completed("App completed."))
 
     @synchronizer.asynccontextmanager
-    async def run(self, client=None, stdout=None, show_progress=None):
+    async def run(self, client=None, stdout=None, show_progress=None) -> AsyncGenerator[_App, None]:
         """Context manager that runs an app on Modal.
 
         Use this as the main entry point for your Modal application. All calls

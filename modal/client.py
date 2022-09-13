@@ -138,6 +138,7 @@ class _Client:
             except asyncio.CancelledError as exc:
                 capture_exception(exc)
                 logger.warning("Client heartbeat: deadline exceeded")
+            # Server terminates a connection abruptly.
             except StreamTerminatedError as exc:
                 capture_exception(exc)
                 logger.warning("Client heartbeat: stream terminated")

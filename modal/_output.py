@@ -7,7 +7,7 @@ import re
 import sys
 from typing import Callable, Dict, Optional
 
-from grpclib import GRPCError
+from grpclib.exceptions import GRPCError, StreamTerminatedError
 from rich.console import Console, RenderableType
 from rich.live import Live
 from rich.spinner import Spinner
@@ -80,7 +80,7 @@ class OutputManager:
     _console: Console
     _task_states: Dict[str, int]
 
-    def __init__(self, stdout, show_progress: Optional[bool], buffer: bool = True):
+    def __init__(self, stdout, show_progress: Optional[bool]):
         self.stdout = stdout or sys.stdout
         if show_progress is None:
             self._visible_progress = self.stdout.isatty()
@@ -186,10 +186,15 @@ class OutputManager:
             except asyncio.CancelledError:
                 logger.debug("Logging cancelled")
                 raise
-            except GRPCError as exc:
-                if exc.status in RETRYABLE_GRPC_STATUS_CODES:
-                    # try again if we had a temporary connection drop, for example if computer went to sleep
-                    logger.debug("Log fetching timed out - retrying")
+            except (GRPCError, StreamTerminatedError) as exc:
+                if isinstance(exc, GRPCError):
+                    if exc.status in RETRYABLE_GRPC_STATUS_CODES:
+                        # Try again if we had a temporary connection drop,
+                        # for example if computer went to sleep.
+                        logger.debug("Log fetching timed out. Retrying ...")
+                        continue
+                elif isinstance(exc, StreamTerminatedError):
+                    logger.debug("Stream closed. Retrying ...")
                     continue
                 raise
 
