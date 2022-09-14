@@ -162,7 +162,7 @@ async def retry_transient_errors(
         metadata = [("x-idempotency-key", idempotency_key), ("x-retry-attempt", str(n_retries))]
         try:
             return await fn(*args, metadata=metadata)
-        except (StreamTerminatedError, GRPCError) as exc:
+        except (StreamTerminatedError, GRPCError, socket.gaierror) as exc:
             if isinstance(exc, GRPCError) and exc.status not in status_codes:
                 raise
 
@@ -170,7 +170,7 @@ async def retry_transient_errors(
                 raise
 
             n_retries += 1
-            if isinstance(exc, StreamTerminatedError) or exc.status not in ignore_errors:
+            if not (isinstance(exc, GRPCError) and exc.status in ignore_errors):
                 capture_exception(exc)
             await asyncio.sleep(delay)
             delay = min(delay * delay_factor, max_delay)
