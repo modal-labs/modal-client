@@ -1,26 +1,30 @@
-class RemoteError(Exception):
+class Error(Exception):
+    """Base error class for all Modal errors"""
+
+
+class RemoteError(Error):
     """An error was raised on the Modal server."""
 
 
-class AuthError(Exception):
+class AuthError(Error):
     """The client has missing or invalid authentication."""
 
 
-class ConnectionError(Exception):
+class ConnectionError(Error):
     """An issue was raised while connecting to the Modal servers."""
 
 
-class InvalidError(Exception):
+class InvalidError(Error):
     """Used when user does something invalid."""
 
 
-class VersionError(Exception):
+class VersionError(Error):
     """The current client version of Modal is unsupported."""
 
 
-class NotFoundError(Exception):
+class NotFoundError(Error):
     """A requested resource was not found."""
 
 
-class ExecutionError(Exception):
+class ExecutionError(Error):
     """Something unexpected happen during runtime."""
