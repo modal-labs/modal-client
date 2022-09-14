@@ -105,6 +105,7 @@ message AppGetLogsRequest {
   float timeout = 2;
   string last_entry_id = 4;
   string function_id = 5;
+  string input_id = 6;
 }
 
 message AppGetObjectsRequest {
@@ -326,6 +327,7 @@ message FunctionGetInputsResponse {
 message FunctionGetOutputsItem {
   GenericResult result = 1;
   int32 idx = 2;
+  string input_id = 3;
 }
 
 message FunctionGetOutputsRequest {

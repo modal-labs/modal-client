@@ -292,12 +292,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 results = [res]
 
             outputs = []
-            for value in results:
+            for index, value in enumerate(results):
                 result = api_pb2.GenericResult(
                     status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
                     data=cloudpickle.dumps(value),
                 )
                 item = api_pb2.FunctionGetOutputsItem(
+                    input_id=f"in-123-{index}",
                     idx=idx,
                     result=result,
                 )
