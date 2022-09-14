@@ -134,10 +134,12 @@ class _Client:
             try:
                 await self.stub.ClientHeartbeat(req, timeout=HEARTBEAT_TIMEOUT)
                 self._last_heartbeat = time.time()
-            # Raised by grpclib when the connection is closed.
-            except asyncio.CancelledError as exc:
+            except asyncio.CancelledError as exc:  # Raised by grpclib when the connection is closed
                 capture_exception(exc)
-                logger.warning("Client heartbeat: deadline exceeded")
+                logger.warning("Client heartbeat: cancelled")
+            except asyncio.TimeoutError as exc:  # Raised by grpclib when the request times out
+                capture_exception(exc)
+                logger.warning("Client heartbeat: timeout")
             # Server terminates a connection abruptly.
             except StreamTerminatedError as exc:
                 capture_exception(exc)
