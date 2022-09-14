@@ -106,6 +106,7 @@ message AppGetLogsRequest {
   string last_entry_id = 4;
   string function_id = 5;
   string input_id = 6;
+  string task_id = 7;
 }
 
 message AppGetObjectsRequest {
