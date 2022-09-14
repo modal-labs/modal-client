@@ -185,7 +185,9 @@ class _FunctionIOManager:
     async def handle_general_exception(self):
         try:
             yield
-        except Exception as exc:
+        except KeyboardInterrupt:
+            raise
+        except BaseException as exc:
             # Since this is on a different thread, sys.exc_info() can't find the exception in the stack.
             traceback.print_exception(type(exc), exc, exc.__traceback__)
 
@@ -210,7 +212,9 @@ class _FunctionIOManager:
     async def handle_input_exception(self, input_id):
         try:
             yield
-        except Exception as exc:
+        except KeyboardInterrupt:
+            raise
+        except BaseException as exc:
             # print exception so it's logged
             traceback.print_exc()
 

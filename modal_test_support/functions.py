@@ -30,6 +30,16 @@ def raises(x):
     raise Exception("Failure!")
 
 
+@stub.function()
+def raises_sysexit(x):
+    raise SystemExit(1)
+
+
+@stub.function()
+def raises_keyboardinterrupt(x):
+    raise KeyboardInterrupt()
+
+
 def deprecated_function(x):
     warnings.warn("This function is deprecated", DeprecationWarning)
     return x**2

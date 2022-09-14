@@ -104,6 +104,24 @@ def test_container_entrypoint_failure(servicer):
     assert "Traceback" in output.traceback
 
 
+@skip_github_actions_non_linux
+def test_container_entrypoint_raises_base_exception(servicer):
+    client, outputs = _run_container(servicer, "modal_test_support.functions", "raises_sysexit")
+
+    assert len(outputs) == 1
+    assert isinstance(outputs[0], api_pb2.FunctionPutOutputsRequest)
+
+    output = _get_output(outputs[0])
+    assert output.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
+    assert output.exception == "SystemExit(1)"
+
+
+@skip_github_actions_non_linux
+def test_container_entrypoint_keyboardinterrupt(servicer):
+    with pytest.raises(KeyboardInterrupt):
+        client, outputs = _run_container(servicer, "modal_test_support.functions", "raises_keyboardinterrupt")
+
+
 def test_container_entrypoint_rate_limited(servicer, event_loop):
     t0 = time.time()
     servicer.rate_limit_sleep_duration = 0.25
