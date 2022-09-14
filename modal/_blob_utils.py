@@ -1,3 +1,4 @@
+import asyncio
 import dataclasses
 import os
 from typing import Optional
@@ -8,6 +9,7 @@ from modal_utils.async_utils import retry
 from modal_utils.blob_utils import use_md5
 from modal_utils.hash_utils import get_md5_base64, get_sha256_hex
 from modal_utils.http_utils import http_client_with_tls
+from modal_utils.logger import logger
 
 # Max size for function inputs and outputs.
 MAX_OBJECT_SIZE_BYTES = 64 * 1024  # 64 kb
@@ -20,7 +22,7 @@ LARGE_FILE_LIMIT = 1024 * 1024  # 1MB
 BLOB_MAX_PARALLELISM = 10
 
 
-@retry(n_attempts=5, base_delay=0.1, timeout=None)
+@retry(n_attempts=5, base_delay=0.5, timeout=None)
 async def _upload_to_url(upload_url: str, content_md5: str, aiohttp_payload) -> None:
     async with http_client_with_tls(timeout=None) as session:
         headers = {"content-type": "application/octet-stream"}
@@ -29,6 +31,11 @@ async def _upload_to_url(upload_url: str, content_md5: str, aiohttp_payload) -> 
             headers["Content-MD5"] = content_md5
 
         async with session.put(upload_url, data=aiohttp_payload, headers=headers) as resp:
+            # S3 signal to slow down request rate.
+            if resp.status == 503:
+                logger.warning("Received SlowDown signal from S3, sleeping for 1 second before retrying.")
+                await asyncio.sleep(1)
+
             if resp.status != 200:
                 text = await resp.text()
                 raise ExecutionError(f"Put to url failed with status {resp.status}: {text}")
@@ -61,6 +68,11 @@ async def blob_upload_file(filename: str, stub) -> str:
 async def _download_from_url(download_url):
     async with http_client_with_tls(timeout=None) as session:
         async with session.get(download_url) as resp:
+            # S3 signal to slow down request rate.
+            if resp.status == 503:
+                logger.warning("Received SlowDown signal from S3, sleeping for 1 second before retrying.")
+                await asyncio.sleep(1)
+
             if resp.status != 200:
                 text = await resp.text()
                 raise ExecutionError(f"Get from url failed with status {resp.status}: {text}")
