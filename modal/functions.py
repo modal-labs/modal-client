@@ -218,6 +218,7 @@ async def _map_invocation(function_id, input_stream, kwargs, client, is_generato
                 request,
                 max_retries=None,
                 additional_status_codes=[Status.RESOURCE_EXHAUSTED],
+                ignore_errors=[Status.RESOURCE_EXHAUSTED],
             )
 
         have_all_inputs = True
