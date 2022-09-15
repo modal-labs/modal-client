@@ -7,6 +7,7 @@ from modal.exception import ExecutionError
 from modal_proto import api_pb2
 from modal_utils.async_utils import retry
 from modal_utils.blob_utils import use_md5
+from modal_utils.grpc_utils import retry_transient_errors
 from modal_utils.hash_utils import get_md5_base64, get_sha256_hex
 from modal_utils.http_utils import http_client_with_tls
 from modal_utils.logger import logger
@@ -43,7 +44,7 @@ async def _upload_to_url(upload_url: str, content_md5: str, aiohttp_payload) -> 
 
 async def _blob_upload(content_md5: str, aiohttp_payload, stub) -> str:
     req = api_pb2.BlobCreateRequest(content_md5=content_md5)
-    resp = await stub.BlobCreate(req)
+    resp = await retry_transient_errors(stub.BlobCreate, req)
 
     blob_id = resp.blob_id
     target = resp.upload_url
@@ -82,7 +83,7 @@ async def _download_from_url(download_url):
 async def blob_download(blob_id, stub):
     # convenience function reading all of the downloaded file into memory
     req = api_pb2.BlobGetRequest(blob_id=blob_id)
-    resp = await stub.BlobGet(req)
+    resp = await retry_transient_errors(stub.BlobGet, req)
 
     return await _download_from_url(resp.download_url)
 
