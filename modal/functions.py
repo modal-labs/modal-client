@@ -3,6 +3,7 @@ import platform
 import time
 import warnings
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 from typing import Any, Callable, Collection, Dict, Optional, Tuple, Union
 
@@ -30,6 +31,7 @@ from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError
 from .mount import _Mount
 from .object import Handle, Provider, Ref, RemoteRef
 from .rate_limit import RateLimit
+from .retries import Retries
 from .schedule import Schedule
 from .secret import _Secret
 from .shared_volume import _SharedVolume
@@ -503,7 +505,7 @@ class _Function(Provider[_FunctionHandle]):
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         memory: Optional[int] = None,
         proxy: Optional[Ref] = None,
-        retries: Optional[int] = None,
+        retries: Optional[Union[int, Retries]] = None,
         concurrency_limit: Optional[int] = None,
         cpu: Optional[float] = None,
     ) -> None:
@@ -521,8 +523,38 @@ class _Function(Provider[_FunctionHandle]):
         self._image = image
         self._secrets = secrets
 
-        if retries is not None and (not isinstance(retries, int) or retries < 0 or retries > 10):
-            raise InvalidError(f"Function {raw_f} retries must be an integer between 0 and 10.")
+        if retries:
+            if isinstance(retries, int):
+                retry_policy = Retries(
+                    max_retries=retries,
+                    initial_delay=1.0,
+                    backoff_coefficient=1.0,
+                )
+            elif isinstance(retries, Retries):
+                retry_policy = retries
+            else:
+                raise InvalidError(
+                    f"Function {raw_f} retries must be an integer or instance of modal.Retries. Found: {type(retries)}"
+                )
+
+            if not (0 <= retry_policy.max_retries <= 10):
+                raise InvalidError(f"Function {raw_f} retries must be between 0 and 10.")
+
+            # TODO(Jonathon): Right now we can only support a maximum delay of 60 seconds
+            # b/c the CONTAINER_IDLE_TIMEOUT is the maximum time a container will wait for inputs,
+            # after which it will exit 0 and the task is marked finished.
+            if not (timedelta(seconds=1) < retry_policy.max_delay <= timedelta(seconds=60)):
+                raise InvalidError(
+                    f"Invalid max_delay argument: {repr(retry_policy.max_delay)}. Must be between 1-60 seconds."
+                )
+
+            # initial_delay should be bounded by max_delay, but this is an extra defensive check.
+            if not (timedelta(seconds=0) < retry_policy.initial_delay <= timedelta(seconds=60)):
+                raise InvalidError(
+                    f"Invalid initial_delay argument: {repr(retry_policy.initial_delay)}. Must be between 0-60 seconds."
+                )
+        else:
+            retry_policy = None
 
         self._schedule = schedule
         self._is_generator = is_generator
@@ -534,7 +566,7 @@ class _Function(Provider[_FunctionHandle]):
         self._cpu = cpu
         self._memory = memory
         self._proxy = proxy
-        self._retries = retries
+        self._retry_policy = retry_policy
         self._concurrency_limit = concurrency_limit
         self._tag = self._info.get_tag()
         super().__init__()
@@ -591,6 +623,7 @@ class _Function(Provider[_FunctionHandle]):
             function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
 
         rate_limit = self._rate_limit._to_proto() if self._rate_limit else None
+        retry_policy = self._retry_policy._to_proto() if self._retry_policy else None
 
         if self._cpu is not None and self._cpu < 0.0:
             raise InvalidError(f"Invalid fractional CPU value {self._cpu}. Cannot have negative CPU resources.")
@@ -611,7 +644,7 @@ class _Function(Provider[_FunctionHandle]):
             webhook_config=self._webhook_config,
             shared_volume_mounts=shared_volume_mounts,
             proxy_id=proxy_id,
-            retry_policy=api_pb2.FunctionRetryPolicy(retries=self._retries),
+            retry_policy=retry_policy,
             concurrency_limit=self._concurrency_limit,
         )
         request = api_pb2.FunctionCreateRequest(

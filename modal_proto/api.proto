@@ -400,6 +400,10 @@ message FunctionPutOutputsRequest {
 }
 
 message FunctionRetryPolicy {
+  float backoff_coefficient = 1;
+  uint32 initial_delay_ms = 2;
+  uint32 max_delay_ms = 3;
+  // NOTE: two-byte field number not used for special reason. copy-paste error. Ref: PR #2542
   uint32 retries = 18;
 }
 

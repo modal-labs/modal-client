@@ -8,6 +8,7 @@ from .object import ref
 from .proxy import *  # noqa
 from .queue import Queue
 from .rate_limit import RateLimit
+from .retries import Retries
 from .schedule import Cron, Period
 from .secret import Secret
 from .shared_volume import SharedVolume
@@ -30,6 +31,7 @@ __all__ = [
     "Period",
     "Queue",
     "RateLimit",
+    "Retries",
     "Secret",
     "SharedVolume",
     "Stub",
