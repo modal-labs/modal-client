@@ -3,7 +3,9 @@ import os
 import site
 import sys
 import sysconfig
-from typing import Dict
+import typing
+from pathlib import Path
+from typing import Dict, Union
 
 import cloudpickle
 
@@ -36,6 +38,17 @@ def package_mount_condition(filename):
     return os.path.splitext(filename)[1] in [".py"]
 
 
+def _is_modal_path(remote_path: Union[str, Path]):
+    parts = os.path.split(remote_path)
+    is_modal_path = parts[:2] in [("/root", "modal"), ("/root", "modal_proto"), ("/root", "modal_utils")]
+    return is_modal_path
+
+
+def filter_safe_mounts(mounts: typing.Dict[str, _Mount]):
+    # exclude mounts that would overwrite Modal
+    return {local_dir: mount for local_dir, mount in mounts.items() if not _is_modal_path(mount._remote_dir)}
+
+
 class FunctionInfo:
     """Class the helps us extracting a bunch of information about a function."""
 
@@ -57,6 +70,7 @@ class FunctionInfo:
             base_dirs = [
                 base_dir for base_dir in package_paths if os.path.commonpath((base_dir, module_file)) == base_dir
             ]
+
             if len(base_dirs) != 1:
                 logger.info(f"Module files: {module_file}")
                 logger.info(f"Package paths: {package_paths}")
@@ -107,23 +121,32 @@ class FunctionInfo:
             return {}
 
         if not config.get("automount"):
-            return mounts
+            return filter_safe_mounts(mounts)
 
         # Auto-mount local modules that have been imported in global scope.
         # Note: sys.modules may change during the iteration
-        modules = list(sys.modules.values())
+        modules = []
+        skip_prefixes = set()
+        for name, module in sorted(sys.modules.items(), key=lambda kv: len(kv[0])):
+            parent = name.rsplit(".")[0]
+            if parent and parent in skip_prefixes:
+                skip_prefixes.add(name)
+                continue
+            skip_prefixes.add(name)
+            modules.append(module)
+
         for m in modules:
             if getattr(m, "__package__", None):
-                for path in __import__(m.__package__).__path__:
+                package_path = __import__(m.__package__).__path__
+                for path in package_path:
                     path = os.path.realpath(path)
 
                     if path in mounts or any(path.startswith(p) for p in SYS_PREFIXES) or not os.path.exists(path):
                         continue
 
-                    relpath = os.path.relpath(path, self.base_dir)
                     mounts[path] = _Mount(
                         local_dir=path,
-                        remote_dir=os.path.join(ROOT_DIR, relpath),
+                        remote_dir=os.path.join(ROOT_DIR, *m.__name__.split(".")),
                         condition=package_mount_condition,
                         recursive=True,
                     )
@@ -137,7 +160,7 @@ class FunctionInfo:
                     local_file=path,
                     remote_dir=os.path.join(ROOT_DIR, relpath),
                 )
-        return mounts
+        return filter_safe_mounts(mounts)
 
     def get_tag(self):
         return self.function_name

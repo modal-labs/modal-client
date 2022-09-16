@@ -80,7 +80,7 @@ def test_mounted_files_package(test_dir):
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="venvs behave differently on Windows.")
 def test_mounted_files_sys_prefix(test_dir, venv_path):
-    # Run with venv activated, so it's on sys.prefix.
+    # Run with venv activated, so it's on sys.prefix, and modal is dev-installed in the VM
     p = subprocess.run(
         [venv_path / "bin" / "python", script_path],
         capture_output=True,

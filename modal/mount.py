@@ -160,7 +160,7 @@ class _Mount(Provider[_MountHandle]):
         message_callback(f"Mounting {message_label}: Building mount")
         req = api_pb2.MountBuildRequest(app_id=app_id, existing_mount_id=existing_mount_id, files=files)
         resp = await retry_transient_errors(client.stub.MountBuild, req, base_delay=1)
-        message_callback(f"Mounted {message_label}")
+        message_callback(f"Mounted {message_label} at {self._remote_dir}")
 
         logger.debug(f"Uploaded {len(uploaded_hashes)}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
         return _MountHandle(self._local_dir, self._local_file, client, resp.mount_id)
