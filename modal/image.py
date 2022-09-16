@@ -29,8 +29,8 @@ class _ImageHandle(Handle, type_prefix="im"):
 class _Image(Provider[_ImageHandle]):
     """Base class for container images to run functions in.
 
-    Do not construct this class directly; instead use `modal.DebianSlim`,
-    `modal.DockerhubImage` or `modal.Conda`.
+    Do not construct this class directly; instead use one of its static factory methods,
+    like `modal.Image.from_dockerhub` or `modal.Image.conda`.
     """
 
     def __init__(
@@ -260,7 +260,7 @@ class _Image(Provider[_ImageHandle]):
         )
 
     @staticmethod
-    def conda():
+    def conda() -> "_Image":
         """A Conda base image, built on the official miniconda3 Docker Hub image."""
         requirements_path = _get_client_requirements_path()
         dockerfile_commands = [
@@ -319,6 +319,44 @@ class _Image(Provider[_ImageHandle]):
         ]
 
         return self.extend(dockerfile_commands=dockerfile_commands, context_files=context_files)
+
+    @staticmethod
+    def from_dockerhub(tag: str, setup_commands: List[str] = [], **kwargs) -> "_Image":
+        """
+        Build a Modal image from a pre-existing image on Docker Hub.
+
+        This assumes the following about the image:
+
+        - Python 3.7 or above is present, and is available as `python`.
+        - `pip` is installed correctly.
+        - The image is built for the `linux/amd64` platform.
+
+        You can use the `setup_commands` argument to run any
+        commands in the image before Modal is installed.
+        This might be useful if Python or pip is not installed.
+        For instance:
+        ```python
+        modal.Image.from_dockerhub(
+          "gisops/valhalla:latest",
+          setup_commands=["apt-get update", "apt-get install -y python3-pip"]
+        )
+        ```
+        """
+        requirements_path = _get_client_requirements_path()
+
+        dockerfile_commands = [
+            f"FROM {tag}",
+            *(f"RUN {cmd}" for cmd in setup_commands),
+            "COPY /modal_requirements.txt /modal_requirements.txt",
+            "RUN python -m pip install --upgrade pip",
+            "RUN python -m pip install -r /modal_requirements.txt",
+        ]
+
+        return _Image(
+            dockerfile_commands=dockerfile_commands,
+            context_files={"/modal_requirements.txt": requirements_path},
+            **kwargs,
+        )
 
 
 def _dockerhub_python_version(python_version=None):
@@ -391,45 +429,6 @@ def _get_client_requirements_path():
     return os.path.join(modal_path, "requirements.txt")
 
 
-def _DockerhubImage(tag: str, setup_commands: List[str] = [], **kwargs):
-    """
-    Build a Modal image from a pre-existing image on Docker Hub.
-
-    This assumes the following about the image:
-
-    - Python 3.7 or above is present, and is available as `python`.
-    - `pip` is installed correctly.
-    - The image is built for the `linux/amd64` platform.
-
-    You can use the `setup_commands` argument to run any
-    commands in the image before Modal is installed.
-    This might be useful if Python or pip is not installed.
-    For instance:
-    ```python
-    modal.DockerhubImage(
-        "gisops/valhalla:latest",
-        setup_commands=["apt-get update", "apt-get install -y python3-pip"]
-    )
-    ```
-    """
-
-    requirements_path = _get_client_requirements_path()
-
-    dockerfile_commands = [
-        f"FROM {tag}",
-        *(f"RUN {cmd}" for cmd in setup_commands),
-        "COPY /modal_requirements.txt /modal_requirements.txt",
-        "RUN python -m pip install --upgrade pip",
-        "RUN python -m pip install -r /modal_requirements.txt",
-    ]
-
-    return _Image(
-        dockerfile_commands=dockerfile_commands,
-        context_files={"/modal_requirements.txt": requirements_path},
-        **kwargs,
-    )
-
-
 def _DockerfileImage(path: Union[str, Path]):
     """Build a Modal image from a local Dockerfile.
 
@@ -463,10 +462,16 @@ def _DockerfileImage(path: Union[str, Path]):
     )
 
 
-class _Conda(_Image):
-    def __new__(self):
-        warnings.warn("`modal.Conda` is deprecated. Please use `modal.Image.conda` instead", DeprecationWarning)
-        return _Image.conda()
+def _Conda():
+    warnings.warn("`modal.Conda` is deprecated. Please use `modal.Image.conda` instead", DeprecationWarning)
+    return _Image.conda()
+
+
+def _DockerhubImage(*args, **kwargs):
+    warnings.warn(
+        "`modal.DockerhubImage` is deprecated. Please use `modal.Image.from_dockerhub` instead", DeprecationWarning
+    )
+    return _Image.from_dockerhub(*args, **kwargs)
 
 
 synchronize_apis(_ImageHandle)

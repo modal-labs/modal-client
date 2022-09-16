@@ -113,3 +113,13 @@ def test_conda_update_from_environment(servicer, client):
         assert any("RUN conda env update" in cmd for cmd in layers[0].dockerfile_commands)
         assert any(b"foo=1.0" in f.data for f in layers[0].context_files)
         assert any(b"bar=2.1" in f.data for f in layers[0].context_files)
+
+
+def test_dockerhub_install(servicer, client):
+    stub = Stub(image=Image.from_dockerhub("gisops/valhalla:latest", setup_commands=["apt-get update"]))
+
+    with stub.run(client=client) as running_app:
+        layers = get_image_layers(running_app["image"].object_id, servicer)
+
+        assert any("FROM gisops/valhalla:latest" in cmd for cmd in layers[0].dockerfile_commands)
+        assert any("apt-get update" in cmd for cmd in layers[0].dockerfile_commands)
