@@ -46,7 +46,7 @@ class Retries:
         # Maximum length of retry delay in seconds, preventing the delay from growing infinitely.
         max_delay: float = 60.0,
     ):
-        """Construct a new function rate limit, either per-second or per-minute."""
+        """Construct a new retries policy, supporting exponential and fixed-interval delays via a backoff coefficient."""
         if max_retries < 1:
             raise InvalidError(f"Invalid retries number: {max_retries}. Function retries must be positive.")
 
