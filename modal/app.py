@@ -8,37 +8,9 @@ from modal_utils.async_utils import synchronize_apis
 from ._output import step_completed, step_progress, step_progress_update
 from .client import _Client
 from .config import logger
-from .exception import NotFoundError
 from .functions import _FunctionHandle
 from .image import _ImageHandle
-from .object import Handle, LocalRef, PersistedRef, Provider, RemoteRef
-
-
-async def _lookup(
-    app_name: str,
-    tag: Optional[str] = None,
-    namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT,
-    client: Optional[_Client] = None,
-) -> Handle:
-    """Returns a handle to a tagged object in a deployment on Modal."""
-    if client is None:
-        client = await _Client.from_env()
-    request = api_pb2.AppLookupObjectRequest(
-        app_name=app_name,
-        object_tag=tag,
-        namespace=namespace,
-    )
-    response = await client.stub.AppLookupObject(request)
-    if not response.object_id:
-        raise NotFoundError(response.error_message)
-    obj = Handle._from_id(response.object_id, client)
-    if isinstance(obj, _FunctionHandle):
-        # TODO(erikbern): treating this as a special case right now, but we should generalize it
-        obj._initialize_from_proto(response.function)
-    return obj
-
-
-lookup, aio_lookup = synchronize_apis(_lookup)
+from .object import Handle, LocalRef, Provider
 
 
 class _App:
@@ -104,18 +76,7 @@ class _App:
             return cached_obj
 
         # TODO: should we just move most of this code to the Ref classes?
-        if isinstance(obj, PersistedRef):
-            from .stub import _Stub
-
-            _stub = _Stub(obj.app_name)
-            _stub["_object"] = obj.definition
-            await _stub.deploy(client=self._client)
-            created_obj = await _lookup(obj.app_name, client=self._client)
-
-        elif isinstance(obj, RemoteRef):
-            created_obj = await _lookup(obj.app_name, obj.tag, obj.namespace, client=self._client)
-
-        elif isinstance(obj, LocalRef):
+        if isinstance(obj, LocalRef):
             if obj.tag in self._tag_to_object:
                 created_obj = self._tag_to_object[obj.tag]
             else:

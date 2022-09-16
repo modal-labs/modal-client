@@ -1,13 +1,14 @@
 import uuid
-from typing import Awaitable, Callable, Generic, Optional, Type, TypeVar
+from typing import Awaitable, Callable, Generic, Optional, Type, TypeVar, cast
 
 from modal_proto import api_pb2
+from modal_utils.async_utils import synchronize_apis
 
 from ._object_meta import ObjectMeta
 from .client import _Client
 from .exception import InvalidError, NotFoundError
 
-T = TypeVar("T")
+H = TypeVar("H", bound="Handle")
 
 
 class Handle(metaclass=ObjectMeta):
@@ -35,7 +36,7 @@ class Handle(metaclass=ObjectMeta):
         return obj
 
     @classmethod
-    async def from_id(cls: Type[T], object_id: str) -> T:
+    async def from_id(cls: Type[H], object_id: str) -> H:
         client = await _Client.from_env()
         return Handle._from_id(object_id, client)
 
@@ -43,8 +44,46 @@ class Handle(metaclass=ObjectMeta):
     def object_id(self):
         return self._object_id
 
+    @classmethod
+    async def from_app(
+        cls: Type[H],
+        app_name: str,
+        tag: Optional[str] = None,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT,
+        client: Optional[_Client] = None,
+    ) -> H:
+        """Returns a handle to a tagged object in a deployment on Modal."""
+        if client is None:
+            client = await _Client.from_env()
+        request = api_pb2.AppLookupObjectRequest(
+            app_name=app_name,
+            object_tag=tag,
+            namespace=namespace,
+        )
+        response = await client.stub.AppLookupObject(request)
+        if not response.object_id:
+            raise NotFoundError(response.error_message)
+        obj = Handle._from_id(response.object_id, client)
 
-H = TypeVar("H")
+        # TODO(erikbern): There's a weird special case for functions right now that we should generalize
+        from .functions import _FunctionHandle
+
+        if isinstance(obj, _FunctionHandle):
+            obj._initialize_from_proto(response.function)
+
+        return obj
+
+
+async def _lookup(
+    app_name: str,
+    tag: Optional[str] = None,
+    namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT,
+    client: Optional[_Client] = None,
+) -> Handle:
+    return await Handle.from_app(app_name, tag, namespace, client)
+
+
+lookup, aio_lookup = synchronize_apis(_lookup)
 
 
 class Provider(Generic[H]):
@@ -104,6 +143,17 @@ class RemoteRef(Ref[H]):
         self.namespace = namespace
         super().__init__()
 
+    async def _load(
+        self,
+        client: _Client,
+        app_id: str,
+        loader: Callable[["Provider"], Awaitable[str]],
+        message_callback: Callable[[str], None],
+        existing_object_id: Optional[str] = None,
+    ) -> H:
+        handle = await Handle.from_app(self.app_name, self.tag, self.namespace, client)
+        return cast(H, handle)
+
 
 class LocalRef(Ref[H]):
     def __init__(self, tag: str):
@@ -119,6 +169,21 @@ class PersistedRef(Ref[H]):
         self.app_name = app_name
         self.definition = definition
         super().__init__()
+
+    async def _load(
+        self,
+        client: _Client,
+        app_id: str,
+        loader: Callable[["Provider"], Awaitable[str]],
+        message_callback: Callable[[str], None],
+        existing_object_id: Optional[str] = None,
+    ) -> H:
+        from .stub import _Stub
+
+        _stub = _Stub(self.app_name, _object=self.definition)
+        await _stub.deploy(client=client)
+        handle = await Handle.from_app(self.app_name, client=client)
+        return cast(H, handle)
 
 
 def ref(app_name: Optional[str], tag: Optional[str] = None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT) -> Ref:
