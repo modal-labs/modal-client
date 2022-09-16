@@ -1,6 +1,7 @@
 import os
 import shlex
 import sys
+import warnings
 from pathlib import Path
 from typing import Callable, Collection, Dict, List, Optional, Union
 
@@ -258,6 +259,67 @@ class _Image(Provider[_ImageHandle]):
             secrets=secrets,
         )
 
+    @staticmethod
+    def conda():
+        """A Conda base image, built on the official miniconda3 Docker Hub image."""
+        requirements_path = _get_client_requirements_path()
+        dockerfile_commands = [
+            "FROM conda/miniconda3",
+            "COPY /modal_requirements.txt /modal_requirements.txt",
+            "RUN conda init bash ",
+            "RUN echo $0 \\ ",
+            "&& . /root/.bashrc \\ ",
+            "&& conda activate base \\ ",
+            "&& conda info \\ ",
+            "&& conda config --add channels conda-forge \\ ",
+            "&& conda config --set channel_priority strict \\ ",
+            "&& conda install -c conda-forge mamba python=3.9 --yes ",
+            "RUN echo $0 \\ ",
+            "&& . /root/.bashrc \\ ",
+            "&& conda activate base \\ ",
+            "&& conda info \\ ",
+            "&& pip install --upgrade pip \\ ",
+            "&& pip install -r /modal_requirements.txt",
+        ]
+
+        return _Image(
+            dockerfile_commands=dockerfile_commands,
+            context_files={"/modal_requirements.txt": requirements_path},
+        )
+
+    def conda_install(
+        self,
+        packages: List[str] = [],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
+    ):
+        """Install a list of additional packages using conda."""
+
+        package_args = " ".join(shlex.quote(pkg) for pkg in packages)
+
+        dockerfile_commands = [
+            "FROM base",
+            f"RUN conda install {package_args} --yes",
+        ]
+
+        return self.extend(dockerfile_commands=dockerfile_commands)
+
+    def conda_update_from_environment(
+        self,
+        environment_yml: str,
+    ):
+        """Update conda environment using dependencies from a given environment.yml file."""
+
+        environment_yml = os.path.expanduser(environment_yml)
+
+        context_files = {"/environment.yml": environment_yml}
+
+        dockerfile_commands = [
+            "FROM base",
+            "COPY /environment.yml /environment.yml",
+            "RUN conda env update --name base -f /environment.yml",
+        ]
+
+        return self.extend(dockerfile_commands=dockerfile_commands, context_files=context_files)
+
 
 def _dockerhub_python_version(python_version=None):
     if python_version is None:
@@ -402,67 +464,9 @@ def _DockerfileImage(path: Union[str, Path]):
 
 
 class _Conda(_Image):
-    """A Conda base image, built on the official miniconda3 Docker Hub image."""
-
-    def __init__(self):
-        """Construct the default base Conda image."""
-        requirements_path = _get_client_requirements_path()
-        dockerfile_commands = [
-            "FROM conda/miniconda3",
-            "COPY /modal_requirements.txt /modal_requirements.txt",
-            "RUN conda init bash ",
-            "RUN echo $0 \\ ",
-            "&& . /root/.bashrc \\ ",
-            "&& conda activate base \\ ",
-            "&& conda info \\ ",
-            "&& conda config --add channels conda-forge \\ ",
-            "&& conda config --set channel_priority strict \\ ",
-            "&& conda install -c conda-forge mamba python=3.9 --yes ",
-            "RUN echo $0 \\ ",
-            "&& . /root/.bashrc \\ ",
-            "&& conda activate base \\ ",
-            "&& conda info \\ ",
-            "&& pip install --upgrade pip \\ ",
-            "&& pip install -r /modal_requirements.txt",
-        ]
-
-        super().__init__(
-            dockerfile_commands=dockerfile_commands,
-            context_files={"/modal_requirements.txt": requirements_path},
-        )
-
-    def conda_install(
-        self,
-        packages: List[str] = [],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
-    ):
-        """Install a list of additional packages using conda."""
-
-        package_args = " ".join(shlex.quote(pkg) for pkg in packages)
-
-        dockerfile_commands = [
-            "FROM base",
-            f"RUN conda install {package_args} --yes",
-        ]
-
-        return self.extend(dockerfile_commands=dockerfile_commands)
-
-    def conda_update_from_environment(
-        self,
-        environment_yml: str,
-    ):
-        """Update conda environment using dependencies from a given environment.yml file."""
-
-        environment_yml = os.path.expanduser(environment_yml)
-
-        context_files = {"/environment.yml": environment_yml}
-
-        dockerfile_commands = [
-            "FROM base",
-            "COPY /environment.yml /environment.yml",
-            "RUN conda env update --name base -f /environment.yml",
-        ]
-
-        return self.extend(dockerfile_commands=dockerfile_commands, context_files=context_files)
+    def __new__(self):
+        warnings.warn("`modal.Conda` is deprecated. Please use `modal.Image.conda` instead", DeprecationWarning)
+        return _Image.conda()
 
 
 synchronize_apis(_ImageHandle)
