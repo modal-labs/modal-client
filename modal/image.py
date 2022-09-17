@@ -358,6 +358,39 @@ class _Image(Provider[_ImageHandle]):
             **kwargs,
         )
 
+    @staticmethod
+    def from_dockerfile(path: Union[str, Path]) -> "_Image":
+        """Build a Modal image from a local Dockerfile.
+
+        Note that the the following must be true about the image you provide:
+
+        - Python 3.7 or above needs to be present and available as `python`.
+        - `pip` needs to be installed and available as `pip`.
+        """
+
+        path = os.path.expanduser(path)
+
+        def base_dockerfile_commands():
+            # Make it a closure so that it's only invoked locally
+            with open(path) as f:
+                return f.read().split("\n")
+
+        base_image = _Image(dockerfile_commands=base_dockerfile_commands)
+
+        requirements_path = _get_client_requirements_path()
+
+        dockerfile_commands = [
+            "FROM base",
+            "COPY /modal_requirements.txt /modal_requirements.txt",
+            "RUN python -m pip install --upgrade pip",
+            "RUN python -m pip install -r /modal_requirements.txt",
+        ]
+
+        return base_image.extend(
+            dockerfile_commands=dockerfile_commands,
+            context_files={"/modal_requirements.txt": requirements_path},
+        )
+
 
 def _dockerhub_python_version(python_version=None):
     if python_version is None:
@@ -429,39 +462,6 @@ def _get_client_requirements_path():
     return os.path.join(modal_path, "requirements.txt")
 
 
-def _DockerfileImage(path: Union[str, Path]):
-    """Build a Modal image from a local Dockerfile.
-
-    Note that the the following must be true about the image you provide:
-
-    - Python 3.7 or above needs to be present and available as `python`.
-    - `pip` needs to be installed and available as `pip`.
-    """
-
-    path = os.path.expanduser(path)
-
-    def base_dockerfile_commands():
-        # Make it a closure so that it's only invoked locally
-        with open(path) as f:
-            return f.read().split("\n")
-
-    base_image = _Image(dockerfile_commands=base_dockerfile_commands)
-
-    requirements_path = _get_client_requirements_path()
-
-    dockerfile_commands = [
-        "FROM base",
-        "COPY /modal_requirements.txt /modal_requirements.txt",
-        "RUN python -m pip install --upgrade pip",
-        "RUN python -m pip install -r /modal_requirements.txt",
-    ]
-
-    return base_image.extend(
-        dockerfile_commands=dockerfile_commands,
-        context_files={"/modal_requirements.txt": requirements_path},
-    )
-
-
 def _Conda():
     warnings.warn("`modal.Conda` is deprecated. Please use `modal.Image.conda` instead", DeprecationWarning)
     return _Image.conda()
@@ -472,6 +472,13 @@ def _DockerhubImage(*args, **kwargs):
         "`modal.DockerhubImage` is deprecated. Please use `modal.Image.from_dockerhub` instead", DeprecationWarning
     )
     return _Image.from_dockerhub(*args, **kwargs)
+
+
+def _DockerfileImage(*args, **kwargs):
+    warnings.warn(
+        "`modal.DockerfileImage` is deprecated. Please use `modal.Image.from_dockerfile` instead", DeprecationWarning
+    )
+    return _Image.from_dockerfile(*args, **kwargs)
 
 
 synchronize_apis(_ImageHandle)

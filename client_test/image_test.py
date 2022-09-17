@@ -3,7 +3,7 @@ import pytest
 import sys
 from typing import List
 
-from modal import Conda, DebianSlim, DockerfileImage, Image, Stub
+from modal import Conda, DebianSlim, Image, Stub
 from modal.image import _dockerhub_python_version
 from modal_proto import api_pb2
 
@@ -94,7 +94,7 @@ def test_conda_deprecated(servicer, client):
 def test_dockerfile_image(servicer, client):
     path = os.path.join(os.path.dirname(__file__), "supports/test-dockerfile")
 
-    stub = Stub(image=DockerfileImage(path))
+    stub = Stub(image=Image.from_dockerfile(path))
 
     with stub.run(client=client) as running_app:
         layers = get_image_layers(running_app["image"].object_id, servicer)
