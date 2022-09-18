@@ -2,13 +2,13 @@ import asyncio
 import concurrent.futures
 import os
 import time
-import warnings
 from pathlib import Path
 from typing import Callable, Collection, List, Optional, Union
 
 import aiostream
 
 import modal._blob_utils
+from modal.exception import deprecation_warning
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 from modal_utils.grpc_utils import retry_transient_errors
@@ -221,9 +221,7 @@ async def _create_package_mounts(module_names: Collection[str]) -> List[_Mount]:
 
 async def _create_package_mount(module_name: str):
     """mdmd:hidden"""
-    warnings.warn(
-        "`create_package_mount` is deprecated. Please use `create_package_mounts` instead.", DeprecationWarning
-    )
+    deprecation_warning("`create_package_mount` is deprecated. Please use `create_package_mounts` instead.")
     mounts = await _create_package_mounts([module_name])
     assert len(mounts) == 1
     return mounts[0]

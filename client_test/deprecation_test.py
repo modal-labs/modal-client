@@ -23,6 +23,11 @@ def test_deprecation():
 
     # With this context manager, it doesn't raise an exception, but we record
     # the warning. This is the normal behavior outside of pytest.
-    with pytest.warns(DeprecationError):
+    with pytest.warns(DeprecationError) as record:
         res = deprecated_function(42)
         assert res == 1764
+
+    # Make sure it raises in the right file
+    import modal_test_support.functions
+
+    assert record[0].filename == modal_test_support.functions.__file__

@@ -88,8 +88,11 @@ def test_conda_install(servicer, client):
 
 
 def test_conda_deprecated(servicer, client):
-    with pytest.warns(DeprecationError):
+    with pytest.warns(DeprecationError) as record:
         Conda()
+
+    # Make sure it has the right filename
+    assert record[0].filename == __file__
 
 
 def test_dockerfile_image(servicer, client):

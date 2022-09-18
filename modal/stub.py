@@ -1,7 +1,6 @@
 import inspect
 import os
 import sys
-import warnings
 from enum import Enum
 from typing import AsyncGenerator, Collection, Dict, Optional, Union
 
@@ -17,7 +16,7 @@ from ._output import OutputManager, step_completed, step_progress
 from .app import _App, container_app, is_local
 from .client import _Client
 from .config import config, logger
-from .exception import InvalidError
+from .exception import InvalidError, deprecation_warning
 from .functions import _Function, _FunctionHandle
 from .image import _DebianSlim, _Image
 from .mount import _create_client_mount, _Mount, client_mount_name
@@ -264,7 +263,7 @@ class _Stub:
     async def run_forever(self, client=None, stdout=None, show_progress=None) -> None:
         """**Deprecated.** Use `.serve()` instead."""
 
-        warnings.warn("Stub.run_forever is deprecated, use .serve() instead", DeprecationWarning)
+        deprecation_warning("Stub.run_forever is deprecated, use .serve() instead")
         await self.serve(client, stdout, show_progress)
 
     async def serve(self, client=None, stdout=None, show_progress=None) -> None:

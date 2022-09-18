@@ -1,7 +1,6 @@
 import asyncio
 import platform
 import time
-import warnings
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
@@ -27,7 +26,13 @@ from ._blob_utils import (
 from ._function_utils import FunctionInfo
 from ._serialization import deserialize, serialize
 from .client import _Client
-from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError
+from .exception import (
+    ExecutionError,
+    InvalidError,
+    NotFoundError,
+    RemoteError,
+    deprecation_warning,
+)
 from .mount import _Mount
 from .object import Handle, Provider, Ref, RemoteRef
 from .rate_limit import RateLimit
@@ -449,7 +454,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
 
         Calls the function with the given arguments, without waiting for the results.
         """
-        warnings.warn("Function.enqueue is deprecated, use .submit() instead", DeprecationWarning)
+        deprecation_warning("Function.enqueue is deprecated, use .submit() instead")
         if self._is_generator:
             await self.call_generator_nowait(args, kwargs)
         else:
