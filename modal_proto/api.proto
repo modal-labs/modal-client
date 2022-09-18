@@ -412,6 +412,8 @@ message GenericResult {  // Used for both tasks and function outputs
     GENERIC_STATUS_UNSPECIFIED = 0;
     GENERIC_STATUS_SUCCESS = 1;
     GENERIC_STATUS_FAILURE = 2;
+    // Used when a task was killed using an external signal.
+    GENERIC_STATUS_TERMINATED = 3; 
   }
 
   GenericStatus status = 1;
