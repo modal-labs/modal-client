@@ -3,6 +3,7 @@ import time
 import warnings
 
 from modal import Stub
+from modal.exception import DeprecationError
 
 SLEEP_DELAY = 0.1
 
@@ -41,7 +42,7 @@ def raises_keyboardinterrupt(x):
 
 
 def deprecated_function(x):
-    warnings.warn("This function is deprecated", DeprecationWarning)
+    warnings.warn("This function is deprecated", DeprecationError)
     return x**2
 
 

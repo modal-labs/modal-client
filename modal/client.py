@@ -7,6 +7,7 @@ from grpclib import GRPCError, Status
 from grpclib.exceptions import StreamTerminatedError
 from sentry_sdk import capture_exception
 
+from modal.exception import DeprecationError
 from modal_proto import api_grpc, api_pb2
 from modal_utils import async_utils
 from modal_utils.async_utils import TaskContext, synchronize_apis
@@ -89,7 +90,7 @@ class _Client:
             resp = await self.stub.ClientCreate(req, timeout=CLIENT_CREATE_TIMEOUT)
             if resp.deprecation_warning:
                 ALARM_EMOJI = chr(0x1F6A8)
-                warnings.warn(f"{ALARM_EMOJI} {resp.deprecation_warning} {ALARM_EMOJI}", DeprecationWarning)
+                warnings.warn(f"{ALARM_EMOJI} {resp.deprecation_warning} {ALARM_EMOJI}", DeprecationError)
             self._client_id = resp.client_id
         except GRPCError as exc:
             if exc.status == Status.FAILED_PRECONDITION:

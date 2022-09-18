@@ -4,6 +4,7 @@ import sys
 from typing import List
 
 from modal import Conda, DebianSlim, Image, Stub
+from modal.exception import DeprecationError
 from modal.image import _dockerhub_python_version
 from modal_proto import api_pb2
 
@@ -87,7 +88,7 @@ def test_conda_install(servicer, client):
 
 
 def test_conda_deprecated(servicer, client):
-    with pytest.deprecated_call():
+    with pytest.warns(DeprecationError):
         Conda()
 
 

@@ -10,7 +10,7 @@ from modal_utils.async_utils import synchronize_apis
 from modal_utils.grpc_utils import retry_transient_errors
 
 from .config import config, logger
-from .exception import InvalidError, NotFoundError, RemoteError
+from .exception import DeprecationError, InvalidError, NotFoundError, RemoteError
 from .object import Handle, Provider
 from .secret import _Secret
 
@@ -463,20 +463,24 @@ def _get_client_requirements_path():
 
 
 def _Conda():
-    warnings.warn("`modal.Conda` is deprecated. Please use `modal.Image.conda` instead", DeprecationWarning)
+    warnings.warn("`modal.Conda` is deprecated. Please use `modal.Image.conda` instead", DeprecationError, stacklevel=2)
     return _Image.conda()
 
 
 def _DockerhubImage(*args, **kwargs):
     warnings.warn(
-        "`modal.DockerhubImage` is deprecated. Please use `modal.Image.from_dockerhub` instead", DeprecationWarning
+        "`modal.DockerhubImage` is deprecated. Please use `modal.Image.from_dockerhub` instead",
+        DeprecationError,
+        stacklevel=2,
     )
     return _Image.from_dockerhub(*args, **kwargs)
 
 
 def _DockerfileImage(*args, **kwargs):
     warnings.warn(
-        "`modal.DockerfileImage` is deprecated. Please use `modal.Image.from_dockerfile` instead", DeprecationWarning
+        "`modal.DockerfileImage` is deprecated. Please use `modal.Image.from_dockerfile` instead",
+        DeprecationError,
+        stacklevel=2,
     )
     return _Image.from_dockerfile(*args, **kwargs)
 

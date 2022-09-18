@@ -28,3 +28,7 @@ class NotFoundError(Error):
 
 class ExecutionError(Error):
     """Something unexpected happen during runtime."""
+
+
+class DeprecationError(UserWarning):
+    """Overloading it to evade the default filter, which excludes __main__."""

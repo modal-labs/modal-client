@@ -73,7 +73,7 @@ async def test_client_old_version(servicer):
 
 @pytest.mark.asyncio
 async def test_client_deprecated(servicer):
-    with pytest.deprecated_call():
+    with pytest.warns(modal.exception.DeprecationError):
         async with AioClient(
             servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret"), version="deprecated"
         ):
