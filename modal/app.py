@@ -1,4 +1,4 @@
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 
 from rich.tree import Tree
 
@@ -168,8 +168,17 @@ class _App:
     def __getattr__(self, tag: str) -> Handle:
         return self._tag_to_object[tag]
 
-    def _is_inside(self, image: _ImageHandle) -> bool:
-        return image._is_inside()
+    def _is_inside(self, image: Union[LocalRef, _ImageHandle]) -> bool:
+        if isinstance(image, LocalRef):
+            if image.tag not in self._tag_to_object:
+                # This is some other image, which could belong to some unrelated
+                # app or whatever
+                return False
+            app_image = self._tag_to_object[image.tag]
+        else:
+            app_image = image
+        assert isinstance(app_image, _ImageHandle)
+        return app_image._is_inside()
 
     @staticmethod
     async def _init_container(client, app_id, task_id):
