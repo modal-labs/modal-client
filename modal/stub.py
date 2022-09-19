@@ -195,25 +195,26 @@ class _Stub:
 
         # Start tracking logs and yield context
         async with TaskContext(grace=config["logs_timeout"]) as tc:
+            status_spinner = step_progress("Running app...")
             with output_mgr.ctx_if_visible(output_mgr.make_live(step_progress("Initializing..."))):
-                live_task_status = output_mgr.make_live(step_progress("Running app..."))
                 app_id = app.app_id
                 logs_loop = tc.create_task(
-                    output_mgr.get_logs_loop(app_id, client, live_task_status, last_log_entry_id or "")
+                    output_mgr.get_logs_loop(app_id, client, status_spinner, last_log_entry_id or "")
                 )
             output_mgr.print_if_visible(step_completed("Initialized."))
 
             try:
                 # Create all members
-                progress = Tree(step_progress("Creating objects..."), guide_style="gray50")
-                with output_mgr.ctx_if_visible(output_mgr.make_live(progress)):
-                    await app._create_all_objects(progress)
-                progress.label = step_completed("Created objects.")
-                output_mgr.print_if_visible(progress)
+                create_progress = Tree(step_progress("Creating objects..."), guide_style="gray50")
+                with output_mgr.ctx_if_visible(output_mgr.make_live(create_progress)):
+                    await app._create_all_objects(create_progress)
+                create_progress.label = step_completed("Created objects.")
+                output_mgr.print_if_visible(create_progress)
 
                 # Update all functions client-side to point to the running app
                 for tag, obj in self._function_handles.items():
                     obj._set_local_app(app)
+                    obj._set_output_mgr(output_mgr)
 
                 # Cancel logs loop after creating objects for a deployment.
                 # TODO: we can get rid of this once we have 1) a way to separate builder
@@ -223,7 +224,7 @@ class _Stub:
                     logs_loop.cancel()
 
                 # Yield to context
-                with output_mgr.ctx_if_visible(live_task_status):
+                with output_mgr.ctx_if_visible(output_mgr.make_live(status_spinner)):
                     yield app
             except KeyboardInterrupt:
                 print(

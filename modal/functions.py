@@ -4,7 +4,16 @@ import time
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
-from typing import Any, Callable, Collection, Dict, Optional, Tuple, Union
+from typing import (
+    Any,
+    AsyncIterable,
+    Callable,
+    Collection,
+    Dict,
+    Optional,
+    Tuple,
+    Union,
+)
 
 from aiostream import pipe, stream
 from grpclib import GRPCError, Status
@@ -24,6 +33,7 @@ from ._blob_utils import (
     blob_upload,
 )
 from ._function_utils import FunctionInfo
+from ._output import OutputManager
 from ._serialization import deserialize, serialize
 from .client import _Client
 from .exception import (
@@ -185,7 +195,15 @@ class _Invocation:
 MAP_INVOCATION_CHUNK_SIZE = 100
 
 
-async def _map_invocation(function_id, input_stream, kwargs, client, is_generator, order_outputs):
+async def _map_invocation(
+    function_id: str,
+    input_stream: AsyncIterable,
+    kwargs: Dict[str, Any],
+    client: _Client,
+    is_generator: bool,
+    order_outputs: bool,
+    count_update_callback: Optional[Callable[[int, int], None]],
+):
     request = api_pb2.FunctionMapRequest(function_id=function_id)
     response = await retry_transient_errors(client.stub.FunctionMap, request)
 
@@ -193,6 +211,7 @@ async def _map_invocation(function_id, input_stream, kwargs, client, is_generato
 
     have_all_inputs = False
     num_inputs = 0
+    num_outputs = 0
 
     input_queue: asyncio.Queue = asyncio.Queue()
 
@@ -232,8 +251,7 @@ async def _map_invocation(function_id, input_stream, kwargs, client, is_generato
         yield
 
     async def get_all_outputs():
-        nonlocal num_inputs, have_all_inputs
-        num_outputs = 0
+        nonlocal num_inputs, num_outputs, have_all_inputs
         while not have_all_inputs or num_outputs < num_inputs:
             request = api_pb2.FunctionGetOutputsRequest(
                 function_call_id=function_call_id, timeout=60, return_empty_on_timeout=True
@@ -286,6 +304,8 @@ async def _map_invocation(function_id, input_stream, kwargs, client, is_generato
 
     async with response_gen.stream() as streamer:
         async for response in streamer:
+            if count_update_callback is not None:
+                count_update_callback(num_outputs, num_inputs)
             if response is not None:
                 yield response.value
 
@@ -295,12 +315,14 @@ class _FunctionHandle(Handle, type_prefix="fu"):
 
     def __init__(self, function, web_url=None, client=None, object_id=None):
         self._local_app = None
+        self._progress = None
 
         # These are some stupid lines, let's rethink
         self._tag = function._tag
         self._is_generator = function._is_generator
         self._raw_f = function._raw_f
         self._web_url = web_url
+        self._output_mgr: Optional[OutputManager] = None
 
         super().__init__(client=client, object_id=object_id)
 
@@ -310,6 +332,10 @@ class _FunctionHandle(Handle, type_prefix="fu"):
     def _set_local_app(self, app):
         """mdmd:hidden"""
         self._local_app = app
+
+    def _set_output_mgr(self, output_mgr: OutputManager):
+        """mdmd:hidden"""
+        self._output_mgr = output_mgr
 
     def _get_live_handle(self) -> "_FunctionHandle":
         # Functions are sort of "special" in the sense that they are just global objects not attached to an app
@@ -345,12 +371,17 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         function_handle = self._get_live_handle()
         return function_handle._web_url
 
-    async def _map(self, input_stream, order_outputs: bool, kwargs={}):
+    async def _map(self, input_stream: AsyncIterable, order_outputs: bool, kwargs={}):
         if order_outputs and self._is_generator:
             raise ValueError("Can't return ordered results for a generator")
 
         client, object_id = self._get_context()
-        async for item in _map_invocation(object_id, input_stream, kwargs, client, self._is_generator, order_outputs):
+
+        count_update_callback = self._output_mgr.function_progress_callback(self._tag) if self._output_mgr else None
+
+        async for item in _map_invocation(
+            object_id, input_stream, kwargs, client, self._is_generator, order_outputs, count_update_callback
+        ):
             yield item
 
     @warn_if_generator_is_not_consumed

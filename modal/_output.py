@@ -8,8 +8,16 @@ import sys
 from typing import Callable, Dict, Optional
 
 from grpclib.exceptions import GRPCError, StreamTerminatedError
-from rich.console import Console, RenderableType
+from rich.console import Console, Group, RenderableType
 from rich.live import Live
+from rich.panel import Panel
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    TextColumn,
+    TimeRemainingColumn,
+)
 from rich.spinner import Spinner
 from rich.text import Text
 
@@ -27,7 +35,7 @@ else:
 
 def step_progress(text: str = "") -> Spinner:
     """Returns the element to be rendered when a step is in progress."""
-    return Spinner(default_spinner, text, style="default")
+    return Spinner(default_spinner, text, style="blue")
 
 
 def step_progress_update(spinner: Spinner, message: str):
@@ -89,6 +97,8 @@ class OutputManager:
 
         self._console = Console(file=stdout, highlight=False)
         self._task_states = {}
+        self._current_render_group: Optional[Group] = None
+        self._function_progress: Optional[Progress] = None
 
     def print_if_visible(self, renderable) -> None:
         if self._visible_progress:
@@ -100,8 +110,38 @@ class OutputManager:
         return contextlib.nullcontext()
 
     def make_live(self, renderable: RenderableType) -> Live:
-        """Creates a customized `rich.Live` instance with the given renderable."""
-        return Live(renderable, console=self._console, transient=True, refresh_per_second=10)
+        """Creates a customized `rich.Live` instance with the given renderable. The renderable
+        is placed in a `rich.Group` to allow for dynamic additions later."""
+        self._function_progress = None
+        self._current_render_group = Group(renderable)
+        return Live(self._current_render_group, console=self._console, transient=True, refresh_per_second=10)
+
+    @property
+    def function_progress(self) -> Progress:
+        """Creates a `rich.Progress` instance with custom columns for function progress,
+        and adds it to the current render group."""
+        if not self._function_progress:
+            self._function_progress = Progress(
+                TextColumn("[progress.description][white]{task.description}[/white]"),
+                BarColumn(),
+                MofNCompleteColumn(),
+                TimeRemainingColumn(),
+                console=self._console,
+            )
+            if self._current_render_group:
+                self._current_render_group.renderables.append(Panel(self._function_progress, style="gray50"))
+        return self._function_progress
+
+    def function_progress_callback(self, tag: str) -> Callable[[int, int], None]:
+        """Adds a task to the current function_progress instance, and returns a callback
+        to update task progress with new completed and total counts."""
+
+        progress_task = self.function_progress.add_task(tag)
+
+        def update_counts(completed: int, total: int):
+            self.function_progress.update(progress_task, completed=completed, total=total)
+
+        return update_counts
 
     def _print_log(self, fd: int, data: str) -> None:
         if fd == api_pb2.FILE_DESCRIPTOR_STDOUT:
@@ -140,7 +180,7 @@ class OutputManager:
         else:
             return "Tasks created..."
 
-    async def get_logs_loop(self, app_id: str, client: _Client, live_task_status: Live, last_log_batch_entry_id: str):
+    async def get_logs_loop(self, app_id: str, client: _Client, status_spinner: Spinner, last_log_batch_entry_id: str):
         async def _get_logs():
             nonlocal last_log_batch_entry_id
 
@@ -164,7 +204,7 @@ class OutputManager:
                     for log in log_batch.items:
                         if log.task_state:
                             message = self._update_task_state(log_batch.task_id, log.task_state)
-                            live_task_status.update(step_progress(message))
+                            step_progress_update(status_spinner, message)
                         if log.data:
                             if self._visible_progress:
                                 stream = line_buffers.get(log.file_descriptor)
