@@ -144,7 +144,7 @@ def test_missing_attr():
     an understandable error message."""
 
     stub = Stub()
-    with pytest.raises(NotFoundError):
+    with pytest.raises(KeyError):
         stub.fun()
 
 

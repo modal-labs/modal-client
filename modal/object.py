@@ -155,15 +155,6 @@ class RemoteRef(Ref[H]):
         return cast(H, handle)
 
 
-class LocalRef(Ref[H]):
-    def __init__(self, tag: str):
-        self.tag = tag
-        super().__init__()
-
-    def __call__(self, *args, **kwargs):
-        raise NotFoundError(f"Stub has no function named {self.tag}.")
-
-
 class PersistedRef(Ref[H]):
     def __init__(self, app_name: str, definition: H):
         self.app_name = app_name

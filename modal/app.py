@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Union
+from typing import Dict, Optional
 
 from rich.tree import Tree
 
@@ -9,8 +9,7 @@ from ._output import step_completed, step_progress, step_progress_update
 from .client import _Client
 from .config import logger
 from .functions import _FunctionHandle
-from .image import _ImageHandle
-from .object import Handle, LocalRef, Provider
+from .object import Handle, Provider
 
 
 class _App:
@@ -75,52 +74,41 @@ class _App:
             # We already created this object before, shortcut this method
             return cached_obj
 
-        # TODO: should we just move most of this code to the Ref classes?
-        if isinstance(obj, LocalRef):
-            if obj.tag in self._tag_to_object:
-                created_obj = self._tag_to_object[obj.tag]
-            else:
-                real_obj = self._stub._blueprint[obj.tag]
-                existing_object_id = self._tag_to_existing_id.get(obj.tag)
-                created_obj = await self._load(real_obj, progress, existing_object_id)
-                self._tag_to_object[obj.tag] = created_obj
-        else:
+        async def loader(obj: Provider) -> str:
+            assert isinstance(obj, Provider)
+            created_obj = await self._load(obj, progress=progress)
+            assert isinstance(created_obj, Handle)
+            return created_obj.object_id
 
-            async def loader(obj: Provider) -> str:
-                assert isinstance(obj, Provider)
-                created_obj = await self._load(obj, progress=progress)
-                assert isinstance(created_obj, Handle)
-                return created_obj.object_id
+        last_message, spinner, step_node = None, None, None
 
-            last_message, spinner, step_node = None, None, None
+        def set_message(message):
+            nonlocal last_message, spinner, step_node
+            last_message = message
+            if progress:
+                if step_node is None:
+                    spinner = step_progress()
+                    step_node = progress.add(spinner)
+                step_progress_update(spinner, message)
 
-            def set_message(message):
-                nonlocal last_message, spinner, step_node
-                last_message = message
-                if progress:
-                    if step_node is None:
-                        spinner = step_progress()
-                        step_node = progress.add(spinner)
-                    step_progress_update(spinner, message)
+        # Create object
+        created_obj = await obj._load(self.client, self.app_id, loader, set_message, existing_object_id)
 
-            # Create object
-            created_obj = await obj._load(self.client, self.app_id, loader, set_message, existing_object_id)
+        # Change message to a completed step
+        if progress and last_message:
+            step_node.label = step_completed(last_message, is_substep=True)
 
-            # Change message to a completed step
-            if progress and last_message:
-                step_node.label = step_completed(last_message, is_substep=True)
-
-            if existing_object_id is not None and created_obj.object_id != existing_object_id:
-                # TODO(erikbern): this is a very ugly fix to a problem that's on the server side.
-                # Unlike every other object, images are not assigned random ids, but rather an
-                # id given by the hash of its contents. This means we can't _force_ an image to
-                # have a particular id. The better solution is probably to separate "images"
-                # from "image definitions" or something like that, but that's a big project.
-                if not existing_object_id.startswith("im-"):
-                    raise Exception(
-                        f"Tried creating an object using existing id {existing_object_id}"
-                        f" but it has id {created_obj.object_id}"
-                    )
+        if existing_object_id is not None and created_obj.object_id != existing_object_id:
+            # TODO(erikbern): this is a very ugly fix to a problem that's on the server side.
+            # Unlike every other object, images are not assigned random ids, but rather an
+            # id given by the hash of its contents. This means we can't _force_ an image to
+            # have a particular id. The better solution is probably to separate "images"
+            # from "image definitions" or something like that, but that's a big project.
+            if not existing_object_id.startswith("im-"):
+                raise Exception(
+                    f"Tried creating an object using existing id {existing_object_id}"
+                    f" but it has id {created_obj.object_id}"
+                )
 
         self._local_uuid_to_object[obj.local_uuid] = created_obj
         return created_obj
@@ -134,9 +122,9 @@ class _App:
 
     async def _create_all_objects(self, progress: Tree):
         """Create objects that have been defined but not created on the server."""
-        for tag in self._stub._blueprint.keys():
-            obj: Provider = LocalRef(tag)
-            await self._load(obj, progress)
+        for tag, provider in self._stub._blueprint.items():
+            existing_object_id = self._tag_to_existing_id.get(tag)
+            self._tag_to_object[tag] = await self._load(provider, progress, existing_object_id)
 
         # Create the app (and send a list of all tagged obs)
         # TODO(erikbern): we should delete objects from a previous version that are no longer needed
@@ -167,18 +155,6 @@ class _App:
 
     def __getattr__(self, tag: str) -> Handle:
         return self._tag_to_object[tag]
-
-    def _is_inside(self, image: Union[LocalRef, _ImageHandle]) -> bool:
-        if isinstance(image, LocalRef):
-            if image.tag not in self._tag_to_object:
-                # This is some other image, which could belong to some unrelated
-                # app or whatever
-                return False
-            app_image = self._tag_to_object[image.tag]
-        else:
-            app_image = image
-        assert isinstance(app_image, _ImageHandle)
-        return app_image._is_inside()
 
     @staticmethod
     async def _init_container(client, app_id, task_id):

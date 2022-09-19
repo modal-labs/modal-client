@@ -20,7 +20,7 @@ from .exception import InvalidError, deprecation_warning
 from .functions import _Function, _FunctionHandle
 from .image import _Image
 from .mount import _create_client_mount, _Mount, client_mount_name
-from .object import LocalRef, Provider, Ref, RemoteRef
+from .object import Provider, Ref, RemoteRef
 from .rate_limit import RateLimit
 from .schedule import Schedule
 from .secret import _Secret
@@ -118,19 +118,19 @@ class _Stub:
 
     def __getitem__(self, tag: str):
         # Deprecated?
-        return LocalRef(tag)
+        return self._blueprint[tag]
 
     def __setitem__(self, tag: str, obj: Provider):
         # Deprecated ?
         self._blueprint[tag] = obj
 
-    def __getattr__(self, tag: str) -> Ref:
+    def __getattr__(self, tag: str) -> Provider:
         assert isinstance(tag, str)
         if tag.startswith("__"):
             # Hacky way to avoid certain issues, e.g. pickle will try to look this up
             raise AttributeError(f"Stub has no member {tag}")
         # Return a reference to an object that will be created in the future
-        return LocalRef(tag)
+        return self._blueprint[tag]
 
     def __setattr__(self, tag: str, obj: Provider):
         # Note that only attributes defined in __annotations__ are set on the object itself,
@@ -140,24 +140,30 @@ class _Stub:
         else:
             self._blueprint[tag] = obj
 
-    def is_inside(self, image: Optional[Ref] = None) -> bool:
+    def is_inside(self, image: Optional[_Image] = None) -> bool:
         """Returns if the program is currently running inside a container for this app."""
         # TODO(erikbern): Add a client test for this function.
-        if image is not None and not isinstance(image, Ref):
-            raise InvalidError(
-                inspect.cleandoc(
-                    """`is_inside` only works for an image associated with an App. For instance:
-                stub.image = Image.debian_slim()
-                if stub.is_inside(stub.image):
-                    print("I'm inside!")"""
-                )
-            )
-
-        if is_local():  # TODO: this should just be a global function
+        if is_local():
             return False
-        if image is None:
+
+        if image is not None:
+            assert isinstance(image, _Image)
+            for tag, provider in self._blueprint.items():
+                if provider == image:
+                    image_handle = container_app[tag]
+                    break
+            else:
+                raise InvalidError(
+                    inspect.cleandoc(
+                        """`is_inside` only works for an image associated with an App. For instance:
+                        stub.image = DebianSlim()
+                        if stub.is_inside(stub.image):
+                        print("I'm inside!")"""
+                    )
+                )
+        else:
             if "image" in self._blueprint:
-                image = LocalRef("image")
+                image_handle = container_app["image"]
             else:
                 # At this point in the code, we are sure that the app is running
                 # remotely, so it needs be able to load the ID of the default image.
@@ -166,12 +172,12 @@ class _Stub:
                 #
                 # Instead we load the image in App.init_container(), and this allows
                 # us to retrieve its object ID from cache here.
-                image = container_app._load_cached(_default_image)
+                image_handle = container_app._load_cached(_default_image)
 
                 # Check to make sure internal invariants are upheld.
-                assert image is not None, "fatal: default image should be loaded in App.init_container()"
+                assert image_handle is not None, "fatal: default image should be loaded in App.init_container()"
 
-        return container_app._is_inside(image)
+        return image_handle._is_inside()
 
     @synchronizer.asynccontextmanager
     async def _run(
