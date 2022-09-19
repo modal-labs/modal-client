@@ -140,24 +140,29 @@ class _Stub:
         else:
             self._blueprint[tag] = obj
 
-    def is_inside(self, image: Optional[Ref] = None) -> bool:
+    def is_inside(self, image: Optional[_Image] = None) -> bool:
         """Returns if the program is currently running inside a container for this app."""
         # TODO(erikbern): Add a client test for this function.
-        if image is not None and not isinstance(image, Ref):
-            raise InvalidError(
-                inspect.cleandoc(
-                    """`is_inside` only works for an image associated with an App. For instance:
-                stub.image = DebianSlim()
-                if stub.is_inside(stub.image):
-                    print("I'm inside!")"""
-                )
-            )
-
         if is_local():  # TODO: this should just be a global function
             return False
+        if image is not None:
+            for tag, provider in self._blueprint.items():
+                if provider == image:
+                    image_handle = container_app[tag]
+                    break
+            else:
+                raise InvalidError(
+                    inspect.cleandoc(
+                        """`is_inside` only works for an image associated with an App. For instance:
+                        stub.image = DebianSlim()
+                        if stub.is_inside(stub.image):
+                        print("I'm inside!")"""
+                    )
+                )
+
         if image is None:
             if "image" in self._blueprint:
-                image = LocalRef("image")
+                image_handle = container_app.image
             else:
                 # At this point in the code, we are sure that the app is running
                 # remotely, so it needs be able to load the ID of the default image.
@@ -166,12 +171,12 @@ class _Stub:
                 #
                 # Instead we load the image in App.init_container(), and this allows
                 # us to retrieve its object ID from cache here.
-                image = container_app._load_cached(_default_image)
+                image_handle = container_app._load_cached(_default_image)
 
                 # Check to make sure internal invariants are upheld.
-                assert image is not None, "fatal: default image should be loaded in App.init_container()"
+                assert image_handle is not None, "fatal: default image should be loaded in App.init_container()"
 
-        return container_app._is_inside(image)
+        return container_app._is_inside(image_handle)
 
     @synchronizer.asynccontextmanager
     async def _run(
