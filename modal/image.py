@@ -14,6 +14,33 @@ from .object import Handle, Provider
 from .secret import _Secret
 
 
+def _dockerhub_python_version(python_version=None):
+    if python_version is None:
+        python_version = config["image_python_version"]
+    if python_version is None:
+        python_version = "%d.%d" % sys.version_info[:2]
+
+    # We use the same major/minor version, but the highest micro version
+    # See https://hub.docker.com/_/python
+    latest_micro_version = {
+        "3.10": "1",
+        "3.9": "9",
+        "3.8": "12",
+        "3.7": "12",
+    }
+    major_minor_version = ".".join(python_version.split(".")[:2])
+    python_version = major_minor_version + "." + latest_micro_version[major_minor_version]
+    return python_version
+
+
+def _get_client_requirements_path():
+    # Locate Modal client requirements.txt
+    import modal
+
+    modal_path = modal.__path__[0]
+    return os.path.join(modal_path, "requirements.txt")
+
+
 class _ImageHandle(Handle, type_prefix="im"):
     def _is_inside(self) -> bool:
         """Returns whether this container is active or not.
@@ -44,7 +71,9 @@ class _Image(Provider[_ImageHandle]):
         if ref and (base_images or dockerfile_commands or context_files):
             raise InvalidError("No other arguments can be provided when initializing an image from a ref.")
         if not ref and not dockerfile_commands:
-            raise InvalidError("No commands were provided for the image — have you tried using modal.DebianSlim()?")
+            raise InvalidError(
+                "No commands were provided for the image — have you tried using modal.Image.debian_slim()?"
+            )
 
         self._ref = ref
         self._base_images = base_images
@@ -122,12 +151,12 @@ class _Image(Provider[_ImageHandle]):
         """Extend an image (named "base") with additional options or commands.
 
         This is a low-level command. Generally, you should prefer using functions
-        like `Image.pip_install` or `DebianSlim.apt_install` if possible.
+        like `Image.pip_install` or `Image.apt_install` if possible.
 
         **Example**
 
         ```python notest
-        image = modal.DebianSlim().extend(
+        image = modal.Image.debian_slim().extend(
             dockerfile_commands=[
                 "FROM base",
                 "WORKDIR /pkg",
@@ -138,9 +167,7 @@ class _Image(Provider[_ImageHandle]):
         ```
         """
 
-        obj = _Image.__new__(type(self))
-        _Image.__init__(obj, base_images={"base": self}, **kwargs)
-        return obj
+        return _Image(base_images={"base": self}, **kwargs)
 
     def pip_install(
         self,
@@ -289,7 +316,7 @@ class _Image(Provider[_ImageHandle]):
     def conda_install(
         self,
         packages: List[str] = [],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
-    ):
+    ) -> "_Image":
         """Install a list of additional packages using conda."""
 
         package_args = " ".join(shlex.quote(pkg) for pkg in packages)
@@ -304,7 +331,7 @@ class _Image(Provider[_ImageHandle]):
     def conda_update_from_environment(
         self,
         environment_yml: str,
-    ):
+    ) -> "_Image":
         """Update conda environment using dependencies from a given environment.yml file."""
 
         environment_yml = os.path.expanduser(environment_yml)
@@ -390,35 +417,9 @@ class _Image(Provider[_ImageHandle]):
             context_files={"/modal_requirements.txt": requirements_path},
         )
 
-
-def _dockerhub_python_version(python_version=None):
-    if python_version is None:
-        python_version = config["image_python_version"]
-    if python_version is None:
-        python_version = "%d.%d" % sys.version_info[:2]
-
-    # We use the same major/minor version, but the highest micro version
-    # See https://hub.docker.com/_/python
-    latest_micro_version = {
-        "3.10": "1",
-        "3.9": "9",
-        "3.8": "12",
-        "3.7": "12",
-    }
-    major_minor_version = ".".join(python_version.split(".")[:2])
-    python_version = major_minor_version + "." + latest_micro_version[major_minor_version]
-    return python_version
-
-
-class _DebianSlim(_Image):
-    """Default image, based on the official `python:X.Y.Z-slim-bullseye` Docker images.
-
-    This image also be called as a function and customized, which allows you to
-    extend the image with additional shell commands or Python packages.
-    """
-
-    def __init__(self, python_version: Optional[str] = None):
-        """Construct a default Modal image based on Debian-Slim."""
+    @staticmethod
+    def debian_slim(python_version: Optional[str] = None) -> "_Image":
+        """Default image, based on the official `python:X.Y.Z-slim-bullseye` Docker images."""
         python_version = _dockerhub_python_version(python_version)
 
         requirements_path = _get_client_requirements_path()
@@ -431,7 +432,7 @@ class _DebianSlim(_Image):
             "RUN pip install -r /modal_requirements.txt",
         ]
 
-        super().__init__(
+        return _Image(
             dockerfile_commands=dockerfile_commands,
             context_files={"/modal_requirements.txt": requirements_path},
         )
@@ -439,7 +440,7 @@ class _DebianSlim(_Image):
     def apt_install(
         self,
         packages: List[str] = [],  # A list of packages, e.g. ["ssh", "libpq-dev"]
-    ):
+    ) -> "_Image":
         """Install a list of Debian packages using `apt`."""
 
         package_args = " ".join(shlex.quote(pkg) for pkg in packages)
@@ -453,31 +454,24 @@ class _DebianSlim(_Image):
         return self.extend(dockerfile_commands=dockerfile_commands)
 
 
-def _get_client_requirements_path():
-    # Locate Modal client requirements.txt
-    import modal
-
-    modal_path = modal.__path__[0]
-    return os.path.join(modal_path, "requirements.txt")
-
-
 def _Conda():
     deprecation_warning("`modal.Conda` is deprecated. Please use `modal.Image.conda` instead")
     return _Image.conda()
 
 
 def _DockerhubImage(*args, **kwargs):
-    deprecation_warning(
-        "`modal.DockerhubImage` is deprecated. Please use `modal.Image.from_dockerhub` instead",
-    )
+    deprecation_warning("`modal.DockerhubImage` is deprecated. Please use `modal.Image.from_dockerhub` instead")
     return _Image.from_dockerhub(*args, **kwargs)
 
 
 def _DockerfileImage(*args, **kwargs):
-    deprecation_warning(
-        "`modal.DockerfileImage` is deprecated. Please use `modal.Image.from_dockerfile` instead",
-    )
+    deprecation_warning("`modal.DockerfileImage` is deprecated. Please use `modal.Image.from_dockerfile` instead")
     return _Image.from_dockerfile(*args, **kwargs)
+
+
+def _DebianSlim(*args, **kwargs):
+    deprecation_warning("`modal.DebianSlim` is deprecated. Please use `modal.Image.debian_slim` instead")
+    return _Image.debian_slim(*args, **kwargs)
 
 
 synchronize_apis(_ImageHandle)

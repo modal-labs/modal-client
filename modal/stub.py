@@ -18,7 +18,7 @@ from .client import _Client
 from .config import config, logger
 from .exception import InvalidError, deprecation_warning
 from .functions import _Function, _FunctionHandle
-from .image import _DebianSlim, _Image
+from .image import _Image
 from .mount import _create_client_mount, _Mount, client_mount_name
 from .object import LocalRef, Provider, Ref, RemoteRef
 from .rate_limit import RateLimit
@@ -26,7 +26,7 @@ from .schedule import Schedule
 from .secret import _Secret
 from .shared_volume import _SharedVolume
 
-_default_image = _DebianSlim()
+_default_image = _Image.debian_slim()
 
 
 class StubRunMode(Enum):
@@ -147,7 +147,7 @@ class _Stub:
             raise InvalidError(
                 inspect.cleandoc(
                     """`is_inside` only works for an image associated with an App. For instance:
-                stub.image = DebianSlim()
+                stub.image = Image.debian_slim()
                 if stub.is_inside(stub.image):
                     print("I'm inside!")"""
                 )
@@ -644,7 +644,7 @@ class _Stub:
         ```python
         import modal
 
-        stub = modal.Stub(image=modal.DebianSlim().apt_install(["vim"]))
+        stub = modal.Stub(image=modal.Image.debian_slim().apt_install(["vim"]))
 
         if __name__ == "__main__":
             stub.interactive_shell("/bin/bash")

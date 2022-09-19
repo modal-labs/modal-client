@@ -6,4 +6,4 @@
 # * web: set the URL for the package
 # * base image builder: use this as the path for package
 
-__version__ = "0.0.32"
+__version__ = "0.0.33"

@@ -43,18 +43,23 @@ def get_image_layers(image_id: str, servicer) -> List[api_pb2.Image]:
 
 def test_image_python_packages(client, servicer):
     stub = Stub()
-    stub["image"] = DebianSlim().pip_install(["numpy"])
+    stub["image"] = Image.debian_slim().pip_install(["numpy"])
     with stub.run(client=client) as running_app:
         layers = get_image_layers(running_app["image"].object_id, servicer)
 
         assert any("pip install numpy" in cmd for cmd in layers[0].dockerfile_commands)
 
 
+def test_debian_slim_deprecated(servicer, client):
+    with pytest.warns(DeprecationError):
+        DebianSlim()
+
+
 def test_image_requirements_txt(servicer, client):
     requirements_txt = os.path.join(os.path.dirname(__file__), "supports/test-requirements.txt")
 
     stub = Stub()
-    stub["image"] = DebianSlim().pip_install_from_requirements(requirements_txt)
+    stub["image"] = Image.debian_slim().pip_install_from_requirements(requirements_txt)
     with stub.run(client=client) as running_app:
         layers = get_image_layers(running_app["image"].object_id, servicer)
 
@@ -64,7 +69,9 @@ def test_image_requirements_txt(servicer, client):
 
 
 def test_debian_slim_apt_install(servicer, client):
-    stub = Stub(image=DebianSlim().pip_install(["numpy"]).apt_install(["git", "ssh"]).pip_install(["scikit-learn"]))
+    stub = Stub(
+        image=Image.debian_slim().pip_install(["numpy"]).apt_install(["git", "ssh"]).pip_install(["scikit-learn"])
+    )
 
     with stub.run(client=client) as running_app:
         layers = get_image_layers(running_app["image"].object_id, servicer)

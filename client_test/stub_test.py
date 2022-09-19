@@ -5,7 +5,7 @@ from grpclib import GRPCError, Status
 from modal_test_support import module_1, module_2
 
 import modal.exception
-from modal import DebianSlim, Stub
+from modal import Image, Stub
 from modal.aio import AioApp, AioQueue, AioStub, aio_lookup
 from modal.exception import NotFoundError
 
@@ -124,7 +124,7 @@ def test_run_function_without_app_error():
 
 def test_standalone_object(client):
     stub = Stub()
-    image = DebianSlim()
+    image = Image.debian_slim()
 
     @stub.function
     def foo(image=image):
