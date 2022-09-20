@@ -137,7 +137,8 @@ class _Mount(Provider[_MountHandle]):
 
             if mount_file.use_blob:
                 logger.debug(f"Creating blob file for {mount_file.filename} ({mount_file.size} bytes)")
-                blob_id = await modal._blob_utils.blob_upload_file(mount_file.filename, client.stub)
+                with open(mount_file.filename, "rb") as fp:
+                    blob_id = await modal._blob_utils.blob_upload_file(fp, client.stub)
                 logger.debug(f"Uploading blob file {mount_file.filename} as {remote_filename}")
                 request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=mount_file.sha256_hex)
             else:

@@ -1,15 +1,73 @@
+import os
+from typing import IO, AsyncIterator, List
+
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 from modal_utils.grpc_utils import retry_transient_errors
+from modal_utils.hash_utils import get_sha256_hex
 
+from ._blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
 from .object import Handle, Provider
 
 
 class _SharedVolumeHandle(Handle, type_prefix="sv"):
-    pass
+    async def write_file(self, remote_path: str, fp: IO[bytes]):
+        """Write from a file object to a path on the shared volume, atomically.
+
+        Will create any needed parent directories automatically
+
+        If remote_path ends with `/` it's assumed to be a directory and the
+        file will be uploaded with its current name to that directory.
+
+        Should typically not be used directly in a Modal function,
+        and instead referenced through the file system, see `modal.SharedVolume`.
+        """
+        sha_hash = get_sha256_hex(fp)
+        fp.seek(0, os.SEEK_END)
+        data_size = fp.tell()
+        fp.seek(0)
+        if data_size > LARGE_FILE_LIMIT:
+            blob_id = await blob_upload_file(fp, self._client.stub)
+            req = api_pb2.SharedVolumePutFileRequest(
+                shared_volume_id=self._object_id, path=remote_path, data_blob_id=blob_id, sha256_hex=sha_hash
+            )
+        else:
+            data = fp.read()
+            req = api_pb2.SharedVolumePutFileRequest(shared_volume_id=self._object_id, path=remote_path, data=data)
+        await self._client.stub.SharedVolumePutFile(req)
+        return data_size  # might be better if this is returned from the server
+
+    async def read_file(self, path: str) -> AsyncIterator[bytes]:
+        """Read a file from the shared volume
+
+        Should typically not be used directly in a Modal function,
+        and instead referenced through the file system, see `modal.SharedVolume`.
+        """
+        req = api_pb2.SharedVolumeGetFileRequest(shared_volume_id=self._object_id, path=path)
+        response = await self._client.stub.SharedVolumeGetFile(req)
+        if response.WhichOneof("data_oneof") == "data":
+            yield response.data
+        else:
+            async for data in blob_iter(response.data_blob_id, self._client.stub):
+                yield data
+
+    async def listdir(self, path: str) -> List[api_pb2.SharedVolumeListFilesEntry]:
+        """List all files in a directory in the shared volume.
+
+        Passing a directory path lists all files in the directory
+        Passing a file path returns a list containing only that files listing description.
+        """
+        req = api_pb2.SharedVolumeListFilesRequest(shared_volume_id=self._object_id, path=path)
+        response = await self._client.stub.SharedVolumeListFiles(req)
+        return list(response.entries)
+
+    async def remove_file(self, path: str, recursive=False):
+        """Remove a file in a shared volume"""
+        req = api_pb2.SharedVolumeRemoveFileRequest(shared_volume_id=self._object_id, path=path, recursive=recursive)
+        await self._client.stub.SharedVolumeRemoveFile(req)
 
 
-synchronize_apis(_SharedVolumeHandle)
+SharedVolumeHandle, AioSharedVolumeHandle = synchronize_apis(_SharedVolumeHandle)
 
 
 class _SharedVolume(Provider[_SharedVolumeHandle]):

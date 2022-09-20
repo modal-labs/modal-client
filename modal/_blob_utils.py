@@ -1,7 +1,7 @@
 import asyncio
 import dataclasses
 import os
-from typing import Optional
+from typing import IO, AsyncIterator, Optional
 
 from modal.exception import ExecutionError
 from modal_proto import api_pb2
@@ -55,14 +55,17 @@ async def _blob_upload(content_md5: str, aiohttp_payload, stub) -> str:
 
 
 async def blob_upload(payload: bytes, stub) -> str:
+    if isinstance(payload, str):
+        logger.warning("Blob uploading string, not bytes - auto-encoding as utf8")
+        payload = payload.encode("utf8")
     content_md5 = get_md5_base64(payload)
     return await _blob_upload(content_md5, payload, stub)
 
 
-async def blob_upload_file(filename: str, stub) -> str:
-    content_md5 = get_md5_base64(open(filename, "rb"))
-    with open(filename, "rb") as fp:
-        return await _blob_upload(content_md5, fp, stub)
+async def blob_upload_file(file_obj: IO[bytes], stub) -> str:
+    content_md5 = get_md5_base64(file_obj)
+    file_obj.seek(0)
+    return await _blob_upload(content_md5, file_obj, stub)
 
 
 @retry(n_attempts=5, base_delay=0.1, timeout=None)
@@ -86,6 +89,25 @@ async def blob_download(blob_id, stub):
     resp = await retry_transient_errors(stub.BlobGet, req)
 
     return await _download_from_url(resp.download_url)
+
+
+async def blob_iter(blob_id, stub) -> AsyncIterator[bytes]:
+    req = api_pb2.BlobGetRequest(blob_id=blob_id)
+    resp = await retry_transient_errors(stub.BlobGet, req)
+    download_url = resp.download_url
+    async with http_client_with_tls(timeout=None) as session:
+        async with session.get(download_url) as resp:
+            # S3 signal to slow down request rate.
+            if resp.status == 503:
+                logger.warning("Received SlowDown signal from S3, sleeping for 1 second before retrying.")
+                await asyncio.sleep(1)
+
+            if resp.status != 200:
+                text = await resp.text()
+                raise ExecutionError(f"Get from url failed with status {resp.status}: {text}")
+
+            async for chunk in resp.content:
+                yield chunk
 
 
 @dataclasses.dataclass

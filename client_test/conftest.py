@@ -89,7 +89,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.recv_message()
         # This is used to test retry_transient_errors, see grpc_utils_test.py
         self.blob_create_metadata = stream.metadata
-        print(self.blob_create_metadata)
         if len(self.fail_blob_create) > 0:
             status_code = self.fail_blob_create.pop()
             raise GRPCError(status_code, "foobar")
