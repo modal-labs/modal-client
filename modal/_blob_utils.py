@@ -106,7 +106,7 @@ async def blob_iter(blob_id, stub) -> AsyncIterator[bytes]:
                 text = await resp.text()
                 raise ExecutionError(f"Get from url failed with status {resp.status}: {text}")
 
-            async for chunk in resp.content:
+            async for chunk in resp.content.iter_any():
                 yield chunk
 
 
