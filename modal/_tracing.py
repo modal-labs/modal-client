@@ -3,11 +3,18 @@ from typing import Dict
 
 from .config import config, logger
 
-TRACING_ENABLED = config.get("tracing_enabled")
-if TRACING_ENABLED:
-    from ddtrace import tracer
-    from ddtrace.propagation.http import HTTPPropagator
+if config.get("tracing_enabled"):
+    try:
+        from ddtrace import tracer
+        from ddtrace.propagation.http import HTTPPropagator
 
+        TRACING_ENABLED = True
+    except ImportError:
+        TRACING_ENABLED = False
+else:
+    TRACING_ENABLED = False
+
+if TRACING_ENABLED:
     logging.getLogger("ddtrace").setLevel(logging.CRITICAL)
     tracer.configure(hostname="172.19.0.1")
 
