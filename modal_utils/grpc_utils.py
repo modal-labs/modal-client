@@ -3,7 +3,7 @@ import contextlib
 import socket
 import time
 import uuid
-from typing import Any, AsyncIterator, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, AsyncIterator, Optional, TypeVar
 
 from grpclib import GRPCError, Status
 from grpclib.client import Channel, Stream, UnaryStreamMethod
@@ -13,7 +13,9 @@ from sentry_sdk import add_breadcrumb, capture_exception
 
 from .async_utils import TaskContext, synchronizer
 from .logger import logger
-from .server_connection import GRPCConnectionFactory
+
+if TYPE_CHECKING:
+    from .server_connection import GRPCConnectionFactory
 
 _SendType = TypeVar("_SendType")
 _RecvType = TypeVar("_RecvType")
@@ -52,7 +54,7 @@ class ChannelPool:
     # Don't accept more connections on this channel after this many seconds
     MAX_CHANNEL_LIFETIME = 30
 
-    def __init__(self, task_context: TaskContext, conn_factory: GRPCConnectionFactory) -> None:
+    def __init__(self, task_context: TaskContext, conn_factory: "GRPCConnectionFactory") -> None:
         # Only used by start()
         self._task_context = task_context
 

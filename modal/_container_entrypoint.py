@@ -23,6 +23,7 @@ from ._asgi import asgi_app_wrapper, fastAPI_function_wrapper, wsgi_app_wrapper
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._proxy_tunnel import proxy_tunnel
 from ._serialization import deserialize, serialize
+from ._tracing import extract_tracing_context, wrap
 from .app import _App
 from .client import Client, _Client
 from .config import logger
@@ -30,6 +31,7 @@ from .exception import InvalidError
 from .functions import AioFunctionHandle, FunctionHandle, _set_current_input_id
 
 MAX_OUTPUT_BATCH_SIZE = 100
+
 RTT_S = 0.5  # conservative estimate of RTT in seconds.
 
 CONTAINER_IDLE_TIMEOUT = 60
@@ -74,6 +76,7 @@ class _FunctionIOManager:
     def deserialize(self, data: bytes) -> Any:
         return deserialize(data, self._client)
 
+    @wrap()
     async def populate_input_blobs(self, item):
         args = await blob_download(item.args_blob_id, self.client.stub)
 
@@ -280,6 +283,7 @@ def is_async(function):
         raise RuntimeError(f"Function {function} is a strange type {type(function)}")
 
 
+@wrap()
 def call_function_sync(
     function_io_manager,  #: FunctionIOManager,  # TODO: this type is generated in runtime
     cls: Optional[Type],
@@ -320,6 +324,7 @@ def call_function_sync(
             cls.__exit__(self, *sys.exc_info())
 
 
+@wrap()
 async def call_function_async(
     aio_function_io_manager,  #: AioFunctionIOManager,  # TODO: this one too
     cls: Optional[Type],
@@ -448,6 +453,8 @@ if __name__ == "__main__":
 
     container_args = api_pb2.ContainerArguments()
     container_args.ParseFromString(base64.b64decode(sys.argv[1]))
+
+    extract_tracing_context(dict(container_args.tracing_context.items()))
 
     # Note that we're creating the client in a synchronous context, but it will be running in a separate thread.
     # This is good because if the function is long running then we the client can still send heartbeats

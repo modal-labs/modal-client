@@ -5,6 +5,7 @@ asgiref==3.5.2
 certifi==2021.10.8
 cloudpickle==2.0.0
 cuda-python==11.7.1
+ddtrace==1.4.5
 fastapi==0.75.2
 fastprogress==1.0.0
 grpclib==0.4.3

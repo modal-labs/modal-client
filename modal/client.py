@@ -13,7 +13,6 @@ from modal_utils import async_utils
 from modal_utils.async_utils import TaskContext, synchronize_apis
 from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, ChannelPool
 from modal_utils.http_utils import http_client_with_tls
-from modal_utils.server_connection import GRPCConnectionFactory
 
 from .config import config, logger
 from .exception import AuthError, ConnectionError, InvalidError, VersionError
@@ -69,6 +68,8 @@ class _Client:
         return self._stub
 
     async def _start(self):
+        from modal_utils.server_connection import GRPCConnectionFactory
+
         logger.debug("Client: Starting")
         if self._stub:
             raise Exception("Client is already running")

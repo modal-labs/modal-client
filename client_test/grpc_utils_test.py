@@ -4,11 +4,8 @@ from grpclib import GRPCError, Status
 
 from modal_proto import api_grpc, api_pb2
 from modal_utils.async_utils import TaskContext
-from modal_utils.grpc_utils import (
-    ChannelPool,
-    GRPCConnectionFactory,
-    retry_transient_errors,
-)
+from modal_utils.grpc_utils import ChannelPool, retry_transient_errors
+from modal_utils.server_connection import GRPCConnectionFactory
 
 
 @pytest.fixture

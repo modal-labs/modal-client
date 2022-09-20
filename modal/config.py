@@ -153,6 +153,7 @@ _SETTINGS = {
     "sentry_dsn": _Setting("https://1343216d5d8e443f9f43896ecab24fd3@o1108641.ingest.sentry.io/6255134"),
     "serve_timeout": _Setting(transform=float),
     "automount": _Setting(True, transform=lambda x: x not in ("", "0")),
+    "tracing_enabled": _Setting(False, transform=lambda x: x not in ("", "0")),
 }
 
 

@@ -4,6 +4,7 @@ from typing import Dict
 import grpclib.events
 from grpclib.client import Channel
 
+from modal._tracing import inject_tracing_context
 from modal_proto import api_pb2
 
 from .logger import logger
@@ -55,6 +56,8 @@ class GRPCConnectionFactory:
         async def send_request(event: grpclib.events.SendRequest) -> None:
             for k, v in self.metadata.items():
                 event.metadata[k] = v
+
+            inject_tracing_context(event.metadata)
 
         grpclib.events.listen(channel, grpclib.events.SendRequest, send_request)
         return channel
