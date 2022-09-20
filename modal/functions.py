@@ -286,6 +286,8 @@ async def _map_invocation(
 
         async with outputs_fetched.stream() as streamer:
             async for idx, output in streamer:
+                if count_update_callback is not None:
+                    count_update_callback(num_outputs, num_inputs)
                 if is_generator:
                     yield _OutputValue(output)
                 elif not order_outputs:
@@ -304,8 +306,6 @@ async def _map_invocation(
 
     async with response_gen.stream() as streamer:
         async for response in streamer:
-            if count_update_callback is not None:
-                count_update_callback(num_outputs, num_inputs)
             if response is not None:
                 yield response.value
 
