@@ -675,7 +675,7 @@ class _Function(Provider[_FunctionHandle]):
             definition_type=self._info.definition_type,
             function_serialized=self._info.function_serialized,
             function_type=function_type,
-            resources=api_pb2.Resources(milli_cpu=milli_cpu, gpu=self._gpu, memory=self._memory),
+            resources=api_pb2.Resources(milli_cpu=milli_cpu, gpu=self._gpu, memory_mb=self._memory),
             rate_limit=rate_limit,
             webhook_config=self._webhook_config,
             shared_volume_mounts=shared_volume_mounts,
