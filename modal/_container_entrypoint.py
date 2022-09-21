@@ -23,7 +23,7 @@ from ._asgi import asgi_app_wrapper, fastAPI_function_wrapper, wsgi_app_wrapper
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._proxy_tunnel import proxy_tunnel
 from ._serialization import deserialize, serialize
-from ._tracing import extract_tracing_context, wrap
+from ._tracing import extract_tracing_context, set_span_tag, trace, wrap
 from .app import _App
 from .client import Client, _Client
 from .config import logger
@@ -56,6 +56,7 @@ class _FunctionIOManager:
         self._client = synchronizer._translate_in(self.client)  # make it a _Client object
         assert isinstance(self._client, _Client)
 
+    @wrap()
     async def initialize_app(self):
         await _App._init_container(self._client, self.app_id, self.task_id)
 
@@ -106,7 +107,9 @@ class _FunctionIOManager:
             # clamp to between 0.01 and 15s.
             request.timeout = min(max(time_left, 0.01), 15)
 
-            response = await retry_transient_errors(self.client.stub.FunctionGetInputs, request)
+            with trace("get_inputs"):
+                response = await retry_transient_errors(self.client.stub.FunctionGetInputs, request)
+
             if response.rate_limit_sleep_duration:
                 logger.info(
                     "Task exceeded rate limit, sleeping for %.2fs before trying again."
@@ -214,7 +217,10 @@ class _FunctionIOManager:
     @synchronizer.asynccontextmanager
     async def handle_input_exception(self, input_id):
         try:
-            yield
+            with trace("input"):
+                set_span_tag("input_id", input_id)
+
+                yield
         except KeyboardInterrupt:
             raise
         except BaseException as exc:
@@ -283,7 +289,6 @@ def is_async(function):
         raise RuntimeError(f"Function {function} is a strange type {type(function)}")
 
 
-@wrap()
 def call_function_sync(
     function_io_manager,  #: FunctionIOManager,  # TODO: this type is generated in runtime
     cls: Optional[Type],
@@ -459,11 +464,14 @@ if __name__ == "__main__":
     # Note that we're creating the client in a synchronous context, but it will be running in a separate thread.
     # This is good because if the function is long running then we the client can still send heartbeats
     # The only caveat is a bunch of calls will now cross threads, which adds a bit of overhead?
-    client = Client.from_env()
-    try:
-        with proxy_tunnel(container_args.proxy_info):
-            main(container_args, client)
-    except KeyboardInterrupt:
-        logger.debug("Container: interrupted")
+    with trace("client_from_env"):
+        client = Client.from_env()
+
+    with trace("main"):
+        try:
+            with proxy_tunnel(container_args.proxy_info):
+                main(container_args, client)
+        except KeyboardInterrupt:
+            logger.debug("Container: interrupted")
 
     logger.debug("Container: done")

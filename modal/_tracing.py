@@ -1,3 +1,4 @@
+import contextlib
 import logging
 from typing import Dict
 
@@ -36,7 +37,8 @@ def inject_tracing_context(metadata: Dict[str, str]):
 
     try:
         context = tracer.current_trace_context()
-        HTTPPropagator.inject(context, metadata)
+        if context:
+            HTTPPropagator.inject(context, metadata)
     except Exception:
         logger.exception("Failed to inject tracing context")
 
@@ -46,3 +48,19 @@ def wrap(*args, **kwargs):
         return lambda f: f
 
     return tracer.wrap(*args, **kwargs, service="modal-runtime-client")
+
+
+def trace(*args, **kwargs):
+    if not TRACING_ENABLED:
+        return contextlib.nullcontext()
+
+    return tracer.trace(*args, **kwargs, service="modal-runtime-client")
+
+
+def set_span_tag(key, value):
+    if not TRACING_ENABLED:
+        return
+
+    span = tracer.current_span()
+    if span:
+        span.set_tag(key, value)
