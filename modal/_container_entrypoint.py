@@ -387,6 +387,7 @@ def _wait_for_gpu_init():
     logger.info("Failed to initialize CUDA device.")
 
 
+@wrap()
 def import_function(function_def: api_pb2.Function) -> Tuple[Optional[Type], Callable]:
     # This is not in function_io_manager, so that any global scope code that runs during import
     # runs on the main thread.

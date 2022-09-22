@@ -19,6 +19,12 @@ if TRACING_ENABLED:
     logging.getLogger("ddtrace").setLevel(logging.CRITICAL)
     tracer.configure(hostname="172.19.0.1")
 
+if config.get("profiling_enabled"):
+    try:
+        import ddtrace.profiling.auto  # noqa: F401
+    except ImportError:
+        pass
+
 
 def extract_tracing_context(headers: Dict[str, str]):
     if not TRACING_ENABLED:
