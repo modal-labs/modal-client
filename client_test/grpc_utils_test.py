@@ -1,5 +1,6 @@
 import pytest
 
+import pytest_asyncio
 from grpclib import GRPCError, Status
 
 from modal_proto import api_grpc, api_pb2
@@ -8,7 +9,7 @@ from modal_utils.grpc_utils import ChannelPool, retry_transient_errors
 from modal_utils.server_connection import GRPCConnectionFactory
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def client_stub(servicer):
     # Most of this is duplicated from the Client class
     async with TaskContext(grace=1) as task_context:

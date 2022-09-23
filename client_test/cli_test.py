@@ -1,5 +1,4 @@
-import pytest
-
+import pytest_asyncio
 import typer.testing
 
 from modal import cli
@@ -12,7 +11,7 @@ stub = modal.Stub("my_app")
 """
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def set_env_client(aio_client):
     try:
         Client.set_env_client(aio_client)

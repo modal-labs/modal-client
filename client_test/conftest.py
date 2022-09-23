@@ -12,6 +12,7 @@ import aiohttp.web_runner
 import cloudpickle
 import grpclib.server
 import pkg_resources
+import pytest_asyncio
 from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 
@@ -323,7 +324,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(Empty())
 
 
-@pytest.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session")
 async def blob_server(event_loop):
     blobs = {}
 
@@ -349,7 +350,7 @@ async def blob_server(event_loop):
         yield host, blobs
 
 
-@pytest.fixture(scope="function")
+@pytest_asyncio.fixture(scope="function")
 async def servicer(blob_server):
     blob_host, blobs = blob_server
     servicer = MockClientServicer(blob_host, blobs)
@@ -376,19 +377,19 @@ async def servicer(blob_server):
         await aio_stop_servicer()
 
 
-@pytest.fixture(scope="function")
+@pytest_asyncio.fixture(scope="function")
 async def aio_client(servicer):
     async with AioClient(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
         yield client
 
 
-@pytest.fixture(scope="function")
+@pytest_asyncio.fixture(scope="function")
 async def client(servicer):
     with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
         yield client
 
 
-@pytest.fixture(scope="function")
+@pytest_asyncio.fixture(scope="function")
 async def aio_container_client(servicer):
     async with AioClient(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         yield client
