@@ -84,8 +84,8 @@ class FunctionInfo:
         elif hasattr(module, "__file__") and not serialized:
             # This generally covers the case where it's invoked with
             # python foo/bar/baz.py
-            self.file = os.path.abspath(module.__file__)
-            self.module_name = os.path.splitext(os.path.basename(self.file))[0]
+            self.file = inspect.getfile(f)
+            self.module_name = inspect.getmodulename(self.file)
             self.base_dir = os.path.dirname(self.file)
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
             self.is_package = False

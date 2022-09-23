@@ -4,9 +4,9 @@ import subprocess
 import sys
 
 
-def _cli(module, server_url):
+def _cli(args, server_url):
     lib_dir = pathlib.Path(__file__).parent.parent
-    args = [sys.executable, "-m", module]
+    args = [sys.executable] + args
     env = {
         "MODAL_SERVER_URL": server_url,
         **os.environ,
@@ -19,14 +19,18 @@ def _cli(module, server_url):
 
 
 def test_run_e2e(servicer):
-    _cli("modal_test_support.script", servicer.remote_addr)
+    _cli(["-m", "modal_test_support.script"], servicer.remote_addr)
+
+
+def test_run_profiler(servicer):
+    _cli(["-m", "cProfile", "-m", "modal_test_support.script"], servicer.remote_addr)
 
 
 def test_run_unconsumed_map(servicer):
-    _, err = _cli("modal_test_support.unconsumed_map", servicer.remote_addr)
+    _, err = _cli(["-m", "modal_test_support.unconsumed_map"], servicer.remote_addr)
     assert b"map" in err
     assert b"for-loop" in err
 
-    _, err = _cli("modal_test_support.consumed_map", servicer.remote_addr)
+    _, err = _cli(["-m", "modal_test_support.consumed_map"], servicer.remote_addr)
     assert b"map" not in err
     assert b"for-loop" not in err
