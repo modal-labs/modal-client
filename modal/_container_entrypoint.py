@@ -181,6 +181,7 @@ class _FunctionIOManager:
 
         output = api_pb2.FunctionPutOutputsItem(
             input_id=input_id,
+            task_id=self.task_id,
             input_started_at=self.input_started_at,
             output_created_at=time.time(),
             result=api_pb2.GenericResult(**kwargs),

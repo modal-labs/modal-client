@@ -394,6 +394,7 @@ message FunctionPutOutputsItem {
   GenericResult result = 2;
   double input_started_at = 3;
   double output_created_at = 4;
+  string task_id = 5;
 }
 
 message FunctionPutOutputsRequest {
