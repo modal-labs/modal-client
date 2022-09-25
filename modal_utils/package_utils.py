@@ -47,7 +47,7 @@ def import_stub_by_ref(stub_ref: str):
         file_path, var_part = stub_ref.split(".py")
         module_segments = file_path.split("/")
         for path_segment in module_segments.copy()[:-1]:
-            if os.path.exists("__init__.py"):  # is package
+            if os.path.exists(os.path.join(root_dir, path_segment, "__init__.py")):  # is package
                 break
             root_dir += f"/{path_segment}"
             module_segments = module_segments[1:]
