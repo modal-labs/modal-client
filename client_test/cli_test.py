@@ -20,20 +20,18 @@ async def set_env_client(aio_client):
         Client.set_env_client(None)
 
 
-def test_app_deploy_success(servicer, mock_dir, monkeypatch, set_env_client):
+def test_app_deploy_success(servicer, mock_dir, set_env_client):
     runner = typer.testing.CliRunner()
-    with mock_dir({"myapp.py": dummy_app_file}) as root_dir:
-        monkeypatch.chdir(root_dir)
+    with mock_dir({"myapp.py": dummy_app_file}):
         res = runner.invoke(cli.entrypoint_cli, ["app", "deploy", "myapp.py"])
         assert res.exit_code == 0
 
     assert "my_app" in servicer.deployed_apps
 
 
-def test_app_deploy_with_name(servicer, mock_dir, monkeypatch, set_env_client):
+def test_app_deploy_with_name(servicer, mock_dir, set_env_client):
     runner = typer.testing.CliRunner()
-    with mock_dir({"myapp.py": dummy_app_file}) as root_dir:
-        monkeypatch.chdir(root_dir)
+    with mock_dir({"myapp.py": dummy_app_file}):
         res = runner.invoke(cli.entrypoint_cli, ["app", "deploy", "myapp.py", "--name", "my_app_foo"])
         assert res.exit_code == 0
 
@@ -47,10 +45,9 @@ stub = AioStub("my_aio_app")
 """
 
 
-def test_aio_app_deploy_success(servicer, mock_dir, monkeypatch, set_env_client):
+def test_aio_app_deploy_success(servicer, mock_dir, set_env_client):
     runner = typer.testing.CliRunner()
-    with mock_dir({"myaioapp.py": dummy_aio_app_file}) as root_dir:
-        monkeypatch.chdir(root_dir)
+    with mock_dir({"myaioapp.py": dummy_aio_app_file}):
         res = runner.invoke(cli.entrypoint_cli, ["app", "deploy", "myaioapp.py"])
         assert res.exit_code == 0
 

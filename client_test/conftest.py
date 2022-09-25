@@ -426,8 +426,13 @@ def mock_dir_factory():
         # Seems to have been fixed for some python versions in https://github.com/python/cpython/pull/10320.
         root_dir = tempfile.mkdtemp()
         rec_make(root_dir, root_spec)
-        yield root_dir
-        shutil.rmtree(root_dir, ignore_errors=True)
+        cwd = os.getcwd()
+        try:
+            os.chdir(root_dir)
+            yield
+        finally:
+            os.chdir(cwd)
+            shutil.rmtree(root_dir, ignore_errors=True)
 
     return mock_dir
 
