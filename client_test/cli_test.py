@@ -58,7 +58,7 @@ def test_app_deploy_no_such_module():
     runner = typer.testing.CliRunner()
     res = runner.invoke(cli.entrypoint_cli, ["app", "deploy", "does_not_exist.py"])
     assert res.exit_code == 1
-    assert "No module named" in res.stdout
+    assert "No such file or directory" in res.stdout
 
 
 def test_secret_list(servicer, set_env_client):

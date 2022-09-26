@@ -1,3 +1,4 @@
+import os
 import pytest
 from pathlib import Path
 
@@ -19,11 +20,32 @@ def test_get_module_mount_info():
 python_module_src = """
 stub = "FOO"
 other_stub = "BAR"
+assert not __package__
+"""
+
+python_package_src = """
+stub = "FOO"
+other_stub = "BAR"
+assert __package__ == "pack"
+"""
+
+python_subpackage_src = """
+stub = "FOO"
+other_stub = "BAR"
+assert __package__ == "pack.sub"
 """
 
 empty_dir_with_python_file = {"mod.py": python_module_src}
 
-dir_containing_python_package = {"pack": {"mod.py": python_module_src, "__init__.py": ""}}
+
+dir_containing_python_package = {
+    "dir": {"sub": {"mod.py": python_module_src}},
+    "pack": {
+        "mod.py": python_package_src,
+        "__init__.py": "",
+        "sub": {"mod.py": python_subpackage_src, "__init__.py": ""},
+    },
+}
 
 
 @pytest.mark.parametrize(
@@ -34,12 +56,14 @@ dir_containing_python_package = {"pack": {"mod.py": python_module_src, "__init__
         (empty_dir_with_python_file, "mod.py::stub", "FOO"),
         (empty_dir_with_python_file, "mod.py:stub", "FOO"),
         (empty_dir_with_python_file, "mod.py::other_stub", "BAR"),
+        (dir_containing_python_package, "pack/mod.py", "FOO"),
+        (dir_containing_python_package, "pack/sub/mod.py", "FOO"),
+        (dir_containing_python_package, "dir/sub/mod.py", "FOO"),
         # python module syntax
         (empty_dir_with_python_file, "mod", "FOO"),
         (empty_dir_with_python_file, "mod::stub", "FOO"),
         (empty_dir_with_python_file, "mod:stub", "FOO"),
         (empty_dir_with_python_file, "mod::other_stub", "BAR"),
-        (dir_containing_python_package, "pack/mod.py", "FOO"),
         (dir_containing_python_package, "pack.mod", "FOO"),
         (dir_containing_python_package, "pack.mod::other_stub", "BAR"),
     ],
@@ -55,10 +79,10 @@ def test_import_package_properly():
     # if importing pkg/mod.py, it should be imported as pkg.mod,
     # so that __package__ is set properly
 
-    p = "client/modal_test_support/assert_package.py"
-    assert import_stub_by_ref(p) == "xyz"
+    p = Path(__file__).parent.parent / "modal_test_support/assert_package.py"
+    abs_p = str(p.absolute())
+    rel_p = str(p.relative_to(os.getcwd()))
+    print(f"abs_p={abs_p} rel_p={rel_p}")
 
-    # TODO(erikbern): import_stub_by_ref doesn't take absolute paths
-    # we should fix that and do this instead:
-    p = str((Path(__file__) / "../../client/modal_test_support/assert_package.py").resolve())
-    # assert import_stub_by_ref(p) == "xyz"  # DOES NOT WORK
+    assert import_stub_by_ref(rel_p) == "xyz"
+    assert import_stub_by_ref(abs_p) == "xyz"

@@ -1,7 +1,9 @@
 import importlib
+import inspect
 import os
 import sys
 from importlib import import_module
+from pathlib import Path
 
 from importlib_metadata import PackageNotFoundError, files
 
@@ -39,31 +41,40 @@ def get_module_mount_info(module: str):
 
 
 def import_stub_by_ref(stub_ref: str):
-    root_dir = os.getcwd()
-    if ".py" in stub_ref:
+    if stub_ref.find("::") > 1:
+        import_path, var_name = stub_ref.split("::")
+    elif stub_ref.find(":") > 1:  # don't catch windows abs paths, e.g. C:\foo\bar
+        import_path, var_name = stub_ref.split(":")
+    else:
+        import_path, var_name = stub_ref, "stub"
+
+    if ".py" in import_path:
         # walk to the closest python package in the path and add that to the path
         # before importing, in case of imports etc. of other modules in that package
         # are needed
-        file_path, var_part = stub_ref.split(".py")
-        module_segments = file_path.split("/")
-        for path_segment in module_segments.copy()[:-1]:
-            if os.path.exists(os.path.join(root_dir, path_segment, "__init__.py")):  # is package
-                break
-            root_dir += f"/{path_segment}"
-            module_segments = module_segments[1:]
+        file_path = os.path.abspath(import_path)
 
-        import_path = ".".join(module_segments)
-        var_name = var_part.lstrip(":")
+        # Let's first assume this is not part of any package
+        module_name = inspect.getmodulename(import_path)
+
+        # Look for any __init__.py in a parent directory and maybe change the module name
+        directory = Path(file_path).parent
+        module_path = [inspect.getmodulename(file_path)]
+        while directory.parent != directory:
+            parent = directory.parent
+            module_path.append(directory.name)
+            if (directory / "__init__.py").exists():
+                # We identified a package, let's store a new module name
+                module_name = ".".join(reversed(module_path))
+            directory = parent
+
+        # Import the module - see https://docs.python.org/3/library/importlib.html#importing-a-source-file-directly
+        spec = importlib.util.spec_from_file_location(module_name, file_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
     else:
-        if "::" in stub_ref:
-            import_path, var_name = stub_ref.split("::")
-        elif ":" in stub_ref:
-            import_path, var_name = stub_ref.split(":")
-        else:
-            import_path, var_name = stub_ref, "stub"
+        sys.path.append(os.getcwd())
+        module = importlib.import_module(import_path)
 
-    sys.path.append(root_dir)
-    var_name = var_name or "stub"
-    module = importlib.import_module(import_path)
     stub = getattr(module, var_name)
     return stub
