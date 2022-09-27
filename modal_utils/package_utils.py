@@ -48,18 +48,21 @@ def import_stub_by_ref(stub_ref: str):
     else:
         import_path, var_name = stub_ref, "stub"
 
+    if "" not in sys.path:
+        # This seems to happen when running from a CLI
+        sys.path.insert(0, "")
+
     if ".py" in import_path:
         # walk to the closest python package in the path and add that to the path
         # before importing, in case of imports etc. of other modules in that package
         # are needed
-        file_path = os.path.abspath(import_path)
 
         # Let's first assume this is not part of any package
         module_name = inspect.getmodulename(import_path)
 
         # Look for any __init__.py in a parent directory and maybe change the module name
-        directory = Path(file_path).parent
-        module_path = [inspect.getmodulename(file_path)]
+        directory = Path(import_path).parent
+        module_path = [inspect.getmodulename(import_path)]
         while directory.parent != directory:
             parent = directory.parent
             module_path.append(directory.name)
@@ -69,11 +72,10 @@ def import_stub_by_ref(stub_ref: str):
             directory = parent
 
         # Import the module - see https://docs.python.org/3/library/importlib.html#importing-a-source-file-directly
-        spec = importlib.util.spec_from_file_location(module_name, file_path)
+        spec = importlib.util.spec_from_file_location(module_name, import_path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
     else:
-        sys.path.append(os.getcwd())
         module = importlib.import_module(import_path)
 
     stub = getattr(module, var_name)
