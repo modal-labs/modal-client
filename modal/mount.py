@@ -106,7 +106,11 @@ class _Mount(Provider[_MountHandle]):
                     futs.append(loop.run_in_executor(exe, get_file_upload_spec, filename, rel_filename))
             logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} workers")
             for i, fut in enumerate(asyncio.as_completed(futs)):
-                yield await fut
+                try:
+                    yield await fut
+                except FileNotFoundError as exc:
+                    # Can happen with temporary files (e.g. emacs will write temp files and delete them quickly)
+                    logger.info(f"Ignoring file not found: {exc}")
 
     async def _load(self, client, app_id, loader, message_callback, existing_mount_id):
         # Run a threadpool to compute hash values, and use concurrent coroutines to register files.
