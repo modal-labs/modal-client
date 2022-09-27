@@ -4,6 +4,7 @@ import inspect
 import os
 import pytest
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 
@@ -435,6 +436,16 @@ def mock_dir_factory():
             shutil.rmtree(root_dir, ignore_errors=True)
 
     return mock_dir
+
+
+@pytest.fixture(autouse=True)
+def reset_sys_modules():
+    # Needed since some tests will import dynamic modules
+    backup = sys.modules.copy()
+    try:
+        yield
+    finally:
+        sys.modules = backup
 
 
 @pytest.fixture(autouse=True)

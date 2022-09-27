@@ -12,6 +12,11 @@ import modal
 import other_module
 
 stub = modal.Stub("my_app")
+
+# Sanity check that the module is imported properly
+import sys
+mod = sys.modules[__name__]
+assert mod.stub == stub
 """
 
 dummy_other_module_file = "x = 42"
