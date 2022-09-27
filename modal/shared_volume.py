@@ -54,8 +54,9 @@ class _SharedVolumeHandle(Handle, type_prefix="sv"):
     async def listdir(self, path: str) -> List[api_pb2.SharedVolumeListFilesEntry]:
         """List all files in a directory in the shared volume.
 
-        Passing a directory path lists all files in the directory
-        Passing a file path returns a list containing only that files listing description.
+        Passing a directory path lists all files in the directory (names are relative to the directory)
+        Passing a file path returns a list containing only that file's listing description.
+        Passing a glob path (including at least one * or ** sequence) returns all files matching that glob path (using absolute paths)
         """
         req = api_pb2.SharedVolumeListFilesRequest(shared_volume_id=self._object_id, path=path)
         response = await self._client.stub.SharedVolumeListFiles(req)

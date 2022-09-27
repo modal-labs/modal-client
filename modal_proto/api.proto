@@ -197,7 +197,7 @@ message ContainerArguments {  // This is used to pass data from the worker to th
   string app_id = 4;
   Function function_def = 7;
   ProxyInfo proxy_info = 8;
-  map<string, string> tracing_context = 9; 
+  map<string, string> tracing_context = 9;
 }
 
 message DictContainsRequest {
@@ -415,7 +415,7 @@ message GenericResult {  // Used for both tasks and function outputs
     GENERIC_STATUS_SUCCESS = 1;
     GENERIC_STATUS_FAILURE = 2;
     // Used when a task was killed using an external signal.
-    GENERIC_STATUS_TERMINATED = 3; 
+    GENERIC_STATUS_TERMINATED = 3;
   }
 
   GenericStatus status = 1;
@@ -537,7 +537,7 @@ message RateLimit {
 
 message Resources {
   bool gpu = 1;
-  uint32 memory_mb = 2; 
+  uint32 memory_mb = 2;
   uint32 milli_cpu = 3;
 }
 

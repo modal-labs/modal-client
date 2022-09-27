@@ -1,3 +1,4 @@
+import asyncio
 import os
 import shutil
 import sys
@@ -79,7 +80,7 @@ async def ls(volume_name: str, path: str = typer.Argument(default="/")):
         entries = await volume.listdir(path)
     except GRPCError as exc:
         if exc.status in (Status.INVALID_ARGUMENT, Status.NOT_FOUND):
-            print(exc.message)
+            print(exc.message, file=sys.stderr)
             return
         raise
 
@@ -100,17 +101,13 @@ async def ls(volume_name: str, path: str = typer.Argument(default="/")):
             print(entry.path)
 
 
-def copy(src, dst, overwrite):
-    shutil.copytree(src, dst, dirs_exist_ok=overwrite)
-
-
 PIPE_PATH = Path("-")
 
 
 @volume_cli.command(
     name="put",
-    short_help="Upload a file to a shared volume.",
     help="""Upload a file to a shared volume.
+
 Remote parent directories will be created as needed.
 
 Ending the REMOTE_PATH with a forward slash (/), it's assumed to be a directory and the file will be uploaded with its current name under that directory.
@@ -127,38 +124,89 @@ async def put(
         remote_path = remote_path + os.path.basename(local_path)
 
     if Path(local_path).is_dir():
-        print("Directory uploads are currently not supported")
+        print("Directory uploads are currently not supported", file=sys.stderr)
+        exit(1)
+    elif "*" in local_path:
+        print("Glob uploads are currently not supported", file=sys.stderr)
         exit(1)
     else:
         with Path(local_path).open("rb") as fd:
             written_bytes = await volume.write_file(remote_path, fd)
-        print(f"Wrote {written_bytes} bytes to remote file {remote_path}")
+        print(f"Wrote {written_bytes} bytes to remote file {remote_path}", file=sys.stderr)
+
+
+async def _glob_download(
+    volume: AioSharedVolumeHandle, remote_glob_path: str, local_destination: Path, overwrite: bool
+):
+    q: asyncio.Queue = asyncio.Queue()
+
+    for entry in await volume.listdir(remote_glob_path):
+        output_path = local_destination / entry.path
+        if output_path.exists():
+            if overwrite:
+                shutil.rmtree(output_path)
+            else:
+                raise Exception("Output path {} already exists. Use --force to overwrite all output directories")
+        await q.put((output_path, entry))
+
+    async def consumer():
+        output_path, entry = await q.get()
+
+        if entry.type == api_pb2.SharedVolumeListFilesEntry.DIRECTORY:
+            output_path.mkdir(parents=True, exist_ok=True)
+            print(f"Created directory {output_path}", file=sys.stderr)
+        else:
+            with output_path.open("wb") as fp:
+                b = 0
+                async for chunk in volume.read_file(entry.path):
+                    b += fp.write(chunk)
+
+            print(f"Wrote {b} bytes to {output_path}", file=sys.stderr)
+        q.task_done()
+
+    tasks = []
+    for _ in range(20):
+        tasks.append(asyncio.create_task(consumer()))
+
+    await q.join()
+    for t in tasks:
+        t.cancel()
 
 
 @volume_cli.command(
     name="get",
-    short_help="Download a file from a shared volume",
-    help="""Download a file from a shared volume
+    help="""Download a file from a shared volume.
 
-Use - as LOCAL_DIR_OR_FILE to write contents of file to stdout
+Specifying a glob pattern (using any * or ** patterns) as the remote_path will download all matching *files*, preserving
+the source directory structure for the matched files.
+
+For example, to download an entire shared volume into `dump_volume`:
+
+> modal volume get <volume-name> "**" dump_volume
+
+Use "-" (a hyphen) as LOCAL_DESTINATION to write contents of file to stdout (only for non-glob paths)
 """,
 )
 @synchronizer
-async def get(volume_name: str, remote_path: str, local_dir_or_file: str, force: bool = False):
-    destination = Path(local_dir_or_file)
-    if not destination == PIPE_PATH:
+async def get(volume_name: str, remote_path: str, local_destination: str = typer.Argument("."), force: bool = False):
+    destination = Path(local_destination)
+    volume = await volume_from_name(volume_name)
+
+    if "*" in remote_path:
+        await _glob_download(volume, remote_path, destination, force)
+        return
+
+    if destination != PIPE_PATH:
         if destination.is_dir():
             destination = destination / remote_path.rsplit("/")[-1]
 
         if destination.exists() and not force:
-            print(f"'{destination}' already exists")
+            print(f"'{destination}' already exists", file=sys.stderr)
             exit(1)
 
         if not destination.parent.exists():
-            print(f"Local directory '{destination.parent}' does not exist")
+            print(f"Local directory '{destination.parent}' does not exist", file=sys.stderr)
             exit(1)
-
-    volume = await volume_from_name(volume_name)
 
     @contextmanager
     def _destination_stream():
@@ -177,14 +225,14 @@ async def get(volume_name: str, remote_path: str, local_dir_or_file: str, force:
                 b += len(chunk)
     except GRPCError as exc:
         if exc.status in (Status.NOT_FOUND, Status.INVALID_ARGUMENT):
-            print(exc.message)
+            print(exc.message, file=sys.stderr)
             exit(1)
 
     if destination != PIPE_PATH:
         print(f"Wrote {b} bytes to '{destination}'", file=sys.stderr)
 
 
-@volume_cli.command(name="rm", help="Delete a file or directory from a shared volume")
+@volume_cli.command(name="rm", help="Delete a file or directory from a shared volume.")
 @synchronizer
 async def rm(
     volume_name: str,
@@ -196,6 +244,6 @@ async def rm(
         await volume.remove_file(remote_path, recursive=recursive)
     except GRPCError as exc:
         if exc.status in (Status.NOT_FOUND, Status.INVALID_ARGUMENT):
-            print(exc.message)
+            print(exc.message, file=sys.stderr)
             exit(1)
         raise
