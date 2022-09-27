@@ -544,6 +544,7 @@ class _Function(Provider[_FunctionHandle]):
         retries: Optional[Union[int, Retries]] = None,
         concurrency_limit: Optional[int] = None,
         cpu: Optional[float] = None,
+        keep_warm: bool = False,
     ) -> None:
         """mdmd:hidden"""
         assert callable(raw_f)
@@ -604,6 +605,7 @@ class _Function(Provider[_FunctionHandle]):
         self._proxy = proxy
         self._retry_policy = retry_policy
         self._concurrency_limit = concurrency_limit
+        self._keep_warm = keep_warm
         self._tag = self._info.get_tag()
         super().__init__()
 
@@ -682,6 +684,7 @@ class _Function(Provider[_FunctionHandle]):
             proxy_id=proxy_id,
             retry_policy=retry_policy,
             concurrency_limit=self._concurrency_limit,
+            keep_warm=self._keep_warm,
         )
         request = api_pb2.FunctionCreateRequest(
             app_id=app_id,

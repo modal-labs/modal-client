@@ -295,6 +295,8 @@ message Function {
   FunctionRetryPolicy retry_policy = 18;
 
   uint32 concurrency_limit = 19;
+
+  bool keep_warm = 20;
 }
 
 message FunctionCreateRequest {

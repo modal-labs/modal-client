@@ -553,6 +553,7 @@ class _Stub:
         proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
+        keep_warm: bool = False,  # Toggles an adaptively-sized warm pool for latency-sensitive apps.
     ):
         """Register a basic web endpoint with this application.
 
@@ -583,6 +584,7 @@ class _Stub:
             retries=retries,
             concurrency_limit=concurrency_limit,
             cpu=cpu,
+            keep_warm=keep_warm,
         )
         return self._add_function(function)
 
@@ -605,6 +607,7 @@ class _Stub:
         proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
+        keep_warm: bool = False,  # Toggles an adaptively-sized warm pool for latency-sensitive apps.
         _webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
     ):
         if image is None:
@@ -625,6 +628,7 @@ class _Stub:
             retries=retries,
             concurrency_limit=concurrency_limit,
             cpu=cpu,
+            keep_warm=keep_warm,
         )
         return self._add_function(function)
 
