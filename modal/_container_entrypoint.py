@@ -34,8 +34,6 @@ MAX_OUTPUT_BATCH_SIZE = 100
 
 RTT_S = 0.5  # conservative estimate of RTT in seconds.
 
-CONTAINER_IDLE_TIMEOUT = 60
-
 
 class _FunctionIOManager:
     """This class isn't much more than a helper method for some gRPC calls.
@@ -99,13 +97,8 @@ class _FunctionIOManager:
     ) -> AsyncIterator[Tuple[str, api_pb2.FunctionInput]]:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         eof_received = False
-        last_input = time.time()
         while not eof_received:
-            time_left = last_input + CONTAINER_IDLE_TIMEOUT - time.time()
-
             request.max_values = self.get_max_inputs_to_fetch()
-            # clamp to between 0.01 and 15s.
-            request.timeout = min(max(time_left, 0.01), 15)
 
             with trace("get_inputs"):
                 response = await retry_transient_errors(self.client.stub.FunctionGetInputs, request)
@@ -119,13 +112,7 @@ class _FunctionIOManager:
                 continue
 
             if not response.inputs:
-                if time_left < 0:
-                    logger.debug(f"Task {self.task_id} reached idle time-out.")
-                    break
-
                 continue
-
-            last_input = time.time()
 
             for item in response.inputs:
                 if item.kill_switch:
