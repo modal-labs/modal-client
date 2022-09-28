@@ -464,21 +464,25 @@ class _Image(Provider[_ImageHandle]):
 
 
 def _Conda():
+    """mdmd:hidden"""
     deprecation_warning("`modal.Conda` is deprecated. Please use `modal.Image.conda` instead")
     return _Image.conda()
 
 
 def _DockerhubImage(*args, **kwargs):
+    """mdmd:hidden"""
     deprecation_warning("`modal.DockerhubImage` is deprecated. Please use `modal.Image.from_dockerhub` instead")
     return _Image.from_dockerhub(*args, **kwargs)
 
 
 def _DockerfileImage(*args, **kwargs):
+    """mdmd:hidden"""
     deprecation_warning("`modal.DockerfileImage` is deprecated. Please use `modal.Image.from_dockerfile` instead")
     return _Image.from_dockerfile(*args, **kwargs)
 
 
 def _DebianSlim(*args, **kwargs):
+    """mdmd:hidden"""
     deprecation_warning("`modal.DebianSlim` is deprecated. Please use `modal.Image.debian_slim` instead")
     return _Image.debian_slim(*args, **kwargs)
 
