@@ -4,7 +4,7 @@ import sys
 from typing import List
 
 from modal import Conda, DebianSlim, Image, Stub
-from modal.exception import DeprecationError
+from modal.exception import DeprecationError, InvalidError
 from modal.image import _dockerhub_python_version
 from modal_proto import api_pb2
 
@@ -53,6 +53,14 @@ def test_image_python_packages(client, servicer):
 def test_debian_slim_deprecated(servicer, client):
     with pytest.warns(DeprecationError):
         DebianSlim()
+
+
+def test_wrong_type(servicer, client):
+    image = Image.debian_slim()
+    for method in [image.pip_install, image.apt_install, image.run_commands]:
+        method(["xyz"])
+        with pytest.raises(InvalidError):
+            method("xyz")
 
 
 def test_image_requirements_txt(servicer, client):

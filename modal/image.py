@@ -41,6 +41,14 @@ def _get_client_requirements_path():
     return os.path.join(modal_path, "requirements.txt")
 
 
+def _assert_list_of_str(function_name: str, arg_name: str, args: List[str]):
+    # TODO(erikbern): maybe we can just build somthing intelligent that checks
+    # based on type annotations in real time?
+    # Or use something like this? https://github.com/FelixTheC/strongtyping
+    if not isinstance(args, list) or any(not isinstance(arg, str) for arg in args):
+        raise InvalidError(f"{function_name}: {arg_name} must be a list of strings")
+
+
 class _ImageHandle(Handle, type_prefix="im"):
     def _is_inside(self) -> bool:
         """Returns whether this container is active or not.
@@ -175,8 +183,7 @@ class _Image(Provider[_ImageHandle]):
         find_links: Optional[str] = None,
     ) -> "_Image":
         """Install a list of Python packages using pip."""
-        if not isinstance(packages, list) or any(not isinstance(package, str) for package in packages):
-            raise InvalidError("pip_install: packages must be a list of Python packages (as strings)")
+        _assert_list_of_str("pip_install", "packages", packages)
         if not packages:
             return self
 
@@ -280,6 +287,7 @@ class _Image(Provider[_ImageHandle]):
         secrets: Collection[_Secret] = [],
     ):
         """Extend an image with a list of shell commands to run."""
+        _assert_list_of_str("run_commands", "commands", commands)
         dockerfile_commands = ["FROM base"] + [f"RUN {cmd}" for cmd in commands]
 
         return self.extend(
@@ -449,6 +457,7 @@ class _Image(Provider[_ImageHandle]):
         packages: List[str],  # A list of packages, e.g. ["ssh", "libpq-dev"]
     ) -> "_Image":
         """Install a list of Debian packages using `apt`."""
+        _assert_list_of_str("apt_install", "packages", packages)
         if not packages:
             return self
 
