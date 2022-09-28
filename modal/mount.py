@@ -212,15 +212,24 @@ async def _create_package_mounts(module_names: Collection[str]) -> List[_Mount]:
         mount_infos = get_module_mount_info(module_name)
 
         for mount_info in mount_infos:
-            _, base_path, module_mount_condition = mount_info
-            mounts.append(
-                _Mount(
-                    local_dir=base_path,
-                    remote_dir=f"/pkg/{module_name}",
-                    condition=module_mount_condition,
-                    recursive=True,
+            is_package, base_path, module_mount_condition = mount_info
+            if is_package:
+                mounts.append(
+                    _Mount(
+                        local_dir=base_path,
+                        remote_dir=f"/pkg/{module_name}",
+                        condition=module_mount_condition,
+                        recursive=True,
+                    )
                 )
-            )
+            else:
+                mounts.append(
+                    _Mount(
+                        local_file=base_path,
+                        remote_dir="/pkg",
+                        condition=module_mount_condition,
+                    )
+                )
     return mounts
 
 

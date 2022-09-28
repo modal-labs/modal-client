@@ -2,7 +2,6 @@ import importlib
 import inspect
 import os
 import sys
-from importlib import import_module
 from pathlib import Path
 
 from importlib_metadata import PackageNotFoundError, files
@@ -24,20 +23,20 @@ BINARY_FORMATS = ["so", "S", "s", "asm"]  # TODO
 
 
 def get_module_mount_info(module: str):
-    """Returns a list of tuples [(module, path, condition)] describing how to mount a given module."""
+    """Returns a list of tuples [(is_package, path, condition)] describing how to mount a given module."""
 
     file_formats = get_file_formats(module)
     if set(BINARY_FORMATS) & set(file_formats):
         raise Exception(f"{module} can't be mounted because it contains a binary file.")
 
-    m = import_module(module)
+    spec = importlib.util.find_spec(module)
 
-    if getattr(m, "__path__", None):
-        return [(module, path, module_mount_condition) for path in m.__path__]
+    if spec.submodule_search_locations:
+        return [(True, path, module_mount_condition) for path in spec.submodule_search_locations]
     else:
         # Individual file
-        filename = m.__file__
-        return [(module, os.path.dirname(filename), lambda f: os.path.basename(f) == os.path.basename(filename))]
+        filename = spec.origin
+        return [(False, filename, lambda f: os.path.basename(f) == os.path.basename(filename))]
 
 
 def import_stub_by_ref(stub_ref: str):
