@@ -171,12 +171,14 @@ class _Image(Provider[_ImageHandle]):
 
     def pip_install(
         self,
-        packages: List[str] = [],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
+        packages: List[str],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
         find_links: Optional[str] = None,
     ) -> "_Image":
         """Install a list of Python packages using pip."""
         if not isinstance(packages, list) or any(not isinstance(package, str) for package in packages):
             raise InvalidError("pip_install: packages must be a list of Python packages (as strings)")
+        if not packages:
+            return self
 
         find_links_arg = f"-f {find_links}" if find_links else ""
         package_args = " ".join(shlex.quote(pkg) for pkg in packages)
@@ -315,15 +317,20 @@ class _Image(Provider[_ImageHandle]):
 
     def conda_install(
         self,
-        packages: List[str] = [],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
+        packages: List[str],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
+        *,
+        channels: List[str] = [],  # A list of Conda channels, eg. ["conda-forge", "nvidia"]
     ) -> "_Image":
         """Install a list of additional packages using conda."""
+        if not packages:
+            return self
 
         package_args = " ".join(shlex.quote(pkg) for pkg in packages)
+        channel_args = "".join(f" -c {channel}" for channel in channels)
 
         dockerfile_commands = [
             "FROM base",
-            f"RUN conda install {package_args} --yes",
+            f"RUN conda install {package_args}{channel_args} --yes",
         ]
 
         return self.extend(dockerfile_commands=dockerfile_commands)
@@ -439,9 +446,11 @@ class _Image(Provider[_ImageHandle]):
 
     def apt_install(
         self,
-        packages: List[str] = [],  # A list of packages, e.g. ["ssh", "libpq-dev"]
+        packages: List[str],  # A list of packages, e.g. ["ssh", "libpq-dev"]
     ) -> "_Image":
         """Install a list of Debian packages using `apt`."""
+        if not packages:
+            return self
 
         package_args = " ".join(shlex.quote(pkg) for pkg in packages)
 

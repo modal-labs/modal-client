@@ -68,6 +68,18 @@ def test_image_requirements_txt(servicer, client):
         assert any(b"banana" in f.data for f in layers[0].context_files)
 
 
+def test_empty_install(servicer, client):
+    with pytest.raises(TypeError):
+        Image.debian_slim().pip_install()  # Missing positional argument `packages`
+
+    # Install functions with no packages should be ignored.
+    stub = Stub(image=Image.debian_slim().pip_install([]).apt_install([]))
+
+    with stub.run(client=client) as running_app:
+        layers = get_image_layers(running_app["image"].object_id, servicer)
+        assert len(layers) == 1
+
+
 def test_debian_slim_apt_install(servicer, client):
     stub = Stub(
         image=Image.debian_slim().pip_install(["numpy"]).apt_install(["git", "ssh"]).pip_install(["scikit-learn"])
