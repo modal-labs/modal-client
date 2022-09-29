@@ -91,6 +91,9 @@ class _Image(Provider[_ImageHandle]):
         self._secrets = secrets
         super().__init__()
 
+    def __repr__(self):
+        return f"Image({self._dockerfile_commands})"
+
     async def _load(self, client, app_id, loader, message_callback, existing_image_id):
         if self._ref:
             image_id = await loader(self._ref)

@@ -99,6 +99,9 @@ class _SharedVolume(Provider[_SharedVolumeHandle]):
         """Construct a new shared volume, which is empty by default."""
         super().__init__()
 
+    def __repr__(self):
+        return "SharedVolume()"
+
     def _get_creating_message(self) -> str:
         return "Creating shared volume..."
 

@@ -143,6 +143,9 @@ class RemoteRef(Ref[H]):
         self.namespace = namespace
         super().__init__()
 
+    def __repr__(self):
+        return f"Ref({self.app_name})"
+
     async def _load(
         self,
         client: _Client,

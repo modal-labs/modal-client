@@ -10,6 +10,7 @@ from .volume import volume_cli
 entrypoint_cli = typer.Typer(
     no_args_is_help=True,
     add_completion=False,
+    rich_markup_mode="markdown",
     help="""
     Modal is the fastest way to run code in the cloud.
 

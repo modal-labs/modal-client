@@ -80,6 +80,9 @@ class _Mount(Provider[_MountHandle]):
         self._recursive = recursive
         super().__init__()
 
+    def __repr__(self):
+        return f"Mount({self._local_file or self._local_dir})"
+
     async def _get_files(self):
         if self._local_file:
             relpath = os.path.basename(self._local_file)
