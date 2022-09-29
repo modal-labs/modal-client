@@ -277,9 +277,9 @@ class _Stub:
         """Run an app until the program is interrupted. Modal watches source files
         and mounts for the app, and live updates the app when any changes are detected.
 
-        This function is useful for developing and testing schedules and webhooks, since they
-        will run until the program is interrupted with `Ctrl + C` or other means. Any changes
-        made to webhook handlers will show up almost immediately the next time the route is hit.
+        This function is useful for developing and testing cron schedules, job queues, and webhooks,
+        since they will run until the program is interrupted with `Ctrl + C` or other means.
+        Any changes made to webhook handlers will show up almost immediately the next time the route is hit.
         """
         from ._watcher import TIMEOUT, watch
 
