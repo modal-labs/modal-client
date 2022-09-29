@@ -52,6 +52,16 @@ from .secret import _Secret
 from .shared_volume import _SharedVolume
 
 
+def exc_with_hints(exc: BaseException):
+    if isinstance(exc, ImportError) and exc.msg == "attempted relative import with no known parent package":
+        exc.msg += """\n
+HINT: For relative imports to work, you might need to run your modal app as a module. Try:
+- `python -m my_pkg.my_app` instead of `python my_pkg/my_app.py`
+- `modal app deploy my_pkg.my_app` instead of `modal app deploy my_pkg/my_app.py`
+"""
+    return exc
+
+
 async def _process_result(result, stub, client=None):
     if result.WhichOneof("data_oneof") == "data_blob_id":
         data = await blob_download(result.data_blob_id, stub)
@@ -73,7 +83,7 @@ async def _process_result(result, stub, client=None):
             if not isinstance(exc, BaseException):
                 raise ExecutionError(f"Got remote exception of incorrect type {type(exc)}")
 
-            raise exc
+            raise exc_with_hints(exc)
         raise RemoteError(result.exception)
 
     return deserialize(data, client)

@@ -6,6 +6,7 @@ import pytest
 import shutil
 import sys
 import tempfile
+import traceback
 from pathlib import Path
 
 import aiohttp.web
@@ -279,12 +280,26 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def FunctionGetOutputs(self, stream):
         request = await stream.recv_message()
+
         client_calls = self.client_calls.get(request.function_call_id, [])
         if client_calls and not self.function_is_running:
             popidx = len(client_calls) // 2  # simulate that results don't always come in order
             (idx, input_id), (args, kwargs) = client_calls.pop(popidx)
             # Just return the sum of squares of all args
-            res = self._function_body(*args, **kwargs)
+            try:
+                res = self._function_body(*args, **kwargs)
+            except Exception as exc:
+                serialized_exc = cloudpickle.dumps(exc)
+                result = api_pb2.GenericResult(
+                    status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
+                    data=serialized_exc,
+                    exception=repr(exc),
+                    traceback="".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+                )
+                output = api_pb2.FunctionGetOutputsItem(input_id="in-123", idx=0, result=result)
+                await stream.send_message(api_pb2.FunctionGetOutputsResponse(outputs=[output]))
+                return
+
             if inspect.iscoroutine(res):
                 results = [await res]
             elif inspect.isgenerator(res):

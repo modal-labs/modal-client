@@ -4,6 +4,7 @@ from rich.tree import Tree
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
+from modal_utils.grpc_utils import retry_transient_errors
 
 from ._output import step_completed, step_progress, step_progress_update
 from .client import _Client
@@ -147,7 +148,7 @@ class _App:
         """Tell the server to stop this app, terminating all running tasks."""
         logger.debug("Sending app disconnect request")
         req_disconnect = api_pb2.AppClientDisconnectRequest(app_id=self._app_id)
-        await self._client.stub.AppClientDisconnect(req_disconnect)
+        await retry_transient_errors(self._client.stub.AppClientDisconnect, req_disconnect)
 
     def __getitem__(self, tag: str) -> Handle:
         # Deprecated?
@@ -167,7 +168,7 @@ class _App:
         self._app_id = app_id
 
         req = api_pb2.AppGetObjectsRequest(app_id=app_id, task_id=task_id)
-        resp = await self._client.stub.AppGetObjects(req)
+        resp = await retry_transient_errors(self._client.stub.AppGetObjects, req)
         for item in resp.items:
             obj = Handle._from_id(item.object_id, self._client)
             if isinstance(obj, _FunctionHandle):
@@ -186,7 +187,7 @@ class _App:
     async def _init_existing(stub, client, existing_app_id):
         # Get all the objects first
         obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
-        obj_resp = await client.stub.AppGetObjects(obj_req)
+        obj_resp = await retry_transient_errors(client.stub.AppGetObjects, obj_req)
         return _App(stub, client, existing_app_id, tag_to_existing_id=dict(obj_resp.object_ids))
 
     @staticmethod
@@ -194,7 +195,7 @@ class _App:
         # Start app
         # TODO(erikbern): maybe this should happen outside of this method?
         app_req = api_pb2.AppCreateRequest(client_id=client.client_id, description=description)
-        app_resp = await client.stub.AppCreate(app_req)
+        app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
         logger.debug(f"Created new app with id {app_resp.app_id}")
         return _App(stub, client, app_resp.app_id)
 

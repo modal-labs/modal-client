@@ -171,3 +171,35 @@ def test_proxy(client, servicer):
 
     with stub.run(client=client):
         pass
+
+
+class CustomException(Exception):
+    pass
+
+
+def test_function_exception(client, servicer):
+    stub = Stub()
+
+    @stub.function
+    @servicer.function_body
+    def failure():
+        raise CustomException("foo!")
+
+    with stub.run(client=client):
+        with pytest.raises(CustomException) as excinfo:
+            failure()
+        assert "foo!" in str(excinfo.value)
+
+
+def test_function_relative_import_hint(client, servicer):
+    stub = Stub()
+
+    @stub.function
+    @servicer.function_body
+    def failure():
+        raise ImportError("attempted relative import with no known parent package")
+
+    with stub.run(client=client):
+        with pytest.raises(ImportError) as excinfo:
+            failure()
+        assert "HINT" in str(excinfo.value)
