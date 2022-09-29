@@ -6,7 +6,7 @@ from modal_utils.async_utils import synchronize_apis
 
 from ._object_meta import ObjectMeta
 from .client import _Client
-from .exception import InvalidError, NotFoundError
+from .exception import InvalidError, NotFoundError, deprecation_warning
 
 H = TypeVar("H", bound="Handle")
 
@@ -86,6 +86,8 @@ async def _lookup(
 
 lookup, aio_lookup = synchronize_apis(_lookup)
 
+P = TypeVar("P", bound="Provider")
+
 
 class Provider(Generic[H]):
     def __init__(self):
@@ -97,7 +99,8 @@ class Provider(Generic[H]):
 
     async def persist(self, label: str):
         """Deploy a Modal app containing this object. This object can then be imported from other apps using
-        the returned reference, or by calling `modal.ref(label)`.
+        the returned reference, or by calling `modal.SharedVolume.from_name(label)` (or the equivalent method
+        on respective class).
 
         **Example Usage**
 
@@ -126,6 +129,27 @@ class Provider(Generic[H]):
         existing_object_id: Optional[str] = None,
     ) -> H:
         raise NotImplementedError(f"Object factory of class {type(self)} has no load method")
+
+    @classmethod
+    def from_name(
+        cls: Type[P], app_name: str, tag: Optional[str] = None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT
+    ) -> P:
+        """Returns a reference to an Modal object of any type
+
+        Useful for referring to already created/deployed objects, e.g., Secrets
+
+        ```python
+        import modal
+
+        stub = modal.Stub()
+
+        @stub.function(secret=modal.Secret.from_name("my-secret-name"))
+        def some_function():
+            pass
+        ```
+        """
+        provider: RemoteRef = RemoteRef(app_name, tag, namespace)
+        return cast(P, provider)
 
 
 class Ref(Provider[H]):
@@ -181,20 +205,6 @@ class PersistedRef(Ref[H]):
         return cast(H, handle)
 
 
-def ref(app_name: Optional[str], tag: Optional[str] = None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT) -> Ref:
-    """Returns a reference to an Modal object any type
-
-    Useful for referring to already created/deployed objects, e.g., Secrets
-
-    ```python
-    import modal
-
-    stub = modal.Stub()
-
-    @stub.function(secret=modal.ref("my-secret-name"))
-    def some_function():
-        pass
-    ```
-    """
-    # TODO(erikbern): we should probably get rid of this function since it's just a dumb wrapper
+def ref(app_name: str, tag: Optional[str] = None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT) -> Ref:
+    deprecation_warning("`modal.ref` is deprecated. Please use `modal.Secret.from_name` instead")
     return RemoteRef(app_name, tag, namespace)

@@ -5,7 +5,7 @@ from .functions import Function, current_input_id
 from .image import Conda, DebianSlim, DockerfileImage, DockerhubImage, Image
 from .mount import Mount, create_package_mount, create_package_mounts
 from .object import lookup, ref
-from .proxy import *  # noqa
+from .proxy import Proxy
 from .queue import Queue
 from .rate_limit import RateLimit
 from .retries import Retries
@@ -29,6 +29,7 @@ __all__ = [
     "Image",
     "Mount",
     "Period",
+    "Proxy",
     "Queue",
     "RateLimit",
     "Retries",

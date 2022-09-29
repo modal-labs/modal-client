@@ -2,7 +2,7 @@ import inspect
 import os
 import sys
 from enum import Enum
-from typing import AsyncGenerator, Collection, Dict, Optional, Union
+from typing import AsyncGenerator, Collection, Dict, Optional
 
 from rich.tree import Tree
 
@@ -20,7 +20,7 @@ from .exception import InvalidError, deprecation_warning
 from .functions import _Function, _FunctionHandle
 from .image import _Image
 from .mount import _create_client_mount, _Mount, client_mount_name
-from .object import Provider, Ref, RemoteRef
+from .object import Provider, Ref
 from .rate_limit import RateLimit
 from .schedule import Schedule
 from .secret import _Secret
@@ -59,7 +59,7 @@ class _Stub:
     stub = modal.Stub()
 
     @stub.function(
-        secret=modal.ref("some_secret"),
+        secret=modal.Secret.from_name("some_secret"),
         schedule=modal.Period(days=1),
     )
     def foo():
@@ -73,18 +73,18 @@ class _Stub:
     _description: str
     _app_id: str
     _blueprint: Dict[str, Provider]
-    _client_mount: Optional[Union[_Mount, Ref]]
+    _client_mount: Optional[_Mount]
     _function_mounts: Dict[str, _Mount]
-    _mounts: Collection[Union[_Mount, Ref]]
-    _secrets: Collection[Union[_Secret, Ref]]
+    _mounts: Collection[_Mount]
+    _secrets: Collection[_Secret]
     _function_handles: Dict[str, _FunctionHandle]
 
     def __init__(
         self,
         name: str = None,
         *,
-        mounts: Collection[Union[_Mount, Ref]] = [],
-        secrets: Collection[Union[_Secret, Ref]] = [],
+        mounts: Collection[_Mount] = [],
+        secrets: Collection[_Secret] = [],
         **blueprint,
     ) -> None:
         """Construct a new app stub, optionally with default mounts."""
@@ -416,7 +416,9 @@ class _Stub:
             if config["sync_entrypoint"]:
                 self._client_mount = _create_client_mount()
             else:
-                self._client_mount = RemoteRef(client_mount_name(), namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
+                self._client_mount = _Mount.from_name(
+                    client_mount_name(), namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL
+                )
         mounts.append(self._client_mount)
 
         # Create function mounts
@@ -428,9 +430,7 @@ class _Stub:
 
         return mounts
 
-    def _get_function_secrets(
-        self, raw_f, secret: Optional[Union[_Secret, Ref]] = None, secrets: Collection[Union[_Secret, Ref]] = ()
-    ):
+    def _get_function_secrets(self, raw_f, secret: Optional[_Secret] = None, secrets: Collection[_Secret] = ()):
         if secret and secrets:
             raise InvalidError(f"Function {raw_f} has both singular `secret` and plural `secrets` attached")
         if secret:
@@ -464,17 +464,15 @@ class _Stub:
         self,
         raw_f=None,  # The decorated function
         *,
-        image: Union[_Image, Ref] = None,  # The image to run as the container for the function
+        image: _Image = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
-        secret: Optional[
-            Union[_Secret, Ref]
-        ] = None,  # An optional Modal Secret with environment variables for the container
-        secrets: Collection[Union[_Secret, Ref]] = (),  # Plural version of `secret` when multiple secrets are needed
+        secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
+        secrets: Collection[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
         gpu: bool = False,  # Whether a GPU is required
         rate_limit: Optional[RateLimit] = None,  # Optional RateLimit for the function
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
-        mounts: Collection[Union[_Mount, Ref]] = (),
-        shared_volumes: Dict[str, Union[_SharedVolume, Ref]] = {},
+        mounts: Collection[_Mount] = (),
+        shared_volumes: Dict[str, _SharedVolume] = {},
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MB. This is a soft limit.
         proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
@@ -510,16 +508,14 @@ class _Stub:
         self,
         raw_f=None,  # The decorated function
         *,
-        image: Union[_Image, Ref] = None,  # The image to run as the container for the function
-        secret: Optional[
-            Union[_Secret, Ref]
-        ] = None,  # An optional Modal Secret with environment variables for the container
-        secrets: Collection[Union[_Secret, Ref]] = (),  # Plural version of `secret` when multiple secrets are needed
+        image: _Image = None,  # The image to run as the container for the function
+        secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
+        secrets: Collection[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
         gpu: bool = False,  # Whether a GPU is required
         rate_limit: Optional[RateLimit] = None,  # Optional RateLimit for the function
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
-        mounts: Collection[Union[_Mount, Ref]] = (),
-        shared_volumes: Dict[str, Union[_SharedVolume, Ref]] = {},
+        mounts: Collection[_Mount] = (),
+        shared_volumes: Dict[str, _SharedVolume] = {},
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MB. This is a soft limit.
         proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
@@ -556,14 +552,12 @@ class _Stub:
         *,
         method: str = "GET",  # REST method for the created endpoint.
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-        image: Union[_Image, Ref] = None,  # The image to run as the container for the function
-        secret: Optional[
-            Union[_Secret, Ref]
-        ] = None,  # An optional Modal Secret with environment variables for the container
-        secrets: Collection[Union[_Secret, Ref]] = (),  # Plural version of `secret` when multiple secrets are needed
+        image: _Image = None,  # The image to run as the container for the function
+        secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
+        secrets: Collection[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
         gpu: bool = False,  # Whether a GPU is required
-        mounts: Collection[Union[_Mount, Ref]] = (),
-        shared_volumes: Dict[str, Union[_SharedVolume, Ref]] = {},
+        mounts: Collection[_Mount] = (),
+        shared_volumes: Dict[str, _SharedVolume] = {},
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MB. This is a soft limit.
         proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
@@ -610,14 +604,12 @@ class _Stub:
         asgi_app,  # The asgi app
         *,
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-        image: Union[_Image, Ref] = None,  # The image to run as the container for the function
-        secret: Optional[
-            Union[_Secret, Ref]
-        ] = None,  # An optional Modal Secret with environment variables for the container
-        secrets: Collection[Union[_Secret, Ref]] = (),  # Plural version of `secret` when multiple secrets are needed
+        image: _Image = None,  # The image to run as the container for the function
+        secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
+        secrets: Collection[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
         gpu: bool = False,  # Whether a GPU is required
-        mounts: Collection[Union[_Mount, Ref]] = (),
-        shared_volumes: Dict[str, Union[_SharedVolume, Ref]] = {},
+        mounts: Collection[_Mount] = (),
+        shared_volumes: Dict[str, _SharedVolume] = {},
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MB. This is a soft limit.
         proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.

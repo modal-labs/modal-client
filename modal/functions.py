@@ -523,21 +523,21 @@ class _Function(Provider[_FunctionHandle]):
     """
 
     # TODO: more type annotations
-    _secrets: Collection[Union[Ref, _Secret]]
+    _secrets: Collection[_Secret]
 
     def __init__(
         self,
         raw_f,
         image=None,
-        secrets: Collection[Union[Ref, _Secret]] = (),
+        secrets: Collection[_Secret] = (),
         schedule: Optional[Schedule] = None,
         is_generator=False,
         gpu: bool = False,
         rate_limit: Optional[RateLimit] = None,
         # TODO: maybe break this out into a separate decorator for notebooks.
         serialized: bool = False,
-        mounts: Collection[Union[Ref, _Mount]] = (),
-        shared_volumes: Dict[str, Union[_SharedVolume, Ref]] = {},
+        mounts: Collection[_Mount] = (),
+        shared_volumes: Dict[str, _SharedVolume] = {},
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         memory: Optional[int] = None,
         proxy: Optional[Ref] = None,
