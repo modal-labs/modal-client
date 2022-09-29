@@ -211,8 +211,25 @@ _container_app = _App(None, None, None)
 container_app, aio_container_app = synchronize_apis(_container_app)
 assert isinstance(container_app, App)
 assert isinstance(aio_container_app, AioApp)
+__doc__container_app = """A reference to the running modal.App, accessible from within a running Modal function.
+Useful for accessing object handles for any Modal objects declared on the stub, e.g:
+
+```python
+stub = modal.Stub()
+stub.data = modal.Dict()
+
+@stub.function
+def store_something(key, value):
+    data: modal.DictHandle = modal.container_app.data
+    data.put(key, value)
+```
+"""
 
 
 def is_local() -> bool:
-    """Returns whether we're running in the cloud or not."""
+    """Returns if we are currently on the machine launching/deploying a Modal app
+
+    Returns True when executed locally on the user's machine.
+    Returns False when executed from a Modal container in the cloud.
+    """
     return not _is_container_app

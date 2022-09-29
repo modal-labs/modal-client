@@ -19,6 +19,7 @@ class Handle(metaclass=ObjectMeta):
     """
 
     def __init__(self, client=None, object_id=None):
+        """mdmd:hidden"""
         self._client = client
         self._object_id = object_id
 

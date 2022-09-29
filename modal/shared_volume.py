@@ -11,6 +11,24 @@ from .object import Handle, Provider
 
 
 class _SharedVolumeHandle(Handle, type_prefix="sv"):
+    """A handle to a Modal SharedVolume
+
+    Should typically not be used directly in a Modal function,
+    and instead referenced through the file system, see `modal.SharedVolume`.
+
+    Also see the CLI methods for accessing shared volumes:
+
+    ```modal volume --help```
+
+    A SharedVolumeHandle *can* however be useful for some local scripting scenarios, e.g.:
+
+    ```python notest
+    vol = modal.lookup("my-shared-volume")
+    for chunk in vol.read_file("my_db_dump.csv"):
+        ...
+    ```
+    """
+
     async def write_file(self, remote_path: str, fp: IO[bytes]):
         """Write from a file object to a path on the shared volume, atomically.
 
@@ -18,9 +36,6 @@ class _SharedVolumeHandle(Handle, type_prefix="sv"):
 
         If remote_path ends with `/` it's assumed to be a directory and the
         file will be uploaded with its current name to that directory.
-
-        Should typically not be used directly in a Modal function,
-        and instead referenced through the file system, see `modal.SharedVolume`.
         """
         sha_hash = get_sha256_hex(fp)
         fp.seek(0, os.SEEK_END)
@@ -38,11 +53,7 @@ class _SharedVolumeHandle(Handle, type_prefix="sv"):
         return data_size  # might be better if this is returned from the server
 
     async def read_file(self, path: str) -> AsyncIterator[bytes]:
-        """Read a file from the shared volume
-
-        Should typically not be used directly in a Modal function,
-        and instead referenced through the file system, see `modal.SharedVolume`.
-        """
+        """Read a file from the shared volume"""
         req = api_pb2.SharedVolumeGetFileRequest(shared_volume_id=self._object_id, path=path)
         response = await self._client.stub.SharedVolumeGetFile(req)
         if response.WhichOneof("data_oneof") == "data":
@@ -54,9 +65,9 @@ class _SharedVolumeHandle(Handle, type_prefix="sv"):
     async def listdir(self, path: str) -> List[api_pb2.SharedVolumeListFilesEntry]:
         """List all files in a directory in the shared volume.
 
-        Passing a directory path lists all files in the directory (names are relative to the directory)
-        Passing a file path returns a list containing only that file's listing description.
-        Passing a glob path (including at least one * or ** sequence) returns all files matching that glob path (using absolute paths)
+        * Passing a directory path lists all files in the directory (names are relative to the directory)
+        * Passing a file path returns a list containing only that file's listing description.
+        * Passing a glob path (including at least one * or ** sequence) returns all files matching that glob path (using absolute paths)
         """
         req = api_pb2.SharedVolumeListFilesRequest(shared_volume_id=self._object_id, path=path)
         response = await self._client.stub.SharedVolumeListFiles(req)
