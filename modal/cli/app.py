@@ -36,9 +36,6 @@ def deploy(
     if inspect.iscoroutine(res):
         asyncio.run(res)
 
-    console = Console()
-    console.print(f"\nView Deployment: [magenta]https://modal.com/deployments/{name}[/magenta]")
-
 
 def make_function_panel(idx: int, tag: str, function: _Function, stub: _Stub) -> Panel:
     items = [

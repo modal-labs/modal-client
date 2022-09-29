@@ -208,7 +208,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def AppDeploy(self, stream):
         request = await stream.recv_message()
         self.deployed_apps[request.name] = request.app_id
-        await stream.send_message(Empty())
+        await stream.send_message(api_pb2.AppDeployResponse(url="http://test.modal.com/foo/bar"))
 
     async def AppGetByDeploymentName(self, stream):
         request = await stream.recv_message()

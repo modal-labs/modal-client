@@ -188,13 +188,14 @@ class _Stub:
         output_mgr: OutputManager,
         existing_app_id: Optional[str],
         last_log_entry_id: Optional[str] = None,
-        description: Optional[str] = None,
+        name: Optional[str] = None,
         mode: StubRunMode = StubRunMode.RUN,
     ) -> AsyncGenerator[_App, None]:
+        app_name = name if name is not None else self.description
         if existing_app_id is not None:
             app = await _App._init_existing(self, client, existing_app_id)
         else:
-            app = await _App._init_new(self, client, description if description is not None else self.description)
+            app = await _App._init_new(self, client, app_name)
         self._app_id = app.app_id
 
         # Start tracking logs and yield context
@@ -359,7 +360,7 @@ class _Stub:
           referred to and used by other apps.
         """
         if not is_local():
-            raise InvalidError("Can not run an deploy from within a container.")
+            raise InvalidError("Cannot run a deploy from within a container.")
         if name is None:
             name = self.name
         if name is None:
@@ -389,15 +390,16 @@ class _Stub:
         # The `_run` method contains the logic for starting and running an app
         output_mgr = OutputManager(stdout, show_progress)
         async with self._run(
-            client, output_mgr, existing_app_id, last_log_entry_id, description=name, mode=StubRunMode.DEPLOY
+            client, output_mgr, existing_app_id, last_log_entry_id, name=name, mode=StubRunMode.DEPLOY
         ) as app:
             deploy_req = api_pb2.AppDeployRequest(
                 app_id=app._app_id,
                 name=name,
                 namespace=namespace,
             )
-            await client.stub.AppDeploy(deploy_req)
-            return app
+            deploy_response = await client.stub.AppDeploy(deploy_req)
+        output_mgr.print_if_visible(f"\nView Deployment: [magenta]{deploy_response.url}[/magenta]")
+        return app
 
     def _get_default_image(self):
         if "image" in self._blueprint:
