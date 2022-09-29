@@ -77,7 +77,9 @@ import warnings
 
 import grpclib
 import sentry_sdk
+import synchronicity
 import toml
+from rich.traceback import install
 from sentry_sdk.integrations.atexit import AtexitIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 
@@ -290,3 +292,6 @@ warnings.filterwarnings(
     category=DeprecationWarning,
     module="modal",
 )
+
+# Set up rich tracebacks.
+install(suppress=[modal, synchronicity, modal_utils, grpclib], extra_lines=1)
