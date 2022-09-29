@@ -4,10 +4,9 @@ import pytest
 from grpclib import GRPCError, Status
 from modal_test_support import module_1, module_2
 
-import modal.exception
 from modal import Image, Stub
 from modal.aio import AioApp, AioQueue, AioStub, aio_lookup
-from modal.exception import NotFoundError
+from modal.exception import InvalidError, NotFoundError
 
 
 @pytest.mark.asyncio
@@ -116,7 +115,7 @@ def test_run_function_without_app_error():
     def foo():
         pass
 
-    with pytest.raises(modal.exception.InvalidError) as excinfo:
+    with pytest.raises(InvalidError) as excinfo:
         foo()
 
     assert "stub.run" in str(excinfo.value)
@@ -163,3 +162,19 @@ def test_same_function_name(caplog):
     assert "module_1" in caplog.text
     assert "module_2" in caplog.text
     assert "square" in caplog.text
+
+
+# Required as failing to raise could cause test to never return.
+@pytest.mark.timeout(3)
+def test_nested_serve_invocation(client):
+    stub = Stub()
+
+    @stub.wsgi()
+    def foo():
+        pass
+
+    with pytest.raises(InvalidError) as excinfo:
+        with stub.run(client=client):
+            # This nested call creates a second web endpoint!
+            stub.serve()
+    assert "existing" in str(excinfo.value)

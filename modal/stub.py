@@ -71,6 +71,7 @@ class _Stub:
 
     _name: str
     _description: str
+    _app_id: str
     _blueprint: Dict[str, Provider]
     _client_mount: Optional[Union[_Mount, Ref]]
     _function_mounts: Dict[str, _Mount]
@@ -93,6 +94,7 @@ class _Stub:
             self._description = name
         else:
             self._description = self._infer_app_desc()
+        self._app_id = None
         self._blueprint = blueprint
         self._client_mount = None
         self._function_mounts = {}
@@ -193,6 +195,7 @@ class _Stub:
             app = await _App._init_existing(self, client, existing_app_id)
         else:
             app = await _App._init_new(self, client, description if description is not None else self.description)
+        self._app_id = app.app_id
 
         # Start tracking logs and yield context
         async with TaskContext(grace=config["logs_timeout"]) as tc:
@@ -243,6 +246,7 @@ class _Stub:
             output_mgr.print_if_visible(step_completed("App deployed! 🎉"))
         else:
             output_mgr.print_if_visible(step_completed("App completed."))
+        self._app_id = None
 
     @synchronizer.asynccontextmanager
     async def run(self, client=None, stdout=None, show_progress=None) -> AsyncGenerator[_App, None]:
@@ -287,8 +291,18 @@ class _Stub:
             raise InvalidError(
                 "Can not run an app from within a container. You might need to do something like this: \n"
                 'if __name__ == "__main__":\n'
-                "    with stub.serve():\n"
-                "        ...\n"
+                "    stub.serve()\n"
+            )
+
+        if self._app_id is not None:
+            raise InvalidError(
+                f"Found existing app '{self._app_id}'. You may have nested stub.serve() inside a running app like this:\n"
+                'if __name__ == "__main__":\n'
+                "    with stub.run():\n"
+                "        stub.serve() # ❌\n\n"
+                "You might need to do something like this: \n"
+                'if __name__ == "__main__":\n'
+                "    stub.serve()\n"
             )
 
         if client is None:
