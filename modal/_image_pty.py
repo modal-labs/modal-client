@@ -93,6 +93,8 @@ async def _pty(
         while True:
             try:
                 char = await queue.get()
+                if char is None:
+                    return
                 writer.write(char.encode("utf-8"))
                 writer.flush()
             except asyncio.CancelledError:
@@ -103,13 +105,16 @@ async def _pty(
     print(f"Spawning {run_cmd}. Type 'exit' to exit. ")
 
     # TODO use TaskContext and async task for this (runs into a weird synchroncity error on exit for now).
-    threading.Thread(target=asyncio.run, args=(_read(),), daemon=True).start()
+    t = threading.Thread(target=asyncio.run, args=(_read(),))
+    t.start()
 
     for key, value in term_env.items():
         if value is not None:
             os.environ[key] = value
 
     spawn(run_cmd)
+    await queue.put(None)
+    t.join()
     writer.close()
 
 
@@ -126,8 +131,8 @@ async def image_pty(image, app, cmd=None, mounts=[], secrets=[], shared_volumes=
                 char = await asyncio.get_event_loop().run_in_executor(None, sys.stdin.read, 1)
                 await queue.put(char)
 
-        async with TaskContext(grace=0) as tc:
-            tc.create_task(_write())
+        async with TaskContext(grace=0.1) as tc:
+            write_task = tc.create_task(_write())
             winsz = get_winsz(sys.stdin.fileno())
             term_env = {
                 "TERM": os.environ.get("TERM"),
@@ -137,3 +142,4 @@ async def image_pty(image, app, cmd=None, mounts=[], secrets=[], shared_volumes=
 
             with raw_terminal():
                 await _pty_wrapped(cmd, queue, winsz, term_env)
+            write_task.cancel()
