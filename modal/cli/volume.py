@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from typing import Optional, Tuple
 
 import typer
 from google.protobuf import empty_pb2
@@ -135,10 +136,15 @@ async def put(
         print(f"Wrote {written_bytes} bytes to remote file {remote_path}", file=sys.stderr)
 
 
+class CliError(Exception):
+    def __init__(self, message):
+        self.message = message
+
+
 async def _glob_download(
     volume: AioSharedVolumeHandle, remote_glob_path: str, local_destination: Path, overwrite: bool
 ):
-    q: asyncio.Queue = asyncio.Queue()
+    q: asyncio.Queue[Tuple[Optional[Path], Optional[api_pb2.SharedVolumeListFilesEntry]]] = asyncio.Queue()
 
     for entry in await volume.listdir(remote_glob_path):
         output_path = local_destination / entry.path
@@ -146,31 +152,34 @@ async def _glob_download(
             if overwrite:
                 shutil.rmtree(output_path)
             else:
-                raise Exception("Output path {} already exists. Use --force to overwrite all output directories")
+                raise CliError(
+                    f"Output path '{output_path}' already exists. Use --force to overwrite the output directory"
+                )
         await q.put((output_path, entry))
 
     async def consumer():
-        output_path, entry = await q.get()
+        while 1:
+            output_path, entry = await q.get()
+            if output_path is None:
+                return
+            try:
+                if entry.type == api_pb2.SharedVolumeListFilesEntry.FILE:
+                    output_path.parent.mkdir(parents=True, exist_ok=True)
+                    with output_path.open("wb") as fp:
+                        b = 0
+                        async for chunk in volume.read_file(entry.path):
+                            b += fp.write(chunk)
 
-        if entry.type == api_pb2.SharedVolumeListFilesEntry.DIRECTORY:
-            output_path.mkdir(parents=True, exist_ok=True)
-            print(f"Created directory {output_path}", file=sys.stderr)
-        else:
-            with output_path.open("wb") as fp:
-                b = 0
-                async for chunk in volume.read_file(entry.path):
-                    b += fp.write(chunk)
-
-            print(f"Wrote {b} bytes to {output_path}", file=sys.stderr)
-        q.task_done()
+                    print(f"Wrote {b} bytes to {output_path}", file=sys.stderr)
+            finally:
+                q.task_done()
 
     tasks = []
-    for _ in range(20):
+    for _ in range(10):
         tasks.append(asyncio.create_task(consumer()))
+        await q.put((None, None))
 
-    await q.join()
-    for t in tasks:
-        t.cancel()
+    await asyncio.gather(*tasks)
 
 
 @volume_cli.command(
@@ -193,7 +202,10 @@ async def get(volume_name: str, remote_path: str, local_destination: str = typer
     volume = await volume_from_name(volume_name)
 
     if "*" in remote_path:
-        await _glob_download(volume, remote_path, destination, force)
+        try:
+            await _glob_download(volume, remote_path, destination, force)
+        except CliError as exc:
+            print(exc.message)
         return
 
     if destination != PIPE_PATH:
