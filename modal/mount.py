@@ -8,7 +8,7 @@ from typing import Callable, Collection, List, Optional, Union
 import aiostream
 
 import modal._blob_utils
-from modal.exception import deprecation_warning
+from modal.exception import NotFoundError, deprecation_warning
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 from modal_utils.grpc_utils import retry_transient_errors
@@ -210,9 +210,18 @@ async def _create_package_mounts(module_names: Collection[str]) -> List[_Mount]:
         my_local_module.do_stuff()
     ```
     """
+    from modal import is_local
+
+    # Don't re-run inside container.
+    if not is_local():
+        return []
+
     mounts = []
     for module_name in module_names:
         mount_infos = get_module_mount_info(module_name)
+
+        if mount_infos == []:
+            raise NotFoundError(f"Module {module_name} not found.")
 
         for mount_info in mount_infos:
             is_package, base_path, module_mount_condition = mount_info

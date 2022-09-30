@@ -31,7 +31,9 @@ def get_module_mount_info(module: str):
 
     spec = importlib.util.find_spec(module)
 
-    if spec.submodule_search_locations:
+    if spec is None:
+        return []
+    elif spec.submodule_search_locations:
         return [(True, path, module_mount_condition) for path in spec.submodule_search_locations]
     else:
         # Individual file

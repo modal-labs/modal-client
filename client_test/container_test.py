@@ -188,3 +188,15 @@ def test_container_entrypoint_class_scoped_function_async(servicer, event_loop):
     from modal_test_support.functions import CubeAsync
 
     assert CubeAsync._events == ["init", "enter", "call", "exit"]
+
+
+def test_create_package_mounts_inside_container(servicer, event_loop):
+    """`create_package_mounts` shouldn't actually run inside the container, because it's possible
+    that there are modules that were present locally for the user that didn't get mounted into
+    all the containers."""
+
+    client, outputs = _run_container(servicer, "modal_test_support.package_mount", "num_mounts")
+
+    output = _get_output(outputs[0])
+    assert output.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert output.data == serialize(0)

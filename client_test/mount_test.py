@@ -6,6 +6,7 @@ import sys
 from modal import Stub, create_package_mounts
 from modal._blob_utils import LARGE_FILE_LIMIT
 from modal.aio import AioStub
+from modal.exception import NotFoundError
 from modal.mount import AioMount, Mount
 
 
@@ -79,7 +80,7 @@ def test_create_mount_file_errors(servicer, tmpdir, client):
             running_app._load(m)
 
 
-def test_create_package_mount(servicer, client, test_dir):
+def test_create_package_mounts(servicer, client, test_dir):
     stub = Stub()
 
     sys.path.append((test_dir / "supports").as_posix())
@@ -116,3 +117,13 @@ def test_stub_mounts(servicer, client, test_dir):
         assert any(["/pkg/pkg_b/g/h.py" in f for f in files])
         assert not any(["/pkg/pkg_c/i.py" in f for f in files])
         assert not any(["/pkg/pkg_c/j/k.py" in f for f in files])
+
+
+def test_create_package_mounts_missing_module(servicer, client, test_dir):
+    stub = Stub()
+
+    with pytest.raises(NotFoundError):
+
+        @stub.function(mounts=create_package_mounts(["nonexistent_package"]))
+        def f():
+            pass
