@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import os
+import select
 import sys
 from typing import Optional, Tuple, no_type_check
 
@@ -124,11 +125,22 @@ async def image_pty(image, app, cmd=None, mounts=[], secrets=[], shared_volumes=
 
     async with app.run(show_progress=False) as running_app:
         queue = running_app["queue"]
+        quit_pipe_read, quit_pipe_write = os.pipe()
+
+        def _read_char() -> Optional[str]:
+            nonlocal quit_pipe_read
+            # TODO: Windows support.
+            (readable, _, _) = select.select([sys.stdin, quit_pipe_read], [], [])
+            if quit_pipe_read in readable:
+                return None
+            return sys.stdin.read(1)
 
         async def _write():
             await queue.put("\n")
             while True:
-                char = await asyncio.get_event_loop().run_in_executor(None, sys.stdin.read, 1)
+                char = await asyncio.get_event_loop().run_in_executor(None, _read_char)
+                if char is None:
+                    return
                 await queue.put(char)
 
         async with TaskContext(grace=0.1) as tc:
@@ -142,4 +154,5 @@ async def image_pty(image, app, cmd=None, mounts=[], secrets=[], shared_volumes=
 
             with raw_terminal():
                 await _pty_wrapped(cmd, queue, winsz, term_env)
+            os.write(quit_pipe_write, b"\n")
             write_task.cancel()
