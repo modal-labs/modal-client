@@ -441,6 +441,9 @@ message GenericResult {  // Used for both tasks and function outputs
     GENERATOR_STATUS_COMPLETE = 2;
   }
   GeneratorStatus gen_status = 7;
+
+  bytes serialized_tb = 11;
+  bytes tb_line_cache = 12;
 }
 
 message Image {

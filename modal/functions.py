@@ -17,6 +17,7 @@ from typing import (
 
 from aiostream import pipe, stream
 from grpclib import GRPCError, Status
+from synchronicity.exceptions import UserCodeException
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import (
@@ -35,6 +36,7 @@ from ._blob_utils import (
 from ._function_utils import FunctionInfo
 from ._output import OutputManager
 from ._serialization import deserialize, serialize
+from ._traceback import append_modal_tb
 from .client import _Client
 from .exception import (
     ExecutionError,
@@ -83,7 +85,15 @@ async def _process_result(result, stub, client=None):
             if not isinstance(exc, BaseException):
                 raise ExecutionError(f"Got remote exception of incorrect type {type(exc)}")
 
-            raise exc_with_hints(exc)
+            if result.serialized_tb:
+                try:
+                    tb_dict = deserialize(result.serialized_tb, client)
+                    line_cache = deserialize(result.tb_line_cache, client)
+                    append_modal_tb(exc, tb_dict, line_cache)
+                except Exception:
+                    pass
+            uc_exc = UserCodeException(exc_with_hints(exc))
+            raise uc_exc
         raise RemoteError(result.exception)
 
     return deserialize(data, client)

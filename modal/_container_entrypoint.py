@@ -23,6 +23,7 @@ from ._asgi import asgi_app_wrapper, fastAPI_function_wrapper, wsgi_app_wrapper
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._proxy_tunnel import proxy_tunnel
 from ._serialization import deserialize, serialize
+from ._traceback import extract_traceback
 from ._tracing import extract_tracing_context, set_span_tag, trace, wrap
 from .app import _App
 from .client import Client, _Client
@@ -175,6 +176,26 @@ class _FunctionIOManager:
         )
         await self.output_queue.put(output)
 
+    def serialize_exception(self, exc: BaseException) -> Optional[bytes]:
+        try:
+            return self.serialize(exc)
+        except Exception as serialization_exc:
+            logger.info(f"Failed to serialize exception {exc}: {serialization_exc}")
+            # We can't always serialize exceptions.
+            return None
+
+    def serialize_traceback(self, exc: BaseException) -> Tuple[Optional[bytes], Optional[bytes]]:
+        serialized_tb, tb_line_cache = None, None
+
+        try:
+            tb_dict, line_cache = extract_traceback(exc, self.task_id)
+            serialized_tb = self.serialize(tb_dict)
+            tb_line_cache = self.serialize(line_cache)
+        except Exception:
+            logger.info("Failed to serialize exception traceback.")
+
+        return serialized_tb, tb_line_cache
+
     @synchronizer.asynccontextmanager
     async def handle_general_exception(self):
         try:
@@ -185,18 +206,15 @@ class _FunctionIOManager:
             # Since this is on a different thread, sys.exc_info() can't find the exception in the stack.
             traceback.print_exception(type(exc), exc, exc.__traceback__)
 
-            try:
-                serialized_exc = self.serialize(exc)
-            except Exception as serialization_exc:
-                logger.info(f"Failed to serialize exception {exc}: {serialization_exc}")
-                # We can't always serialize exceptions.
-                serialized_exc = None
+            serialized_tb, tb_line_cache = self.serialize_traceback(exc)
 
             result = api_pb2.GenericResult(
                 status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
-                data=serialized_exc,
+                data=self.serialize_exception(exc),
                 exception=repr(exc),
                 traceback="".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+                serialized_tb=serialized_tb,
+                tb_line_cache=tb_line_cache,
             )
 
             req = api_pb2.TaskResultRequest(task_id=self.task_id, result=result)
@@ -214,13 +232,7 @@ class _FunctionIOManager:
         except BaseException as exc:
             # print exception so it's logged
             traceback.print_exc()
-
-            try:
-                serialized_exc = self.serialize(exc)
-            except Exception as serialization_exc:
-                logger.info(f"Failed serializing exception {exc}: {serialization_exc}")
-                # We can't always serialize exceptions.
-                serialized_exc = None
+            serialized_tb, tb_line_cache = self.serialize_traceback(exc)
 
             # Note: we're not serializing the traceback since it contains
             # local references that means we can't unpickle it. We *are*
@@ -230,9 +242,11 @@ class _FunctionIOManager:
             await self._enqueue_output(
                 input_id,
                 status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
-                data=serialized_exc,
+                data=self.serialize_exception(exc),
                 exception=repr(exc),
                 traceback=traceback.format_exc(),
+                serialized_tb=serialized_tb,
+                tb_line_cache=tb_line_cache,
             )
 
     async def enqueue_output(self, input_id, data):

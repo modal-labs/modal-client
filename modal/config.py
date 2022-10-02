@@ -77,9 +77,7 @@ import warnings
 
 import grpclib
 import sentry_sdk
-import synchronicity
 import toml
-from rich.traceback import install
 from sentry_sdk.integrations.atexit import AtexitIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 
@@ -87,6 +85,7 @@ import modal
 import modal_utils
 from modal.exception import AuthError, InvalidError, VersionError
 
+from ._traceback import setup_rich_traceback
 from .version import __version__
 
 WHEEL_FILENAME = f"modal-{__version__}-py3-none-any.whl"
@@ -294,4 +293,4 @@ warnings.filterwarnings(
 )
 
 # Set up rich tracebacks.
-install(suppress=[modal, synchronicity, modal_utils, grpclib], extra_lines=1)
+setup_rich_traceback()
