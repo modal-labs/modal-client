@@ -11,7 +11,7 @@ from ._build_number import build_number  # Written by Github
 # As long as we're on 0.*, all versions are published automatically
 major_number = 0
 
-# Bump this manually on any major changes
+# Bump this manually on any major changes!
 minor_number = 35
 
 # Right now, set the patch number (the 3rd field) to the job run number in Github

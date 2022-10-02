@@ -88,7 +88,7 @@ from modal.exception import AuthError, InvalidError, VersionError
 
 from ._traceback import setup_rich_traceback
 
-WHEEL_FILENAME = f"modal-{__version__}-py3-none-any.whl"
+WHEEL_FILENAME = f"modal_client-{__version__}-py3-none-any.whl"
 
 # Locate config file and read it
 
