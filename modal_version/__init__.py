@@ -8,7 +8,7 @@
 
 from ._build_number import build_number  # Written by Github
 
-# As long as we're on 0.*, we're not doing explicit release management
+# As long as we're on 0.*, all versions are published automatically
 major_number = 0
 
 # Bump this manually on any major changes
