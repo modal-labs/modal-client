@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Callable, Collection, List, Optional, Union
 
 import aiostream
+from modal_version import __version__
 
 import modal._blob_utils
 from modal.exception import NotFoundError, deprecation_warning
@@ -18,7 +19,6 @@ from ._blob_utils import FileUploadSpec, get_file_upload_spec
 from .config import logger
 from .exception import InvalidError
 from .object import Handle, Provider
-from .version import __version__
 
 
 def client_mount_name():

@@ -40,7 +40,12 @@ def package_mount_condition(filename):
 
 def _is_modal_path(remote_path: Union[str, Path]):
     parts = os.path.split(remote_path)
-    is_modal_path = parts[:2] in [("/root", "modal"), ("/root", "modal_proto"), ("/root", "modal_utils")]
+    is_modal_path = parts[:2] in [
+        ("/root", "modal"),
+        ("/root", "modal_proto"),
+        ("/root", "modal_utils"),
+        ("/root", "modal_version"),
+    ]
     return is_modal_path
 
 

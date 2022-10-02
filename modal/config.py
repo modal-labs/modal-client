@@ -78,6 +78,7 @@ import warnings
 import grpclib
 import sentry_sdk
 import toml
+from modal_version import __version__
 from sentry_sdk.integrations.atexit import AtexitIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 
@@ -86,7 +87,6 @@ import modal_utils
 from modal.exception import AuthError, InvalidError, VersionError
 
 from ._traceback import setup_rich_traceback
-from .version import __version__
 
 WHEEL_FILENAME = f"modal-{__version__}-py3-none-any.whl"
 

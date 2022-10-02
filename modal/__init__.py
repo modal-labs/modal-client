@@ -1,3 +1,5 @@
+from modal_version import __version__
+
 from .app import App, container_app, is_local
 from .dict import Dict
 from .exception import Error
@@ -13,7 +15,6 @@ from .schedule import Cron, Period
 from .secret import Secret
 from .shared_volume import SharedVolume
 from .stub import Stub
-from .version import __version__
 
 __all__ = [
     "__version__",
