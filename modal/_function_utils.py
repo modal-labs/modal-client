@@ -44,6 +44,7 @@ def _is_modal_path(remote_path: Union[str, Path]):
         ("/root", "modal"),
         ("/root", "modal_proto"),
         ("/root", "modal_utils"),
+        ("/root", "modal_version"),
     ]
     return is_modal_path
 
