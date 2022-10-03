@@ -672,7 +672,7 @@ class _Stub:
         asgi_decorator = self.asgi(_webhook_type=api_pb2.WEBHOOK_TYPE_WSGI_APP, **kwargs)
         return asgi_decorator(wsgi_app)
 
-    async def interactive_shell(self, cmd=None, mounts=[], secrets=[], image=None, shared_volumes={}):
+    async def interactive_shell(self, cmd=None, image=None, **kwargs):
         """Run an interactive shell (like `bash`) within the image for this app.
 
         This is useful for online debugging and interactive exploration of the
@@ -692,7 +692,7 @@ class _Stub:
         """
         from ._image_pty import image_pty
 
-        await image_pty(image or self.image, self, cmd, mounts, secrets, shared_volumes)
+        await image_pty(image or self.image, self, cmd, **kwargs)
 
 
 Stub, AioStub = synchronize_apis(_Stub)

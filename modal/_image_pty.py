@@ -119,8 +119,8 @@ async def _pty(
     writer.close()
 
 
-async def image_pty(image, app, cmd=None, mounts=[], secrets=[], shared_volumes={}):
-    _pty_wrapped = app.function(image=image, mounts=mounts, secrets=secrets, shared_volumes=shared_volumes)(_pty)
+async def image_pty(image, app, cmd=None, **kwargs):
+    _pty_wrapped = app.function(image=image, **kwargs)(_pty)
     app["queue"] = _Queue()
 
     async with app.run(show_progress=False) as running_app:

@@ -79,6 +79,8 @@ def make_function_panel(idx: int, tag: str, function: _Function, stub: _Stub) ->
         for i in [*function._mounts, function._image, *function._secrets, *function._shared_volumes.values()]
         if i not in [stub._client_mount, *stub._function_mounts.values()]
     ]
+    if function._gpu:
+        items.append("- GPU")
     return Panel(
         Markdown("\n".join(items)),
         title=f"[bright_magenta]{idx}. [/bright_magenta][bold]{tag}[/bold]",
@@ -154,15 +156,19 @@ def shell(
         function = choose_function(_stub, list(functions.items()), console)
 
     if function is None:
-        stub.interactive_shell(cmd)
+        res = stub.interactive_shell(cmd)
     else:
-        stub.interactive_shell(
+        res = stub.interactive_shell(
             cmd,
             mounts=function._mounts,
             shared_volumes=function._shared_volumes,
             image=function._image,
             secrets=function._secrets,
+            gpu=function._gpu,
         )
+
+    if inspect.iscoroutine(res):
+        asyncio.run(res)
 
 
 @app_cli.command("list")
