@@ -95,7 +95,8 @@ user_config_path: str = os.environ.get("MODAL_CONFIG_PATH") or os.path.expanduse
 
 def _read_user_config():
     if os.path.exists(user_config_path):
-        return toml.load(open(user_config_path))
+        with open(user_config_path) as f:
+            return toml.load(f)
     else:
         return {}
 
