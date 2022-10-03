@@ -6,18 +6,16 @@ from pathlib import Path
 from typing import Callable, Collection, List, Optional, Union
 
 import aiostream
-from modal_version import __version__
 
-import modal._blob_utils
-from modal.exception import NotFoundError, deprecation_warning
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 from modal_utils.grpc_utils import retry_transient_errors
 from modal_utils.package_utils import get_module_mount_info, module_mount_condition
 
-from ._blob_utils import FileUploadSpec, get_file_upload_spec
+from ._blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec
+from ._version import __version__
 from .config import logger
-from .exception import InvalidError
+from .exception import InvalidError, NotFoundError, deprecation_warning
 from .object import Handle, Provider
 
 
@@ -145,7 +143,7 @@ class _Mount(Provider[_MountHandle]):
             if mount_file.use_blob:
                 logger.debug(f"Creating blob file for {mount_file.filename} ({mount_file.size} bytes)")
                 with open(mount_file.filename, "rb") as fp:
-                    blob_id = await modal._blob_utils.blob_upload_file(fp, client.stub)
+                    blob_id = await blob_upload_file(fp, client.stub)
                 logger.debug(f"Uploading blob file {mount_file.filename} as {remote_filename}")
                 request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=mount_file.sha256_hex)
             else:

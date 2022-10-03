@@ -17,8 +17,8 @@ import pkg_resources
 import pytest_asyncio
 from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
-from modal_version import __version__
 
+from modal import __version__
 from modal.app import _App
 from modal.client import AioClient, Client
 from modal.image import _dockerhub_python_version

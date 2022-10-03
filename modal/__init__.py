@@ -1,5 +1,4 @@
-from modal_version import __version__
-
+from ._version import __version__
 from .app import App, container_app, is_local
 from .dict import Dict
 from .exception import Error

@@ -78,15 +78,14 @@ import warnings
 import grpclib
 import sentry_sdk
 import toml
-from modal_version import __version__
 from sentry_sdk.integrations.atexit import AtexitIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 
 import modal
 import modal_utils
-from modal.exception import AuthError, InvalidError, VersionError
 
 from ._traceback import setup_rich_traceback
+from .exception import AuthError, InvalidError, VersionError
 
 # Locate config file and read it
 
@@ -280,7 +279,7 @@ if config["sentry_dsn"] and "localhost" not in config["server_url"]:
         sentry_sdk.set_tag("token_id", config["token_id"])
         sentry_sdk.set_tag("task_id", config["task_id"])
         sentry_sdk.set_user(
-            {"token_id": config["token_id"], "client_version": __version__, "task_id": config["task_id"]}
+            {"token_id": config["token_id"], "client_version": modal.__version__, "task_id": config["task_id"]}
         )
 
 # Make sure all deprecation warnings are shown
