@@ -343,8 +343,14 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         self._raw_f = function._raw_f
         self._web_url = web_url
         self._output_mgr: Optional[OutputManager] = None
+        self._mute_cancellation = (
+            False  # set when a user terminates the app intentionally, to prevent useless traceback spam
+        )
 
         super().__init__(client=client, object_id=object_id)
+
+    def _set_mute_cancellation(self, value=True):
+        self._mute_cancellation = value
 
     def _initialize_from_proto(self, function: api_pb2.Function):
         self._is_generator = function.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
@@ -474,7 +480,12 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         """mdmd:hidden"""
         client, object_id = self._get_context()
         invocation = await _Invocation.create(object_id, args, kwargs, client)
-        return await invocation.run_function()
+        try:
+            return await invocation.run_function()
+        except asyncio.CancelledError:
+            # this can happen if the user terminates a program, triggering a cancellation cascade
+            if not self._mute_cancellation:
+                raise
 
     async def call_function_nowait(self, args, kwargs):
         """mdmd:hidden"""

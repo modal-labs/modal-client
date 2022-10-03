@@ -2,7 +2,7 @@ import inspect
 import os
 import sys
 from enum import Enum
-from typing import AsyncGenerator, Collection, Dict, Optional
+from typing import AsyncGenerator, Collection, Dict, List, Optional
 
 from rich.tree import Tree
 
@@ -32,6 +32,7 @@ _default_image = _Image.debian_slim()
 class StubRunMode(Enum):
     RUN = "run"
     DEPLOY = "deploy"
+    DETACH = "detach"
     SERVE = "serve"
 
 
@@ -192,12 +193,14 @@ class _Stub:
         mode: StubRunMode = StubRunMode.RUN,
     ) -> AsyncGenerator[_App, None]:
         app_name = name if name is not None else self.description
+        detach = mode == StubRunMode.DETACH
         if existing_app_id is not None:
             app = await _App._init_existing(self, client, existing_app_id)
         else:
-            app = await _App._init_new(self, client, app_name)
-        self._app_id = app.app_id
+            app = await _App._init_new(self, client, app_name, detach=detach)
 
+        self._app_id = app.app_id
+        aborted = False
         # Start tracking logs and yield context
         async with TaskContext(grace=config["logs_timeout"]) as tc:
             status_spinner = step_progress("Running app...")
@@ -232,25 +235,39 @@ class _Stub:
                 with output_mgr.ctx_if_visible(output_mgr.make_live(status_spinner)):
                     yield app
             except KeyboardInterrupt:
-                print(
-                    "Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n"
-                    "Stick around for remote tracebacks..."
-                )
+                aborted = True
+                # mute cancellation errors on all function handles to prevent exception spam
+                for tag, obj in self._function_handles.items():
+                    obj._set_mute_cancellation(True)
+                    getattr(app, tag)._set_mute_cancellation(True)  # app has a separate function handle
+
+                if detach:
+                    logs_loop.cancel()
+                else:
+                    print("Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n")
             finally:
-                # Cancel logs loop since we're going to start another one.
                 if mode == StubRunMode.SERVE:
+                    # Cancel logs loop since we're going to start another one.
                     logs_loop.cancel()
                 else:
                     await app.disconnect()
 
         if mode == StubRunMode.DEPLOY:
             output_mgr.print_if_visible(step_completed("App deployed! 🎉"))
+        elif aborted:
+            if detach:
+                output_mgr.print_if_visible(step_completed("Shutting down Modal client."))
+                output_mgr.print_if_visible(
+                    f"""The detached app keeps running. You can track its progress at: [magenta]{app.log_url()}[/magenta]"""
+                )
+            else:
+                output_mgr.print_if_visible(step_completed("App aborted."))
         else:
             output_mgr.print_if_visible(step_completed("App completed."))
         self._app_id = None
 
     @synchronizer.asynccontextmanager
-    async def run(self, client=None, stdout=None, show_progress=None) -> AsyncGenerator[_App, None]:
+    async def run(self, client=None, stdout=None, show_progress=None, detach=False) -> AsyncGenerator[_App, None]:
         """Context manager that runs an app on Modal.
 
         Use this as the main entry point for your Modal application. All calls
@@ -269,7 +286,8 @@ class _Stub:
         if client is None:
             client = await _Client.from_env()
         output_mgr = OutputManager(stdout, show_progress)
-        async with self._run(client, output_mgr, None) as app:
+        mode = StubRunMode.DETACH if detach else StubRunMode.RUN
+        async with self._run(client, output_mgr, existing_app_id=None, mode=mode) as app:
             yield app
 
     async def run_forever(self, client=None, stdout=None, show_progress=None) -> None:
@@ -448,7 +466,7 @@ class _Stub:
                     f" with new function [{function._info.module_name}].{function._info.function_name}"
                 )
             else:
-                logger.warning(f"Warning: tag {function.tag} exists but is overriden by function")
+                logger.warning(f"Warning: tag {function.tag} exists but is overridden by function")
         self._blueprint[function.tag] = function
 
         # We now need to create an actual handle.
@@ -458,6 +476,10 @@ class _Stub:
         function_handle = _FunctionHandle(function)
         self._function_handles[function.tag] = function_handle
         return function_handle
+
+    @property
+    def registered_functions(self) -> List[str]:
+        return list(self._function_handles.keys())
 
     @decorator_with_options
     def function(

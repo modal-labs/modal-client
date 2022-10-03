@@ -1,4 +1,5 @@
 import os
+import traceback
 
 import pytest_asyncio
 import typer.testing
@@ -35,7 +36,8 @@ def _run(args, expected_exit_code=0):
     runner = typer.testing.CliRunner()
     res = runner.invoke(cli.entrypoint_cli, args)
     if res.exit_code != expected_exit_code:
-        print(res.stdout)
+        print(res.stdout, "Trace:")
+        traceback.print_tb(res.exc_info[2])
         assert res.exit_code == expected_exit_code
     return res
 

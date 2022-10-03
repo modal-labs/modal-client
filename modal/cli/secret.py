@@ -1,7 +1,6 @@
 import os
 import platform
 import subprocess
-from datetime import datetime
 from tempfile import NamedTemporaryFile
 from typing import List
 
@@ -13,6 +12,7 @@ from rich.syntax import Syntax
 from rich.table import Table
 
 import modal
+from modal.cli.utils import timestamp_to_local
 from modal.client import Client, _Client
 from modal_utils.async_utils import synchronizer
 
@@ -28,12 +28,12 @@ async def list():
     table.add_column("Name")
     table.add_column("Created at", justify="right")
     table.add_column("Last used at", justify="right")
-    locale_tz = datetime.now().astimezone().tzinfo
+
     for item in response.items:
         table.add_row(
             item.label,
-            str(datetime.fromtimestamp(item.created_at, tz=locale_tz)),
-            str(datetime.fromtimestamp(item.last_used_at) if item.last_used_at else "-"),
+            timestamp_to_local(item.created_at),
+            timestamp_to_local(item.last_used_at) if item.last_used_at else "-",
         )
 
     console = Console()
