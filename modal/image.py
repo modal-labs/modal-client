@@ -448,6 +448,9 @@ class _Image(Provider[_ImageHandle]):
             "RUN apt-get install -y gcc gfortran build-essential",
             "RUN pip install --upgrade pip",
             "RUN pip install -r /modal_requirements.txt",
+            # Set debian front-end to non-interactive to avoid users getting stuck with input
+            # prompts.
+            "RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections",
         ]
 
         return _Image(
