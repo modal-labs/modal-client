@@ -1,10 +1,8 @@
-from modal_version import __version__
 from setuptools import setup
 
-# PEP 396 prescribes setting a __version__ on the package,
-# but there's no obvious way for setup.py to access it.
-# A workaround is to put it in a separate package with no dependencies on modal.
-# TODO: might want to look at pbr:
-# https://docs.openstack.org/pbr/latest/user/index.html
+from modal._version import __version__
+
+# This needs to be set from setup.py, rather than setup.cfg, because the `attr:`
+# syntax for accessing attributes in setup.cfg does not work.
 
 setup(version=__version__)

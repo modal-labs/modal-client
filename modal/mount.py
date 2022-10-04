@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Callable, Collection, List, Optional, Union
 
 import aiostream
-from modal_version import __version__
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
@@ -14,6 +13,7 @@ from modal_utils.grpc_utils import retry_transient_errors
 from modal_utils.package_utils import get_module_mount_info, module_mount_condition
 
 from ._blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec
+from ._version import __version__
 from .config import logger
 from .exception import InvalidError, NotFoundError, deprecation_warning
 from .object import Handle, Provider
