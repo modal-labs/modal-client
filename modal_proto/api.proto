@@ -463,7 +463,6 @@ message GenericResult {  // Used for both tasks and function outputs
 
   bytes serialized_tb = 11;
   bytes tb_line_cache = 12;
-  int32 gen_index = 13; // ordering for generator outputs
 }
 
 message Image {

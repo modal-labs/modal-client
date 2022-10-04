@@ -256,21 +256,19 @@ class _FunctionIOManager:
             data=self.serialize(data),
         )
 
-    async def enqueue_generator_value(self, input_id, data, output_index):
+    async def enqueue_generator_value(self, input_id, data):
         await self._enqueue_output(
             input_id,
             status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
             data=self.serialize(data),
             gen_status=api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE,
-            gen_index=output_index,
         )
 
-    async def enqueue_generator_eof(self, input_id, output_index):
+    async def enqueue_generator_eof(self, input_id):
         await self._enqueue_output(
             input_id,
             status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
             gen_status=api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE,
-            gen_index=output_index,
         )
 
 
@@ -321,11 +319,9 @@ def call_function_sync(
                 if is_generator:
                     if not inspect.isgenerator(res):
                         raise InvalidError(f"Generator function returned value of type {type(res)}")
-                    generator_output_index = 0
                     for value in res:
-                        function_io_manager.enqueue_generator_value(input_id, value, generator_output_index)
-                        generator_output_index += 1
-                    function_io_manager.enqueue_generator_eof(input_id, generator_output_index)
+                        function_io_manager.enqueue_generator_value(input_id, value)
+                    function_io_manager.enqueue_generator_eof(input_id)
                 else:
                     if inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
                         raise InvalidError(f"Sync (non-generator) function return value of type {type(res)}")
@@ -364,10 +360,8 @@ async def call_function_async(
                 if is_generator:
                     if not inspect.isasyncgen(res):
                         raise InvalidError(f"Async generator function returned value of type {type(res)}")
-                    generator_output_index = 0
                     async for value in res:
-                        await aio_function_io_manager.enqueue_generator_value(input_id, value, generator_output_index)
-                        generator_output_index += 1
+                        await aio_function_io_manager.enqueue_generator_value(input_id, value)
                     await aio_function_io_manager.enqueue_generator_eof(input_id)
                 else:
                     if not inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
