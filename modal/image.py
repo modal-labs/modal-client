@@ -75,6 +75,7 @@ class _Image(Provider[_ImageHandle]):
         secrets=[],
         version=None,
         ref=None,
+        gpu=False,
     ):
         if ref and (base_images or dockerfile_commands or context_files):
             raise InvalidError("No other arguments can be provided when initializing an image from a ref.")
@@ -89,6 +90,7 @@ class _Image(Provider[_ImageHandle]):
         self._dockerfile_commands = dockerfile_commands
         self._version = version
         self._secrets = secrets
+        self._gpu = gpu
         super().__init__()
 
     def __repr__(self):
@@ -133,6 +135,7 @@ class _Image(Provider[_ImageHandle]):
             context_files=context_file_pb2s,
             version=self._version,
             secret_ids=secret_ids,
+            gpu=self._gpu,
         )
 
         req = api_pb2.ImageGetOrCreateRequest(
@@ -268,6 +271,7 @@ class _Image(Provider[_ImageHandle]):
         dockerfile_commands: Union[str, List[str]],
         context_files: Dict[str, str] = {},
         secrets: Collection[_Secret] = [],
+        gpu: bool = False,
     ):
         """Extend an image with arbitrary Dockerfile-like commands."""
 
@@ -282,12 +286,14 @@ class _Image(Provider[_ImageHandle]):
             dockerfile_commands=_dockerfile_commands,
             context_files=context_files,
             secrets=secrets,
+            gpu=gpu,
         )
 
     def run_commands(
         self,
         commands: List[str],
         secrets: Collection[_Secret] = [],
+        gpu: bool = False,
     ):
         """Extend an image with a list of shell commands to run."""
         _assert_list_of_str("run_commands", "commands", commands)
@@ -296,6 +302,7 @@ class _Image(Provider[_ImageHandle]):
         return self.extend(
             dockerfile_commands=dockerfile_commands,
             secrets=secrets,
+            gpu=gpu,
         )
 
     @staticmethod

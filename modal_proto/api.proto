@@ -471,6 +471,9 @@ message Image {
   repeated ImageContextFile context_files = 7;
   string version = 11;
   repeated string secret_ids = 12;
+  // Part of Image definition, because presence of GPU drivers
+  // affects the image that's built.
+  bool gpu = 13; 
 }
 
 message ImageContextFile {
