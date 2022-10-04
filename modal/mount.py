@@ -83,8 +83,8 @@ class _Mount(Provider[_MountHandle]):
 
     async def _get_files(self):
         if self._local_file:
-            relpath = os.path.basename(self._local_file)
-            yield get_file_upload_spec(self._local_file, relpath)
+            relpath = os.path.basename(str(self._local_file))
+            yield get_file_upload_spec(str(self._local_file), relpath)
             return
 
         local_dir = os.path.expanduser(self._local_dir)

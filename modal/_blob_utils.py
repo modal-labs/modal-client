@@ -1,7 +1,8 @@
 import asyncio
 import dataclasses
+import io
 import os
-from typing import IO, AsyncIterator, Optional
+from typing import AsyncIterator, BinaryIO, Optional, Union
 
 from modal.exception import ExecutionError
 from modal_proto import api_pb2
@@ -24,14 +25,20 @@ BLOB_MAX_PARALLELISM = 10
 
 
 @retry(n_attempts=5, base_delay=0.5, timeout=None)
-async def _upload_to_url(upload_url: str, content_md5: str, aiohttp_payload) -> None:
+async def _upload_to_url(upload_url: str, content_md5: str, payload: Union[bytes, BinaryIO]) -> None:
     async with http_client_with_tls(timeout=None) as session:
         headers = {"content-type": "application/octet-stream"}
 
         if use_md5(upload_url):
             headers["Content-MD5"] = content_md5
 
-        async with session.put(upload_url, data=aiohttp_payload, headers=headers) as resp:
+        wrapped_payload: Union[bytes, BinaryIO]
+        if isinstance(payload, bytes) and len(payload) > 100_000:
+            wrapped_payload = io.BytesIO(payload)
+        else:
+            wrapped_payload = payload
+
+        async with session.put(upload_url, data=wrapped_payload, headers=headers) as resp:
             # S3 signal to slow down request rate.
             if resp.status == 503:
                 logger.warning("Received SlowDown signal from S3, sleeping for 1 second before retrying.")
@@ -42,14 +49,14 @@ async def _upload_to_url(upload_url: str, content_md5: str, aiohttp_payload) -> 
                 raise ExecutionError(f"Put to url failed with status {resp.status}: {text}")
 
 
-async def _blob_upload(content_md5: str, aiohttp_payload, stub) -> str:
+async def _blob_upload(content_md5: str, payload: Union[bytes, BinaryIO], stub) -> str:
     req = api_pb2.BlobCreateRequest(content_md5=content_md5)
     resp = await retry_transient_errors(stub.BlobCreate, req)
 
     blob_id = resp.blob_id
     target = resp.upload_url
 
-    await _upload_to_url(target, content_md5, aiohttp_payload)
+    await _upload_to_url(target, content_md5, payload)
 
     return blob_id
 
@@ -62,14 +69,14 @@ async def blob_upload(payload: bytes, stub) -> str:
     return await _blob_upload(content_md5, payload, stub)
 
 
-async def blob_upload_file(file_obj: IO[bytes], stub) -> str:
+async def blob_upload_file(file_obj: BinaryIO, stub) -> str:
     content_md5 = get_md5_base64(file_obj)
     file_obj.seek(0)
     return await _blob_upload(content_md5, file_obj, stub)
 
 
 @retry(n_attempts=5, base_delay=0.1, timeout=None)
-async def _download_from_url(download_url):
+async def _download_from_url(download_url) -> bytes:
     async with http_client_with_tls(timeout=None) as session:
         async with session.get(download_url) as resp:
             # S3 signal to slow down request rate.
@@ -83,7 +90,7 @@ async def _download_from_url(download_url):
             return await resp.read()
 
 
-async def blob_download(blob_id, stub):
+async def blob_download(blob_id, stub) -> bytes:
     # convenience function reading all of the downloaded file into memory
     req = api_pb2.BlobGetRequest(blob_id=blob_id)
     resp = await retry_transient_errors(stub.BlobGet, req)
@@ -121,7 +128,7 @@ class FileUploadSpec:
     size: int
 
 
-def get_file_upload_spec(filename, rel_filename):
+def get_file_upload_spec(filename: str, rel_filename: str) -> FileUploadSpec:
     # Somewhat CPU intensive, so we run it in a thread/process
     size = os.path.getsize(filename)
     if size >= LARGE_FILE_LIMIT:

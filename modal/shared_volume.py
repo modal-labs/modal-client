@@ -1,5 +1,5 @@
 import os
-from typing import IO, AsyncIterator, List
+from typing import AsyncIterator, BinaryIO, List
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
@@ -29,7 +29,7 @@ class _SharedVolumeHandle(Handle, type_prefix="sv"):
     ```
     """
 
-    async def write_file(self, remote_path: str, fp: IO[bytes]):
+    async def write_file(self, remote_path: str, fp: BinaryIO):
         """Write from a file object to a path on the shared volume, atomically.
 
         Will create any needed parent directories automatically

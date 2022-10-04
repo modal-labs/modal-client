@@ -1,5 +1,6 @@
 import socket
 import ssl
+from typing import Optional
 
 import certifi
 from aiohttp import ClientSession, ClientTimeout, TCPConnector
@@ -9,7 +10,7 @@ from aiohttp.web_runner import AppRunner, SockSite
 from modal_utils.async_utils import synchronizer
 
 
-def http_client_with_tls(timeout: float) -> ClientSession:
+def http_client_with_tls(timeout: Optional[float]) -> ClientSession:
     """Create a new HTTP client session with standard, bundled TLS certificates.
 
     This is necessary to prevent client issues on some system where Python does
