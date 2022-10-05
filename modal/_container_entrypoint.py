@@ -102,7 +102,14 @@ class _FunctionIOManager:
             request.max_values = self.get_max_inputs_to_fetch()
 
             with trace("get_inputs"):
-                response = await retry_transient_errors(self.client.stub.FunctionGetInputs, request)
+                # TODO(erikbern): If the request fails after the server has already dequeued inputs,
+                # retrying here leads to "lost" inputs. The "correct" solution would be to take
+                # advantage of the idempotency key on the server, but we don't currently do that.
+                # Until that point, as a temporary workaround, we don't retry here. This will cause
+                # the task to fail, which will cause the server to reschedule those inputs to other
+                # tasks.
+                # response = await retry_transient_errors(self.client.stub.FunctionGetInputs, request)
+                response = await self.client.stub.FunctionGetInputs(request)
 
             if response.rate_limit_sleep_duration:
                 logger.info(
