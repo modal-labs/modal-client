@@ -225,3 +225,12 @@ def app_logs(app_id: str):
         sync_command()
     except KeyboardInterrupt:
         pass
+
+
+@app_cli.command("stop")
+@synchronizer
+async def list_stops(app_id: str):
+    """Stop an app."""
+    aio_client = await AioClient.from_env()
+    req = api_pb2.AppStopRequest(app_id=app_id)
+    await aio_client.stub.AppStop(req)
