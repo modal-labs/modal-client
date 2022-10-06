@@ -36,6 +36,11 @@ MAX_OUTPUT_BATCH_SIZE = 100
 RTT_S = 0.5  # conservative estimate of RTT in seconds.
 
 
+class UserException(Exception):
+    # Used to shut down the task gracefully
+    pass
+
+
 class _FunctionIOManager:
     """This class isn't much more than a helper method for some gRPC calls.
 
@@ -204,7 +209,11 @@ class _FunctionIOManager:
         return serialized_tb, tb_line_cache
 
     @synchronizer.asynccontextmanager
-    async def handle_general_exception(self):
+    async def handle_user_exception(self):
+        """Sets the task as failed in a way where it's not retried
+
+        Only used for importing user code atm
+        """
         try:
             yield
         except KeyboardInterrupt:
@@ -226,6 +235,9 @@ class _FunctionIOManager:
 
             req = api_pb2.TaskResultRequest(task_id=self.task_id, result=result)
             await retry_transient_errors(self.client.stub.TaskResult, req)
+
+            # Shut down the task gracefully
+            raise UserException()
 
     @synchronizer.asynccontextmanager
     async def handle_input_exception(self, input_id):
@@ -309,7 +321,8 @@ def call_function_sync(
         self = cls()
         if hasattr(cls, "__enter__"):
             # Call a user-defined method
-            cls.__enter__(self)
+            with function_io_manager.handle_user_exception():
+                cls.__enter__(self)
         elif hasattr(cls, "__aenter__"):
             logger.warning("Not running asynchronous enter/exit handlers with a sync function")
     else:
@@ -323,6 +336,7 @@ def call_function_sync(
                 else:
                     res = fun(*args, **kwargs)
 
+                # TODO(erikbern): any exception below shouldn't be considered a user exception
                 if is_generator:
                     if not inspect.isgenerator(res):
                         raise InvalidError(f"Generator function returned value of type {type(res)}")
@@ -335,7 +349,8 @@ def call_function_sync(
                     function_io_manager.enqueue_output(input_id, res)
     finally:
         if cls is not None and hasattr(cls, "__exit__"):
-            cls.__exit__(self, *sys.exc_info())
+            with function_io_manager.handle_user_exception():
+                cls.__exit__(self, *sys.exc_info())
 
 
 @wrap()
@@ -350,9 +365,11 @@ async def call_function_async(
         self = cls()
         if hasattr(cls, "__aenter__"):
             # Call a user-defined method
-            await cls.__aenter__(self)
+            async with aio_function_io_manager.handle_user_exception():
+                await cls.__aenter__(self)
         elif hasattr(cls, "__enter__"):
-            cls.__enter__(self)
+            async with aio_function_io_manager.handle_user_exception():
+                cls.__enter__(self)
     else:
         self = None
 
@@ -364,6 +381,7 @@ async def call_function_async(
                 else:
                     res = fun(*args, **kwargs)
 
+                # TODO(erikbern): any exception below shouldn't be considered a user exception
                 if is_generator:
                     if not inspect.isasyncgen(res):
                         raise InvalidError(f"Async generator function returned value of type {type(res)}")
@@ -378,9 +396,11 @@ async def call_function_async(
     finally:
         if cls is not None:
             if hasattr(cls, "__aexit__"):
-                await cls.__aexit__(self, *sys.exc_info())
+                async with aio_function_io_manager.handle_user_exception():
+                    await cls.__aexit__(self, *sys.exc_info())
             elif hasattr(cls, "__exit__"):
-                cls.__exit__(self, *sys.exc_info())
+                async with aio_function_io_manager.handle_user_exception():
+                    cls.__exit__(self, *sys.exc_info())
 
 
 def _wait_for_gpu_init():
@@ -447,20 +467,20 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     _function_io_manager = _FunctionIOManager(container_args, client)
     function_io_manager, aio_function_io_manager = synchronize_apis(_function_io_manager)
 
-    with function_io_manager.handle_general_exception():
-        function_io_manager.initialize_app()
+    function_io_manager.initialize_app()
 
-        is_generator = function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
-        if container_args.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
-            cls = None
-            fun = function_io_manager.get_serialized_function()
-        else:
+    is_generator = function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
+    if container_args.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
+        cls = None
+        fun = function_io_manager.get_serialized_function()
+    else:
+        with function_io_manager.handle_user_exception():
             cls, fun = import_function(container_args.function_def)
 
-        if not is_async(fun):
-            call_function_sync(function_io_manager, cls, fun, is_generator)
-        else:
-            asyncio.run(call_function_async(aio_function_io_manager, cls, fun, is_generator))
+    if not is_async(fun):
+        call_function_sync(function_io_manager, cls, fun, is_generator)
+    else:
+        asyncio.run(call_function_async(aio_function_io_manager, cls, fun, is_generator))
 
 
 if __name__ == "__main__":
@@ -480,7 +500,10 @@ if __name__ == "__main__":
 
         try:
             with proxy_tunnel(container_args.proxy_info):
-                main(container_args, client)
+                try:
+                    main(container_args, client)
+                except UserException:
+                    logger.info("User exception caught, exiting")
         except KeyboardInterrupt:
             logger.debug("Container: interrupted")
 

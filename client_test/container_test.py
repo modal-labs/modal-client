@@ -1,9 +1,12 @@
 import os
 import platform
 import pytest
+import sys
 import time
 
-from modal._container_entrypoint import main
+from grpclib.exceptions import GRPCError
+
+from modal._container_entrypoint import UserException, main
 
 # from modal_test_support import SLEEP_DELAY
 from modal._serialization import deserialize, serialize
@@ -59,7 +62,11 @@ def _run_container(servicer, module_name, function_name, fail_get_inputs=False, 
             function_def=function_def,
         )
 
-        main(container_args, client)
+        try:
+            main(container_args, client)
+        except UserException:
+            # Handle it gracefully
+            pass
 
         return client, servicer.container_outputs
 
@@ -137,10 +144,12 @@ def test_container_entrypoint_rate_limited(servicer, event_loop):
 
 
 def test_container_entrypoint_grpc_failure(servicer, event_loop):
-    _run_container(servicer, "modal_test_support.functions", "square", fail_get_inputs=True)
+    # An error in "Modal code" should cause the entire container to fail
+    with pytest.raises(GRPCError):
+        _run_container(servicer, "modal_test_support.functions", "square", fail_get_inputs=True)
 
-    assert servicer.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
-    assert "GRPCError" in servicer.task_result.exception
+    # assert servicer.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
+    # assert "GRPCError" in servicer.task_result.exception
 
 
 def test_container_entrypoint_missing_main_conditional(servicer, event_loop):
@@ -171,7 +180,7 @@ def test_container_entrypoint_class_scoped_function(servicer, event_loop):
     assert output.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     assert output.data == serialize(42**3)
 
-    from modal_test_support.functions import Cube
+    Cube = sys.modules["modal_test_support.functions"].Cube  # don't redefine
 
     assert Cube._events == ["init", "enter", "call", "exit"]
 
@@ -185,7 +194,7 @@ def test_container_entrypoint_class_scoped_function_async(servicer, event_loop):
     assert output.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     assert output.data == serialize(42**3)
 
-    from modal_test_support.functions import CubeAsync
+    CubeAsync = sys.modules["modal_test_support.functions"].CubeAsync
 
     assert CubeAsync._events == ["init", "enter", "call", "exit"]
 
