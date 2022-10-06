@@ -139,6 +139,7 @@ class _Client:
             except asyncio.CancelledError as exc:  # Raised by grpclib when the connection is closed
                 capture_exception(exc)
                 logger.warning("Client heartbeat: cancelled")
+                raise
             except asyncio.TimeoutError as exc:  # Raised by grpclib when the request times out
                 capture_exception(exc)
                 logger.warning("Client heartbeat: timeout")
