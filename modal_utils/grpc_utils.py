@@ -148,7 +148,15 @@ async def unary_stream(
 
 
 async def retry_transient_errors(
-    fn, *args, base_delay=0.1, max_delay=1, delay_factor=2, max_retries=3, additional_status_codes=[], ignore_errors=[]
+    fn,
+    *args,
+    base_delay=0.1,
+    max_delay=1,
+    delay_factor=2,
+    max_retries=3,
+    additional_status_codes=[],
+    ignore_errors=[],
+    timeout=None,
 ):
     """Retry on transient gRPC failures with back-off until max_retries is reached.
     If max_retries is None, retry forever."""
@@ -163,7 +171,7 @@ async def retry_transient_errors(
     while True:
         metadata = [("x-idempotency-key", idempotency_key), ("x-retry-attempt", str(n_retries))]
         try:
-            return await fn(*args, metadata=metadata)
+            return await fn(*args, metadata=metadata, timeout=timeout)
         except (StreamTerminatedError, GRPCError, socket.gaierror) as exc:
             if isinstance(exc, GRPCError) and exc.status not in status_codes:
                 raise

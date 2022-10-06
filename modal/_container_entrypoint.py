@@ -114,7 +114,7 @@ class _FunctionIOManager:
                 # the task to fail, which will cause the server to reschedule those inputs to other
                 # tasks.
                 # response = await retry_transient_errors(self.client.stub.FunctionGetInputs, request)
-                response = await self.client.stub.FunctionGetInputs(request)
+                response = await self.client.stub.FunctionGetInputs(request, timeout=65.0)
 
             if response.rate_limit_sleep_duration:
                 logger.info(
@@ -152,7 +152,7 @@ class _FunctionIOManager:
         async for outputs in queue_batch_iterator(self.output_queue, MAX_OUTPUT_BATCH_SIZE, 0):
             req = api_pb2.FunctionPutOutputsRequest(outputs=outputs)
             # No timeout so this can block forever.
-            await retry_transient_errors(self.client.stub.FunctionPutOutputs, req, max_retries=None)
+            await retry_transient_errors(self.client.stub.FunctionPutOutputs, req, max_retries=None, timeout=15.0)
 
     async def run_inputs_outputs(self):
         # This also makes sure to terminate the outputs
