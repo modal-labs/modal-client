@@ -12,7 +12,11 @@ from modal.exception import DeprecationError
 from modal_proto import api_grpc, api_pb2
 from modal_utils import async_utils
 from modal_utils.async_utils import TaskContext, synchronize_apis
-from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, ChannelPool
+from modal_utils.grpc_utils import (
+    RETRYABLE_GRPC_STATUS_CODES,
+    ChannelPool,
+    retry_transient_errors,
+)
 from modal_utils.http_utils import http_client_with_tls
 
 from .config import config, logger
@@ -88,7 +92,7 @@ class _Client:
                 client_type=self.client_type,
                 version=self.version,
             )
-            resp = await self.stub.ClientCreate(req, timeout=CLIENT_CREATE_TIMEOUT)
+            resp = await retry_transient_errors(self.stub.ClientCreate, req, timeout=CLIENT_CREATE_TIMEOUT)
             if resp.deprecation_warning:
                 ALARM_EMOJI = chr(0x1F6A8)
                 warnings.warn(f"{ALARM_EMOJI} {resp.deprecation_warning} {ALARM_EMOJI}", DeprecationError)
