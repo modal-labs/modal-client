@@ -41,6 +41,18 @@ class UserException(Exception):
     pass
 
 
+class SequenceNumber:
+    def __init__(self, initial_value: int):
+        self._value: int = initial_value
+
+    def increase(self):
+        self._value += 1
+
+    @property
+    def value(self) -> int:
+        return self._value
+
+
 class _FunctionIOManager:
     """This class isn't much more than a helper method for some gRPC calls.
 
@@ -171,7 +183,7 @@ class _FunctionIOManager:
             finally:
                 await self.output_queue.put(None)
 
-    async def _enqueue_output(self, input_id, **kwargs):
+    async def _enqueue_output(self, input_id, gen_index, **kwargs):
         # upload data to S3 if too big.
         if "data" in kwargs and kwargs["data"] and len(kwargs["data"]) > MAX_OBJECT_SIZE_BYTES:
             data_blob_id = await blob_upload(kwargs["data"], self.client.stub)
@@ -184,6 +196,7 @@ class _FunctionIOManager:
             task_id=self.task_id,
             input_started_at=self.input_started_at,
             output_created_at=time.time(),
+            gen_index=gen_index,
             result=api_pb2.GenericResult(**kwargs),
         )
         await self.output_queue.put(output)
@@ -240,11 +253,10 @@ class _FunctionIOManager:
             raise UserException()
 
     @synchronizer.asynccontextmanager
-    async def handle_input_exception(self, input_id):
+    async def handle_input_exception(self, input_id, output_index: SequenceNumber):
         try:
             with trace("input"):
                 set_span_tag("input_id", input_id)
-
                 yield
         except KeyboardInterrupt:
             raise
@@ -260,6 +272,7 @@ class _FunctionIOManager:
             # to unpickle it in some cases). Let's watch out for issues.
             await self._enqueue_output(
                 input_id,
+                output_index.value,
                 status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
                 data=self.serialize_exception(exc),
                 exception=repr(exc),
@@ -268,24 +281,27 @@ class _FunctionIOManager:
                 tb_line_cache=tb_line_cache,
             )
 
-    async def enqueue_output(self, input_id, data):
+    async def enqueue_output(self, input_id, output_index: int, data):
         await self._enqueue_output(
             input_id,
+            gen_index=output_index,
             status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
             data=self.serialize(data),
         )
 
-    async def enqueue_generator_value(self, input_id, data):
+    async def enqueue_generator_value(self, input_id, output_index: int, data):
         await self._enqueue_output(
             input_id,
+            gen_index=output_index,
             status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
             data=self.serialize(data),
             gen_status=api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE,
         )
 
-    async def enqueue_generator_eof(self, input_id):
+    async def enqueue_generator_eof(self, input_id, output_index: int):
         await self._enqueue_output(
             input_id,
+            gen_index=output_index,
             status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
             gen_status=api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE,
         )
@@ -330,7 +346,8 @@ def call_function_sync(
 
     try:
         for input_id, args, kwargs in function_io_manager.run_inputs_outputs():
-            with function_io_manager.handle_input_exception(input_id):
+            output_index = SequenceNumber(0)
+            with function_io_manager.handle_input_exception(input_id, output_index):
                 if self is not None:
                     res = fun(self, *args, **kwargs)
                 else:
@@ -340,13 +357,16 @@ def call_function_sync(
                 if is_generator:
                     if not inspect.isgenerator(res):
                         raise InvalidError(f"Generator function returned value of type {type(res)}")
+
                     for value in res:
-                        function_io_manager.enqueue_generator_value(input_id, value)
-                    function_io_manager.enqueue_generator_eof(input_id)
+                        function_io_manager.enqueue_generator_value(input_id, output_index.value, value)
+                        output_index.increase()
+
+                    function_io_manager.enqueue_generator_eof(input_id, output_index.value)
                 else:
                     if inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
                         raise InvalidError(f"Sync (non-generator) function return value of type {type(res)}")
-                    function_io_manager.enqueue_output(input_id, res)
+                    function_io_manager.enqueue_output(input_id, output_index.value, res)
     finally:
         if cls is not None and hasattr(cls, "__exit__"):
             with function_io_manager.handle_user_exception():
@@ -375,7 +395,8 @@ async def call_function_async(
 
     try:
         async for input_id, args, kwargs in aio_function_io_manager.run_inputs_outputs():
-            async with aio_function_io_manager.handle_input_exception(input_id):
+            output_index = SequenceNumber(0)  # mutable number we can increase from the generator loop
+            async with aio_function_io_manager.handle_input_exception(input_id, output_index):
                 if self:
                     res = fun(self, *args, **kwargs)
                 else:
@@ -386,13 +407,14 @@ async def call_function_async(
                     if not inspect.isasyncgen(res):
                         raise InvalidError(f"Async generator function returned value of type {type(res)}")
                     async for value in res:
-                        await aio_function_io_manager.enqueue_generator_value(input_id, value)
-                    await aio_function_io_manager.enqueue_generator_eof(input_id)
+                        await aio_function_io_manager.enqueue_generator_value(input_id, output_index.value, value)
+                        output_index.increase()
+                    await aio_function_io_manager.enqueue_generator_eof(input_id, output_index.value)
                 else:
                     if not inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
                         raise InvalidError(f"Async (non-generator) function returned value of type {type(res)}")
                     value = await res
-                    await aio_function_io_manager.enqueue_output(input_id, value)
+                    await aio_function_io_manager.enqueue_output(input_id, output_index.value, value)
     finally:
         if cls is not None:
             if hasattr(cls, "__aexit__"):

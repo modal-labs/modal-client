@@ -421,6 +421,7 @@ message FunctionPutOutputsItem {
   double input_started_at = 3;
   double output_created_at = 4;
   string task_id = 5;
+  int32 gen_index = 6; // ordering for generator outputs
 }
 
 message FunctionPutOutputsRequest {

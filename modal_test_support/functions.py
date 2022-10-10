@@ -40,6 +40,20 @@ def raises_keyboardinterrupt(x):
     raise KeyboardInterrupt()
 
 
+@stub.generator()
+def gen_n(n):
+    for i in range(n):
+        yield i**2
+
+
+@stub.generator()
+def gen_n_fail_on_m(n, m):
+    for i in range(n):
+        if i == m:
+            raise Exception("bad")
+        yield i**2
+
+
 def deprecated_function(x):
     deprecation_warning("This function is deprecated")
     return x**2
