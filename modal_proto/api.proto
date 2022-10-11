@@ -356,6 +356,7 @@ message FunctionGetOutputsItem {
   GenericResult result = 1;
   int32 idx = 2;
   string input_id = 3;
+  int32 gen_index = 4;
 }
 
 message FunctionGetOutputsRequest {
@@ -474,7 +475,7 @@ message Image {
   repeated string secret_ids = 12;
   // Part of Image definition, because presence of GPU drivers
   // affects the image that's built.
-  bool gpu = 13; 
+  bool gpu = 13;
 }
 
 message ImageContextFile {

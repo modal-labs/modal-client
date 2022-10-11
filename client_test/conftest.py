@@ -296,7 +296,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     exception=repr(exc),
                     traceback="".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
                 )
-                output = api_pb2.FunctionGetOutputsItem(input_id="in-123", idx=0, result=result)
+                output = api_pb2.FunctionGetOutputsItem(input_id="in-123", idx=0, result=result, gen_index=0)
                 await stream.send_message(api_pb2.FunctionGetOutputsResponse(outputs=[output]))
                 return
 
@@ -317,6 +317,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     input_id=f"in-123-{index}",
                     idx=idx,
                     result=result,
+                    gen_index=index,
                 )
                 outputs.append(item)
 
