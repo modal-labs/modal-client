@@ -13,9 +13,12 @@ from rich.live import Live
 from rich.panel import Panel
 from rich.progress import (
     BarColumn,
+    DownloadColumn,
     MofNCompleteColumn,
     Progress,
+    TaskID,
     TextColumn,
+    TimeElapsedColumn,
     TimeRemainingColumn,
 )
 from rich.spinner import Spinner
@@ -97,8 +100,10 @@ class OutputManager:
 
         self._console = Console(file=stdout, highlight=False)
         self._task_states = {}
+        self._task_progress_items: dict[tuple[str, api_pb2.ProgressType.ValueType], TaskID] = {}
         self._current_render_group: Optional[Group] = None
         self._function_progress: Optional[Progress] = None
+        self._task_progress: Optional[Progress] = None
 
     def print_if_visible(self, renderable) -> None:
         if self._visible_progress:
@@ -131,6 +136,24 @@ class OutputManager:
             if self._current_render_group:
                 self._current_render_group.renderables.append(Panel(self._function_progress, style="gray50"))
         return self._function_progress
+
+    @property
+    def task_progress(self) -> Progress:
+        """Creates a `rich.Progress` instance with custom columns for task progress,
+        and adds it to the current render group."""
+        if not self._task_progress:
+            self._task_progress = Progress(
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                DownloadColumn(),
+                TimeElapsedColumn(),
+                console=self._console,
+                transient=True,
+            )
+            if self._current_render_group:
+                # Appear above function progress renderables.
+                self._current_render_group.renderables.insert(0, self._task_progress)
+        return self._task_progress
 
     def function_progress_callback(self, tag: str) -> Callable[[int, int], None]:
         """Adds a task to the current function_progress instance, and returns a callback
@@ -180,6 +203,28 @@ class OutputManager:
         else:
             return "Tasks created..."
 
+    def _update_task_progress(
+        self, *, task_id: str, progress_task: api_pb2.ProgressType.ValueType, completed: int, total: int
+    ) -> None:
+        key = (task_id, progress_task)
+
+        if progress_task == api_pb2.IMAGE_SNAPSHOT_UPLOAD:
+            progress_task_display = "Uploading image snapshot…"
+        else:
+            raise Exception(f"Unknown {progress_task} type for progress update.")
+
+        task_desc = f"[yellow]{progress_task_display}"
+
+        if key in self._task_progress_items:
+            progress_task_id = self._task_progress_items[key]
+        else:
+            progress_task_id = self.task_progress.add_task(task_desc, total=total)
+            self._task_progress_items[key] = progress_task_id
+
+        self.task_progress.update(progress_task_id, completed=completed, total=total)
+        if completed == total:
+            self.task_progress.remove_task(progress_task_id)
+
     async def get_logs_loop(self, app_id: str, client: _Client, status_spinner: Spinner, last_log_batch_entry_id: str):
         async def _get_logs():
             nonlocal last_log_batch_entry_id
@@ -205,7 +250,14 @@ class OutputManager:
                         if log.task_state:
                             message = self._update_task_state(log_batch.task_id, log.task_state)
                             step_progress_update(status_spinner, message)
-                        if log.data:
+                        if log.task_progress.len or log.task_progress.pos:
+                            self._update_task_progress(
+                                task_id=log_batch.task_id,
+                                progress_task=log.task_progress.progress_type,
+                                completed=log.task_progress.pos or 0,
+                                total=log.task_progress.len or 0,
+                            )
+                        elif log.data:
                             if self._visible_progress:
                                 stream = line_buffers.get(log.file_descriptor)
                                 if stream is None:

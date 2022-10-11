@@ -690,6 +690,17 @@ message TaskLogs {
   TaskState task_state = 6;
   double timestamp = 7;
   FileDescriptor file_descriptor = 8;
+  TaskProgress task_progress = 9;
+}
+
+enum ProgressType {
+  IMAGE_SNAPSHOT_UPLOAD = 0;
+}
+
+message TaskProgress {
+  uint64 len = 1;
+  uint64 pos = 2;
+  ProgressType progress_type = 3;
 }
 
 message TaskLogsBatch {
