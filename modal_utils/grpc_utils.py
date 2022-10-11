@@ -174,10 +174,10 @@ async def retry_transient_errors(
             return await fn(*args, metadata=metadata, timeout=timeout)
         except (StreamTerminatedError, GRPCError, socket.gaierror) as exc:
             if isinstance(exc, GRPCError) and exc.status not in status_codes:
-                raise
+                raise exc
 
             if max_retries is not None and n_retries >= max_retries:
-                raise
+                raise exc
 
             n_retries += 1
             if not (isinstance(exc, GRPCError) and exc.status in ignore_errors):

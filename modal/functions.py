@@ -156,8 +156,6 @@ class _Invocation:
             client.stub.FunctionPutInputs,
             request_put,
             max_retries=None,
-            additional_status_codes=[Status.RESOURCE_EXHAUSTED],
-            ignore_errors=[Status.RESOURCE_EXHAUSTED],
         )
 
         return _Invocation(client.stub, function_call_id, client)
@@ -263,8 +261,6 @@ async def _map_invocation(
                 client.stub.FunctionPutInputs,
                 request,
                 max_retries=None,
-                additional_status_codes=[Status.RESOURCE_EXHAUSTED],
-                ignore_errors=[Status.RESOURCE_EXHAUSTED],
             )
 
         have_all_inputs = True
