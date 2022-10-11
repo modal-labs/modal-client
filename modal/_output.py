@@ -100,7 +100,7 @@ class OutputManager:
 
         self._console = Console(file=stdout, highlight=False)
         self._task_states = {}
-        self._task_progress_items: dict[tuple[str, api_pb2.ProgressType.ValueType], TaskID] = {}
+        self._task_progress_items: dict[tuple[str, api_pb2.ProgressType], TaskID] = {}
         self._current_render_group: Optional[Group] = None
         self._function_progress: Optional[Progress] = None
         self._task_progress: Optional[Progress] = None
@@ -203,9 +203,7 @@ class OutputManager:
         else:
             return "Tasks created..."
 
-    def _update_task_progress(
-        self, *, task_id: str, progress_task: api_pb2.ProgressType.ValueType, completed: int, total: int
-    ) -> None:
+    def _update_task_progress(self, *, task_id: str, progress_task, completed: int, total: int) -> None:
         key = (task_id, progress_task)
 
         if progress_task == api_pb2.IMAGE_SNAPSHOT_UPLOAD:
