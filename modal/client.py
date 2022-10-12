@@ -20,6 +20,7 @@ from modal_utils.grpc_utils import (
 )
 from modal_utils.http_utils import http_client_with_tls
 
+from ._tracing import inject_tracing_context
 from .config import config, logger
 from .exception import AuthError, ConnectionError, InvalidError, VersionError
 
@@ -82,6 +83,7 @@ class _Client:
             self.server_url,
             self.client_type,
             self.credentials,
+            inject_tracing_context,
         )
         self._channel_pool = ChannelPool(self._task_context, channel_factory)
         await self._channel_pool.start()

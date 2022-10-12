@@ -13,7 +13,6 @@ from grpclib.const import Cardinality
 from grpclib.exceptions import StreamTerminatedError
 from sentry_sdk import add_breadcrumb, capture_exception
 
-from modal._tracing import inject_tracing_context
 from modal_proto import api_pb2
 
 from .async_utils import TaskContext, synchronizer
@@ -50,7 +49,9 @@ RETRYABLE_GRPC_STATUS_CODES = [
 class ChannelFactory:
     """Manages gRPC connection with the server. This factory is used by the channel pool."""
 
-    def __init__(self, server_url: str, client_type: api_pb2.ClientType = None, credentials=None) -> None:
+    def __init__(
+        self, server_url: str, client_type: api_pb2.ClientType = None, credentials=None, inject_tracing_context=None
+    ) -> None:
         try:
             o = urllib.parse.urlparse(server_url)
         except Exception:
@@ -66,6 +67,7 @@ class ChannelFactory:
             self.target = o.netloc
             self.is_tls = o.scheme.endswith("s")
 
+        self.inject_tracing_context = inject_tracing_context
         self.metadata = auth_metadata(client_type, credentials)
         logger.debug(f"Connecting to {self.target} using scheme {o.scheme}")
 
@@ -86,7 +88,8 @@ class ChannelFactory:
             for k, v in self.metadata.items():
                 event.metadata[k] = v
 
-            inject_tracing_context(event.metadata)
+            if self.inject_tracing_context is not None:
+                self.inject_tracing_context(event.metadata)
 
         grpclib.events.listen(channel, grpclib.events.SendRequest, send_request)
         return channel
