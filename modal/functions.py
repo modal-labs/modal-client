@@ -10,6 +10,7 @@ from typing import (
     Callable,
     Collection,
     Dict,
+    List,
     Optional,
     Tuple,
     Union,
@@ -33,6 +34,7 @@ from ._blob_utils import (
     blob_download,
     blob_upload,
 )
+from ._call_graph import reconstruct_call_graph, InputInfo
 from ._function_utils import FunctionInfo
 from ._output import OutputManager
 from ._serialization import deserialize, serialize
@@ -143,7 +145,7 @@ class _Invocation:
                 "with app.run():\n"
                 "    my_modal_function()\n"
             )
-        request = api_pb2.FunctionMapRequest(function_id=function_id)
+        request = api_pb2.FunctionMapRequest(function_id=function_id, parent_input_id=current_input_id())
         response = await retry_transient_errors(client.stub.FunctionMap, request)
 
         function_call_id = response.function_call_id
@@ -222,7 +224,7 @@ async def _map_invocation(
     order_outputs: bool,
     count_update_callback: Optional[Callable[[int, int], None]],
 ):
-    request = api_pb2.FunctionMapRequest(function_id=function_id)
+    request = api_pb2.FunctionMapRequest(function_id=function_id, parent_input_id=current_input_id())
     response = await retry_transient_errors(client.stub.FunctionMap, request)
 
     function_call_id = response.function_call_id
@@ -765,6 +767,14 @@ class _FunctionCall(Handle, type_prefix="fc"):
         """
         return await self._invocation().poll_function(timeout=timeout)
 
+    async def get_call_graph(self) -> List[InputInfo]:
+        """Returns a nested dictionary structure representing the call graph from a given root
+        call ID, along with the status of execution for each node.
+        """
+        request = api_pb2.FunctionGetCallGraphRequest(root_function_call_id=self.object_id)
+        response = await retry_transient_errors(self._client.stub.FunctionGetCallGraph, request)
+        return reconstruct_call_graph(response)
+
 
 FunctionCall, AioFunctionCall = synchronize_apis(_FunctionCall)
 
@@ -813,9 +823,6 @@ def current_input_id() -> str:
     ```
     """
     global _current_input_id
-
-    if _current_input_id is None:
-        raise Exception("current_input_id is only available within a container-executed Modal function")
 
     return _current_input_id
 
