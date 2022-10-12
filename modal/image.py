@@ -154,6 +154,8 @@ class _Image(Provider[_ImageHandle]):
                 continue
             elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
                 raise RemoteError(response.result.exception)
+            elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
+                raise RemoteError("Image build terminated due to external shut-down. Please try again.")
             elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
                 break
             else:

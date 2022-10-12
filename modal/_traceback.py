@@ -202,7 +202,6 @@ def setup_rich_traceback() -> None:
     import grpclib
     import synchronicity
 
-    import modal
     import modal_utils
 
-    install(suppress=[modal, synchronicity, modal_utils, grpclib], extra_lines=1)
+    install(suppress=[synchronicity, modal_utils, grpclib], extra_lines=1)
