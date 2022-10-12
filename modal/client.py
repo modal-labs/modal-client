@@ -205,7 +205,11 @@ class _Client:
         else:
             c = config
 
+        # Sets server_url to socket file path if proxy is available.
         server_url = c["server_url"]
+        if c.get("worker_proxy_active"):
+            server_url = c["server_socket_filename"]
+
         token_id = c["token_id"]
         token_secret = c["token_secret"]
         task_id = c["task_id"]
