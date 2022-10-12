@@ -92,7 +92,14 @@ class _Client:
                 client_type=self.client_type,
                 version=self.version,
             )
-            resp = await retry_transient_errors(self.stub.ClientCreate, req, timeout=CLIENT_CREATE_TIMEOUT)
+            resp = await retry_transient_errors(
+                # TODO(erikbern): Github on windows needs a minimum timeout of at least 3s here,
+                # but we could probably make it smaller otherwise
+                self.stub.ClientCreate,
+                req,
+                attempt_timeout=3.0,
+                total_timeout=CLIENT_CREATE_TIMEOUT,
+            )
             if resp.deprecation_warning:
                 ALARM_EMOJI = chr(0x1F6A8)
                 warnings.warn(f"{ALARM_EMOJI} {resp.deprecation_warning} {ALARM_EMOJI}", DeprecationError)

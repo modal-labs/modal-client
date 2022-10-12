@@ -156,8 +156,10 @@ class _FunctionIOManager:
         """
         async for outputs in queue_batch_iterator(self.output_queue, MAX_OUTPUT_BATCH_SIZE, 0):
             req = api_pb2.FunctionPutOutputsRequest(outputs=outputs)
-            # No timeout so this can block forever.
-            await retry_transient_errors(self.client.stub.FunctionPutOutputs, req, max_retries=None, timeout=15.0)
+            # No max retries so this can block forever.
+            await retry_transient_errors(
+                self.client.stub.FunctionPutOutputs, req, max_retries=None, attempt_timeout=10.0
+            )
 
     async def run_inputs_outputs(self):
         # This also makes sure to terminate the outputs

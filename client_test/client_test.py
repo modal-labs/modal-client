@@ -5,9 +5,11 @@ import time
 from grpclib import Status
 
 import modal.exception
-from modal.client import AioClient, Client
+from modal.client import CLIENT_CREATE_TIMEOUT, AioClient, Client
 from modal.exception import AuthError, ConnectionError, VersionError
 from modal_proto import api_pb2
+
+WAIT_EPS = 0.1
 
 
 @pytest.mark.asyncio
@@ -29,6 +31,7 @@ async def test_container_client(servicer, aio_container_client):
 
 
 @pytest.mark.asyncio
+@pytest.mark.timeout(CLIENT_CREATE_TIMEOUT + WAIT_EPS)
 async def test_client_dns_failure():
     with pytest.raises(ConnectionError) as excinfo:
         async with AioClient("https://xyz.invalid", api_pb2.CLIENT_TYPE_CLIENT, None):
@@ -37,6 +40,7 @@ async def test_client_dns_failure():
 
 
 @pytest.mark.asyncio
+@pytest.mark.timeout(CLIENT_CREATE_TIMEOUT + WAIT_EPS)
 async def test_client_connection_failure():
     with pytest.raises(ConnectionError) as excinfo:
         async with AioClient("https://localhost:443", api_pb2.CLIENT_TYPE_CLIENT, None):
@@ -45,15 +49,18 @@ async def test_client_connection_failure():
 
 
 @pytest.mark.asyncio
+@pytest.mark.timeout(CLIENT_CREATE_TIMEOUT + WAIT_EPS)
 async def test_client_connection_timeout(servicer):
     with pytest.raises(ConnectionError) as excinfo:
         async with AioClient(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, None, version="timeout"):
             pass
+
     # The HTTP lookup will return 400 because the GRPC server rejects the http request
     assert "deadline" in str(excinfo.value).lower()
 
 
 @pytest.mark.asyncio
+@pytest.mark.timeout(CLIENT_CREATE_TIMEOUT + WAIT_EPS)
 async def test_client_server_error(servicer):
     with pytest.raises(ConnectionError) as excinfo:
         async with AioClient("https://github.com", api_pb2.CLIENT_TYPE_CLIENT, None):

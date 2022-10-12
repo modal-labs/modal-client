@@ -1,4 +1,5 @@
 import pytest
+import time
 
 import pytest_asyncio
 from grpclib import GRPCError, Status
@@ -56,5 +57,13 @@ async def test_retry_transient_errors(servicer, client_stub):
             assert await retry_transient_errors(client_stub.BlobCreate, req, max_retries=None, base_delay=0)
         assert servicer.blob_create_metadata.get("x-idempotency-key")
         assert servicer.blob_create_metadata.get("x-retry-attempt") == "0"
+
+        # Make sure to respect total_timeout
+        t0 = time.time()
+        servicer.fail_blob_create = [Status.UNAVAILABLE] * 99
+        with pytest.raises(GRPCError):
+            assert await retry_transient_errors(client_stub.BlobCreate, req, max_retries=None, total_timeout=3)
+        total_time = time.time() - t0
+        assert total_time <= 3.1
     finally:
         servicer.fail_blob_create = []

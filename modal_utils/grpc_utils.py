@@ -150,13 +150,15 @@ async def unary_stream(
 async def retry_transient_errors(
     fn,
     *args,
-    base_delay=0.1,
-    max_delay=1,
-    delay_factor=2,
-    max_retries=3,
-    additional_status_codes=[],
-    ignore_errors=[],
-    timeout=None,
+    base_delay: float = 0.1,
+    max_delay: float = 1,
+    delay_factor: float = 2,
+    max_retries: int = 3,
+    additional_status_codes: list = [],
+    ignore_errors: list = [],
+    attempt_timeout: Optional[float] = None,  # timeout for each attempt
+    total_timeout: Optional[float] = None,  # timeout for the entire function call
+    attempt_timeout_floor=2.0,  # always have at least this much timeout (only for total_timeout)
 ):
     """Retry on transient gRPC failures with back-off until max_retries is reached.
     If max_retries is None, retry forever."""
@@ -168,8 +170,22 @@ async def retry_transient_errors(
 
     idempotency_key = str(uuid.uuid4())
 
+    if total_timeout is not None:
+        total_deadline = time.time() + total_timeout
+    else:
+        total_deadline = None
+
     while True:
         metadata = [("x-idempotency-key", idempotency_key), ("x-retry-attempt", str(n_retries))]
+        timeouts = []
+        if attempt_timeout is not None:
+            timeouts.append(attempt_timeout)
+        if total_timeout is not None:
+            timeouts.append(max(total_deadline - time.time(), attempt_timeout_floor))
+        if timeouts:
+            timeout = min(timeouts)  # In case the function provided both types of timeouts
+        else:
+            timeout = None
         try:
             return await fn(*args, metadata=metadata, timeout=timeout)
         except (StreamTerminatedError, GRPCError, socket.gaierror) as exc:
@@ -179,9 +195,14 @@ async def retry_transient_errors(
             if max_retries is not None and n_retries >= max_retries:
                 raise exc
 
+            if total_deadline and time.time() + delay + attempt_timeout_floor >= total_deadline:
+                # no point sleeping if that's going to push us past the deadline
+                raise exc
+
             n_retries += 1
             if not (isinstance(exc, GRPCError) and exc.status in ignore_errors):
                 capture_exception(exc)
+
             await asyncio.sleep(delay)
             delay = min(delay * delay_factor, max_delay)
 
