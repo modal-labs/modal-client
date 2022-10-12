@@ -2,20 +2,40 @@ import asyncio
 import contextlib
 import socket
 import time
+import urllib.parse
 import uuid
-from typing import TYPE_CHECKING, Any, AsyncIterator, Optional, TypeVar
+from typing import Any, AsyncIterator, Dict, Optional, TypeVar
 
+import grpclib.events
 from grpclib import GRPCError, Status
 from grpclib.client import Channel, Stream, UnaryStreamMethod
 from grpclib.const import Cardinality
 from grpclib.exceptions import StreamTerminatedError
 from sentry_sdk import add_breadcrumb, capture_exception
 
+from modal._tracing import inject_tracing_context
+from modal_proto import api_pb2
+
 from .async_utils import TaskContext, synchronizer
 from .logger import logger
 
-if TYPE_CHECKING:
-    from .server_connection import GRPCConnectionFactory
+
+def auth_metadata(client_type: api_pb2.ClientType, credentials) -> Dict[str, str]:
+    if credentials and (client_type == api_pb2.CLIENT_TYPE_CLIENT or client_type == api_pb2.CLIENT_TYPE_WEB_SERVER):
+        token_id, token_secret = credentials
+        return {
+            "x-modal-token-id": token_id,
+            "x-modal-token-secret": token_secret,
+        }
+    elif credentials and client_type == api_pb2.CLIENT_TYPE_CONTAINER:
+        task_id, task_secret = credentials
+        return {
+            "x-modal-task-id": task_id,
+            "x-modal-task-secret": task_secret,
+        }
+    else:
+        return {}
+
 
 _SendType = TypeVar("_SendType")
 _RecvType = TypeVar("_RecvType")
@@ -25,6 +45,51 @@ RETRYABLE_GRPC_STATUS_CODES = [
     Status.UNAVAILABLE,
     Status.INTERNAL,
 ]
+
+
+class ChannelFactory:
+    """Manages gRPC connection with the server. This factory is used by the channel pool."""
+
+    def __init__(self, server_url: str, client_type: api_pb2.ClientType = None, credentials=None) -> None:
+        try:
+            o = urllib.parse.urlparse(server_url)
+        except Exception:
+            logger.exception(f"failed to parse server url: {server_url}")
+            raise
+
+        # Determine if the url is a socket.
+        self.scheme = o.scheme
+        self.is_socket = self.scheme == "unix"
+        if self.is_socket:
+            self.target = o.path
+        else:
+            self.target = o.netloc
+            self.is_tls = o.scheme.endswith("s")
+
+        self.metadata = auth_metadata(client_type, credentials)
+        logger.debug(f"Connecting to {self.target} using scheme {o.scheme}")
+
+    def create(self) -> Channel:
+        if self.is_socket:
+            channel = Channel(path=self.target)
+        else:
+            parts = self.target.split(":")
+            assert len(parts) <= 2, "Invalid target location: " + self.target
+            channel = Channel(
+                host=parts[0],
+                port=parts[1] if len(parts) == 2 else 443 if self.is_tls else 80,
+                ssl=self.is_tls,
+            )
+
+        # Inject metadata for the client.
+        async def send_request(event: grpclib.events.SendRequest) -> None:
+            for k, v in self.metadata.items():
+                event.metadata[k] = v
+
+            inject_tracing_context(event.metadata)
+
+        grpclib.events.listen(channel, grpclib.events.SendRequest, send_request)
+        return channel
 
 
 class ChannelStruct:
@@ -54,12 +119,12 @@ class ChannelPool:
     # Don't accept more connections on this channel after this many seconds
     MAX_CHANNEL_LIFETIME = 30
 
-    def __init__(self, task_context: TaskContext, conn_factory: "GRPCConnectionFactory") -> None:
+    def __init__(self, task_context: TaskContext, channel_factory: ChannelFactory) -> None:
         # Only used by start()
         self._task_context = task_context
 
         # Threadsafe because it is read-only
-        self._conn_factory = conn_factory
+        self._channel_factory = channel_factory
 
         # Protects the channels list below
         self._lock = asyncio.Lock()
@@ -95,7 +160,7 @@ class ChannelPool:
             if eligible_channels:
                 ch = eligible_channels[0]
             else:
-                channel = self._conn_factory.create()
+                channel = self._channel_factory.create()
                 ch = ChannelStruct(channel)
                 self._channels.append(ch)
                 n_conc_reqs = [ch.n_concurrent_requests for ch in self._channels]

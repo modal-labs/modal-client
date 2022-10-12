@@ -6,8 +6,7 @@ from grpclib import GRPCError, Status
 
 from modal_proto import api_grpc, api_pb2
 from modal_utils.async_utils import TaskContext
-from modal_utils.grpc_utils import ChannelPool, retry_transient_errors
-from modal_utils.server_connection import GRPCConnectionFactory
+from modal_utils.grpc_utils import ChannelFactory, ChannelPool, retry_transient_errors
 
 
 @pytest_asyncio.fixture
@@ -15,12 +14,12 @@ async def client_stub(servicer):
     # Most of this is duplicated from the Client class
     async with TaskContext(grace=1) as task_context:
         credentials = ("foo-token", "foo-secret")
-        connection_factory = GRPCConnectionFactory(
+        channel_factory = ChannelFactory(
             servicer.remote_addr,
             api_pb2.CLIENT_TYPE_CLIENT,
             credentials,
         )
-        channel_pool = ChannelPool(task_context, connection_factory)
+        channel_pool = ChannelPool(task_context, channel_factory)
         await channel_pool.start()
         yield api_grpc.ModalClientStub(channel_pool)
         channel_pool.close()

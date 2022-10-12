@@ -14,6 +14,7 @@ from modal_utils import async_utils
 from modal_utils.async_utils import TaskContext, synchronize_apis
 from modal_utils.grpc_utils import (
     RETRYABLE_GRPC_STATUS_CODES,
+    ChannelFactory,
     ChannelPool,
     retry_transient_errors,
 )
@@ -72,19 +73,17 @@ class _Client:
         return self._stub
 
     async def _start(self):
-        from modal_utils.server_connection import GRPCConnectionFactory
-
         logger.debug("Client: Starting")
         if self._stub:
             raise Exception("Client is already running")
         self._task_context = TaskContext(grace=1)
         await self._task_context.start()
-        self._connection_factory = GRPCConnectionFactory(
+        channel_factory = ChannelFactory(
             self.server_url,
             self.client_type,
             self.credentials,
         )
-        self._channel_pool = ChannelPool(self._task_context, self._connection_factory)
+        self._channel_pool = ChannelPool(self._task_context, channel_factory)
         await self._channel_pool.start()
         self._stub = api_grpc.ModalClientStub(self._channel_pool)  # type: ignore
         try:
