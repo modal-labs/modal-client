@@ -14,8 +14,7 @@ from modal_utils import async_utils
 from modal_utils.async_utils import TaskContext, synchronize_apis
 from modal_utils.grpc_utils import (
     RETRYABLE_GRPC_STATUS_CODES,
-    ChannelFactory,
-    ChannelPool,
+    create_channel,
     retry_transient_errors,
 )
 from modal_utils.http_utils import http_client_with_tls
@@ -64,7 +63,6 @@ class _Client:
         self.credentials = credentials
         self.version = version
         self._task_context = None
-        self._channel_pool = None
         self._stub = None
 
     @property
@@ -79,15 +77,14 @@ class _Client:
             raise Exception("Client is already running")
         self._task_context = TaskContext(grace=1)
         await self._task_context.start()
-        channel_factory = ChannelFactory(
+        self._channel = create_channel(
+            self._task_context,
             self.server_url,
             self.client_type,
             self.credentials,
             inject_tracing_context,
         )
-        self._channel_pool = ChannelPool(self._task_context, channel_factory)
-        await self._channel_pool.start()
-        self._stub = api_grpc.ModalClientStub(self._channel_pool)  # type: ignore
+        self._stub = api_grpc.ModalClientStub(self._channel)  # type: ignore
         try:
             req = api_pb2.ClientCreateRequest(
                 client_type=self.client_type,
@@ -134,9 +131,9 @@ class _Client:
         if self._task_context:
             await self._task_context.stop()
             self._task_context = None
-        if self._channel_pool:
-            self._channel_pool.close()
-            self._channel_pool = None
+        if self._channel:
+            self._channel.close()
+            self._channel = None
         logger.debug("Client: Done shutting down")
         # Needed to catch straggling CancelledErrors and GeneratorExits that propagate
         # through our chains of async generators.
@@ -144,7 +141,7 @@ class _Client:
 
     async def _heartbeat(self):
         if self._stub is not None:
-            req = api_pb2.ClientHeartbeatRequest(client_id=self._client_id, num_connections=self._channel_pool.size())
+            req = api_pb2.ClientHeartbeatRequest(client_id=self._client_id)
             try:
                 await self.stub.ClientHeartbeat(req, timeout=HEARTBEAT_TIMEOUT)
                 self._last_heartbeat = time.time()

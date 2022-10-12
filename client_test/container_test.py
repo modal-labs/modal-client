@@ -1,4 +1,3 @@
-import os
 import platform
 import pytest
 import sys
@@ -14,15 +13,14 @@ from modal.client import Client
 from modal.exception import InvalidError
 from modal_proto import api_pb2
 
-# Something with timing is flaky in OSX & Windows tests
-EXTRA_TOLERANCE_DELAY = {"Darwin": 1.0, "Windows": 3.0}.get(platform.system(), 0.3)
+EXTRA_TOLERANCE_DELAY = 1.0
 FUNCTION_CALL_ID = "fc-123"
 SLEEP_DELAY = 0.1
 
 
-skip_github_actions_non_linux = pytest.mark.skipif(
-    os.environ.get("GITHUB_ACTIONS") and platform.system() != "Linux",
-    reason="sleep is inaccurate on Github Actions runners.",
+skip_windows = pytest.mark.skipif(
+    platform.system() == "Windows",
+    reason="Windows doesn't have UNIX sockets",
 )
 
 
@@ -78,9 +76,10 @@ def _run_container(
         return client, servicer.container_outputs
 
 
-def test_container_entrypoint_success(servicer, event_loop):
+@skip_windows
+def test_container_entrypoint_success(unix_servicer, event_loop):
     t0 = time.time()
-    client, outputs = _run_container(servicer, "modal_test_support.functions", "square")
+    client, outputs = _run_container(unix_servicer, "modal_test_support.functions", "square")
     assert 0 <= time.time() - t0 < EXTRA_TOLERANCE_DELAY
 
     assert len(outputs) == 1
@@ -91,9 +90,10 @@ def test_container_entrypoint_success(servicer, event_loop):
     assert output.data == serialize(42**2)
 
 
-def test_container_entrypoint_generator_success(servicer, event_loop):
+@skip_windows
+def test_container_entrypoint_generator_success(unix_servicer, event_loop):
     client, output_requests = _run_container(
-        servicer, "modal_test_support.functions", "gen_n", function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR
+        unix_servicer, "modal_test_support.functions", "gen_n", function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR
     )
 
     assert 1 <= len(output_requests) <= 43
@@ -116,10 +116,11 @@ def test_container_entrypoint_generator_success(servicer, event_loop):
     assert last_result.data == b""  # no data in generator complete marker result
 
 
-def test_container_entrypoint_generator_failure(servicer, event_loop):
+@skip_windows
+def test_container_entrypoint_generator_failure(unix_servicer, event_loop):
     inputs = _get_inputs(((10, 5), {}))
     client, output_requests = _run_container(
-        servicer,
+        unix_servicer,
         "modal_test_support.functions",
         "gen_n_fail_on_m",
         function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
@@ -148,10 +149,10 @@ def test_container_entrypoint_generator_failure(servicer, event_loop):
     assert data.args == ("bad",)
 
 
-@skip_github_actions_non_linux
-def test_container_entrypoint_async(servicer):
+@skip_windows
+def test_container_entrypoint_async(unix_servicer):
     t0 = time.time()
-    client, outputs = _run_container(servicer, "modal_test_support.functions", "square_async")
+    client, outputs = _run_container(unix_servicer, "modal_test_support.functions", "square_async")
     assert SLEEP_DELAY <= time.time() - t0 < SLEEP_DELAY + EXTRA_TOLERANCE_DELAY
 
     assert len(outputs) == 1
@@ -162,9 +163,9 @@ def test_container_entrypoint_async(servicer):
     assert output.data == serialize(42**2)
 
 
-@skip_github_actions_non_linux
-def test_container_entrypoint_failure(servicer):
-    client, outputs = _run_container(servicer, "modal_test_support.functions", "raises")
+@skip_windows
+def test_container_entrypoint_failure(unix_servicer):
+    client, outputs = _run_container(unix_servicer, "modal_test_support.functions", "raises")
 
     assert len(outputs) == 1
     assert isinstance(outputs[0], api_pb2.FunctionPutOutputsRequest)
@@ -175,9 +176,9 @@ def test_container_entrypoint_failure(servicer):
     assert "Traceback" in output.traceback
 
 
-@skip_github_actions_non_linux
-def test_container_entrypoint_raises_base_exception(servicer):
-    client, outputs = _run_container(servicer, "modal_test_support.functions", "raises_sysexit")
+@skip_windows
+def test_container_entrypoint_raises_base_exception(unix_servicer):
+    client, outputs = _run_container(unix_servicer, "modal_test_support.functions", "raises_sysexit")
 
     assert len(outputs) == 1
     assert isinstance(outputs[0], api_pb2.FunctionPutOutputsRequest)
@@ -187,16 +188,17 @@ def test_container_entrypoint_raises_base_exception(servicer):
     assert output.exception == "SystemExit(1)"
 
 
-@skip_github_actions_non_linux
-def test_container_entrypoint_keyboardinterrupt(servicer):
+@skip_windows
+def test_container_entrypoint_keyboardinterrupt(unix_servicer):
     with pytest.raises(KeyboardInterrupt):
-        client, outputs = _run_container(servicer, "modal_test_support.functions", "raises_keyboardinterrupt")
+        client, outputs = _run_container(unix_servicer, "modal_test_support.functions", "raises_keyboardinterrupt")
 
 
-def test_container_entrypoint_rate_limited(servicer, event_loop):
+@skip_windows
+def test_container_entrypoint_rate_limited(unix_servicer, event_loop):
     t0 = time.time()
-    servicer.rate_limit_sleep_duration = 0.25
-    client, outputs = _run_container(servicer, "modal_test_support.functions", "square")
+    unix_servicer.rate_limit_sleep_duration = 0.25
+    client, outputs = _run_container(unix_servicer, "modal_test_support.functions", "square")
     assert 0.25 <= time.time() - t0 < 0.25 + EXTRA_TOLERANCE_DELAY
 
     assert len(outputs) == 1
@@ -207,36 +209,40 @@ def test_container_entrypoint_rate_limited(servicer, event_loop):
     assert output.data == serialize(42**2)
 
 
-def test_container_entrypoint_grpc_failure(servicer, event_loop):
+@skip_windows
+def test_container_entrypoint_grpc_failure(unix_servicer, event_loop):
     # An error in "Modal code" should cause the entire container to fail
     with pytest.raises(GRPCError):
-        _run_container(servicer, "modal_test_support.functions", "square", fail_get_inputs=True)
+        _run_container(unix_servicer, "modal_test_support.functions", "square", fail_get_inputs=True)
 
-    # assert servicer.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
-    # assert "GRPCError" in servicer.task_result.exception
+    # assert unix_servicer.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
+    # assert "GRPCError" in unix_servicer.task_result.exception
 
 
-def test_container_entrypoint_missing_main_conditional(servicer, event_loop):
-    _run_container(servicer, "modal_test_support.missing_main_conditional", "square")
+@skip_windows
+def test_container_entrypoint_missing_main_conditional(unix_servicer, event_loop):
+    _run_container(unix_servicer, "modal_test_support.missing_main_conditional", "square")
 
-    assert servicer.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
-    assert 'if __name__ == "__main__":' in servicer.task_result.traceback
+    assert unix_servicer.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
+    assert 'if __name__ == "__main__":' in unix_servicer.task_result.traceback
 
-    exc = deserialize(servicer.task_result.data, None)
+    exc = deserialize(unix_servicer.task_result.data, None)
     assert isinstance(exc, InvalidError)
 
 
-def test_container_entrypoint_startup_failure(servicer, event_loop):
-    _run_container(servicer, "modal_test_support.startup_failure", "f")
+@skip_windows
+def test_container_entrypoint_startup_failure(unix_servicer, event_loop):
+    _run_container(unix_servicer, "modal_test_support.startup_failure", "f")
 
-    assert servicer.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
+    assert unix_servicer.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
 
-    exc = deserialize(servicer.task_result.data, None)
+    exc = deserialize(unix_servicer.task_result.data, None)
     assert isinstance(exc, ImportError)
 
 
-def test_container_entrypoint_class_scoped_function(servicer, event_loop):
-    client, outputs = _run_container(servicer, "modal_test_support.functions", "Cube.f")
+@skip_windows
+def test_container_entrypoint_class_scoped_function(unix_servicer, event_loop):
+    client, outputs = _run_container(unix_servicer, "modal_test_support.functions", "Cube.f")
     assert len(outputs) == 1
     assert isinstance(outputs[0], api_pb2.FunctionPutOutputsRequest)
 
@@ -249,8 +255,9 @@ def test_container_entrypoint_class_scoped_function(servicer, event_loop):
     assert Cube._events == ["init", "enter", "call", "exit"]
 
 
-def test_container_entrypoint_class_scoped_function_async(servicer, event_loop):
-    client, outputs = _run_container(servicer, "modal_test_support.functions", "CubeAsync.f")
+@skip_windows
+def test_container_entrypoint_class_scoped_function_async(unix_servicer, event_loop):
+    client, outputs = _run_container(unix_servicer, "modal_test_support.functions", "CubeAsync.f")
     assert len(outputs) == 1
     assert isinstance(outputs[0], api_pb2.FunctionPutOutputsRequest)
 
@@ -263,12 +270,13 @@ def test_container_entrypoint_class_scoped_function_async(servicer, event_loop):
     assert CubeAsync._events == ["init", "enter", "call", "exit"]
 
 
-def test_create_package_mounts_inside_container(servicer, event_loop):
+@skip_windows
+def test_create_package_mounts_inside_container(unix_servicer, event_loop):
     """`create_package_mounts` shouldn't actually run inside the container, because it's possible
     that there are modules that were present locally for the user that didn't get mounted into
     all the containers."""
 
-    client, outputs = _run_container(servicer, "modal_test_support.package_mount", "num_mounts")
+    client, outputs = _run_container(unix_servicer, "modal_test_support.package_mount", "num_mounts")
 
     output = _get_output(outputs[0])
     assert output.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS

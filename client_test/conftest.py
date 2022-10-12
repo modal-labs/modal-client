@@ -368,30 +368,49 @@ async def blob_server(event_loop):
 
 
 @pytest_asyncio.fixture(scope="function")
-async def servicer(blob_server):
-    blob_host, blobs = blob_server
-    servicer = MockClientServicer(blob_host, blobs)
-    server = None
+async def servicer_factory(blob_server):
+    @contextlib.asynccontextmanager
+    async def create_server(host=None, port=None, path=None):
+        blob_host, blobs = blob_server
+        servicer = MockClientServicer(blob_host, blobs)
+        server = None
 
-    async def _start_servicer():
-        nonlocal server
-        server = grpclib.server.Server([servicer])
-        port = find_free_port()
-        servicer.remote_addr = "http://localhost:%d" % port
-        await server.start("0.0.0.0", port)
+        async def _start_servicer():
+            nonlocal server
+            server = grpclib.server.Server([servicer])
+            await server.start(host=host, port=port, path=path)
 
-    async def _stop_servicer():
-        server.close()
-        await server.wait_closed()
+        async def _stop_servicer():
+            server.close()
+            await server.wait_closed()
 
-    _, aio_start_servicer = synchronize_apis(_start_servicer)
-    _, aio_stop_servicer = synchronize_apis(_stop_servicer)
+        _, aio_start_servicer = synchronize_apis(_start_servicer)
+        _, aio_stop_servicer = synchronize_apis(_stop_servicer)
 
-    await aio_start_servicer()
-    try:
+        await aio_start_servicer()
+        try:
+            yield servicer
+        finally:
+            await aio_stop_servicer()
+
+    yield create_server
+
+
+@pytest_asyncio.fixture(scope="function")
+async def servicer(servicer_factory):
+    port = find_free_port()
+    async with servicer_factory(host="0.0.0.0", port=port) as servicer:
+        servicer.remote_addr = f"http://localhost:{port}"
         yield servicer
-    finally:
-        await aio_stop_servicer()
+
+
+@pytest_asyncio.fixture(scope="function")
+async def unix_servicer(servicer_factory):
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        path = os.path.join(tmpdirname, "servicer.sock")
+        async with servicer_factory(path=path) as servicer:
+            servicer.remote_addr = f"unix://{path}"
+            yield servicer
 
 
 @pytest_asyncio.fixture(scope="function")

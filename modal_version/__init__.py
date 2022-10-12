@@ -6,7 +6,7 @@ from ._version_generated import build_number  # Written by GitHub
 major_number = 0
 
 # Bump this manually on any major changes
-minor_number = 35
+minor_number = 36
 
 # Right now, set the patch number (the 3rd field) to the job run number in GitHub
 __version__ = f"{major_number}.{minor_number}.{build_number}"

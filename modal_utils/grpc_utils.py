@@ -1,10 +1,11 @@
 import asyncio
 import contextlib
+import functools
 import socket
 import time
 import urllib.parse
 import uuid
-from typing import Any, AsyncIterator, Dict, Optional, TypeVar
+from typing import Any, AsyncIterator, Callable, Dict, Optional, Tuple, TypeVar
 
 import grpclib.events
 from grpclib import GRPCError, Status
@@ -19,7 +20,7 @@ from .async_utils import TaskContext, synchronizer
 from .logger import logger
 
 
-def auth_metadata(client_type: api_pb2.ClientType, credentials) -> Dict[str, str]:
+def auth_metadata(client_type: Optional[int], credentials: Optional[Tuple[str, str]] = None) -> Dict[str, str]:
     if credentials and (client_type == api_pb2.CLIENT_TYPE_CLIENT or client_type == api_pb2.CLIENT_TYPE_WEB_SERVER):
         token_id, token_secret = credentials
         return {
@@ -46,53 +47,48 @@ RETRYABLE_GRPC_STATUS_CODES = [
 ]
 
 
-class ChannelFactory:
-    """Manages gRPC connection with the server. This factory is used by the channel pool."""
+def _create_channel(
+    server_url: str,
+    client_type: Optional[int] = None,  # api_pb2.ClientType
+    credentials: Optional[Tuple[str, str]] = None,
+    inject_tracing_context: Optional[Callable[[Dict[str, str]], None]] = None,
+) -> Channel:
+    """Creates a single grpclib.Channel.
 
-    def __init__(
-        self, server_url: str, client_type: api_pb2.ClientType = None, credentials=None, inject_tracing_context=None
-    ) -> None:
-        try:
-            o = urllib.parse.urlparse(server_url)
-        except Exception:
-            logger.exception(f"failed to parse server url: {server_url}")
-            raise
+    Either to be used directly by a GRPC stub, or indirectly used through the channel pool.
+    See `create_channel`.
+    """
+    o = urllib.parse.urlparse(server_url)
 
-        # Determine if the url is a socket.
-        self.scheme = o.scheme
-        self.is_socket = self.scheme == "unix"
-        if self.is_socket:
-            self.target = o.path
-        else:
-            self.target = o.netloc
-            self.is_tls = o.scheme.endswith("s")
+    if o.scheme == "unix":
+        channel = Channel(path=o.path)
+    elif o.scheme in ("http", "https"):
+        target = o.netloc
+        is_tls = o.scheme.endswith("s")
+        parts = target.split(":")
+        assert 1 <= len(parts) <= 2, "Invalid target location: " + target
+        channel = Channel(
+            host=parts[0],
+            port=parts[1] if len(parts) == 2 else 443 if is_tls else 80,
+            ssl=is_tls,
+        )
+    else:
+        raise Exception(f"Unknown scheme: {o.scheme}")
 
-        self.inject_tracing_context = inject_tracing_context
-        self.metadata = auth_metadata(client_type, credentials)
-        logger.debug(f"Connecting to {self.target} using scheme {o.scheme}")
+    logger.debug(f"Connecting to {o.netloc} using scheme {o.scheme}")
 
-    def create(self) -> Channel:
-        if self.is_socket:
-            channel = Channel(path=self.target)
-        else:
-            parts = self.target.split(":")
-            assert len(parts) <= 2, "Invalid target location: " + self.target
-            channel = Channel(
-                host=parts[0],
-                port=parts[1] if len(parts) == 2 else 443 if self.is_tls else 80,
-                ssl=self.is_tls,
-            )
+    metadata = auth_metadata(client_type, credentials)
 
-        # Inject metadata for the client.
-        async def send_request(event: grpclib.events.SendRequest) -> None:
-            for k, v in self.metadata.items():
-                event.metadata[k] = v
+    # Inject metadata for the client.
+    async def send_request(event: grpclib.events.SendRequest) -> None:
+        for k, v in metadata.items():
+            event.metadata[k] = v
 
-            if self.inject_tracing_context is not None:
-                self.inject_tracing_context(event.metadata)
+        if inject_tracing_context is not None:
+            inject_tracing_context(event.metadata)
 
-        grpclib.events.listen(channel, grpclib.events.SendRequest, send_request)
-        return channel
+    grpclib.events.listen(channel, grpclib.events.SendRequest, send_request)
+    return channel
 
 
 class ChannelStruct:
@@ -103,8 +99,8 @@ class ChannelStruct:
         self.last_active = self.created_at
 
 
-class ChannelPool:
-    """Use multiple channels under the hood. A drop-in replacement for the GRPC channel.
+class ChannelPool(Channel):
+    """Use multiple channels under the hood. A drop-in replacement for the grpclib Channel.
 
     The ALB in AWS limits the number of streams per connection to 128.
     This is super annoying and means we can't put every request on the same channel.
@@ -122,53 +118,51 @@ class ChannelPool:
     # Don't accept more connections on this channel after this many seconds
     MAX_CHANNEL_LIFETIME = 30
 
-    def __init__(self, task_context: TaskContext, channel_factory: ChannelFactory) -> None:
-        # Only used by start()
-        self._task_context = task_context
-
-        # Threadsafe because it is read-only
-        self._channel_factory = channel_factory
-
-        # Protects the channels list below
-        self._lock = asyncio.Lock()
+    def __init__(
+        self,
+        task_context: TaskContext,
+        server_url: str,
+        client_type: Optional[int],  # api_pb2.ClientType
+        credentials: Optional[Tuple[str, str]],
+        inject_tracing_context: Optional[Callable[[Dict[str, str]], None]],
+    ) -> None:
+        self._channel_factory = functools.partial(_create_channel, server_url, client_type, credentials)
         self._channels: list[ChannelStruct] = []
+
+        # Kick off the infinite loop
+        task_context.infinite_loop(self._purge_channels, sleep=10.0)
 
     async def _purge_channels(self):
         to_close: list[ChannelStruct] = []
-        async with self._lock:
-            for ch in self._channels:
-                now = time.time()
-                inactive_time = now - ch.last_active
-                if ch.n_concurrent_requests > 0:
-                    ch.last_active = now
-                elif inactive_time >= self.CHANNEL_KEEP_ALIVE:
-                    logger.debug(f"Closing channel of age {now - ch.created_at}s, inactive for {inactive_time}s")
-                    to_close.append(ch)
-            for ch in to_close:
-                self._channels.remove(ch)
+        for ch in self._channels:
+            now = time.time()
+            inactive_time = now - ch.last_active
+            if ch.n_concurrent_requests > 0:
+                ch.last_active = now
+            elif inactive_time >= self.CHANNEL_KEEP_ALIVE:
+                logger.debug(f"Closing channel of age {now - ch.created_at}s, inactive for {inactive_time}s")
+                to_close.append(ch)
+        for ch in to_close:
+            self._channels.remove(ch)
         for ch in to_close:
             ch.channel.close()
 
-    async def start(self) -> None:
-        self._task_context.infinite_loop(self._purge_channels, sleep=10.0)
-
-    async def _get_channel(self) -> ChannelStruct:
-        async with self._lock:
-            eligible_channels = [
-                ch
-                for ch in self._channels
-                if ch.n_concurrent_requests < self.MAX_REQUESTS_PER_CHANNEL
-                and time.time() - ch.created_at < self.MAX_CHANNEL_LIFETIME
-            ]
-            if eligible_channels:
-                ch = eligible_channels[0]
-            else:
-                channel = self._channel_factory.create()
-                ch = ChannelStruct(channel)
-                self._channels.append(ch)
-                n_conc_reqs = [ch.n_concurrent_requests for ch in self._channels]
-                n_conc_reqs_str = ", ".join(str(z) for z in n_conc_reqs)
-                logger.debug(f"Pool: Added new channel (concurrent requests: {n_conc_reqs_str}")
+    def _get_channel(self) -> ChannelStruct:
+        eligible_channels = [
+            ch
+            for ch in self._channels
+            if ch.n_concurrent_requests < self.MAX_REQUESTS_PER_CHANNEL
+            and time.time() - ch.created_at < self.MAX_CHANNEL_LIFETIME
+        ]
+        if eligible_channels:
+            ch = eligible_channels[0]
+        else:
+            channel = self._channel_factory()
+            ch = ChannelStruct(channel)
+            self._channels.append(ch)
+            n_conc_reqs = [ch.n_concurrent_requests for ch in self._channels]
+            n_conc_reqs_str = ", ".join(str(z) for z in n_conc_reqs)
+            logger.debug(f"Pool: Added new channel (concurrent requests: {n_conc_reqs_str}")
 
         return ch
 
@@ -185,7 +179,7 @@ class ChannelPool:
     async def request(
         self, name: str, cardinality: Cardinality, request_type, reply_type, timeout, metadata
     ) -> AsyncIterator[Stream]:
-        ch = await self._get_channel()
+        ch = self._get_channel()
         ch.n_concurrent_requests += 1
         try:
             async with ch.channel.request(
@@ -201,6 +195,30 @@ class ChannelPool:
             raise
         finally:
             ch.n_concurrent_requests -= 1
+
+
+def create_channel(
+    task_context: TaskContext,
+    server_url: str,
+    client_type: Optional[int] = None,  # api_pb2.ClientType
+    credentials: Optional[Tuple[str, str]] = None,
+    inject_tracing_context: Optional[Callable[[Dict[str, str]], None]] = None,
+) -> Channel:
+    """Use a channel pool if we're connecting through http/https, otherwise use a direct channel.
+
+    See comment in ChannelPool about why we need it.
+
+    It's probably not necessary to use a ChannelPool for http, but http is only really used
+    for test, and so using a pool brings the behavior closer to prod
+    """
+    o = urllib.parse.urlparse(server_url)
+    if o.scheme in ("http", "https"):
+        return ChannelPool(task_context, server_url, client_type, credentials, inject_tracing_context)
+        # Note that ChannelPool will call _create_channel
+    elif o.scheme == "unix":
+        return _create_channel(server_url, client_type, credentials, inject_tracing_context)
+    else:
+        raise Exception(f"unknown scheme {o.scheme}!")
 
 
 async def unary_stream(

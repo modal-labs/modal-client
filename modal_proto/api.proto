@@ -212,7 +212,7 @@ message ClientCreateResponse {
 
 message ClientHeartbeatRequest {
   string client_id = 1;
-  int32 num_connections = 2;
+  int32 num_connections = 2 [deprecated=true];
 }
 
 message ContainerArguments {  // This is used to pass data from the worker to the container
