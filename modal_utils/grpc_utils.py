@@ -1,23 +1,102 @@
 import asyncio
 import contextlib
-import functools
 import socket
 import time
 import urllib.parse
 import uuid
-from typing import Any, AsyncIterator, Callable, Dict, Optional, Tuple, TypeVar
+from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Tuple, TypeVar
 
 import grpclib.events
 from grpclib import GRPCError, Status
-from grpclib.client import Channel, Stream, UnaryStreamMethod
-from grpclib.const import Cardinality
+from grpclib.client import Channel, UnaryStreamMethod
 from grpclib.exceptions import StreamTerminatedError
-from sentry_sdk import add_breadcrumb, capture_exception
+from grpclib.protocol import H2Protocol
+from sentry_sdk import capture_exception
 
 from modal_proto import api_pb2
 
-from .async_utils import TaskContext, synchronizer
 from .logger import logger
+
+
+class Subchannel:
+    protocol: H2Protocol
+    created_at: float
+    requests: int
+
+    def __init__(self, protocol: H2Protocol) -> None:
+        self.protocol = protocol
+        self.created_at = time.time()
+        self.requests = 0
+
+
+class ChannelPool(Channel):
+    """Use multiple channels under the hood. A drop-in replacement for the grpclib Channel.
+
+    The main reason is to get around limitations with TCP connections over the internet,
+    in particular idle timeouts, but also the fact that ALBs in AWS limits the number of
+    streams per connection to 128.
+
+    The algorithm is very simple. It reuses the last subchannel as long as it has had less
+    than 64 requests or if it was created less than 30s ago. It closes any subchannel that
+    hits 90s age. This means requests using the ChannelPool can't be longer than 60s.
+    """
+
+    _max_requests: int
+    _max_lifetime: float
+    _max_active: float
+    _subchannels: List[Subchannel]
+
+    def __init__(
+        self,
+        *args,
+        max_requests=64,  # Maximum number of total requests per subchannel
+        max_active=30,  # Don't accept more connections on the subchannel after this many seconds
+        max_lifetime=90,  # Close subchannel after this many seconds
+        **kwargs,
+    ):
+        self._subchannels = []
+        self._max_requests = max_requests
+        self._max_active = max_active
+        self._max_lifetime = max_lifetime
+        super().__init__(*args, **kwargs)
+
+    async def __connect__(self):
+        now = time.time()
+
+        # Close and delete any subchannels that are past their lifetime
+        while len(self._subchannels) > 0 and now - self._subchannels[0].created_at > self._max_lifetime:
+            self._subchannels.pop(0).protocol.processor.close()
+
+        # See if we can reuse the last subchannel
+        create_subchannel = None
+        if len(self._subchannels) > 0:
+            if self._subchannels[-1].created_at < now - self._max_active:
+                # Don't reuse subchannel that's too old
+                create_subchannel = True
+            elif self._subchannels[-1].requests > self._max_requests:
+                create_subchannel = True
+            else:
+                create_subchannel = False
+        else:
+            create_subchannel = True
+
+        # Create new if needed
+        # There's a theoretical race condition here.
+        # This is harmless but may lead to superfluous protocols.
+        if create_subchannel:
+            protocol = await self._create_connection()
+            self._subchannels.append(Subchannel(protocol))
+
+        self._subchannels[-1].requests += 1
+        return self._subchannels[-1].protocol
+
+    def close(self) -> None:
+        while len(self._subchannels) > 0:
+            self._subchannels.pop(0).protocol.processor.close()
+
+    def __del__(self) -> None:
+        if len(self._subchannels) > 0:
+            logger.warning("Channel pool not properly closed")
 
 
 def auth_metadata(client_type: Optional[int], credentials: Optional[Tuple[str, str]] = None) -> Dict[str, str]:
@@ -47,31 +126,39 @@ RETRYABLE_GRPC_STATUS_CODES = [
 ]
 
 
-def _create_channel(
+def create_channel(
     server_url: str,
     client_type: Optional[int] = None,  # api_pb2.ClientType
     credentials: Optional[Tuple[str, str]] = None,
+    *,
     inject_tracing_context: Optional[Callable[[Dict[str, str]], None]] = None,
+    use_pool: Optional[bool] = None,  # If None, inferred from the scheme
 ) -> Channel:
-    """Creates a single grpclib.Channel.
+    """Creates a grpclib.Channel.
 
     Either to be used directly by a GRPC stub, or indirectly used through the channel pool.
     See `create_channel`.
     """
     o = urllib.parse.urlparse(server_url)
 
+    if use_pool is None:
+        use_pool = o.scheme in ("http", "https")
+
+    if use_pool:
+        channel_cls = ChannelPool
+    else:
+        channel_cls = Channel
+
     if o.scheme == "unix":
-        channel = Channel(path=o.path)
+        channel = channel_cls(path=o.path)  # probably pointless to use a pool ever
     elif o.scheme in ("http", "https"):
         target = o.netloc
-        is_tls = o.scheme.endswith("s")
         parts = target.split(":")
         assert 1 <= len(parts) <= 2, "Invalid target location: " + target
-        channel = Channel(
-            host=parts[0],
-            port=parts[1] if len(parts) == 2 else 443 if is_tls else 80,
-            ssl=is_tls,
-        )
+        ssl = o.scheme.endswith("s")
+        host = parts[0]
+        port = parts[1] if len(parts) == 2 else 443 if ssl else 80
+        channel = channel_cls(host, port, ssl=ssl)
     else:
         raise Exception(f"Unknown scheme: {o.scheme}")
 
@@ -89,136 +176,6 @@ def _create_channel(
 
     grpclib.events.listen(channel, grpclib.events.SendRequest, send_request)
     return channel
-
-
-class ChannelStruct:
-    def __init__(self, channel: Channel) -> None:
-        self.channel = channel
-        self.n_concurrent_requests = 0
-        self.created_at = time.time()
-        self.last_active = self.created_at
-
-
-class ChannelPool(Channel):
-    """Use multiple channels under the hood. A drop-in replacement for the grpclib Channel.
-
-    The ALB in AWS limits the number of streams per connection to 128.
-    This is super annoying and means we can't put every request on the same channel.
-    As a dumb workaround, we use a pool of channels.
-
-    This object is not thread-safe.
-    """
-
-    # How long to keep alive unused channels in the pool, before closing them.
-    CHANNEL_KEEP_ALIVE = 40
-
-    # Maximum number of concurrent requests per channel.
-    MAX_REQUESTS_PER_CHANNEL = 64
-
-    # Don't accept more connections on this channel after this many seconds
-    MAX_CHANNEL_LIFETIME = 30
-
-    def __init__(
-        self,
-        task_context: TaskContext,
-        server_url: str,
-        client_type: Optional[int],  # api_pb2.ClientType
-        credentials: Optional[Tuple[str, str]],
-        inject_tracing_context: Optional[Callable[[Dict[str, str]], None]],
-    ) -> None:
-        self._channel_factory = functools.partial(_create_channel, server_url, client_type, credentials)
-        self._channels: list[ChannelStruct] = []
-
-        # Kick off the infinite loop
-        task_context.infinite_loop(self._purge_channels, sleep=10.0)
-
-    async def _purge_channels(self):
-        to_close: list[ChannelStruct] = []
-        for ch in self._channels:
-            now = time.time()
-            inactive_time = now - ch.last_active
-            if ch.n_concurrent_requests > 0:
-                ch.last_active = now
-            elif inactive_time >= self.CHANNEL_KEEP_ALIVE:
-                logger.debug(f"Closing channel of age {now - ch.created_at}s, inactive for {inactive_time}s")
-                to_close.append(ch)
-        for ch in to_close:
-            self._channels.remove(ch)
-        for ch in to_close:
-            ch.channel.close()
-
-    def _get_channel(self) -> ChannelStruct:
-        eligible_channels = [
-            ch
-            for ch in self._channels
-            if ch.n_concurrent_requests < self.MAX_REQUESTS_PER_CHANNEL
-            and time.time() - ch.created_at < self.MAX_CHANNEL_LIFETIME
-        ]
-        if eligible_channels:
-            ch = eligible_channels[0]
-        else:
-            channel = self._channel_factory()
-            ch = ChannelStruct(channel)
-            self._channels.append(ch)
-            n_conc_reqs = [ch.n_concurrent_requests for ch in self._channels]
-            n_conc_reqs_str = ", ".join(str(z) for z in n_conc_reqs)
-            logger.debug(f"Pool: Added new channel (concurrent requests: {n_conc_reqs_str}")
-
-        return ch
-
-    def close(self) -> None:
-        logger.debug("Pool: Shutting down")
-        for ch in self._channels:
-            ch.channel.close()
-        self._channels = []
-
-    def size(self) -> int:
-        return len(self._channels)
-
-    @synchronizer.asynccontextmanager
-    async def request(
-        self, name: str, cardinality: Cardinality, request_type, reply_type, timeout, metadata
-    ) -> AsyncIterator[Stream]:
-        ch = self._get_channel()
-        ch.n_concurrent_requests += 1
-        try:
-            async with ch.channel.request(
-                name, cardinality, request_type, reply_type, timeout=timeout, metadata=metadata
-            ) as stream:
-                yield stream
-        except GRPCError:
-            channel_age = time.time() - ch.created_at
-            add_breadcrumb(
-                message=f"Error calling {name} on channel of age {channel_age:.4f}s",
-                level="warning",
-            )
-            raise
-        finally:
-            ch.n_concurrent_requests -= 1
-
-
-def create_channel(
-    task_context: TaskContext,
-    server_url: str,
-    client_type: Optional[int] = None,  # api_pb2.ClientType
-    credentials: Optional[Tuple[str, str]] = None,
-    inject_tracing_context: Optional[Callable[[Dict[str, str]], None]] = None,
-) -> Channel:
-    """Use a channel pool if we're connecting through http/https, otherwise use a direct channel.
-
-    See comment in ChannelPool about why we need it.
-
-    It's probably not necessary to use a ChannelPool for http, but http is only really used
-    for test, and so using a pool brings the behavior closer to prod
-    """
-    o = urllib.parse.urlparse(server_url)
-    if o.scheme in ("http", "https"):
-        return ChannelPool(task_context, server_url, client_type, credentials, inject_tracing_context)
-        # Note that ChannelPool will call _create_channel
-    elif o.scheme == "unix":
-        return _create_channel(server_url, client_type, credentials, inject_tracing_context)
-    else:
-        raise Exception(f"unknown scheme {o.scheme}!")
 
 
 async def unary_stream(

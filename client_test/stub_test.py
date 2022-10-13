@@ -165,7 +165,7 @@ def test_same_function_name(caplog):
 
 
 # Required as failing to raise could cause test to never return.
-@pytest.mark.timeout(3)
+@pytest.mark.timeout(7)
 def test_nested_serve_invocation(client):
     stub = Stub()
 

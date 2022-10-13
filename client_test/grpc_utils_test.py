@@ -1,62 +1,85 @@
+import asyncio
+import math
 import platform
 import pytest
 import time
 
-import pytest_asyncio
 from grpclib import GRPCError, Status
 
 from modal_proto import api_grpc, api_pb2
-from modal_utils.async_utils import TaskContext
-from modal_utils.grpc_utils import (
-    ChannelPool,
-    _create_channel,
-    create_channel,
-    retry_transient_errors,
-)
+from modal_utils.grpc_utils import create_channel, retry_transient_errors
 
 
 @pytest.mark.asyncio
 async def test_http_channel(servicer):
     assert servicer.remote_addr.startswith("http://")
-    channel = _create_channel(servicer.remote_addr)
+    channel = create_channel(servicer.remote_addr, use_pool=False)
     client_stub = api_grpc.ModalClientStub(channel)
 
     req = api_pb2.BlobCreateRequest()
     resp = await client_stub.BlobCreate(req)
     assert resp.blob_id
+
+    channel.close()
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Windows doesn't have UNIX sockets")
 @pytest.mark.asyncio
 async def test_unix_channel(unix_servicer):
     assert unix_servicer.remote_addr.startswith("unix://")
-    channel = _create_channel(unix_servicer.remote_addr)
+    channel = create_channel(unix_servicer.remote_addr, use_pool=False)
     client_stub = api_grpc.ModalClientStub(channel)
 
     req = api_pb2.BlobCreateRequest()
     resp = await client_stub.BlobCreate(req)
     assert resp.blob_id
 
-
-@pytest_asyncio.fixture(scope="function")
-async def task_context():
-    async with TaskContext(grace=1) as tc:
-        yield tc
+    channel.close()
 
 
 @pytest.mark.asyncio
-async def test_channel_pool(task_context, servicer):
-    channel_pool = ChannelPool(task_context, servicer.remote_addr, None, None, None)
+async def test_channel_pool(servicer, n=1000):
+    channel_pool = create_channel(servicer.remote_addr, use_pool=True)
     client_stub = api_grpc.ModalClientStub(channel_pool)
 
+    # Trigger a lot of requests
+    for i in range(n):
+        req = api_pb2.BlobCreateRequest()
+        resp = await client_stub.BlobCreate(req)
+        assert resp.blob_id
+
+    # Make sure we created the right number of subchannels
+    assert len(channel_pool._subchannels) == math.ceil(n / channel_pool._max_requests)
+
+    channel_pool.close()
+
+
+@pytest.mark.asyncio
+async def test_channel_pool_max_active(servicer):
+    channel_pool = create_channel(servicer.remote_addr, use_pool=True)
+    channel_pool._max_active = 1.0
+    client_stub = api_grpc.ModalClientStub(channel_pool)
+
+    # Do a few requests and assert there's just one subchannel
+    for i in range(3):
+        req = api_pb2.BlobCreateRequest()
+        resp = await client_stub.BlobCreate(req)
+        assert resp.blob_id
+    assert len(channel_pool._subchannels) == 1
+
+    # Sleep a couple of seconds and do a new request: it should create a new subchannel
+    await asyncio.sleep(2.0)
     req = api_pb2.BlobCreateRequest()
     resp = await client_stub.BlobCreate(req)
     assert resp.blob_id
+    assert len(channel_pool._subchannels) == 2
+
+    channel_pool.close()
 
 
 @pytest.mark.asyncio
-async def test_retry_transient_errors(task_context, servicer):
-    channel = create_channel(task_context, servicer.remote_addr)
+async def test_retry_transient_errors(servicer):
+    channel = create_channel(servicer.remote_addr)
     client_stub = api_grpc.ModalClientStub(channel)
 
     # Use the BlobCreate request for retries
@@ -95,3 +118,5 @@ async def test_retry_transient_errors(task_context, servicer):
         assert await retry_transient_errors(client_stub.BlobCreate, req, max_retries=None, total_timeout=3)
     total_time = time.time() - t0
     assert total_time <= 3.1
+
+    channel.close()

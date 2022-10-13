@@ -78,11 +78,10 @@ class _Client:
         self._task_context = TaskContext(grace=1)
         await self._task_context.start()
         self._channel = create_channel(
-            self._task_context,
             self.server_url,
             self.client_type,
             self.credentials,
-            inject_tracing_context,
+            inject_tracing_context=inject_tracing_context,
         )
         self._stub = api_grpc.ModalClientStub(self._channel)  # type: ignore
         try:
