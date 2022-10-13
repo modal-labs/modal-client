@@ -34,7 +34,7 @@ from ._blob_utils import (
     blob_download,
     blob_upload,
 )
-from ._call_graph import reconstruct_call_graph, InputInfo
+from ._call_graph import InputInfo, reconstruct_call_graph
 from ._function_utils import FunctionInfo
 from ._output import OutputManager
 from ._serialization import deserialize, serialize
@@ -129,10 +129,12 @@ class _OutputValue:
 
 
 class _Invocation:
+    """Internal client representation of a single-input call to a Modal Function or Generator"""
+
     def __init__(self, stub, function_call_id, client=None):
         self.stub = stub
         self.client = client  # Used by the deserializer.
-        self.function_call_id = function_call_id
+        self.function_call_id = function_call_id  # TODO: remove and use only input_id
 
     @staticmethod
     async def create(function_id, args, kwargs, client):
@@ -154,15 +156,17 @@ class _Invocation:
         request_put = api_pb2.FunctionPutInputsRequest(
             function_id=function_id, inputs=[item], function_call_id=function_call_id
         )
-        await retry_transient_errors(
+        inputs_response: api_pb2.FunctionPutInputsResponse = await retry_transient_errors(
             client.stub.FunctionPutInputs,
             request_put,
             max_retries=None,
         )
-
+        processed_inputs = inputs_response.inputs
+        if not processed_inputs:
+            raise Exception("Could not create function call - the input queue seems to be full")
         return _Invocation(client.stub, function_call_id, client)
 
-    async def get_items(self, timeout: float = None):
+    async def pop_function_call_outputs(self, timeout: Optional[float] = None):
         t0 = time.time()
         if timeout is None:
             backend_timeout = 60.0
@@ -172,7 +176,9 @@ class _Invocation:
         while True:
             # always execute at least one poll for results, regardless if timeout is 0
             request = api_pb2.FunctionGetOutputsRequest(
-                function_call_id=self.function_call_id, timeout=backend_timeout, return_empty_on_timeout=True
+                function_call_id=self.function_call_id,
+                timeout=backend_timeout,
+                return_empty_on_timeout=True,
             )
             response = await retry_transient_errors(
                 self.stub.FunctionGetOutputs,
@@ -190,12 +196,12 @@ class _Invocation:
                     break
 
     async def run_function(self):
-        result = (await stream.list(self.get_items()))[0]
+        result = (await stream.list(self.pop_function_call_outputs()))[0]
         assert not result.gen_status
         return await _process_result(result, self.stub, self.client)
 
-    async def poll_function(self, timeout: float = 0):
-        results = await stream.list(self.get_items(timeout=timeout))
+    async def poll_function(self, timeout: Optional[float] = 0):
+        results = await stream.list(self.pop_function_call_outputs(timeout=timeout))
 
         if len(results) == 0:
             raise TimeoutError()
@@ -205,7 +211,7 @@ class _Invocation:
     async def run_generator(self):
         completed = False
         while not completed:
-            async for result in self.get_items():
+            async for result in self.pop_function_call_outputs():
                 if result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
                     completed = True
                     break
@@ -498,8 +504,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         async for res in invocation.run_generator():
             yield res
 
-    async def call_generator_nowait(self, args, kwargs):
-        """mdmd:hidden"""
+    async def _call_generator_nowait(self, args, kwargs):
         client, object_id = self._get_context()
         return await _Invocation.create(object_id, args, kwargs, client)
 
@@ -516,7 +521,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         """
         deprecation_warning("Function.enqueue is deprecated, use .submit() instead")
         if self._is_generator:
-            await self.call_generator_nowait(args, kwargs)
+            await self._call_generator_nowait(args, kwargs)
         else:
             await self.call_function_nowait(args, kwargs)
 
@@ -530,7 +535,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         return a function handle for polling the result.
         """
         if self._is_generator:
-            await self.call_generator_nowait(args, kwargs)
+            await self._call_generator_nowait(args, kwargs)
             return None
 
         invocation = await self.call_function_nowait(args, kwargs)

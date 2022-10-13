@@ -9,6 +9,7 @@ import traceback
 from typing import Any, AsyncIterator, Callable, Optional, Tuple, Type
 
 import cloudpickle
+from grpclib import Status
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import (
@@ -158,7 +159,11 @@ class _FunctionIOManager:
             req = api_pb2.FunctionPutOutputsRequest(outputs=outputs)
             # No max retries so this can block forever.
             await retry_transient_errors(
-                self.client.stub.FunctionPutOutputs, req, max_retries=None, attempt_timeout=10.0
+                self.client.stub.FunctionPutOutputs,
+                req,
+                max_retries=None,
+                attempt_timeout=10.0,
+                additional_status_codes=[Status.RESOURCE_EXHAUSTED],
             )
 
     async def run_inputs_outputs(self):

@@ -239,7 +239,7 @@ async def retry_transient_errors(
     base_delay: float = 0.1,
     max_delay: float = 1,
     delay_factor: float = 2,
-    max_retries: int = 3,
+    max_retries: Optional[int] = 3,
     additional_status_codes: list = [],
     ignore_errors: list = [],
     attempt_timeout: Optional[float] = None,  # timeout for each attempt

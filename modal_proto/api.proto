@@ -363,12 +363,14 @@ message FunctionGetOutputsRequest {
   string function_call_id = 1;
   int32 max_values = 2;
   float timeout = 3;
-  bool return_empty_on_timeout = 5;
+  bool return_empty_on_timeout = 5;  // deprecated - remove in followup PR
+  string last_entry_id = 6;
 }
 
 message FunctionGetOutputsResponse {
   repeated int32 idxs = 3;
   repeated FunctionGetOutputsItem outputs = 4;
+  string last_entry_id = 5;
 }
 
 message FunctionGetSerializedRequest {
@@ -782,7 +784,7 @@ service ModalClient {
   rpc FunctionPutInputs(FunctionPutInputsRequest) returns (FunctionPutInputsResponse);
   rpc FunctionPutOutputs(FunctionPutOutputsRequest) returns (google.protobuf.Empty);  // For containers to return result
   rpc FunctionGetInputs(FunctionGetInputsRequest) returns (FunctionGetInputsResponse);  // For containers to request next call
-  rpc FunctionGetOutputs(FunctionGetOutputsRequest) returns (FunctionGetOutputsResponse);  // Returns the next result
+  rpc FunctionGetOutputs(FunctionGetOutputsRequest) returns (FunctionGetOutputsResponse);  // Returns the next result(s) for an entire function call (FunctionMap)
   rpc FunctionGetCallGraph(FunctionGetCallGraphRequest) returns (FunctionGetCallGraphResponse);
 
   // Images
