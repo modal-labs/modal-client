@@ -717,6 +717,7 @@ class _Function(Provider[_FunctionHandle]):
             shared_volume_mounts=shared_volume_mounts,
             proxy_id=proxy_id,
             retry_policy=retry_policy,
+            timeout_secs=None,
             concurrency_limit=self._concurrency_limit,
             keep_warm=self._keep_warm,
         )
