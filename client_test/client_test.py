@@ -48,6 +48,7 @@ async def test_client_dns_failure():
 
 @pytest.mark.asyncio
 @pytest.mark.timeout(TEST_TIMEOUT)
+@skip_windows
 async def test_client_connection_failure():
     with pytest.raises(ConnectionError) as excinfo:
         async with AioClient("https://localhost:443", api_pb2.CLIENT_TYPE_CONTAINER, None):
