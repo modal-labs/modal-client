@@ -231,7 +231,7 @@ async def retry_transient_errors(
             timeout = None
         try:
             return await fn(*args, metadata=metadata, timeout=timeout)
-        except (StreamTerminatedError, GRPCError, socket.gaierror) as exc:
+        except (StreamTerminatedError, GRPCError, socket.gaierror, asyncio.TimeoutError) as exc:
             if isinstance(exc, GRPCError) and exc.status not in status_codes:
                 raise exc
 

@@ -23,7 +23,6 @@ from ._tracing import inject_tracing_context
 from .config import config, logger
 from .exception import AuthError, ConnectionError, InvalidError, VersionError
 
-CLIENT_CREATE_TIMEOUT = 10.1
 HEARTBEAT_INTERVAL = 15.0
 HEARTBEAT_TIMEOUT = 10.1
 
@@ -84,18 +83,23 @@ class _Client:
             inject_tracing_context=inject_tracing_context,
         )
         self._stub = api_grpc.ModalClientStub(self._channel)  # type: ignore
+        if self.client_type == api_pb2.CLIENT_TYPE_CLIENT:
+            total_timeout = 15.0
+            attempt_timeout = 4.0
+        else:
+            # Should expect much faster connection times in the cloud
+            total_timeout = 3.0
+            attempt_timeout = 1.0
         try:
             req = api_pb2.ClientCreateRequest(
                 client_type=self.client_type,
                 version=self.version,
             )
             resp = await retry_transient_errors(
-                # TODO(erikbern): Github on windows needs a minimum timeout of at least 3s here,
-                # but we could probably make it smaller otherwise
                 self.stub.ClientCreate,
                 req,
-                attempt_timeout=3.0,
-                total_timeout=CLIENT_CREATE_TIMEOUT,
+                attempt_timeout=attempt_timeout,
+                total_timeout=total_timeout,
             )
             if resp.deprecation_warning:
                 ALARM_EMOJI = chr(0x1F6A8)
@@ -110,7 +114,7 @@ class _Client:
             elif exc.status == Status.UNAUTHENTICATED:
                 raise AuthError(exc.message)
             else:
-                exc_string = await _grpc_exc_string(exc, "ClientCreate", self.server_url, CLIENT_CREATE_TIMEOUT)
+                exc_string = await _grpc_exc_string(exc, "ClientCreate", self.server_url, total_timeout)
                 raise ConnectionError(exc_string)
         except (OSError, asyncio.TimeoutError) as exc:
             raise ConnectionError(str(exc))

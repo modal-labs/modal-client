@@ -1,15 +1,21 @@
 import asyncio
+import platform
 import pytest
 import time
 
 from grpclib import Status
 
 import modal.exception
-from modal.client import CLIENT_CREATE_TIMEOUT, AioClient, Client
+from modal.client import AioClient, Client
 from modal.exception import AuthError, ConnectionError, VersionError
 from modal_proto import api_pb2
 
-WAIT_EPS = 0.1
+TEST_TIMEOUT = 4.0  # align this with the container client timeout in client.py
+
+skip_windows = pytest.mark.skipif(
+    platform.system() == "Windows",
+    reason="Windows doesn't have UNIX sockets",
+)
 
 
 @pytest.mark.asyncio
@@ -22,37 +28,49 @@ async def test_client(servicer, client):
 
 
 @pytest.mark.asyncio
-async def test_container_client(servicer, aio_container_client):
+@skip_windows
+async def test_container_client(unix_servicer, aio_container_client):
     await asyncio.sleep(0.1)  # wait for heartbeat
-    assert len(servicer.requests) == 2
-    assert isinstance(servicer.requests[0], api_pb2.ClientCreateRequest)
-    assert servicer.requests[0].client_type == api_pb2.CLIENT_TYPE_CONTAINER
-    assert isinstance(servicer.requests[1], api_pb2.ClientHeartbeatRequest)
+    assert len(unix_servicer.requests) == 2
+    assert isinstance(unix_servicer.requests[0], api_pb2.ClientCreateRequest)
+    assert unix_servicer.requests[0].client_type == api_pb2.CLIENT_TYPE_CONTAINER
+    assert isinstance(unix_servicer.requests[1], api_pb2.ClientHeartbeatRequest)
 
 
 @pytest.mark.asyncio
-@pytest.mark.timeout(CLIENT_CREATE_TIMEOUT + WAIT_EPS)
+@pytest.mark.timeout(TEST_TIMEOUT)
 async def test_client_dns_failure():
     with pytest.raises(ConnectionError) as excinfo:
-        async with AioClient("https://xyz.invalid", api_pb2.CLIENT_TYPE_CLIENT, None):
+        async with AioClient("https://xyz.invalid", api_pb2.CLIENT_TYPE_CONTAINER, None):
             pass
     assert excinfo.value
 
 
 @pytest.mark.asyncio
-@pytest.mark.timeout(CLIENT_CREATE_TIMEOUT + WAIT_EPS)
+@pytest.mark.timeout(TEST_TIMEOUT)
 async def test_client_connection_failure():
     with pytest.raises(ConnectionError) as excinfo:
-        async with AioClient("https://localhost:443", api_pb2.CLIENT_TYPE_CLIENT, None):
+        async with AioClient("https://localhost:443", api_pb2.CLIENT_TYPE_CONTAINER, None):
             pass
     assert excinfo.value
 
 
 @pytest.mark.asyncio
-@pytest.mark.timeout(CLIENT_CREATE_TIMEOUT + WAIT_EPS)
-async def test_client_connection_timeout(servicer):
+@pytest.mark.timeout(TEST_TIMEOUT)
+@skip_windows
+async def test_client_connection_failure_unix_socket():
     with pytest.raises(ConnectionError) as excinfo:
-        async with AioClient(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, None, version="timeout"):
+        async with AioClient("unix:/tmp/xyz.txt", api_pb2.CLIENT_TYPE_CONTAINER, None):
+            pass
+    assert excinfo.value
+
+
+@pytest.mark.asyncio
+@pytest.mark.timeout(TEST_TIMEOUT)
+@skip_windows
+async def test_client_connection_timeout(unix_servicer):
+    with pytest.raises(ConnectionError) as excinfo:
+        async with AioClient(unix_servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, None, version="timeout"):
             pass
 
     # The HTTP lookup will return 400 because the GRPC server rejects the http request
@@ -60,7 +78,7 @@ async def test_client_connection_timeout(servicer):
 
 
 @pytest.mark.asyncio
-@pytest.mark.timeout(CLIENT_CREATE_TIMEOUT + WAIT_EPS)
+@pytest.mark.timeout(TEST_TIMEOUT)
 async def test_client_server_error(servicer):
     with pytest.raises(ConnectionError) as excinfo:
         async with AioClient("https://github.com", api_pb2.CLIENT_TYPE_CLIENT, None):

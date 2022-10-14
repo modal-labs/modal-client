@@ -157,14 +157,15 @@ class _FunctionIOManager:
         """
         async for outputs in queue_batch_iterator(self.output_queue, MAX_OUTPUT_BATCH_SIZE, 0):
             req = api_pb2.FunctionPutOutputsRequest(outputs=outputs)
-            # No max retries so this can block forever.
             await retry_transient_errors(
                 self.client.stub.FunctionPutOutputs,
                 req,
-                max_retries=None,
-                attempt_timeout=10.0,
+                attempt_timeout=3.0,
+                total_timeout=20.0,
                 additional_status_codes=[Status.RESOURCE_EXHAUSTED],
             )
+            # TODO(erikbern): we'll get a RESOURCE_EXCHAUSTED if the buffer is full server-side.
+            # It's possible we want to retry "harder" for this particular error.
 
     async def run_inputs_outputs(self):
         # This also makes sure to terminate the outputs

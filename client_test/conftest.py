@@ -426,8 +426,8 @@ async def client(servicer):
 
 
 @pytest_asyncio.fixture(scope="function")
-async def aio_container_client(servicer):
-    async with AioClient(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
+async def aio_container_client(unix_servicer):
+    async with AioClient(unix_servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         yield client
 
 
