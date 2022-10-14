@@ -25,6 +25,8 @@ from .exception import AuthError, ConnectionError, InvalidError, VersionError
 
 HEARTBEAT_INTERVAL = 15.0
 HEARTBEAT_TIMEOUT = 10.1
+CLIENT_CREATE_ATTEMPT_TIMEOUT = 4.0
+CLIENT_CREATE_TOTAL_TIMEOUT = 15.0
 
 
 async def _http_check(url: str, timeout: float) -> str:
@@ -83,13 +85,6 @@ class _Client:
             inject_tracing_context=inject_tracing_context,
         )
         self._stub = api_grpc.ModalClientStub(self._channel)  # type: ignore
-        if self.client_type == api_pb2.CLIENT_TYPE_CLIENT:
-            total_timeout = 15.0
-            attempt_timeout = 4.0
-        else:
-            # Should expect much faster connection times in the cloud
-            total_timeout = 3.0
-            attempt_timeout = 1.0
         try:
             req = api_pb2.ClientCreateRequest(
                 client_type=self.client_type,
@@ -98,8 +93,8 @@ class _Client:
             resp = await retry_transient_errors(
                 self.stub.ClientCreate,
                 req,
-                attempt_timeout=attempt_timeout,
-                total_timeout=total_timeout,
+                attempt_timeout=CLIENT_CREATE_ATTEMPT_TIMEOUT,
+                total_timeout=CLIENT_CREATE_TOTAL_TIMEOUT,
             )
             if resp.deprecation_warning:
                 ALARM_EMOJI = chr(0x1F6A8)
@@ -114,7 +109,7 @@ class _Client:
             elif exc.status == Status.UNAUTHENTICATED:
                 raise AuthError(exc.message)
             else:
-                exc_string = await _grpc_exc_string(exc, "ClientCreate", self.server_url, total_timeout)
+                exc_string = await _grpc_exc_string(exc, "ClientCreate", self.server_url, CLIENT_CREATE_TOTAL_TIMEOUT)
                 raise ConnectionError(exc_string)
         except (OSError, asyncio.TimeoutError) as exc:
             raise ConnectionError(str(exc))

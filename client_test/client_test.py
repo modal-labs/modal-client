@@ -68,7 +68,9 @@ async def test_client_connection_failure_unix_socket():
 @pytest.mark.asyncio
 @pytest.mark.timeout(TEST_TIMEOUT)
 @skip_windows
-async def test_client_connection_timeout(unix_servicer):
+async def test_client_connection_timeout(unix_servicer, monkeypatch):
+    monkeypatch.setattr("modal.client.CLIENT_CREATE_ATTEMPT_TIMEOUT", 1.0)
+    monkeypatch.setattr("modal.client.CLIENT_CREATE_TOTAL_TIMEOUT", 3.0)
     with pytest.raises(ConnectionError) as excinfo:
         async with AioClient(unix_servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, None, version="timeout"):
             pass
