@@ -283,8 +283,7 @@ async def _map_invocation(
             response = await retry_transient_errors(
                 client.stub.FunctionGetOutputs,
                 request,
-                max_retries=None,
-                base_delay=0,
+                max_retries=10,
             )
             for item in response.outputs:
                 if is_generator:
