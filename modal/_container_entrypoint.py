@@ -175,9 +175,9 @@ class _FunctionIOManager:
             tc.create_task(self._send_outputs())
             try:
                 async for input_id, input_pb in self._generate_inputs():
-                    _set_current_input_id(input_id)
-                    args, kwargs = self.deserialize(input_pb.args) if input_pb.args else ((), {})
                     self.input_started_at = time.time()
+                    args, kwargs = self.deserialize(input_pb.args) if input_pb.args else ((), {})
+                    _set_current_input_id(input_id, started_at=self.input_started_at)
                     yield input_id, args, kwargs
                     self.total_user_time += time.time() - self.input_started_at
                     self.calls_completed += 1

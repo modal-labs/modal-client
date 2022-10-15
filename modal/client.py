@@ -139,7 +139,18 @@ class _Client:
 
     async def _heartbeat(self):
         if self._stub is not None:
-            req = api_pb2.ClientHeartbeatRequest(client_id=self._client_id)
+            from .functions import _get_current_input_started_at, current_input_id
+
+            try:
+                input_id = current_input_id()
+                started_at = _get_current_input_started_at()
+            except Exception:
+                input_id = None
+                started_at = None
+
+            req = api_pb2.ClientHeartbeatRequest(
+                client_id=self._client_id, current_input_id=input_id, current_input_started_at=started_at
+            )
             try:
                 await self.stub.ClientHeartbeat(req, timeout=HEARTBEAT_TIMEOUT)
                 self._last_heartbeat = time.time()

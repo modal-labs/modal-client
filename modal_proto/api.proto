@@ -213,6 +213,8 @@ message ClientCreateResponse {
 message ClientHeartbeatRequest {
   string client_id = 1;
   int32 num_connections = 2 [deprecated=true];
+  string current_input_id = 3;
+  double current_input_started_at = 4;
 }
 
 message ContainerArguments {  // This is used to pass data from the worker to the container
@@ -472,6 +474,7 @@ message GenericResult {  // Used for both tasks and function outputs
     GENERIC_STATUS_FAILURE = 2;
     // Used when a task was killed using an external signal.
     GENERIC_STATUS_TERMINATED = 3;
+    GENERIC_STATUS_TIMEOUT = 4;
   }
 
   GenericStatus status = 1;

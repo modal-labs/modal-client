@@ -638,6 +638,7 @@ class _Function(Provider[_FunctionHandle]):
         self._memory = memory
         self._proxy = proxy
         self._retry_policy = retry_policy
+        self._timeout = None
         self._concurrency_limit = concurrency_limit
         self._keep_warm = keep_warm
         self._tag = self._info.get_tag()
@@ -717,7 +718,7 @@ class _Function(Provider[_FunctionHandle]):
             shared_volume_mounts=shared_volume_mounts,
             proxy_id=proxy_id,
             retry_policy=retry_policy,
-            timeout_secs=None,
+            timeout_secs=self._timeout,
             concurrency_limit=self._concurrency_limit,
             keep_warm=self._keep_warm,
         )
@@ -813,6 +814,7 @@ gather, aio_gather = synchronize_apis(_gather)
 
 
 _current_input_id: Optional[str] = None
+_current_input_started_at: Optional[float] = None
 
 
 def current_input_id() -> str:
@@ -833,6 +835,15 @@ def current_input_id() -> str:
     return _current_input_id
 
 
-def _set_current_input_id(input_id: str):
+def _get_current_input_started_at() -> float:
+    """mdmd:hidden"""
+    global _current_input_started_at
+
+    return _current_input_started_at
+
+
+def _set_current_input_id(input_id: str, started_at: Optional[float] = None):
     global _current_input_id
+    global _current_input_started_at
     _current_input_id = input_id
+    _current_input_started_at = started_at
