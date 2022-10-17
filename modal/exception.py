@@ -10,6 +10,10 @@ class RemoteError(Error):
     """An error was raised on the Modal server."""
 
 
+class TimeoutError(Error):
+    """Raised when a Function exceeds its execution duration limit and times out."""
+
+
 class AuthError(Error):
     """The client has missing or invalid authentication."""
 

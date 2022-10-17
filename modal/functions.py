@@ -40,13 +40,9 @@ from ._output import OutputManager
 from ._serialization import deserialize, serialize
 from ._traceback import append_modal_tb
 from .client import _Client
-from .exception import (
-    ExecutionError,
-    InvalidError,
-    NotFoundError,
-    RemoteError,
-    deprecation_warning,
-)
+from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError
+from .exception import TimeoutError as _TimeoutError
+from .exception import deprecation_warning
 from .mount import _Mount
 from .object import Handle, Provider, Ref, RemoteRef
 from .rate_limit import RateLimit
@@ -72,7 +68,9 @@ async def _process_result(result, stub, client=None):
     else:
         data = result.data
 
-    if result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
+    if result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
+        raise _TimeoutError(result.exception)
+    elif result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
         if data:
             try:
                 exc = deserialize(data, client)
