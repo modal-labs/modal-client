@@ -434,7 +434,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         ```
 
         If applied to a `stub.function`, `map()` returns one result per input and the output order
-        is guaranteed to be the same as the input order. Set `order_output=False` to return results
+        is guaranteed to be the same as the input order. Set `order_outputs=False` to return results
         in the order that they are completed instead.
 
         If applied to a `stub.generator`, the results are returned as they are finished and can be
