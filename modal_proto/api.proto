@@ -446,7 +446,8 @@ message FunctionRetryPolicy {
 
 message FunctionGetCallGraphRequest {
   // TODO: use input_id once we switch client submit API to return those.
-  string root_function_call_id = 1;
+  string root_function_call_id = 1 [deprecated=true];
+  string function_call_id = 2;
 }
 
 message InputCallGraphInfo {

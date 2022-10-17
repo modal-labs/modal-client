@@ -777,7 +777,7 @@ class _FunctionCall(Handle, type_prefix="fc"):
         """Returns a nested dictionary structure representing the call graph from a given root
         call ID, along with the status of execution for each node.
         """
-        request = api_pb2.FunctionGetCallGraphRequest(root_function_call_id=self.object_id)
+        request = api_pb2.FunctionGetCallGraphRequest(function_call_id=self.object_id)
         response = await retry_transient_errors(self._client.stub.FunctionGetCallGraph, request)
         return reconstruct_call_graph(response)
 
