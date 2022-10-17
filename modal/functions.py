@@ -573,6 +573,7 @@ class _Function(Provider[_FunctionHandle]):
         memory: Optional[int] = None,
         proxy: Optional[Ref] = None,
         retries: Optional[Union[int, Retries]] = None,
+        timeout: Optional[int] = None,
         concurrency_limit: Optional[int] = None,
         cpu: Optional[float] = None,
         keep_warm: bool = False,
@@ -635,7 +636,7 @@ class _Function(Provider[_FunctionHandle]):
         self._memory = memory
         self._proxy = proxy
         self._retry_policy = retry_policy
-        self._timeout = None
+        self._timeout = timeout
         self._concurrency_limit = concurrency_limit
         self._keep_warm = keep_warm
         self._tag = self._info.get_tag()

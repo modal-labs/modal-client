@@ -500,6 +500,7 @@ class _Stub:
         proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
+        timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
     ) -> _FunctionHandle:  # Function object - callable as a regular function within a Modal app
         """Decorator to register a new Modal function with this stub."""
         if image is None:
@@ -521,6 +522,7 @@ class _Stub:
             proxy=proxy,
             retries=retries,
             concurrency_limit=concurrency_limit,
+            timeout=timeout,
             cpu=cpu,
         )
         return self._add_function(function)
@@ -543,6 +545,7 @@ class _Stub:
         proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
+        timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
     ) -> _FunctionHandle:
         """Decorator similar to `@modal.function`, but it wraps Python generators."""
         if image is None:
@@ -563,6 +566,7 @@ class _Stub:
             proxy=proxy,
             retries=retries,
             concurrency_limit=concurrency_limit,
+            timeout=timeout,
             cpu=cpu,
         )
         return self._add_function(function)
@@ -585,6 +589,7 @@ class _Stub:
         proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
+        timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         keep_warm: bool = False,  # Toggles an adaptively-sized warm pool for latency-sensitive apps.
     ):
         """Register a basic web endpoint with this application.
@@ -611,11 +616,12 @@ class _Stub:
             webhook_config=api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_FUNCTION, method=method, wait_for_response=wait_for_response
             ),
+            cpu=cpu,
             memory=memory,
             proxy=proxy,
             retries=retries,
             concurrency_limit=concurrency_limit,
-            cpu=cpu,
+            timeout=timeout,
             keep_warm=keep_warm,
         )
         return self._add_function(function)
@@ -637,6 +643,7 @@ class _Stub:
         proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
+        timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         keep_warm: bool = False,  # Toggles an adaptively-sized warm pool for latency-sensitive apps.
         _webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
     ):
@@ -653,11 +660,12 @@ class _Stub:
             mounts=mounts,
             shared_volumes=shared_volumes,
             webhook_config=api_pb2.WebhookConfig(type=_webhook_type, wait_for_response=wait_for_response),
+            cpu=cpu,
             memory=memory,
             proxy=proxy,
             retries=retries,
             concurrency_limit=concurrency_limit,
-            cpu=cpu,
+            timeout=timeout,
             keep_warm=keep_warm,
         )
         return self._add_function(function)
