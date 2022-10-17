@@ -17,6 +17,7 @@ class InputStatus(IntEnum):
 @dataclass
 class InputInfo:
     input_id: str
+    task_id: str
     status: InputStatus
     function_name: str
     module_name: str
@@ -43,7 +44,12 @@ def reconstruct_call_graph(ser_graph: api_pb2.FunctionGetCallGraphResponse) -> L
         input = inputs_by_id[input_id]
         function_call = function_calls_by_id[input.function_call_id]
         input_info_by_id[input_id] = InputInfo(
-            input_id, InputStatus(input.status), function_call.function_name, function_call.module_name, []
+            input_id,
+            input.task_id,
+            InputStatus(input.status),
+            function_call.function_name,
+            function_call.module_name,
+            [],
         )
 
         if function_call.parent_input_id:

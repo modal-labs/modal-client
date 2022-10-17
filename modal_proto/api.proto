@@ -454,6 +454,7 @@ message InputCallGraphInfo {
   string input_id = 1;
   GenericResult.GenericStatus status = 2;
   string function_call_id = 3;
+  string task_id = 4;
 }
 
 message FunctionCallCallGraphInfo {
