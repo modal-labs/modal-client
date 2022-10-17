@@ -341,8 +341,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(Empty())
 
 
-@pytest_asyncio.fixture(scope="session")
-async def blob_server(event_loop):
+@pytest_asyncio.fixture
+async def blob_server():
     blobs = {}
 
     async def upload(request):
