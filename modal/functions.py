@@ -699,6 +699,8 @@ class _Function(Provider[_FunctionHandle]):
             # TODO: check paths client-side on Windows as well.
             if platform.system() != "Windows" and Path(path).resolve() != Path(path):
                 raise InvalidError("Shared volume remote directory must be an absolute path.")
+            elif platform.system() != "Windows" and path == "/":
+                raise InvalidError("Shared volume remote directory cannot be mounted into root directory.")
 
             shared_volume_mounts.append(
                 api_pb2.SharedVolumeMount(mount_path=path, shared_volume_id=await loader(shared_volume))
