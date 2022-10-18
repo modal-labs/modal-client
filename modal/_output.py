@@ -219,9 +219,13 @@ class OutputManager:
             progress_task_id = self.task_progress.add_task(task_desc, total=total)
             self._task_progress_items[key] = progress_task_id
 
-        self.task_progress.update(progress_task_id, completed=completed, total=total)
-        if completed == total:
-            self.task_progress.remove_task(progress_task_id)
+        try:
+            self.task_progress.update(progress_task_id, completed=completed, total=total)
+            if completed == total:
+                self.task_progress.remove_task(progress_task_id)
+        except KeyError:
+            # Rich throws a KeyError if the task has already been removed.
+            pass
 
     async def get_logs_loop(self, app_id: str, client: _Client, status_spinner: Spinner, last_log_batch_entry_id: str):
         async def _get_logs():
