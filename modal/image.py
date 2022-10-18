@@ -23,10 +23,10 @@ def _dockerhub_python_version(python_version=None):
     # We use the same major/minor version, but the highest micro version
     # See https://hub.docker.com/_/python
     latest_micro_version = {
-        "3.10": "1",
-        "3.9": "9",
-        "3.8": "12",
-        "3.7": "12",
+        "3.10": "8",
+        "3.9": "15",
+        "3.8": "15",
+        "3.7": "15",
     }
     major_minor_version = ".".join(python_version.split(".")[:2])
     python_version = major_minor_version + "." + latest_micro_version[major_minor_version]
