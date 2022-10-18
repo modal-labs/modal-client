@@ -176,7 +176,7 @@ class _Invocation:
             request = api_pb2.FunctionGetOutputsRequest(
                 function_call_id=self.function_call_id,
                 timeout=backend_timeout,
-                return_empty_on_timeout=True,
+                last_entry_id="0-0",
             )
             response = await retry_transient_errors(
                 self.stub.FunctionGetOutputs,
@@ -207,13 +207,25 @@ class _Invocation:
         return await _process_result(results[0], self.stub, self.client)
 
     async def run_generator(self):
+        last_entry_id = "0-0"
         completed = False
         while not completed:
-            async for result in self.pop_function_call_outputs():
-                if result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
-                    completed = True
-                    break
-                yield await _process_result(result, self.stub, self.client)
+            request = api_pb2.FunctionGetOutputsRequest(
+                function_call_id=self.function_call_id,
+                timeout=60.0,
+                last_entry_id=last_entry_id,
+            )
+            response = await retry_transient_errors(
+                self.stub.FunctionGetOutputs,
+                request,
+            )
+            if len(response.outputs) > 0:
+                last_entry_id = response.last_entry_id
+                for item in response.outputs:
+                    if item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
+                        completed = True
+                        break
+                    yield await _process_result(item.result, self.stub, self.client)
 
 
 MAP_INVOCATION_CHUNK_SIZE = 100
@@ -274,15 +286,19 @@ async def _map_invocation(
 
     async def get_all_outputs():
         nonlocal num_inputs, num_outputs, have_all_inputs
+        last_entry_id = "0-0"
         while not have_all_inputs or num_outputs < num_inputs:
             request = api_pb2.FunctionGetOutputsRequest(
-                function_call_id=function_call_id, timeout=60, return_empty_on_timeout=True
+                function_call_id=function_call_id,
+                timeout=60,
+                last_entry_id=last_entry_id,
             )
             response = await retry_transient_errors(
                 client.stub.FunctionGetOutputs,
                 request,
                 max_retries=10,
             )
+            last_entry_id = response.last_entry_id
             for item in response.outputs:
                 if is_generator:
                     if item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
