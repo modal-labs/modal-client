@@ -581,10 +581,10 @@ message QueueCreateResponse {
 
 message QueueGetRequest {
   string queue_id = 1;
-  bool block = 2;
+  bool block = 2 [deprecated=true];
   float timeout = 3;
   int32 n_values = 4;
-  string idempotency_key = 5;
+  string idempotency_key = 5 [deprecated=true];
 }
 
 message QueueGetResponse {
@@ -593,7 +593,7 @@ message QueueGetResponse {
 
 message QueuePutRequest {
   string queue_id = 1;
-  string idempotency_key = 3;
+  string idempotency_key = 3 [deprecated=true];
   repeated bytes values = 4;
 }
 
