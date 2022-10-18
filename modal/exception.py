@@ -7,7 +7,7 @@ class Error(Exception):
 
 
 class RemoteError(Error):
-    """An error was raised on the Modal server."""
+    """Raised when an error occurs on the Modal server."""
 
 
 class TimeoutError(Error):
@@ -15,31 +15,33 @@ class TimeoutError(Error):
 
 
 class AuthError(Error):
-    """The client has missing or invalid authentication."""
+    """Raised when a client has missing or invalid authentication."""
 
 
 class ConnectionError(Error):
-    """An issue was raised while connecting to the Modal servers."""
+    """Raised when an issue occurs while connecting to the Modal servers."""
 
 
 class InvalidError(Error):
-    """Used when user does something invalid."""
+    """Raised when user does something invalid."""
 
 
 class VersionError(Error):
-    """The current client version of Modal is unsupported."""
+    """Raised when the current client version of Modal is unsupported."""
 
 
 class NotFoundError(Error):
-    """A requested resource was not found."""
+    """Raised when a requested resource was not found."""
 
 
 class ExecutionError(Error):
-    """Something unexpected happen during runtime."""
+    """Raised when something unexpected happened during runtime."""
 
 
 class DeprecationError(UserWarning):
-    """Overloading it to evade the default filter, which excludes __main__."""
+    """UserWarning category emitted when a deprecated Modal feature or API is used."""
+
+    # Overloading it to evade the default filter, which excludes __main__.
 
 
 _INTERNAL_MODULES = ["modal", "synchronicity"]
