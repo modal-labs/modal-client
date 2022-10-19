@@ -248,6 +248,7 @@ async def _map_invocation(
     have_all_inputs = False
     num_inputs = 0
     num_outputs = 0
+    pending_outputs = {}  # map input_id -> next expected gen_index value
 
     input_queue: asyncio.Queue = asyncio.Queue()
 
@@ -275,11 +276,13 @@ async def _map_invocation(
             request = api_pb2.FunctionPutInputsRequest(
                 function_id=function_id, inputs=items, function_call_id=function_call_id
             )
-            await retry_transient_errors(
+            resp = await retry_transient_errors(
                 client.stub.FunctionPutInputs,
                 request,
                 max_retries=None,
             )
+            for input in resp.inputs:
+                pending_outputs[input.input_id] = 0  # 0 is the first expected gen_index
 
         have_all_inputs = True
         yield
@@ -287,7 +290,7 @@ async def _map_invocation(
     async def get_all_outputs():
         nonlocal num_inputs, num_outputs, have_all_inputs
         last_entry_id = "0-0"
-        while not have_all_inputs or num_outputs < num_inputs:
+        while not have_all_inputs or pending_outputs:
             request = api_pb2.FunctionGetOutputsRequest(
                 function_call_id=function_call_id,
                 timeout=60,
@@ -300,13 +303,22 @@ async def _map_invocation(
             )
             last_entry_id = response.last_entry_id
             for item in response.outputs:
+                if item.input_id not in pending_outputs or item.gen_index < pending_outputs[item.input_id]:
+                    # this means the output has already been processed and is likely received due
+                    # to a duplicate output enqueue on the server
+                    continue
+
                 if is_generator:
                     if item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
+                        del pending_outputs[item.input_id]
                         num_outputs += 1
                     else:
+                        assert pending_outputs[item.input_id] == item.gen_index
+                        pending_outputs[item.input_id] += 1
                         yield item
                 else:
                     num_outputs += 1
+                    del pending_outputs[item.input_id]
                     yield item
 
     async def fetch_output(item):
@@ -318,7 +330,7 @@ async def _map_invocation(
         outputs_fetched = outputs | pipe.map(fetch_output, ordered=True, task_limit=BLOB_MAX_PARALLELISM)
 
         # map to store out-of-order outputs received
-        pending_outputs = {}
+        received_outputs = {}
         output_idx = 0
 
         async with outputs_fetched.stream() as streamer:
@@ -331,13 +343,13 @@ async def _map_invocation(
                     yield _OutputValue(output)
                 else:
                     # hold on to outputs for function maps, so we can reorder them correctly.
-                    pending_outputs[idx] = output
-                    while output_idx in pending_outputs:
-                        output = pending_outputs.pop(output_idx)
+                    received_outputs[idx] = output
+                    while output_idx in received_outputs:
+                        output = received_outputs.pop(output_idx)
                         yield _OutputValue(output)
                         output_idx += 1
 
-        assert len(pending_outputs) == 0
+        assert len(received_outputs) == 0
 
     response_gen = stream.merge(drain_input_generator(), pump_inputs(), poll_outputs())
 
