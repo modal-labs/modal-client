@@ -1,6 +1,7 @@
 import sys
 from invoke import task
 
+
 @task
 def protoc(ctx):
     py_protoc = (
