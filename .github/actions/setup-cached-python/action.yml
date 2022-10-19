@@ -1,0 +1,29 @@
+name: setup-cached-python
+
+inputs:
+  version:
+    description: Which Python version to install
+    required: false
+    default: "3.9"
+
+runs:
+  using: composite
+  steps:
+    - name: Install Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ inputs.version }}
+
+    - name: Get cached python dependencies
+      uses: actions/cache@v3
+      with:
+        path: ${{ env.pythonLocation }}
+        key: |
+          ${{ runner.os }}-${{ env.pythonLocation }}-${{ hashFiles('**/setup.cfg', 'requirements.dev.txt') }}
+        restore-keys: ${{ runner.os }}-${{ env.pythonLocation }}-
+
+    - name: Install Python packages
+      shell: bash
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.dev.txt
