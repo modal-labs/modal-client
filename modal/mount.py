@@ -181,8 +181,13 @@ def _create_client_mount():
     # Get the base_path because it also contains `modal_utils` and `modal_proto`.
     base_path, _ = os.path.split(modal.__path__[0])
 
-    mount = _Mount(local_dir=base_path, remote_dir="/pkg/", condition=module_mount_condition, recursive=True)
-    return mount
+    # TODO(erikbern): this is incredibly dumb, but we only want to include packages that start with "modal"
+    prefix = os.path.join(base_path, "modal")
+
+    def condition(arg):
+        return module_mount_condition(arg) and arg.startswith(prefix)
+
+    return _Mount(local_dir=base_path, remote_dir="/pkg/", condition=condition, recursive=True)
 
 
 _, aio_create_client_mount = synchronize_apis(_create_client_mount)
