@@ -66,12 +66,15 @@ jobs:
 
       - uses: ./.github/actions/setup-cached-python
 
-      - name: Build modules
-        run: inv build --skip-npm --skip-rust
+      - name: Build protobuf
+        run: inv protoc
+
+      - name: Build client package (installs all dependencies)
+        run: pip install -e .
 
       - name: Publish base images
         run: |
-          inv base-images-build ${{ matrix.image-name }} --python-version=${{ matrix.python-version }}
+          python -m modal_base_images.${{ matrix.image-name }} ${{ matrix.python-version }}
 
   publish-client:
     name: Publish client package
@@ -87,15 +90,18 @@ jobs:
           echo "build_number = $GITHUB_RUN_NUMBER" >
           modal_version/_version_generated.py
 
-      - name: Build modules
-        run: inv build --skip-rust --skip-npm
+      - name: Build protobuf
+        run: inv protoc
+
+      - name: Build client package (installs all dependencies)
+        run: pip install -e .
 
       - name: Publish client mount
         env:
           MODAL_LOGLEVEL: DEBUG
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-        run: inv publish-client-mount --no-confirm
+        run: python -m modal_base_images.client_mount
 
       - uses: EndBug/add-and-commit@v9
         with:
