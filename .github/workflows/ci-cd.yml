@@ -1,9 +1,6 @@
 name: Client Tests
 
-on:
-  push:
-    paths:
-      - "client/**"
+on: push
 
 env:
   TERM: linux
