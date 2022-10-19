@@ -272,10 +272,11 @@ if config["sentry_dsn"] and "localhost" not in config["server_url"]:
         sentry_sdk.init(
             # Sentry DSN for the client project; not secret.
             config["sentry_dsn"],
-            integrations=[AtexitIntegration(callback=_sentry_exit_callback), sentry_logging],
-            traces_sample_rate=1,
+            auto_enabling_integrations=False,
             before_send=_filter_exceptions,
             ignore_errors=FILTERED_ERROR_TYPES,  # type: ignore
+            integrations=[AtexitIntegration(callback=_sentry_exit_callback), sentry_logging],
+            traces_sample_rate=1,
         )  # type: ignore
 
         sentry_sdk.set_tag("token_id", config["token_id"])
