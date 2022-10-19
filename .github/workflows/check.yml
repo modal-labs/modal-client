@@ -1,0 +1,30 @@
+name: Check
+on: push
+
+jobs:
+  black:
+    name: Black
+    runs-on: ubuntu-20.04
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: ./.github/actions/setup-cached-python
+
+      - name: Check files using the black formatter
+        run: black --check .
+
+  flake8_mypy:
+    name: Flake8 and Mypy
+    runs-on: ubuntu-20.04
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: ./.github/actions/setup-cached-python
+
+      - run: inv lint --skip-web
+
+      - run: inv build --skip-npm --skip-rust
+
+      - run: inv mypy
