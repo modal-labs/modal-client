@@ -110,7 +110,6 @@ jobs:
           pull: "--rebase --autostash"
 
       - name: Upload to PyPI
-        working-directory: client
         env:
           TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
           TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
