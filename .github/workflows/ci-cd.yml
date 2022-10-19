@@ -38,8 +38,8 @@ jobs:
       - name: Run client tests
         run: pytest -v -s client_test
 
-#      - name: Run docstring tests
-#        run: pytest -s --markdown-docs -m markdown-docs modal
+      - name: Run docstring tests
+        run: pytest -s --markdown-docs -m markdown-docs modal
        
 
   publish-base-images:
