@@ -1,4 +1,4 @@
-name: Client Tests
+name: CI/CD
 
 on: push
 
@@ -11,8 +11,7 @@ env:
 
 jobs:
   client-test:
-    name:
-      Client tests on Python ${{ matrix.python-version }} and ${{ matrix.os }}
+    name: Unit tests on ${{ matrix.python-version }} and ${{ matrix.os }}
 
     strategy:
       matrix:
@@ -93,8 +92,11 @@ jobs:
       - name: Build protobuf
         run: inv protoc
 
-      - name: Build client package (installs all dependencies)
+      - name: Install all dependencies
         run: pip install -e .
+
+      - name: Build wheel
+        run: python setup.py bdist_wheel
 
       - name: Publish client mount
         env:
