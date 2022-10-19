@@ -3,6 +3,7 @@
 black~=22.3.0
 flake8~=4.0.1
 grpcio-tools==1.48.0
+grpclib==0.4.3
 invoke~=1.7.0
 mypy==0.950
 mypy-protobuf~=3.2.0
