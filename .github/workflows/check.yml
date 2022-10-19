@@ -23,8 +23,6 @@ jobs:
 
       - uses: ./.github/actions/setup-cached-python
 
-      - run: inv lint --skip-web
-
-      - run: inv build --skip-npm --skip-rust
+      - run: flake8 .
 
       - run: inv mypy
