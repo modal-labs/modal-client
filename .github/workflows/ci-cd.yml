@@ -34,7 +34,7 @@ jobs:
         run: inv protoc
 
       - name: Build client package (installs all dependencies)
-        run: pip install -e client
+        run: pip install -e .
 
       - name: Run client tests
         run: pytest -v -s client_test
