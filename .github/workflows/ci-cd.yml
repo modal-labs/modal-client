@@ -1,0 +1,117 @@
+name: Client Tests
+
+on: push
+
+env:
+  TERM: linux
+  TERMINFO: /etc/terminfo
+  # Can't be set in `pytest-env` because pytest imports the client for filterwarnings
+  # before it applies the env vars for the plugin.
+  MODAL_SENTRY_DSN: ""
+
+jobs:
+  client-test:
+    name:
+      Client tests on Python ${{ matrix.python-version }} and ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        python-version: ["3.7", "3.8", "3.9", "3.10"]
+        os: ["ubuntu-20.04"]
+        include:
+          - os: "macos-latest"
+            python-version: "3.10"
+          - os: "windows-latest"
+            python-version: "3.10"
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: ./.github/actions/setup-cached-python
+
+      - name: Build protobuf
+        run: inv protoc
+
+      - name: Build client package (installs all dependencies)
+        run: pip install -e .
+
+      - name: Run client tests
+        run: pytest -v -s client_test
+
+#      - name: Run docstring tests
+#        run: pytest -s --markdown-docs -m markdown-docs modal
+       
+
+  publish-base-images:
+    name: |
+      Publish base images for ${{ matrix.image-name }} ${{ matrix.python-version }}
+    if: github.ref == 'refs/heads/main'
+    needs: [client-test]
+    runs-on: ubuntu-20.04
+    env:
+      MODAL_LOGLEVEL: DEBUG
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+    strategy:
+      matrix:
+        python-version: ["3.7", "3.8", "3.9", "3.10"]
+        include:
+          - image-name: "debian_slim"
+          - image-name: "conda"
+            python-version: ""
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: ./.github/actions/setup-cached-python
+
+      - name: Build protobuf
+        run: inv protoc
+
+      - name: Build client package (installs all dependencies)
+        run: pip install -e .
+
+      - name: Publish base images
+        run: |
+          python -m modal_base_images.${{ matrix.image-name }} ${{ matrix.python-version }}
+
+  publish-client:
+    name: Publish client package
+    if: github.ref == 'refs/heads/main'
+    needs: [client-test]
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: ./.github/actions/setup-cached-python
+
+      - run:
+          echo "build_number = $GITHUB_RUN_NUMBER" >
+          modal_version/_version_generated.py
+
+      - name: Build protobuf
+        run: inv protoc
+
+      - name: Build client package (installs all dependencies)
+        run: pip install -e .
+
+      - name: Publish client mount
+        env:
+          MODAL_LOGLEVEL: DEBUG
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: python -m modal_base_images.client_mount
+
+      - uses: EndBug/add-and-commit@v9
+        with:
+          add: modal_version/_version_generated.py
+          message: "[auto-commit] Bump the build number"
+          pull: "--rebase --autostash"
+
+      - name: Upload to PyPI
+        working-directory: client
+        env:
+          TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
+          TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
+        run: twine upload dist/* --non-interactive
