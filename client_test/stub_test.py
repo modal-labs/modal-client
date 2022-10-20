@@ -1,4 +1,5 @@
 import logging
+import os
 import pytest
 
 from grpclib import GRPCError, Status
@@ -164,8 +165,25 @@ def test_same_function_name(caplog):
     assert "square" in caplog.text
 
 
+skip_in_github = pytest.mark.skipif(
+    os.environ.get("GITHUB_ACTIONS") == "true",
+    reason="Broken in Github Actions",
+)
+
+
+@skip_in_github
+def test_serve(client):
+    stub = Stub()
+
+    @stub.wsgi()
+    def foo():
+        pass
+
+    stub.serve(client=client, timeout=1)
+
+
 # Required as failing to raise could cause test to never return.
-@pytest.mark.skip(reason="Failing on Github Actions, let's revisit")
+@skip_in_github
 @pytest.mark.timeout(7)
 def test_nested_serve_invocation(client):
     stub = Stub()
@@ -177,5 +195,5 @@ def test_nested_serve_invocation(client):
     with pytest.raises(InvalidError) as excinfo:
         with stub.run(client=client):
             # This nested call creates a second web endpoint!
-            stub.serve()
+            stub.serve(client=client)
     assert "existing" in str(excinfo.value)

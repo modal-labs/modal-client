@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import platform
 import pytest
 
@@ -13,8 +14,9 @@ from modal_utils.async_utils import (
     warn_if_generator_is_not_consumed,
 )
 
-skip_non_linux = pytest.mark.skipif(
-    platform.system() != "Linux", reason="sleep is inaccurate on Github Actions runners."
+skip_github_non_linux = pytest.mark.skipif(
+    (os.environ.get("GITHUB_ACTIONS") == "true" and platform.system() != "Linux"),
+    reason="sleep is inaccurate on Github Actions runners.",
 )
 
 
@@ -79,7 +81,7 @@ async def raise_exception():
     raise SampleException("foo")
 
 
-@skip_non_linux
+@skip_github_non_linux
 @pytest.mark.asyncio
 async def test_task_context_wait():
     async with TaskContext(grace=0.1) as task_context:
@@ -100,7 +102,7 @@ async def test_task_context_wait():
     assert v.done()
 
 
-@skip_non_linux
+@skip_github_non_linux
 @pytest.mark.asyncio
 async def test_task_context_infinite_loop():
     async with TaskContext(grace=0.01) as task_context:
