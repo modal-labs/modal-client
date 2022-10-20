@@ -7,7 +7,7 @@ import time
 from grpclib import GRPCError, Status
 
 from modal_proto import api_grpc, api_pb2
-from modal_utils.grpc_utils import create_channel, retry_transient_errors
+from modal_utils.grpc_utils import ChannelPool, create_channel, retry_transient_errors
 
 
 @pytest.mark.asyncio
@@ -40,6 +40,7 @@ async def test_unix_channel(unix_servicer):
 @pytest.mark.asyncio
 async def test_channel_pool(servicer, n=1000):
     channel_pool = create_channel(servicer.remote_addr, use_pool=True)
+    assert isinstance(channel_pool, ChannelPool)
     client_stub = api_grpc.ModalClientStub(channel_pool)
 
     # Trigger a lot of requests
@@ -57,6 +58,7 @@ async def test_channel_pool(servicer, n=1000):
 @pytest.mark.asyncio
 async def test_channel_pool_max_active(servicer):
     channel_pool = create_channel(servicer.remote_addr, use_pool=True)
+    assert isinstance(channel_pool, ChannelPool)
     channel_pool._max_active = 1.0
     client_stub = api_grpc.ModalClientStub(channel_pool)
 

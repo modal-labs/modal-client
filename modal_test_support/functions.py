@@ -1,5 +1,6 @@
 import asyncio
 import time
+from typing import List
 
 from modal import Stub
 from modal.exception import deprecation_warning
@@ -60,7 +61,7 @@ def deprecated_function(x):
 
 
 class Cube:
-    _events = []
+    _events: List[str] = []
 
     def __init__(self):
         self._events.append("init")
@@ -78,7 +79,7 @@ class Cube:
 
 
 class CubeAsync:
-    _events = []
+    _events: List[str] = []
 
     def __init__(self):
         self._events.append("init")
