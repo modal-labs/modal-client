@@ -25,7 +25,7 @@ def test_retries(client):
 
     with pytest.raises(TypeError):
 
-        @stub.function(retries=modal.Retries())
+        @stub.function(retries=modal.Retries())  # type: ignore
         def default_retries_from_class():
             # Reject no-args constructions, which is unreadable and harder to support long-term
             pass

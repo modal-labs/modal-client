@@ -6,7 +6,7 @@ from typing import IO, BinaryIO, Union
 HASH_CHUNK_SIZE = 4096
 
 
-def _update(hasher, data: Union[bytes, io.BufferedIOBase]):
+def _update(hasher, data: Union[bytes, IO[bytes]]):
     if isinstance(data, bytes):
         hasher.update(data)
     else:
@@ -19,13 +19,13 @@ def _update(hasher, data: Union[bytes, io.BufferedIOBase]):
             hasher.update(chunk)
 
 
-def get_sha256_hex(data: Union[bytes, io.BufferedIOBase, BinaryIO, IO[bytes]]) -> str:
+def get_sha256_hex(data: Union[bytes, IO[bytes]]) -> str:
     hasher = hashlib.sha256()
     _update(hasher, data)
     return hasher.hexdigest()
 
 
-def get_md5_base64(data: Union[bytes, io.BufferedIOBase, IO[bytes]]) -> str:
+def get_md5_base64(data: Union[bytes, IO[bytes]]) -> str:
     hasher = hashlib.md5()
     _update(hasher, data)
     return base64.b64encode(hasher.digest()).decode("utf-8")
