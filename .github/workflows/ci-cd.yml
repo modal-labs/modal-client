@@ -28,6 +28,8 @@ jobs:
       - uses: actions/checkout@v3
 
       - uses: ./.github/actions/setup-cached-python
+        with:
+          version: ${{ matrix.python-version }}
 
       - name: Build protobuf
         run: inv protoc
@@ -64,6 +66,8 @@ jobs:
       - uses: actions/checkout@v3
 
       - uses: ./.github/actions/setup-cached-python
+        with:
+          version: ${{ matrix.python-version }}
 
       - name: Build protobuf
         run: inv protoc
@@ -84,6 +88,8 @@ jobs:
       - uses: actions/checkout@v3
 
       - uses: ./.github/actions/setup-cached-python
+        with:
+          version: "3.10"
 
       - run:
           echo "build_number = $GITHUB_RUN_NUMBER" >
