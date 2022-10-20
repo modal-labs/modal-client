@@ -1,4 +1,5 @@
 import logging
+import os
 import pytest
 
 from grpclib import GRPCError, Status
@@ -164,6 +165,13 @@ def test_same_function_name(caplog):
     assert "square" in caplog.text
 
 
+skip_in_github = pytest.mark.skipif(
+    os.environ.get("GITHUB_ACTIONS") == "true",
+    reason="Broken in Github Actions",
+)
+
+
+@skip_in_github
 def test_serve(client):
     stub = Stub()
 
@@ -175,6 +183,7 @@ def test_serve(client):
 
 
 # Required as failing to raise could cause test to never return.
+@skip_in_github
 @pytest.mark.timeout(7)
 def test_nested_serve_invocation(client):
     stub = Stub()
