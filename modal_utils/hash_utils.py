@@ -1,7 +1,6 @@
 import base64
 import hashlib
-import io
-from typing import IO, BinaryIO, Union
+from typing import IO, Union
 
 HASH_CHUNK_SIZE = 4096
 
