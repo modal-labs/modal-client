@@ -91,9 +91,8 @@ jobs:
         with:
           version: "3.10"
 
-      - run:
-          echo "build_number = $GITHUB_RUN_NUMBER" >
-          modal_version/_version_generated.py
+      - name: Bump the version number
+        run: inv update-build-number $GITHUB_RUN_NUMBER
 
       - name: Build protobuf
         run: inv protoc

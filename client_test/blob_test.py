@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2022
 import pytest
 
 from modal._blob_utils import blob_download, blob_upload

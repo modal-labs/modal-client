@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2022
 import os
 from typing import AsyncIterator, BinaryIO, List
 

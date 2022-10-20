@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2022
 import socket
 import ssl
 from typing import Optional

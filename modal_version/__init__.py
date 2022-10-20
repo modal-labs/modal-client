@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2022
 """Specifies the `modal.__version__` number for the client package."""
 
 from ._version_generated import build_number  # Written by GitHub

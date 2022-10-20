@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2022
 import platform
 import pytest
 import sys

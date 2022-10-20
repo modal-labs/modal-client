@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2022
 def pytest_markdown_docs_globals():
     import math
 

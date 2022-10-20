@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2022
 from modal import Period, Stub
 from modal_proto import api_pb2
 

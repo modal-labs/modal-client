@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2022
 import functools
 import traceback
 from typing import Any, Dict, Optional, Tuple

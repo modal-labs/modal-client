@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2022
 import os
 import pathlib
 import subprocess
