@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2022
 import pytest
 
 from modal_test_support.functions import deprecated_function

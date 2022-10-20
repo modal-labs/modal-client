@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2022
 import inspect
 import os
 import sys

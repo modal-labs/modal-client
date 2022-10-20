@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2022
 from typing import Any, Dict
 
 from modal_utils.async_utils import synchronizer

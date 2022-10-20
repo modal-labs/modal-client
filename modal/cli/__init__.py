@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2022
 from .entry_point import entrypoint_cli
 
 

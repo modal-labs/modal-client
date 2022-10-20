@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2022
 """**async interfaces for use with `asyncio` event loops**
 
 The async interfaces are mostly mirrors of the blocking ones, with the `Aio` or `aio_` prefixes.

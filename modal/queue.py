@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2022
 import queue  # The system library
 import time
 import warnings

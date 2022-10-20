@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2022
 from modal_utils.app_utils import is_valid_app_name, is_valid_subdomain_label
 
 
