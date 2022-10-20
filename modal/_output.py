@@ -95,7 +95,11 @@ class OutputManager:
     def __init__(self, stdout, show_progress: Optional[bool]):
         self.stdout = stdout or sys.stdout
         if show_progress is None:
-            self._visible_progress = self.stdout.isatty()
+            try:
+                is_notebook = get_ipython() is not None # noqa
+            except NameError:
+                is_notebook = False
+            self._visible_progress = self.stdout.isatty() or is_notebook
         else:
             self._visible_progress = show_progress
 
