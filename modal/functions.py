@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
+import os
 import platform
 import time
 from dataclasses import dataclass
@@ -710,10 +711,15 @@ class _Function(Provider[_FunctionHandle]):
         # Relies on dicts being ordered (true as of Python 3.6).
         for path, shared_volume in self._shared_volumes.items():
             # TODO: check paths client-side on Windows as well.
-            if platform.system() != "Windows" and Path(path).resolve() != Path(path):
-                raise InvalidError("Shared volume remote directory must be an absolute path.")
-            elif platform.system() != "Windows" and path == "/":
-                raise InvalidError("Shared volume remote directory cannot be mounted into root directory.")
+            path = Path(path).as_posix()
+            abs_path = os.path.abspath(path)
+
+            if platform.system() != "Windows" and path != abs_path:
+                raise InvalidError(f"Shared volume {abs_path} must be a canonical, absolute path.")
+            elif platform.system() != "Windows" and abs_path == "/":
+                raise InvalidError(f"Shared volume {abs_path} cannot be mounted into root directory.")
+            elif platform.system() != "Windows" and abs_path == "/tmp":
+                raise InvalidError(f"Shared volume {abs_path} cannot be mounted at /tmp.")
 
             shared_volume_mounts.append(
                 api_pb2.SharedVolumeMount(mount_path=path, shared_volume_id=await loader(shared_volume))
