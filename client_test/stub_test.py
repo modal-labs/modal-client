@@ -171,7 +171,7 @@ def test_serve(client):
     def foo():
         pass
 
-    stub.serve(timeout=1)
+    stub.serve(client=client, timeout=1)
 
 
 # Required as failing to raise could cause test to never return.
@@ -186,5 +186,5 @@ def test_nested_serve_invocation(client):
     with pytest.raises(InvalidError) as excinfo:
         with stub.run(client=client):
             # This nested call creates a second web endpoint!
-            stub.serve()
+            stub.serve(client=client)
     assert "existing" in str(excinfo.value)
