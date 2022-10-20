@@ -36,4 +36,4 @@ jobs:
 
       - run: inv protoc
 
-#      - run: mypy .
+      - run: mypy .

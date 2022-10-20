@@ -137,7 +137,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.done = True
         await stream.send_message(Empty())
 
-    async def ClientHeartbeat(self, stream) -> Empty:
+    async def ClientHeartbeat(self, stream):
         request = await stream.recv_message()
         self.requests.append(request)
         if self.heartbeat_status_code:
@@ -372,7 +372,7 @@ async def servicer_factory(blob_server):
     @contextlib.asynccontextmanager
     async def create_server(host=None, port=None, path=None):
         blob_host, blobs = blob_server
-        servicer = MockClientServicer(blob_host, blobs)
+        servicer = MockClientServicer(blob_host, blobs)  # type: ignore
         server = None
 
         async def _start_servicer():

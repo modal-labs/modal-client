@@ -17,9 +17,11 @@ def _cli(args, env={}):
         "PYTHONUTF8": "1",
     }
     ret = subprocess.run(args, cwd=lib_dir, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout = ret.stdout.decode()
+    stderr = ret.stderr.decode()
     if ret.returncode != 0:
-        raise Exception(f"Failed with {ret.returncode} stdout: {ret.stdout} stderr: {ret.stderr}")
-    return ret.stdout
+        raise Exception(f"Failed with {ret.returncode} stdout: {stdout} stderr: {stderr}")
+    return stdout
 
 
 def _get_config(env={}):
