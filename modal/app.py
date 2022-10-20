@@ -1,16 +1,18 @@
-from typing import Dict, Optional
-
-from rich.tree import Tree
+from typing import TYPE_CHECKING, Dict, Optional, TypeVar
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 from modal_utils.grpc_utils import retry_transient_errors
 
-from ._output import step_completed, step_progress, step_progress_update
 from .client import _Client
 from .config import logger
 from .functions import _FunctionHandle
 from .object import Handle, Provider
+
+if TYPE_CHECKING:
+    from rich.tree import Tree
+else:
+    Tree = TypeVar("Tree")
 
 
 class _App:
@@ -72,6 +74,12 @@ class _App:
         self, obj: Provider, progress: Optional[Tree] = None, existing_object_id: Optional[str] = None
     ) -> Handle:
         """Send a server request to create an object in this app, and return its ID."""
+        from ._output import (  # Lazy import to only import `rich` when necessary.
+            step_completed,
+            step_progress,
+            step_progress_update,
+        )
+
         cached_obj = self._load_cached(obj)
         if cached_obj is not None:
             # We already created this object before, shortcut this method
