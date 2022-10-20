@@ -8,6 +8,9 @@ import re
 import sys
 from invoke import task
 
+year = datetime.date.today().year
+copyright_header_start = "# Copyright Modal Labs"
+copyright_header_full = f"{copyright_header_start} {year}"
 
 @task
 def protoc(ctx):
@@ -21,9 +24,6 @@ def protoc(ctx):
 
 @task
 def check_copyright(ctx, fix=False):
-    year = datetime.date.today().year
-    copyright_header_start = "# Copyright Modal Labs"
-    copyright_header_full = f"{copyright_header_start} {year}"
     invalid_files = []
     d = str(Path(__file__).parent)
     for root, dirs, files in os.walk(d):
@@ -46,3 +46,9 @@ def check_copyright(ctx, fix=False):
         raise Exception(
             f"{len(invalid_files)} are missing copyright headers!" " Please run `inv check-copyright --fix`"
         )
+
+
+@task
+def update_build_number(ctx, build_number):
+    with open("modal_version/_version_generated.py", "w") as f:
+        f.write(f"{copyright_header_full}\nbuild_number = {build_number}\n")
