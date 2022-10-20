@@ -233,7 +233,7 @@ class OutputManager:
 
             request = api_pb2.AppGetLogsRequest(
                 app_id=app_id,
-                timeout=60,
+                timeout=55,
                 last_entry_id=last_log_batch_entry_id,
             )
             log_batch: api_pb2.TaskLogsBatch

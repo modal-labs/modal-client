@@ -167,9 +167,9 @@ class _Invocation:
     async def pop_function_call_outputs(self, timeout: Optional[float] = None):
         t0 = time.time()
         if timeout is None:
-            backend_timeout = 60.0
+            backend_timeout = 55.0
         else:
-            backend_timeout = min(60.0, timeout)  # refresh backend call every 60s
+            backend_timeout = min(55.0, timeout)  # refresh backend call every 55s
 
         while True:
             # always execute at least one poll for results, regardless if timeout is 0
@@ -189,7 +189,7 @@ class _Invocation:
 
             if timeout is not None:
                 # update timeout in retry loop
-                backend_timeout = min(60.0, t0 + timeout - time.time())
+                backend_timeout = min(55.0, t0 + timeout - time.time())
                 if backend_timeout < 0:
                     break
 
@@ -212,7 +212,7 @@ class _Invocation:
         while not completed:
             request = api_pb2.FunctionGetOutputsRequest(
                 function_call_id=self.function_call_id,
-                timeout=60.0,
+                timeout=55.0,
                 last_entry_id=last_entry_id,
             )
             response = await retry_transient_errors(
@@ -293,7 +293,7 @@ async def _map_invocation(
         while not have_all_inputs or pending_outputs:
             request = api_pb2.FunctionGetOutputsRequest(
                 function_call_id=function_call_id,
-                timeout=60,
+                timeout=55,
                 last_entry_id=last_entry_id,
             )
             response = await retry_transient_errors(
