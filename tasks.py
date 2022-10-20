@@ -1,3 +1,9 @@
+# Copyright (c) Modal Labs 2022
+
+import datetime
+import os
+from pathlib import Path
+import re
 import sys
 from invoke import task
 
@@ -10,3 +16,32 @@ def protoc(ctx):
     )
     print(py_protoc)
     ctx.run(f"{py_protoc} -I . modal_proto/api.proto")
+
+
+@task
+def check_copyright(ctx, fix=False):
+    year = datetime.date.today().year
+    copyright_header_start = "# Copyright Modal Labs"
+    copyright_header_full = f"{copyright_header_start} {year}"
+    invalid_files = []
+    d = str(Path(__file__).parent)
+    for root, dirs, files in os.walk(d):
+        fns = [os.path.join(root, fn) for fn in files if fn.endswith(".py")]
+        for fn in fns:
+            first_line = open(fn).readline()
+            if not first_line.startswith(copyright_header_start):
+                if fix:
+                    print(f"Fixing {fn}...")
+                    content = copyright_header_full + "\n" + open(fn).read()
+                    with open(fn, "w") as g:
+                        g.write(content)
+                else:
+                    invalid_files.append(fn)
+
+    if invalid_files:
+        for fn in invalid_files:
+            print("Missing copyright:", fn)
+
+        raise Exception(
+            f"{len(invalid_files)} are missing copyright headers!" " Please run `inv check-copyright --fix`"
+        )
