@@ -293,5 +293,6 @@ warnings.filterwarnings(
     module="modal",
 )
 
-# Set up rich tracebacks.
-setup_rich_traceback()
+# Set up rich tracebacks, but only on user's end.
+if _user_config:
+    setup_rich_traceback()
