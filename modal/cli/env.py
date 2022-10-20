@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2022
 import typer
 
 from modal.config import _env, config_envs, config_set_active_env

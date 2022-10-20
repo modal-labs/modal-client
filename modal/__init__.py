@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2022
 from modal_version import __version__
 
 from .app import App, container_app, is_local

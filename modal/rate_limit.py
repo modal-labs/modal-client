@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2022
 from typing import Optional
 
 from modal_proto import api_pb2

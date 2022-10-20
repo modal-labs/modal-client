@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2022
 import getpass
 from typing import Optional
 

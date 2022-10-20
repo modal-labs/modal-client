@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2022
 import base64
 import hashlib
 from typing import IO, Union
