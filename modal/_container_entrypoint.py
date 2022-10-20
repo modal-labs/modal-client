@@ -104,13 +104,17 @@ class _FunctionIOManager:
         item.args = args
         return item
 
+    def get_average_call_time(self) -> float:
+        if self.calls_completed == 0:
+            return 0
+
+        return self.total_user_time / self.calls_completed
+    
     def get_max_inputs_to_fetch(self):
         if self.calls_completed == 0:
             return 1
 
-        average_handling_time = self.total_user_time / self.calls_completed
-
-        return math.ceil(RTT_S / max(average_handling_time, 1e-6))
+        return math.ceil(RTT_S / max(self.get_average_call_time(), 1e-6))
 
     async def _generate_inputs(
         self,
@@ -118,7 +122,8 @@ class _FunctionIOManager:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         eof_received = False
         while not eof_received:
-            request.max_values = self.get_max_inputs_to_fetch()
+            request.average_call_time = self.get_average_call_time()
+            request.max_values = self.get_max_inputs_to_fetch() # Deprecated; remove.
 
             with trace("get_inputs"):
                 response = await retry_transient_errors(self.client.stub.FunctionGetInputs, request)
