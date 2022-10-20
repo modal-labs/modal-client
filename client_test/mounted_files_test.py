@@ -9,10 +9,10 @@ from pathlib import Path
 @pytest.fixture
 def venv_path(tmp_path):
     venv_path = tmp_path
-    subprocess.run([sys.executable, "-m", "venv", venv_path, "--copies", "--system-site-packages"])
+    subprocess.run([sys.executable, "-m", "venv", venv_path, "--copies", "--system-site-packages"], check=True)
     # Install Modal and a tiny package in the venv.
-    subprocess.run([venv_path / "bin" / "python", "-m", "pip", "install", "-e", "client"])
-    subprocess.run([venv_path / "bin" / "python", "-m", "pip", "install", "--force-reinstall", "six"])
+    subprocess.run([venv_path / "bin" / "python", "-m", "pip", "install", "-e", "."], check=True)
+    subprocess.run([venv_path / "bin" / "python", "-m", "pip", "install", "--force-reinstall", "six"], check=True)
     yield venv_path
 
 
@@ -26,6 +26,7 @@ def test_mounted_files_script(test_dir):
         cwd=test_dir / Path("supports"),
         env={**os.environ, "PYTHONPATH": str(test_dir / Path("supports"))},
     )
+    assert p.returncode == 0
     stdout = p.stdout.decode("utf-8")
     stderr = p.stderr.decode("utf-8")
     print("stdout: ", stdout)
@@ -52,6 +53,7 @@ def test_mounted_files_script(test_dir):
 
 def test_mounted_files_package(test_dir):
     p = subprocess.run([sys.executable, "-m", "pkg_a.package"], cwd=test_dir / Path("supports"), capture_output=True)
+    assert p.returncode == 0
     stdout = p.stdout.decode("utf-8")
     stderr = p.stderr.decode("utf-8")
     print("stdout: ", stdout)
@@ -87,6 +89,7 @@ def test_mounted_files_sys_prefix(test_dir, venv_path):
         cwd=test_dir / Path("supports"),
         env={**os.environ, "PYTHONPATH": str(test_dir / Path("supports"))},
     )
+    assert p.returncode == 0
     stdout = p.stdout.decode("utf-8")
     stderr = p.stderr.decode("utf-8")
     print("stdout: ", stdout)
@@ -118,6 +121,7 @@ def test_mounted_files_config(test_dir):
         cwd=test_dir / Path("supports"),
         env={**os.environ, "PYTHONPATH": str(test_dir / Path("supports")), "MODAL_AUTOMOUNT": ""},
     )
+    assert p.returncode == 0
     stdout = p.stdout.decode("utf-8")
     stderr = p.stderr.decode("utf-8")
     print("stdout: ", stdout)
