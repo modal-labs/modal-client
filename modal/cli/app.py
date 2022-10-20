@@ -43,8 +43,10 @@ def run(
         if len(stub.registered_functions) == 1:
             function_name = stub.registered_functions[0]
         else:
-            print(f"""You need to specify an entrypoint Modal function to run using --function-name=<name>
-Registered functions on the selected stub are: {registered_functions_str}""")
+            print(
+                f"""You need to specify an entrypoint Modal function to run using --function-name=<name>
+Registered functions on the selected stub are: {registered_functions_str}"""
+            )
             exit(1)
     elif function_name not in stub.registered_functions:
         print(
