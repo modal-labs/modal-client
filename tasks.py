@@ -4,13 +4,13 @@
 import datetime
 import os
 from pathlib import Path
-import re
 import sys
 from invoke import task
 
 year = datetime.date.today().year
 copyright_header_start = "# Copyright Modal Labs"
 copyright_header_full = f"{copyright_header_start} {year}"
+
 
 @task
 def protoc(ctx):
