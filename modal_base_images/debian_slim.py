@@ -2,11 +2,11 @@
 import asyncio
 import sys
 
-from modal.aio import AioDebianSlim, AioStub
+from modal.aio import AioImage, AioStub
 
 
 async def main(client=None, python_version=None):
-    stub = AioStub(image=AioDebianSlim(python_version))
+    stub = AioStub(image=AioImage.debian_slim(python_version))
     async with stub.run(client=client):
         pass
 
