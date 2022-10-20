@@ -38,12 +38,17 @@ def run(
         traceback.print_exc()
         sys.exit(1)
 
+    registered_functions_str = ", ".join(stub.registered_functions)
     if not function_name:
         if len(stub.registered_functions) == 1:
             function_name = stub.registered_functions[0]
-
-    if not function_name:
-        registered_functions_str = ", ".join(stub.registered_functions)
+        else:
+            print(
+                f"""You need to specify an entrypoint Modal function to run using --function-name=<name>
+Registered functions on the selected stub are: {registered_functions_str}"""
+            )
+            exit(1)
+    elif function_name not in stub.registered_functions:
         print(
             f"No function `{function_name}` could be found in the specified stub. Registered functions are: {registered_functions_str}"
         )
