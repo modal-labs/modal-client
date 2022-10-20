@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2022
 from modal_utils.async_utils import synchronize_apis
 
 from .object import Handle, Provider

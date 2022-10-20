@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2022
 import contextlib
 import subprocess
 import tempfile

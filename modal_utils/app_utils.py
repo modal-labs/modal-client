@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2022
 import re
 
 # https://www.rfc-editor.org/rfc/rfc1035

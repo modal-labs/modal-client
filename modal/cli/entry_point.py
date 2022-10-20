@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2022
 import typer
 
 from .app import app_cli
