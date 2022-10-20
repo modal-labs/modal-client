@@ -164,6 +164,16 @@ def test_same_function_name(caplog):
     assert "square" in caplog.text
 
 
+def test_serve(client):
+    stub = Stub()
+
+    @stub.wsgi()
+    def foo():
+        pass
+
+    stub.serve(timeout=1)
+
+
 # Required as failing to raise could cause test to never return.
 @pytest.mark.timeout(7)
 def test_nested_serve_invocation(client):

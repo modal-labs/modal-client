@@ -296,7 +296,7 @@ class _Stub:
         deprecation_warning("Stub.run_forever is deprecated, use .serve() instead")
         await self.serve(client, stdout, show_progress)
 
-    async def serve(self, client=None, stdout=None, show_progress=None) -> None:
+    async def serve(self, client=None, stdout=None, show_progress=None, timeout=None) -> None:
         """Run an app until the program is interrupted. Modal watches source files
         and mounts for the app, and live updates the app when any changes are detected.
 
@@ -328,8 +328,9 @@ class _Stub:
             client = await _Client.from_env()
 
         output_mgr = OutputManager(stdout, show_progress)
-
-        event_agen = watch(self, output_mgr, config["serve_timeout"])
+        if timeout is None:
+            timeout = config["serve_timeout"]
+        event_agen = watch(self, output_mgr, timeout)
         event = await event_agen.__anext__()
 
         app = None
