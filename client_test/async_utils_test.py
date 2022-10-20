@@ -125,7 +125,7 @@ DEBOUNCE_TIME = 0.1
 
 @pytest.mark.asyncio
 async def test_queue_batch_iterator():
-    queue = asyncio.Queue()
+    queue: asyncio.Queue = asyncio.Queue()
     await queue.put(1)
     drained_items = []
 

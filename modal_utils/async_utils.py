@@ -3,7 +3,7 @@ import concurrent.futures
 import functools
 import inspect
 import time
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Set
 
 import synchronicity
 
@@ -105,6 +105,8 @@ class TaskContext:
     async with TaskContext() as task_context:
         task = task_context.create(coro())
     """
+
+    _loops: Set[asyncio.Task]
 
     def __init__(self, grace: Optional[float] = None):
         self._grace = grace

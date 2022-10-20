@@ -4,7 +4,7 @@ import socket
 import time
 import urllib.parse
 import uuid
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Tuple, TypeVar
+from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Tuple, Type, TypeVar, cast
 
 import grpclib.events
 from grpclib import GRPCError, Status
@@ -144,11 +144,13 @@ def create_channel(
     if use_pool is None:
         use_pool = o.scheme in ("http", "https")
 
+    channel_cls: Type[Channel]
     if use_pool:
         channel_cls = ChannelPool
     else:
         channel_cls = Channel
 
+    channel: Channel
     if o.scheme == "unix":
         channel = channel_cls(path=o.path)  # probably pointless to use a pool ever
     elif o.scheme in ("http", "https"):
@@ -157,7 +159,7 @@ def create_channel(
         assert 1 <= len(parts) <= 2, "Invalid target location: " + target
         ssl = o.scheme.endswith("s")
         host = parts[0]
-        port = parts[1] if len(parts) == 2 else 443 if ssl else 80
+        port = int(parts[1]) if len(parts) == 2 else 443 if ssl else 80
         channel = channel_cls(host, port, ssl=ssl)
     else:
         raise Exception(f"Unknown scheme: {o.scheme}")
@@ -172,7 +174,7 @@ def create_channel(
             event.metadata[k] = v
 
         if inject_tracing_context is not None:
-            inject_tracing_context(event.metadata)
+            inject_tracing_context(cast(Dict[str, str], event.metadata))
 
     grpclib.events.listen(channel, grpclib.events.SendRequest, send_request)
     return channel
