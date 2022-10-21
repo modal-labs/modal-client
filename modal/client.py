@@ -6,7 +6,6 @@ import warnings
 from aiohttp import ClientConnectorError, ClientResponseError
 from grpclib import GRPCError, Status
 from grpclib.exceptions import StreamTerminatedError
-from modal_version import __version__
 from sentry_sdk import capture_exception
 
 from modal.exception import DeprecationError
@@ -19,6 +18,7 @@ from modal_utils.grpc_utils import (
     retry_transient_errors,
 )
 from modal_utils.http_utils import http_client_with_tls
+from modal_version import __version__
 
 from ._tracing import inject_tracing_context
 from .config import config, logger

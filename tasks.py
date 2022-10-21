@@ -3,8 +3,9 @@
 
 import datetime
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
+
 from invoke import task
 
 year = datetime.date.today().year

@@ -11,7 +11,8 @@ sys.path.append(os.getcwd())
 # TODO: might want to look at pbr:
 # https://docs.openstack.org/pbr/latest/user/index.html
 
-from modal_version import __version__  # noqa
 from setuptools import setup  # noqa
+
+from modal_version import __version__  # noqa
 
 setup(version=__version__)

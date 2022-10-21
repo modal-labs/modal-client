@@ -1,8 +1,8 @@
 # Copyright Modal Labs 2022
 import asyncio
+import os
 import platform
 import pytest
-import os
 import time
 
 from grpclib import Status
