@@ -52,6 +52,7 @@ def check_copyright(ctx, fix=False):
 def update_build_number(ctx, new_build_number):
     new_build_number = int(new_build_number)
     from modal_version import build_number as current_build_number
+
     assert new_build_number > current_build_number
     with open("modal_version/_version_generated.py", "w") as f:
         f.write(f"{copyright_header_full}\nbuild_number = {new_build_number}\n")
