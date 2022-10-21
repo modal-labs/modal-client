@@ -81,6 +81,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     needs: [client-test]
     runs-on: ubuntu-20.04
+    concurrency: publish-client
     steps:
       - uses: actions/checkout@v3
 
