@@ -91,6 +91,12 @@ jobs:
       - name: Bump the version number
         run: inv update-build-number $GITHUB_RUN_NUMBER
 
+      - uses: EndBug/add-and-commit@v9
+        with:
+          add: modal_version/_version_generated.py
+          message: "[auto-commit] Bump the build number"
+          pull: "--rebase --autostash"
+
       - name: Build protobuf
         run: inv protoc
 
@@ -106,12 +112,6 @@ jobs:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
         run: python -m modal_base_images.client_mount
-
-      - uses: EndBug/add-and-commit@v9
-        with:
-          add: modal_version/_version_generated.py
-          message: "[auto-commit] Bump the build number"
-          pull: "--rebase --autostash"
 
       - name: Upload to PyPI
         env:
