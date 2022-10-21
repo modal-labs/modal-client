@@ -109,7 +109,7 @@ class _FunctionIOManager:
             return 0
 
         return self.total_user_time / self.calls_completed
-    
+
     def get_max_inputs_to_fetch(self):
         if self.calls_completed == 0:
             return 1
@@ -123,7 +123,7 @@ class _FunctionIOManager:
         eof_received = False
         while not eof_received:
             request.average_call_time = self.get_average_call_time()
-            request.max_values = self.get_max_inputs_to_fetch() # Deprecated; remove.
+            request.max_values = self.get_max_inputs_to_fetch()  # Deprecated; remove.
 
             with trace("get_inputs"):
                 response = await retry_transient_errors(self.client.stub.FunctionGetInputs, request)
