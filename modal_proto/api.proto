@@ -348,7 +348,8 @@ message FunctionGetInputsItem {
 message FunctionGetInputsRequest {
   string function_id = 1;
   int32 max_values = 3;
-  float timeout = 4;
+  float timeout = 4 [deprecated=true];
+  float average_call_time = 5;
 }
 
 message FunctionGetInputsResponse {
