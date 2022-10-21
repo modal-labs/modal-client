@@ -4,11 +4,11 @@ import os
 import pytest
 
 from grpclib import GRPCError, Status
-from modal_test_support import module_1, module_2
 
 from modal import Image, Stub
 from modal.aio import AioApp, AioQueue, AioStub, aio_lookup
 from modal.exception import InvalidError, NotFoundError
+from modal_test_support import module_1, module_2
 
 
 @pytest.mark.asyncio
