@@ -8,6 +8,15 @@ from .secret import secret_cli
 from .token import token_cli
 from .volume import volume_cli
 
+
+def version_callback(value: bool):
+    if value:
+        from modal_version import __version__
+
+        typer.echo(f"modal client version: {__version__}")
+        raise typer.Exit()
+
+
 entrypoint_cli = typer.Typer(
     no_args_is_help=True,
     add_completion=False,
@@ -19,6 +28,15 @@ entrypoint_cli = typer.Typer(
     about running code on Modal.
     """,
 )
+
+
+@entrypoint_cli.callback()
+def root(
+    ctx: typer.Context,
+    version: bool = typer.Option(None, "--version", callback=version_callback),
+):
+    pass
+
 
 entrypoint_cli.add_typer(app_cli)
 entrypoint_cli.add_typer(config_cli)
