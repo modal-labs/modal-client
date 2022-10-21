@@ -5,7 +5,18 @@ import socket
 import time
 import urllib.parse
 import uuid
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Tuple, Type, TypeVar, cast
+from typing import (
+    Any,
+    AsyncIterator,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    TypeVar,
+    cast,
+)
 
 import grpclib.events
 from grpclib import GRPCError, Status
