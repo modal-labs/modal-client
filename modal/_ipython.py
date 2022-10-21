@@ -6,6 +6,7 @@ def is_notebook(stdout=None):
         stdout = sys.stdout
     try:
         import ipykernel.iostream
+
         return isinstance(stdout, ipykernel.iostream.OutStream)
     except ImportError:
         return False
