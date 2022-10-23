@@ -135,7 +135,7 @@ async def image_pty(image, app, cmd=None, **kwargs):
         fl = fcntl.fcntl(fd, fcntl.F_GETFL)
         fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
 
-        def _read_char() -> Optional[str]:
+        def _read_char() -> Optional[bytes]:
             nonlocal quit_pipe_read
             # TODO: Windows support.
             (readable, _, _) = select.select([sys.stdin.buffer, quit_pipe_read], [], [])
