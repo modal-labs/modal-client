@@ -97,7 +97,7 @@ async def _pty(
                 char = await queue.get()
                 if char is None:
                     return
-                writer.write(char.encode("utf-8"))
+                writer.write(char)
                 writer.flush()
             except asyncio.CancelledError:
                 return
@@ -121,6 +121,8 @@ async def _pty(
 
 
 async def image_pty(image, app, cmd=None, **kwargs):
+    import fcntl
+
     _pty_wrapped = app.function(image=image, **kwargs)(_pty)
     app["queue"] = _Queue()
 
@@ -128,16 +130,21 @@ async def image_pty(image, app, cmd=None, **kwargs):
         queue = running_app["queue"]
         quit_pipe_read, quit_pipe_write = os.pipe()
 
-        def _read_char() -> Optional[str]:
+        # Put stdin in non-blocking mode.
+        fd = sys.stdin.fileno()
+        fl = fcntl.fcntl(fd, fcntl.F_GETFL)
+        fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
+
+        def _read_char() -> Optional[bytes]:
             nonlocal quit_pipe_read
             # TODO: Windows support.
-            (readable, _, _) = select.select([sys.stdin, quit_pipe_read], [], [])
+            (readable, _, _) = select.select([sys.stdin.buffer, quit_pipe_read], [], [])
             if quit_pipe_read in readable:
                 return None
-            return sys.stdin.read(1)
+            return sys.stdin.buffer.read()
 
         async def _write():
-            await queue.put("\n")
+            await queue.put(b"\n")
             while True:
                 char = await asyncio.get_event_loop().run_in_executor(None, _read_char)
                 if char is None:
