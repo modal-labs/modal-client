@@ -5,34 +5,39 @@ from pathlib import Path
 from pprint import pprint
 
 import pytest
+from nbclient.exceptions import CellExecutionError
 
 
 @pytest.fixture
 def notebook_runner(servicer):
-    import papermill
+    import nbformat
+    from nbclient import NotebookClient
 
     def runner(notebook_path: Path):
         output_notebook_path = notebook_path.with_suffix(".output.ipynb")
 
-        nb = papermill.execute_notebook(
+        nb = nbformat.read(
             notebook_path,
-            output_notebook_path,
-            parameters={
-                "server_addr": servicer.remote_addr,
-            }
+            as_version=4,
         )
 
+        parameter_cell = nb["cells"][0]
+        assert "parameters" in parameter_cell["metadata"]["tags"]  # like in papermill
+        parameter_cell["source"] = f'server_addr = "{servicer.remote_addr}"'
+
+        client = NotebookClient(nb)
+
+        try:
+            client.execute()
+        except CellExecutionError:
+            nbformat.write(nb, output_notebook_path)
+            pytest.fail(f"""There was an error when executing the notebook.
+        
+Inspect the output notebook: {output_notebook_path}
+""")
         tagged_cells = {}
         for cell in nb["cells"]:
-            if cell["metadata"]["papermill"]["exception"]:
-                cell_output = cell["outputs"][0]["data"]['text/plain']
-
-                pytest.fail(f"""There was an error when executing the notebook.
-Error output:
-{cell_output}
-Inspect the output notebook: {output_notebook_path}
-                """)
-            for tag in cell["metadata"]["tags"]:
+            for tag in cell["metadata"].get("tags", []):
                 tagged_cells[tag] = cell
 
         return tagged_cells

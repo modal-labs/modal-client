@@ -27,7 +27,4 @@ filterwarnings = [
     "error::DeprecationWarning",
     "error::modal.exception.DeprecationError",
     "ignore::DeprecationWarning:pytest.*:",
-    # ugly ignores due to external deprecations inside papermill:
-    "ignore:the imp module is deprecated in favour of importlib;",
-    "ignore:Passing unrecognized arguments to super(PapermillNotebookClient)*"
 ]
