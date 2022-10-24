@@ -39,6 +39,7 @@ from ._blob_utils import (
 from ._call_graph import InputInfo, reconstruct_call_graph
 from ._function_utils import FunctionInfo
 from ._output import OutputManager
+from ._pty import get_pty_info
 from ._serialization import deserialize, serialize
 from ._traceback import append_modal_tb
 from .client import _Client
@@ -47,6 +48,7 @@ from .exception import TimeoutError as _TimeoutError
 from .exception import deprecation_warning
 from .mount import _Mount
 from .object import Handle, Provider, Ref, RemoteRef
+from .queue import _Queue
 from .rate_limit import RateLimit
 from .retries import Retries
 from .schedule import Schedule
@@ -607,6 +609,7 @@ class _Function(Provider[_FunctionHandle]):
         concurrency_limit: Optional[int] = None,
         cpu: Optional[float] = None,
         keep_warm: bool = False,
+        pty_input_stream: Optional[_Queue] = None,
     ) -> None:
         """mdmd:hidden"""
         assert callable(raw_f)
@@ -669,6 +672,7 @@ class _Function(Provider[_FunctionHandle]):
         self._timeout = timeout
         self._concurrency_limit = concurrency_limit
         self._keep_warm = keep_warm
+        self._pty_input_stream = pty_input_stream
         self._tag = self._info.get_tag()
         super().__init__()
 
@@ -737,6 +741,11 @@ class _Function(Provider[_FunctionHandle]):
             raise InvalidError(f"Invalid fractional CPU value {self._cpu}. Cannot have negative CPU resources.")
         milli_cpu = int(1000 * self._cpu) if self._cpu is not None else None
 
+        if self._pty_input_stream:
+            pty_info = get_pty_info(await loader(self._pty_input_stream))
+        else:
+            pty_info = None
+
         # Create function remotely
         function_definition = api_pb2.Function(
             module_name=self._info.module_name,
@@ -756,6 +765,7 @@ class _Function(Provider[_FunctionHandle]):
             timeout_secs=self._timeout,
             concurrency_limit=self._concurrency_limit,
             keep_warm=self._keep_warm,
+            pty_info=pty_info,
         )
         request = api_pb2.FunctionCreateRequest(
             app_id=app_id,

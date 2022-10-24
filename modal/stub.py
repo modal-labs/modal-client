@@ -22,6 +22,7 @@ from .functions import _Function, _FunctionHandle
 from .image import _Image
 from .mount import _create_client_mount, _Mount, client_mount_name
 from .object import Provider, Ref
+from .queue import _Queue
 from .rate_limit import RateLimit
 from .schedule import Schedule
 from .secret import _Secret
@@ -80,6 +81,7 @@ class _Stub:
     _mounts: Collection[_Mount]
     _secrets: Collection[_Secret]
     _function_handles: Dict[str, _FunctionHandle]
+    _pty_input_stream: Optional[_Queue]
 
     def __init__(
         self,
@@ -103,6 +105,7 @@ class _Stub:
         self._mounts = mounts
         self._secrets = secrets
         self._function_handles = {}
+        self._pty_input_stream = None
         super().__init__()
 
     @property
@@ -427,6 +430,12 @@ class _Stub:
         else:
             return _default_image
 
+    def _get_pty_input_stream(self) -> _Queue:
+        if self._pty_input_stream is None:
+            self._pty_input_stream = _Queue()
+
+        return self._pty_input_stream
+
     def _get_function_mounts(self, raw_f):
         # Get the common mounts for the stub.
         mounts = list(self._mounts)
@@ -503,6 +512,7 @@ class _Stub:
         retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
+        interactive: bool = False,  # Whether to run the function in interactive mode.
     ) -> _FunctionHandle:  # Function object - callable as a regular function within a Modal app
         """Decorator to register a new Modal function with this stub."""
         if image is None:
@@ -526,6 +536,7 @@ class _Stub:
             concurrency_limit=concurrency_limit,
             timeout=timeout,
             cpu=cpu,
+            pty_input_stream=self._get_pty_input_stream() if interactive else None,
         )
         return self._add_function(function)
 
@@ -712,7 +723,7 @@ class _Stub:
             stub.interactive_shell(cmd="/bin/bash", image=app_image)
         ```
         """
-        from ._image_pty import image_pty
+        from ._pty import image_pty
 
         try:
             image = image or self.image

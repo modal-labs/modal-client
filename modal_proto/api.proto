@@ -286,6 +286,15 @@ message DictUpdateRequest {
 message DictUpdateResponse {
 }
 
+message PTYInfo {
+  string queue_id = 1; // Modal queue through which interactive input is buffered.
+  uint32 winsz_rows = 2;
+  uint32 winsz_cols = 3;
+  string env_term = 4;
+  string env_colorterm = 5;
+  string env_term_program = 6;
+}
+
 message Function {
   string module_name = 1;
   string function_name = 2;
@@ -325,6 +334,8 @@ message Function {
   bool keep_warm = 20;
 
   uint32 timeout_secs = 21;
+
+  PTYInfo pty_info = 22;
 }
 
 message FunctionCreateRequest {

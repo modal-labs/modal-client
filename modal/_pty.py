@@ -7,20 +7,19 @@ import sys
 from typing import Optional, Tuple, no_type_check
 
 import modal
-from modal.queue import _Queue
+from modal_proto import api_pb2
 from modal_utils.async_utils import TaskContext
 
 
-def get_winsz(fd):
+def get_winsz(fd) -> Tuple[Optional[int], Optional[int]]:
     try:
         import fcntl
         import struct
         import termios
 
-        cr = struct.unpack("hh", fcntl.ioctl(fd, termios.TIOCGWINSZ, "1234"))  # type: ignore
-        return cr
+        return struct.unpack("hh", fcntl.ioctl(fd, termios.TIOCGWINSZ, "1234"))  # type: ignore
     except Exception:
-        return None
+        return None, None
 
 
 def set_winsz(fd, rows, cols):
@@ -51,21 +50,19 @@ def raw_terminal():
 
 
 async def _pty(
-    cmd: Optional[str], queue: modal.queue._QueueHandle, winsz: Optional[Tuple[int, int]], term_env: dict
+    fn, queue: modal.queue._QueueHandle, winsz: Optional[Tuple[int, int]], term_env: dict
 ):  # queue is an AioQueue, but mypy doesn't like that
     import pty
     import tty
 
     @no_type_check
-    def spawn(argv, master_read=pty._read, stdin_read=pty._read):
-        """Fork of pty.spawn, so we can set the window size on the forked FD"""
-
-        if not isinstance(argv, tuple):
-            argv = (argv,)
+    def spawn(fn, *args, **kwargs):
+        """Modified from pty.spawn, so we can set the window size on the forked FD
+        and run a custom function in the forked child process."""
 
         pid, master_fd = pty.fork()
         if pid == pty.CHILD:
-            os.execlp(argv[0], *argv)
+            fn(*args, **kwargs)
 
         if winsz:
             rows, cols = winsz
@@ -78,7 +75,7 @@ async def _pty(
         except tty.error:  # This is the same as termios.error
             restore = 0
         try:
-            pty._copy(master_fd, master_read, stdin_read)
+            pty._copy(master_fd, pty._read, pty._read)
         except OSError:
             if restore:
                 tty.tcsetattr(pty.STDIN_FILENO, tty.TCSAFLUSH, mode)
@@ -118,47 +115,51 @@ async def _pty(
         writer.close()
 
 
-async def image_pty(image, app, cmd=None, **kwargs):
+def _set_nonblocking(fd: int):
     import fcntl
 
-    _pty_wrapped = app.function(image=image, **kwargs)(_pty)
-    app["queue"] = _Queue()
+    fl = fcntl.fcntl(fd, fcntl.F_GETFL)
+    fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
 
-    async with app.run(show_progress=False) as running_app:
-        queue = running_app["queue"]
-        quit_pipe_read, quit_pipe_write = os.pipe()
 
-        # Put stdin in non-blocking mode.
-        fd = sys.stdin.fileno()
-        fl = fcntl.fcntl(fd, fcntl.F_GETFL)
-        fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
+def get_pty_info(queue_id: str) -> api_pb2.PTYInfo:
+    rows, cols = get_winsz(sys.stdin.fileno())
+    return api_pb2.PTYInfo(
+        queue_id=queue_id,
+        winsz_rows=rows,
+        winsz_cols=cols,
+        env_term=os.environ.get("TERM"),
+        env_colorterm=os.environ.get("COLORTERM"),
+        env_term_program=os.environ.get("TERM_PROGRAM"),
+    )
 
-        def _read_char() -> Optional[bytes]:
-            nonlocal quit_pipe_read
-            # TODO: Windows support.
-            (readable, _, _) = select.select([sys.stdin.buffer, quit_pipe_read], [], [])
-            if quit_pipe_read in readable:
-                return None
-            return sys.stdin.buffer.read()
 
-        async def _write():
-            await queue.put(b"\n")
-            while True:
-                char = await asyncio.get_event_loop().run_in_executor(None, _read_char)
-                if char is None:
-                    return
-                await queue.put(char)
+@contextlib.contextmanager
+async def image_pty(image, app, cmd=None, **kwargs):
+    queue = running_app["queue"]
+    quit_pipe_read, quit_pipe_write = os.pipe()
 
-        async with TaskContext(grace=0.1) as tc:
-            write_task = tc.create_task(_write())
-            winsz = get_winsz(sys.stdin.fileno())
-            term_env = {
-                "TERM": os.environ.get("TERM"),
-                "COLORTERM": os.environ.get("COLORTERM"),
-                "TERM_PROGRAM": os.environ.get("TERM_PROGRAM"),
-            }
+    _set_nonblocking(sys.stdin.fileno())
 
-            with raw_terminal():
-                await _pty_wrapped(cmd, queue, winsz, term_env)
-            os.write(quit_pipe_write, b"\n")
-            write_task.cancel()
+    def _read_char() -> Optional[bytes]:
+        nonlocal quit_pipe_read
+        # TODO: Windows support.
+        (readable, _, _) = select.select([sys.stdin.buffer, quit_pipe_read], [], [])
+        if quit_pipe_read in readable:
+            return None
+        return sys.stdin.buffer.read()
+
+    async def _write():
+        await queue.put(b"\n")
+        while True:
+            char = await asyncio.get_event_loop().run_in_executor(None, _read_char)
+            if char is None:
+                return
+            await queue.put(char)
+
+    async with TaskContext(grace=0.1) as tc:
+        write_task = tc.create_task(_write())
+        with raw_terminal():
+            yield
+        os.write(quit_pipe_write, b"\n")
+        write_task.cancel()
