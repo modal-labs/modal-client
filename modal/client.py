@@ -66,6 +66,7 @@ class _Client:
         self.version = version
         self._task_context = None
         self._stub = None
+        self._connected = False
 
     @property
     def stub(self):
@@ -100,7 +101,10 @@ class _Client:
             if resp.deprecation_warning:
                 ALARM_EMOJI = chr(0x1F6A8)
                 warnings.warn(f"{ALARM_EMOJI} {resp.deprecation_warning} {ALARM_EMOJI}", DeprecationError)
+            if not resp.client_id:
+                raise InvalidError("Did not get a client id from server")
             self._client_id = resp.client_id
+            self._connected = True
         except GRPCError as exc:
             if exc.status == Status.FAILED_PRECONDITION:
                 # TODO: include a link to the latest package
@@ -114,8 +118,10 @@ class _Client:
                 raise ConnectionError(exc_string)
         except (OSError, asyncio.TimeoutError) as exc:
             raise ConnectionError(str(exc))
-        if not self._client_id:
-            raise InvalidError("Did not get a client id from server")
+        finally:
+            if not self._connected:
+                # Tear down the channel pool etc
+                await self._stop()
 
         # Start heartbeats
         self._last_heartbeat = time.time()
