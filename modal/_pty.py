@@ -7,8 +7,7 @@ import select
 import sys
 from typing import Optional, Tuple, no_type_check
 
-import modal
-from modal.queue import _Queue
+from modal.queue import _QueueHandle
 from modal_proto import api_pb2
 from modal_utils.async_utils import TaskContext
 
@@ -90,21 +89,20 @@ def _pty_spawn(pty_info: api_pb2.PTYInfo, fn, args, kwargs):
     return os.waitpid(pid, 0)[1]
 
 
-def run_in_pty(
-    fn, queue: modal.queue._QueueHandle, pty_info: api_pb2.PTYInfo
-):  # queue is an AioQueue, but mypy doesn't like that
+def run_in_pty(fn, queue, pty_info: api_pb2.PTYInfo):
     import pty
+    import threading
 
     @functools.wraps(fn)
-    async def wrapped_fn(*args, **kwargs):
+    def wrapped_fn(*args, **kwargs):
         write_fd, read_fd = pty.openpty()
         os.dup2(read_fd, sys.stdin.fileno())
         writer = os.fdopen(write_fd, "wb")
 
-        async def _read():
+        def _read():
             while True:
                 try:
-                    char = await queue.get()
+                    char = queue.get()
                     if char is None:
                         return
                     writer.write(char)
@@ -112,26 +110,22 @@ def run_in_pty(
                 except asyncio.CancelledError:
                     return
 
-        # run_cmd = cmd or os.environ.get("SHELL", "sh")
+        t = threading.Thread(target=_read)
+        t.start()
 
-        # print(f"Spawning {run_cmd}. Type 'exit' to exit. ")
+        if pty_info.env_term:
+            os.environ["TERM"] = pty_info.env_term
 
-        async with TaskContext(grace=0.01) as tc:
-            t = tc.create_task(_read())
+        if pty_info.env_colorterm:
+            os.environ["COLORTERM"] = pty_info.env_colorterm
 
-            if pty_info.env_term:
-                os.environ["TERM"] = pty_info.env_term
+        if pty_info.env_term_program:
+            os.environ["TERM_PROGRAM"] = pty_info.env_term_program
 
-            if pty_info.env_colorterm:
-                os.environ["COLORTERM"] = pty_info.env_colorterm
-
-            if pty_info.env_term_program:
-                os.environ["TERM_PROGRAM"] = pty_info.env_term_program
-
-            await asyncio.get_event_loop().run_in_executor(None, _pty_spawn, pty_info, fn, args, kwargs)
-            await queue.put(None)
-            t.cancel()
-            writer.close()
+        _pty_spawn(pty_info, fn, args, kwargs)
+        queue.put(None)
+        t.join()
+        writer.close()
 
     return wrapped_fn
 
@@ -149,7 +143,7 @@ def get_pty_info(queue_id: str) -> api_pb2.PTYInfo:
 
 
 @contextlib.asynccontextmanager
-async def write_stdin_to_pty_stream(queue: _Queue):
+async def write_stdin_to_pty_stream(queue: _QueueHandle):
     quit_pipe_read, quit_pipe_write = os.pipe()
 
     set_nonblocking(sys.stdin.fileno())
@@ -178,4 +172,19 @@ async def write_stdin_to_pty_stream(queue: _Queue):
         write_task.cancel()
 
 
-# async def image_pty(image, app, cmd=None, **kwargs):
+def _exec_cmd(cmd: str = None):
+    run_cmd = cmd or os.environ.get("SHELL", "sh")
+
+    print(f"Spawning {run_cmd}. Type 'exit' to exit. ")
+
+    # TODO: support args.
+    argv = [run_cmd]
+
+    os.execlp(argv[0], *argv)
+
+
+async def image_pty(image, stub, cmd=None, **kwargs):
+    exec_cmd = stub.function(interactive=True, image=image, **kwargs)(_exec_cmd)
+
+    async with stub.run():
+        await exec_cmd()

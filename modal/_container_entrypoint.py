@@ -11,6 +11,7 @@ from typing import Any, AsyncIterator, Callable, Optional, Tuple, Type
 
 import cloudpickle
 from grpclib import Status
+from synchronicity.interface import Interface
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import (
@@ -513,7 +514,9 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     if container_args.function_def.pty_info.queue_id:
         from modal import container_app
 
-        fun = run_in_pty(fun, container_app._pty_input_stream, container_args.function_def.pty_info)
+        input_stream_unwrapped = synchronizer._translate_in(container_app._pty_input_stream)
+        input_stream_blocking = synchronizer._translate_out(input_stream_unwrapped, Interface.BLOCKING)
+        fun = run_in_pty(fun, input_stream_blocking, container_args.function_def.pty_info)
 
     if not is_async(fun):
         call_function_sync(function_io_manager, cls, fun, is_generator)
