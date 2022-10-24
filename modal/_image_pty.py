@@ -54,7 +54,6 @@ async def _pty(
     cmd: Optional[str], queue: modal.queue._QueueHandle, winsz: Optional[Tuple[int, int]], term_env: dict
 ):  # queue is an AioQueue, but mypy doesn't like that
     import pty
-    import threading
     import tty
 
     @no_type_check
@@ -106,18 +105,17 @@ async def _pty(
 
     print(f"Spawning {run_cmd}. Type 'exit' to exit. ")
 
-    # TODO use TaskContext and async task for this (runs into a weird synchroncity error on exit for now).
-    t = threading.Thread(target=asyncio.run, args=(_read(),))
-    t.start()
+    async with TaskContext(grace=0.01) as tc:
+        t = tc.create_task(_read())
 
-    for key, value in term_env.items():
-        if value is not None:
-            os.environ[key] = value
+        for key, value in term_env.items():
+            if value is not None:
+                os.environ[key] = value
 
-    spawn(run_cmd)
-    await queue.put(None)
-    t.join()
-    writer.close()
+        await asyncio.get_event_loop().run_in_executor(None, spawn, run_cmd)
+        await queue.put(None)
+        t.cancel()
+        writer.close()
 
 
 async def image_pty(image, app, cmd=None, **kwargs):
