@@ -1,8 +1,4 @@
-import os
-import time
-import warnings
 from pathlib import Path
-from pprint import pprint
 
 import pytest
 from nbclient.exceptions import CellExecutionError
@@ -31,10 +27,12 @@ def notebook_runner(servicer):
             client.execute()
         except CellExecutionError:
             nbformat.write(nb, output_notebook_path)
-            pytest.fail(f"""There was an error when executing the notebook.
+            pytest.fail(
+                f"""There was an error when executing the notebook.
         
 Inspect the output notebook: {output_notebook_path}
-""")
+"""
+            )
         tagged_cells = {}
         for cell in nb["cells"]:
             for tag in cell["metadata"].get("tags", []):
@@ -48,8 +46,7 @@ Inspect the output notebook: {output_notebook_path}
 def test_notebook_outputs_status(notebook_runner, test_dir):
     input_notebook_path = test_dir / "supports" / "notebooks" / "simple.ipynb"
     tagged_cells = notebook_runner(input_notebook_path)
-    combined_output = '\n'.join(c["data"]["text/plain"] for c in tagged_cells["main"]["outputs"])
+    combined_output = "\n".join(c["data"]["text/plain"] for c in tagged_cells["main"]["outputs"])
     assert "Initialized" in combined_output
     assert "Created objects." in combined_output
     assert "App completed." in combined_output
-
