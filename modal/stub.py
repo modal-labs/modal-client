@@ -14,6 +14,7 @@ from modal_utils.decorator_utils import decorator_with_options
 
 from ._function_utils import FunctionInfo
 from ._output import OutputManager, step_completed, step_progress
+from ._pty import write_stdin_to_pty_stream
 from .app import _App, container_app, is_local
 from .client import _Client
 from .config import config, logger
@@ -81,7 +82,6 @@ class _Stub:
     _mounts: Collection[_Mount]
     _secrets: Collection[_Secret]
     _function_handles: Dict[str, _FunctionHandle]
-    _pty_input_stream: Optional[_Queue]
 
     def __init__(
         self,
@@ -105,7 +105,6 @@ class _Stub:
         self._mounts = mounts
         self._secrets = secrets
         self._function_handles = {}
-        self._pty_input_stream = None
         super().__init__()
 
     @property
@@ -235,9 +234,15 @@ class _Stub:
                 if mode == StubRunMode.DEPLOY:
                     logs_loop.cancel()
 
-                # Yield to context
-                with output_mgr.ctx_if_visible(output_mgr.make_live(status_spinner)):
-                    yield app
+                if self._pty_input_stream:
+                    output_mgr._visible_progress = False
+                    async with write_stdin_to_pty_stream(app._pty_input_stream):
+                        yield app
+                    output_mgr._visible_progress = True
+                else:
+                    # Yield to context
+                    with output_mgr.ctx_if_visible(output_mgr.make_live(status_spinner)):
+                        yield app
             except KeyboardInterrupt:
                 aborted = True
                 # mute cancellation errors on all function handles to prevent exception spam
@@ -430,9 +435,16 @@ class _Stub:
         else:
             return _default_image
 
-    def _get_pty_input_stream(self) -> _Queue:
-        if self._pty_input_stream is None:
-            self._pty_input_stream = _Queue()
+    @property
+    def _pty_input_stream(self):
+        if "_pty_input_stream" in self._blueprint:
+            return self._blueprint["_pty_input_stream"]
+
+        return None
+
+    def _make_pty_input_stream(self) -> _Queue:
+        if not self._pty_input_stream:
+            self._blueprint["_pty_input_stream"] = _Queue()
 
         return self._pty_input_stream
 
@@ -536,7 +548,7 @@ class _Stub:
             concurrency_limit=concurrency_limit,
             timeout=timeout,
             cpu=cpu,
-            pty_input_stream=self._get_pty_input_stream() if interactive else None,
+            pty_input_stream=self._make_pty_input_stream() if interactive else None,
         )
         return self._add_function(function)
 

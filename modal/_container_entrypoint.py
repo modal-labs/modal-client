@@ -24,6 +24,7 @@ from modal_utils.grpc_utils import retry_transient_errors
 from ._asgi import asgi_app_wrapper, wsgi_app_wrapper
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._proxy_tunnel import proxy_tunnel
+from ._pty import run_in_pty
 from ._serialization import deserialize, serialize
 from ._traceback import extract_traceback
 from ._tracing import extract_tracing_context, set_span_tag, trace, wrap
@@ -508,6 +509,11 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     else:
         with function_io_manager.handle_user_exception():
             cls, fun = import_function(container_args.function_def)
+
+    if container_args.function_def.pty_info.queue_id:
+        from modal import container_app
+
+        fun = run_in_pty(fun, container_app._pty_input_stream, container_args.function_def.pty_info)
 
     if not is_async(fun):
         call_function_sync(function_io_manager, cls, fun, is_generator)

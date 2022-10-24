@@ -1,12 +1,14 @@
 # Copyright Modal Labs 2022
 import asyncio
 import contextlib
+import functools
 import os
 import select
 import sys
 from typing import Optional, Tuple, no_type_check
 
 import modal
+from modal.queue import _Queue
 from modal_proto import api_pb2
 from modal_utils.async_utils import TaskContext
 
@@ -34,6 +36,13 @@ def set_winsz(fd, rows, cols):
         pass
 
 
+def set_nonblocking(fd: int):
+    import fcntl
+
+    fl = fcntl.fcntl(fd, fcntl.F_GETFL)
+    fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
+
+
 @contextlib.contextmanager
 def raw_terminal():
     import termios
@@ -49,77 +58,82 @@ def raw_terminal():
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 
-async def _pty(
-    fn, queue: modal.queue._QueueHandle, winsz: Optional[Tuple[int, int]], term_env: dict
-):  # queue is an AioQueue, but mypy doesn't like that
+@no_type_check
+def _pty_spawn(pty_info: api_pb2.PTYInfo, fn, args, kwargs):
+    """Modified from pty.spawn, so we can set the window size on the forked FD
+    and run a custom function in the forked child process."""
+
     import pty
     import tty
 
-    @no_type_check
-    def spawn(fn, *args, **kwargs):
-        """Modified from pty.spawn, so we can set the window size on the forked FD
-        and run a custom function in the forked child process."""
+    pid, master_fd = pty.fork()
+    if pid == pty.CHILD:
+        fn(*args, **kwargs)
+        return
 
-        pid, master_fd = pty.fork()
-        if pid == pty.CHILD:
-            fn(*args, **kwargs)
+    if pty_info.winsz_rows or pty_info.winsz_cols:
+        set_winsz(master_fd, pty_info.winsz_rows, pty_info.winsz_cols)
 
-        if winsz:
-            rows, cols = winsz
-            set_winsz(master_fd, rows, cols)
+    try:
+        mode = tty.tcgetattr(pty.STDIN_FILENO)
+        tty.setraw(pty.STDIN_FILENO)
+        restore = 1
+    except tty.error:  # This is the same as termios.error
+        restore = 0
+    try:
+        pty._copy(master_fd, pty._read, pty._read)
+    except OSError:
+        if restore:
+            tty.tcsetattr(pty.STDIN_FILENO, tty.TCSAFLUSH, mode)
 
-        try:
-            mode = tty.tcgetattr(pty.STDIN_FILENO)
-            tty.setraw(pty.STDIN_FILENO)
-            restore = 1
-        except tty.error:  # This is the same as termios.error
-            restore = 0
-        try:
-            pty._copy(master_fd, pty._read, pty._read)
-        except OSError:
-            if restore:
-                tty.tcsetattr(pty.STDIN_FILENO, tty.TCSAFLUSH, mode)
+    os.close(master_fd)
+    return os.waitpid(pid, 0)[1]
 
-        os.close(master_fd)
-        return os.waitpid(pid, 0)[1]
 
-    write_fd, read_fd = pty.openpty()
-    os.dup2(read_fd, sys.stdin.fileno())
-    writer = os.fdopen(write_fd, "wb")
+def run_in_pty(
+    fn, queue: modal.queue._QueueHandle, pty_info: api_pb2.PTYInfo
+):  # queue is an AioQueue, but mypy doesn't like that
+    import pty
 
-    async def _read():
-        while True:
-            try:
-                char = await queue.get()
-                if char is None:
+    @functools.wraps(fn)
+    async def wrapped_fn(*args, **kwargs):
+        write_fd, read_fd = pty.openpty()
+        os.dup2(read_fd, sys.stdin.fileno())
+        writer = os.fdopen(write_fd, "wb")
+
+        async def _read():
+            while True:
+                try:
+                    char = await queue.get()
+                    if char is None:
+                        return
+                    writer.write(char)
+                    writer.flush()
+                except asyncio.CancelledError:
                     return
-                writer.write(char)
-                writer.flush()
-            except asyncio.CancelledError:
-                return
 
-    run_cmd = cmd or os.environ.get("SHELL", "sh")
+        # run_cmd = cmd or os.environ.get("SHELL", "sh")
 
-    print(f"Spawning {run_cmd}. Type 'exit' to exit. ")
+        # print(f"Spawning {run_cmd}. Type 'exit' to exit. ")
 
-    async with TaskContext(grace=0.01) as tc:
-        t = tc.create_task(_read())
+        async with TaskContext(grace=0.01) as tc:
+            t = tc.create_task(_read())
 
-        for key, value in term_env.items():
-            if value is not None:
-                os.environ[key] = value
+            if pty_info.env_term:
+                os.environ["TERM"] = pty_info.env_term
 
-        await asyncio.get_event_loop().run_in_executor(None, spawn, run_cmd)
-        await queue.put(None)
-        t.cancel()
-        writer.close()
+            if pty_info.env_colorterm:
+                os.environ["COLORTERM"] = pty_info.env_colorterm
 
+            if pty_info.env_term_program:
+                os.environ["TERM_PROGRAM"] = pty_info.env_term_program
 
-def _set_nonblocking(fd: int):
-    import fcntl
+            await asyncio.get_event_loop().run_in_executor(None, _pty_spawn, pty_info, fn, args, kwargs)
+            await queue.put(None)
+            t.cancel()
+            writer.close()
 
-    fl = fcntl.fcntl(fd, fcntl.F_GETFL)
-    fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
+    return wrapped_fn
 
 
 def get_pty_info(queue_id: str) -> api_pb2.PTYInfo:
@@ -134,12 +148,11 @@ def get_pty_info(queue_id: str) -> api_pb2.PTYInfo:
     )
 
 
-@contextlib.contextmanager
-async def image_pty(image, app, cmd=None, **kwargs):
-    queue = running_app["queue"]
+@contextlib.asynccontextmanager
+async def write_stdin_to_pty_stream(queue: _Queue):
     quit_pipe_read, quit_pipe_write = os.pipe()
 
-    _set_nonblocking(sys.stdin.fileno())
+    set_nonblocking(sys.stdin.fileno())
 
     def _read_char() -> Optional[bytes]:
         nonlocal quit_pipe_read
@@ -163,3 +176,6 @@ async def image_pty(image, app, cmd=None, **kwargs):
             yield
         os.write(quit_pipe_write, b"\n")
         write_task.cancel()
+
+
+# async def image_pty(image, app, cmd=None, **kwargs):
