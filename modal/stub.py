@@ -699,10 +699,35 @@ class _Stub:
         if __name__ == "__main__":
             stub.interactive_shell("/bin/bash")
         ```
+
+        Or alternatively:
+
+        ```python
+        import modal
+
+        stub = modal.Stub()
+        app_image = modal.Image.debian_slim().apt_install(["vim"])
+
+        if __name__ == "__main__":
+            stub.interactive_shell(cmd="/bin/bash", image=app_image)
+        ```
         """
         from ._image_pty import image_pty
 
-        await image_pty(image or self.image, self, cmd, **kwargs)
+        try:
+            image = image or self.image
+        except KeyError:
+            pass
+
+        if image is None:
+            raise InvalidError(
+                inspect.cleandoc(
+                    """`stub` is not associated with a modal.Image and no `image` provided as argument.
+                    You can specify an image by doing `stub.interactive_shell("/bin/bash", image=app_image)`.
+                    """
+                )
+            )
+        await image_pty(image, self, cmd, **kwargs)
 
 
 Stub, AioStub = synchronize_apis(_Stub)
