@@ -111,7 +111,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request = await stream.recv_message()
         self.requests.append(request)
         client_id = "cl-123"
-        if request.version == "timeout":
+        print(stream.metadata)
+        if stream.metadata.get("x-modal-token-id") == "bad":
+            raise GRPCError(Status.UNAUTHENTICATED, "bad bad bad")
+        elif request.version == "timeout":
             await asyncio.sleep(60)
             await stream.send_message(api_pb2.ClientCreateResponse(client_id=client_id))
         elif request.version == "unauthenticated":
