@@ -27,7 +27,7 @@ def check_copyright(ctx, fix=False):
     invalid_files = []
     d = str(Path(__file__).parent)
     for root, dirs, files in os.walk(d):
-        fns = [os.path.join(root, fn) for fn in files if fn.endswith(".py")]
+        fns = [os.path.join(root, fn) for fn in files if fn.endswith(".py") and "/site-packages/" not in root]
         for fn in fns:
             first_line = open(fn).readline()
             if not first_line.startswith(copyright_header_start):

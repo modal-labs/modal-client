@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2022
 from pathlib import Path
 
 import pytest
@@ -29,7 +30,7 @@ def notebook_runner(servicer):
             nbformat.write(nb, output_notebook_path)
             pytest.fail(
                 f"""There was an error when executing the notebook.
-        
+
 Inspect the output notebook: {output_notebook_path}
 """
             )
