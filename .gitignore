@@ -2,4 +2,7 @@ modal_proto/*.py
 modal_proto/*.pyi
 __pycache__
 *.egg-info
+.ipynb_checkpoints
+*.output.ipynb
+*.iml
 
