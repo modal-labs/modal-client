@@ -2,6 +2,7 @@
 import inspect
 import os
 import sys
+import warnings
 from enum import Enum
 from typing import AsyncGenerator, Collection, Dict, List, Optional
 
@@ -14,6 +15,7 @@ from modal_utils.decorator_utils import decorator_with_options
 
 from ._function_utils import FunctionInfo
 from ._output import OutputManager, step_completed, step_progress
+from ._pty import exec_cmd, write_stdin_to_pty_stream
 from .app import _App, container_app, is_local
 from .client import _Client
 from .config import config, logger
@@ -22,6 +24,7 @@ from .functions import _Function, _FunctionHandle
 from .image import _Image
 from .mount import _create_client_mount, _Mount, client_mount_name
 from .object import Provider, Ref
+from .queue import _Queue
 from .rate_limit import RateLimit
 from .schedule import Schedule
 from .secret import _Secret
@@ -232,9 +235,15 @@ class _Stub:
                 if mode == StubRunMode.DEPLOY:
                     logs_loop.cancel()
 
-                # Yield to context
-                with output_mgr.ctx_if_visible(output_mgr.make_live(status_spinner)):
-                    yield app
+                if self._pty_input_stream:
+                    output_mgr._visible_progress = False
+                    async with write_stdin_to_pty_stream(app._pty_input_stream):
+                        yield app
+                    output_mgr._visible_progress = True
+                else:
+                    # Yield to context
+                    with output_mgr.ctx_if_visible(output_mgr.make_live(status_spinner)):
+                        yield app
             except KeyboardInterrupt:
                 aborted = True
                 # mute cancellation errors on all function handles to prevent exception spam
@@ -427,6 +436,10 @@ class _Stub:
         else:
             return _default_image
 
+    @property
+    def _pty_input_stream(self):
+        return self._blueprint.get("_pty_input_stream", None)
+
     def _get_function_mounts(self, raw_f):
         # Get the common mounts for the stub.
         mounts = list(self._mounts)
@@ -503,12 +516,22 @@ class _Stub:
         retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
+        interactive: bool = False,  # Whether to run the function in interactive mode.
     ) -> _FunctionHandle:  # Function object - callable as a regular function within a Modal app
         """Decorator to register a new Modal function with this stub."""
         if image is None:
             image = self._get_default_image()
         mounts = [*self._get_function_mounts(raw_f), *mounts]
         secrets = self._get_function_secrets(raw_f, secret, secrets)
+
+        if interactive:
+            if self._pty_input_stream:
+                warnings.warn(
+                    "Running multiple interactive functions at the same time is not fully supported, and could lead to unexpected behavior."
+                )
+            else:
+                self._blueprint["_pty_input_stream"] = _Queue()
+
         function = _Function(
             raw_f,
             image=image,
@@ -526,6 +549,7 @@ class _Stub:
             concurrency_limit=concurrency_limit,
             timeout=timeout,
             cpu=cpu,
+            interactive=interactive,
         )
         return self._add_function(function)
 
@@ -712,22 +736,10 @@ class _Stub:
             stub.interactive_shell(cmd="/bin/bash", image=app_image)
         ```
         """
-        from ._image_pty import image_pty
+        wrapped_fn = self.function(interactive=True, image=image or self._get_default_image(), **kwargs)(exec_cmd)
 
-        try:
-            image = image or self.image
-        except KeyError:
-            pass
-
-        if image is None:
-            raise InvalidError(
-                inspect.cleandoc(
-                    """`stub` is not associated with a modal.Image and no `image` provided as argument.
-                    You can specify an image by doing `stub.interactive_shell("/bin/bash", image=app_image)`.
-                    """
-                )
-            )
-        await image_pty(image, self, cmd, **kwargs)
+        async with self.run():
+            await wrapped_fn(cmd)
 
 
 Stub, AioStub = synchronize_apis(_Stub)
