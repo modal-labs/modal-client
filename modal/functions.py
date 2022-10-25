@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2022
 import asyncio
-import inspect
 import os
 import platform
 import time
@@ -33,7 +32,6 @@ from modal_utils.async_utils import (
     warn_if_generator_is_not_consumed,
 )
 from modal_utils.grpc_utils import retry_transient_errors
-
 from ._blob_utils import (
     BLOB_MAX_PARALLELISM,
     MAX_OBJECT_SIZE_BYTES,

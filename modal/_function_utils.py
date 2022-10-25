@@ -8,10 +8,7 @@ import typing
 from pathlib import Path
 from typing import Dict, Union
 
-import cloudpickle
-
 from modal_proto import api_pb2
-
 from .config import config, logger
 from .mount import _Mount
 
