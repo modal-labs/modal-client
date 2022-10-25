@@ -545,7 +545,7 @@ class _Stub:
             concurrency_limit=concurrency_limit,
             timeout=timeout,
             cpu=cpu,
-            interactive=True,
+            interactive=interactive,
         )
         return self._add_function(function)
 
