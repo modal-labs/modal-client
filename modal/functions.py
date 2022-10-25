@@ -18,7 +18,6 @@ from typing import (
     Optional,
     Tuple,
     Union,
-    Type,
 )
 
 import cloudpickle

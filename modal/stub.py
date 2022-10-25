@@ -4,7 +4,7 @@ import os
 import sys
 import warnings
 from enum import Enum
-from typing import AsyncGenerator, Collection, Dict, List, Optional, Type
+from typing import AsyncGenerator, Collection, Dict, List, Optional
 
 from rich.tree import Tree
 
@@ -12,7 +12,6 @@ from modal_proto import api_pb2
 from modal_utils.app_utils import is_valid_app_name
 from modal_utils.async_utils import TaskContext, synchronize_apis, synchronizer
 from modal_utils.decorator_utils import decorator_with_options
-
 from ._function_utils import FunctionInfo
 from ._output import OutputManager, step_completed, step_progress
 from ._pty import exec_cmd, write_stdin_to_pty_stream
@@ -20,7 +19,7 @@ from .app import _App, container_app, is_local
 from .client import _Client
 from .config import config, logger
 from .exception import InvalidError, deprecation_warning
-from .functions import _Function, _FunctionHandle, FunctionHandle, AioFunctionHandle
+from .functions import _Function, _FunctionHandle
 from .image import _Image
 from .mount import _create_client_mount, _Mount, client_mount_name
 from .object import Provider, Ref

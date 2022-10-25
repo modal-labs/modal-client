@@ -211,12 +211,14 @@ def test_function_relative_import_hint(client, servicer):
 
 lifecycle_stub = Stub()
 
+
 class Foo:
     bar = "hello"
 
     @lifecycle_stub.function(serialized=True)
     def run(self):
         return self.bar
+
 
 def test_serialized_function_includes_lifecycle_class(client, servicer):
     with lifecycle_stub.run(client=client):
