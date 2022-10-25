@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 from pathlib import Path
 
+import jupytext
 import pytest
 from nbclient.exceptions import CellExecutionError
 
@@ -13,9 +14,8 @@ def notebook_runner(servicer):
     def runner(notebook_path: Path):
         output_notebook_path = notebook_path.with_suffix(".output.ipynb")
 
-        nb = nbformat.read(
+        nb = jupytext.read(
             notebook_path,
-            as_version=4,
         )
 
         parameter_cell = nb["cells"][0]
@@ -45,7 +45,7 @@ Inspect the output notebook: {output_notebook_path}
 
 
 def test_notebook_outputs_status(notebook_runner, test_dir):
-    input_notebook_path = test_dir / "supports" / "notebooks" / "simple.ipynb"
+    input_notebook_path = test_dir / "supports" / "notebooks" / "simple.py"
     tagged_cells = notebook_runner(input_notebook_path)
     combined_output = "\n".join(c["data"]["text/plain"] for c in tagged_cells["main"]["outputs"])
     assert "Initialized" in combined_output
