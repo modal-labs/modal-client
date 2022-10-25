@@ -68,7 +68,7 @@ def _pty_spawn(pty_info: api_pb2.PTYInfo, fn, args, kwargs):
     pid, master_fd = pty.fork()
     if pid == pty.CHILD:
         fn(*args, **kwargs)
-        return
+        os._exit(0)
 
     if pty_info.winsz_rows or pty_info.winsz_cols:
         set_winsz(master_fd, pty_info.winsz_rows, pty_info.winsz_cols)
