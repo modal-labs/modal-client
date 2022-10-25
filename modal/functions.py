@@ -3,6 +3,7 @@ import asyncio
 import os
 import platform
 import time
+import warnings
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
@@ -39,6 +40,7 @@ from ._blob_utils import (
 from ._call_graph import InputInfo, reconstruct_call_graph
 from ._function_utils import FunctionInfo
 from ._output import OutputManager
+from ._pty import get_pty_info
 from ._serialization import deserialize, serialize
 from ._traceback import append_modal_tb
 from .client import _Client
@@ -607,6 +609,7 @@ class _Function(Provider[_FunctionHandle]):
         concurrency_limit: Optional[int] = None,
         cpu: Optional[float] = None,
         keep_warm: bool = False,
+        interactive: bool = False,
     ) -> None:
         """mdmd:hidden"""
         assert callable(raw_f)
@@ -669,6 +672,7 @@ class _Function(Provider[_FunctionHandle]):
         self._timeout = timeout
         self._concurrency_limit = concurrency_limit
         self._keep_warm = keep_warm
+        self._interactive = interactive
         self._tag = self._info.get_tag()
         super().__init__()
 
@@ -737,6 +741,16 @@ class _Function(Provider[_FunctionHandle]):
             raise InvalidError(f"Invalid fractional CPU value {self._cpu}. Cannot have negative CPU resources.")
         milli_cpu = int(1000 * self._cpu) if self._cpu is not None else None
 
+        if self._interactive:
+            pty_info = get_pty_info()
+            if self._concurrency_limit and self._concurrency_limit > 1:
+                warnings.warn(
+                    "Interactive functions require `concurrency_limit=1`. The concurrency limit will be overridden."
+                )
+            self._concurrency_limit = 1
+        else:
+            pty_info = None
+
         # Create function remotely
         function_definition = api_pb2.Function(
             module_name=self._info.module_name,
@@ -756,6 +770,7 @@ class _Function(Provider[_FunctionHandle]):
             timeout_secs=self._timeout,
             concurrency_limit=self._concurrency_limit,
             keep_warm=self._keep_warm,
+            pty_info=pty_info,
         )
         request = api_pb2.FunctionCreateRequest(
             app_id=app_id,
