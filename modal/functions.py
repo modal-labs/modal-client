@@ -3,6 +3,7 @@ import asyncio
 import os
 import platform
 import time
+import warnings
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
@@ -48,7 +49,6 @@ from .exception import TimeoutError as _TimeoutError
 from .exception import deprecation_warning
 from .mount import _Mount
 from .object import Handle, Provider, Ref, RemoteRef
-from .queue import _Queue
 from .rate_limit import RateLimit
 from .retries import Retries
 from .schedule import Schedule
@@ -609,7 +609,7 @@ class _Function(Provider[_FunctionHandle]):
         concurrency_limit: Optional[int] = None,
         cpu: Optional[float] = None,
         keep_warm: bool = False,
-        pty_input_stream: Optional[_Queue] = None,
+        interactive: bool = False,
     ) -> None:
         """mdmd:hidden"""
         assert callable(raw_f)
@@ -672,7 +672,7 @@ class _Function(Provider[_FunctionHandle]):
         self._timeout = timeout
         self._concurrency_limit = concurrency_limit
         self._keep_warm = keep_warm
-        self._pty_input_stream = pty_input_stream
+        self._interactive = interactive
         self._tag = self._info.get_tag()
         super().__init__()
 
@@ -741,8 +741,13 @@ class _Function(Provider[_FunctionHandle]):
             raise InvalidError(f"Invalid fractional CPU value {self._cpu}. Cannot have negative CPU resources.")
         milli_cpu = int(1000 * self._cpu) if self._cpu is not None else None
 
-        if self._pty_input_stream:
-            pty_info = get_pty_info(await loader(self._pty_input_stream))
+        if self._interactive:
+            pty_info = get_pty_info()
+            if self._concurrency_limit and self._concurrency_limit > 1:
+                warnings.warn(
+                    "Interactive functions require `concurrency_limit=1`. The concurrency limit will be overridden."
+                )
+            self._concurrency_limit = 1
         else:
             pty_info = None
 

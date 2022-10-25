@@ -511,7 +511,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         with function_io_manager.handle_user_exception():
             cls, fun = import_function(container_args.function_def)
 
-    if container_args.function_def.pty_info.queue_id:
+    if container_args.function_def.pty_info.enabled:
         from modal import container_app
 
         input_stream_unwrapped = synchronizer._translate_in(container_app._pty_input_stream)

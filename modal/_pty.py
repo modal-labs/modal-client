@@ -113,14 +113,9 @@ def run_in_pty(fn, queue, pty_info: api_pb2.PTYInfo):
         t = threading.Thread(target=_read)
         t.start()
 
-        if pty_info.env_term:
-            os.environ["TERM"] = pty_info.env_term
-
-        if pty_info.env_colorterm:
-            os.environ["COLORTERM"] = pty_info.env_colorterm
-
-        if pty_info.env_term_program:
-            os.environ["TERM_PROGRAM"] = pty_info.env_term_program
+        os.environ.update(
+            {"TERM": pty_info.env_term, "COLORTERM": pty_info.env_colorterm, "TERM_PROGRAM": pty_info.env_term_program}
+        )
 
         _pty_spawn(pty_info, fn, args, kwargs)
         queue.put(None)
@@ -130,10 +125,10 @@ def run_in_pty(fn, queue, pty_info: api_pb2.PTYInfo):
     return wrapped_fn
 
 
-def get_pty_info(queue_id: str) -> api_pb2.PTYInfo:
+def get_pty_info() -> api_pb2.PTYInfo:
     rows, cols = get_winsz(sys.stdin.fileno())
     return api_pb2.PTYInfo(
-        queue_id=queue_id,
+        enabled=True,
         winsz_rows=rows,
         winsz_cols=cols,
         env_term=os.environ.get("TERM"),

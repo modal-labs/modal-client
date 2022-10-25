@@ -437,16 +437,7 @@ class _Stub:
 
     @property
     def _pty_input_stream(self):
-        if "_pty_input_stream" in self._blueprint:
-            return self._blueprint["_pty_input_stream"]
-
-        return None
-
-    def _make_pty_input_stream(self) -> _Queue:
-        if not self._pty_input_stream:
-            self._blueprint["_pty_input_stream"] = _Queue()
-
-        return self._pty_input_stream
+        return self._blueprint.get("_pty_input_stream", None)
 
     def _get_function_mounts(self, raw_f):
         # Get the common mounts for the stub.
@@ -531,6 +522,12 @@ class _Stub:
             image = self._get_default_image()
         mounts = [*self._get_function_mounts(raw_f), *mounts]
         secrets = self._get_function_secrets(raw_f, secret, secrets)
+
+        if interactive:
+            if self._pty_input_stream:
+                raise InvalidError("Multiple interactive functions in a single stub are currently not supported.")
+            self._blueprint["_pty_input_stream"] = _Queue()
+
         function = _Function(
             raw_f,
             image=image,
@@ -548,7 +545,7 @@ class _Stub:
             concurrency_limit=concurrency_limit,
             timeout=timeout,
             cpu=cpu,
-            pty_input_stream=self._make_pty_input_stream() if interactive else None,
+            interactive=True,
         )
         return self._add_function(function)
 
