@@ -5,6 +5,7 @@ import functools
 import os
 import select
 import sys
+import traceback
 from typing import Optional, Tuple, no_type_check
 
 from modal.queue import _QueueHandle
@@ -67,7 +68,11 @@ def _pty_spawn(pty_info: api_pb2.PTYInfo, fn, args, kwargs):
 
     pid, master_fd = pty.fork()
     if pid == pty.CHILD:
-        res = fn(*args, **kwargs)
+        try:
+            res = fn(*args, **kwargs)
+        except Exception:
+            traceback.print_exc()
+            os._exit(1)
         if res is not None:
             print(
                 "Return values from interactive functions are currently ignored. Ignoring result of %s." % fn.__name__
