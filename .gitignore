@@ -5,4 +5,4 @@ __pycache__
 .ipynb_checkpoints
 *.output.ipynb
 *.iml
-
+.venv
