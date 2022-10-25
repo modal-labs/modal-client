@@ -10,7 +10,7 @@ fastapi==0.75.2
 fastprogress==1.0.0
 grpclib==0.4.3
 importlib_metadata==4.8.1
-ipython==8.5.0
+ipython>=7.34.0
 protobuf>=4.21.0
 python-multipart>=0.0.5
 rich==12.3.0
