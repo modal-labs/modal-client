@@ -336,6 +336,7 @@ message Function {
   uint32 timeout_secs = 21;
 
   PTYInfo pty_info = 22;
+  bytes lifecycle_class_serialized = 23;
 }
 
 message FunctionCreateRequest {
@@ -395,6 +396,7 @@ message FunctionGetSerializedRequest {
 
 message FunctionGetSerializedResponse {
   bytes function_serialized = 1;
+  bytes lifecycle_class_serialized = 2;
 }
 
 message FunctionInput {
