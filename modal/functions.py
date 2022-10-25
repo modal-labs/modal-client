@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
+import inspect
 import os
 import platform
 import time
@@ -39,7 +40,7 @@ from ._blob_utils import (
     blob_upload,
 )
 from ._call_graph import InputInfo, reconstruct_call_graph
-from ._function_utils import FunctionInfo
+from ._function_utils import FunctionInfo, load_function_from_module
 from ._output import OutputManager
 from ._pty import get_pty_info
 from ._serialization import deserialize, serialize
@@ -616,7 +617,6 @@ class _Function(Provider[_FunctionHandle]):
         cpu: Optional[float] = None,
         keep_warm: bool = False,
         interactive: bool = False,
-        lifecycle_class: Optional[Type] = None,
     ) -> None:
         """mdmd:hidden"""
         assert callable(raw_f)
@@ -631,7 +631,6 @@ class _Function(Provider[_FunctionHandle]):
         self._raw_f = raw_f
         self._image = image
         self._secrets = secrets
-        self._lifecycle_class = lifecycle_class
 
         if retries:
             if isinstance(retries, int):
@@ -683,9 +682,6 @@ class _Function(Provider[_FunctionHandle]):
         self._interactive = interactive
         self._tag = self._info.get_tag()
         super().__init__()
-
-    def _set_lifecycle_class(self, cls):
-        self._lifecycle_class = cls
 
     async def _load(self, client, app_id, loader, message_callback, existing_function_id):
         message_callback(f"Creating {self._tag}...")
@@ -770,8 +766,11 @@ class _Function(Provider[_FunctionHandle]):
             # otherwise we can't capture a surrounding class for lifetime methods etc.
             function_serialized = cloudpickle.dumps(self._raw_f)
             logger.debug(f"Serializing {self._raw_f.__qualname__}, size is {len(function_serialized)}")
-            if self._lifecycle_class:
-                lifecycle_class_serialized = cloudpickle.dumps(self._lifecycle_class)
+            mod = inspect.getmodule(self._raw_f)
+
+            _, cls = load_function_from_module(mod, self._raw_f.__qualname__)
+            if cls:
+                lifecycle_class_serialized = cloudpickle.dumps(cls)
 
         # Create function remotely
         function_definition = api_pb2.Function(

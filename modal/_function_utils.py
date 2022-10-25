@@ -6,7 +6,9 @@ import sys
 import sysconfig
 import typing
 from pathlib import Path
-from typing import Dict, Union
+from typing import Dict, Union, Any, Optional, Type, Callable
+
+import cloudpickle
 
 from modal_proto import api_pb2
 from .config import config, logger
@@ -176,3 +178,18 @@ class FunctionInfo:
 
     def is_nullary(self):
         return all(param.default is not param.empty for param in self.signature.parameters.values())
+
+
+def load_function_from_module(module, qual_name):
+    # The function might be defined inside a class scope (e.g mymodule.MyClass.f)
+    objs: list[Any] = [module]
+    for path in qual_name.split("."):
+        objs.append(getattr(objs[-1], path))
+
+    # If this function is defined on a class, return that too
+    cls: Optional[Type] = None
+    fun: Callable = objs[-1]
+    if len(objs) >= 3:
+        cls = objs[-2]
+
+    return fun, cls

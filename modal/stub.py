@@ -496,31 +496,6 @@ class _Stub:
     def registered_functions(self) -> List[str]:
         return list(self._function_handles.keys())
 
-    def lifecycle(self, cls: Type):  # name rfc!
-        """Associate each FunctionHandle on the decorated class with its parent class
-
-        This is required for serialized "method" functions, in order to have the
-        cloudpickle serialization also include the parent class.
-        e.g. when using lifecycles in notebooks!
-
-        Usage:
-        ```python
-        @stub.lifecycle
-        class WithLifecycles:
-            def __enter__(self):
-                pass
-
-            @stub.function
-            def process()
-                pass
-        ```
-        """
-        for attr in cls.__dict__.values():
-            if isinstance(attr, (_FunctionHandle, FunctionHandle, AioFunctionHandle)):
-                attr._get_provider()._set_lifecycle_class(cls)
-
-        return cls
-
     @decorator_with_options
     def function(
         self,
@@ -542,9 +517,6 @@ class _Stub:
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         interactive: bool = False,  # Whether to run the function in interactive mode.
-        lifecycle_class: Optional[
-            Type
-        ] = None,  # Lifecycle class for function. Usually inferred by decorating a method on a class
     ) -> _FunctionHandle:  # Function object - callable as a regular function within a Modal app
         """Decorator to register a new Modal function with this stub."""
         if image is None:
@@ -578,7 +550,6 @@ class _Stub:
             timeout=timeout,
             cpu=cpu,
             interactive=interactive,
-            lifecycle_class=lifecycle_class,
         )
         return self._add_function(function)
 

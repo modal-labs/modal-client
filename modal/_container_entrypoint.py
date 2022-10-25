@@ -13,6 +13,7 @@ import cloudpickle
 from grpclib import Status
 from synchronicity.interface import Interface
 
+from modal._function_utils import load_function_from_module
 from modal_proto import api_pb2
 from modal_utils.async_utils import (
     TaskContext,
@@ -457,16 +458,7 @@ def import_function(function_def: api_pb2.Function) -> Tuple[Optional[Type], Cal
     # runs on the main thread.
     module = importlib.import_module(function_def.module_name)
 
-    # The function might be defined inside a class scope (e.g mymodule.MyClass.f)
-    objs: list[Any] = [module]
-    for path in function_def.function_name.split("."):
-        objs.append(getattr(objs[-1], path))
-
-    # If this function is defined on a class, return that too
-    cls: Optional[Type] = None
-    fun: Callable = objs[-1]
-    if len(objs) >= 3:
-        cls = objs[-2]
+    fun, cls = load_function_from_module(module, function_def.function_name)
 
     # The decorator is typically in global scope, but may have been applied independently
     if isinstance(fun, (FunctionHandle, AioFunctionHandle)):

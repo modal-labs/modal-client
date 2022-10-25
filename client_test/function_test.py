@@ -209,19 +209,17 @@ def test_function_relative_import_hint(client, servicer):
         assert "HINT" in str(excinfo.value)
 
 
+lifecycle_stub = Stub()
+
+class Foo:
+    bar = "hello"
+
+    @lifecycle_stub.function(serialized=True)
+    def run(self):
+        return self.bar
+
 def test_serialized_function_includes_lifecycle_class(client, servicer):
-    stub = Stub()
-
-    @stub.lifecycle
-    class Foo:
-        # has to be in global scope for now due to serialization limitations
-        bar = "hello"
-
-        @stub.function(serialized=True)
-        def run(self):
-            return self.bar
-
-    with stub.run(client=client):
+    with lifecycle_stub.run(client=client):
         pass
 
     assert len(servicer.app_functions) == 1
