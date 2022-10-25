@@ -10,3 +10,5 @@ exclude =
     modal_proto
 per-file-ignores =
     *_test.py: E712
+    *.notebook.py: E402
+
