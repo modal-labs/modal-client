@@ -80,16 +80,21 @@ class _FunctionIOManager:
     async def initialize_app(self):
         await _App._init_container(self._client, self.app_id, self.task_id)
 
-    async def get_serialized_function(self) -> Callable:
+    async def get_serialized_function(self) -> Tuple[Callable, Optional[Type]]:
         # Fetch the serialized function definition
         request = api_pb2.FunctionGetSerializedRequest(function_id=self.function_id)
         response = await self.client.stub.FunctionGetSerialized(request)
         raw_f = cloudpickle.loads(response.function_serialized)
 
+        if response.lifecycle_class_serialized:
+            cls = cloudpickle.loads(response.lifecycle_class_serialized)
+        else:
+            cls = None
+
         # TODO(erikbern): there was some code here to create the _Function object,
         # I think related to notebooks, but it was never used. Deleted it for now,
         # will go back to it once we fix notebooks.
-        return raw_f
+        return raw_f, cls
 
     def serialize(self, obj: Any) -> bytes:
         return serialize(obj)
@@ -505,8 +510,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
     is_generator = function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
     if container_args.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
-        cls = None
-        fun = function_io_manager.get_serialized_function()
+        fun, cls = function_io_manager.get_serialized_function()
     else:
         with function_io_manager.handle_user_exception():
             cls, fun = import_function(container_args.function_def)

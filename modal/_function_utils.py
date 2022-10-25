@@ -62,7 +62,6 @@ class FunctionInfo:
     # TODO: if the function is declared in a local scope, this function still "works": we should throw an exception
     def __init__(self, f, serialized=False):
         self.function_name = f.__qualname__
-        self.function_serialized = None
         self.signature = inspect.signature(f)
         module = inspect.getmodule(f)
 
@@ -97,9 +96,6 @@ class FunctionInfo:
             self.is_package = False
             self.is_file = True
         else:
-            # Use cloudpickle. Used when working w/ Jupyter notebooks.
-            self.function_serialized = cloudpickle.dumps(f)
-            logger.debug(f"Serializing {f.__qualname__}, size is {len(self.function_serialized)}")
             self.module_name = None
             self.base_dir = os.path.abspath("")  # get current dir
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_SERIALIZED

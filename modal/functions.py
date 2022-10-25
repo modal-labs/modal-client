@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
+import inspect
 import os
 import platform
 import time
@@ -17,8 +18,10 @@ from typing import (
     Optional,
     Tuple,
     Union,
+    Type,
 )
 
+import cloudpickle
 from aiostream import pipe, stream
 from grpclib import GRPCError, Status
 from synchronicity.exceptions import UserCodeException
@@ -44,6 +47,7 @@ from ._pty import get_pty_info
 from ._serialization import deserialize, serialize
 from ._traceback import append_modal_tb
 from .client import _Client
+from .config import logger
 from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError
 from .exception import TimeoutError as _TimeoutError
 from .exception import deprecation_warning
@@ -379,8 +383,12 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         self._mute_cancellation = (
             False  # set when a user terminates the app intentionally, to prevent useless traceback spam
         )
+        self._provider = function
 
         super().__init__(client=client, object_id=object_id)
+
+    def _get_provider(self) -> "_Function":
+        return self._provider
 
     def _set_mute_cancellation(self, value=True):
         self._mute_cancellation = value
@@ -610,6 +618,7 @@ class _Function(Provider[_FunctionHandle]):
         cpu: Optional[float] = None,
         keep_warm: bool = False,
         interactive: bool = False,
+        lifecycle_class: Optional[Type] = None,
     ) -> None:
         """mdmd:hidden"""
         assert callable(raw_f)
@@ -624,6 +633,7 @@ class _Function(Provider[_FunctionHandle]):
         self._raw_f = raw_f
         self._image = image
         self._secrets = secrets
+        self._lifecycle_class = lifecycle_class
 
         if retries:
             if isinstance(retries, int):
@@ -675,6 +685,9 @@ class _Function(Provider[_FunctionHandle]):
         self._interactive = interactive
         self._tag = self._info.get_tag()
         super().__init__()
+
+    def _set_lifecycle_class(self, cls):
+        self._lifecycle_class = cls
 
     async def _load(self, client, app_id, loader, message_callback, existing_function_id):
         message_callback(f"Creating {self._tag}...")
@@ -751,6 +764,17 @@ class _Function(Provider[_FunctionHandle]):
         else:
             pty_info = None
 
+        function_serialized = None
+        lifecycle_class_serialized = None
+        if self._info.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
+            # Use cloudpickle. Used when working w/ Jupyter notebooks.
+            # serialize at _load time, not function decoration time
+            # otherwise we can't capture a surrounding class for lifetime methods etc.
+            function_serialized = cloudpickle.dumps(self._raw_f)
+            logger.debug(f"Serializing {self._raw_f.__qualname__}, size is {len(function_serialized)}")
+            if self._lifecycle_class:
+                lifecycle_class_serialized = cloudpickle.dumps(self._lifecycle_class)
+
         # Create function remotely
         function_definition = api_pb2.Function(
             module_name=self._info.module_name,
@@ -759,7 +783,8 @@ class _Function(Provider[_FunctionHandle]):
             secret_ids=secret_ids,
             image_id=image_id,
             definition_type=self._info.definition_type,
-            function_serialized=self._info.function_serialized,
+            function_serialized=function_serialized,
+            lifecycle_class_serialized=lifecycle_class_serialized,
             function_type=function_type,
             resources=api_pb2.Resources(milli_cpu=milli_cpu, gpu=self._gpu, memory_mb=self._memory),
             rate_limit=rate_limit,
