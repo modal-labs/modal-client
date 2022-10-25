@@ -381,12 +381,8 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         self._mute_cancellation = (
             False  # set when a user terminates the app intentionally, to prevent useless traceback spam
         )
-        self._provider = function
 
         super().__init__(client=client, object_id=object_id)
-
-    def _get_provider(self) -> "_Function":
-        return self._provider
 
     def _set_mute_cancellation(self, value=True):
         self._mute_cancellation = value
