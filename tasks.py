@@ -27,7 +27,8 @@ def check_copyright(ctx, fix=False):
     invalid_files = []
     d = str(Path(__file__).parent)
     for root, dirs, files in os.walk(d):
-        fns = [os.path.join(root, fn) for fn in files if fn.endswith(".py") and "/site-packages/" not in root]
+        # jupytext notebook formatted .py files can't be detected as notebooks if we put a copyright comment at the top
+        fns = [os.path.join(root, fn) for fn in files if fn.endswith(".py") and not fn.endswith(".notebook.py") and "/site-packages/" not in root]
         for fn in fns:
             first_line = open(fn).readline()
             if not first_line.startswith(copyright_header_start):

@@ -45,7 +45,7 @@ Inspect the output notebook: {output_notebook_path}
 
 
 def test_notebook_outputs_status(notebook_runner, test_dir):
-    input_notebook_path = test_dir / "supports" / "notebooks" / "simple.py"
+    input_notebook_path = test_dir / "supports" / "notebooks" / "simple.notebook.py"
     tagged_cells = notebook_runner(input_notebook_path)
     combined_output = "\n".join(c["data"]["text/plain"] for c in tagged_cells["main"]["outputs"])
     assert "Initialized" in combined_output

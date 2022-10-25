@@ -1,4 +1,3 @@
-# Copyright Modal Labs 2022
 # ---
 # jupyter:
 #   jupytext:
@@ -34,7 +33,6 @@ def hello():
 
 
 # + tags=["main"]
-raise Exception("nisse")
 with client:
     with stub.run(client=client, show_progress=True):
         hello()
