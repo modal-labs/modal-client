@@ -171,19 +171,12 @@ async def write_stdin_to_pty_stream(queue: _QueueHandle):
         write_task.cancel()
 
 
-def _exec_cmd(cmd: str = None):
+def exec_cmd(cmd: str = None):
     run_cmd = cmd or os.environ.get("SHELL", "sh")
 
-    print(f"Spawning {run_cmd}. Type 'exit' to exit. ")
+    print(f"Spawning {run_cmd}.")
 
     # TODO: support args.
     argv = [run_cmd]
 
     os.execlp(argv[0], *argv)
-
-
-async def image_pty(image, stub, cmd=None, **kwargs):
-    exec_cmd = stub.function(interactive=True, image=image, **kwargs)(_exec_cmd)
-
-    async with stub.run():
-        await exec_cmd()

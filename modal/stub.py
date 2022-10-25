@@ -2,6 +2,7 @@
 import inspect
 import os
 import sys
+import warnings
 from enum import Enum
 from typing import AsyncGenerator, Collection, Dict, List, Optional
 
@@ -14,7 +15,7 @@ from modal_utils.decorator_utils import decorator_with_options
 
 from ._function_utils import FunctionInfo
 from ._output import OutputManager, step_completed, step_progress
-from ._pty import write_stdin_to_pty_stream
+from ._pty import exec_cmd, write_stdin_to_pty_stream
 from .app import _App, container_app, is_local
 from .client import _Client
 from .config import config, logger
@@ -525,8 +526,11 @@ class _Stub:
 
         if interactive:
             if self._pty_input_stream:
-                raise InvalidError("Multiple interactive functions in a single stub are currently not supported.")
-            self._blueprint["_pty_input_stream"] = _Queue()
+                warnings.warn(
+                    "Running multiple interactive functions at the same time is not fully supported, and could lead to unexpected behavior."
+                )
+            else:
+                self._blueprint["_pty_input_stream"] = _Queue()
 
         function = _Function(
             raw_f,
@@ -732,22 +736,10 @@ class _Stub:
             stub.interactive_shell(cmd="/bin/bash", image=app_image)
         ```
         """
-        from ._pty import image_pty
+        wrapped_fn = self.function(interactive=True, image=image or self._get_default_image(), **kwargs)(exec_cmd)
 
-        try:
-            image = image or self.image
-        except KeyError:
-            pass
-
-        if image is None:
-            raise InvalidError(
-                inspect.cleandoc(
-                    """`stub` is not associated with a modal.Image and no `image` provided as argument.
-                    You can specify an image by doing `stub.interactive_shell("/bin/bash", image=app_image)`.
-                    """
-                )
-            )
-        await image_pty(image, self, cmd, **kwargs)
+        async with self.run():
+            await wrapped_fn(cmd)
 
 
 Stub, AioStub = synchronize_apis(_Stub)
