@@ -30,8 +30,8 @@ app_cli = typer.Typer(name="app", help="Manage running and deployed apps.", no_a
 @synchronizer
 def run(
     stub_ref: str = typer.Argument(..., help="Path to a Python file or module."),
-    function_name: str = typer.Option(default=None, help="Name of the Modal function to run"),
-    detach: bool = typer.Option(default=False),
+    function_name: Optional[str] = typer.Option(default=None, help="Name of the Modal function to run"),
+    detach: bool = typer.Option(default=False, help="Allows app to continue running if local terminal disconnects."),
 ):
     try:
         stub = import_stub_by_ref(stub_ref)
@@ -118,7 +118,7 @@ def choose_function(stub: _Stub, functions: List[Tuple[str, _Function]], console
 @app_cli.command("shell", no_args_is_help=True)
 def shell(
     stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
-    function_name: Optional[str] = typer.Argument(
+    function_name: Optional[str] = typer.Option(
         default=None,
         help="Name of the Modal function to run. If unspecified, Modal will prompt you for a function if running in interactive mode.",
     ),
@@ -129,7 +129,7 @@ def shell(
     \n
     - Start a bash shell using the spec for `my_function` in your stub:\n
     ```bash\n
-    modal app shell hello_world.py my_function \n
+    modal app shell hello_world.py --function-name my_function \n
     ```\n
     Note that you can select the function interactively if you omit the function name.\n
     \n
