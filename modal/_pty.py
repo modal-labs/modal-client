@@ -185,9 +185,3 @@ def exec_cmd(cmd: str = None):
     argv = [run_cmd]
 
     os.execlp(argv[0], *argv)
-
-
-def ipython():
-    from IPython import embed
-
-    embed()
