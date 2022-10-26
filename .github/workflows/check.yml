@@ -42,7 +42,7 @@ jobs:
 
       - run: inv protoc
 
-      - run: mypy .
+      - run: inv mypy
 
   check-copyright:
     name: Check copyright
