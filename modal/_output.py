@@ -3,6 +3,7 @@ import asyncio
 import contextlib
 import functools
 import io
+from ._ipython import is_notebook
 import platform
 import re
 import sys
@@ -95,7 +96,7 @@ class OutputManager:
     def __init__(self, stdout, show_progress: Optional[bool]):
         self.stdout = stdout or sys.stdout
         if show_progress is None:
-            self._visible_progress = self.stdout.isatty()
+            self._visible_progress = self.stdout.isatty() or is_notebook(self.stdout)
         else:
             self._visible_progress = show_progress
 

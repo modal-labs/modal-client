@@ -29,6 +29,7 @@ from .rate_limit import RateLimit
 from .schedule import Schedule
 from .secret import _Secret
 from .shared_volume import _SharedVolume
+from ._ipython import is_notebook
 
 _default_image = _Image.debian_slim()
 
@@ -475,11 +476,12 @@ class _Stub:
         if function.tag in self._blueprint:
             old_function = self._blueprint[function.tag]
             if isinstance(old_function, _Function):
-                logger.warning(
-                    f"Warning: Tag {function.tag} collision!"
-                    f" Overriding existing function [{old_function._info.module_name}].{old_function._info.function_name}"
-                    f" with new function [{function._info.module_name}].{function._info.function_name}"
-                )
+                if not is_notebook():
+                    logger.warning(
+                        f"Warning: Tag '{function.tag}' collision!"
+                        f" Overriding existing function [{old_function._info.module_name}].{old_function._info.function_name}"
+                        f" with new function [{function._info.module_name}].{function._info.function_name}"
+                    )
             else:
                 logger.warning(f"Warning: tag {function.tag} exists but is overridden by function")
         self._blueprint[function.tag] = function
