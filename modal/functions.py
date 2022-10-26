@@ -100,7 +100,14 @@ async def _process_result(result, stub, client=None):
             raise uc_exc
         raise RemoteError(result.exception)
 
-    return deserialize(data, client)
+    try:
+        return deserialize(data, client)
+    except ModuleNotFoundError as deser_exc:
+        raise ExecutionError(
+            "Could not deserialize result due to error:\n"
+            + f"{deser_exc}\n"
+            + "This can happen if your local environment does not have a module that was used to construct the result. \n"
+        )
 
 
 async def _create_input(args, kwargs, client, idx=None) -> api_pb2.FunctionPutInputsItem:
