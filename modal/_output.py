@@ -3,7 +3,6 @@ import asyncio
 import contextlib
 import functools
 import io
-from ._ipython import is_notebook
 import platform
 import re
 import sys
@@ -29,6 +28,7 @@ from rich.text import Text
 from modal_proto import api_pb2
 from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, unary_stream
 
+from ._ipython import is_notebook
 from .client import _Client
 from .config import logger
 
@@ -191,19 +191,20 @@ class OutputManager:
             return sum(x == state for x in all_states)
 
         # The most advanced state that's present informs the message.
-        if api_pb2.TASK_STATE_RUNNING in states_set:
+        if api_pb2.TASK_STATE_RUNNING in states_set or api_pb2.TASK_STATE_IDLE in states_set:
             tasks_running = tasks_at_state(api_pb2.TASK_STATE_RUNNING)
-            tasks_loading = tasks_at_state(api_pb2.TASK_STATE_LOADING_IMAGE)
-            return f"Running ({tasks_running}/{tasks_running + tasks_loading} containers in use)..."
+            tasks_not_completed = len(self._task_states) - tasks_at_state(api_pb2.TASK_STATE_COMPLETED)
+            return f"Running ({tasks_running}/{tasks_not_completed} containers active)..."
         elif api_pb2.TASK_STATE_LOADING_IMAGE in states_set:
             tasks_loading = tasks_at_state(api_pb2.TASK_STATE_LOADING_IMAGE)
             return f"Loading images ({tasks_loading} containers initializing)..."
         elif api_pb2.TASK_STATE_WORKER_ASSIGNED in states_set:
             return "Worker assigned..."
-        elif api_pb2.TASK_STATE_QUEUED in states_set:
-            return "Tasks queued..."
+        elif api_pb2.TASK_STATE_COMPLETED in states_set:
+            tasks_completed = tasks_at_state(api_pb2.TASK_STATE_COMPLETED)
+            return f"Running ({tasks_completed} containers finished)..."
         else:
-            return "Tasks created..."
+            return "Running..."
 
     def _update_task_progress(self, *, task_id: str, progress_task, completed: int, total: int) -> None:
         key = (task_id, progress_task)
