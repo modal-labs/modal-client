@@ -183,22 +183,20 @@ async def _glob_download(
     await asyncio.gather(*tasks)
 
 
-@volume_cli.command(
-    name="get",
-    help="""Download a file from a shared volume.
-
-Specifying a glob pattern (using any * or ** patterns) as the remote_path will download all matching *files*, preserving
-the source directory structure for the matched files.
-
-For example, to download an entire shared volume into `dump_volume`:
-
-> modal volume get <volume-name> "**" dump_volume
-
-Use "-" (a hyphen) as LOCAL_DESTINATION to write contents of file to stdout (only for non-glob paths)
-""",
-)
+@volume_cli.command(name="get")
 @synchronizer
 async def get(volume_name: str, remote_path: str, local_destination: str = typer.Argument("."), force: bool = False):
+    """Download a file from a shared volume.\n
+    Specifying a glob pattern (using any * or ** patterns) as the remote_path will download all matching *files*, preserving
+    the source directory structure for the matched files.\n
+    \n
+    For example, to download an entire shared volume into `dump_volume`:\n
+
+    ```bash\n
+    modal volume get <volume-name> "**" dump_volume\n
+    ```\n
+    Use "-" (a hyphen) as LOCAL_DESTINATION to write contents of file to stdout (only for non-glob paths).
+    """
     destination = Path(local_destination)
     volume = await volume_from_name(volume_name)
 
