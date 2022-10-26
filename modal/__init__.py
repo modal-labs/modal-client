@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 from modal_version import __version__
 
-from ._pty import ipython
 from .app import App, container_app, is_local
 from .dict import Dict
 from .exception import Error
@@ -42,7 +41,6 @@ __all__ = [
     "container_app",
     "create_package_mount",
     "create_package_mounts",
-    "ipython",
     "is_local",
     "lookup",
     "ref",
