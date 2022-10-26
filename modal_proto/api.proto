@@ -59,6 +59,7 @@ enum TaskState {
   TASK_STATE_RUNNING = 4;
   TASK_STATE_COMPLETED = 5;
   TASK_STATE_CREATING_CONTAINER = 7;
+  TASK_STATE_IDLE = 8;
 }
 
 enum WebhookType {
