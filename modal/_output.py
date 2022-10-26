@@ -191,8 +191,8 @@ class OutputManager:
             return sum(x == state for x in all_states)
 
         # The most advanced state that's present informs the message.
-        if api_pb2.TASK_STATE_RUNNING in states_set or api_pb2.TASK_STATE_IDLE in states_set:
-            tasks_running = tasks_at_state(api_pb2.TASK_STATE_RUNNING)
+        if api_pb2.TASK_STATE_ACTIVE in states_set or api_pb2.TASK_STATE_IDLE in states_set:
+            tasks_running = tasks_at_state(api_pb2.TASK_STATE_ACTIVE)
             tasks_not_completed = len(self._task_states) - tasks_at_state(api_pb2.TASK_STATE_COMPLETED)
             return f"Running ({tasks_running}/{tasks_not_completed} containers active)..."
         elif api_pb2.TASK_STATE_LOADING_IMAGE in states_set:
