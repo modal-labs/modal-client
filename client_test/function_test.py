@@ -229,5 +229,5 @@ def test_serialized_function_includes_lifecycle_class(client, servicer):
     assert func_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED
 
     func = cloudpickle.loads(func_def.function_serialized)
-    cls = cloudpickle.loads(func_def.lifecycle_class_serialized)
+    cls = cloudpickle.loads(func_def.class_serialized)
     assert func(cls()) == "hello"

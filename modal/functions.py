@@ -754,7 +754,7 @@ class _Function(Provider[_FunctionHandle]):
             pty_info = None
 
         function_serialized = None
-        lifecycle_class_serialized = None
+        class_serialized = None
         if self._info.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
             # Use cloudpickle. Used when working w/ Jupyter notebooks.
             # serialize at _load time, not function decoration time
@@ -765,7 +765,7 @@ class _Function(Provider[_FunctionHandle]):
 
             _, cls = load_function_from_module(mod, self._raw_f.__qualname__)
             if cls:
-                lifecycle_class_serialized = cloudpickle.dumps(cls)
+                class_serialized = cloudpickle.dumps(cls)
 
         # Create function remotely
         function_definition = api_pb2.Function(
@@ -776,7 +776,7 @@ class _Function(Provider[_FunctionHandle]):
             image_id=image_id,
             definition_type=self._info.definition_type,
             function_serialized=function_serialized,
-            lifecycle_class_serialized=lifecycle_class_serialized,
+            class_serialized=class_serialized,
             function_type=function_type,
             resources=api_pb2.Resources(milli_cpu=milli_cpu, gpu=self._gpu, memory_mb=self._memory),
             rate_limit=rate_limit,

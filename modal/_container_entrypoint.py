@@ -87,8 +87,8 @@ class _FunctionIOManager:
         response = await self.client.stub.FunctionGetSerialized(request)
         raw_f = cloudpickle.loads(response.function_serialized)
 
-        if response.lifecycle_class_serialized:
-            cls = cloudpickle.loads(response.lifecycle_class_serialized)
+        if response.class_serialized:
+            cls = cloudpickle.loads(response.class_serialized)
         else:
             cls = None
 
