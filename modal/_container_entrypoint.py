@@ -433,19 +433,6 @@ async def call_function_async(
                     cls.__exit__(self, *sys.exc_info())
 
 
-def _wait_for_gpu_init():
-    from cuda import cuda
-
-    for i in range(3):
-        try:
-            cuda.cuInit(0)
-            logger.info("CUDA device initialized successfully.")
-            return
-        except Exception:
-            time.sleep(1)
-    logger.info("Failed to initialize CUDA device.")
-
-
 @wrap()
 def import_function(function_def: api_pb2.Function) -> Tuple[Optional[Type], Callable]:
     # This is not in function_io_manager, so that any global scope code that runs during import
@@ -492,9 +479,6 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     # we could catch that exception and set it properly serialized to the client. Right now the
     # whole container fails with a non-zero exit code and we send back a more opaque error message.
     function_type = container_args.function_def.function_type
-
-    if container_args.function_def.resources.gpu:
-        _wait_for_gpu_init()
 
     # This is a bit weird but we need both the blocking and async versions of FunctionIOManager.
     # At some point, we should fix that by having built-in support for running "user code"
