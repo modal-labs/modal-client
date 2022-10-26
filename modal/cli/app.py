@@ -23,10 +23,10 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
 from modal_utils.package_utils import import_stub_by_ref
 
-app_cli = typer.Typer(name="app", help="Manage running and deployed apps.", no_args_is_help=True)
+app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_args_is_help=True)
 
 
-@app_cli.command("run")
+@app_cli.command("run", help="Run a Modal function.")
 @synchronizer
 def run(
     stub_ref: str = typer.Argument(..., help="Path to a Python file or module."),

@@ -42,7 +42,7 @@ async def list():
 
 
 @secret_cli.command("create", help="Create a new secret, or overwrite an existing one.")
-def create(secret_name, keyvalues: List[str]):
+def create(secret_name, keyvalues: List[str] = typer.Argument(..., help="Space-separated KEY=VALUE items")):
     env_dict = {}
 
     for arg in keyvalues:
@@ -53,7 +53,7 @@ def create(secret_name, keyvalues: List[str]):
             env_dict[key] = value
         else:
             raise click.UsageError(
-                """Each key should be of the form <KEY>=VALUE. To enter secrets using your $EDITOR, use `<KEY>=-`.
+                """Each item should be of the form <KEY>=VALUE. To enter secrets using your $EDITOR, use `<KEY>=-`.
 
 E.g.
 
