@@ -48,14 +48,14 @@ class _App:
         stub,  # : _Stub,
         client: _Client,
         app_id: str,
-        app_logs_url: str,
+        app_page_url: str,
         tag_to_object: Optional[Dict[str, Handle]] = None,
         tag_to_existing_id: Optional[Dict[str, str]] = None,
     ):
         """mdmd:hidden This is the app constructor. Users should not call this directly."""
         self._stub = stub
         self._app_id = app_id
-        self._app_logs_url = app_logs_url
+        self._app_page_url = app_page_url
         self._client = client
         self._tag_to_object = tag_to_object or {}
         self._tag_to_existing_id = tag_to_existing_id or {}
@@ -162,7 +162,7 @@ class _App:
         await retry_transient_errors(self._client.stub.AppClientDisconnect, req_disconnect)
 
     def log_url(self):
-        return self._app_logs_url
+        return self._app_page_url
 
     def __getitem__(self, tag: str) -> Handle:
         # Deprecated?
@@ -202,8 +202,8 @@ class _App:
         # Get all the objects first
         obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
         obj_resp = await retry_transient_errors(client.stub.AppGetObjects, obj_req)
-        app_logs_url = f"https://modal.com/apps/{existing_app_id}"  # TODO (elias): this should come from the backend
-        return _App(stub, client, existing_app_id, app_logs_url, tag_to_existing_id=dict(obj_resp.object_ids))
+        app_page_url = f"https://modal.com/apps/{existing_app_id}"  # TODO (elias): this should come from the backend
+        return _App(stub, client, existing_app_id, app_page_url, tag_to_existing_id=dict(obj_resp.object_ids))
 
     @staticmethod
     async def _init_new(stub, client, description, detach) -> "_App":
@@ -211,8 +211,9 @@ class _App:
         # TODO(erikbern): maybe this should happen outside of this method?
         app_req = api_pb2.AppCreateRequest(client_id=client.client_id, description=description, detach=detach)
         app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
+        app_page_url = app_resp.app_logs_url
         logger.debug(f"Created new app with id {app_resp.app_id}")
-        return _App(stub, client, app_resp.app_id, app_resp.app_logs_url)
+        return _App(stub, client, app_resp.app_id, app_page_url)
 
     @staticmethod
     def _reset_container():

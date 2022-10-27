@@ -12,6 +12,7 @@ from modal_proto import api_pb2
 from modal_utils.app_utils import is_valid_app_name
 from modal_utils.async_utils import TaskContext, synchronize_apis, synchronizer
 from modal_utils.decorator_utils import decorator_with_options
+
 from ._function_utils import FunctionInfo
 from ._ipython import is_notebook
 from ._output import OutputManager, step_completed, step_progress
@@ -218,7 +219,9 @@ class _Stub:
                 logs_loop = tc.create_task(
                     output_mgr.get_logs_loop(app_id, client, status_spinner, last_log_entry_id or "")
                 )
-            output_mgr.print_if_visible(step_completed("Initialized."))
+            output_mgr.print_if_visible(
+                step_completed(f"Initialized. [grey70]View app page at {app._app_page_url}.[/grey70]")
+            )
 
             try:
                 # Create all members
