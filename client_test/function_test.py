@@ -1,11 +1,14 @@
 # Copyright Modal Labs 2022
 import asyncio
+
+import cloudpickle
 import pytest
 import time
 
 from modal import Proxy, Stub
 from modal.functions import FunctionCall, gather
 from modal.stub import AioStub
+from modal_proto import api_pb2
 
 stub = Stub()
 
@@ -204,3 +207,27 @@ def test_function_relative_import_hint(client, servicer):
         with pytest.raises(ImportError) as excinfo:
             failure()
         assert "HINT" in str(excinfo.value)
+
+
+lifecycle_stub = Stub()
+
+
+class Foo:
+    bar = "hello"
+
+    @lifecycle_stub.function(serialized=True)
+    def run(self):
+        return self.bar
+
+
+def test_serialized_function_includes_lifecycle_class(client, servicer):
+    with lifecycle_stub.run(client=client):
+        pass
+
+    assert len(servicer.app_functions) == 1
+    func_def = next(iter(servicer.app_functions.values()))
+    assert func_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED
+
+    func = cloudpickle.loads(func_def.function_serialized)
+    cls = cloudpickle.loads(func_def.class_serialized)
+    assert func(cls()) == "hello"
