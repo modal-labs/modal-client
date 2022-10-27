@@ -264,6 +264,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
             web_url = "http://xyz.internal"
         else:
             web_url = None
+
+        self.app_functions[function_id] = request.function
         await stream.send_message(api_pb2.FunctionCreateResponse(function_id=function_id, web_url=web_url))
 
     async def FunctionMap(self, stream):
