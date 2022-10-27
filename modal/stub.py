@@ -220,7 +220,7 @@ class _Stub:
                     output_mgr.get_logs_loop(app_id, client, status_spinner, last_log_entry_id or "")
                 )
             output_mgr.print_if_visible(
-                step_completed(f"Initialized. [grey70]View app page at {app._app_logs_url}.[/grey70]")
+                step_completed(f"Initialized. [grey70]View app page at {app._app_page_url}.[/grey70]")
             )
 
             try:
