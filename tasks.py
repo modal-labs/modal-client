@@ -24,6 +24,11 @@ def protoc(ctx):
 
 
 @task
+def mypy(ctx):
+    ctx.run("mypy .", pty=True)
+
+
+@task
 def check_copyright(ctx, fix=False):
     invalid_files = []
     d = str(Path(__file__).parent)

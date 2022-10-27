@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
+import inspect
 import os
 import platform
 import time
@@ -19,6 +20,7 @@ from typing import (
     Union,
 )
 
+import cloudpickle
 from aiostream import pipe, stream
 from grpclib import GRPCError, Status
 from synchronicity.exceptions import UserCodeException
@@ -30,7 +32,6 @@ from modal_utils.async_utils import (
     warn_if_generator_is_not_consumed,
 )
 from modal_utils.grpc_utils import retry_transient_errors
-
 from ._blob_utils import (
     BLOB_MAX_PARALLELISM,
     MAX_OBJECT_SIZE_BYTES,
@@ -38,12 +39,13 @@ from ._blob_utils import (
     blob_upload,
 )
 from ._call_graph import InputInfo, reconstruct_call_graph
-from ._function_utils import FunctionInfo
+from ._function_utils import FunctionInfo, load_function_from_module
 from ._output import OutputManager
 from ._pty import get_pty_info
 from ._serialization import deserialize, serialize
 from ._traceback import append_modal_tb
 from .client import _Client
+from .config import logger
 from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError
 from .exception import TimeoutError as _TimeoutError
 from .exception import deprecation_warning
@@ -758,6 +760,20 @@ class _Function(Provider[_FunctionHandle]):
         else:
             pty_info = None
 
+        function_serialized = None
+        class_serialized = None
+        if self._info.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
+            # Use cloudpickle. Used when working w/ Jupyter notebooks.
+            # serialize at _load time, not function decoration time
+            # otherwise we can't capture a surrounding class for lifetime methods etc.
+            function_serialized = cloudpickle.dumps(self._raw_f)
+            logger.debug(f"Serializing {self._raw_f.__qualname__}, size is {len(function_serialized)}")
+            mod = inspect.getmodule(self._raw_f)
+
+            _, cls = load_function_from_module(mod, self._raw_f.__qualname__)
+            if cls:
+                class_serialized = cloudpickle.dumps(cls)
+
         # Create function remotely
         function_definition = api_pb2.Function(
             module_name=self._info.module_name,
@@ -766,7 +782,8 @@ class _Function(Provider[_FunctionHandle]):
             secret_ids=secret_ids,
             image_id=image_id,
             definition_type=self._info.definition_type,
-            function_serialized=self._info.function_serialized,
+            function_serialized=function_serialized,
+            class_serialized=class_serialized,
             function_type=function_type,
             resources=api_pb2.Resources(milli_cpu=milli_cpu, gpu=self._gpu, memory_mb=self._memory),
             rate_limit=rate_limit,

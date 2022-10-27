@@ -13,6 +13,7 @@ import cloudpickle
 from grpclib import Status
 from synchronicity.interface import Interface
 
+from modal._function_utils import load_function_from_module
 from modal_proto import api_pb2
 from modal_utils.async_utils import (
     TaskContext,
@@ -80,16 +81,21 @@ class _FunctionIOManager:
     async def initialize_app(self):
         await _App._init_container(self._client, self.app_id, self.task_id)
 
-    async def get_serialized_function(self) -> Callable:
+    async def get_serialized_function(self) -> Tuple[Callable, Optional[Type]]:
         # Fetch the serialized function definition
         request = api_pb2.FunctionGetSerializedRequest(function_id=self.function_id)
         response = await self.client.stub.FunctionGetSerialized(request)
         raw_f = cloudpickle.loads(response.function_serialized)
 
+        if response.class_serialized:
+            cls = cloudpickle.loads(response.class_serialized)
+        else:
+            cls = None
+
         # TODO(erikbern): there was some code here to create the _Function object,
         # I think related to notebooks, but it was never used. Deleted it for now,
         # will go back to it once we fix notebooks.
-        return raw_f
+        return raw_f, cls
 
     def serialize(self, obj: Any) -> bytes:
         return serialize(obj)
@@ -433,35 +439,13 @@ async def call_function_async(
                     cls.__exit__(self, *sys.exc_info())
 
 
-def _wait_for_gpu_init():
-    from cuda import cuda
-
-    for i in range(3):
-        try:
-            cuda.cuInit(0)
-            logger.info("CUDA device initialized successfully.")
-            return
-        except Exception:
-            time.sleep(1)
-    logger.info("Failed to initialize CUDA device.")
-
-
 @wrap()
 def import_function(function_def: api_pb2.Function) -> Tuple[Optional[Type], Callable]:
     # This is not in function_io_manager, so that any global scope code that runs during import
     # runs on the main thread.
     module = importlib.import_module(function_def.module_name)
 
-    # The function might be defined inside a class scope (e.g mymodule.MyClass.f)
-    objs: list[Any] = [module]
-    for path in function_def.function_name.split("."):
-        objs.append(getattr(objs[-1], path))
-
-    # If this function is defined on a class, return that too
-    cls: Optional[Type] = None
-    fun: Callable = objs[-1]
-    if len(objs) >= 3:
-        cls = objs[-2]
+    fun, cls = load_function_from_module(module, function_def.function_name)
 
     # The decorator is typically in global scope, but may have been applied independently
     if isinstance(fun, (FunctionHandle, AioFunctionHandle)):
@@ -493,9 +477,6 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     # whole container fails with a non-zero exit code and we send back a more opaque error message.
     function_type = container_args.function_def.function_type
 
-    if container_args.function_def.resources.gpu:
-        _wait_for_gpu_init()
-
     # This is a bit weird but we need both the blocking and async versions of FunctionIOManager.
     # At some point, we should fix that by having built-in support for running "user code"
     _function_io_manager = _FunctionIOManager(container_args, client)
@@ -505,8 +486,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
     is_generator = function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
     if container_args.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
-        cls = None
-        fun = function_io_manager.get_serialized_function()
+        fun, cls = function_io_manager.get_serialized_function()
     else:
         with function_io_manager.handle_user_exception():
             cls, fun = import_function(container_args.function_def)

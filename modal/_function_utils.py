@@ -6,12 +6,9 @@ import sys
 import sysconfig
 import typing
 from pathlib import Path
-from typing import Dict, Union
-
-import cloudpickle
+from typing import Dict, Union, Any, Optional, Type, Callable
 
 from modal_proto import api_pb2
-
 from .config import config, logger
 from .mount import _Mount
 
@@ -62,7 +59,6 @@ class FunctionInfo:
     # TODO: if the function is declared in a local scope, this function still "works": we should throw an exception
     def __init__(self, f, serialized=False):
         self.function_name = f.__qualname__
-        self.function_serialized = None
         self.signature = inspect.signature(f)
         module = inspect.getmodule(f)
 
@@ -97,9 +93,6 @@ class FunctionInfo:
             self.is_package = False
             self.is_file = True
         else:
-            # Use cloudpickle. Used when working w/ Jupyter notebooks.
-            self.function_serialized = cloudpickle.dumps(f)
-            logger.debug(f"Serializing {f.__qualname__}, size is {len(self.function_serialized)}")
             self.module_name = None
             self.base_dir = os.path.abspath("")  # get current dir
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_SERIALIZED
@@ -183,3 +176,18 @@ class FunctionInfo:
 
     def is_nullary(self):
         return all(param.default is not param.empty for param in self.signature.parameters.values())
+
+
+def load_function_from_module(module, qual_name):
+    # The function might be defined inside a class scope (e.g mymodule.MyClass.f)
+    objs: list[Any] = [module]
+    for path in qual_name.split("."):
+        objs.append(getattr(objs[-1], path))
+
+    # If this function is defined on a class, return that too
+    cls: Optional[Type] = None
+    fun: Callable = objs[-1]
+    if len(objs) >= 3:
+        cls = objs[-2]
+
+    return fun, cls

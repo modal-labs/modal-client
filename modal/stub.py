@@ -12,8 +12,8 @@ from modal_proto import api_pb2
 from modal_utils.app_utils import is_valid_app_name
 from modal_utils.async_utils import TaskContext, synchronize_apis, synchronizer
 from modal_utils.decorator_utils import decorator_with_options
-
 from ._function_utils import FunctionInfo
+from ._ipython import is_notebook
 from ._output import OutputManager, step_completed, step_progress
 from ._pty import exec_cmd, write_stdin_to_pty_stream
 from .app import _App, container_app, is_local
@@ -29,7 +29,6 @@ from .rate_limit import RateLimit
 from .schedule import Schedule
 from .secret import _Secret
 from .shared_volume import _SharedVolume
-from ._ipython import is_notebook
 
 _default_image = _Image.debian_slim()
 
@@ -120,6 +119,11 @@ class _Stub:
         return self._description
 
     def _infer_app_desc(self):
+        if is_notebook():
+            # when running from a notebook the sys.argv for the kernel will
+            # be really long an not very helpful
+            return "Notebook"  # TODO: use actual name of notebook
+
         script_filename = os.path.split(sys.argv[0])[-1]
         args = [script_filename] + sys.argv[1:]
         return " ".join(args)
