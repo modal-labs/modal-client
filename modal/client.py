@@ -247,7 +247,7 @@ class _Client:
             # Wait for token forever
             while True:
                 print("Waiting for authentication in the web browser...")
-                wait_req = api_pb2.TokenFlowWaitRequest(token_creation_id=create_resp.token_creation_id, timeout=15.0)
+                wait_req = api_pb2.TokenFlowWaitRequest(token_flow_id=create_resp.token_flow_id, timeout=15.0)
                 wait_resp = await stub.TokenFlowWait(wait_req)
                 if not wait_resp.timeout:
                     return (wait_resp.token_id, wait_resp.token_secret)
