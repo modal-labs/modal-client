@@ -15,6 +15,7 @@ env_option = typer.Option(
     help="Modal environment to set credentials for. You can switch the currently active Modal environment with the `modal env` command. If unspecified, uses `default` environment.",
 )
 
+
 @token_cli.command(
     help="Set account credentials for connecting to Modal. If not provided with the command, you will be prompted to enter your credentials."
 )
@@ -40,9 +41,7 @@ def set(
     print(f"Token written to {user_config_path}")
 
 
-@token_cli.command(
-    help="Creates a new token by using an authenticated web session."
-)
+@token_cli.command(help="Creates a new token by using an authenticated web session.")
 def new(env: Optional[str] = env_option):
     # Fetch token from server
     token_id, token_secret = Client.token_new(env=env)

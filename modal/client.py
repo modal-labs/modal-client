@@ -226,11 +226,7 @@ class _Client:
 
         # Create a connection with no credentials
         server_url = config.get("server_url", env=env)
-        channel = create_channel(
-            server_url,
-            api_pb2.CLIENT_TYPE_CLIENT,
-            None
-        )
+        channel = create_channel(server_url, api_pb2.CLIENT_TYPE_CLIENT, None)
         stub = api_grpc.ModalClientStub(channel)  # type: ignore
 
         try:

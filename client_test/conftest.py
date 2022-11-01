@@ -347,16 +347,17 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(Empty())
 
     async def TokenCreate(self, stream):
-        await stream.send_message(api_pb2.TokenCreateResponse(
-            token_creation_id="tc-123",
-            web_url="https://localhost/xyz/abc"
-        ))
+        await stream.send_message(
+            api_pb2.TokenCreateResponse(token_creation_id="tc-123", web_url="https://localhost/xyz/abc")
+        )
 
     async def TokenWait(self, stream):
-        await stream.send_message(api_pb2.TokenWaitResponse(
-            token_id="abc",
-            token_secret="xyz",
-        ))
+        await stream.send_message(
+            api_pb2.TokenWaitResponse(
+                token_id="abc",
+                token_secret="xyz",
+            )
+        )
 
 
 @pytest_asyncio.fixture
