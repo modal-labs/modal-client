@@ -346,6 +346,18 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.task_result = request.result
         await stream.send_message(Empty())
 
+    async def TokenCreate(self, stream):
+        await stream.send_message(api_pb2.TokenCreateResponse(
+            token_creation_id="tc-123",
+            web_url="https://localhost/xyz/abc"
+        ))
+
+    async def TokenWait(self, stream):
+        await stream.send_message(api_pb2.TokenWaitResponse(
+            token_id="abc",
+            token_secret="xyz",
+        ))
+
 
 @pytest_asyncio.fixture
 async def blob_server():
@@ -435,6 +447,12 @@ async def client(servicer):
 async def aio_container_client(unix_servicer):
     async with AioClient(unix_servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         yield client
+
+
+@pytest_asyncio.fixture(scope="function")
+async def server_url_env(servicer):
+    os.environ["MODAL_SERVER_URL"] = servicer.remote_addr
+    yield
 
 
 @pytest.fixture(name="mock_dir", scope="session")

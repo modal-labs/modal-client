@@ -10,6 +10,10 @@ from modal_proto import api_pb2
 
 token_cli = typer.Typer(name="token", help="Manage tokens.", no_args_is_help=True)
 
+env_option = typer.Option(
+    None,
+    help="Modal environment to set credentials for. You can switch the currently active Modal environment with the `modal env` command. If unspecified, uses `default` environment.",
+)
 
 @token_cli.command(
     help="Set account credentials for connecting to Modal. If not provided with the command, you will be prompted to enter your credentials."
@@ -17,10 +21,7 @@ token_cli = typer.Typer(name="token", help="Manage tokens.", no_args_is_help=Tru
 def set(
     token_id: Optional[str] = typer.Option(None, help="Account token ID."),
     token_secret: Optional[str] = typer.Option(None, help="Account token secret."),
-    env: Optional[str] = typer.Option(
-        None,
-        help="Modal environment to set credentials for. You can switch the currently active Modal environment with the `modal env` command. If unspecified, uses `default` environment.",
-    ),
+    env: Optional[str] = env_option,
     no_verify: bool = False,
 ):
     if token_id is None:
@@ -34,6 +35,17 @@ def set(
         client = Client(server_url, api_pb2.CLIENT_TYPE_CLIENT, (token_id, token_secret))
         client.verify()
         print("Token verified successfully")
+
+    _store_user_config({"token_id": token_id, "token_secret": token_secret}, env=env)
+    print(f"Token written to {user_config_path}")
+
+
+@token_cli.command(
+    help="Creates a new token by using an authenticated web session."
+)
+def new(env: Optional[str] = env_option):
+    # Fetch token from server
+    token_id, token_secret = Client.token_new(env=env)
 
     _store_user_config({"token_id": token_id, "token_secret": token_secret}, env=env)
     print(f"Token written to {user_config_path}")

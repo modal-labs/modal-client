@@ -99,3 +99,7 @@ def test_secret_create(servicer, set_env_client):
 
     _run(["secret", "create", "foo", "bar=baz"])
     assert servicer.created_secrets == 1
+
+
+def test_app_token_new(servicer, server_url_env):
+    _run(["token", "new", "--env", "_test"])

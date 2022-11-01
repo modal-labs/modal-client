@@ -1,7 +1,9 @@
 # Copyright Modal Labs 2022
 import asyncio
+import platform
 import time
 import warnings
+import webbrowser
 
 from aiohttp import ClientConnectorError, ClientResponseError
 from grpclib import GRPCError, Status
@@ -217,6 +219,45 @@ class _Client:
     def client_id(self):
         """A unique identifier for the Client."""
         return self._client_id
+
+    @classmethod
+    async def token_new(cls, env):
+        """Gets a token through a web flow."""
+
+        # Create a connection with no credentials
+        server_url = config.get("server_url", env=env)
+        channel = create_channel(
+            server_url,
+            api_pb2.CLIENT_TYPE_CLIENT,
+            None
+        )
+        stub = api_grpc.ModalClientStub(channel)  # type: ignore
+
+        try:
+            # Create token creation request
+            # Send some strings identifying the computer (these are shown to the user for security reasons)
+            req = api_pb2.TokenCreateRequest(
+                node_name=platform.node(),
+                platform_name=platform.platform(),
+            )
+            resp = await stub.TokenCreate(req)
+
+            # Open the web url in the browser
+            if webbrowser.open_new_tab(resp.web_url):
+                print(f"Launched {resp.web_url} in your browser window.")
+            else:
+                print(f"Was unable to launch web browser. Please go to {resp.web_url}")
+
+            # Wait for token forever
+            token_creation_id = resp.token_creation_id
+            while True:
+                print("Waiting for authentication in the web browser...")
+                req = api_pb2.TokenWaitRequest(token_creation_id=token_creation_id, timeout=15.0)
+                resp = await stub.TokenWait(req)
+                if not resp.timeout:
+                    return (resp.token_id, resp.token_secret)
+        finally:
+            channel.close()
 
     @classmethod
     async def from_env(cls, _override_config=None, _override_time=None) -> "_Client":

@@ -764,6 +764,27 @@ message TaskResultRequest {
   modal.client.GenericResult result = 2;
 }
 
+message TokenCreateRequest {
+  string node_name = 1;
+  string platform_name = 2;
+}
+
+message TokenCreateResponse {
+  string token_creation_id = 1;
+  string web_url = 2;
+};
+
+message TokenWaitRequest {
+  float timeout = 1;
+  string token_creation_id = 2;
+}
+
+message TokenWaitResponse {
+  string token_id = 1;
+  string token_secret = 2;
+  bool timeout = 3;
+}
+
 message WebhookConfig {
   WebhookType type = 1;
   string method = 2;
@@ -836,4 +857,8 @@ service ModalClient {
 
   // Tasks
   rpc TaskResult(TaskResultRequest) returns (google.protobuf.Empty);
+
+  // Tokens (web auth flow)
+  rpc TokenCreate(TokenCreateRequest) returns (TokenCreateResponse);
+  rpc TokenWait(TokenWaitRequest) returns (TokenWaitResponse);
 }
