@@ -232,26 +232,25 @@ class _Client:
         try:
             # Create token creation request
             # Send some strings identifying the computer (these are shown to the user for security reasons)
-            req = api_pb2.TokenCreateRequest(
+            create_req = api_pb2.TokenCreateRequest(
                 node_name=platform.node(),
                 platform_name=platform.platform(),
             )
-            resp = await stub.TokenCreate(req)
+            create_resp = await stub.TokenCreate(create_req)
 
             # Open the web url in the browser
-            if webbrowser.open_new_tab(resp.web_url):
-                print(f"Launched {resp.web_url} in your browser window.")
+            if webbrowser.open_new_tab(create_resp.web_url):
+                print(f"Launched {create_resp.web_url} in your browser window.")
             else:
-                print(f"Was unable to launch web browser. Please go to {resp.web_url}")
+                print(f"Was unable to launch web browser. Please go to {create_resp.web_url}")
 
             # Wait for token forever
-            token_creation_id = resp.token_creation_id
             while True:
                 print("Waiting for authentication in the web browser...")
-                req = api_pb2.TokenWaitRequest(token_creation_id=token_creation_id, timeout=15.0)
-                resp = await stub.TokenWait(req)
-                if not resp.timeout:
-                    return (resp.token_id, resp.token_secret)
+                wait_req = api_pb2.TokenWaitRequest(token_creation_id=create_resp.token_creation_id, timeout=15.0)
+                wait_resp = await stub.TokenWait(wait_req)
+                if not wait_resp.timeout:
+                    return (wait_resp.token_id, wait_resp.token_secret)
         finally:
             channel.close()
 
