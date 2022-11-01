@@ -346,14 +346,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.task_result = request.result
         await stream.send_message(Empty())
 
-    async def TokenCreate(self, stream):
+    async def TokenFlowCreate(self, stream):
         await stream.send_message(
-            api_pb2.TokenCreateResponse(token_creation_id="tc-123", web_url="https://localhost/xyz/abc")
+            api_pb2.TokenFlowCreateResponse(token_creation_id="tc-123", web_url="https://localhost/xyz/abc")
         )
 
-    async def TokenWait(self, stream):
+    async def TokenFlowWait(self, stream):
         await stream.send_message(
-            api_pb2.TokenWaitResponse(
+            api_pb2.TokenFlowWaitResponse(
                 token_id="abc",
                 token_secret="xyz",
             )

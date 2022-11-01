@@ -232,11 +232,11 @@ class _Client:
         try:
             # Create token creation request
             # Send some strings identifying the computer (these are shown to the user for security reasons)
-            create_req = api_pb2.TokenCreateRequest(
+            create_req = api_pb2.TokenFlowCreateRequest(
                 node_name=platform.node(),
                 platform_name=platform.platform(),
             )
-            create_resp = await stub.TokenCreate(create_req)
+            create_resp = await stub.TokenFlowCreate(create_req)
 
             # Open the web url in the browser
             if webbrowser.open_new_tab(create_resp.web_url):
@@ -247,8 +247,8 @@ class _Client:
             # Wait for token forever
             while True:
                 print("Waiting for authentication in the web browser...")
-                wait_req = api_pb2.TokenWaitRequest(token_creation_id=create_resp.token_creation_id, timeout=15.0)
-                wait_resp = await stub.TokenWait(wait_req)
+                wait_req = api_pb2.TokenFlowWaitRequest(token_creation_id=create_resp.token_creation_id, timeout=15.0)
+                wait_resp = await stub.TokenFlowWait(wait_req)
                 if not wait_resp.timeout:
                     return (wait_resp.token_id, wait_resp.token_secret)
         finally:
