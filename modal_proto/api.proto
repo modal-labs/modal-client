@@ -770,13 +770,13 @@ message TokenFlowCreateRequest {
 }
 
 message TokenFlowCreateResponse {
-  string token_creation_id = 1;
+  string token_flow_id = 1;
   string web_url = 2;
 };
 
 message TokenFlowWaitRequest {
   float timeout = 1;
-  string token_creation_id = 2;
+  string token_flow_id = 2;
 }
 
 message TokenFlowWaitResponse {
