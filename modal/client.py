@@ -8,6 +8,7 @@ import webbrowser
 from aiohttp import ClientConnectorError, ClientResponseError
 from grpclib import GRPCError, Status
 from grpclib.exceptions import StreamTerminatedError
+from rich.console import Console
 from sentry_sdk import capture_exception
 
 from modal.exception import DeprecationError
@@ -221,7 +222,7 @@ class _Client:
         return self._client_id
 
     @classmethod
-    async def token_new(cls, env):
+    async def token_flow(cls, env):
         """Gets a token through a web flow."""
 
         # Create a connection with no credentials
@@ -238,19 +239,24 @@ class _Client:
             )
             create_resp = await stub.TokenFlowCreate(create_req)
 
-            # Open the web url in the browser
-            if webbrowser.open_new_tab(create_resp.web_url):
-                print(f"Launched {create_resp.web_url} in your browser window.")
-            else:
-                print(f"Was unable to launch web browser. Please go to {create_resp.web_url}")
+            console = Console()
+            with console.status("Waiting for authentication in the web browser...", spinner="dots"):
+                # Open the web url in the browser
+                link_text = f"[link={create_resp.web_url}]{create_resp.web_url}[/link]"
+                if webbrowser.open_new_tab(create_resp.web_url):
+                    console.print(f"Launched {link_text} in your browser window!")
+                    console.print("If this is not showing up, please copy the URL into your web browser manually!")
+                else:
+                    console.print("[red]Was not able to launch web browser.[/red]")
+                    console.print(f"Please go to this URL in your browser: {link_text}")
 
-            # Wait for token forever
-            while True:
-                print("Waiting for authentication in the web browser...")
-                wait_req = api_pb2.TokenFlowWaitRequest(token_flow_id=create_resp.token_flow_id, timeout=15.0)
-                wait_resp = await stub.TokenFlowWait(wait_req)
-                if not wait_resp.timeout:
-                    return (wait_resp.token_id, wait_resp.token_secret)
+                # Wait for token forever
+                while True:
+                    wait_req = api_pb2.TokenFlowWaitRequest(token_flow_id=create_resp.token_flow_id, timeout=15.0)
+                    wait_resp = await stub.TokenFlowWait(wait_req)
+                    if not wait_resp.timeout:
+                        console.print("[green]Success![/green]")
+                        return (wait_resp.token_id, wait_resp.token_secret)
         finally:
             channel.close()
 
