@@ -222,11 +222,10 @@ class _Client:
         return self._client_id
 
     @classmethod
-    async def token_flow(cls, env):
+    async def token_flow(cls, env: str, server_url: str):
         """Gets a token through a web flow."""
 
         # Create a connection with no credentials
-        server_url = config.get("server_url", env=env)
         channel = create_channel(server_url, api_pb2.CLIENT_TYPE_CLIENT, None)
         stub = api_grpc.ModalClientStub(channel)  # type: ignore
 
