@@ -53,6 +53,6 @@ def new(env: Optional[str] = env_option, no_verify: bool = False):
         client = Client(server_url, api_pb2.CLIENT_TYPE_CLIENT, (token_id, token_secret))
         client.verify()
         rich.print("[green]Token verified successfully[/green]")
-    
+
     _store_user_config({"token_id": token_id, "token_secret": token_secret}, env=env)
     rich.print(f"Token written to {user_config_path}")
