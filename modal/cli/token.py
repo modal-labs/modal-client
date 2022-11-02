@@ -2,6 +2,7 @@
 import getpass
 from typing import Optional
 
+import rich
 import typer
 
 from modal.client import Client
@@ -32,19 +33,26 @@ def set(
 
     if not no_verify:
         server_url = config.get("server_url", env=env)
-        print(f"Verifying token against {server_url}...")
+        rich.print(f"Verifying token against [blue]{server_url}[/blue]")
         client = Client(server_url, api_pb2.CLIENT_TYPE_CLIENT, (token_id, token_secret))
         client.verify()
-        print("Token verified successfully")
+        rich.print("[green]Token verified successfully[/green]")
 
     _store_user_config({"token_id": token_id, "token_secret": token_secret}, env=env)
-    print(f"Token written to {user_config_path}")
+    rich.print(f"Token written to {user_config_path}")
 
 
 @token_cli.command(help="Creates a new token by using an authenticated web session.")
-def new(env: Optional[str] = env_option):
-    # Fetch token from server
-    token_id, token_secret = Client.token_flow(env=env)
+def new(env: Optional[str] = env_option, no_verify: bool = False):
+    server_url = config.get("server_url", env=env)
+
+    token_id, token_secret = Client.token_flow(env, server_url)
+
+    if not no_verify:
+        rich.print(f"Verifying token against [blue]{server_url}[/blue]")
+        client = Client(server_url, api_pb2.CLIENT_TYPE_CLIENT, (token_id, token_secret))
+        client.verify()
+        rich.print("[green]Token verified successfully[/green]")
 
     _store_user_config({"token_id": token_id, "token_secret": token_secret}, env=env)
-    print(f"Token written to {user_config_path}")
+    rich.print(f"Token written to {user_config_path}")
