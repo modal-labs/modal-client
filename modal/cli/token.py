@@ -44,7 +44,7 @@ def set(
 @token_cli.command(help="Creates a new token by using an authenticated web session.")
 def new(env: Optional[str] = env_option):
     # Fetch token from server
-    token_id, token_secret = Client.token_new(env=env)
+    token_id, token_secret = Client.token_flow(env=env)
 
     _store_user_config({"token_id": token_id, "token_secret": token_secret}, env=env)
     print(f"Token written to {user_config_path}")
