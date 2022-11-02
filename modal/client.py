@@ -243,12 +243,14 @@ class _Client:
             with console.status("Waiting for authentication in the web browser...", spinner="dots"):
                 # Open the web url in the browser
                 link_text = f"[link={create_resp.web_url}]{create_resp.web_url}[/link]"
+                console.print(f"Launching {link_text} in your browser window")
                 if webbrowser.open_new_tab(create_resp.web_url):
-                    console.print(f"Launched {link_text} in your browser window!")
-                    console.print("If this is not showing up, please copy the URL into your web browser manually!")
+                    console.print("If this is not showing up, please copy the URL into your web browser manually")
                 else:
-                    console.print("[red]Was not able to launch web browser.[/red]")
-                    console.print(f"Please go to this URL in your browser: {link_text}")
+                    console.print(
+                        "[red]Was not able to launch web browser[/red]"
+                        " - please go to the URL manually and complete the flow"
+                    )
 
                 # Wait for token forever
                 while True:
