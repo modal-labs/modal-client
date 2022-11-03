@@ -188,6 +188,7 @@ class RemoteRef(Ref[H]):
     async def _load(
         self,
         client: _Client,
+        stub: "_Stub",
         app_id: str,
         loader: Callable[["Provider"], Awaitable[str]],
         message_callback: Callable[[str], None],
@@ -206,6 +207,7 @@ class PersistedRef(Ref[H]):
     async def _load(
         self,
         client: _Client,
+        stub: "_Stub",
         app_id: str,
         loader: Callable[["Provider"], Awaitable[str]],
         message_callback: Callable[[str], None],

@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import inspect
 import os
 import shlex
 import sys
@@ -132,6 +133,21 @@ class _Image(Provider[_ImageHandle]):
             with open(path, "rb") as f:
                 context_file_pb2s.append(api_pb2.ImageContextFile(filename=filename, data=f.read()))
 
+        if self._build_function:
+            (fn, args, kwargs) = self._build_function
+            # Plaintext source and arg definition for the function, so it's part of the image
+            # hash. We can't use the cloudpickle hash because it's not very stable.
+            build_function_def = f"{inspect.getsource(fn)}\n{repr(args)}\n{repr(kwargs)}"
+
+            base_images = list(self._base_images.values())
+            assert len(base_images) == 1
+            kwargs = {**kwargs, "image": base_images[0], "_is_build_step": True}
+            wrapped_build_function = stub.function(*args, **kwargs)(fn)
+            build_function_id = await loader(wrapped_build_function)
+        else:
+            build_function_def = None
+            build_function_id = None
+
         dockerfile_commands: List[str]
         if callable(self._dockerfile_commands):
             # It's a closure (see DockerfileImage)
@@ -145,12 +161,14 @@ class _Image(Provider[_ImageHandle]):
             version=self._version,
             secret_ids=secret_ids,
             gpu=self._gpu,
+            build_function_def=build_function_def,
         )
 
         req = api_pb2.ImageGetOrCreateRequest(
             app_id=app_id,
             image=image_definition,
             existing_image_id=existing_image_id,  # TODO: ignored
+            build_function_id=build_function_id,
         )
         resp = await client.stub.ImageGetOrCreate(req)
         image_id = resp.image_id
@@ -497,10 +515,12 @@ class _Image(Provider[_ImageHandle]):
 
     def run_function(
         self,
-        build_function: Callable[[], Any],
+        raw_function: Callable[[], Any],
+        *args,
+        **kwargs,
     ) -> "_Image":
         """hi"""
-        return self.extend(build_function=build_function)
+        return self.extend(build_function=(raw_function, args, kwargs))
 
 
 def _Conda():
