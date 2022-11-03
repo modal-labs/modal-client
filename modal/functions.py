@@ -395,7 +395,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
     def _set_mute_cancellation(self, value=True):
         self._mute_cancellation = value
 
-    def _buiinitialize_from_proto(self, function: api_pb2.Function):
+    def _initialize_from_proto(self, function: api_pb2.Function):
         self._is_generator = function.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
 
     def _set_local_app(self, app):
@@ -620,7 +620,6 @@ class _Function(Provider[_FunctionHandle]):
         cpu: Optional[float] = None,
         keep_warm: bool = False,
         interactive: bool = False,
-        _is_build_step: bool = False,
     ) -> None:
         """mdmd:hidden"""
         assert callable(raw_f)
@@ -684,7 +683,6 @@ class _Function(Provider[_FunctionHandle]):
         self._concurrency_limit = concurrency_limit
         self._keep_warm = keep_warm
         self._interactive = interactive
-        self._is_build_step = _is_build_step
         self._tag = self._info.get_tag()
         super().__init__()
 
@@ -798,7 +796,6 @@ class _Function(Provider[_FunctionHandle]):
             concurrency_limit=self._concurrency_limit,
             keep_warm=self._keep_warm,
             pty_info=pty_info,
-            _is_build_step=self._is_build_step,
         )
         request = api_pb2.FunctionCreateRequest(
             app_id=app_id,

@@ -338,8 +338,6 @@ message Function {
 
   PTYInfo pty_info = 22;
   bytes class_serialized = 23;
-
-  bool _is_build_step = 24;
 }
 
 message FunctionCreateRequest {
