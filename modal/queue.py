@@ -134,7 +134,7 @@ class _Queue(Provider[_QueueHandle]):
     The queue can contain any object serializable by `cloudpickle`.
     """
 
-    async def _load(self, client, app_id, loader, message_callback, existing_object_id):
+    async def _load(self, client, stub, app_id, loader, message_callback, existing_object_id):
         request = api_pb2.QueueCreateRequest(app_id=app_id, existing_queue_id=existing_object_id)
         response = await client.stub.QueueCreate(request)
         return _QueueHandle(client, response.queue_id)

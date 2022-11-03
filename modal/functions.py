@@ -32,6 +32,7 @@ from modal_utils.async_utils import (
     warn_if_generator_is_not_consumed,
 )
 from modal_utils.grpc_utils import retry_transient_errors
+
 from ._blob_utils import (
     BLOB_MAX_PARALLELISM,
     MAX_OBJECT_SIZE_BYTES,
@@ -375,7 +376,7 @@ async def _map_invocation(
 class _FunctionHandle(Handle, type_prefix="fu"):
     """Interact with a Modal Function of a live app."""
 
-    def __init__(self, function, web_url=None, client=None, object_id=None):
+    def __init__(self, function: "_Function", web_url=None, client=None, object_id=None):
         self._local_app = None
         self._progress = None
 
@@ -385,6 +386,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         self._raw_f = function._raw_f
         self._web_url = web_url
         self._output_mgr: Optional[OutputManager] = None
+        self._function = function
         self._mute_cancellation = (
             False  # set when a user terminates the app intentionally, to prevent useless traceback spam
         )
@@ -685,7 +687,7 @@ class _Function(Provider[_FunctionHandle]):
         self._tag = self._info.get_tag()
         super().__init__()
 
-    async def _load(self, client, app_id, loader, message_callback, existing_function_id):
+    async def _load(self, client, stub, app_id, loader, message_callback, existing_function_id):
         message_callback(f"Creating {self._tag}...")
 
         if self._proxy:
