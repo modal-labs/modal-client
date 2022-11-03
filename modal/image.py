@@ -142,8 +142,8 @@ class _Image(Provider[_ImageHandle]):
             base_images = list(self._base_images.values())
             assert len(base_images) == 1
             kwargs = {**kwargs, "image": base_images[0], "_is_build_step": True}
-            wrapped_build_function = stub.function(*args, **kwargs)(fn)
-            build_function_id = await loader(wrapped_build_function)
+            build_function_handle = stub.function(*args, **kwargs)(fn)
+            build_function_id = await loader(build_function_handle._function)
         else:
             build_function_def = None
             build_function_id = None

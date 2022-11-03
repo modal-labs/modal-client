@@ -563,7 +563,7 @@ class _Stub:
 
         if _is_build_step:
             # Don't add function to stub if it's a build step.
-            return function
+            return _FunctionHandle(function)
 
         return self._add_function(function)
 

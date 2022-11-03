@@ -376,7 +376,7 @@ async def _map_invocation(
 class _FunctionHandle(Handle, type_prefix="fu"):
     """Interact with a Modal Function of a live app."""
 
-    def __init__(self, function, web_url=None, client=None, object_id=None):
+    def __init__(self, function: "_Function", web_url=None, client=None, object_id=None):
         self._local_app = None
         self._progress = None
 
@@ -386,6 +386,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         self._raw_f = function._raw_f
         self._web_url = web_url
         self._output_mgr: Optional[OutputManager] = None
+        self._function = function
         self._mute_cancellation = (
             False  # set when a user terminates the app intentionally, to prevent useless traceback spam
         )
