@@ -30,7 +30,7 @@ class _Secret(Provider[_SecretHandle]):
     def __repr__(self):
         return f"Secret({self._env_dict.keys()})"
 
-    async def _load(self, client, app_id, loader, message_callback, existing_secret_id):
+    async def _load(self, client, stub, app_id, loader, message_callback, existing_secret_id):
         req = api_pb2.SecretCreateRequest(
             app_id=app_id,
             env_dict=self._env_dict,

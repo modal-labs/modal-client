@@ -1,6 +1,15 @@
 # Copyright Modal Labs 2022
 import uuid
-from typing import Awaitable, Callable, Generic, Optional, Type, TypeVar, cast
+from typing import (
+    TYPE_CHECKING,
+    Awaitable,
+    Callable,
+    Generic,
+    Optional,
+    Type,
+    TypeVar,
+    cast,
+)
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
@@ -8,6 +17,9 @@ from modal_utils.async_utils import synchronize_apis
 from ._object_meta import ObjectMeta
 from .client import _Client
 from .exception import InvalidError, NotFoundError, deprecation_warning
+
+if TYPE_CHECKING:
+    from .stub import _Stub
 
 H = TypeVar("H", bound="Handle")
 
@@ -124,6 +136,7 @@ class Provider(Generic[H]):
     async def _load(
         self,
         client: _Client,
+        stub: "_Stub",
         app_id: str,
         loader: Callable[["Provider"], Awaitable[str]],
         message_callback: Callable[[str], None],

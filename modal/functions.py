@@ -32,6 +32,7 @@ from modal_utils.async_utils import (
     warn_if_generator_is_not_consumed,
 )
 from modal_utils.grpc_utils import retry_transient_errors
+
 from ._blob_utils import (
     BLOB_MAX_PARALLELISM,
     MAX_OBJECT_SIZE_BYTES,
@@ -685,7 +686,7 @@ class _Function(Provider[_FunctionHandle]):
         self._tag = self._info.get_tag()
         super().__init__()
 
-    async def _load(self, client, app_id, loader, message_callback, existing_function_id):
+    async def _load(self, client, stub, app_id, loader, message_callback, existing_function_id):
         message_callback(f"Creating {self._tag}...")
 
         if self._proxy:

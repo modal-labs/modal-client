@@ -3,7 +3,7 @@ import os
 import shlex
 import sys
 from pathlib import Path
-from typing import Callable, Collection, Dict, List, Optional, Union
+from typing import Any, Callable, Collection, Dict, List, Optional, Union
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
@@ -77,13 +77,20 @@ class _Image(Provider[_ImageHandle]):
         version=None,
         ref=None,
         gpu=False,
+        build_function=None,
     ):
         if ref and (base_images or dockerfile_commands or context_files):
             raise InvalidError("No other arguments can be provided when initializing an image from a ref.")
-        if not ref and not dockerfile_commands:
+        if not ref and not dockerfile_commands and not build_function:
             raise InvalidError(
                 "No commands were provided for the image — have you tried using modal.Image.debian_slim()?"
             )
+
+        if build_function and dockerfile_commands:
+            raise InvalidError("Cannot provide both a build function and Dockerfile commands!")
+
+        if build_function and len(base_images) != 1:
+            raise InvalidError("Cannot run a build function with multiple base images!")
 
         self._ref = ref
         self._base_images = base_images
@@ -92,12 +99,13 @@ class _Image(Provider[_ImageHandle]):
         self._version = version
         self._secrets = secrets
         self._gpu = gpu
+        self._build_function = build_function
         super().__init__()
 
     def __repr__(self):
         return f"Image({self._dockerfile_commands})"
 
-    async def _load(self, client, app_id, loader, message_callback, existing_image_id):
+    async def _load(self, client, stub, app_id, loader, message_callback, existing_image_id):
         if self._ref:
             image_id = await loader(self._ref)
             return _ImageHandle._from_id(image_id, client)
@@ -486,6 +494,13 @@ class _Image(Provider[_ImageHandle]):
         ]
 
         return self.extend(dockerfile_commands=dockerfile_commands)
+
+    def run_function(
+        self,
+        build_function: Callable[[], Any],
+    ) -> "_Image":
+        """hi"""
+        return self.extend(build_function=build_function)
 
 
 def _Conda():
