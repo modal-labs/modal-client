@@ -559,6 +559,7 @@ class _Stub:
             timeout=timeout,
             cpu=cpu,
             interactive=interactive,
+            _is_build_step=_is_build_step,
         )
 
         if _is_build_step:
