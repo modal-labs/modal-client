@@ -117,7 +117,7 @@ class _SharedVolume(Provider[_SharedVolumeHandle]):
     def _get_creating_message(self) -> str:
         return "Creating shared volume..."
 
-    async def _load(self, client, app_id, loader, message_callback, existing_shared_volume_id):
+    async def _load(self, client, stub, app_id, loader, message_callback, existing_shared_volume_id):
         if existing_shared_volume_id:
             # Volume already exists; do nothing.
             return _SharedVolumeHandle(client, existing_shared_volume_id)

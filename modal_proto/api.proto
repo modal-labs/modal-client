@@ -524,6 +524,7 @@ message Image {
   // Part of Image definition, because presence of GPU drivers
   // affects the image that's built.
   bool gpu = 13;
+  string build_function_def = 14;
 }
 
 message ImageContextFile {
@@ -535,6 +536,7 @@ message ImageGetOrCreateRequest {
   Image image = 2;
   string app_id = 4;
   string existing_image_id = 5;  // ignored
+  string build_function_id = 6;
 }
 
 message ImageGetOrCreateResponse {

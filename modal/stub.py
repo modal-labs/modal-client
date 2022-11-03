@@ -525,6 +525,7 @@ class _Stub:
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         interactive: bool = False,  # Whether to run the function in interactive mode.
+        _is_build_step: bool = False,  # Whether function is a build step; reserved for internal use.
     ) -> _FunctionHandle:  # Function object - callable as a regular function within a Modal app
         """Decorator to register a new Modal function with this stub."""
         if image is None:
@@ -559,6 +560,11 @@ class _Stub:
             cpu=cpu,
             interactive=interactive,
         )
+
+        if _is_build_step:
+            # Don't add function to stub if it's a build step.
+            return _FunctionHandle(function)
+
         return self._add_function(function)
 
     @decorator_with_options

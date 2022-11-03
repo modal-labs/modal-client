@@ -4,7 +4,7 @@ import pytest
 import sys
 from typing import List
 
-from modal import Conda, DebianSlim, Image, Stub
+from modal import Conda, DebianSlim, Image, Secret, Stub
 from modal.exception import DeprecationError, InvalidError
 from modal.image import _dockerhub_python_version
 from modal_proto import api_pb2
@@ -47,7 +47,6 @@ def test_image_python_packages(client, servicer):
     stub["image"] = Image.debian_slim().pip_install(["numpy"])
     with stub.run(client=client) as running_app:
         layers = get_image_layers(running_app["image"].object_id, servicer)
-
         assert any("pip install numpy" in cmd for cmd in layers[0].dockerfile_commands)
 
 
@@ -155,3 +154,22 @@ def test_dockerhub_install(servicer, client):
 
         assert any("FROM gisops/valhalla:latest" in cmd for cmd in layers[0].dockerfile_commands)
         assert any("apt-get update" in cmd for cmd in layers[0].dockerfile_commands)
+
+
+def run_f():
+    print("foo!")
+
+
+def test_image_run_function(client, servicer):
+    stub = Stub()
+    stub["image"] = Image.debian_slim().pip_install(["pandas"]).run_function(run_f, secrets=[Secret({"xyz": "123"})])
+
+    with stub.run(client=client) as running_app:
+        layers = get_image_layers(running_app["image"].object_id, servicer)
+        assert "foo!" in layers[0].build_function_def
+        assert "Secret([xyz])" in layers[0].build_function_def
+
+    function_id = servicer.image_build_function_ids[2]
+    assert function_id
+    assert servicer.app_functions[function_id].function_name == "run_f"
+    assert len(servicer.app_functions[function_id].secret_ids) == 1

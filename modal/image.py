@@ -1,9 +1,10 @@
 # Copyright Modal Labs 2022
+import inspect
 import os
 import shlex
 import sys
 from pathlib import Path
-from typing import Callable, Collection, Dict, List, Optional, Union
+from typing import Any, Callable, Collection, Dict, List, Optional, Union
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
@@ -77,13 +78,20 @@ class _Image(Provider[_ImageHandle]):
         version=None,
         ref=None,
         gpu=False,
+        build_function=None,
     ):
         if ref and (base_images or dockerfile_commands or context_files):
             raise InvalidError("No other arguments can be provided when initializing an image from a ref.")
-        if not ref and not dockerfile_commands:
+        if not ref and not dockerfile_commands and not build_function:
             raise InvalidError(
                 "No commands were provided for the image — have you tried using modal.Image.debian_slim()?"
             )
+
+        if build_function and dockerfile_commands:
+            raise InvalidError("Cannot provide both a build function and Dockerfile commands!")
+
+        if build_function and len(base_images) != 1:
+            raise InvalidError("Cannot run a build function with multiple base images!")
 
         self._ref = ref
         self._base_images = base_images
@@ -92,12 +100,13 @@ class _Image(Provider[_ImageHandle]):
         self._version = version
         self._secrets = secrets
         self._gpu = gpu
+        self._build_function = build_function
         super().__init__()
 
     def __repr__(self):
         return f"Image({self._dockerfile_commands})"
 
-    async def _load(self, client, app_id, loader, message_callback, existing_image_id):
+    async def _load(self, client, stub, app_id, loader, message_callback, existing_image_id):
         if self._ref:
             image_id = await loader(self._ref)
             return _ImageHandle._from_id(image_id, client)
@@ -124,6 +133,21 @@ class _Image(Provider[_ImageHandle]):
             with open(path, "rb") as f:
                 context_file_pb2s.append(api_pb2.ImageContextFile(filename=filename, data=f.read()))
 
+        if self._build_function:
+            (fn, kwargs) = self._build_function
+            # Plaintext source and arg definition for the function, so it's part of the image
+            # hash. We can't use the cloudpickle hash because it's not very stable.
+            build_function_def = f"{inspect.getsource(fn)}\n{repr(kwargs)}"
+
+            base_images = list(self._base_images.values())
+            assert len(base_images) == 1
+            kwargs = {**kwargs, "image": base_images[0], "_is_build_step": True}
+            build_function_handle = stub.function(**kwargs)(fn)
+            build_function_id = await loader(build_function_handle._function)
+        else:
+            build_function_def = None
+            build_function_id = None
+
         dockerfile_commands: List[str]
         if callable(self._dockerfile_commands):
             # It's a closure (see DockerfileImage)
@@ -137,12 +161,14 @@ class _Image(Provider[_ImageHandle]):
             version=self._version,
             secret_ids=secret_ids,
             gpu=self._gpu,
+            build_function_def=build_function_def,
         )
 
         req = api_pb2.ImageGetOrCreateRequest(
             app_id=app_id,
             image=image_definition,
             existing_image_id=existing_image_id,  # TODO: ignored
+            build_function_id=build_function_id,
         )
         resp = await client.stub.ImageGetOrCreate(req)
         image_id = resp.image_id
@@ -486,6 +512,37 @@ class _Image(Provider[_ImageHandle]):
         ]
 
         return self.extend(dockerfile_commands=dockerfile_commands)
+
+    def run_function(
+        self,
+        raw_function: Callable[[], Any],
+        **kwargs,
+    ) -> "_Image":
+        """Run user-defined function `raw_function` as an image build step. The function runs just like an ordinary Modal
+        function, and any kwargs accepted by @stub.function (such as `Mount`s, `SharedVolume`s, and resource requests) can
+        be supplied to it. After it finishes execution, a snpashot of the resulting container file system is saved as an image.
+
+        **Note**
+        Only the source code of `raw_function` and the contents of **kwargs are used to determine whether the image has changed
+        and needs to be rebuilt. If this function references other functions or variables, the image will not be rebuilt if you
+        make changes to them. You can force a rebuild by changing the function's source code itself.
+
+        **Example**
+
+        ```python notest
+
+        def my_build_function():
+            open("model.pt", "w").write("parameters!")
+
+        image = (
+            modal.Image
+                .debian_slim()
+                .pip_install(["torch])
+                .run_function(my_build_function, secrets=[...], mounts=[...])
+        )
+        ```
+        """
+        return self.extend(build_function=(raw_function, kwargs))
 
 
 def _Conda():

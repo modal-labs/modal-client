@@ -104,7 +104,7 @@ class _App:
                 step_progress_update(spinner, message)
 
         # Create object
-        created_obj = await obj._load(self.client, self.app_id, loader, set_message, existing_object_id)
+        created_obj = await obj._load(self.client, self._stub, self.app_id, loader, set_message, existing_object_id)
 
         # Change message to a completed step
         if progress and last_message:

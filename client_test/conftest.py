@@ -73,6 +73,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.shared_volume_files = []
         self.images = {}
+        self.image_build_function_ids = {}
         self.fail_blob_create = []
         self.blob_create_metadata = None
 
@@ -152,6 +153,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request = await stream.recv_message()
         idx = len(self.images)
         self.images[idx] = request.image
+        self.image_build_function_ids[idx] = request.build_function_id
         await stream.send_message(api_pb2.ImageGetOrCreateResponse(image_id=f"im-{idx}"))
 
     async def ImageJoin(self, stream):
