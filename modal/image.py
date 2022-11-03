@@ -519,8 +519,8 @@ class _Image(Provider[_ImageHandle]):
         **kwargs,
     ) -> "_Image":
         """Run user-defined function `raw_function` as an image build step. The function runs just like an ordinary Modal
-        function, and any kwargs accepted by @stub.function (such as `Mount`s, `SharedVolume`s, and resource requests) can
-        be supplied to it. After it finishes execution, a snpashot of the resulting container file system is saved as an image.
+        function, and any kwargs accepted by `@stub.function` (such as `Mount`s, `SharedVolume`s, and resource requests) can
+        be supplied to it. After it finishes execution, a snapshot of the resulting container file system is saved as an image.
 
         **Note**
         Only the source code of `raw_function` and the contents of **kwargs are used to determine whether the image has changed
