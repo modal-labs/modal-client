@@ -204,6 +204,9 @@ class PersistedRef(Ref[H]):
         self.definition = definition
         super().__init__()
 
+    def __repr__(self):
+        return f"PersistedRef<{self.definition}>({self.app_name})"
+
     async def _load(
         self,
         client: _Client,
