@@ -4,7 +4,7 @@ import pytest
 import sys
 from typing import List
 
-from modal import Conda, DebianSlim, Image, Secret, Stub
+from modal import Conda, DebianSlim, Image, Secret, SharedVolume, Stub
 from modal.exception import DeprecationError, InvalidError
 from modal.image import _dockerhub_python_version
 from modal_proto import api_pb2
@@ -162,12 +162,18 @@ def run_f():
 
 def test_image_run_function(client, servicer):
     stub = Stub()
-    stub["image"] = Image.debian_slim().pip_install(["pandas"]).run_function(run_f, secrets=[Secret({"xyz": "123"})])
+    volume = SharedVolume().persist("test-vol")
+    stub["image"] = (
+        Image.debian_slim()
+        .pip_install(["pandas"])
+        .run_function(run_f, secrets=[Secret({"xyz": "123"})], shared_volumes={"/foo": volume})
+    )
 
     with stub.run(client=client) as running_app:
         layers = get_image_layers(running_app["image"].object_id, servicer)
         assert "foo!" in layers[0].build_function_def
         assert "Secret([xyz])" in layers[0].build_function_def
+        assert "Ref<SharedVolume()>(test-vol)" in layers[0].build_function_def
 
     function_id = servicer.image_build_function_ids[2]
     assert function_id
