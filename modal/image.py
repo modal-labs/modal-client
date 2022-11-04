@@ -523,7 +523,8 @@ class _Image(Provider[_ImageHandle]):
         be supplied to it. After it finishes execution, a snapshot of the resulting container file system is saved as an image.
 
         **Note**
-        Only the source code of `raw_function` and the contents of **kwargs are used to determine whether the image has changed
+
+        Only the source code of `raw_function` and the contents of `**kwargs` are used to determine whether the image has changed
         and needs to be rebuilt. If this function references other functions or variables, the image will not be rebuilt if you
         make changes to them. You can force a rebuild by changing the function's source code itself.
 
@@ -537,7 +538,7 @@ class _Image(Provider[_ImageHandle]):
         image = (
             modal.Image
                 .debian_slim()
-                .pip_install(["torch])
+                .pip_install(["torch"])
                 .run_function(my_build_function, secrets=[...], mounts=[...])
         )
         ```
