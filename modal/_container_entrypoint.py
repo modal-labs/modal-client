@@ -193,6 +193,7 @@ class _FunctionIOManager:
                     args, kwargs = self.deserialize(input_pb.args) if input_pb.args else ((), {})
                     _set_current_input_id(input_id, started_at=self.input_started_at)
                     yield input_id, args, kwargs
+                    _set_current_input_id(None)
                     self.total_user_time += time.time() - self.input_started_at
                     self.calls_completed += 1
             finally:
