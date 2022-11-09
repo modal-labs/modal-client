@@ -526,6 +526,7 @@ class _Stub:
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         interactive: bool = False,  # Whether to run the function in interactive mode.
         _is_build_step: bool = False,  # Whether function is a build step; reserved for internal use.
+        keep_warm: bool = False,  # Toggles an adaptively-sized warm pool for latency-sensitive apps.
     ) -> _FunctionHandle:  # Function object - callable as a regular function within a Modal app
         """Decorator to register a new Modal function with this stub."""
         if image is None:
@@ -559,6 +560,7 @@ class _Stub:
             timeout=timeout,
             cpu=cpu,
             interactive=interactive,
+            keep_warm=keep_warm,
         )
 
         if _is_build_step:
