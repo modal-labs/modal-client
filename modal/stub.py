@@ -588,6 +588,7 @@ class _Stub:
         retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
+        keep_warm: bool = False,  # Toggles an adaptively-sized warm pool for latency-sensitive apps.
     ) -> _FunctionHandle:
         """Decorator similar to `@modal.function`, but it wraps Python generators."""
         if image is None:
@@ -609,6 +610,7 @@ class _Stub:
             retries=retries,
             concurrency_limit=concurrency_limit,
             timeout=timeout,
+            keep_warm=keep_warm,
             cpu=cpu,
         )
         return self._add_function(function)
