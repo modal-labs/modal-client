@@ -112,7 +112,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request = await stream.recv_message()
         self.requests.append(request)
         client_id = "cl-123"
-        print(stream.metadata)
         if stream.metadata.get("x-modal-token-id") == "bad":
             raise GRPCError(Status.UNAUTHENTICATED, "bad bad bad")
         elif request.version == "timeout":
