@@ -15,13 +15,13 @@ jobs:
 
     strategy:
       matrix:
-        python-version: ["3.7", "3.8", "3.9", "3.10"]
+        python-version: ["3.7", "3.8", "3.9", "3.10", "3.11"]
         os: ["ubuntu-20.04"]
         include:
           - os: "macos-latest"
-            python-version: "3.10"
+            python-version: "3.11"
           - os: "windows-latest"
-            python-version: "3.10"
+            python-version: "3.11"
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -42,7 +42,6 @@ jobs:
 
       - name: Run docstring tests
         run: pytest -s --markdown-docs -m markdown-docs modal
-       
 
   publish-base-images:
     name: |
@@ -56,7 +55,7 @@ jobs:
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
     strategy:
       matrix:
-        python-version: ["3.7", "3.8", "3.9", "3.10"]
+        python-version: ["3.7", "3.8", "3.9", "3.10", "3.11"]
         image-name: ["debian_slim", "conda"]
 
     steps:
@@ -64,7 +63,7 @@ jobs:
 
       - uses: ./.github/actions/setup-cached-python
         with:
-          version: "3.10"
+          version: "3.11"
 
       - name: Build protobuf
         run: inv protoc
@@ -87,7 +86,7 @@ jobs:
 
       - uses: ./.github/actions/setup-cached-python
         with:
-          version: "3.10"
+          version: "3.11"
 
       - name: Bump the version number
         run: inv update-build-number $GITHUB_RUN_NUMBER

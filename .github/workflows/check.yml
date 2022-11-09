@@ -11,7 +11,7 @@ jobs:
 
       - uses: ./.github/actions/setup-cached-python
         with:
-          version: "3.10"
+          version: "3.11"
 
       - name: Check files using the black formatter
         run: black --check .
@@ -25,7 +25,7 @@ jobs:
 
       - uses: ./.github/actions/setup-cached-python
         with:
-          version: "3.10"
+          version: "3.11"
 
       - run: flake8 .
 
@@ -38,7 +38,7 @@ jobs:
 
       - uses: ./.github/actions/setup-cached-python
         with:
-          version: "3.10"
+          version: "3.11"
 
       - run: inv protoc
 
@@ -53,6 +53,6 @@ jobs:
 
       - uses: ./.github/actions/setup-cached-python
         with:
-          version: "3.10"
+          version: "3.11"
 
       - run: inv check-copyright
