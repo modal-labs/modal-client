@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2022
 from modal_utils.decorator_utils import decorator_with_options
 
 
@@ -72,10 +73,6 @@ def test_method_args():
         return x + 1
 
     assert g(42) == 52
-
-
-def double(x):
-    return 2 * x
 
 
 def test_method_direct():
