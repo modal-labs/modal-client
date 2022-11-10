@@ -5,23 +5,26 @@ import modal
 from modal.exception import InvalidError
 
 
+def per_second_5():
+    return 42
+
+
+def per_minute_15():
+    return 67
+
+
+def dummy():
+    pass
+
+
 def test_rate_limit(client):
     stub = modal.Stub()
 
-    @stub.function(rate_limit=modal.RateLimit(per_second=5))
-    def per_second_5():
-        return 42
-
-    @stub.function(rate_limit=modal.RateLimit(per_minute=15))
-    def per_minute_15():
-        return 67
-
+    per_second_5_modal = stub.function(per_second_5, rate_limit=modal.RateLimit(per_second=5))
+    per_minute_15_modal = stub.function(per_minute_15, rate_limit=modal.RateLimit(per_minute=15))
     with pytest.raises(InvalidError):
-
-        @stub.function(rate_limit=modal.RateLimit(per_minute=15, per_second=5))
-        def two_params_limit():
-            pass
+        stub.function(dummy, rate_limit=modal.RateLimit(per_minute=15, per_second=5))
 
     with stub.run(client=client):
-        per_second_5()
-        per_minute_15()
+        per_second_5_modal()
+        per_minute_15_modal()

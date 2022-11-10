@@ -6,6 +6,7 @@ import pytest
 import time
 
 from modal import Proxy, Stub
+from modal.exception import InvalidError
 from modal.functions import FunctionCall, gather
 from modal.stub import AioStub
 from modal_proto import api_pb2
@@ -18,6 +19,10 @@ def foo():
     pass  # not actually used in test (servicer returns sum of square of all args)
 
 
+def dummy():
+    pass  # not actually used in test (servicer returns sum of square of all args)
+
+
 def test_run_function(client):
     with stub.run(client=client):
         assert foo(2, 4) == 20
@@ -25,83 +30,73 @@ def test_run_function(client):
 
 def test_map(client):
     stub = Stub()
-
-    @stub.function
-    def dummy():
-        pass  # not actually used in test (servicer returns sum of square of all args)
+    dummy_modal = stub.function(dummy)
 
     with stub.run(client=client):
-        assert list(dummy.map([5, 2], [4, 3])) == [41, 13]
-        assert set(dummy.map([5, 2], [4, 3], order_outputs=False)) == {13, 41}
+        assert list(dummy_modal.map([5, 2], [4, 3])) == [41, 13]
+        assert set(dummy_modal.map([5, 2], [4, 3], order_outputs=False)) == {13, 41}
+
+
+_side_effect_count = 0
+
+
+def side_effect(_):
+    global _side_effect_count
+    _side_effect_count += 1
 
 
 def test_for_each(client, servicer):
     stub = Stub()
+    side_effect_modal = stub.function(servicer.function_body(side_effect))
 
-    res = 0
-
-    @stub.function
-    @servicer.function_body
-    def side_effect(_):
-        nonlocal res
-        res += 1
-
+    assert _side_effect_count == 0
     with stub.run(client=client):
-        side_effect.for_each(range(10))
+        side_effect_modal.for_each(range(10))
+    assert _side_effect_count == 10
 
-    assert res == 10
+
+def custom_function(x):
+    if x % 2 == 0:
+        return x
 
 
 def test_map_none_values(client, servicer):
     stub = Stub()
 
-    @stub.function
-    @servicer.function_body
-    def custom_function(x):
-        if x % 2 == 0:
-            return x
-
+    custom_function_modal = stub.function(servicer.function_body(custom_function))
     with stub.run(client=client):
-        assert list(custom_function.map(range(4))) == [0, None, 2, None]
+        assert list(custom_function_modal.map(range(4))) == [0, None, 2, None]
 
 
 def test_starmap(client):
     stub = Stub()
 
-    @stub.function
-    def dummy():
-        pass  # not actually used in test (servicer returns sum of square of all args)
-
+    dummy_modal = stub.function(dummy)
     with stub.run(client=client):
-        assert list(dummy.starmap([[5, 2], [4, 3]])) == [29, 25]
+        assert list(dummy_modal.starmap([[5, 2], [4, 3]])) == [29, 25]
 
 
 def test_function_memory_request(client):
     stub = Stub()
-
-    @stub.function(memory=2048)
-    def f1():
-        pass
+    stub.function(dummy, memory=2048)
 
 
 def test_function_cpu_request(client):
     stub = Stub()
+    stub.function(dummy, cpu=2.0)
 
-    @stub.function(cpu=2.0)
-    def f1():
-        pass
+
+def later():
+    return "hello"
 
 
 def test_function_future(client, servicer):
     stub = Stub()
 
-    @stub.function()
-    @servicer.function_body
-    def later():
-        return "hello"
+    later_modal = stub.function(servicer.function_body(later))
 
     with stub.run(client=client):
-        future = later.submit()
+        future = later_modal.submit()
         assert isinstance(future, FunctionCall)
 
         servicer.function_is_running = True
@@ -118,49 +113,47 @@ def test_function_future(client, servicer):
 async def test_function_future_async(client, servicer):
     stub = AioStub()
 
-    @stub.function()
-    @servicer.function_body
-    def later():
-        return "foo"
+    later_modal = stub.function(servicer.function_body(later))
 
     async with stub.run(client=client):
-        future = await later.submit()
+        future = await later_modal.submit()
         servicer.function_is_running = True
 
         with pytest.raises(TimeoutError):
             await future.get(0.01)
 
         servicer.function_is_running = False
-        assert await future.get(0.01) == "foo"
+        assert await future.get(0.01) == "hello"
+
+
+def later_gen():
+    yield "foo"
 
 
 @pytest.mark.asyncio
 async def test_generator_future(client, servicer):
     stub = Stub()
 
-    @stub.generator()
-    def later():
-        yield "foo"
-
+    later_gen_modal = stub.generator(later_gen)
     with stub.run(client=client):
-        assert later.submit() is None  # until we have a nice interface for polling generator futures
+        assert later_gen_modal.submit() is None  # until we have a nice interface for polling generator futures
+
+
+async def slo1(sleep_seconds):
+    # need to use async function body in client test to run stuff in parallel
+    # but calling interface is still non-asyncio
+    await asyncio.sleep(sleep_seconds)
+    return sleep_seconds
 
 
 def test_sync_parallelism(client, servicer):
     stub = Stub()
 
-    @stub.function()
-    @servicer.function_body
-    async def slo1(sleep_seconds):
-        # need to use async function body in client test to run stuff in parallel
-        # but calling interface is still non-asyncio
-        await asyncio.sleep(sleep_seconds)
-        return sleep_seconds
-
+    slo1_modal = stub.function(servicer.function_body(slo1))
     with stub.run(client=client):
         t0 = time.time()
         # NOTE tests breaks in macOS CI if the smaller time is smaller than ~300ms
-        res = gather(slo1.submit(0.31), slo1.submit(0.3))
+        res = gather(slo1_modal.submit(0.31), slo1_modal.submit(0.3))
         t1 = time.time()
         assert res == [0.31, 0.3]  # results should be ordered as inputs, not by completion time
         assert t1 - t0 < 0.6  # less than the combined runtime, make sure they run in parallel
@@ -169,10 +162,7 @@ def test_sync_parallelism(client, servicer):
 def test_proxy(client, servicer):
     stub = Stub()
 
-    @stub.function(proxy=Proxy.from_name("my-proxy"))
-    def f():
-        pass
-
+    stub.function(dummy, proxy=Proxy.from_name("my-proxy"))
     with stub.run(client=client):
         pass
 
@@ -181,31 +171,32 @@ class CustomException(Exception):
     pass
 
 
+def failure():
+    raise CustomException("foo!")
+
+
 def test_function_exception(client, servicer):
     stub = Stub()
 
-    @stub.function
-    @servicer.function_body
-    def failure():
-        raise CustomException("foo!")
+    failure_modal = stub.function(servicer.function_body(failure))
 
     with stub.run(client=client):
         with pytest.raises(CustomException) as excinfo:
-            failure()
+            failure_modal()
         assert "foo!" in str(excinfo.value)
+
+
+def import_failure():
+    raise ImportError("attempted relative import with no known parent package")
 
 
 def test_function_relative_import_hint(client, servicer):
     stub = Stub()
 
-    @stub.function
-    @servicer.function_body
-    def failure():
-        raise ImportError("attempted relative import with no known parent package")
-
+    import_failure_modal = stub.function(servicer.function_body(import_failure))
     with stub.run(client=client):
         with pytest.raises(ImportError) as excinfo:
-            failure()
+            import_failure_modal()
         assert "HINT" in str(excinfo.value)
 
 
@@ -231,3 +222,15 @@ def test_serialized_function_includes_lifecycle_class(client, servicer):
     func = cloudpickle.loads(func_def.function_serialized)
     cls = cloudpickle.loads(func_def.class_serialized)
     assert func(cls()) == "hello"
+
+
+def test_nonglobal_function():
+    stub = Stub()
+
+    with pytest.raises(InvalidError) as excinfo:
+
+        @stub.function
+        def f():
+            pass
+
+    assert "global scope" in str(excinfo.value)

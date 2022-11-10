@@ -10,6 +10,7 @@ from typing import Dict, Union, Any, Optional, Type, Callable
 
 from modal_proto import api_pb2
 from .config import config, logger
+from .exception import InvalidError
 from .mount import _Mount
 
 ROOT_DIR = "/root"
@@ -83,6 +84,7 @@ class FunctionInfo:
             self.remote_dir = os.path.join(ROOT_DIR, module.__package__.split(".")[0])
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
             self.is_package = True
+            self.is_file = False
         elif hasattr(module, "__file__") and not serialized:
             # This generally covers the case where it's invoked with
             # python foo/bar/baz.py
@@ -98,6 +100,12 @@ class FunctionInfo:
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_SERIALIZED
             self.is_package = False
             self.is_file = False
+
+        if self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
+            # Sanity check that this function is defined in global scope
+            # Unfortunately, there's no "clean" way to do this in Python
+            if "<locals>" in self.function_name.split("."):
+                raise InvalidError("Modal can only import functions defined in global scope")
 
     def get_mounts(self) -> Dict[str, _Mount]:
         if self.is_package:
