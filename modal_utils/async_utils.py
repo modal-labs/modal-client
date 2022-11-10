@@ -168,6 +168,7 @@ class TaskContext:
         else:
             raise Exception(f"Object of type {type(coro_or_task)} is not a coroutine or Task")
         self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
         return task
 
     def infinite_loop(self, async_f, timeout: Optional[float] = 90, sleep: float = 10) -> asyncio.Task:
@@ -197,6 +198,7 @@ class TaskContext:
         if hasattr(t, "set_name"):  # Was added in Python 3.8:
             t.set_name(f"{function_name} loop")
         self._loops.add(t)
+        t.add_done_callback(self._loops.discard)
         return t
 
     async def wait(self, *tasks):
