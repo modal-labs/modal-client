@@ -5,7 +5,7 @@ import pytest
 
 from grpclib import GRPCError, Status
 
-from modal import Image, Stub
+from modal import Stub
 from modal.aio import AioApp, AioQueue, AioStub, aio_lookup
 from modal.exception import InvalidError, NotFoundError
 from modal_test_support import module_1, module_2
@@ -79,16 +79,17 @@ async def test_redeploy(servicer, aio_client):
     assert servicer.app_objects["ap-2"]["square"] == "fu-2"
 
 
+def dummy():
+    pass
+
+
 # Should exit without waiting for the "logs_timeout" grace period.
 @pytest.mark.timeout(5)
 def test_create_object_exception(servicer, client):
     servicer.function_create_error = True
 
     stub = Stub()
-
-    @stub.function
-    def f():
-        pass
+    stub.function(dummy)
 
     with pytest.raises(GRPCError) as excinfo:
         with stub.run(client=client):
@@ -112,27 +113,12 @@ def test_deploy_uses_deployment_name_if_specified(servicer, client):
 
 def test_run_function_without_app_error():
     stub = Stub()
-
-    @stub.function()
-    def foo():
-        pass
+    dummy_modal = stub.function(dummy)
 
     with pytest.raises(InvalidError) as excinfo:
-        foo()
+        dummy_modal()
 
     assert "stub.run" in str(excinfo.value)
-
-
-def test_standalone_object(client):
-    stub = Stub()
-    image = Image.debian_slim()
-
-    @stub.function
-    def foo(image=image):
-        pass
-
-    with stub.run(client=client):
-        pass
 
 
 def test_is_inside_basic():
@@ -176,10 +162,7 @@ skip_in_github = pytest.mark.skipif(
 def test_serve(client):
     stub = Stub()
 
-    @stub.wsgi()
-    def foo():
-        pass
-
+    stub.wsgi(dummy)
     stub.serve(client=client, timeout=1)
 
 
@@ -189,10 +172,7 @@ def test_serve(client):
 def test_nested_serve_invocation(client):
     stub = Stub()
 
-    @stub.wsgi()
-    def foo():
-        pass
-
+    stub.wsgi(dummy)
     with pytest.raises(InvalidError) as excinfo:
         with stub.run(client=client):
             # This nested call creates a second web endpoint!

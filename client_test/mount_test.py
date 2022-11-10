@@ -81,14 +81,16 @@ def test_create_mount_file_errors(servicer, tmpdir, client):
             running_app._load(m)
 
 
+def dummy():
+    pass
+
+
 def test_create_package_mounts(servicer, client, test_dir):
     stub = Stub()
 
     sys.path.append((test_dir / "supports").as_posix())
 
-    @stub.function(mounts=create_package_mounts(["pkg_a", "pkg_b", "standalone_file"]))
-    def f():
-        pass
+    stub.function(dummy, mounts=create_package_mounts(["pkg_a", "pkg_b", "standalone_file"]))
 
     with stub.run(client=client):
         files = servicer.files_name2sha.keys()
@@ -106,9 +108,7 @@ def test_stub_mounts(servicer, client, test_dir):
 
     stub = Stub(mounts=create_package_mounts(["pkg_b"]))
 
-    @stub.function(mounts=create_package_mounts(["pkg_a"]))
-    def f():
-        pass
+    stub.function(dummy, mounts=create_package_mounts(["pkg_a"]))
 
     with stub.run(client=client):
         files = servicer.files_name2sha.keys()
@@ -124,7 +124,4 @@ def test_create_package_mounts_missing_module(servicer, client, test_dir):
     stub = Stub()
 
     with pytest.raises(NotFoundError):
-
-        @stub.function(mounts=create_package_mounts(["nonexistent_package"]))
-        def f():
-            pass
+        stub.function(dummy, mounts=create_package_mounts(["nonexistent_package"]))
