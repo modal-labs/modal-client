@@ -26,15 +26,16 @@ def test_shared_volume_bad_paths(client, test_dir, servicer):
     def _f():
         pass
 
-    f = stub.function(shared_volumes={"/root/../../foo": modal.SharedVolume()})(_f)
+    f = stub.function(_f, shared_volumes={"/root/../../foo": modal.SharedVolume()})
 
     with pytest.raises(InvalidError):
         with stub.run(client=client):
             f()
 
     f = stub.function(
+        _f,
         shared_volumes={"/": modal.SharedVolume()},
-    )(_f)
+    )
 
     with pytest.raises(InvalidError):
         with stub.run(client=client):
