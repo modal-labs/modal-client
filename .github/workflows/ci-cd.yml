@@ -48,6 +48,8 @@ jobs:
         run: pip install -e .
 
       - name: Run client tests
+        env:
+          JUPYTER_PLATFORM_DIRS: 1  # TODO: fix
         run: pytest -v -s client_test
 
       - name: Run docstring tests
