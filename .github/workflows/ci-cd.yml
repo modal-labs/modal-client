@@ -17,18 +17,20 @@ jobs:
       matrix:
         python-version: ["3.7", "3.8", "3.9", "3.10"]
         os: ["ubuntu-20.04"]
-        use-conda: [false]
+        use-conda: ["false"]
         include:
           - os: "macos-latest"
             python-version: "3.10"
+            use-conda: "false"
           - os: "windows-latest"
             python-version: "3.10"
+            use-conda: "false"
           - os: "macos-latest"
             python-version: "3.10"
-            use-conda: true
+            use-conda: "true"
           - os: "windows-latest"
             python-version: "3.10"
-            use-conda: true
+            use-conda: "true"
 
     runs-on: ${{ matrix.os }}
     steps:
