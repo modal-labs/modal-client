@@ -11,17 +11,24 @@ env:
 
 jobs:
   client-test:
-    name: Unit tests on ${{ matrix.python-version }} and ${{ matrix.os }}
+    name: Unit tests on ${{ matrix.python-version }} and ${{ matrix.os }} (Conda = ${{ matrix.use-conda }})
 
     strategy:
       matrix:
         python-version: ["3.7", "3.8", "3.9", "3.10"]
         os: ["ubuntu-20.04"]
+        use-conda: [false]
         include:
           - os: "macos-latest"
             python-version: "3.10"
           - os: "windows-latest"
             python-version: "3.10"
+          - os: "macos-latest"
+            python-version: "3.10"
+            use-conda: true
+          - os: "windows-latest"
+            python-version: "3.10"
+            use-conda: true
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -29,7 +36,8 @@ jobs:
 
       - uses: ./.github/actions/setup-cached-python
         with:
-          version: ${{ matrix.python-version }}
+          python-version: ${{ matrix.python-version }}
+          use-conda: ${{ matrix.use-conda }}
 
       - name: Build protobuf
         run: inv protoc

@@ -1,18 +1,29 @@
 name: setup-cached-python
 
 inputs:
-  version:
+  python-version:
     description: Which Python version to install
     required: true
     default: "3.9"
+  use-conda:
+    description: Whether to use Conda
+    required: false
+    default: false
 
 runs:
   using: composite
   steps:
     - name: Install Python
+      if: ${{ inputs.use-conda == false }}
       uses: actions/setup-python@v4
       with:
-        python-version: ${{ inputs.version }}
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install Conda
+      if: ${{ inputs.use-conda == true }}
+      uses: conda-incubator/setup-miniconda@v2
+      with:
+        python-version: ${{ inputs.python-version }}
 
     - name: Get cached python dependencies
       uses: actions/cache@v3
