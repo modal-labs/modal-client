@@ -27,6 +27,7 @@ runs:
 
     - name: Get cached python dependencies
       uses: actions/cache@v3
+      if: ${{ inputs.use-conda == 'false' }}
       with:
         path: ${{ env.pythonLocation }}
         key: |
