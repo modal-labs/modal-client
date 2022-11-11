@@ -34,7 +34,13 @@ runs:
         restore-keys: ${{ runner.os }}-${{ env.pythonLocation }}-
 
     - name: Install Python packages
+      if: ${{ inputs.use-conda == 'false' }}
       shell: bash
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.dev.txt
+
+    - name: Install Python packages
+      if: ${{ inputs.use-conda == 'true' }}
+      shell: bash
+      run: conda install --yes --file requirements.dev.txt
