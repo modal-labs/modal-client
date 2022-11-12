@@ -267,7 +267,12 @@ class _Stub:
                     # Cancel logs loop since we're going to start another one.
                     logs_loop.cancel()
                 else:
-                    await app.disconnect()
+                    try:
+                        # TODO(erikbern): don't disconnect if the heartbeat failed with NOT_FOUND
+                        await app.disconnect()
+                    except:
+                        # Don't override the previous exception
+                        logger.exception("Failed disconnecting")
 
         if mode == StubRunMode.DEPLOY:
             output_mgr.print_if_visible(step_completed("App deployed! 🎉"))
