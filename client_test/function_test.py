@@ -1,9 +1,9 @@
 # Copyright Modal Labs 2022
 import asyncio
-
-import cloudpickle
 import pytest
 import time
+
+import cloudpickle
 
 from modal import Proxy, Stub
 from modal.exception import InvalidError
@@ -234,3 +234,32 @@ def test_nonglobal_function():
             pass
 
     assert "global scope" in str(excinfo.value)
+
+
+def test_gpu_true_function(client, servicer):
+    stub = Stub()
+
+    stub.function(dummy, gpu=True)
+    with stub.run(client=client):
+        pass
+
+    assert len(servicer.app_functions) == 1
+    func_def = next(iter(servicer.app_functions.values()))
+    assert func_def.resources.gpu == 1
+    assert func_def.resources.gpu_config.count == 0
+
+
+def test_gpu_config_function(client, servicer):
+    import modal
+
+    stub = Stub()
+
+    stub.function(dummy, gpu=modal.gpu.A100())
+    with stub.run(client=client):
+        pass
+
+    assert len(servicer.app_functions) == 1
+    func_def = next(iter(servicer.app_functions.values()))
+    assert func_def.resources.gpu == 0
+    assert func_def.resources.gpu_config.count == 1
+    assert func_def.resources.gpu_config.type == api_pb2.GPU_TYPE_A100
