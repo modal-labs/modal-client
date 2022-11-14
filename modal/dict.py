@@ -104,8 +104,27 @@ class _Dict(Provider[_DictHandle]):
     Keys and values can be essentially any object, so long as it can be
     serialized by `cloudpickle`, including Modal objects.
 
-    This is the constructor object, which can not be interacted with. Use the `DictHandle` that
-    gets attached to the live app once an app is running to interact with the Dict contents
+    A `Dict`'s lifetime matches the lifetime of the app it's attached to. On app completion
+    or after stopping an app any associated `Dict` objects are cleaned up.
+
+    **Usage**
+
+    This is the constructor object, used only to attach a `DictHandle` to an app.
+    To interact with `Dict` contents, use `DictHandle` objects that are attached
+    to the live app once an app is running.
+
+    ```python
+    import modal
+
+    stub = modal.Stub()
+    stub.some_dict = modal.Dict()
+    stub.some_dict["message"] = "hello world" # TypeError!
+
+    if __name__ == "__main__":
+        with stub.run() as app:
+            handle = app.some_dict
+            handle["message"] = "hello world"  # OK ✔️
+    ```
     """
 
     def __init__(self, data={}):
