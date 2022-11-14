@@ -118,7 +118,7 @@ class _Dict(Provider[_DictHandle]):
 
     stub = modal.Stub()
     stub.some_dict = modal.Dict()
-    stub.some_dict["message"] = "hello world" # TypeError!
+    # stub.some_dict["message"] = "hello world" # TypeError!
 
     if __name__ == "__main__":
         with stub.run() as app:
