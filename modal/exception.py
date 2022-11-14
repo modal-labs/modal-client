@@ -4,7 +4,22 @@ import warnings
 
 
 class Error(Exception):
-    """Base error class for all Modal errors"""
+    """
+    Base error class for all Modal errors.
+
+    **Usage**
+
+    ```python
+    import modal
+
+    try:
+        with stub.run():
+            f()
+    except modal.Error:
+        # Catch any exception raised by Modal's systems.
+        print("Responding to error...")
+    ```
+    """
 
 
 class RemoteError(Error):
@@ -56,7 +71,7 @@ def _is_internal_frame(frame):
 def deprecation_warning(msg):
     """Utility for getting the proper stack entry
 
-    See the implementation of the built-in warnings.warn
+    See the implementation of the built-in [warnings.warn](https://docs.python.org/3/library/warnings.html#available-functions).
     """
 
     # Find the last non-Modal line that triggered the warning
