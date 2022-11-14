@@ -50,6 +50,7 @@ from .config import logger
 from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError
 from .exception import TimeoutError as _TimeoutError
 from .exception import deprecation_warning
+from .gpu import _GPUConfig
 from .mount import _Mount
 from .object import Handle, Provider, Ref, RemoteRef
 from .rate_limit import RateLimit
@@ -606,7 +607,7 @@ class _Function(Provider[_FunctionHandle]):
         secrets: Collection[_Secret] = (),
         schedule: Optional[Schedule] = None,
         is_generator=False,
-        gpu: bool = False,
+        gpu: Union[bool, _GPUConfig] = False,
         rate_limit: Optional[RateLimit] = None,
         # TODO: maybe break this out into a separate decorator for notebooks.
         serialized: bool = False,
@@ -776,6 +777,11 @@ class _Function(Provider[_FunctionHandle]):
             if cls:
                 class_serialized = cloudpickle.dumps(cls)
 
+        if isinstance(self._gpu, _GPUConfig):
+            resources = api_pb2.Resources(milli_cpu=milli_cpu, gpu_config=self._gpu._to_proto(), memory_mb=self._memory)
+        else:
+            resources = api_pb2.Resources(milli_cpu=milli_cpu, gpu=self._gpu, memory_mb=self._memory)
+
         # Create function remotely
         function_definition = api_pb2.Function(
             module_name=self._info.module_name,
@@ -787,7 +793,7 @@ class _Function(Provider[_FunctionHandle]):
             function_serialized=function_serialized,
             class_serialized=class_serialized,
             function_type=function_type,
-            resources=api_pb2.Resources(milli_cpu=milli_cpu, gpu=self._gpu, memory_mb=self._memory),
+            resources=resources,
             rate_limit=rate_limit,
             webhook_config=self._webhook_config,
             shared_volume_mounts=shared_volume_mounts,
