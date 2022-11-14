@@ -94,6 +94,21 @@ async def _lookup(
     namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT,
     client: Optional[_Client] = None,
 ) -> Handle:
+    """
+    General purpose method to retrieve Modal objects such as
+    functions, shared volumes, and secrets.
+
+    ```python notest
+    import modal
+
+    square = modal.lookup("my-shared-app", "square")
+    assert square(3) == 9
+
+    vol = modal.lookup("my-shared-volume")
+    for chunk in vol.read_file("my_db_dump.csv"):
+        ...
+    ```
+    """
     return await Handle.from_app(app_name, tag, namespace, client)
 
 
@@ -225,5 +240,6 @@ class PersistedRef(Ref[H]):
 
 
 def ref(app_name: str, tag: Optional[str] = None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT) -> Ref:
-    deprecation_warning("`modal.ref` is deprecated. Please use `modal.Secret.from_name` instead")
+    """`modal.ref` is deprecated. Please use `modal.Secret.from_name` instead."""
+    deprecation_warning(ref.__doc__)
     return RemoteRef(app_name, tag, namespace)
