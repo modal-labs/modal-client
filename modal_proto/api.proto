@@ -619,10 +619,22 @@ message RateLimit {
   RateLimitInterval interval = 2;
 }
 
+enum GPUType {
+  GPU_TYPE_UNSPECIFIED = 0;
+  GPU_TYPE_T4 = 1;
+  GPU_TYPE_A100 = 2;
+}
+
+message GPUConfig {
+  GPUType type = 1;
+  int32 count = 2;
+}
+
 message Resources {
-  bool gpu = 1;
+  bool gpu = 1; // Legacy GPU toggle.
   uint32 memory_mb = 2;
   uint32 milli_cpu = 3;
+  GPUConfig gpu_config = 4;
 }
 
 message Schedule {
