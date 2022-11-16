@@ -6,7 +6,7 @@ from modal_proto import api_pb2
 
 @dataclass
 class _GPUConfig:
-    type: api_pb2.GPUType.ValueType
+    type: "api_pb2.GPUType.V"
     count: int
 
     def _to_proto(self) -> api_pb2.GPUConfig:
