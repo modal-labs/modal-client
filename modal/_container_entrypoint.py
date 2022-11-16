@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import base64
+import contextlib
 import importlib
 import inspect
 import math
@@ -236,7 +237,7 @@ class _FunctionIOManager:
 
         return serialized_tb, tb_line_cache
 
-    @synchronizer.asynccontextmanager
+    @contextlib.asynccontextmanager
     async def handle_user_exception(self):
         """Sets the task as failed in a way where it's not retried
 
@@ -267,7 +268,7 @@ class _FunctionIOManager:
             # Shut down the task gracefully
             raise UserException()
 
-    @synchronizer.asynccontextmanager
+    @contextlib.asynccontextmanager
     async def handle_input_exception(self, input_id, output_index: SequenceNumber):
         try:
             with trace("input"):

@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import contextlib
 import inspect
 import os
 import sys
@@ -10,7 +11,7 @@ from rich.tree import Tree
 
 from modal_proto import api_pb2
 from modal_utils.app_utils import is_valid_app_name
-from modal_utils.async_utils import TaskContext, synchronize_apis, synchronizer
+from modal_utils.async_utils import TaskContext, synchronize_apis
 from modal_utils.decorator_utils import decorator_with_options
 
 from ._function_utils import FunctionInfo
@@ -193,7 +194,7 @@ class _Stub:
 
         return image_handle._is_inside()
 
-    @synchronizer.asynccontextmanager
+    @contextlib.asynccontextmanager
     async def _run(
         self,
         client,
@@ -284,7 +285,7 @@ class _Stub:
             output_mgr.print_if_visible(step_completed("App completed."))
         self._app_id = None
 
-    @synchronizer.asynccontextmanager
+    @contextlib.asynccontextmanager
     async def run(self, client=None, stdout=None, show_progress=None, detach=False) -> AsyncGenerator[_App, None]:
         """Context manager that runs an app on Modal.
 
