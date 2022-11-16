@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import contextlib
 import socket
 import ssl
 from typing import Optional
@@ -7,8 +8,6 @@ import certifi
 from aiohttp import ClientSession, ClientTimeout, TCPConnector
 from aiohttp.web import Application
 from aiohttp.web_runner import AppRunner, SockSite
-
-from modal_utils.async_utils import synchronizer
 
 
 def http_client_with_tls(timeout: Optional[float]) -> ClientSession:
@@ -26,7 +25,7 @@ def http_client_with_tls(timeout: Optional[float]) -> ClientSession:
     return ClientSession(connector=connector, timeout=ClientTimeout(total=timeout))
 
 
-@synchronizer.asynccontextmanager
+@contextlib.asynccontextmanager
 async def run_temporary_http_server(app: Application):
     # Allocates a random port, runs a server in a context manager
     # This is used in various tests
