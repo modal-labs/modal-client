@@ -755,7 +755,9 @@ class _Stub:
             stub.interactive_shell(cmd="/bin/bash", image=app_image)
         ```
         """
-        wrapped_fn = self.function(interactive=True, image=image or self._get_default_image(), **kwargs)(exec_cmd)
+        wrapped_fn = self.function(interactive=True, timeout=86400, image=image or self._get_default_image(), **kwargs)(
+            exec_cmd
+        )
 
         async with self.run():
             await wrapped_fn(cmd)
