@@ -11,7 +11,6 @@ from grpclib.exceptions import StreamTerminatedError
 from rich.console import Console
 from sentry_sdk import capture_exception
 
-from modal.exception import AuthError, DeprecationError
 from modal_proto import api_grpc, api_pb2
 from modal_utils import async_utils
 from modal_utils.async_utils import TaskContext, synchronize_apis
@@ -25,7 +24,13 @@ from modal_version import __version__
 
 from ._tracing import inject_tracing_context
 from .config import config, logger
-from .exception import AuthError, ConnectionError, InvalidError, VersionError
+from .exception import (
+    AuthError,
+    ConnectionError,
+    DeprecationError,
+    InvalidError,
+    VersionError,
+)
 
 HEARTBEAT_INTERVAL = 15.0
 HEARTBEAT_TIMEOUT = 10.1
