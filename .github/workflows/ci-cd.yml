@@ -52,7 +52,28 @@ jobs:
 
       - name: Run docstring tests
         run: pytest -s --markdown-docs -m markdown-docs modal
-       
+
+  client-test-requirements-txt:
+    name: Run container tests using modal/requirements.txt
+    runs-on: ubuntu-20.04
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Python
+        uses: actions/setup-python@v4
+
+      - name: Install pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install container requirements
+        run: pip install -r modal/requirements.txt
+
+      - name: Install dev dependencies
+        run: pip install -r requirements.dev.txt
+
+      - name: Run container tests
+        run: pytest -v -s client_test/container_test.py
 
   publish-base-images:
     name: |
