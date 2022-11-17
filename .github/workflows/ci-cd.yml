@@ -72,6 +72,9 @@ jobs:
       - name: Install dev dependencies
         run: pip install -r requirements.dev.txt
 
+      - name: Install modal itself but no dependencies
+        run: pip install --no-dependencies -e .
+
       - name: Run container tests
         run: pytest -v -s client_test/container_test.py
 
