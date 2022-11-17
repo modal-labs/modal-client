@@ -72,6 +72,9 @@ jobs:
       - name: Install dev dependencies
         run: pip install -r requirements.dev.txt
 
+      - name: Build protobuf
+        run: inv protoc
+
       - name: Install modal itself but no dependencies
         run: pip install --no-dependencies -e .
 
