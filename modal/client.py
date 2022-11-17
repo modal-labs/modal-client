@@ -11,7 +11,7 @@ from grpclib.exceptions import StreamTerminatedError
 from rich.console import Console
 from sentry_sdk import capture_exception
 
-from modal.exception import DeprecationError
+from modal.exception import AuthError, DeprecationError
 from modal_proto import api_grpc, api_pb2
 from modal_utils import async_utils
 from modal_utils.async_utils import TaskContext, synchronize_apis
@@ -301,7 +301,18 @@ class _Client:
                 return cls._client_from_env
             else:
                 client = _Client(server_url, client_type, credentials)
-                await client._start()
+                try:
+                    await client._start()
+                except AuthError:
+                    if not credentials:
+                        creds_missing_msg = (
+                            "Token missing. Could not authenticate client. "
+                            "If you have token credentials, see modal.com/docs/reference/modal.config for setup help. "
+                            "If you are a new user, register an account at modal.com, then run `modal token new`."
+                        )
+                        raise AuthError(creds_missing_msg)
+                    else:
+                        raise
                 cls._client_from_env = client
                 async_utils.on_shutdown(AioClient.stop_env_client())
                 return client
