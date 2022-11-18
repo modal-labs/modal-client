@@ -21,7 +21,9 @@ from modal.functions import _Function
 from modal.stub import _Stub
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
-from modal_utils.package_utils import import_stub_by_ref
+from modal_utils.package_utils import import_stub, parse_stub_ref
+
+DEFAULT_STUB_NAME = "stub"
 
 app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_args_is_help=True)
 
@@ -29,12 +31,19 @@ app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_a
 @app_cli.command("run", help="Run a Modal function.")
 @synchronizer
 def run(
-    stub_ref: str = typer.Argument(..., help="Path to a Python file or module."),
+    stub_ref: str = typer.Argument(
+        ..., help="Path to a Python file or module, optionally identifying the name of your stub: `./main.py:mystub`."
+    ),
     function_name: Optional[str] = typer.Option(default=None, help="Name of the Modal function to run"),
     detach: bool = typer.Option(default=False, help="Allows app to continue running if local terminal disconnects."),
 ):
+    default_stub_name = "stub"
     try:
-        stub = import_stub_by_ref(stub_ref)
+        import_path, stub_name = parse_stub_ref(stub_ref, DEFAULT_STUB_NAME)
+        stub = import_stub(import_path, stub_name)
+    except AttributeError:
+        _show_stub_ref_failure_help(import_path, stub_name)
+        sys.exit(1)
     except Exception:
         traceback.print_exc()
         sys.exit(1)
@@ -66,7 +75,11 @@ def deploy(
     name: str = typer.Option(None, help="Name of the deployment."),
 ):
     try:
-        stub = import_stub_by_ref(stub_ref)
+        import_path, stub_name = parse_stub_ref(stub_ref, DEFAULT_STUB_NAME)
+        stub = import_stub(import_path, stub_name)
+    except AttributeError:
+        _show_stub_ref_failure_help(import_path, stub_name)
+        sys.exit(1)
     except Exception:
         traceback.print_exc()
         sys.exit(1)
@@ -139,7 +152,11 @@ def shell(
     ```\n
     """
     try:
-        stub = import_stub_by_ref(stub_ref)
+        import_path, stub_name = parse_stub_ref(stub_ref, DEFAULT_STUB_NAME)
+        stub = import_stub(import_path, stub_name)
+    except AttributeError:
+        _show_stub_ref_failure_help(import_path, stub_name)
+        sys.exit(1)
     except Exception:
         traceback.print_exc()
         sys.exit(1)
@@ -240,3 +257,24 @@ async def list_stops(app_id: str):
     aio_client = await AioClient.from_env()
     req = api_pb2.AppStopRequest(app_id=app_id)
     await aio_client.stub.AppStop(req)
+
+
+def _show_stub_ref_failure_help(import_path: str, stub_name: str) -> None:
+    error_console = Console(stderr=True)
+    guidance_msg = (
+        (
+            f"Expected to find a stub variable named **`{stub_name}`** (the default stub name). If your `modal.Stub` is named differently, "
+            "you must specify it in the stub ref argument. "
+            f"For example a stub variable `app_stub = modal.Stub()` in `{import_path}` would "
+            f"be specified as `{import_path}::app_stub`."
+        )
+        if stub_name == DEFAULT_STUB_NAME
+        else (
+            f"Expected to find a stub variable named **`{stub_name}`**. "
+            f"Check the name of your stub variable in `{import_path}`. "
+            f"It should look like `{stub_name} = modal.Stub(…)`."
+        )
+    )
+    error_console.print(f"[bold red]Could not locate stub variable in {import_path}.")
+    md = Markdown(guidance_msg)
+    error_console.print(md)

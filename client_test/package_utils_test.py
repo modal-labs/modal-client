@@ -3,7 +3,7 @@ import os
 import pytest
 from pathlib import Path
 
-from modal_utils.package_utils import get_module_mount_info, import_stub_by_ref
+from modal_utils.package_utils import get_module_mount_info, import_stub, parse_stub_ref
 
 
 def test_get_module_mount_info():
@@ -20,7 +20,7 @@ def test_get_module_mount_info():
     assert res[0][0] == False
 
 
-# Some helper vars for import_stub_by_ref tests:
+# Some helper vars for import_stub tests:
 
 python_module_src = """
 stub = "FOO"
@@ -75,7 +75,7 @@ dir_containing_python_package = {
 )
 def test_import_stub_by_ref(dir_structure, ref, expected_stub_value, mock_dir):
     with mock_dir(dir_structure):
-        imported_stub = import_stub_by_ref(ref)
+        imported_stub = import_stub(*parse_stub_ref(ref, "stub"))
         assert imported_stub == expected_stub_value
 
 
@@ -89,5 +89,5 @@ def test_import_package_properly():
     rel_p = str(p.relative_to(os.getcwd()))
     print(f"abs_p={abs_p} rel_p={rel_p}")
 
-    assert import_stub_by_ref(rel_p) == "xyz"
-    assert import_stub_by_ref(abs_p) == "xyz"
+    assert import_stub(*parse_stub_ref(rel_p, "stub")) == "xyz"
+    assert import_stub(*parse_stub_ref(abs_p, "stub")) == "xyz"

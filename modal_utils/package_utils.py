@@ -42,14 +42,17 @@ def get_module_mount_info(module: str):
         return [(False, filename, lambda f: os.path.basename(f) == os.path.basename(filename))]
 
 
-def import_stub_by_ref(stub_ref: str):
+def parse_stub_ref(stub_ref: str, default_stub_name: str) -> tuple[str, str]:
     if stub_ref.find("::") > 1:
-        import_path, var_name = stub_ref.split("::")
+        import_path, stub_name = stub_ref.split("::")
     elif stub_ref.find(":") > 1:  # don't catch windows abs paths, e.g. C:\foo\bar
-        import_path, var_name = stub_ref.split(":")
+        import_path, stub_name = stub_ref.split(":")
     else:
-        import_path, var_name = stub_ref, "stub"
+        import_path, stub_name = stub_ref, default_stub_name
+    return import_path, stub_name
 
+
+def import_stub(import_path: str, stub_name: str):
     if "" not in sys.path:
         # This seems to happen when running from a CLI
         sys.path.insert(0, "")
@@ -81,5 +84,5 @@ def import_stub_by_ref(stub_ref: str):
     else:
         module = importlib.import_module(import_path)
 
-    stub = getattr(module, var_name)
+    stub = getattr(module, stub_name)
     return stub
