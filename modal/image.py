@@ -1,10 +1,12 @@
 # Copyright Modal Labs 2022
+from __future__ import annotations
+
 import inspect
 import os
 import shlex
 import sys
 from pathlib import Path
-from typing import Any, Callable, Collection, Dict, List, Optional, Union
+from typing import Any, Callable, Collection, Optional, Union
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
@@ -43,7 +45,7 @@ def _get_client_requirements_path():
     return os.path.join(modal_path, "requirements.txt")
 
 
-def _assert_list_of_str(function_name: str, arg_name: str, args: List[str]):
+def _assert_list_of_str(function_name: str, arg_name: str, args: list[str]):
     # TODO(erikbern): maybe we can just build somthing intelligent that checks
     # based on type annotations in real time?
     # Or use something like this? https://github.com/FelixTheC/strongtyping
@@ -73,7 +75,7 @@ class _Image(Provider[_ImageHandle]):
         self,
         base_images={},
         context_files={},
-        dockerfile_commands: Union[List[str], Callable[[], List[str]]] = [],
+        dockerfile_commands: Union[list[str], Callable[[], list[str]]] = [],
         secrets=[],
         version=None,
         ref=None,
@@ -112,7 +114,7 @@ class _Image(Provider[_ImageHandle]):
             return _ImageHandle._from_id(image_id, client)
 
         # Recursively build base images
-        base_image_ids: List[str] = []
+        base_image_ids: list[str] = []
         for image in self._base_images.values():
             base_image_ids.append(await loader(image))
         base_images_pb2s = [
@@ -148,7 +150,7 @@ class _Image(Provider[_ImageHandle]):
             build_function_def = None
             build_function_id = None
 
-        dockerfile_commands: List[str]
+        dockerfile_commands: list[str]
         if callable(self._dockerfile_commands):
             # It's a closure (see DockerfileImage)
             dockerfile_commands = self._dockerfile_commands()
@@ -214,7 +216,7 @@ class _Image(Provider[_ImageHandle]):
 
     def pip_install(
         self,
-        packages: List[str],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
+        packages: list[str],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
         find_links: Optional[str] = None,
     ) -> "_Image":
         """Install a list of Python packages using pip."""
@@ -297,8 +299,8 @@ class _Image(Provider[_ImageHandle]):
 
     def dockerfile_commands(
         self,
-        dockerfile_commands: Union[str, List[str]],
-        context_files: Dict[str, str] = {},
+        dockerfile_commands: Union[str, list[str]],
+        context_files: dict[str, str] = {},
         secrets: Collection[_Secret] = [],
         gpu: bool = False,
     ):
@@ -320,7 +322,7 @@ class _Image(Provider[_ImageHandle]):
 
     def run_commands(
         self,
-        commands: List[str],
+        commands: list[str],
         secrets: Collection[_Secret] = [],
         gpu: bool = False,
     ):
@@ -364,9 +366,9 @@ class _Image(Provider[_ImageHandle]):
 
     def conda_install(
         self,
-        packages: List[str],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
+        packages: list[str],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
         *,
-        channels: List[str] = [],  # A list of Conda channels, eg. ["conda-forge", "nvidia"]
+        channels: list[str] = [],  # A list of Conda channels, eg. ["conda-forge", "nvidia"]
     ) -> "_Image":
         """Install a list of additional packages using conda."""
         if not packages:
@@ -401,7 +403,7 @@ class _Image(Provider[_ImageHandle]):
         return self.extend(dockerfile_commands=dockerfile_commands, context_files=context_files)
 
     @staticmethod
-    def from_dockerhub(tag: str, setup_commands: List[str] = [], **kwargs) -> "_Image":
+    def from_dockerhub(tag: str, setup_commands: list[str] = [], **kwargs) -> "_Image":
         """
         Build a Modal image from a pre-existing image on Docker Hub.
 
@@ -496,7 +498,7 @@ class _Image(Provider[_ImageHandle]):
 
     def apt_install(
         self,
-        packages: List[str],  # A list of packages, e.g. ["ssh", "libpq-dev"]
+        packages: list[str],  # A list of packages, e.g. ["ssh", "libpq-dev"]
     ) -> "_Image":
         """Install a list of Debian packages using `apt`."""
         _assert_list_of_str("apt_install", "packages", packages)
