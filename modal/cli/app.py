@@ -37,7 +37,6 @@ def run(
     function_name: Optional[str] = typer.Option(default=None, help="Name of the Modal function to run"),
     detach: bool = typer.Option(default=False, help="Allows app to continue running if local terminal disconnects."),
 ):
-    default_stub_name = "stub"
     try:
         import_path, stub_name = parse_stub_ref(stub_ref, DEFAULT_STUB_NAME)
         stub = import_stub(import_path, stub_name)
