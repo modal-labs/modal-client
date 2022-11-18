@@ -47,10 +47,19 @@ def wsgi_app_wrapper(wsgi_app):
     return asgi_app_wrapper(asgi_app)
 
 
-def fastAPI_function_wrapper(fn: Callable, method: str):
+def webhook_asgi_app(fn: Callable, method: str):
     """Return a FastAPI app wrapping a function handler."""
+    # Pulls in `fastapi` module, which is slow to import.
     from fastapi import FastAPI
+    from fastapi.middleware.cors import CORSMiddleware
 
     app = FastAPI()
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     app.add_api_route("/", fn, methods=[method])
-    return asgi_app_wrapper(app)
+    return app
