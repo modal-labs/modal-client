@@ -4,6 +4,7 @@ import inspect
 import os
 import sys
 from pathlib import Path
+from typing import Tuple
 
 from importlib_metadata import PackageNotFoundError, files
 
@@ -42,7 +43,7 @@ def get_module_mount_info(module: str):
         return [(False, filename, lambda f: os.path.basename(f) == os.path.basename(filename))]
 
 
-def parse_stub_ref(stub_ref: str, default_stub_name: str) -> tuple[str, str]:
+def parse_stub_ref(stub_ref: str, default_stub_name: str) -> Tuple[str, str]:
     if stub_ref.find("::") > 1:
         import_path, stub_name = stub_ref.split("::")
     elif stub_ref.find(":") > 1:  # don't catch windows abs paths, e.g. C:\foo\bar
