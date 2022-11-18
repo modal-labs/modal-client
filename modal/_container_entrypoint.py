@@ -24,7 +24,7 @@ from modal_utils.async_utils import (
 )
 from modal_utils.grpc_utils import retry_transient_errors
 
-from ._asgi import asgi_app_wrapper, wsgi_app_wrapper
+from ._asgi import asgi_app_wrapper, webhook_asgi_app, wsgi_app_wrapper
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._proxy_tunnel import proxy_tunnel
 from ._pty import run_in_pty
@@ -463,12 +463,9 @@ def import_function(function_def: api_pb2.Function) -> Tuple[Optional[Type], Cal
         wsgi_app = fun()
         return cls, wsgi_app_wrapper(wsgi_app)
     elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
-        from ._asgi import (
-            fastAPI_function_wrapper,  # Pulls in `fastapi` module, which is slow to import.
-        )
-
         # function is webhook without an ASGI app. Create one for it.
-        return cls, fastAPI_function_wrapper(fun, function_def.webhook_config.method)
+        asgi_app = webhook_asgi_app(fun, function_def.webhook_config.method)
+        return cls, asgi_app_wrapper(asgi_app)
     else:
         return cls, fun
 
