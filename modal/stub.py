@@ -640,9 +640,14 @@ class _Stub:
     ):
         """Register a basic web endpoint with this application.
 
-        This is the simplest way to create a web endpoint on Modal. The function
+        This is the simple way to create a web endpoint on Modal. The function
         behaves as a [FastAPI](https://fastapi.tiangolo.com/) handler and should
         return a response object to the caller.
+
+        Endpoints created with `@stub.webhook` are meant to be simple, single
+        request handlers and automatically have
+        [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) enabled.
+        For more flexibility, use `@stub.asgi`.
 
         To learn how to use Modal with popular web frameworks, see the
         [guide on web endpoints](https://modal.com/docs/guide/webhooks).
@@ -693,6 +698,16 @@ class _Stub:
         keep_warm: bool = False,  # Toggles an adaptively-sized warm pool for latency-sensitive apps.
         _webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
     ):
+        """Register an ASGI app with this application.
+
+        Asynchronous Server Gateway Interface (ASGI) is a standard for Python
+        synchronous and asynchronous apps, supported by all popular Python web
+        libraries. This is an advanced decorator that gives full flexibility in
+        defining one or more web endpoints on Modal.
+
+        To learn how to use Modal with popular web frameworks, see the
+        [guide on web endpoints](https://modal.com/docs/guide/webhooks).
+        """
         if image is None:
             image = self._get_default_image()
         mounts = [*self._get_function_mounts(asgi_app), *mounts]
