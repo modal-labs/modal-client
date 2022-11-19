@@ -79,7 +79,9 @@ jobs:
         run: pip install --no-dependencies -e .
 
       - name: Run container tests
-        run: pytest -v -s client_test/container_test.py
+        env:
+           JUPYTER_PLATFORM_DIRS: 1  # weird error?
+        run: pytest -v -s client_test
 
   publish-base-images:
     name: |
