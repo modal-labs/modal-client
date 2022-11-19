@@ -143,7 +143,7 @@ class _Image(Provider[_ImageHandle]):
 
             base_images = list(self._base_images.values())
             assert len(base_images) == 1
-            kwargs = {**kwargs, "image": base_images[0], "_is_build_step": True}
+            kwargs = {"timeout": 86400, **kwargs, "image": base_images[0], "_is_build_step": True}
             build_function_handle = stub.function(**kwargs)(fn)
             build_function_id = await loader(build_function_handle._function)
         else:
@@ -185,6 +185,8 @@ class _Image(Provider[_ImageHandle]):
                 raise RemoteError(response.result.exception)
             elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
                 raise RemoteError("Image build terminated due to external shut-down. Please try again.")
+            elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
+                raise RemoteError("Image build timed out. Please try again with a larger `timeout` parameter.")
             elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
                 break
             else:
