@@ -1,9 +1,11 @@
 # Copyright Modal Labs 2022
+from __future__ import annotations
+
 import asyncio
 import inspect
 import sys
 import traceback
-from typing import List, Optional, Tuple
+from typing import Optional
 
 import typer
 from google.protobuf import empty_pb2
@@ -106,7 +108,7 @@ def make_function_panel(idx: int, tag: str, function: _Function, stub: _Stub) ->
     )
 
 
-def choose_function(stub: _Stub, functions: List[Tuple[str, _Function]], console: Console):
+def choose_function(stub: _Stub, functions: list[tuple[str, _Function]], console: Console):
     if len(functions) == 0:
         return None
     elif len(functions) == 1:

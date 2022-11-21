@@ -1,9 +1,10 @@
 # Copyright Modal Labs 2022
+from __future__ import annotations
+
 import os
 import platform
 import subprocess
 from tempfile import NamedTemporaryFile
-from typing import List
 
 import click
 import typer
@@ -42,7 +43,7 @@ async def list():
 
 
 @secret_cli.command("create", help="Create a new secret, or overwrite an existing one.")
-def create(secret_name, keyvalues: List[str] = typer.Argument(..., help="Space-separated KEY=VALUE items")):
+def create(secret_name, keyvalues: list[str] = typer.Argument(..., help="Space-separated KEY=VALUE items")):
     env_dict = {}
 
     for arg in keyvalues:

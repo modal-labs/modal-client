@@ -1,8 +1,10 @@
 # Copyright Modal Labs 2022
+from __future__ import annotations
+
 import queue  # The system library
 import time
 import warnings
-from typing import Any, List, Optional
+from typing import Any, Optional
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
@@ -24,7 +26,7 @@ class _QueueHandle(Handle, type_prefix="qu"):
     ```
     """
 
-    async def _get_nonblocking(self, n_values: int) -> List[Any]:
+    async def _get_nonblocking(self, n_values: int) -> list[Any]:
         request = api_pb2.QueueGetRequest(
             queue_id=self.object_id,
             timeout=0,
@@ -37,7 +39,7 @@ class _QueueHandle(Handle, type_prefix="qu"):
         else:
             return []
 
-    async def _get_blocking(self, timeout: Optional[float], n_values: int) -> List[Any]:
+    async def _get_blocking(self, timeout: Optional[float], n_values: int) -> list[Any]:
         if timeout is not None:
             deadline = time.time() + timeout
         else:
@@ -88,7 +90,7 @@ class _QueueHandle(Handle, type_prefix="qu"):
         else:
             return None
 
-    async def get_many(self, n_values: int, block: bool = True, timeout: Optional[float] = None) -> List[Any]:
+    async def get_many(self, n_values: int, block: bool = True, timeout: Optional[float] = None) -> list[Any]:
         """Remove and return up to `n_values` objects from the queue.
 
         If `block` is `True` (the default) and the queue is empty, `get` will wait indefinitely for
@@ -112,7 +114,7 @@ class _QueueHandle(Handle, type_prefix="qu"):
 
         await self.put_many([v])
 
-    async def put_many(self, vs: List[Any]) -> None:
+    async def put_many(self, vs: list[Any]) -> None:
         """Add several objects to the end of the queue."""
 
         vs_encoded = [serialize(v) for v in vs]

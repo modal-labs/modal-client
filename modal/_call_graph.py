@@ -1,7 +1,8 @@
 # Copyright Modal Labs 2022
+from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Dict, List
 
 from modal_proto import api_pb2
 
@@ -23,12 +24,12 @@ class InputInfo:
     status: InputStatus
     function_name: str
     module_name: str
-    children: List["InputInfo"]
+    children: list["InputInfo"]
 
 
-def reconstruct_call_graph(ser_graph: api_pb2.FunctionGetCallGraphResponse) -> List[InputInfo]:
-    function_calls_by_id: Dict[str, api_pb2.FunctionCallCallGraphInfo] = {}
-    inputs_by_id: Dict[str, api_pb2.InputCallGraphInfo] = {}
+def reconstruct_call_graph(ser_graph: api_pb2.FunctionGetCallGraphResponse) -> list[InputInfo]:
+    function_calls_by_id: dict[str, api_pb2.FunctionCallCallGraphInfo] = {}
+    inputs_by_id: dict[str, api_pb2.InputCallGraphInfo] = {}
 
     for function_call in ser_graph.function_calls:
         function_calls_by_id[function_call.function_call_id] = function_call
@@ -36,7 +37,7 @@ def reconstruct_call_graph(ser_graph: api_pb2.FunctionGetCallGraphResponse) -> L
     for input in ser_graph.inputs:
         inputs_by_id[input.input_id] = input
 
-    input_info_by_id: Dict[str, InputInfo] = {}
+    input_info_by_id: dict[str, InputInfo] = {}
     result = []
 
     def _reconstruct(input_id: str) -> InputInfo:

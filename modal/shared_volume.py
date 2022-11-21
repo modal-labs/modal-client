@@ -1,6 +1,8 @@
 # Copyright Modal Labs 2022
+from __future__ import annotations
+
 import os
-from typing import AsyncIterator, BinaryIO, List
+from typing import AsyncIterator, BinaryIO
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
@@ -63,7 +65,7 @@ class _SharedVolumeHandle(Handle, type_prefix="sv"):
             async for data in blob_iter(response.data_blob_id, self._client.stub):
                 yield data
 
-    async def listdir(self, path: str) -> List[api_pb2.SharedVolumeListFilesEntry]:
+    async def listdir(self, path: str) -> list[api_pb2.SharedVolumeListFilesEntry]:
         """List all files in a directory in the shared volume.
 
         * Passing a directory path lists all files in the directory (names are relative to the directory)

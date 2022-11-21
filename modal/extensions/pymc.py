@@ -1,9 +1,11 @@
 # Copyright Modal Labs 2022
+from __future__ import annotations
+
 import ctypes
 import sys
 import traceback
 from collections import namedtuple
-from typing import Any, List
+from typing import Any
 
 from aiostream import stream
 from synchronicity.interface import Interface
@@ -157,8 +159,8 @@ class _ModalSampler:
         if any(len(arg) != chains for arg in [seeds, start_points]):
             raise ValueError("Number of seeds and start_points must be %s." % chains)
 
-        self._finished: List[Any] = []
-        self._active: List[Any] = []
+        self._finished: list[Any] = []
+        self._active: list[Any] = []
         self._max_active = cores
 
         self._in_context = False
