@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+from __future__ import annotations
 import platform
 import pytest
 import sys
@@ -46,7 +47,8 @@ def _run_container(
     fail_get_inputs=False,
     inputs=None,
     function_type=api_pb2.Function.FUNCTION_TYPE_FUNCTION,
-):
+    webhook_type=api_pb2.WEBHOOK_TYPE_UNSPECIFIED,
+) -> tuple[Client, list[api_pb2.FunctionPutOutputsRequest]]:
     with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         if inputs is None:
             servicer.container_inputs = _get_inputs()
@@ -54,10 +56,21 @@ def _run_container(
             servicer.container_inputs = inputs
         servicer.fail_get_inputs = fail_get_inputs
 
+        if webhook_type:
+            webhook_config = api_pb2.WebhookConfig(
+                type=webhook_type,
+                method="GET",
+                wait_for_response=True,
+            )
+            function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
+        else:
+            webhook_config = None
+
         function_def = api_pb2.Function(
             module_name=module_name,
             function_name=function_name,
             function_type=function_type,
+            webhook_config=webhook_config,
         )
 
         # Note that main is a synchronous function, so we need to run it in a separate thread
@@ -78,7 +91,7 @@ def _run_container(
 
 
 @skip_windows
-def test_container_entrypoint_success(unix_servicer, event_loop):
+def test_success(unix_servicer, event_loop):
     t0 = time.time()
     client, outputs = _run_container(unix_servicer, "modal_test_support.functions", "square")
     assert 0 <= time.time() - t0 < EXTRA_TOLERANCE_DELAY
@@ -92,7 +105,7 @@ def test_container_entrypoint_success(unix_servicer, event_loop):
 
 
 @skip_windows
-def test_container_entrypoint_generator_success(unix_servicer, event_loop):
+def test_generator_success(unix_servicer, event_loop):
     client, output_requests = _run_container(
         unix_servicer, "modal_test_support.functions", "gen_n", function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR
     )
@@ -118,7 +131,7 @@ def test_container_entrypoint_generator_success(unix_servicer, event_loop):
 
 
 @skip_windows
-def test_container_entrypoint_generator_failure(unix_servicer, event_loop):
+def test_generator_failure(unix_servicer, event_loop):
     inputs = _get_inputs(((10, 5), {}))
     client, output_requests = _run_container(
         unix_servicer,
@@ -151,7 +164,7 @@ def test_container_entrypoint_generator_failure(unix_servicer, event_loop):
 
 
 @skip_windows
-def test_container_entrypoint_async(unix_servicer):
+def test_async(unix_servicer):
     t0 = time.time()
     client, outputs = _run_container(unix_servicer, "modal_test_support.functions", "square_async")
     assert SLEEP_DELAY <= time.time() - t0 < SLEEP_DELAY + EXTRA_TOLERANCE_DELAY
@@ -165,7 +178,7 @@ def test_container_entrypoint_async(unix_servicer):
 
 
 @skip_windows
-def test_container_entrypoint_failure(unix_servicer):
+def test_failure(unix_servicer):
     client, outputs = _run_container(unix_servicer, "modal_test_support.functions", "raises")
 
     assert len(outputs) == 1
@@ -178,7 +191,7 @@ def test_container_entrypoint_failure(unix_servicer):
 
 
 @skip_windows
-def test_container_entrypoint_raises_base_exception(unix_servicer):
+def test_raises_base_exception(unix_servicer):
     client, outputs = _run_container(unix_servicer, "modal_test_support.functions", "raises_sysexit")
 
     assert len(outputs) == 1
@@ -190,13 +203,13 @@ def test_container_entrypoint_raises_base_exception(unix_servicer):
 
 
 @skip_windows
-def test_container_entrypoint_keyboardinterrupt(unix_servicer):
+def test_keyboardinterrupt(unix_servicer):
     with pytest.raises(KeyboardInterrupt):
         client, outputs = _run_container(unix_servicer, "modal_test_support.functions", "raises_keyboardinterrupt")
 
 
 @skip_windows
-def test_container_entrypoint_rate_limited(unix_servicer, event_loop):
+def test_rate_limited(unix_servicer, event_loop):
     t0 = time.time()
     unix_servicer.rate_limit_sleep_duration = 0.25
     client, outputs = _run_container(unix_servicer, "modal_test_support.functions", "square")
@@ -211,7 +224,7 @@ def test_container_entrypoint_rate_limited(unix_servicer, event_loop):
 
 
 @skip_windows
-def test_container_entrypoint_grpc_failure(unix_servicer, event_loop):
+def test_grpc_failure(unix_servicer, event_loop):
     # An error in "Modal code" should cause the entire container to fail
     with pytest.raises(GRPCError):
         _run_container(unix_servicer, "modal_test_support.functions", "square", fail_get_inputs=True)
@@ -221,7 +234,7 @@ def test_container_entrypoint_grpc_failure(unix_servicer, event_loop):
 
 
 @skip_windows
-def test_container_entrypoint_missing_main_conditional(unix_servicer, event_loop):
+def test_missing_main_conditional(unix_servicer, event_loop):
     _run_container(unix_servicer, "modal_test_support.missing_main_conditional", "square")
 
     assert unix_servicer.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
@@ -232,7 +245,7 @@ def test_container_entrypoint_missing_main_conditional(unix_servicer, event_loop
 
 
 @skip_windows
-def test_container_entrypoint_startup_failure(unix_servicer, event_loop):
+def test_startup_failure(unix_servicer, event_loop):
     _run_container(unix_servicer, "modal_test_support.startup_failure", "f")
 
     assert unix_servicer.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
@@ -242,7 +255,7 @@ def test_container_entrypoint_startup_failure(unix_servicer, event_loop):
 
 
 @skip_windows
-def test_container_entrypoint_class_scoped_function(unix_servicer, event_loop):
+def test_class_scoped_function(unix_servicer, event_loop):
     client, outputs = _run_container(unix_servicer, "modal_test_support.functions", "Cube.f")
     assert len(outputs) == 1
     assert isinstance(outputs[0], api_pb2.FunctionPutOutputsRequest)
@@ -257,7 +270,7 @@ def test_container_entrypoint_class_scoped_function(unix_servicer, event_loop):
 
 
 @skip_windows
-def test_container_entrypoint_class_scoped_function_async(unix_servicer, event_loop):
+def test_class_scoped_function_async(unix_servicer, event_loop):
     client, outputs = _run_container(unix_servicer, "modal_test_support.functions", "CubeAsync.f")
     assert len(outputs) == 1
     assert isinstance(outputs[0], api_pb2.FunctionPutOutputsRequest)
@@ -282,3 +295,50 @@ def test_create_package_mounts_inside_container(unix_servicer, event_loop):
     output = _get_output(outputs[0])
     assert output.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     assert output.data == serialize(0)
+
+
+@skip_windows
+def test_webhook(unix_servicer, event_loop):
+    scope = {
+        "method": "GET",
+        "type": "http",
+        "path": "/",
+        "headers": {},
+        "query_string": "arg=space",
+        "http_version": "2",
+    }
+    body = b""
+    inputs = _get_inputs(([scope, body], {}))
+    client, outputs = _run_container(
+        unix_servicer,
+        "modal_test_support.functions",
+        "webhook",
+        inputs=inputs,
+        webhook_type=api_pb2.WEBHOOK_TYPE_FUNCTION,
+    )
+
+    # Flatten outputs
+    items: list[api_pb2.FunctionPutOutputsItem] = []
+    for req in outputs:
+        items += list(req.outputs)
+
+    # There should be one message for the header, one for the body, one for the EOF
+    assert len(items) == 3
+
+    # Check the headers
+    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert items[0].result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
+    first_message = deserialize(items[0].result.data, client)
+    assert first_message["status"] == 200
+    headers = dict(first_message["headers"])
+    assert headers[b"content-type"] == b"application/json"
+
+    # Check body
+    assert items[1].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert items[1].result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
+    second_message = deserialize(items[1].result.data, client)
+    assert second_message["body"] == b'"Hello, space"'  # Note: JSON-encoded
+
+    # Check EOF
+    assert items[2].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert items[2].result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE
