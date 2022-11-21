@@ -23,7 +23,7 @@ secret_cli = typer.Typer(name="secret", help="Manage secrets.", no_args_is_help=
 
 @secret_cli.command("list", help="List your published secrets.")
 @synchronizer
-async def list():
+async def list_():
     client = await _Client.from_env()
     response = await client.stub.SecretList(empty_pb2.Empty())
     table = Table()
