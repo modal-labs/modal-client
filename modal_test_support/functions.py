@@ -97,5 +97,10 @@ class CubeAsync:
         return x**3
 
 
+@stub.webhook
+def webhook(arg="world"):
+    return f"Hello, {arg}"
+
+
 if __name__ == "__main__":
     raise Exception("This line is not supposed to be reachable")

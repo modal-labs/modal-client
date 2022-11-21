@@ -32,6 +32,9 @@ from modal_utils.http_utils import run_temporary_http_server
 
 @patch_mock_servicer
 class MockClientServicer(api_grpc.ModalClientBase):
+    # TODO(erikbern): add more annotations
+    container_outputs: list[api_pb2.FunctionPutOutputsRequest]
+
     def __init__(self, blob_host, blobs):
         self.n_blobs = 0
         self.blob_host = blob_host
@@ -183,7 +186,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             await stream.send_message(self.container_inputs.pop(0))
 
     async def FunctionPutOutputs(self, stream):
-        request = await stream.recv_message()
+        request: api_pb2.FunctionPutOutputsRequest = await stream.recv_message()
         self.container_outputs.append(request)
         await stream.send_message(Empty())
 
