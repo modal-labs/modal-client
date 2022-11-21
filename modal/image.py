@@ -342,7 +342,7 @@ class _Image(Provider[_ImageHandle]):
     def conda() -> "_Image":
         """A Conda base image, using miniconda3 and derived from the official Docker Hub image."""
         requirements_path = _get_client_requirements_path()
-        # Doesn't use the official continuumio/miniconda3 image as a base. This image has maintenance
+        # Doesn't use the official continuumio/miniconda3 image as a base. That image has maintenance
         # issues (https://github.com/ContinuumIO/docker-images/issues) and building our own is more flexible.
         conda_install_script = "https://repo.anaconda.com/miniconda/Miniconda3-4.7.12-Linux-x86_64.sh"
         dockerfile_commands = [
