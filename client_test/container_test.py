@@ -26,7 +26,7 @@ skip_windows = pytest.mark.skipif(
 )
 
 
-def _get_inputs(args=((42,), {})):
+def _get_inputs(args=((42,), {})) -> list[api_pb2.FunctionGetInputsResponse]:
     input_pb = api_pb2.FunctionInput(args=serialize(args))
 
     return [
