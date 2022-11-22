@@ -438,7 +438,7 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> tuple[A
     else:
         # Load the module dynamically
         module = importlib.import_module(function_def.module_name)
-        fun, cls = load_function_from_module(module, function_def.function_name)
+        cls, fun = load_function_from_module(module, function_def.function_name)
 
     # The decorator is typically in global scope, but may have been applied independently
     if isinstance(fun, (FunctionHandle, AioFunctionHandle)):
