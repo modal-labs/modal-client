@@ -43,6 +43,7 @@ def _run_container(
     inputs=None,
     function_type=api_pb2.Function.FUNCTION_TYPE_FUNCTION,
     webhook_type=api_pb2.WEBHOOK_TYPE_UNSPECIFIED,
+    definition_type=api_pb2.Function.DEFINITION_TYPE_FILE,
 ) -> tuple[Client, list[api_pb2.FunctionPutOutputsItem]]:
     with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         if inputs is None:
@@ -66,6 +67,7 @@ def _run_container(
             function_name=function_name,
             function_type=function_type,
             webhook_config=webhook_config,
+            definition_type=definition_type,
         )
 
         # Note that main is a synchronous function, so we need to run it in a separate thread
@@ -326,3 +328,21 @@ def test_webhook_lifecycle(unix_servicer, event_loop):
     assert items[1].result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
     second_message = deserialize(items[1].result.data, client)
     assert second_message["body"] == b'"Hello, space"'  # Note: JSON-encoded
+
+
+@skip_windows
+def test_serialized_function(unix_servicer, event_loop):
+
+    def triple(x):
+        return 3 * x
+
+    unix_servicer.function_serialized = serialize(triple)
+    client, items = _run_container(
+        unix_servicer,
+        "foo.bar.baz",
+        "f",
+        definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
+    )
+    assert len(items) == 1
+    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert items[0].result.data == serialize(3 * 42)
