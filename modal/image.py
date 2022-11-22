@@ -401,7 +401,8 @@ class _Image(Provider[_ImageHandle]):
 
         dockerfile_commands = [
             "FROM base",
-            f"RUN conda install {package_args}{channel_args} --yes",
+            f"RUN conda install {package_args}{channel_args} --yes \\ ",
+            "&& conda clean --yes --index-cache --tarballs --tempfiles --logfiles",
         ]
 
         return self.extend(dockerfile_commands=dockerfile_commands)
@@ -419,7 +420,8 @@ class _Image(Provider[_ImageHandle]):
         dockerfile_commands = [
             "FROM base",
             "COPY /environment.yml /environment.yml",
-            "RUN conda env update --name base -f /environment.yml",
+            "RUN conda env update --name base -f /environment.yml \\ ",
+            "&& conda clean --yes --index-cache --tarballs --tempfiles --logfiles",
         ]
 
         return self.extend(dockerfile_commands=dockerfile_commands, context_files=context_files)
