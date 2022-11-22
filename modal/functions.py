@@ -51,6 +51,7 @@ from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError
 from .exception import TimeoutError as _TimeoutError
 from .exception import deprecation_warning
 from .gpu import _GPUConfig
+from .image import _Image
 from .mount import _Mount
 from .object import Handle, Provider, Ref, RemoteRef
 from .rate_limit import RateLimit
@@ -701,6 +702,8 @@ class _Function(Provider[_FunctionHandle]):
 
         # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
         if self._image is not None:
+            if not isinstance(self._image, _Image):
+                raise InvalidError(f"Expected modal.Image object. Got {type(self._image)}.")
             image_id = await loader(self._image)
         else:
             image_id = None  # Happens if it's a notebook function
