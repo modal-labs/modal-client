@@ -464,7 +464,7 @@ def import_function(function_def: api_pb2.Function) -> tuple[Any, Callable, bool
     elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_WSGI_APP:
         # function returns an wsgi_app, that we can use as a callable.
         wsgi_app = fun()
-        return obj, wsgi_app_wrapper(wsgi_app), False
+        return obj, wsgi_app_wrapper(wsgi_app), True
     elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
         # function is webhook without an ASGI app. Create one for it.
         asgi_app = webhook_asgi_app(fun, function_def.webhook_config.method)
