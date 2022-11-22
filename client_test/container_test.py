@@ -332,7 +332,6 @@ def test_webhook_lifecycle(unix_servicer, event_loop):
 
 @skip_windows
 def test_serialized_function(unix_servicer, event_loop):
-
     def triple(x):
         return 3 * x
 

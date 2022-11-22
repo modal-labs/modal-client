@@ -304,11 +304,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
             await stream.send_message(api_pb2.FunctionGetOutputsResponse(outputs=[]))
 
     async def FunctionGetSerialized(self, stream):
-        await stream.send_message(api_pb2.FunctionGetSerializedResponse(
-            function_serialized=self.function_serialized,
-            class_serialized=self.class_serialized,
-        ))
-        
+        await stream.send_message(
+            api_pb2.FunctionGetSerializedResponse(
+                function_serialized=self.function_serialized,
+                class_serialized=self.class_serialized,
+            )
+        )
 
     ### Image
 
