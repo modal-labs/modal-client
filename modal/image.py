@@ -340,25 +340,45 @@ class _Image(Provider[_ImageHandle]):
 
     @staticmethod
     def conda() -> "_Image":
-        """A Conda base image, built on the official miniconda3 Docker Hub image."""
+        """A Conda base image, using miniconda3 and derived from the official Docker Hub image."""
         requirements_path = _get_client_requirements_path()
+        # Doesn't use the official continuumio/miniconda3 image as a base. That image has maintenance
+        # issues (https://github.com/ContinuumIO/docker-images/issues) and building our own is more flexible.
+        conda_install_script = "https://repo.anaconda.com/miniconda/Miniconda3-4.7.12-Linux-x86_64.sh"
         dockerfile_commands = [
-            "FROM conda/miniconda3",
-            "COPY /modal_requirements.txt /modal_requirements.txt",
-            "RUN conda init bash ",
-            "RUN echo $0 \\ ",
-            "&& . /root/.bashrc \\ ",
-            "&& conda activate base \\ ",
-            "&& conda info \\ ",
-            "&& conda config --add channels conda-forge \\ ",
+            "FROM debian:bullseye",  # the -slim images lack files required by Conda.
+            # Temporarily add utility packages for conda installation.
+            "RUN apt-get --quiet update && apt-get --quiet --yes install curl bzip2 \\",
+            f"&& curl --silent --show-error --location {conda_install_script} --output /tmp/miniconda.sh \\",
+            # Install miniconda to a filesystem location on the $PATH of Modal container tasks.
+            # -b = install in batch mode w/o manual intervention.
+            # -f = allow install prefix to already exist.
+            # -p = the install prefix location.
+            "&& bash /tmp/miniconda.sh -bfp /usr/local \\ ",
+            "&& rm -rf /tmp/miniconda.sh",
+            # Biggest and most stable community-led Conda channel.
+            "RUN conda config --add channels conda-forge \\ ",
+            # "Strict channel priority can dramatically speed up conda operations and also reduce package incompatibility problems."
             "&& conda config --set channel_priority strict \\ ",
-            "&& conda install -c conda-forge mamba python=3.9 --yes ",
-            "RUN echo $0 \\ ",
-            "&& . /root/.bashrc \\ ",
-            "&& conda activate base \\ ",
-            "&& conda info \\ ",
-            "&& pip install --upgrade pip \\ ",
-            "&& pip install -r /modal_requirements.txt",
+            # softlinking can put conda in a broken state, surfacing error on uninstall like:
+            # `No such device or address: '/usr/local/lib/libz.so' -> '/usr/local/lib/libz.so.c~'`
+            "&& conda config --set allow_softlinks false \\ ",
+            # Install Python 3.9 from conda-forge channel; debian image has only 3.7.
+            "&& conda install --yes --channel conda-forge python=3.9 \\ ",
+            "&& conda update conda \\ ",
+            # Remove now unneeded packages and files.
+            "&& apt-get --quiet --yes remove curl bzip2 \\ ",
+            "&& apt-get --quiet --yes autoremove \\ ",
+            "&& apt-get autoclean \\ ",
+            "&& rm -rf /var/lib/apt/lists/* /var/log/dpkg.log \\ ",
+            "&& conda clean --all --yes",
+            # Setup .bashrc for conda.
+            "RUN conda init bash --verbose",
+            "COPY /modal_requirements.txt /modal_requirements.txt",
+            # .bashrc is explicitly sourced because RUN is a non-login shell and doesn't run bash.
+            "RUN . /root/.bashrc && conda activate base \\ ",
+            "&& python -m pip install --upgrade pip \\ ",
+            "&& python -m pip install -r /modal_requirements.txt",
         ]
 
         return _Image(
