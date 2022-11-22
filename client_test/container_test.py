@@ -299,3 +299,30 @@ def test_webhook(unix_servicer, event_loop):
     # Check EOF
     assert items[2].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     assert items[2].result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE
+
+
+@skip_windows
+def test_webhook_lifecycle(unix_servicer, event_loop):
+    scope = {
+        "method": "GET",
+        "type": "http",
+        "path": "/",
+        "headers": {},
+        "query_string": "arg=space",
+        "http_version": "2",
+    }
+    body = b""
+    inputs = _get_inputs(([scope, body], {}))
+    client, items = _run_container(
+        unix_servicer,
+        "modal_test_support.functions",
+        "WebhookLifecycleClass.webhook",
+        inputs=inputs,
+        webhook_type=api_pb2.WEBHOOK_TYPE_FUNCTION,
+    )
+
+    assert len(items) == 3
+    assert items[1].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert items[1].result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
+    second_message = deserialize(items[1].result.data, client)
+    assert second_message["body"] == b'"Hello, space"'  # Note: JSON-encoded

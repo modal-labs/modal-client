@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+from __future__ import annotations
 import asyncio
 import base64
 import contextlib
@@ -8,7 +9,7 @@ import math
 import sys
 import time
 import traceback
-from typing import Any, AsyncIterator, Callable, Optional, Tuple, Type
+from typing import Any, AsyncIterator, Callable, Optional
 
 import cloudpickle
 from grpclib import Status
@@ -59,6 +60,21 @@ class SequenceNumber:
         return self._value
 
 
+def get_is_async(function):
+    # TODO: this is somewhat hacky. We need to know whether the function is async or not in order to
+    # coerce the input arguments to the right type. The proper way to do is to call the function and
+    # see if you get a coroutine (or async generator) back. However at this point, it's too late to
+    # coerce the type. For now let's make a determination based on inspecting the function definition.
+    # This sometimes isn't correct, since a "vanilla" Python function can return a coroutine if it
+    # wraps async code or similar. Let's revisit this shortly.
+    if inspect.iscoroutinefunction(function) or inspect.isasyncgenfunction(function):
+        return True
+    elif inspect.isfunction(function) or inspect.isgeneratorfunction(function):
+        return False
+    else:
+        raise RuntimeError(f"Function {function} is a strange type {type(function)}")
+
+
 class _FunctionIOManager:
     """This class isn't much more than a helper method for some gRPC calls.
 
@@ -82,21 +98,23 @@ class _FunctionIOManager:
     async def initialize_app(self):
         await _App._init_container(self._client, self.app_id, self.task_id)
 
-    async def get_serialized_function(self) -> Tuple[Callable, Optional[Type]]:
+    async def get_serialized_function(self) -> tuple[Optional[Any], Callable, bool]:
         # Fetch the serialized function definition
         request = api_pb2.FunctionGetSerializedRequest(function_id=self.function_id)
         response = await self.client.stub.FunctionGetSerialized(request)
         raw_f = cloudpickle.loads(response.function_serialized)
+        is_async = get_is_async(raw_f)
 
         if response.class_serialized:
             cls = cloudpickle.loads(response.class_serialized)
+            obj = cls()
         else:
-            cls = None
+            obj = None
 
         # TODO(erikbern): there was some code here to create the _Function object,
         # I think related to notebooks, but it was never used. Deleted it for now,
         # will go back to it once we fix notebooks.
-        return raw_f, cls
+        return obj, raw_f, is_async
 
     def serialize(self, obj: Any) -> bytes:
         return serialize(obj)
@@ -127,7 +145,7 @@ class _FunctionIOManager:
 
     async def _generate_inputs(
         self,
-    ) -> AsyncIterator[Tuple[str, api_pb2.FunctionInput]]:
+    ) -> AsyncIterator[tuple[str, api_pb2.FunctionInput]]:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         eof_received = False
         while not eof_received:
@@ -225,7 +243,7 @@ class _FunctionIOManager:
             # We can't always serialize exceptions.
             return None
 
-    def serialize_traceback(self, exc: BaseException) -> Tuple[Optional[bytes], Optional[bytes]]:
+    def serialize_traceback(self, exc: BaseException) -> tuple[Optional[bytes], Optional[bytes]]:
         serialized_tb, tb_line_cache = None, None
 
         try:
@@ -327,47 +345,26 @@ class _FunctionIOManager:
 FunctionIOManager, AioFunctionIOManager = synchronize_apis(_FunctionIOManager)
 
 
-def is_async(function):
-    # TODO: this is somewhat hacky. We need to know whether the function is async or not in order to
-    # coerce the input arguments to the right type. The proper way to do is to call the function and
-    # see if you get a coroutine (or async generator) back. However at this point, it's too late to
-    # coerce the type. For now let's make a determination based on inspecting the function definition.
-    # This sometimes isn't correct, since a "vanilla" Python function can return a coroutine if it
-    # wraps async code or similar. Let's revisit this shortly.
-    if inspect.iscoroutinefunction(function) or inspect.isasyncgenfunction(function):
-        return True
-    elif inspect.isfunction(function) or inspect.isgeneratorfunction(function):
-        return False
-    else:
-        raise RuntimeError(f"Function {function} is a strange type {type(function)}")
-
-
 def call_function_sync(
     function_io_manager,  #: FunctionIOManager,  # TODO: this type is generated in runtime
-    cls: Optional[Type],
+    obj: Optional[Any],
     fun: Callable,
     is_generator: bool,
 ):
     # If this function is on a class, instantiate it and enter it
-    if cls is not None:
-        self = cls()
-        if hasattr(cls, "__enter__"):
+    if obj is not None:
+        if hasattr(obj, "__enter__"):
             # Call a user-defined method
             with function_io_manager.handle_user_exception():
-                cls.__enter__(self)
-        elif hasattr(cls, "__aenter__"):
+                obj.__enter__()
+        elif hasattr(obj, "__aenter__"):
             logger.warning("Not running asynchronous enter/exit handlers with a sync function")
-    else:
-        self = None
 
     try:
         for input_id, args, kwargs in function_io_manager.run_inputs_outputs():
             output_index = SequenceNumber(0)
             with function_io_manager.handle_input_exception(input_id, output_index):
-                if self is not None:
-                    res = fun(self, *args, **kwargs)
-                else:
-                    res = fun(*args, **kwargs)
+                res = fun(*args, **kwargs)
 
                 # TODO(erikbern): any exception below shouldn't be considered a user exception
                 if is_generator:
@@ -384,39 +381,33 @@ def call_function_sync(
                         raise InvalidError(f"Sync (non-generator) function return value of type {type(res)}")
                     function_io_manager.enqueue_output(input_id, output_index.value, res)
     finally:
-        if cls is not None and hasattr(cls, "__exit__"):
+        if obj is not None and hasattr(obj, "__exit__"):
             with function_io_manager.handle_user_exception():
-                cls.__exit__(self, *sys.exc_info())
+                obj.__exit__(*sys.exc_info())
 
 
 @wrap()
 async def call_function_async(
     aio_function_io_manager,  #: AioFunctionIOManager,  # TODO: this one too
-    cls: Optional[Type],
+    obj: Optional[Any],
     fun: Callable,
     is_generator: bool,
 ):
     # If this function is on a class, instantiate it and enter it
-    if cls is not None:
-        self = cls()
-        if hasattr(cls, "__aenter__"):
+    if obj is not None:
+        if hasattr(obj, "__aenter__"):
             # Call a user-defined method
             async with aio_function_io_manager.handle_user_exception():
-                await cls.__aenter__(self)
-        elif hasattr(cls, "__enter__"):
+                await obj.__aenter__()
+        elif hasattr(obj, "__enter__"):
             async with aio_function_io_manager.handle_user_exception():
-                cls.__enter__(self)
-    else:
-        self = None
+                obj.__enter__()
 
     try:
         async for input_id, args, kwargs in aio_function_io_manager.run_inputs_outputs():
             output_index = SequenceNumber(0)  # mutable number we can increase from the generator loop
             async with aio_function_io_manager.handle_input_exception(input_id, output_index):
-                if self:
-                    res = fun(self, *args, **kwargs)
-                else:
-                    res = fun(*args, **kwargs)
+                res = fun(*args, **kwargs)
 
                 # TODO(erikbern): any exception below shouldn't be considered a user exception
                 if is_generator:
@@ -432,17 +423,17 @@ async def call_function_async(
                     value = await res
                     await aio_function_io_manager.enqueue_output(input_id, output_index.value, value)
     finally:
-        if cls is not None:
-            if hasattr(cls, "__aexit__"):
+        if obj is not None:
+            if hasattr(obj, "__aexit__"):
                 async with aio_function_io_manager.handle_user_exception():
-                    await cls.__aexit__(self, *sys.exc_info())
-            elif hasattr(cls, "__exit__"):
+                    await obj.__aexit__(*sys.exc_info())
+            elif hasattr(obj, "__exit__"):
                 async with aio_function_io_manager.handle_user_exception():
-                    cls.__exit__(self, *sys.exc_info())
+                    obj.__exit__(*sys.exc_info())
 
 
 @wrap()
-def import_function(function_def: api_pb2.Function) -> Tuple[Optional[Type], Callable]:
+def import_function(function_def: api_pb2.Function) -> tuple[Any, Callable, bool]:
     # This is not in function_io_manager, so that any global scope code that runs during import
     # runs on the main thread.
     module = importlib.import_module(function_def.module_name)
@@ -454,20 +445,32 @@ def import_function(function_def: api_pb2.Function) -> Tuple[Optional[Type], Cal
         _function_proxy = synchronizer._translate_in(fun)
         fun = _function_proxy.get_raw_f()
 
+    # Check this property before we turn it into a method
+    is_async = get_is_async(fun)
+
+    # Instantiate the class if it's defined
+    if cls:
+        obj = cls()
+
+        # Bind the function to the instance (using the descriptor protocol!)
+        fun = fun.__get__(obj, cls)
+    else:
+        obj = None
+
     if function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP:
         # function returns an asgi_app, that we can use as a callable.
         asgi_app = fun()
-        return cls, asgi_app_wrapper(asgi_app)
+        return obj, asgi_app_wrapper(asgi_app), True
     elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_WSGI_APP:
         # function returns an wsgi_app, that we can use as a callable.
         wsgi_app = fun()
-        return cls, wsgi_app_wrapper(wsgi_app)
+        return obj, wsgi_app_wrapper(wsgi_app), False
     elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
         # function is webhook without an ASGI app. Create one for it.
         asgi_app = webhook_asgi_app(fun, function_def.webhook_config.method)
-        return cls, asgi_app_wrapper(asgi_app)
+        return obj, asgi_app_wrapper(asgi_app), True
     else:
-        return cls, fun
+        return obj, fun, is_async
 
 
 def main(container_args: api_pb2.ContainerArguments, client: Client):
@@ -485,10 +488,10 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
     is_generator = function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
     if container_args.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
-        fun, cls = function_io_manager.get_serialized_function()
+        obj, fun, is_async = function_io_manager.get_serialized_function()
     else:
         with function_io_manager.handle_user_exception():
-            cls, fun = import_function(container_args.function_def)
+            obj, fun, is_async = import_function(container_args.function_def)
 
     if container_args.function_def.pty_info.enabled:
         from modal import container_app
@@ -497,10 +500,10 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         input_stream_blocking = synchronizer._translate_out(input_stream_unwrapped, Interface.BLOCKING)
         fun = run_in_pty(fun, input_stream_blocking, container_args.function_def.pty_info)
 
-    if not is_async(fun):
-        call_function_sync(function_io_manager, cls, fun, is_generator)
+    if not is_async:
+        call_function_sync(function_io_manager, obj, fun, is_generator)
     else:
-        asyncio.run(call_function_async(aio_function_io_manager, cls, fun, is_generator))
+        asyncio.run(call_function_async(aio_function_io_manager, obj, fun, is_generator))
 
 
 if __name__ == "__main__":
