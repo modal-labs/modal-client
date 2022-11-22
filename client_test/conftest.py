@@ -34,6 +34,7 @@ from modal_utils.http_utils import run_temporary_http_server
 @patch_mock_servicer
 class MockClientServicer(api_grpc.ModalClientBase):
     # TODO(erikbern): add more annotations
+    container_inputs: list[api_pb2.FunctionGetInputsResponse]
     container_outputs: list[api_pb2.FunctionPutOutputsRequest]
 
     def __init__(self, blob_host, blobs):
@@ -94,6 +95,60 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self._function_body = func
         return func
 
+    ### App
+
+    async def AppCreate(self, stream):
+        request: api_pb2.AppCreateRequest = await stream.recv_message()
+        self.requests.append(request)
+        self.n_apps += 1
+        app_id = f"ap-{self.n_apps}"
+        await stream.send_message(api_pb2.AppCreateResponse(app_id=app_id))
+
+    async def AppClientDisconnect(self, stream):
+        request: api_pb2.AppClientDisconnectRequest = await stream.recv_message()
+        self.requests.append(request)
+        self.done = True
+        await stream.send_message(Empty())
+
+    async def AppGetLogs(self, stream):
+        await stream.recv_message()
+        await asyncio.sleep(0.1)
+        if self.done:
+            await stream.send_message(api_pb2.TaskLogsBatch(app_done=True))
+
+    async def AppGetObjects(self, stream):
+        request: api_pb2.AppGetObjectsRequest = await stream.recv_message()
+        object_ids = self.app_objects.get(request.app_id, {})
+        await stream.send_message(api_pb2.AppGetObjectsResponse(object_ids=object_ids))
+
+    async def AppSetObjects(self, stream):
+        request: api_pb2.AppSetObjectsRequest = await stream.recv_message()
+        self.app_objects[request.app_id] = dict(request.indexed_object_ids)
+        await stream.send_message(Empty())
+
+    async def AppDeploy(self, stream):
+        request: api_pb2.AppDeployRequest = await stream.recv_message()
+        self.deployed_apps[request.name] = request.app_id
+        await stream.send_message(api_pb2.AppDeployResponse(url="http://test.modal.com/foo/bar"))
+
+    async def AppGetByDeploymentName(self, stream):
+        request: api_pb2.AppGetByDeploymentNameRequest = await stream.recv_message()
+        await stream.send_message(api_pb2.AppGetByDeploymentNameResponse(app_id=self.deployed_apps.get(request.name)))
+
+    async def AppLookupObject(self, stream):
+        request: api_pb2.AppLookupObjectRequest = await stream.recv_message()
+        object_id = None
+        app_id = self.deployed_apps.get(request.app_name)
+        if app_id is not None:
+            app_objects = self.app_objects[app_id]
+            if request.object_tag:
+                object_id = app_objects.get(request.object_tag)
+            else:
+                (object_id,) = list(app_objects.values())
+        await stream.send_message(api_pb2.AppLookupObjectResponse(object_id=object_id))
+
+    ### Blob
+
     async def BlobCreate(self, stream):
         await stream.recv_message()
         # This is used to test retry_transient_errors, see grpc_utils_test.py
@@ -108,12 +163,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
             await stream.send_message(api_pb2.BlobCreateResponse(blob_id=blob_id, upload_url=upload_url))
 
     async def BlobGet(self, stream):
-        request = await stream.recv_message()
+        request: api_pb2.BlobGetRequest = await stream.recv_message()
         download_url = f"{self.blob_host}/download?blob_id={request.blob_id}"
         await stream.send_message(api_pb2.BlobGetResponse(download_url=download_url))
 
+    ### Client
+
     async def ClientCreate(self, stream):
-        request = await stream.recv_message()
+        request: api_pb2.ClientCreateRequest = await stream.recv_message()
         self.requests.append(request)
         client_id = "cl-123"
         if stream.metadata.get("x-modal-token-id") == "bad":
@@ -132,47 +189,17 @@ class MockClientServicer(api_grpc.ModalClientBase):
         else:
             await stream.send_message(api_pb2.ClientCreateResponse(client_id=client_id))
 
-    async def AppCreate(self, stream):
-        request = await stream.recv_message()
-        self.requests.append(request)
-        self.n_apps += 1
-        app_id = f"ap-{self.n_apps}"
-        await stream.send_message(api_pb2.AppCreateResponse(app_id=app_id))
-
-    async def AppClientDisconnect(self, stream):
-        request = await stream.recv_message()
-        self.requests.append(request)
-        self.done = True
-        await stream.send_message(Empty())
-
     async def ClientHeartbeat(self, stream):
-        request = await stream.recv_message()
+        request: api_pb2.ClientHeartbeatRequest = await stream.recv_message()
         self.requests.append(request)
         if self.heartbeat_status_code:
             raise GRPCError(self.heartbeat_status_code, f"Client {request.client_id} heartbeat failed.")
         await stream.send_message(Empty())
 
-    async def ImageGetOrCreate(self, stream):
-        request = await stream.recv_message()
-        idx = len(self.images)
-        self.images[idx] = request.image
-        self.image_build_function_ids[idx] = request.build_function_id
-        await stream.send_message(api_pb2.ImageGetOrCreateResponse(image_id=f"im-{idx}"))
-
-    async def ImageJoin(self, stream):
-        await stream.recv_message()
-        await stream.send_message(
-            api_pb2.ImageJoinResponse(result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS))
-        )
-
-    async def AppGetLogs(self, stream):
-        await stream.recv_message()
-        await asyncio.sleep(0.1)
-        if self.done:
-            await stream.send_message(api_pb2.TaskLogsBatch(app_done=True))
+    ### Function
 
     async def FunctionGetInputs(self, stream):
-        request = await stream.recv_message()
+        request: api_pb2.FunctionGetInputsRequest = await stream.recv_message()
         assert request.function_id
         if self.fail_get_inputs:
             raise GRPCError(Status.INTERNAL)
@@ -191,71 +218,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.container_outputs.append(request)
         await stream.send_message(Empty())
 
-    async def AppGetObjects(self, stream):
-        request = await stream.recv_message()
-        object_ids = self.app_objects.get(request.app_id, {})
-        await stream.send_message(api_pb2.AppGetObjectsResponse(object_ids=object_ids))
-
-    async def AppSetObjects(self, stream):
-        request = await stream.recv_message()
-        self.app_objects[request.app_id] = dict(request.indexed_object_ids)
-        await stream.send_message(Empty())
-
-    async def QueueCreate(self, stream):
-        await stream.recv_message()
-        self.n_queues += 1
-        await stream.send_message(api_pb2.QueueCreateResponse(queue_id=f"qu-{self.n_queues}"))
-
-    async def QueuePut(self, stream):
-        request = await stream.recv_message()
-        self.queue += request.values
-        await stream.send_message(Empty())
-
-    async def QueueGet(self, stream):
-        await stream.recv_message()
-        await stream.send_message(api_pb2.QueueGetResponse(values=[self.queue.pop(0)]))
-
-    async def AppDeploy(self, stream):
-        request = await stream.recv_message()
-        self.deployed_apps[request.name] = request.app_id
-        await stream.send_message(api_pb2.AppDeployResponse(url="http://test.modal.com/foo/bar"))
-
-    async def AppGetByDeploymentName(self, stream):
-        request = await stream.recv_message()
-        await stream.send_message(api_pb2.AppGetByDeploymentNameResponse(app_id=self.deployed_apps.get(request.name)))
-
-    async def AppLookupObject(self, stream):
-        request = await stream.recv_message()
-        object_id = None
-        app_id = self.deployed_apps.get(request.app_name)
-        if app_id is not None:
-            app_objects = self.app_objects[app_id]
-            if request.object_tag:
-                object_id = app_objects.get(request.object_tag)
-            else:
-                (object_id,) = list(app_objects.values())
-        await stream.send_message(api_pb2.AppLookupObjectResponse(object_id=object_id))
-
-    async def MountPutFile(self, stream):
-        request = await stream.recv_message()
-        if request.WhichOneof("data_oneof") is not None:
-            self.files_sha2data[request.sha256_hex] = {"data": request.data, "data_blob_id": request.data_blob_id}
-            await stream.send_message(api_pb2.MountPutFileResponse(exists=True))
-        else:
-            await stream.send_message(api_pb2.MountPutFileResponse(exists=False))
-
-    async def MountBuild(self, stream):
-        request = await stream.recv_message()
-        for file in request.files:
-            self.files_name2sha[file.filename] = file.sha256_hex
-        await stream.send_message(api_pb2.MountBuildResponse(mount_id="mo-123"))
-
-    async def SharedVolumeCreate(self, stream):
-        await stream.recv_message()
-        await stream.send_message(api_pb2.SharedVolumeCreateResponse(shared_volume_id="sv-123"))
-
     async def FunctionCreate(self, stream):
-        request = await stream.recv_message()
+        request: api_pb2.FunctionCreateRequest = await stream.recv_message()
         if self.function_create_error:
             raise GRPCError(Status.INTERNAL, "Function create failed")
         if request.existing_function_id:
@@ -279,7 +243,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(api_pb2.FunctionMapResponse(function_call_id=f"fc-{self.fcidx}"))
 
     async def FunctionPutInputs(self, stream):
-        request = await stream.recv_message()
+        request: api_pb2.FunctionPutInputsRequest = await stream.recv_message()
         response_items = []
         function_calls = self.client_calls.setdefault(request.function_call_id, [])
         for item in request.inputs:
@@ -290,7 +254,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(api_pb2.FunctionPutInputsResponse(inputs=response_items))
 
     async def FunctionGetOutputs(self, stream):
-        request = await stream.recv_message()
+        request: api_pb2.FunctionGetOutputsRequest = await stream.recv_message()
 
         client_calls = self.client_calls.get(request.function_call_id, [])
         if client_calls and not self.function_is_running:
@@ -336,6 +300,55 @@ class MockClientServicer(api_grpc.ModalClientBase):
         else:
             await stream.send_message(api_pb2.FunctionGetOutputsResponse(outputs=[]))
 
+    ### Image
+
+    async def ImageGetOrCreate(self, stream):
+        request: api_pb2.ImageGetOrCreateRequest = await stream.recv_message()
+        idx = len(self.images)
+        self.images[idx] = request.image
+        self.image_build_function_ids[idx] = request.build_function_id
+        await stream.send_message(api_pb2.ImageGetOrCreateResponse(image_id=f"im-{idx}"))
+
+    async def ImageJoin(self, stream):
+        await stream.recv_message()
+        await stream.send_message(
+            api_pb2.ImageJoinResponse(result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS))
+        )
+
+    ### Mount
+
+    async def MountPutFile(self, stream):
+        request: api_pb2.MountPutFileRequest = await stream.recv_message()
+        if request.WhichOneof("data_oneof") is not None:
+            self.files_sha2data[request.sha256_hex] = {"data": request.data, "data_blob_id": request.data_blob_id}
+            await stream.send_message(api_pb2.MountPutFileResponse(exists=True))
+        else:
+            await stream.send_message(api_pb2.MountPutFileResponse(exists=False))
+
+    async def MountBuild(self, stream):
+        request: api_pb2.MountBuildRequest = await stream.recv_message()
+        for file in request.files:
+            self.files_name2sha[file.filename] = file.sha256_hex
+        await stream.send_message(api_pb2.MountBuildResponse(mount_id="mo-123"))
+
+    ### Queue
+
+    async def QueueCreate(self, stream):
+        await stream.recv_message()
+        self.n_queues += 1
+        await stream.send_message(api_pb2.QueueCreateResponse(queue_id=f"qu-{self.n_queues}"))
+
+    async def QueuePut(self, stream):
+        request: api_pb2.QueuePutRequest = await stream.recv_message()
+        self.queue += request.values
+        await stream.send_message(Empty())
+
+    async def QueueGet(self, stream):
+        await stream.recv_message()
+        await stream.send_message(api_pb2.QueueGetResponse(values=[self.queue.pop(0)]))
+
+    ### Secret
+
     async def SecretCreate(self, stream):
         await stream.recv_message()
         self.created_secrets += 1
@@ -346,10 +359,20 @@ class MockClientServicer(api_grpc.ModalClientBase):
         items = [api_pb2.SecretListItem(label=f"dummy-secret-{i}") for i in range(self.created_secrets)]
         await stream.send_message(api_pb2.SecretListResponse(items=items))
 
+    ### Shared volume
+
+    async def SharedVolumeCreate(self, stream):
+        await stream.recv_message()
+        await stream.send_message(api_pb2.SharedVolumeCreateResponse(shared_volume_id="sv-123"))
+
+    ### Task
+
     async def TaskResult(self, stream):
-        request = await stream.recv_message()
+        request: api_pb2.TaskResultRequest = await stream.recv_message()
         self.task_result = request.result
         await stream.send_message(Empty())
+
+    ### Token flow
 
     async def TokenFlowCreate(self, stream):
         await stream.send_message(
