@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
+from __future__ import annotations
 import asyncio
 import time
-from typing import List
 
 from modal import Stub
 from modal.exception import deprecation_warning
@@ -62,7 +62,7 @@ def deprecated_function(x):
 
 
 class Cube:
-    _events: List[str] = []
+    _events: list[str] = []
 
     def __init__(self):
         self._events.append("init")
@@ -80,7 +80,7 @@ class Cube:
 
 
 class CubeAsync:
-    _events: List[str] = []
+    _events: list[str] = []
 
     def __init__(self):
         self._events.append("init")
@@ -100,6 +100,24 @@ class CubeAsync:
 @stub.webhook
 def webhook(arg="world"):
     return f"Hello, {arg}"
+
+
+class WebhookLifecycleClass:
+    _events: list[str] = []
+
+    def __init__(self):
+        self._events.append("init")
+
+    async def __aenter__(self):
+        self._events.append("enter")
+
+    async def __aexit__(self, typ, exc, tb):
+        self._events.append("exit")
+
+    @stub.webhook
+    def webhook(self, arg="world"):
+        self._events.append("call")
+        return f"Hello, {arg}"
 
 
 if __name__ == "__main__":
