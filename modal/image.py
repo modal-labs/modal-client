@@ -18,6 +18,18 @@ from .object import Handle, Provider
 from .secret import _Secret
 
 
+def _validate_python_version(version: str) -> None:
+    components = version.split(".")
+    supported_versions = {"3.10", "3.9", "3.8", "3.7"}
+    if len(components) == 2 and version in supported_versions:
+        return
+    elif len(components) == 3:
+        raise InvalidError(
+            f"major.minor.patch version specification not valid. Supported major.minor versions are {supported_versions}."
+        )
+    raise InvalidError(f"Unsupported version {version}. Supported versions are {supported_versions}.")
+
+
 def _dockerhub_python_version(python_version=None):
     if python_version is None:
         python_version = config["image_python_version"]
@@ -339,8 +351,9 @@ class _Image(Provider[_ImageHandle]):
         )
 
     @staticmethod
-    def conda() -> "_Image":
+    def conda(python_version: str = "3.9") -> "_Image":
         """A Conda base image, using miniconda3 and derived from the official Docker Hub image."""
+        _validate_python_version(python_version)
         requirements_path = _get_client_requirements_path()
         # Doesn't use the official continuumio/miniconda3 image as a base. That image has maintenance
         # issues (https://github.com/ContinuumIO/docker-images/issues) and building our own is more flexible.
@@ -363,8 +376,8 @@ class _Image(Provider[_ImageHandle]):
             # softlinking can put conda in a broken state, surfacing error on uninstall like:
             # `No such device or address: '/usr/local/lib/libz.so' -> '/usr/local/lib/libz.so.c~'`
             "&& conda config --set allow_softlinks false \\ ",
-            # Install Python 3.9 from conda-forge channel; debian image has only 3.7.
-            "&& conda install --yes --channel conda-forge python=3.9 \\ ",
+            # Install requested Python version from conda-forge channel; base debian image has only 3.7.
+            f"&& conda install --yes --channel conda-forge python={python_version} \\ ",
             "&& conda update conda \\ ",
             # Remove now unneeded packages and files.
             "&& apt-get --quiet --yes remove curl bzip2 \\ ",
