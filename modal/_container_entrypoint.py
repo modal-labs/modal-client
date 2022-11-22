@@ -98,23 +98,18 @@ class _FunctionIOManager:
     async def initialize_app(self):
         await _App._init_container(self._client, self.app_id, self.task_id)
 
-    async def get_serialized_function(self) -> tuple[Optional[Any], Callable, bool]:
+    async def get_serialized_function(self) -> tuple[Optional[Any], Callable]:
         # Fetch the serialized function definition
         request = api_pb2.FunctionGetSerializedRequest(function_id=self.function_id)
         response = await self.client.stub.FunctionGetSerialized(request)
-        raw_f = cloudpickle.loads(response.function_serialized)
-        is_async = get_is_async(raw_f)
+        fun = cloudpickle.loads(response.function_serialized)
 
         if response.class_serialized:
             cls = cloudpickle.loads(response.class_serialized)
-            obj = cls()
         else:
-            obj = None
+            cls = None
 
-        # TODO(erikbern): there was some code here to create the _Function object,
-        # I think related to notebooks, but it was never used. Deleted it for now,
-        # will go back to it once we fix notebooks.
-        return obj, raw_f, is_async
+        return cls, fun
 
     def serialize(self, obj: Any) -> bytes:
         return serialize(obj)
@@ -433,12 +428,17 @@ async def call_function_async(
 
 
 @wrap()
-def import_function(function_def: api_pb2.Function) -> tuple[Any, Callable, bool]:
+def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> tuple[Any, Callable, bool]:
     # This is not in function_io_manager, so that any global scope code that runs during import
     # runs on the main thread.
-    module = importlib.import_module(function_def.module_name)
 
-    fun, cls = load_function_from_module(module, function_def.function_name)
+    if ser_fun is not None:
+        # This is a serialized function we already fetched from the server
+        cls, fun = ser_cls, ser_fun
+    else:
+        # Load the module dynamically
+        module = importlib.import_module(function_def.module_name)
+        fun, cls = load_function_from_module(module, function_def.function_name)
 
     # The decorator is typically in global scope, but may have been applied independently
     if isinstance(fun, (FunctionHandle, AioFunctionHandle)):
@@ -487,11 +487,16 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     function_io_manager.initialize_app()
 
     is_generator = function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
+
+    # If this is a serialized function, fetch the definition from the server
     if container_args.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
-        obj, fun, is_async = function_io_manager.get_serialized_function()
+        ser_cls, ser_fun = function_io_manager.get_serialized_function()
     else:
-        with function_io_manager.handle_user_exception():
-            obj, fun, is_async = import_function(container_args.function_def)
+        ser_cls, ser_fun = None, None
+
+    # Initialize the function
+    with function_io_manager.handle_user_exception():
+        obj, fun, is_async = import_function(container_args.function_def, ser_cls, ser_fun)
 
     if container_args.function_def.pty_info.enabled:
         from modal import container_app
