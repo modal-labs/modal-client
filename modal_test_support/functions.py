@@ -113,7 +113,7 @@ class WebhookLifecycleClass:
 
     async def __aexit__(self, typ, exc, tb):
         self._events.append("exit")
-        
+
     @stub.webhook
     def webhook(self, arg="world"):
         self._events.append("call")

@@ -9,8 +9,7 @@ import math
 import sys
 import time
 import traceback
-import types
-from typing import Any, AsyncIterator, Callable, Optional, Type
+from typing import Any, AsyncIterator, Callable, Optional
 
 import cloudpickle
 from grpclib import Status
@@ -99,7 +98,7 @@ class _FunctionIOManager:
     async def initialize_app(self):
         await _App._init_container(self._client, self.app_id, self.task_id)
 
-    async def get_serialized_function(self) -> tuple[Optional[object], Callable, bool]:
+    async def get_serialized_function(self) -> tuple[Optional[Any], Callable, bool]:
         # Fetch the serialized function definition
         request = api_pb2.FunctionGetSerializedRequest(function_id=self.function_id)
         response = await self.client.stub.FunctionGetSerialized(request)
@@ -348,7 +347,7 @@ FunctionIOManager, AioFunctionIOManager = synchronize_apis(_FunctionIOManager)
 
 def call_function_sync(
     function_io_manager,  #: FunctionIOManager,  # TODO: this type is generated in runtime
-    obj: Optional[object],
+    obj: Optional[Any],
     fun: Callable,
     is_generator: bool,
 ):
@@ -360,8 +359,6 @@ def call_function_sync(
                 obj.__enter__()
         elif hasattr(obj, "__aenter__"):
             logger.warning("Not running asynchronous enter/exit handlers with a sync function")
-    else:
-        self = None
 
     try:
         for input_id, args, kwargs in function_io_manager.run_inputs_outputs():
@@ -392,7 +389,7 @@ def call_function_sync(
 @wrap()
 async def call_function_async(
     aio_function_io_manager,  #: AioFunctionIOManager,  # TODO: this one too
-    obj: Optional[object],
+    obj: Optional[Any],
     fun: Callable,
     is_generator: bool,
 ):
@@ -402,11 +399,9 @@ async def call_function_async(
             # Call a user-defined method
             async with aio_function_io_manager.handle_user_exception():
                 await obj.__aenter__()
-        elif hasattr(cls, "__enter__"):
+        elif hasattr(obj, "__enter__"):
             async with aio_function_io_manager.handle_user_exception():
                 obj.__enter__()
-    else:
-        self = None
 
     try:
         async for input_id, args, kwargs in aio_function_io_manager.run_inputs_outputs():
@@ -431,14 +426,14 @@ async def call_function_async(
         if obj is not None:
             if hasattr(obj, "__aexit__"):
                 async with aio_function_io_manager.handle_user_exception():
-                    await obj.__aexit__( *sys.exc_info())
+                    await obj.__aexit__(*sys.exc_info())
             elif hasattr(obj, "__exit__"):
                 async with aio_function_io_manager.handle_user_exception():
                     obj.__exit__(*sys.exc_info())
 
 
 @wrap()
-def import_function(function_def: api_pb2.Function) -> tuple[object, Callable, bool]:
+def import_function(function_def: api_pb2.Function) -> tuple[Any, Callable, bool]:
     # This is not in function_io_manager, so that any global scope code that runs during import
     # runs on the main thread.
     module = importlib.import_module(function_def.module_name)
@@ -452,7 +447,7 @@ def import_function(function_def: api_pb2.Function) -> tuple[object, Callable, b
 
     # Check this property before we turn it into a method
     is_async = get_is_async(fun)
-        
+
     # Instantiate the class if it's defined
     if cls:
         obj = cls()
