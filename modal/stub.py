@@ -221,7 +221,7 @@ class _Stub:
                 logs_loop = tc.create_task(
                     output_mgr.get_logs_loop(app_id, client, status_spinner, last_log_entry_id or "")
                 )
-            initialized_msg = f"Initialized. [grey70]View app at [underline]{app._app_page_url}[/underline].[/grey70]"
+            initialized_msg = f"Initialized. [grey70]View app at [underline]{app._app_page_url}[/underline][/grey70]"
             output_mgr.print_if_visible(step_completed(initialized_msg))
 
             try:
