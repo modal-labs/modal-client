@@ -2,7 +2,7 @@
 
 black~=22.3.0
 flake8~=4.0.1
-grpcio-tools==1.48.0
+grpcio-tools==1.50.0
 grpclib==0.4.3
 httpx~=0.23.0
 invoke~=1.7.0
