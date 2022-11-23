@@ -776,7 +776,7 @@ class _Function(Provider[_FunctionHandle]):
             logger.debug(f"Serializing {self._raw_f.__qualname__}, size is {len(function_serialized)}")
             mod = inspect.getmodule(self._raw_f)
 
-            _, cls = load_function_from_module(mod, self._raw_f.__qualname__)
+            cls, _ = load_function_from_module(mod, self._raw_f.__qualname__)
             if cls:
                 class_serialized = cloudpickle.dumps(cls)
 

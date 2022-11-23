@@ -86,6 +86,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.fcidx = 0
         self.created_secrets = 0
 
+        self.function_serialized = None
+        self.class_serialized = None
+
         @self.function_body
         def default_function_body(*args, **kwargs):
             return sum(arg**2 for arg in args) + sum(value**2 for key, value in kwargs.items())
@@ -299,6 +302,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
             await stream.send_message(api_pb2.FunctionGetOutputsResponse(outputs=outputs))
         else:
             await stream.send_message(api_pb2.FunctionGetOutputsResponse(outputs=[]))
+
+    async def FunctionGetSerialized(self, stream):
+        await stream.send_message(
+            api_pb2.FunctionGetSerializedResponse(
+                function_serialized=self.function_serialized,
+                class_serialized=self.class_serialized,
+            )
+        )
 
     ### Image
 
