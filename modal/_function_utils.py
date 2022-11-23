@@ -198,4 +198,4 @@ def load_function_from_module(module, qual_name):
     if len(objs) >= 3:
         cls = objs[-2]
 
-    return fun, cls
+    return cls, fun
