@@ -274,6 +274,8 @@ class _Image(Provider[_ImageHandle]):
     def poetry_install_from_file(
         self,
         poetry_pyproject_toml: str,
+        poetry_lockfile: Optional[str] = None,
+        ignore_lockfile = False,
     ):
         """Install poetry dependencies specified by a pyproject.toml file.
 
@@ -292,12 +294,14 @@ class _Image(Provider[_ImageHandle]):
 
         context_files = {"/.pyproject.toml": poetry_pyproject_toml}
 
-        poetry_lockfile: Path = Path(poetry_pyproject_toml).parent / "poetry.lock"
-        if poetry_lockfile.exists():
-            context_files["/.poetry.lock"] = poetry_lockfile.as_posix()
+        if not ignore_lockfile:
+            if poetry_lockfile is None:
+                p = Path(poetry_pyproject_toml).parent / "poetry.lock"
+                if not p.exists():
+                    raise NotFoundError(f"poetry.lock not found at {p}")
+                poetry_lockfile = p.as_posix()
+            context_files["/.poetry.lock"] = poetry_lockfile
             dockerfile_commands += ["COPY /.poetry.lock /tmp/poetry/poetry.lock"]
-        else:
-            logger.warn("poetry.lock not found.")
 
         dockerfile_commands += [
             "COPY /.pyproject.toml /tmp/poetry/pyproject.toml",

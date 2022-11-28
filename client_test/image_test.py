@@ -5,7 +5,7 @@ import sys
 from typing import List
 
 from modal import Conda, DebianSlim, Image, Secret, SharedVolume, Stub
-from modal.exception import DeprecationError, InvalidError
+from modal.exception import DeprecationError, InvalidError, NotFoundError
 from modal.image import _dockerhub_python_version
 from modal_proto import api_pb2
 
@@ -179,3 +179,26 @@ def test_image_run_function(client, servicer):
     assert function_id
     assert servicer.app_functions[function_id].function_name == "run_f"
     assert len(servicer.app_functions[function_id].secret_ids) == 1
+
+
+def test_poetry(client, servicer):
+    path = os.path.join(os.path.dirname(__file__), "supports/pyproject.toml")
+
+    # No lockfile provided and there's no lockfile found
+    with pytest.raises(NotFoundError):
+        Image.debian_slim().poetry_install_from_file(path)
+
+    # Explicitly ignore lockfile - this should work
+    Image.debian_slim().poetry_install_from_file(path, ignore_lockfile=True)
+
+    # Provide lockfile explicitly - this should also work
+    lockfile_path = os.path.join(os.path.dirname(__file__), "supports/special_poetry.lock")
+    image = Image.debian_slim().poetry_install_from_file(path, lockfile_path)
+
+    # Build iamge
+    stub = Stub()
+    stub["image"] = image
+    with stub.run(client=client) as running_app:
+        layers = get_image_layers(running_app["image"].object_id, servicer)
+        context_files = {f.filename for layer in layers for f in layer.context_files}
+        assert context_files == {"/.poetry.lock", "/.pyproject.toml", "/modal_requirements.txt"}
