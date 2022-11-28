@@ -275,7 +275,7 @@ class _Image(Provider[_ImageHandle]):
         self,
         poetry_pyproject_toml: str,
         poetry_lockfile: Optional[str] = None,
-        ignore_lockfile = False,
+        ignore_lockfile=False,
     ):
         """Install poetry dependencies specified by a pyproject.toml file.
 
