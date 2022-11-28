@@ -274,13 +274,15 @@ class _Image(Provider[_ImageHandle]):
     def poetry_install_from_file(
         self,
         poetry_pyproject_toml: str,
-        poetry_lockfile: Optional[str] = None,
-        ignore_lockfile=False,
+        poetry_lockfile: Optional[
+            str
+        ] = None,  # Path to the lockfile. If not provided, uses poetry.lock in the same directory.
+        ignore_lockfile=False,  # If set to True, it will not use poetry.lock
     ):
         """Install poetry dependencies specified by a pyproject.toml file.
 
-        If a poetry.lock file exists in the same directory, then this will be
-        used to specify exact dependency versions instead.
+        The path to the lockfile is inferred, if not provided. However, the
+        file has to exist, unless `ignore_lockfile` is set to `True`.
         """
 
         poetry_pyproject_toml = os.path.expanduser(poetry_pyproject_toml)
