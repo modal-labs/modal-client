@@ -278,6 +278,7 @@ class _Image(Provider[_ImageHandle]):
             str
         ] = None,  # Path to the lockfile. If not provided, uses poetry.lock in the same directory.
         ignore_lockfile=False,  # If set to True, it will not use poetry.lock
+        old_installer=False,  # If set to True, use old installer. See https://github.com/python-poetry/poetry/issues/3336
     ):
         """Install poetry dependencies specified by a pyproject.toml file.
 
@@ -290,9 +291,10 @@ class _Image(Provider[_ImageHandle]):
         dockerfile_commands = [
             "FROM base",
             "RUN python -m pip install poetry",
-            # See https://github.com/python-poetry/poetry/issues/3336
-            "RUN poetry config experimental.new-installer false",
         ]
+
+        if old_installer:
+            dockerfile_commands += ["RUN poetry config experimental.new-installer false"]
 
         context_files = {"/.pyproject.toml": poetry_pyproject_toml}
 
