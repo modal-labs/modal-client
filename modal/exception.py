@@ -41,9 +41,12 @@ class ConnectionError(Error):
 class InvalidError(Error):
     """Raised when user does something invalid."""
 
+
 class LocalFunctionError(InvalidError):
     """Raised if a function declared in a non-global scope is used in an impermissible way"""
+
     pass
+
 
 class VersionError(Error):
     """Raised when the current client version of Modal is unsupported."""

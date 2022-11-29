@@ -238,6 +238,7 @@ def test_nonglobal_function():
 
 def test_non_global_serialized_function():
     stub = Stub()
+
     @stub.function(serialized=True)
     def f():
         pass
@@ -247,6 +248,7 @@ def test_closure_valued_serialized_function(client, servicer):
     stub = Stub()
 
     for s in ["foo", "bar"]:
+
         @stub.function(name=f"ret_{s}", serialized=True)
         def returner():
             return s
