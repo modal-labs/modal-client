@@ -40,7 +40,7 @@ from ._blob_utils import (
     blob_upload,
 )
 from ._call_graph import InputInfo, reconstruct_call_graph
-from ._function_utils import FunctionInfo, load_function_from_module
+from ._function_utils import FunctionInfo, load_function_from_module, LocalFunctionError
 from ._output import OutputManager
 from ._pty import get_pty_info
 from ._serialization import deserialize, serialize
@@ -603,7 +603,7 @@ class _Function(Provider[_FunctionHandle]):
 
     def __init__(
         self,
-        raw_f,
+        function_info: FunctionInfo,
         image=None,
         secrets: Collection[_Secret] = (),
         schedule: Optional[Schedule] = None,
@@ -623,10 +623,12 @@ class _Function(Provider[_FunctionHandle]):
         cpu: Optional[float] = None,
         keep_warm: bool = False,
         interactive: bool = False,
+        name: Optional[str] = None,
     ) -> None:
         """mdmd:hidden"""
+        raw_f = function_info.raw_f
         assert callable(raw_f)
-        self._info = FunctionInfo(raw_f, serialized)
+        self._info = FunctionInfo(raw_f, serialized, name_override=name)
         if schedule is not None:
             if not self._info.is_nullary():
                 raise InvalidError(
@@ -772,11 +774,18 @@ class _Function(Provider[_FunctionHandle]):
             # Use cloudpickle. Used when working w/ Jupyter notebooks.
             # serialize at _load time, not function decoration time
             # otherwise we can't capture a surrounding class for lifetime methods etc.
-            function_serialized = cloudpickle.dumps(self._raw_f)
-            logger.debug(f"Serializing {self._raw_f.__qualname__}, size is {len(function_serialized)}")
+            function_serialized = self._info.serialized_function
             mod = inspect.getmodule(self._raw_f)
 
-            cls, _ = load_function_from_module(mod, self._raw_f.__qualname__)
+            try:
+                cls, _ = load_function_from_module(mod, self._raw_f.__qualname__)
+            except LocalFunctionError:
+                # if a serialized function is defined within a function scope
+                # we can't load it from the module and detect its parent class
+                # TODO: fix this somehow... maybe put the decorator on the
+                #       class instead for entrypoint classes
+                cls = None
+
             if cls:
                 class_serialized = cloudpickle.dumps(cls)
 
