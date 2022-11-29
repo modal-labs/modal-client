@@ -253,7 +253,7 @@ def test_closure_valued_serialized_function(client, servicer):
         def returner():
             return s
 
-    with stub.run(client=client) as app:
+    with stub.run(client=client):
         pass
 
     functions = {}
