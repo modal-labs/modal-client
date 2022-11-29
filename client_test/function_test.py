@@ -236,6 +236,26 @@ def test_nonglobal_function():
     assert "global scope" in str(excinfo.value)
 
 
+def test_non_global_serialized_function():
+    stub = Stub()
+    @stub.function(serialized=True)
+    def f():
+        pass
+
+
+def test_closure_valued_serialized_function(client):
+    stub = Stub()
+
+    for s in ["foo", "bar"]:
+        @stub.function(name=f"add_{s}", serialized=True)
+        def adder(x):
+            return x + s
+
+    with stub.run(client=client) as app:
+        assert app.add_foo("hello") == "hellofoo"
+        assert app.add_bar("hello") == "hellobar"
+
+
 def test_gpu_true_function(client, servicer):
     stub = Stub()
 
