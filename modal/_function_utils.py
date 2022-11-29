@@ -12,7 +12,7 @@ import cloudpickle
 
 from modal_proto import api_pb2
 from .config import config, logger
-from .exception import InvalidError
+from .exception import InvalidError, LocalFunctionError
 from .mount import _Mount
 
 ROOT_DIR = "/root"
@@ -53,6 +53,10 @@ def _is_modal_path(remote_path: Union[str, Path]):
 def filter_safe_mounts(mounts: typing.Dict[str, _Mount]):
     # exclude mounts that would overwrite Modal
     return {local_dir: mount for local_dir, mount in mounts.items() if not _is_modal_path(mount._remote_dir)}
+
+
+def is_global_function(function_qual_name):
+    return "<locals>" not in function_qual_name.split(".")
 
 
 class FunctionInfo:
@@ -111,7 +115,7 @@ class FunctionInfo:
         if self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
             # Sanity check that this function is defined in global scope
             # Unfortunately, there's no "clean" way to do this in Python
-            if "<locals>" in self.function_name.split("."):
+            if not is_global_function(f.__qualname__):
                 raise InvalidError("Modal can only import functions defined in global scope")
 
     def get_mounts(self) -> Dict[str, _Mount]:
@@ -193,16 +197,13 @@ class FunctionInfo:
         return all(param.default is not param.empty for param in self.signature.parameters.values())
 
 
-class LocalFunctionError(Exception):
-    pass
-
-
 def load_function_from_module(module, qual_name):
     # The function might be defined inside a class scope (e.g mymodule.MyClass.f)
     objs: list[Any] = [module]
+    if not is_global_function(qual_name):
+        raise LocalFunctionError()
+
     for path in qual_name.split("."):
-        if path == "<locals>":
-            raise LocalFunctionError()
         # if a serialized function is defined within a function scope
         # we can't load it from the module and detect a class
         objs.append(getattr(objs[-1], path))

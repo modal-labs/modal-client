@@ -243,17 +243,24 @@ def test_non_global_serialized_function():
         pass
 
 
-def test_closure_valued_serialized_function(client):
+def test_closure_valued_serialized_function(client, servicer):
     stub = Stub()
 
     for s in ["foo", "bar"]:
-        @stub.function(name=f"add_{s}", serialized=True)
-        def adder(x):
-            return x + s
+        @stub.function(name=f"ret_{s}", serialized=True)
+        def returner():
+            return s
 
     with stub.run(client=client) as app:
-        assert app.add_foo("hello") == "hellofoo"
-        assert app.add_bar("hello") == "hellobar"
+        pass
+
+    functions = {}
+    for func in servicer.app_functions.values():
+        functions[func.function_name] = cloudpickle.loads(func.function_serialized)
+
+    assert len(functions) == 2
+    assert functions["ret_foo"]() == "foo"
+    assert functions["ret_bar"]() == "bar"
 
 
 def test_gpu_true_function(client, servicer):
