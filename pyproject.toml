@@ -27,4 +27,5 @@ filterwarnings = [
     "error::DeprecationWarning",
     "error::modal.exception.DeprecationError",
     "ignore::DeprecationWarning:pytest.*:",
+    "module:Jupyter is migrating its paths to use standard platformdirs:DeprecationWarning",
 ]
