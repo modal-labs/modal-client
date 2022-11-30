@@ -12,7 +12,7 @@ import cloudpickle
 
 from modal_proto import api_pb2
 from .config import config, logger
-from .exception import InvalidError, LocalFunctionError
+from .exception import InvalidError
 from .mount import _Mount
 
 ROOT_DIR = "/root"
@@ -30,6 +30,12 @@ SYS_PREFIXES = set(
         site.getusersitepackages(),
     )
 )
+
+
+class LocalFunctionError(InvalidError):
+    """Raised if a function declared in a non-global scope is used in an impermissible way"""
+
+    pass
 
 
 def package_mount_condition(filename):
@@ -116,7 +122,7 @@ class FunctionInfo:
             # Sanity check that this function is defined in global scope
             # Unfortunately, there's no "clean" way to do this in Python
             if not is_global_function(f.__qualname__):
-                raise InvalidError("Modal can only import functions defined in global scope")
+                raise LocalFunctionError("Modal can only import functions defined in global scope unless they are `serialized=True`")
 
     def get_mounts(self) -> Dict[str, _Mount]:
         if self.is_package:
@@ -201,7 +207,7 @@ def load_function_from_module(module, qual_name):
     # The function might be defined inside a class scope (e.g mymodule.MyClass.f)
     objs: list[Any] = [module]
     if not is_global_function(qual_name):
-        raise LocalFunctionError()
+        raise LocalFunctionError("Attempted to load a function defined in a function scope")
 
     for path in qual_name.split("."):
         # if a serialized function is defined within a function scope
