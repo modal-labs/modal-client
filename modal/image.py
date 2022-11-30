@@ -89,7 +89,6 @@ class _Image(Provider[_ImageHandle]):
         context_files={},
         dockerfile_commands: Union[list[str], Callable[[], list[str]]] = [],
         secrets=[],
-        version=None,
         ref=None,
         gpu=False,
         build_function=None,
@@ -111,7 +110,6 @@ class _Image(Provider[_ImageHandle]):
         self._base_images = base_images
         self._context_files = context_files
         self._dockerfile_commands = dockerfile_commands
-        self._version = version
         self._secrets = secrets
         self._gpu = gpu
         self._build_function = build_function
@@ -172,7 +170,6 @@ class _Image(Provider[_ImageHandle]):
             base_images=base_images_pb2s,
             dockerfile_commands=dockerfile_commands,
             context_files=context_file_pb2s,
-            version=self._version,
             secret_ids=secret_ids,
             gpu=self._gpu,
             build_function_def=build_function_def,
