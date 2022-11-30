@@ -15,7 +15,7 @@ from modal_utils.http_utils import http_client_with_tls
 from modal_utils.logger import logger
 
 # Max size for function inputs and outputs.
-MAX_OBJECT_SIZE_BYTES = 64 * 1024  # 64 kb
+MAX_OBJECT_SIZE_BYTES = 1024 * 1024  # 1MB
 
 #  If a file is LARGE_FILE_LIMIT bytes or larger, it's uploaded to blob store (s3) instead of going through grpc
 #  It will also make sure to chunk the hash calculation to avoid reading the entire file into memory
