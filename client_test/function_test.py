@@ -25,7 +25,7 @@ def dummy():
 
 def test_run_function(client):
     with stub.run(client=client):
-        assert foo(2, 4) == 20
+        assert foo.call(2, 4) == 20
 
 
 def test_map(client):
@@ -194,7 +194,7 @@ def test_function_exception(client, servicer):
 
     with stub.run(client=client):
         with pytest.raises(CustomException) as excinfo:
-            failure_modal()
+            failure_modal.call()
         assert "foo!" in str(excinfo.value)
 
 
@@ -208,7 +208,7 @@ def test_function_relative_import_hint(client, servicer):
     import_failure_modal = stub.function(servicer.function_body(import_failure))
     with stub.run(client=client):
         with pytest.raises(ImportError) as excinfo:
-            import_failure_modal()
+            import_failure_modal.call()
         assert "HINT" in str(excinfo.value)
 
 

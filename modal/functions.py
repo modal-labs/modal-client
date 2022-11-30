@@ -560,7 +560,17 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         client, object_id = self._get_context()
         return await _Invocation.create(object_id, args, kwargs, client)
 
+    def call(self, *args, **kwargs):
+        if self._is_generator:
+            return self.call_generator(args, kwargs)
+        else:
+            return self.call_function(args, kwargs)
+
     def __call__(self, *args, **kwargs):
+        deprecation_warning(
+            "Calling a function directly is deprecated. Use f.call(...) instead."
+            " In a future version of Modal, f(...) will be used to call a function in the same process."
+        )
         if self._is_generator:
             return self.call_generator(args, kwargs)
         else:

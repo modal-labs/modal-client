@@ -18,7 +18,7 @@ def test_shared_volume_files(client, test_dir, servicer):
     )(dummy)
 
     with stub.run(client=client):
-        dummy_modal()
+        dummy_modal.call()
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="TODO: implement client-side path check on Windows.")
@@ -32,16 +32,16 @@ def test_shared_volume_bad_paths(client, test_dir, servicer):
 
     with pytest.raises(InvalidError):
         with stub.run(client=client):
-            dummy_modal()
+            dummy_modal.call()
 
     dummy_modal = stub.function(dummy, shared_volumes={"/": modal.SharedVolume()})
 
     with pytest.raises(InvalidError):
         with stub.run(client=client):
-            dummy_modal()
+            dummy_modal.call()
 
     dummy_modal = stub.function(dummy, shared_volumes={"/tmp/": modal.SharedVolume()})
 
     with pytest.raises(InvalidError):
         with stub.run(client=client):
-            dummy_modal()
+            dummy_modal.call()
