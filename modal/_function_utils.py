@@ -122,7 +122,9 @@ class FunctionInfo:
             # Sanity check that this function is defined in global scope
             # Unfortunately, there's no "clean" way to do this in Python
             if not is_global_function(f.__qualname__):
-                raise LocalFunctionError("Modal can only import functions defined in global scope unless they are `serialized=True`")
+                raise LocalFunctionError(
+                    "Modal can only import functions defined in global scope unless they are `serialized=True`"
+                )
 
     def get_mounts(self) -> Dict[str, _Mount]:
         if self.is_package:
