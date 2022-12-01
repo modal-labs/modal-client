@@ -373,7 +373,10 @@ def call_function_sync(
                     function_io_manager.enqueue_generator_eof(input_id, output_index.value)
                 else:
                     if inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
-                        raise InvalidError(f"Sync (non-generator) function return value of type {type(res)}")
+                        raise InvalidError(
+                            f"Sync (non-generator) function return value of type {type(res)}."
+                            " You might need to use @stub.function(..., is_generator=True)."
+                        )
                     function_io_manager.enqueue_output(input_id, output_index.value, res)
     finally:
         if obj is not None and hasattr(obj, "__exit__"):
@@ -414,7 +417,10 @@ async def call_function_async(
                     await aio_function_io_manager.enqueue_generator_eof(input_id, output_index.value)
                 else:
                     if not inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
-                        raise InvalidError(f"Async (non-generator) function returned value of type {type(res)}")
+                        raise InvalidError(
+                            f"Async (non-generator) function returned value of type {type(res)}"
+                            " You might need to use @stub.function(..., is_generator=True)."
+                        )
                     value = await res
                     await aio_function_io_manager.enqueue_output(input_id, output_index.value, value)
     finally:

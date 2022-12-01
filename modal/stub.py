@@ -529,6 +529,7 @@ class _Stub:
         _is_build_step: bool = False,  # Whether function is a build step; reserved for internal use.
         keep_warm: bool = False,  # Toggles an adaptively-sized warm pool for latency-sensitive apps.
         name: Optional[str] = None,  # Sets the Modal name of the function within the stub
+        is_generator: Optional[bool] = None,  # If not set, it's inferred from the function signature
     ) -> _FunctionHandle:  # Function object - callable as a regular function within a Modal app
         """Decorator to register a new Modal function with this stub."""
         if image is None:
@@ -545,12 +546,15 @@ class _Stub:
             else:
                 self._blueprint["_pty_input_stream"] = _Queue()
 
+        if is_generator is None:
+            is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
+
         function = _Function(
             info,
             image=image,
             secrets=secrets,
             schedule=schedule,
-            is_generator=False,
+            is_generator=is_generator,
             gpu=gpu,
             rate_limit=rate_limit,
             serialized=serialized,
@@ -574,51 +578,10 @@ class _Stub:
         return self._add_function(function)
 
     @decorator_with_options
-    def generator(
-        self,
-        raw_f=None,  # The decorated function
-        *,
-        image: _Image = None,  # The image to run as the container for the function
-        secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
-        secrets: Collection[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
-        gpu: Union[bool, _GPUConfig] = False,  # Whether a GPU is required
-        rate_limit: Optional[RateLimit] = None,  # Optional RateLimit for the function
-        serialized: bool = False,  # Whether to send the function over using cloudpickle.
-        mounts: Collection[_Mount] = (),
-        shared_volumes: Dict[str, _SharedVolume] = {},
-        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
-        memory: Optional[int] = None,  # How much memory to request, in MB. This is a soft limit.
-        proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
-        retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
-        concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
-        timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
-        keep_warm: bool = False,  # Toggles an adaptively-sized warm pool for latency-sensitive apps.
-    ) -> _FunctionHandle:
-        """Decorator similar to `@modal.function`, but it wraps Python generators."""
-        if image is None:
-            image = self._get_default_image()
-        info = FunctionInfo(raw_f, serialized=serialized)
-        mounts = [*self._get_function_mounts(info), *mounts]
-        secrets = self._get_function_secrets(raw_f, secret, secrets)
-        function = _Function(
-            info,
-            image=image,
-            secrets=secrets,
-            is_generator=True,
-            gpu=gpu,
-            rate_limit=rate_limit,
-            serialized=serialized,
-            mounts=mounts,
-            shared_volumes=shared_volumes,
-            memory=memory,
-            proxy=proxy,
-            retries=retries,
-            concurrency_limit=concurrency_limit,
-            timeout=timeout,
-            keep_warm=keep_warm,
-            cpu=cpu,
-        )
-        return self._add_function(function)
+    def generator(self, raw_f=None, **kwargs) -> _FunctionHandle:
+        deprecation_warning("Stub.generator is deprecated. Use .function() instead.")
+        kwargs.update(dict(is_generator=True))
+        return self.function(raw_f, **kwargs)
 
     @decorator_with_options
     def webhook(

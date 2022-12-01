@@ -6,7 +6,7 @@ import time
 import cloudpickle
 
 from modal import Proxy, Stub
-from modal.exception import InvalidError
+from modal.exception import DeprecationError, InvalidError
 from modal.functions import FunctionCall, gather
 from modal.stub import AioStub
 from modal_proto import api_pb2
@@ -131,10 +131,22 @@ def later_gen():
 
 
 @pytest.mark.asyncio
+async def test_generator(client, servicer):
+    stub = Stub()
+
+    with pytest.warns(DeprecationError):
+        later_gen_modal = stub.generator(later_gen)
+    assert later_gen_modal.is_generator
+
+    later_gen_modal = stub.function(later_gen)
+    assert later_gen_modal.is_generator
+
+
+@pytest.mark.asyncio
 async def test_generator_future(client, servicer):
     stub = Stub()
 
-    later_gen_modal = stub.generator(later_gen)
+    later_gen_modal = stub.function(later_gen)
     with stub.run(client=client):
         assert later_gen_modal.submit() is None  # until we have a nice interface for polling generator futures
 
