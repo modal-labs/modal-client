@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 from datetime import date
 import sys
-from typing import Optional
 import warnings
 
 
@@ -70,9 +69,8 @@ def _is_internal_frame(frame):
     return module in _INTERNAL_MODULES
 
 
-def deprecation_error(deprecated_on: Optional[date], msg: str):
-    # TODO: include the date in the message!
-    raise DeprecationError(msg)
+def deprecation_error(deprecated_on: date, msg: str):
+    raise DeprecationError(f"Deprecated on {deprecated_on}: {msg}")
 
 
 def deprecation_warning(deprecated_on: date, msg: str):
