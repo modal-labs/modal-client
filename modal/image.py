@@ -13,7 +13,7 @@ from modal_utils.async_utils import synchronize_apis
 from modal_utils.grpc_utils import retry_transient_errors
 
 from .config import config, logger
-from .exception import InvalidError, NotFoundError, RemoteError, deprecation_warning
+from .exception import InvalidError, NotFoundError, RemoteError, deprecation_error
 from .object import Handle, Provider
 from .secret import _Secret
 
@@ -592,26 +592,22 @@ class _Image(Provider[_ImageHandle]):
 
 def _Conda():
     """mdmd:hidden"""
-    deprecation_warning("`modal.Conda` is deprecated. Please use `modal.Image.conda` instead")
-    return _Image.conda()
+    deprecation_error(None, "`modal.Conda` is deprecated. Please use `modal.Image.conda` instead")
 
 
 def _DockerhubImage(*args, **kwargs):
     """mdmd:hidden"""
-    deprecation_warning("`modal.DockerhubImage` is deprecated. Please use `modal.Image.from_dockerhub` instead")
-    return _Image.from_dockerhub(*args, **kwargs)
+    deprecation_error(None, "`modal.DockerhubImage` is deprecated. Please use `modal.Image.from_dockerhub` instead")
 
 
 def _DockerfileImage(*args, **kwargs):
     """mdmd:hidden"""
-    deprecation_warning("`modal.DockerfileImage` is deprecated. Please use `modal.Image.from_dockerfile` instead")
-    return _Image.from_dockerfile(*args, **kwargs)
+    deprecation_error(None, "`modal.DockerfileImage` is deprecated. Please use `modal.Image.from_dockerfile` instead")
 
 
 def _DebianSlim(*args, **kwargs):
     """mdmd:hidden"""
-    deprecation_warning("`modal.DebianSlim` is deprecated. Please use `modal.Image.debian_slim` instead")
-    return _Image.debian_slim(*args, **kwargs)
+    deprecation_error(None, "`modal.DebianSlim` is deprecated. Please use `modal.Image.debian_slim` instead")
 
 
 synchronize_apis(_ImageHandle)

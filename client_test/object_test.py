@@ -18,9 +18,8 @@ async def test_async_factory(servicer, client):
 @pytest.mark.asyncio
 async def test_use_object(servicer, client):
     stub = AioStub()
-    with pytest.warns(DeprecationError):
+    with pytest.raises(DeprecationError):
         stub["my_q_1"] = ref("foo-queue")
     stub["my_q_2"] = AioQueue.from_name("foo-queue")
     async with stub.run(client=client) as running_app:
-        assert running_app["my_q_1"].object_id == "qu-foo"
         assert running_app["my_q_2"].object_id == "qu-foo"

@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 from __future__ import annotations
 import asyncio
+from datetime import date
 import time
 
 from modal import Stub
@@ -57,7 +58,7 @@ def gen_n_fail_on_m(n, m):
 
 
 def deprecated_function(x):
-    deprecation_warning("This function is deprecated")
+    deprecation_warning(date(2000, 1, 1), "This function is deprecated")
     return x**2
 
 
