@@ -26,7 +26,6 @@ from grpclib.protocol import H2Protocol
 from sentry_sdk import capture_exception
 
 from modal_proto import api_pb2
-
 from .logger import logger
 
 
@@ -39,6 +38,12 @@ class Subchannel:
         self.protocol = protocol
         self.created_at = time.time()
         self.requests = 0
+
+    def connected(self):
+        if hasattr(self.protocol.handler, "connection_lost"):
+            # AbstractHandler doesn't have connection_lost, but Handler does
+            return not self.protocol.handler.connection_lost  # type: ignore
+        return True
 
 
 class ChannelPool(Channel):
@@ -74,6 +79,9 @@ class ChannelPool(Channel):
 
     async def __connect__(self):
         now = time.time()
+        # Remove any closed subchannels
+        while len(self._subchannels) > 0 and not self._subchannels[-1].connected():
+            self._subchannels.pop()
 
         # Close and delete any subchannels that are past their lifetime
         while len(self._subchannels) > 0 and now - self._subchannels[0].created_at > self._max_lifetime:
