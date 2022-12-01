@@ -55,6 +55,7 @@ async def test_channel_pool(servicer, n=1000):
 
     channel_pool.close()
 
+
 @pytest.mark.asyncio
 async def test_channel_pool_closed_transport(servicer):
     channel_pool = create_channel(servicer.remote_addr, use_pool=True)
@@ -68,6 +69,7 @@ async def test_channel_pool_closed_transport(servicer):
     resp = await client_stub.BlobCreate(req)  # this should close the terminated connection and start a new one
     assert resp.blob_id
     channel_pool.close()
+
 
 @pytest.mark.asyncio
 async def test_channel_pool_max_active(servicer):
