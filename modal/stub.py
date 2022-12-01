@@ -449,7 +449,7 @@ class _Stub:
     def _pty_input_stream(self):
         return self._blueprint.get("_pty_input_stream", None)
 
-    def _get_function_mounts(self, raw_f):
+    def _get_function_mounts(self, function_info: FunctionInfo):
         # Get the common mounts for the stub.
         mounts = list(self._mounts)
 
@@ -464,8 +464,7 @@ class _Stub:
         mounts.append(self._client_mount)
 
         # Create function mounts
-        info = FunctionInfo(raw_f)
-        for key, mount in info.get_mounts().items():
+        for key, mount in function_info.get_mounts().items():
             if key not in self._function_mounts:
                 self._function_mounts[key] = mount
             mounts.append(self._function_mounts[key])
@@ -529,11 +528,13 @@ class _Stub:
         interactive: bool = False,  # Whether to run the function in interactive mode.
         _is_build_step: bool = False,  # Whether function is a build step; reserved for internal use.
         keep_warm: bool = False,  # Toggles an adaptively-sized warm pool for latency-sensitive apps.
+        name: Optional[str] = None,  # Sets the Modal name of the function within the stub
     ) -> _FunctionHandle:  # Function object - callable as a regular function within a Modal app
         """Decorator to register a new Modal function with this stub."""
         if image is None:
             image = self._get_default_image()
-        mounts = [*self._get_function_mounts(raw_f), *mounts]
+        info = FunctionInfo(raw_f, serialized=serialized, name_override=name)
+        mounts = [*self._get_function_mounts(info), *mounts]
         secrets = self._get_function_secrets(raw_f, secret, secrets)
 
         if interactive:
@@ -545,7 +546,7 @@ class _Stub:
                 self._blueprint["_pty_input_stream"] = _Queue()
 
         function = _Function(
-            raw_f,
+            info,
             image=image,
             secrets=secrets,
             schedule=schedule,
@@ -563,6 +564,7 @@ class _Stub:
             cpu=cpu,
             interactive=interactive,
             keep_warm=keep_warm,
+            name=name,
         )
 
         if _is_build_step:
@@ -595,10 +597,11 @@ class _Stub:
         """Decorator similar to `@modal.function`, but it wraps Python generators."""
         if image is None:
             image = self._get_default_image()
-        mounts = [*self._get_function_mounts(raw_f), *mounts]
+        info = FunctionInfo(raw_f, serialized=serialized)
+        mounts = [*self._get_function_mounts(info), *mounts]
         secrets = self._get_function_secrets(raw_f, secret, secrets)
         function = _Function(
-            raw_f,
+            info,
             image=image,
             secrets=secrets,
             is_generator=True,
@@ -654,10 +657,11 @@ class _Stub:
         """
         if image is None:
             image = self._get_default_image()
-        mounts = [*self._get_function_mounts(raw_f), *mounts]
+        info = FunctionInfo(raw_f)
+        mounts = [*self._get_function_mounts(info), *mounts]
         secrets = self._get_function_secrets(raw_f, secret, secrets)
         function = _Function(
-            raw_f,
+            info,
             image=image,
             secrets=secrets,
             is_generator=True,
@@ -710,10 +714,11 @@ class _Stub:
         """
         if image is None:
             image = self._get_default_image()
-        mounts = [*self._get_function_mounts(asgi_app), *mounts]
+        info = FunctionInfo(asgi_app)
+        mounts = [*self._get_function_mounts(info), *mounts]
         secrets = self._get_function_secrets(asgi_app, secret, secrets)
         function = _Function(
-            asgi_app,
+            info,
             image=image,
             secrets=secrets,
             is_generator=True,
