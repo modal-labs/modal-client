@@ -48,7 +48,7 @@ from ._traceback import append_modal_tb
 from .client import _Client
 from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError
 from .exception import TimeoutError as _TimeoutError
-from .exception import deprecation_warning
+from .exception import deprecation_error
 from .gpu import _GPUConfig
 from .image import _Image
 from .mount import _Mount
@@ -564,11 +564,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
 
         Calls the function with the given arguments, without waiting for the results.
         """
-        deprecation_warning("Function.enqueue is deprecated, use .submit() instead")
-        if self._is_generator:
-            await self._call_generator_nowait(args, kwargs)
-        else:
-            await self.call_function_nowait(args, kwargs)
+        deprecation_error(None, "Function.enqueue is deprecated, use .submit() instead")
 
     async def submit(self, *args, **kwargs) -> Optional["_FunctionCall"]:
         """Calls the function with the given arguments, without waiting for the results.

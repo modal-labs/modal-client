@@ -16,7 +16,7 @@ from modal_utils.async_utils import synchronize_apis
 
 from ._object_meta import ObjectMeta
 from .client import _Client
-from .exception import InvalidError, NotFoundError, deprecation_warning
+from .exception import InvalidError, NotFoundError, deprecation_error
 
 if TYPE_CHECKING:
     from .stub import _Stub
@@ -239,7 +239,6 @@ class PersistedRef(Ref[H]):
         return cast(H, handle)
 
 
-def ref(app_name: str, tag: Optional[str] = None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT) -> Ref:
+def ref(app_name: str, tag: Optional[str] = None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT):
     """`modal.ref` is deprecated. Please use `modal.Secret.from_name` instead."""
-    deprecation_warning(ref.__doc__)
-    return RemoteRef(app_name, tag, namespace)
+    deprecation_error(None, ref.__doc__)
