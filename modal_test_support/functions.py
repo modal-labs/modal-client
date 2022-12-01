@@ -11,44 +11,44 @@ SLEEP_DELAY = 0.1
 stub = Stub()
 
 
-@stub.function()
+@stub.function
 def square(x):
     return x * x
 
 
-@stub.function()
+@stub.function
 def delay(t):
     time.sleep(t)
 
 
-@stub.function()
+@stub.function
 async def square_async(x):
     await asyncio.sleep(SLEEP_DELAY)
     return x * x
 
 
-@stub.function()
+@stub.function
 def raises(x):
     raise Exception("Failure!")
 
 
-@stub.function()
+@stub.function
 def raises_sysexit(x):
     raise SystemExit(1)
 
 
-@stub.function()
+@stub.function
 def raises_keyboardinterrupt(x):
     raise KeyboardInterrupt()
 
 
-@stub.generator()
+@stub.function
 def gen_n(n):
     for i in range(n):
         yield i**2
 
 
-@stub.generator()
+@stub.function
 def gen_n_fail_on_m(n, m):
     for i in range(n):
         if i == m:
@@ -73,7 +73,7 @@ class Cube:
     def __exit__(self, typ, exc, tb):
         self._events.append("exit")
 
-    @stub.function()
+    @stub.function
     def f(self, x):
         self._events.append("call")
         return x**3
@@ -91,7 +91,7 @@ class CubeAsync:
     async def __aexit__(self, typ, exc, tb):
         self._events.append("exit")
 
-    @stub.function()
+    @stub.function
     async def f(self, x):
         self._events.append("call")
         return x**3
@@ -122,3 +122,13 @@ class WebhookLifecycleClass:
 
 if __name__ == "__main__":
     raise Exception("This line is not supposed to be reachable")
+
+
+def gen(n):
+    for i in range(n):
+        yield i**2
+
+
+@stub.function(is_generator=True)
+def fun_returning_gen(n):
+    return gen(n)
