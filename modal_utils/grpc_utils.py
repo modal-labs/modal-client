@@ -42,7 +42,7 @@ class Subchannel:
     def connected(self):
         if hasattr(self.protocol.handler, "connection_lost"):
             # AbstractHandler doesn't have connection_lost, but Handler does
-            return not self.protocol.handler.connection_lost
+            return not self.protocol.handler.connection_lost  # type: ignore
         return True
 
 
