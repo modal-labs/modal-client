@@ -206,10 +206,15 @@ class _App:
         return _App(stub, client, existing_app_id, app_page_url, tag_to_existing_id=dict(obj_resp.object_ids))
 
     @staticmethod
-    async def _init_new(stub, client, description, detach) -> "_App":
+    async def _init_new(stub, client, description, detach, deploying) -> "_App":
         # Start app
         # TODO(erikbern): maybe this should happen outside of this method?
-        app_req = api_pb2.AppCreateRequest(client_id=client.client_id, description=description, detach=detach)
+        app_req = api_pb2.AppCreateRequest(
+            client_id=client.client_id,
+            description=description,
+            deploying=deploying,
+            detach=detach,
+        )
         app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
         app_page_url = app_resp.app_logs_url
         logger.debug(f"Created new app with id {app_resp.app_id}")
