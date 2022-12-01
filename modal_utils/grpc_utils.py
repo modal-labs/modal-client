@@ -40,7 +40,10 @@ class Subchannel:
         self.requests = 0
 
     def connected(self):
-        return not self.protocol.handler.connection_lost  # noqa
+        if hasattr(self.protocol.handler, "connection_lost"):
+            # AbstractHandler doesn't have connection_lost, but Handler does
+            return not self.protocol.handler.connection_lost
+        return True
 
 
 class ChannelPool(Channel):
