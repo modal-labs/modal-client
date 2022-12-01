@@ -16,7 +16,7 @@ from modal_version import __version__
 
 from ._blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec
 from .config import logger
-from .exception import InvalidError, NotFoundError, deprecation_warning
+from .exception import InvalidError, NotFoundError
 from .object import Handle, Provider
 
 
@@ -247,14 +247,6 @@ async def _create_package_mounts(module_names: Collection[str]) -> List[_Mount]:
                     )
                 )
     return mounts
-
-
-async def _create_package_mount(module_name: str):
-    """mdmd:hidden"""
-    deprecation_warning("`create_package_mount` is deprecated. Please use `create_package_mounts` instead.")
-    mounts = await _create_package_mounts([module_name])
-    assert len(mounts) == 1
-    return mounts[0]
 
 
 create_package_mount, aio_create_package_mount = synchronize_apis(_create_package_mount)

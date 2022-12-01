@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import contextlib
+from datetime import date
 import inspect
 import os
 import sys
@@ -309,12 +310,6 @@ class _Stub:
         async with self._run(client, output_mgr, existing_app_id=None, mode=mode) as app:
             yield app
 
-    async def run_forever(self, client=None, stdout=None, show_progress=None) -> None:
-        """**Deprecated.** Use `.serve()` instead."""
-
-        deprecation_warning("Stub.run_forever is deprecated, use .serve() instead")
-        await self.serve(client, stdout, show_progress)
-
     async def serve(self, client=None, stdout=None, show_progress=None, timeout=None) -> None:
         """Run an app until the program is interrupted. Modal watches source files
         and mounts for the app, and live updates the app when any changes are detected.
@@ -579,7 +574,7 @@ class _Stub:
 
     @decorator_with_options
     def generator(self, raw_f=None, **kwargs) -> _FunctionHandle:
-        deprecation_warning("Stub.generator is deprecated. Use .function() instead.")
+        deprecation_warning(date(2022, 12, 1), "Stub.generator is deprecated. Use .function() instead.")
         kwargs.update(dict(is_generator=True))
         return self.function(raw_f, **kwargs)
 

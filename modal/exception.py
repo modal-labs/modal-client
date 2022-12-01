@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+from datetime import date
 import sys
 import warnings
 
@@ -68,7 +69,7 @@ def _is_internal_frame(frame):
     return module in _INTERNAL_MODULES
 
 
-def deprecation_warning(msg):
+def deprecation_warning(deprecated_on: date, msg: str):
     """Utility for getting the proper stack entry
 
     See the implementation of the built-in [warnings.warn](https://docs.python.org/3/library/warnings.html#available-functions).
@@ -86,4 +87,4 @@ def deprecation_warning(msg):
         lineno = 0
 
     # This is a lower-level function that warnings.warn uses
-    warnings.warn_explicit(msg, DeprecationError, filename, lineno)
+    warnings.warn_explicit(f"Deprecated on {deprecated_on}: {msg}", DeprecationError, filename, lineno)
