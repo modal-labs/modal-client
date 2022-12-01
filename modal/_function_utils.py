@@ -8,6 +8,8 @@ import typing
 from pathlib import Path
 from typing import Dict, Union, Any, Optional, Type, Callable
 
+import cloudpickle
+
 from modal_proto import api_pb2
 from .config import config, logger
 from .exception import InvalidError
@@ -28,6 +30,12 @@ SYS_PREFIXES = set(
         site.getusersitepackages(),
     )
 )
+
+
+class LocalFunctionError(InvalidError):
+    """Raised if a function declared in a non-global scope is used in an impermissible way"""
+
+    pass
 
 
 def package_mount_condition(filename):
@@ -53,13 +61,18 @@ def filter_safe_mounts(mounts: typing.Dict[str, _Mount]):
     return {local_dir: mount for local_dir, mount in mounts.items() if not _is_modal_path(mount._remote_dir)}
 
 
+def is_global_function(function_qual_name):
+    return "<locals>" not in function_qual_name.split(".")
+
+
 class FunctionInfo:
-    """Class the helps us extracting a bunch of information about a function."""
+    """Class the helps us extract a bunch of information about a function."""
 
     # TODO: we should have a bunch of unit tests for this
     # TODO: if the function is declared in a local scope, this function still "works": we should throw an exception
-    def __init__(self, f, serialized=False):
-        self.function_name = f.__qualname__
+    def __init__(self, f, serialized=False, name_override: Optional[str] = None):
+        self.raw_f = f
+        self.function_name = name_override if name_override is not None else f.__qualname__
         self.signature = inspect.signature(f)
         module = inspect.getmodule(f)
 
@@ -85,6 +98,7 @@ class FunctionInfo:
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
             self.is_package = True
             self.is_file = False
+            self.serialized_function = None
         elif hasattr(module, "__file__") and not serialized:
             # This generally covers the case where it's invoked with
             # python foo/bar/baz.py
@@ -94,18 +108,23 @@ class FunctionInfo:
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
             self.is_package = False
             self.is_file = True
+            self.serialized_function = None
         else:
             self.module_name = None
             self.base_dir = os.path.abspath("")  # get current dir
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_SERIALIZED
             self.is_package = False
             self.is_file = False
+            self.serialized_function = cloudpickle.dumps(self.raw_f)
+            logger.debug(f"Serializing {self.raw_f.__qualname__}, size is {len(self.serialized_function)}")
 
         if self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
             # Sanity check that this function is defined in global scope
             # Unfortunately, there's no "clean" way to do this in Python
-            if "<locals>" in self.function_name.split("."):
-                raise InvalidError("Modal can only import functions defined in global scope")
+            if not is_global_function(f.__qualname__):
+                raise LocalFunctionError(
+                    "Modal can only import functions defined in global scope unless they are `serialized=True`"
+                )
 
     def get_mounts(self) -> Dict[str, _Mount]:
         if self.is_package:
@@ -189,7 +208,12 @@ class FunctionInfo:
 def load_function_from_module(module, qual_name):
     # The function might be defined inside a class scope (e.g mymodule.MyClass.f)
     objs: list[Any] = [module]
+    if not is_global_function(qual_name):
+        raise LocalFunctionError("Attempted to load a function defined in a function scope")
+
     for path in qual_name.split("."):
+        # if a serialized function is defined within a function scope
+        # we can't load it from the module and detect a class
         objs.append(getattr(objs[-1], path))
 
     # If this function is defined on a class, return that too

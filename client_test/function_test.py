@@ -236,6 +236,35 @@ def test_nonglobal_function():
     assert "global scope" in str(excinfo.value)
 
 
+def test_non_global_serialized_function():
+    stub = Stub()
+
+    @stub.function(serialized=True)
+    def f():
+        pass
+
+
+def test_closure_valued_serialized_function(client, servicer):
+    stub = Stub()
+
+    for s in ["foo", "bar"]:
+
+        @stub.function(name=f"ret_{s}", serialized=True)
+        def returner():
+            return s
+
+    with stub.run(client=client):
+        pass
+
+    functions = {}
+    for func in servicer.app_functions.values():
+        functions[func.function_name] = cloudpickle.loads(func.function_serialized)
+
+    assert len(functions) == 2
+    assert functions["ret_foo"]() == "foo"
+    assert functions["ret_bar"]() == "bar"
+
+
 def test_gpu_true_function(client, servicer):
     stub = Stub()
 
