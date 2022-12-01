@@ -442,6 +442,10 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         function_handle = self._get_live_handle()
         return function_handle._web_url
 
+    @property
+    def is_generator(self) -> bool:
+        return self._is_generator
+
     async def _map(self, input_stream: AsyncIterable, order_outputs: bool, kwargs={}):
         if order_outputs and self._is_generator:
             raise ValueError("Can't return ordered results for a generator")
