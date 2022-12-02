@@ -17,7 +17,7 @@ from modal_utils.async_utils import (
 
 skip_github_non_linux = pytest.mark.skipif(
     (os.environ.get("GITHUB_ACTIONS") == "true" and platform.system() != "Linux"),
-    reason="sleep is inaccurate on Github Actions runners.",
+    reason="sleep is inaccurate on GitHub Actions runners.",
 )
 
 

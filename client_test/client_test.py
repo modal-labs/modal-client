@@ -117,7 +117,7 @@ async def test_client_unauthenticated(servicer):
             pass
 
 
-@pytest.mark.skipif(os.environ.get("GITHUB_ACTIONS") == "true", reason="Flakes in Github Actions")
+@pytest.mark.skipif(os.environ.get("GITHUB_ACTIONS") == "true", reason="Flakes in GitHub Actions")
 @pytest.mark.asyncio
 async def test_server_client_gone_disconnects_client(servicer):
     async with AioClient(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
