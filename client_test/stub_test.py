@@ -154,7 +154,7 @@ def test_same_function_name(caplog):
 
 skip_in_github = pytest.mark.skipif(
     os.environ.get("GITHUB_ACTIONS") == "true",
-    reason="Broken in Github Actions",
+    reason="Broken in GitHub Actions",
 )
 
 
