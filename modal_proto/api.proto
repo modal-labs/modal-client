@@ -20,6 +20,9 @@ enum AppState {
 
   // Stopped
   APP_STATE_STOPPED = 5;
+
+  // App is created and in process of deployment.
+  APP_STATE_DEPLOYING = 6;
 }
 
 enum ClientType {
@@ -77,6 +80,7 @@ message AppCreateRequest {
   string client_id = 1;
   string description = 2;    // Human readable label for the website
   bool detach = 3;
+  bool deploying = 4;
 }
 
 message AppCreateResponse {
