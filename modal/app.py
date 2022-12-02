@@ -160,6 +160,7 @@ class _App:
         logger.debug("Sending app disconnect/stop request")
         req_disconnect = api_pb2.AppClientDisconnectRequest(app_id=self._app_id)
         await retry_transient_errors(self._client.stub.AppClientDisconnect, req_disconnect)
+        logger.debug("App disconnected")
 
     def log_url(self):
         return self._app_page_url
