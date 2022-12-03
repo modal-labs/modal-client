@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from modal_proto import api_pb2
 
@@ -39,9 +39,13 @@ def reconstruct_call_graph(ser_graph: api_pb2.FunctionGetCallGraphResponse) -> L
     input_info_by_id: Dict[str, InputInfo] = {}
     result = []
 
-    def _reconstruct(input_id: str) -> InputInfo:
+    def _reconstruct(input_id: str) -> Optional[InputInfo]:
         if input_id in input_info_by_id:
             return input_info_by_id[input_id]
+
+        # Input info can be missing, because input retention is limited.
+        if input_id not in inputs_by_id:
+            return None
 
         input = inputs_by_id[input_id]
         function_call = function_calls_by_id[input.function_call_id]
@@ -57,7 +61,8 @@ def reconstruct_call_graph(ser_graph: api_pb2.FunctionGetCallGraphResponse) -> L
         if function_call.parent_input_id:
             # Find parent and append to list of children.
             parent = _reconstruct(function_call.parent_input_id)
-            parent.children.append(input_info_by_id[input_id])
+            if parent:
+                parent.children.append(input_info_by_id[input_id])
         else:
             # Top-level input.
             result.append(input_info_by_id[input_id])
