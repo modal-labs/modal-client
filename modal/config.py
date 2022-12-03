@@ -229,7 +229,6 @@ def _sentry_exit_callback(pending, timeout):
 MODAL_PACKAGE_PATHS = [*modal.__path__, *modal_utils.__path__, *grpclib.__path__]
 FILTERED_ERROR_TYPES = [InvalidError, AuthError, VersionError]
 FILTERED_FUNCTIONS = ["_process_result"]
-ACCEPTED_MESSAGES = ["CUDA", "NVIDIA"]
 
 
 def _filter_exceptions(event, hint):
@@ -238,12 +237,8 @@ def _filter_exceptions(event, hint):
     try:
         source = event.get("exception") or event.get("threads")
         if source is None:
-            return event
-
-        message = source.get("values")[0].get("value", "")
-
-        if any([m in message for m in ACCEPTED_MESSAGES]):
-            return event
+            # Ignore events without a stacktrace.
+            return None
 
         last_frame = source["values"][0]["stacktrace"]["frames"][-1]
         exc_origin_function: str = last_frame["function"]
