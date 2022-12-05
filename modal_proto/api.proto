@@ -343,7 +343,7 @@ message Function {
   PTYInfo pty_info = 22;
   bytes class_serialized = 23;
   
-  float task_idle_timeout_secs = 24;
+  uint32 task_idle_timeout_secs = 25;
 }
 
 message FunctionCreateRequest {
