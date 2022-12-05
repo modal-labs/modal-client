@@ -168,6 +168,7 @@ def test_serve(client):
     stub.serve(client=client, timeout=1)
 
 
+@skip_in_github
 def test_serve_teardown(client, servicer):
     stub = Stub()
     with modal.client.Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
