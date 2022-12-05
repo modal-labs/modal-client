@@ -2,12 +2,15 @@
 import logging
 import os
 import pytest
+import sys
 
 from grpclib import GRPCError, Status
 
+import modal.app
 from modal import Stub
 from modal.aio import AioApp, AioQueue, AioStub, aio_lookup
 from modal.exception import InvalidError, NotFoundError
+from modal_proto import api_pb2
 from modal_test_support import module_1, module_2
 
 
@@ -164,6 +167,22 @@ def test_serve(client):
 
     stub.wsgi(dummy)
     stub.serve(client=client, timeout=1)
+
+
+@pytest.mark.skipif(
+    sys.version.startswith("3.7"),
+    reason="AsyncMock only introduced in Python 3.8",
+)
+def test_serve_teardown(client, servicer):
+    from unittest.mock import AsyncMock, patch
+
+    stub = Stub()
+    fake_disconnect = AsyncMock()
+    with modal.client.Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
+        with patch.object(modal.app._App, "disconnect", fake_disconnect):
+            stub.wsgi(dummy)
+            stub.serve(client=client, timeout=1)
+    assert fake_disconnect.called
 
 
 # Required as failing to raise could cause test to never return.
