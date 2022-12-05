@@ -5,9 +5,11 @@ import pytest
 
 from grpclib import GRPCError, Status
 
+import modal.app
 from modal import Stub
 from modal.aio import AioApp, AioQueue, AioStub, aio_lookup
 from modal.exception import InvalidError, NotFoundError
+from modal_proto import api_pb2
 from modal_test_support import module_1, module_2
 
 
@@ -164,6 +166,17 @@ def test_serve(client):
 
     stub.wsgi(dummy)
     stub.serve(client=client, timeout=1)
+
+
+@skip_in_github
+def test_serve_teardown(client, servicer):
+    stub = Stub()
+    with modal.client.Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
+        stub.wsgi(dummy)
+        stub.serve(client=client, timeout=1)
+
+    disconnect_reqs = [s for s in servicer.requests if isinstance(s, api_pb2.AppClientDisconnectRequest)]
+    assert len(disconnect_reqs) == 1
 
 
 # Required as failing to raise could cause test to never return.
