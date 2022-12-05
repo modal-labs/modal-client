@@ -141,6 +141,12 @@ class _Client:
 
     def set_pre_stop(self, pre_stop: Callable[[], None]):
         """mdmd:hidden"""
+        # hack: stub.serve() gets into a losing race with the `on_shutdown` client
+        # teardown when an interrupt signal is received (eg. KeyboardInterrupt).
+        # By registering a pre-stop fn stub.serve() can have its teardown
+        # performed before the client is disconnected.
+        #
+        # ref: github.com/modal-labs/modal-client/pull/108
         if self._pre_stop:
             raise ValueError("Client's pre-stop is already set.")
         self._pre_stop = pre_stop
