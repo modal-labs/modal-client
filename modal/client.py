@@ -139,7 +139,7 @@ class _Client:
 
         logger.debug("Client: Done starting")
 
-    async def set_pre_stop(self, pre_stop: Callable[[], None]):
+    def set_pre_stop(self, pre_stop: Callable[[], None]):
         """mdmd:hidden"""
         if self._pre_stop:
             raise ValueError("Client's pre-stop is already set.")
