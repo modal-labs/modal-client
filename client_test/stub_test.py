@@ -2,7 +2,6 @@
 import logging
 import os
 import pytest
-import sys
 
 from grpclib import GRPCError, Status
 
@@ -169,20 +168,14 @@ def test_serve(client):
     stub.serve(client=client, timeout=1)
 
 
-@pytest.mark.skipif(
-    sys.version.startswith("3.7"),
-    reason="AsyncMock only introduced in Python 3.8",
-)
 def test_serve_teardown(client, servicer):
-    from unittest.mock import AsyncMock, patch
-
     stub = Stub()
-    fake_disconnect = AsyncMock()
     with modal.client.Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
-        with patch.object(modal.app._App, "disconnect", fake_disconnect):
-            stub.wsgi(dummy)
-            stub.serve(client=client, timeout=1)
-    assert fake_disconnect.called
+        stub.wsgi(dummy)
+        stub.serve(client=client, timeout=1)
+
+    disconnect_reqs = [s for s in servicer.requests if isinstance(s, api_pb2.AppClientDisconnectRequest)]
+    assert len(disconnect_reqs) == 1
 
 
 # Required as failing to raise could cause test to never return.
