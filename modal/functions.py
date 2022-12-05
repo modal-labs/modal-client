@@ -619,6 +619,7 @@ class _Function(Provider[_FunctionHandle]):
         retries: Optional[Union[int, Retries]] = None,
         timeout: Optional[int] = None,
         concurrency_limit: Optional[int] = None,
+        container_idle_timeout: Optional[int] = None,
         cpu: Optional[float] = None,
         keep_warm: bool = False,
         interactive: bool = False,
@@ -657,7 +658,7 @@ class _Function(Provider[_FunctionHandle]):
                 raise InvalidError(f"Function {raw_f} retries must be between 0 and 10.")
 
             # TODO(Jonathon): Right now we can only support a maximum delay of 60 seconds
-            # b/c the CONTAINER_IDLE_TIMEOUT is the maximum time a container will wait for inputs,
+            # b/c the DEFAULT_CONTAINER_IDLE_TIMEOUT is the maximum time a container will wait for inputs,
             # after which it will exit 0 and the task is marked finished.
             if not (timedelta(seconds=1) < retry_policy.max_delay <= timedelta(seconds=60)):
                 raise InvalidError(
@@ -685,6 +686,7 @@ class _Function(Provider[_FunctionHandle]):
         self._retry_policy = retry_policy
         self._timeout = timeout
         self._concurrency_limit = concurrency_limit
+        self._container_idle_timeout = container_idle_timeout
         self._keep_warm = keep_warm
         self._interactive = interactive
         self._tag = self._info.get_tag()
@@ -811,6 +813,7 @@ class _Function(Provider[_FunctionHandle]):
             proxy_id=proxy_id,
             retry_policy=retry_policy,
             timeout_secs=self._timeout,
+            task_idle_timeout_secs=self._container_idle_timeout,
             concurrency_limit=self._concurrency_limit,
             keep_warm=self._keep_warm,
             pty_info=pty_info,
