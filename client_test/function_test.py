@@ -96,7 +96,7 @@ def test_function_future(client, servicer):
     later_modal = stub.function(servicer.function_body(later))
 
     with stub.run(client=client):
-        future = later_modal.submit()
+        future = later_modal.spawn()
         assert isinstance(future, FunctionCall)
 
         servicer.function_is_running = True
@@ -108,6 +108,13 @@ def test_function_future(client, servicer):
         servicer.function_is_running = False
         assert future.get(0.01) == "hello"
 
+        with pytest.warns(DeprecationError):
+            future = later_modal.submit()
+            assert isinstance(future, FunctionCall)
+
+        servicer.function_is_running = True
+        assert future.object_id == "fc-2"
+
 
 @pytest.mark.asyncio
 async def test_function_future_async(client, servicer):
@@ -116,7 +123,7 @@ async def test_function_future_async(client, servicer):
     later_modal = stub.function(servicer.function_body(later))
 
     async with stub.run(client=client):
-        future = await later_modal.submit()
+        future = await later_modal.spawn()
         servicer.function_is_running = True
 
         with pytest.raises(TimeoutError):
@@ -148,7 +155,7 @@ async def test_generator_future(client, servicer):
 
     later_gen_modal = stub.function(later_gen)
     with stub.run(client=client):
-        assert later_gen_modal.submit() is None  # until we have a nice interface for polling generator futures
+        assert later_gen_modal.spawn() is None  # until we have a nice interface for polling generator futures
 
 
 async def slo1(sleep_seconds):
@@ -165,7 +172,7 @@ def test_sync_parallelism(client, servicer):
     with stub.run(client=client):
         t0 = time.time()
         # NOTE tests breaks in macOS CI if the smaller time is smaller than ~300ms
-        res = gather(slo1_modal.submit(0.31), slo1_modal.submit(0.3))
+        res = gather(slo1_modal.spawn(0.31), slo1_modal.spawn(0.3))
         t1 = time.time()
         assert res == [0.31, 0.3]  # results should be ordered as inputs, not by completion time
         assert t1 - t0 < 0.6  # less than the combined runtime, make sure they run in parallel
