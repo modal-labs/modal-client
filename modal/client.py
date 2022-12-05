@@ -4,6 +4,7 @@ import platform
 import time
 import warnings
 import webbrowser
+from typing import Callable, Optional
 
 from aiohttp import ClientConnectorError, ClientResponseError
 from grpclib import GRPCError, Status
@@ -75,6 +76,7 @@ class _Client:
         self._task_context = None
         self._stub = None
         self._connected = False
+        self._pre_stop: Optional[Callable[[], None]] = None
 
     @property
     def stub(self):
@@ -137,7 +139,22 @@ class _Client:
 
         logger.debug("Client: Done starting")
 
+    def set_pre_stop(self, pre_stop: Callable[[], None]):
+        """mdmd:hidden"""
+        # hack: stub.serve() gets into a losing race with the `on_shutdown` client
+        # teardown when an interrupt signal is received (eg. KeyboardInterrupt).
+        # By registering a pre-stop fn stub.serve() can have its teardown
+        # performed before the client is disconnected.
+        #
+        # ref: github.com/modal-labs/modal-client/pull/108
+        if self._pre_stop:
+            raise ValueError("Client's pre-stop is already set.")
+        self._pre_stop = pre_stop
+
     async def _stop(self):
+        if self._pre_stop:
+            logger.debug("Client: running pre-stop coroutine before shutting down")
+            await self._pre_stop()  # type: ignore
         # TODO: we should trigger this using an exit handler
         logger.debug("Client: Shutting down")
         self._stub = None  # prevent any additional calls

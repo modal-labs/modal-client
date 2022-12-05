@@ -1,10 +1,10 @@
 # Copyright Modal Labs 2022
 import contextlib
-from datetime import date
 import inspect
 import os
 import sys
 import warnings
+from datetime import date
 from enum import Enum
 from typing import AsyncGenerator, Collection, Dict, List, Optional, Union
 
@@ -362,12 +362,11 @@ class _Stub:
                     output_mgr.print_if_visible(f"⚡️ Updating app {existing_app_id}...")
 
                 async with self._run(client, output_mgr, existing_app_id, mode=StubRunMode.SERVE) as app:
+                    client.set_pre_stop(app.disconnect)
                     existing_app_id = app.app_id
                     event = await event_agen.__anext__()
         finally:
             await event_agen.aclose()
-            if app:
-                await app.disconnect()
 
     async def deploy(
         self,
