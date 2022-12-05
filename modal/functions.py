@@ -658,8 +658,7 @@ class _Function(Provider[_FunctionHandle]):
                 raise InvalidError(f"Function {raw_f} retries must be between 0 and 10.")
 
             # TODO(Jonathon): Right now we can only support a maximum delay of 60 seconds
-            # b/c the DEFAULT_CONTAINER_IDLE_TIMEOUT is the maximum time a container will wait for inputs,
-            # after which it will exit 0 and the task is marked finished.
+            # b/c tasks can finish as early as after MIN_CONTAINER_IDLE_TIMEOUT seconds
             if not (timedelta(seconds=1) < retry_policy.max_delay <= timedelta(seconds=60)):
                 raise InvalidError(
                     f"Invalid max_delay argument: {repr(retry_policy.max_delay)}. Must be between 1-60 seconds."
