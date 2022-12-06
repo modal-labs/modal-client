@@ -531,6 +531,7 @@ message Image {
   // affects the image that's built.
   bool gpu = 13;
   string build_function_def = 14;
+  string context_mount_id = 15;
 }
 
 message ImageContextFile {
