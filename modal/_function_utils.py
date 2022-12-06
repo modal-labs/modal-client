@@ -8,9 +8,8 @@ import typing
 from pathlib import Path
 from typing import Dict, Union, Any, Optional, Type, Callable
 
-import cloudpickle
-
 from modal_proto import api_pb2
+from ._serialization import serialize
 from .config import config, logger
 from .exception import InvalidError
 from .mount import _Mount
@@ -115,7 +114,7 @@ class FunctionInfo:
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_SERIALIZED
             self.is_package = False
             self.is_file = False
-            self.serialized_function = cloudpickle.dumps(self.raw_f)
+            self.serialized_function = serialize(self.raw_f)
             logger.debug(f"Serializing {self.raw_f.__qualname__}, size is {len(self.serialized_function)}")
 
         if self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
