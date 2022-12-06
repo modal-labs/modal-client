@@ -11,11 +11,9 @@ import time
 import traceback
 from typing import Any, AsyncIterator, Callable, Optional
 
-import cloudpickle
 from grpclib import Status
 from synchronicity.interface import Interface
 
-from modal._function_utils import load_function_from_module
 from modal_proto import api_pb2
 from modal_utils.async_utils import (
     TaskContext,
@@ -27,6 +25,7 @@ from modal_utils.grpc_utils import retry_transient_errors
 
 from ._asgi import asgi_app_wrapper, webhook_asgi_app, wsgi_app_wrapper
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
+from ._function_utils import load_function_from_module
 from ._proxy_tunnel import proxy_tunnel
 from ._pty import run_in_pty
 from ._serialization import deserialize, serialize
@@ -102,10 +101,10 @@ class _FunctionIOManager:
         # Fetch the serialized function definition
         request = api_pb2.FunctionGetSerializedRequest(function_id=self.function_id)
         response = await self.client.stub.FunctionGetSerialized(request)
-        fun = cloudpickle.loads(response.function_serialized)
+        fun = self.deserialize(response.function_serialized)
 
         if response.class_serialized:
-            cls = cloudpickle.loads(response.class_serialized)
+            cls = self.deserialize(response.class_serialized)
         else:
             cls = None
 
