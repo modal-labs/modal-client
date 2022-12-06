@@ -156,11 +156,18 @@ class _App:
         return self._tag_to_object
 
     async def disconnect(self):
-        """Tell the server to stop this app, terminating all running tasks."""
+        """Tell the server the client has disconnected for this app. Terminates all running tasks
+        for ephemeral apps."""
+
         logger.debug("Sending app disconnect/stop request")
         req_disconnect = api_pb2.AppClientDisconnectRequest(app_id=self._app_id)
         await retry_transient_errors(self._client.stub.AppClientDisconnect, req_disconnect)
         logger.debug("App disconnected")
+
+    async def stop(self):
+        """Tell the server to stop this app, terminating all running tasks."""
+        req_disconnect = api_pb2.AppStopRequest(app_id=self._app_id)
+        await retry_transient_errors(self._client.stub.AppStop, req_disconnect)
 
     def log_url(self):
         return self._app_page_url
