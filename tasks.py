@@ -1,6 +1,13 @@
 # Copyright Modal Labs 2022
 # Copyright (c) Modal Labs 2022
 
+import inspect
+
+if not hasattr(inspect, "getargspec"):
+    # Workaround until invoke supports Python 3.11
+    # https://github.com/pyinvoke/invoke/issues/833#issuecomment-1293148106
+    inspect.getargspec = inspect.getfullargspec  # type: ignore
+
 import datetime
 import os
 import sys
