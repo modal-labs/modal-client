@@ -14,7 +14,6 @@ from typing import Any, AsyncIterator, Callable, Optional
 from grpclib import Status
 from synchronicity.interface import Interface
 
-from modal._function_utils import load_function_from_module
 from modal_proto import api_pb2
 from modal_utils.async_utils import (
     TaskContext,
@@ -26,6 +25,7 @@ from modal_utils.grpc_utils import retry_transient_errors
 
 from ._asgi import asgi_app_wrapper, webhook_asgi_app, wsgi_app_wrapper
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
+from ._function_utils import load_function_from_module
 from ._proxy_tunnel import proxy_tunnel
 from ._pty import run_in_pty
 from ._serialization import deserialize, serialize
