@@ -494,7 +494,7 @@ message FunctionGetCurrentStatsRequest {
   string function_id = 1; 
 }
 
-message FunctionGetCurrentStatsResponse {
+message FunctionStats {
   uint32 backlog = 1;
   uint32 num_active_tasks = 2;
   uint32 num_total_tasks = 3;
@@ -860,7 +860,7 @@ service ModalClient {
   rpc FunctionGetInputs(FunctionGetInputsRequest) returns (FunctionGetInputsResponse);  // For containers to request next call
   rpc FunctionGetOutputs(FunctionGetOutputsRequest) returns (FunctionGetOutputsResponse);  // Returns the next result(s) for an entire function call (FunctionMap)
   rpc FunctionGetCallGraph(FunctionGetCallGraphRequest) returns (FunctionGetCallGraphResponse);
-  rpc FunctionGetCurrentStats(FunctionGetCurrentStatsRequest) returns (FunctionGetCurrentStatsResponse);
+  rpc FunctionGetCurrentStats(FunctionGetCurrentStatsRequest) returns (FunctionStats);
 
   // Images
   rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);
