@@ -39,6 +39,7 @@ def _dockerhub_python_version(python_version=None):
     # We use the same major/minor version, but the highest micro version
     # See https://hub.docker.com/_/python
     latest_micro_version = {
+        "3.11": "0",
         "3.10": "8",
         "3.9": "15",
         "3.8": "15",
