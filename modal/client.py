@@ -147,8 +147,6 @@ class _Client:
         # performed before the client is disconnected.
         #
         # ref: github.com/modal-labs/modal-client/pull/108
-        if self._pre_stop:
-            raise ValueError("Client's pre-stop is already set.")
         self._pre_stop = pre_stop
 
     async def _stop(self):
