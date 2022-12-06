@@ -11,7 +11,6 @@ import time
 import traceback
 from typing import Any, AsyncIterator, Callable, Optional
 
-import cloudpickle
 from grpclib import Status
 from synchronicity.interface import Interface
 
@@ -102,10 +101,10 @@ class _FunctionIOManager:
         # Fetch the serialized function definition
         request = api_pb2.FunctionGetSerializedRequest(function_id=self.function_id)
         response = await self.client.stub.FunctionGetSerialized(request)
-        fun = cloudpickle.loads(response.function_serialized)
+        fun = self.deserialize(response.function_serialized)
 
         if response.class_serialized:
-            cls = cloudpickle.loads(response.class_serialized)
+            cls = self.deserialize(response.class_serialized)
         else:
             cls = None
 
