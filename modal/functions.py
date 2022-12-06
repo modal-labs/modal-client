@@ -40,7 +40,7 @@ from ._blob_utils import (
     blob_upload,
 )
 from ._call_graph import InputInfo, reconstruct_call_graph
-from ._function_utils import FunctionInfo, load_function_from_module, LocalFunctionError
+from ._function_utils import FunctionInfo, LocalFunctionError, load_function_from_module
 from ._output import OutputManager
 from ._pty import get_pty_info
 from ._serialization import deserialize, serialize
@@ -374,6 +374,14 @@ async def _map_invocation(
                 yield response.value
 
 
+# Wrapper type for api_pb2.FunctionStats
+@dataclass
+class FunctionStats:
+    backlog: int
+    num_active_runners: int
+    num_total_runners: int
+
+
 class _FunctionHandle(Handle, type_prefix="fu"):
     """Interact with a Modal Function of a live app."""
 
@@ -585,6 +593,15 @@ class _FunctionHandle(Handle, type_prefix="fu"):
     def get_raw_f(self) -> Callable:
         """Return the inner Python object wrapped by this Modal Function."""
         return self._raw_f
+
+    async def get_current_stats(self) -> FunctionStats:
+        """Return a `FunctionStats` object describing the current function's queue and runner counts."""
+
+        client, object_id = self._get_context()
+        resp = await client.stub.FunctionGetCurrentStats(api_pb2.FunctionGetCurrentStatsRequest(function_id=object_id))
+        return FunctionStats(
+            backlog=resp.backlog, num_active_runners=resp.num_active_tasks, num_total_runners=resp.num_total_tasks
+        )
 
 
 FunctionHandle, AioFunctionHandle = synchronize_apis(_FunctionHandle)
