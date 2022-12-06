@@ -524,6 +524,7 @@ class _Stub:
         proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
+        container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         interactive: bool = False,  # Whether to run the function in interactive mode.
         _is_build_step: bool = False,  # Whether function is a build step; reserved for internal use.
@@ -564,6 +565,7 @@ class _Stub:
             proxy=proxy,
             retries=retries,
             concurrency_limit=concurrency_limit,
+            container_idle_timeout=container_idle_timeout,
             timeout=timeout,
             cpu=cpu,
             interactive=interactive,
@@ -601,6 +603,7 @@ class _Stub:
         proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
+        container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         keep_warm: bool = False,  # Toggles an adaptively-sized warm pool for latency-sensitive apps.
     ):
@@ -639,6 +642,7 @@ class _Stub:
             proxy=proxy,
             retries=retries,
             concurrency_limit=concurrency_limit,
+            container_idle_timeout=container_idle_timeout,
             timeout=timeout,
             keep_warm=keep_warm,
         )
@@ -661,6 +665,7 @@ class _Stub:
         proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
+        container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         keep_warm: bool = False,  # Toggles an adaptively-sized warm pool for latency-sensitive apps.
         _webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
@@ -694,6 +699,7 @@ class _Stub:
             proxy=proxy,
             retries=retries,
             concurrency_limit=concurrency_limit,
+            container_idle_timeout=container_idle_timeout,
             timeout=timeout,
             keep_warm=keep_warm,
         )
