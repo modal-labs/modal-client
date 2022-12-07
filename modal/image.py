@@ -186,9 +186,17 @@ class _Image(Provider[_ImageHandle]):
         image_id = resp.image_id
 
         logger.debug("Waiting for image %s" % image_id)
+        # Don't wait indefinitely, and slow builds are bad UX so good to have
+        # a hard ceiling.
+        max_wait_secs = 60 * 30
         while True:
             request = api_pb2.ImageJoinRequest(image_id=image_id, timeout=60)
-            response = await retry_transient_errors(client.stub.ImageJoin, request)
+            response = await retry_transient_errors(
+                client.stub.ImageJoin,
+                request,
+                max_retries=None,
+                total_timeout=max_wait_secs,
+            )
             if not response.result.status:
                 continue
             elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
