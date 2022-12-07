@@ -230,7 +230,7 @@ async def list_apps():
 
 @app_cli.command("logs")
 def app_logs(app_id: str):
-    """List all running or recently running Modal apps for the current account"""
+    """Output logs for a running app."""
 
     @synchronizer
     async def sync_command():
