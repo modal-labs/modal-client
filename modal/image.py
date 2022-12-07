@@ -187,7 +187,7 @@ class _Image(Provider[_ImageHandle]):
 
         logger.debug("Waiting for image %s" % image_id)
         while True:
-            request = api_pb2.ImageJoinRequest(image_id=image_id, timeout=60)
+            request = api_pb2.ImageJoinRequest(image_id=image_id, timeout=55)
             response = await retry_transient_errors(client.stub.ImageJoin, request)
             if not response.result.status:
                 continue
