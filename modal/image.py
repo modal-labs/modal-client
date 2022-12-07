@@ -93,6 +93,7 @@ class _Image(Provider[_ImageHandle]):
         ref=None,
         gpu=False,
         build_function=None,
+        context_mount=None,
     ):
         if ref and (base_images or dockerfile_commands or context_files):
             raise InvalidError("No other arguments can be provided when initializing an image from a ref.")
@@ -114,6 +115,7 @@ class _Image(Provider[_ImageHandle]):
         self._secrets = secrets
         self._gpu = gpu
         self._build_function = build_function
+        self._context_mount = context_mount
         super().__init__()
 
     def __repr__(self):
@@ -167,6 +169,13 @@ class _Image(Provider[_ImageHandle]):
             dockerfile_commands = self._dockerfile_commands()
         else:
             dockerfile_commands = self._dockerfile_commands
+
+
+        if self._context_mount:
+            context_mount_id = await loader(self._context_mount)
+        else:
+            context_mount_id = None
+
         image_definition = api_pb2.Image(
             base_images=base_images_pb2s,
             dockerfile_commands=dockerfile_commands,
@@ -174,6 +183,7 @@ class _Image(Provider[_ImageHandle]):
             secret_ids=secret_ids,
             gpu=self._gpu,
             build_function_def=build_function_def,
+            context_mount_id=context_mount_id
         )
 
         req = api_pb2.ImageGetOrCreateRequest(

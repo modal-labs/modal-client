@@ -189,3 +189,24 @@ def test_poetry(client, servicer):
         layers = get_image_layers(running_app["image"].object_id, servicer)
         context_files = {f.filename for layer in layers for f in layer.context_files}
         assert context_files == {"/.poetry.lock", "/.pyproject.toml", "/modal_requirements.txt"}
+
+
+def test_image_run_function(client, servicer):
+    stub = Stub()
+    volume = SharedVolume().persist("test-vol")
+    stub["image"] = (
+        Image.debian_slim()
+        .pip_install(["pandas"])
+        .run_function(run_f, secrets=[Secret({"xyz": "123"})], shared_volumes={"/foo": volume})
+    )
+
+    with stub.run(client=client) as running_app:
+        layers = get_image_layers(running_app["image"].object_id, servicer)
+        assert "foo!" in layers[0].build_function_def
+        assert "Secret([xyz])" in layers[0].build_function_def
+        assert "Ref<SharedVolume()>(test-vol)" in layers[0].build_function_def
+
+    function_id = servicer.image_build_function_ids[2]
+    assert function_id
+    assert servicer.app_functions[function_id].function_name == "run_f"
+    assert len(servicer.app_functions[function_id].secret_ids) == 1
