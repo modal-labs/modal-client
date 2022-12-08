@@ -22,7 +22,7 @@ from ._pty import exec_cmd, write_stdin_to_pty_stream
 from .app import _App, container_app, is_local
 from .client import _Client
 from .config import config, logger
-from .exception import InvalidError, deprecation_error, deprecation_warning
+from .exception import InvalidError, deprecation_warning
 from .functions import _Function, _FunctionHandle
 from .gpu import _GPUConfig
 from .image import _Image
@@ -309,12 +309,6 @@ class _Stub:
         mode = StubRunMode.DETACH if detach else StubRunMode.RUN
         async with self._run(client, output_mgr, existing_app_id=None, mode=mode) as app:
             yield app
-
-    async def run_forever(self, client=None, stdout=None, show_progress=None) -> None:
-        """**Deprecated.** Use `.serve()` instead."""
-
-        deprecation_error(None, "Stub.run_forever is deprecated, use .serve() instead")
-        await self.serve(client, stdout, show_progress)
 
     async def serve(self, client=None, stdout=None, show_progress=None, timeout=None) -> None:
         """Run an app until the program is interrupted. Modal watches source files

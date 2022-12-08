@@ -4,8 +4,8 @@ import pytest
 import sys
 from typing import List
 
-from modal import Conda, DebianSlim, Image, Secret, SharedVolume, Stub
-from modal.exception import DeprecationError, InvalidError, NotFoundError
+from modal import Image, Secret, SharedVolume, Stub
+from modal.exception import InvalidError, NotFoundError
 from modal.image import _dockerhub_python_version
 from modal_proto import api_pb2
 
@@ -48,11 +48,6 @@ def test_image_python_packages(client, servicer):
     with stub.run(client=client) as running_app:
         layers = get_image_layers(running_app["image"].object_id, servicer)
         assert any("pip install numpy" in cmd for cmd in layers[0].dockerfile_commands)
-
-
-def test_debian_slim_deprecated(servicer, client):
-    with pytest.raises(DeprecationError):
-        DebianSlim()
 
 
 def test_wrong_type(servicer, client):
@@ -112,11 +107,6 @@ def test_conda_install(servicer, client):
         assert any("pip install scikit-learn" in cmd for cmd in layers[0].dockerfile_commands)
         assert any("conda install pymc3 theano --yes" in cmd for cmd in layers[1].dockerfile_commands)
         assert any("pip install numpy" in cmd for cmd in layers[2].dockerfile_commands)
-
-
-def test_conda_deprecated(servicer, client):
-    with pytest.raises(DeprecationError):
-        Conda()
 
 
 def test_dockerfile_image(servicer, client):
