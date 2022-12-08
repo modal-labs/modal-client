@@ -1,2 +1,2 @@
 # Copyright Modal Labs 2022
-build_number = 482
+build_number = 484
