@@ -118,7 +118,7 @@ def test_run_function_without_app_error():
     dummy_modal = stub.function(dummy)
 
     with pytest.raises(InvalidError) as excinfo:
-        dummy_modal()
+        dummy_modal.call()
 
     assert "stub.run" in str(excinfo.value)
 
