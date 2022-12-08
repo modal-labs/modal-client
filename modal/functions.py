@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
+from datetime import date
 import inspect
 import os
 import platform
@@ -48,6 +49,7 @@ from ._traceback import append_modal_tb
 from .client import _Client
 from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError
 from .exception import TimeoutError as _TimeoutError
+from .exception import deprecation_error, deprecation_warning
 from .gpu import _GPUConfig
 from .image import _Image
 from .mount import _Mount
@@ -560,13 +562,31 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         client, object_id = self._get_context()
         return await _Invocation.create(object_id, args, kwargs, client)
 
-    def __call__(self, *args, **kwargs):
+    def call(self, *args, **kwargs):
         if self._is_generator:
             return self.call_generator(args, kwargs)
         else:
             return self.call_function(args, kwargs)
 
-    async def submit(self, *args, **kwargs) -> Optional["_FunctionCall"]:
+    def __call__(self, *args, **kwargs):
+        deprecation_warning(
+            date(2022, 12, 5),
+            "Calling a function directly is deprecated. Use f.call(...) instead."
+            " In a future version of Modal, f(...) will be used to call a function in the same process.",
+        )
+        if self._is_generator:
+            return self.call_generator(args, kwargs)
+        else:
+            return self.call_function(args, kwargs)
+
+    async def enqueue(self, *args, **kwargs):
+        """**Deprecated.** Use `.submit()` instead when possible.
+
+        Calls the function with the given arguments, without waiting for the results.
+        """
+        deprecation_error(None, "Function.enqueue is deprecated, use .spawn() instead")
+
+    async def spawn(self, *args, **kwargs) -> Optional["_FunctionCall"]:
         """Calls the function with the given arguments, without waiting for the results.
 
         Returns a `modal.functions.FunctionCall` object, that can later be polled or waited for using `.get(timeout=...)`.
@@ -581,6 +601,10 @@ class _FunctionHandle(Handle, type_prefix="fu"):
 
         invocation = await self.call_function_nowait(args, kwargs)
         return _FunctionCall(invocation.client, invocation.function_call_id)
+
+    async def submit(self, *args, **kwargs) -> Optional["_FunctionCall"]:
+        deprecation_warning(date(2022, 12, 5), "Function.submit is deprecated, use .spawn() instead")
+        return await self.spawn(*args, **kwargs)
 
     def get_raw_f(self) -> Callable:
         """Return the inner Python object wrapped by this Modal Function."""

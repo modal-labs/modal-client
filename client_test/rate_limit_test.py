@@ -26,5 +26,5 @@ def test_rate_limit(client):
         stub.function(dummy, rate_limit=modal.RateLimit(per_minute=15, per_second=5))
 
     with stub.run(client=client):
-        per_second_5_modal()
-        per_minute_15_modal()
+        per_second_5_modal.call()
+        per_minute_15_modal.call()
