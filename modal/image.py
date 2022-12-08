@@ -13,7 +13,7 @@ from modal_utils.async_utils import synchronize_apis
 from modal_utils.grpc_utils import retry_transient_errors
 
 from .config import config, logger
-from .exception import InvalidError, NotFoundError, RemoteError, deprecation_error
+from .exception import InvalidError, NotFoundError, RemoteError
 from .object import Handle, Provider
 from .secret import _Secret
 
@@ -591,29 +591,5 @@ class _Image(Provider[_ImageHandle]):
         return self.extend(build_function=(raw_function, kwargs))
 
 
-def _Conda():
-    """mdmd:hidden"""
-    deprecation_error(None, "`modal.Conda` is deprecated. Please use `modal.Image.conda` instead")
-
-
-def _DockerhubImage(*args, **kwargs):
-    """mdmd:hidden"""
-    deprecation_error(None, "`modal.DockerhubImage` is deprecated. Please use `modal.Image.from_dockerhub` instead")
-
-
-def _DockerfileImage(*args, **kwargs):
-    """mdmd:hidden"""
-    deprecation_error(None, "`modal.DockerfileImage` is deprecated. Please use `modal.Image.from_dockerfile` instead")
-
-
-def _DebianSlim(*args, **kwargs):
-    """mdmd:hidden"""
-    deprecation_error(None, "`modal.DebianSlim` is deprecated. Please use `modal.Image.debian_slim` instead")
-
-
 synchronize_apis(_ImageHandle)
 Image, AioImage = synchronize_apis(_Image)
-Conda, AioConda = synchronize_apis(_Conda)
-DebianSlim, AioDebianSlim = synchronize_apis(_DebianSlim)
-DockerhubImage, AioDockerhubImage = synchronize_apis(_DockerhubImage)
-DockerfileImage, AioDockerfileImage = synchronize_apis(_DockerfileImage)
