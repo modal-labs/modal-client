@@ -90,4 +90,4 @@ def deprecation_warning(deprecated_on: date, msg: str):
         lineno = 0
 
     # This is a lower-level function that warnings.warn uses
-    warnings.warn_explicit(f"Deprecated on {deprecated_on}: {msg}", DeprecationError, filename, lineno)
+    warnings.warn_explicit(f"{deprecated_on}: {msg}", DeprecationError, filename, lineno)
