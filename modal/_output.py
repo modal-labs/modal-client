@@ -140,8 +140,8 @@ class OutputManager:
         return self._function_progress
 
     @property
-    def task_progress(self) -> Progress:
-        """Creates a `rich.Progress` instance with custom columns for task progress,
+    def snapshot_progress(self) -> Progress:
+        """Creates a `rich.Progress` instance with custom columns for image snapshot progress,
         and adds it to the current render group."""
         if not self._task_progress:
             self._task_progress = Progress(
@@ -219,13 +219,13 @@ class OutputManager:
         if key in self._task_progress_items:
             progress_task_id = self._task_progress_items[key]
         else:
-            progress_task_id = self.task_progress.add_task(task_desc, total=total)
+            progress_task_id = self.snapshot_progress.add_task(task_desc, total=total)
             self._task_progress_items[key] = progress_task_id
 
         try:
-            self.task_progress.update(progress_task_id, completed=completed, total=total)
+            self.snapshot_progress.update(progress_task_id, completed=completed, total=total)
             if completed == total:
-                self.task_progress.remove_task(progress_task_id)
+                self.snapshot_progress.remove_task(progress_task_id)
         except KeyError:
             # Rich throws a KeyError if the task has already been removed.
             pass
