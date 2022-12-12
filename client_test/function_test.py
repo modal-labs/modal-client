@@ -293,8 +293,9 @@ def test_gpu_true_function(client, servicer):
 
     assert len(servicer.app_functions) == 1
     func_def = next(iter(servicer.app_functions.values()))
-    assert func_def.resources.gpu == 1
-    assert func_def.resources.gpu_config.count == 0
+    assert func_def.resources.gpu == 0
+    assert func_def.resources.gpu_config.count == 1
+    assert func_def.resources.gpu_config.type == api_pb2.GPU_TYPE_T4
 
 
 def test_gpu_config_function(client, servicer):

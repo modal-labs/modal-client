@@ -644,7 +644,7 @@ enum GPUType {
 
 message GPUConfig {
   GPUType type = 1;
-  int32 count = 2;
+  uint32 count = 2;
 }
 
 message Resources {
