@@ -774,6 +774,7 @@ message TaskLogs {
 
 enum ProgressType {
   IMAGE_SNAPSHOT_UPLOAD = 0;
+  FUNCTION_QUEUED = 1;
 }
 
 message TaskProgress {
