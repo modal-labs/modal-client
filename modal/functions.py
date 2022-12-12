@@ -1,13 +1,12 @@
 # Copyright Modal Labs 2022
 import asyncio
-from datetime import date
 import inspect
 import os
 import platform
 import time
 import warnings
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 from typing import (
     Any,
@@ -50,7 +49,7 @@ from .client import _Client
 from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError
 from .exception import TimeoutError as _TimeoutError
 from .exception import deprecation_error, deprecation_warning
-from .gpu import _GPUConfig
+from .gpu import T4, _GPUConfig
 from .image import _Image
 from .mount import _Mount
 from .object import Handle, Provider, Ref, RemoteRef
@@ -823,9 +822,11 @@ class _Function(Provider[_FunctionHandle]):
                 class_serialized = cloudpickle.dumps(cls)
 
         if isinstance(self._gpu, _GPUConfig):
-            resources = api_pb2.Resources(milli_cpu=milli_cpu, gpu_config=self._gpu._to_proto(), memory_mb=self._memory)
+            gpu_config = self._gpu._to_proto()
+        elif self._gpu:
+            gpu_config = T4()._to_proto()
         else:
-            resources = api_pb2.Resources(milli_cpu=milli_cpu, gpu=self._gpu, memory_mb=self._memory)
+            gpu_config = None
 
         # Create function remotely
         function_definition = api_pb2.Function(
@@ -838,7 +839,7 @@ class _Function(Provider[_FunctionHandle]):
             function_serialized=function_serialized,
             class_serialized=class_serialized,
             function_type=function_type,
-            resources=resources,
+            resources=api_pb2.Resources(milli_cpu=milli_cpu, gpu_config=gpu_config, memory_mb=self._memory),
             rate_limit=rate_limit,
             webhook_config=self._webhook_config,
             shared_volume_mounts=shared_volume_mounts,
