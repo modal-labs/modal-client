@@ -781,6 +781,7 @@ message TaskProgress {
   uint64 len = 1;
   uint64 pos = 2;
   ProgressType progress_type = 3;
+  string description = 4;
 }
 
 message TaskLogsBatch {
