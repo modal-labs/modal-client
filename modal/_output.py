@@ -254,8 +254,8 @@ class OutputManager:
                 total=None if total == 0 else total,
                 description=description,
             )
-        else:
-            raise Exception(f"Unknown {progress_type} type for progress update.")
+        else:  # Ensure forward-compatible with new types.
+            logger.debug(f"Received unrecognized progress type: {progress_type}")
 
     def _update_snapshot_progress(
         self, *, task_id: str, completed: int, total: int, description: Optional[str]
