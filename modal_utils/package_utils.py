@@ -8,6 +8,8 @@ from typing import Tuple
 
 from importlib_metadata import PackageNotFoundError, files
 
+import modal.exception
+
 
 def get_file_formats(module):
     try:
@@ -52,6 +54,8 @@ def parse_stub_ref(stub_ref: str, default_stub_name: str) -> Tuple[str, str]:
         import_path, stub_name = stub_ref, default_stub_name
     return import_path, stub_name
 
+class NoSuchStub(modal.exception.NotFoundError):
+    pass
 
 def import_stub(import_path: str, stub_name: str):
     if "" not in sys.path:
@@ -85,5 +89,8 @@ def import_stub(import_path: str, stub_name: str):
     else:
         module = importlib.import_module(import_path)
 
-    stub = getattr(module, stub_name)
+    try:
+        stub = getattr(module, stub_name)
+    except AttributeError:
+        raise NoSuchStub(f"No stub named {stub_name} could be found in module {module}")
     return stub

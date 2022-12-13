@@ -21,7 +21,7 @@ from modal.functions import _Function
 from modal.stub import _Stub
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
-from modal_utils.package_utils import import_stub, parse_stub_ref
+from modal_utils.package_utils import import_stub, parse_stub_ref, NoSuchStub
 
 DEFAULT_STUB_NAME = "stub"
 
@@ -30,7 +30,7 @@ app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_a
 
 @app_cli.command("run", help="Run a Modal function.")
 @synchronizer
-def run(
+async def run(
     stub_ref: str = typer.Argument(
         ..., help="Path to a Python file or module, optionally identifying the name of your stub: `./main.py:mystub`."
     ),
@@ -40,32 +40,33 @@ def run(
     try:
         import_path, stub_name = parse_stub_ref(stub_ref, DEFAULT_STUB_NAME)
         stub = import_stub(import_path, stub_name)
-    except AttributeError:
+    except NoSuchStub:
         _show_stub_ref_failure_help(import_path, stub_name)
         sys.exit(1)
     except Exception:
         traceback.print_exc()
         sys.exit(1)
 
-    registered_functions_str = ", ".join(stub.registered_functions)
+    _stub = synchronizer._translate_in(stub)
+    registered_functions_str = ", ".join(_stub.registered_functions)
     if not function_name:
-        if len(stub.registered_functions) == 1:
-            function_name = stub.registered_functions[0]
+        if len(_stub.registered_functions) == 1:
+            function_name = _stub.registered_functions[0]
         else:
             print(
                 f"""You need to specify an entrypoint Modal function to run using --function-name=<name>
 Registered functions on the selected stub are: {registered_functions_str}"""
             )
             exit(1)
-    elif function_name not in stub.registered_functions:
+    elif function_name not in _stub.registered_functions:
         print(
             f"No function `{function_name}` could be found in the specified stub. Registered functions are: {registered_functions_str}"
         )
         exit(1)
 
-    with stub.run(detach=detach) as app:
+    async with _stub.run(detach=detach) as app:
         func_handle = getattr(app, function_name)
-        func_handle()
+        await func_handle()
 
 
 @app_cli.command("deploy", help="Deploy a Modal stub as an application.")
@@ -76,7 +77,7 @@ def deploy(
     try:
         import_path, stub_name = parse_stub_ref(stub_ref, DEFAULT_STUB_NAME)
         stub = import_stub(import_path, stub_name)
-    except AttributeError:
+    except NoSuchStub:
         _show_stub_ref_failure_help(import_path, stub_name)
         sys.exit(1)
     except Exception:
@@ -153,7 +154,7 @@ def shell(
     try:
         import_path, stub_name = parse_stub_ref(stub_ref, DEFAULT_STUB_NAME)
         stub = import_stub(import_path, stub_name)
-    except AttributeError:
+    except NoSuchStub:
         _show_stub_ref_failure_help(import_path, stub_name)
         sys.exit(1)
     except Exception:
