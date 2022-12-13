@@ -54,8 +54,10 @@ def parse_stub_ref(stub_ref: str, default_stub_name: str) -> Tuple[str, str]:
         import_path, stub_name = stub_ref, default_stub_name
     return import_path, stub_name
 
+
 class NoSuchStub(modal.exception.NotFoundError):
     pass
+
 
 def import_stub(import_path: str, stub_name: str):
     if "" not in sys.path:
