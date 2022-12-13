@@ -281,8 +281,7 @@ class OutputManager:
         """Handle queueing updates, ignoring completion updates for functions that have no queue progress bar."""
         task_key = (function_id, api_pb2.FUNCTION_QUEUED)
         task_description = description or f"'{function_id}' function waiting on worker"
-        progress_task_display = f"{task_description}. Time in queue:"
-        task_desc = f"[yellow]{progress_task_display}"
+        task_desc = f"[yellow]{task_description}. Time in queue:"
         if task_key in self._task_progress_items:
             progress_task_id = self._task_progress_items[task_key]
             try:
