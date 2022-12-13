@@ -6,6 +6,7 @@ import io
 import platform
 import re
 import sys
+from datetime import timedelta
 from typing import Callable, Dict, Optional
 
 from grpclib.exceptions import GRPCError, StreamTerminatedError
@@ -17,6 +18,7 @@ from rich.progress import (
     DownloadColumn,
     MofNCompleteColumn,
     Progress,
+    ProgressColumn,
     TaskID,
     TextColumn,
     TimeElapsedColumn,
@@ -36,6 +38,17 @@ if platform.system() == "Windows":
     default_spinner = "line"
 else:
     default_spinner = "dots"
+
+
+class FunctionQueuingColumn(ProgressColumn):
+    """Renders time elapsed, including task.completed as additional elapsed time."""
+
+    def render(self, task) -> Text:
+        elapsed = task.finished_time + task.completed if task.finished else task.elapsed + task.completed
+        if elapsed is None:
+            return Text("-:--:--", style="progress.elapsed")
+        delta = timedelta(seconds=int(elapsed))
+        return Text(str(delta), style="progress.elapsed")
 
 
 def step_progress(text: str = "") -> Spinner:
@@ -102,10 +115,11 @@ class OutputManager:
 
         self._console = Console(file=stdout, highlight=False)
         self._task_states = {}
-        self._task_progress_items: dict[tuple[str, api_pb2.ProgressType], TaskID] = {}
+        self._task_progress_items: dict[tuple[str, int], TaskID] = {}
         self._current_render_group: Optional[Group] = None
         self._function_progress: Optional[Progress] = None
-        self._task_progress: Optional[Progress] = None
+        self._function_queueing_progress: Optional[Progress] = None
+        self._snapshot_progress: Optional[Progress] = None
 
     def print_if_visible(self, renderable) -> None:
         if self._visible_progress:
@@ -140,11 +154,11 @@ class OutputManager:
         return self._function_progress
 
     @property
-    def task_progress(self) -> Progress:
-        """Creates a `rich.Progress` instance with custom columns for task progress,
+    def snapshot_progress(self) -> Progress:
+        """Creates a `rich.Progress` instance with custom columns for image snapshot progress,
         and adds it to the current render group."""
-        if not self._task_progress:
-            self._task_progress = Progress(
+        if not self._snapshot_progress:
+            self._snapshot_progress = Progress(
                 TextColumn("[progress.description]{task.description}"),
                 BarColumn(),
                 DownloadColumn(),
@@ -154,8 +168,23 @@ class OutputManager:
             )
             if self._current_render_group:
                 # Appear above function progress renderables.
-                self._current_render_group.renderables.insert(0, self._task_progress)
-        return self._task_progress
+                self._current_render_group.renderables.insert(0, self._snapshot_progress)
+        return self._snapshot_progress
+
+    @property
+    def function_queueing_progress(self) -> Progress:
+        """Creates a `rich.Progress` instance with custom columns for function queue waiting progress
+        and adds it to the current render group."""
+        if not self._function_queueing_progress:
+            self._function_queueing_progress = Progress(
+                TextColumn("[progress.description]{task.description}"),
+                FunctionQueuingColumn(),
+                console=self._console,
+                transient=True,
+            )
+            if self._current_render_group:
+                self._current_render_group.renderables.append(self._function_queueing_progress)
+        return self._function_queueing_progress
 
     def function_progress_callback(self, tag: str) -> Callable[[int, int], None]:
         """Adds a task to the current function_progress instance, and returns a callback
@@ -206,29 +235,65 @@ class OutputManager:
         else:
             return "Running..."
 
-    def _update_task_progress(self, *, task_id: str, progress_task, completed: int, total: int) -> None:
-        key = (task_id, progress_task)
-
-        if progress_task == api_pb2.IMAGE_SNAPSHOT_UPLOAD:
-            progress_task_display = "Uploading image snapshot…"
+    def _update_task_progress(
+        self,
+        *,
+        task_id: Optional[str],
+        function_id: Optional[str],
+        progress_type,
+        completed: int,
+        total: int,
+        description: Optional[str],
+    ) -> None:
+        if progress_type == api_pb2.IMAGE_SNAPSHOT_UPLOAD:
+            self._update_snapshot_progress(task_id=task_id, completed=completed, total=total, description=description)
+        elif progress_type == api_pb2.FUNCTION_QUEUED:
+            self._update_queueing_progress(
+                function_id=function_id,
+                completed=completed,
+                total=None if total == 0 else total,
+                description=description,
+            )
         else:
-            raise Exception(f"Unknown {progress_task} type for progress update.")
+            raise Exception(f"Unknown {progress_type} type for progress update.")
 
-        task_desc = f"[yellow]{progress_task_display}"
-
-        if key in self._task_progress_items:
-            progress_task_id = self._task_progress_items[key]
+    def _update_snapshot_progress(
+        self, *, task_id: str, completed: int, total: int, description: Optional[str]
+    ) -> None:
+        task_key = (task_id, api_pb2.IMAGE_SNAPSHOT_UPLOAD)
+        if task_key in self._task_progress_items:
+            progress_task_id = self._task_progress_items[task_key]
         else:
-            progress_task_id = self.task_progress.add_task(task_desc, total=total)
-            self._task_progress_items[key] = progress_task_id
+            progress_task_id = self.snapshot_progress.add_task("[yellow]Uploading image snapshot…", total=total)
+            self._task_progress_items[task_key] = progress_task_id
 
         try:
-            self.task_progress.update(progress_task_id, completed=completed, total=total)
+            self.snapshot_progress.update(progress_task_id, completed=completed, total=total)
             if completed == total:
-                self.task_progress.remove_task(progress_task_id)
+                self.snapshot_progress.remove_task(progress_task_id)
         except KeyError:
             # Rich throws a KeyError if the task has already been removed.
             pass
+
+    def _update_queueing_progress(
+        self, *, function_id: str, completed: int, total: Optional[int], description: Optional[str]
+    ) -> None:
+        """Handle queueing updates, ignoring completion updates for functions that have no queue progress bar."""
+        task_key = (function_id, api_pb2.FUNCTION_QUEUED)
+        task_description = description or f"'{function_id}' function waiting on worker"
+        task_desc = f"[yellow]{task_description}. Time in queue:"
+        if task_key in self._task_progress_items:
+            progress_task_id = self._task_progress_items[task_key]
+            try:
+                self.function_queueing_progress.update(progress_task_id, completed=completed, total=total)
+                if completed == total:
+                    del self._task_progress_items[task_key]
+                    self.function_queueing_progress.remove_task(progress_task_id)
+            except KeyError:
+                pass
+        elif completed != total:  # Create new bar for queued function
+            progress_task_id = self.function_queueing_progress.add_task(task_desc, start=True, total=None)
+            self._task_progress_items[task_key] = progress_task_id
 
     async def get_logs_loop(self, app_id: str, client: _Client, status_spinner: Spinner, last_log_batch_entry_id: str):
         async def _get_logs():
@@ -253,14 +318,26 @@ class OutputManager:
 
                     for log in log_batch.items:
                         if log.task_state:
+                            if log.task_state == api_pb2.TASK_STATE_WORKER_ASSIGNED:
+                                # Close function's queueing progress bar (if it exists)
+                                self._update_task_progress(
+                                    task_id=log_batch.task_id,
+                                    function_id=log_batch.function_id,
+                                    progress_type=api_pb2.FUNCTION_QUEUED,
+                                    completed=1,
+                                    total=1,
+                                    description=None,
+                                )
                             message = self._update_task_state(log_batch.task_id, log.task_state)
                             step_progress_update(status_spinner, message)
                         if log.task_progress.len or log.task_progress.pos:
                             self._update_task_progress(
                                 task_id=log_batch.task_id,
-                                progress_task=log.task_progress.progress_type,
+                                function_id=log_batch.function_id,
+                                progress_type=log.task_progress.progress_type,
                                 completed=log.task_progress.pos or 0,
                                 total=log.task_progress.len or 0,
+                                description=log.task_progress.description,
                             )
                         elif log.data:
                             if self._visible_progress:
