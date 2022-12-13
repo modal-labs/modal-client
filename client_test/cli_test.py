@@ -103,3 +103,7 @@ def test_secret_create(servicer, set_env_client):
 
 def test_app_token_new(servicer, server_url_env):
     _run(["token", "new", "--env", "_test"])
+
+def test_app_run(servicer, server_url_env, test_dir):
+    modal_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
+    _run(["app", "run", modal_file.as_posix()])

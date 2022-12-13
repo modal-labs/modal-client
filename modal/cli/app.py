@@ -66,7 +66,7 @@ Registered functions on the selected stub are: {registered_functions_str}"""
 
     async with _stub.run(detach=detach) as app:
         func_handle = getattr(app, function_name)
-        await func_handle()
+        await func_handle.call()
 
 
 @app_cli.command("deploy", help="Deploy a Modal stub as an application.")
