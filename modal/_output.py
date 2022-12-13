@@ -276,7 +276,7 @@ class OutputManager:
             pass
 
     def _update_queueing_progress(
-        self, *, function_id: str, completed: int, total: int, description: Optional[str]
+        self, *, function_id: str, completed: int, total: Optional[int], description: Optional[str]
     ) -> None:
         """Handle queueing updates, ignoring completion updates for functions that have no queue progress bar."""
         task_key = (function_id, api_pb2.FUNCTION_QUEUED)
@@ -288,14 +288,13 @@ class OutputManager:
             try:
                 self.function_queueing_progress.update(progress_task_id, completed=completed, total=total)
                 if completed == total:
+                    del self._task_progress_items[task_key]
                     self.function_queueing_progress.remove_task(progress_task_id)
             except KeyError:
-                # Rich throws a KeyError if the task has already been removed.
                 pass
-        elif completed != total:
+        elif completed != total:  # Create new bar for queued function
             progress_task_id = self.function_queueing_progress.add_task(task_desc, start=True, total=None)
             self._task_progress_items[task_key] = progress_task_id
-            return
 
     async def get_logs_loop(self, app_id: str, client: _Client, status_spinner: Spinner, last_log_batch_entry_id: str):
         async def _get_logs():
