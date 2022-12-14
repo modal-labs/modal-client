@@ -151,7 +151,7 @@ class _App:
             client_id=self._client.client_id,
             indexed_object_ids=indexed_object_ids,
             unindexed_object_ids=unindexed_object_ids,
-            new_app_state=new_app_state,
+            new_app_state=new_app_state,  # type: ignore
         )
         await self._client.stub.AppSetObjects(req_set)
         return self._tag_to_object
