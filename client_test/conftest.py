@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 from __future__ import annotations
+
 import asyncio
 import contextlib
 import inspect
@@ -38,6 +39,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     container_outputs: list[api_pb2.FunctionPutOutputsRequest]
 
     def __init__(self, blob_host, blobs):
+        self.app_state = {}
         self.n_blobs = 0
         self.blob_host = blob_host
         self.blobs = blobs  # shared dict
@@ -105,6 +107,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.requests.append(request)
         self.n_apps += 1
         app_id = f"ap-{self.n_apps}"
+        if request.initializing:
+            state = api_pb2.APP_STATE_INITIALIZING
+        elif request.detach:
+            state = api_pb2.APP_STATE_DETACHED
+        else:
+            state = api_pb2.APP_STATE_EPHEMERAL
+        self.app_state[app_id] = state
         await stream.send_message(api_pb2.AppCreateResponse(app_id=app_id))
 
     async def AppClientDisconnect(self, stream):
@@ -127,11 +136,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def AppSetObjects(self, stream):
         request: api_pb2.AppSetObjectsRequest = await stream.recv_message()
         self.app_objects[request.app_id] = dict(request.indexed_object_ids)
+        if request.new_app_state:
+            self.app_state[request.app_id] = request.new_app_state
         await stream.send_message(Empty())
 
     async def AppDeploy(self, stream):
         request: api_pb2.AppDeployRequest = await stream.recv_message()
         self.deployed_apps[request.name] = request.app_id
+        self.app_state[request.app_id] = api_pb2.APP_STATE_DEPLOYED
         await stream.send_message(api_pb2.AppDeployResponse(url="http://test.modal.com/foo/bar"))
 
     async def AppGetByDeploymentName(self, stream):
