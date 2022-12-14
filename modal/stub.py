@@ -210,7 +210,9 @@ class _Stub:
         if mode == StubRunMode.DETACH:
             post_init_state = api_pb2.APP_STATE_DETACHED
         elif mode == StubRunMode.DEPLOY:
-            post_init_state = api_pb2.APP_STATE_DEPLOYED
+            post_init_state = (
+                api_pb2.APP_STATE_UNSPECIFIED
+            )  # don't change the app state - deploy state is set by AppDeploy
         else:
             post_init_state = api_pb2.APP_STATE_EPHEMERAL
 
