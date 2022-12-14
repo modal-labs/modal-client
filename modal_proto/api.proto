@@ -79,7 +79,7 @@ message AppClientDisconnectRequest {
 message AppCreateRequest {
   string client_id = 1;
   string description = 2;    // Human readable label for the website
-  bool detach = 3; // TODO: deprecate, post-init state
+  bool detach = 3; // TODO: deprecate in 0.43, remove when 0.42 is unsupported
   bool initializing = 4; // TODO: remove and make default=True when client 0.42 is unsupported
 }
 
