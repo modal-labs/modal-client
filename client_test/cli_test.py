@@ -115,3 +115,8 @@ def test_app_run_custom_stub(servicer, server_url_env, test_dir):
     res = _run(["app", "run", modal_file.as_posix()], expected_exit_code=1)
     assert "stub variable" in res.stdout  # error output
     _run(["app", "run", modal_file.as_posix() + "::my_stub"])
+
+
+def test_app_run_aiostub(servicer, server_url_env, test_dir):
+    modal_file = test_dir / "supports" / "app_run_tests" / "async_stub.py"
+    _run(["app", "run", modal_file.as_posix()])
