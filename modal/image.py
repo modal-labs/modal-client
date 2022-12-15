@@ -11,9 +11,10 @@ from typing import Any, Callable, Collection, Optional, Union
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 from modal_utils.grpc_utils import retry_transient_errors
+
 from .config import config, logger
-from .mount import _Mount
 from .exception import InvalidError, NotFoundError, RemoteError
+from .mount import _Mount
 from .object import Handle, Provider
 from .secret import _Secret
 
@@ -93,7 +94,7 @@ class _Image(Provider[_ImageHandle]):
         ref=None,
         gpu=False,
         build_function=None,
-        context_mount:_Mount=None,
+        context_mount: _Mount = None,
     ):
         if ref and (base_images or dockerfile_commands or context_files):
             raise InvalidError("No other arguments can be provided when initializing an image from a ref.")
@@ -182,7 +183,7 @@ class _Image(Provider[_ImageHandle]):
             secret_ids=secret_ids,
             gpu=self._gpu,
             build_function_def=build_function_def,
-            context_mount_id=context_mount_id
+            context_mount_id=context_mount_id,
         )
 
         req = api_pb2.ImageGetOrCreateRequest(
@@ -235,29 +236,10 @@ class _Image(Provider[_ImageHandle]):
 
         return _Image(base_images={"base": self}, **kwargs)
 
-    def copy(self, *, local_dir=None, local_file=None, remote_path="."):
-        if (local_dir and local_file) or not (local_dir or local_file):
-            raise InvalidError("Use either local_dir or local_file")
-
-        if local_dir:
-            remote_copy_from = local_dir
-            local_dir = Path(local_dir).parent
-            condition = lambda fn: Path(fn).is_relative_to(remote_copy_from)
-        else:
-            condition = lambda fn: True
-            remote_copy_from = Path(local_file).name
-
+    def copy(self, mount: _Mount, remote_path: Union[str, Path] = "."):
         return self.extend(
-            dockerfile_commands=[
-                "FROM base",
-                f"COPY {remote_copy_from} {remote_path}"
-            ],
-            context_mount=_Mount(
-                local_dir=local_dir,
-                local_file=local_file,
-                remote_dir="/",  # not actually used when building
-                condition=condition,
-            )
+            dockerfile_commands=["FROM base", f"COPY . {remote_path}"],  # copy everything from the supplied mount
+            context_mount=mount,
         )
 
     def pip_install(
