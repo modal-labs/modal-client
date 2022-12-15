@@ -43,10 +43,16 @@ else:
 class FunctionQueuingColumn(ProgressColumn):
     """Renders time elapsed, including task.completed as additional elapsed time."""
 
+    def __init__(self):
+        self.lag = 0
+        super().__init__()
+
     def render(self, task) -> Text:
-        elapsed = task.finished_time + task.completed if task.finished else task.elapsed + task.completed
-        if elapsed is None:
-            return Text("-:--:--", style="progress.elapsed")
+        self.lag = max(task.completed - task.elapsed, self.lag)
+        if task.finished:
+            elapsed = max(task.finished_time, task.completed)
+        else:
+            elapsed = task.elapsed + self.lag
         delta = timedelta(seconds=int(elapsed))
         return Text(str(delta), style="progress.elapsed")
 
