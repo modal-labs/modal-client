@@ -534,6 +534,7 @@ class _Stub:
         keep_warm: bool = False,  # Toggles an adaptively-sized warm pool for latency-sensitive apps.
         name: Optional[str] = None,  # Sets the Modal name of the function within the stub
         is_generator: Optional[bool] = None,  # If not set, it's inferred from the function signature
+        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
     ) -> _FunctionHandle:  # Function object - callable as a regular function within a Modal app
         """Decorator to register a new Modal function with this stub."""
         if image is None:
@@ -574,6 +575,7 @@ class _Stub:
             interactive=interactive,
             keep_warm=keep_warm,
             name=name,
+            cloud_provider=cloud,
         )
 
         if _is_build_step:
@@ -609,6 +611,7 @@ class _Stub:
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         keep_warm: bool = False,  # Toggles an adaptively-sized warm pool for latency-sensitive apps.
+        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
     ):
         """Register a basic web endpoint with this application.
 
@@ -648,6 +651,7 @@ class _Stub:
             container_idle_timeout=container_idle_timeout,
             timeout=timeout,
             keep_warm=keep_warm,
+            cloud_provider=cloud,
         )
         return self._add_function(function)
 
@@ -671,6 +675,7 @@ class _Stub:
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         keep_warm: bool = False,  # Toggles an adaptively-sized warm pool for latency-sensitive apps.
+        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
         _webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
     ):
         """Register an ASGI app with this application.
@@ -705,6 +710,7 @@ class _Stub:
             container_idle_timeout=container_idle_timeout,
             timeout=timeout,
             keep_warm=keep_warm,
+            cloud_provider=cloud,
         )
         return self._add_function(function)
 
