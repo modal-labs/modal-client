@@ -345,6 +345,8 @@ message Function {
   bytes class_serialized = 23;
   
   uint32 task_idle_timeout_secs = 25;
+
+  LocationConfig location = 26;
 }
 
 message FunctionCreateRequest {
@@ -653,6 +655,18 @@ message Resources {
   uint32 memory_mb = 2;
   uint32 milli_cpu = 3;
   GPUConfig gpu_config = 4;
+}
+
+
+enum CloudProvider {
+  CLOUD_PROVIDER_UNSPECIFIED = 0;
+  CLOUD_PROVIDER_AWS = 1;
+  CLOUD_PROVIDER_GCP = 2;
+  CLOUD_PROVIDER_AUTO = 3;
+}
+
+message LocationConfig {
+  CloudProvider cloud_provider = 1;
 }
 
 message Schedule {
