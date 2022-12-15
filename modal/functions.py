@@ -7,6 +7,7 @@ import time
 import warnings
 from dataclasses import dataclass
 from datetime import date, timedelta
+from enum import Enum
 from pathlib import Path
 from typing import (
     Any,
@@ -49,7 +50,7 @@ from .client import _Client
 from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError
 from .exception import TimeoutError as _TimeoutError
 from .exception import deprecation_error, deprecation_warning
-from .gpu import T4, _GPUConfig
+from .gpu import A100, T4, _GPUConfig
 from .image import _Image
 from .mount import _Mount
 from .object import Handle, Provider, Ref, RemoteRef
@@ -622,6 +623,12 @@ class _FunctionHandle(Handle, type_prefix="fu"):
 FunctionHandle, AioFunctionHandle = synchronize_apis(_FunctionHandle)
 
 
+class CloudProvider(Enum):
+    AWS = api_pb2.CLOUD_PROVIDER_AWS
+    GCP = api_pb2.CLOUD_PROVIDER_GCP
+    AUTO = api_pb2.CLOUD_PROVIDER_AUTO
+
+
 class _Function(Provider[_FunctionHandle]):
     """Functions are the basic units of serverless execution on Modal.
 
@@ -656,6 +663,7 @@ class _Function(Provider[_FunctionHandle]):
         keep_warm: bool = False,
         interactive: bool = False,
         name: Optional[str] = None,
+        cloud_provider: Optional[str] = None,
     ) -> None:
         """mdmd:hidden"""
         raw_f = function_info.raw_f
@@ -721,7 +729,20 @@ class _Function(Provider[_FunctionHandle]):
         self._keep_warm = keep_warm
         self._interactive = interactive
         self._tag = self._info.get_tag()
+        self._cloud_provider = self._get_cloud_provider(cloud_provider) if cloud_provider else None
         super().__init__()
+
+    def _get_cloud_provider(self, value: str) -> "api_pb2.CloudProvider.V":
+        try:
+            cloud_provider = CloudProvider[value.upper()]
+        except KeyError:
+            raise InvalidError(
+                f"Invalid cloud provider: {value}. Value must be one of {[x.name.lower() for x in CloudProvider]} (case-insensitive)."
+            )
+        if cloud_provider != CloudProvider.AWS and not isinstance(self._gpu, A100):
+            raise InvalidError("Cloud selection only supported for functions running with A100 GPUs.")
+
+        return cloud_provider.value
 
     async def _load(self, client, stub, app_id, loader, message_callback, existing_function_id):
         message_callback(f"Creating {self._tag}...")
@@ -850,6 +871,7 @@ class _Function(Provider[_FunctionHandle]):
             concurrency_limit=self._concurrency_limit,
             keep_warm=self._keep_warm,
             pty_info=pty_info,
+            cloud_provider=self._cloud_provider,
         )
         request = api_pb2.FunctionCreateRequest(
             app_id=app_id,
