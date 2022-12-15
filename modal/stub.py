@@ -207,6 +207,15 @@ class _Stub:
     ) -> AsyncGenerator[_App, None]:
         app_name = name if name is not None else self.description
         detach = mode == StubRunMode.DETACH
+        if mode == StubRunMode.DETACH:
+            post_init_state = api_pb2.APP_STATE_DETACHED
+        elif mode == StubRunMode.DEPLOY:
+            post_init_state = (
+                api_pb2.APP_STATE_UNSPECIFIED
+            )  # don't change the app state - deploy state is set by AppDeploy
+        else:
+            post_init_state = api_pb2.APP_STATE_EPHEMERAL
+
         if existing_app_id is not None:
             app = await _App._init_existing(self, client, existing_app_id)
         else:
@@ -229,7 +238,7 @@ class _Stub:
                 # Create all members
                 create_progress = Tree(step_progress("Creating objects..."), guide_style="gray50")
                 with output_mgr.ctx_if_visible(output_mgr.make_live(create_progress)):
-                    await app._create_all_objects(create_progress)
+                    await app._create_all_objects(create_progress, post_init_state)
                 create_progress.label = step_completed("Created objects.")
                 output_mgr.print_if_visible(create_progress)
 

@@ -206,8 +206,8 @@ async def list_apps():
             state = "[green]running (detached)[/green]"
         elif app_stats.state == api_pb2.AppState.APP_STATE_EPHEMERAL:
             state = "[green]running[/green]"
-        elif app_stats.state == api_pb2.AppState.APP_STATE_DEPLOYING:
-            state = "[green]deploying...[/green]"
+        elif app_stats.state == api_pb2.AppState.APP_STATE_INITIALIZING:
+            state = "[green]initializing...[/green]"
         elif app_stats.state == api_pb2.AppState.APP_STATE_DEPLOYED:
             state = "[green]deployed[/green]"
         elif app_stats.state == api_pb2.AppState.APP_STATE_STOPPING:

@@ -22,7 +22,7 @@ enum AppState {
   APP_STATE_STOPPED = 5;
 
   // App is created and in process of deployment.
-  APP_STATE_DEPLOYING = 6;
+  APP_STATE_INITIALIZING = 6;
 }
 
 enum ClientType {
@@ -79,8 +79,8 @@ message AppClientDisconnectRequest {
 message AppCreateRequest {
   string client_id = 1;
   string description = 2;    // Human readable label for the website
-  bool detach = 3;
-  bool deploying = 4;
+  bool detach = 3; // TODO: deprecate in 0.43, remove when 0.42 is unsupported
+  bool initializing = 4; // TODO: remove and make default=True when client 0.42 is unsupported
 }
 
 message AppCreateResponse {
@@ -178,6 +178,7 @@ message AppSetObjectsRequest {
   map<string, string> indexed_object_ids = 2;
   string client_id = 3;
   repeated string unindexed_object_ids = 4;
+  AppState new_app_state = 5; // promotes an app from initializing to this new state
 }
 
 message BaseImage {
