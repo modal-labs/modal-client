@@ -6,7 +6,7 @@ import sys
 import warnings
 from datetime import date
 from enum import Enum
-from typing import AsyncGenerator, Collection, Dict, List, Optional, Union
+from typing import AsyncGenerator, Callable, Collection, Dict, List, Optional, Union
 
 from rich.tree import Tree
 
@@ -22,6 +22,7 @@ from ._pty import exec_cmd, write_stdin_to_pty_stream
 from .app import _App, container_app, is_local
 from .client import _Client
 from .config import config, logger
+from .entrypoints import _Entrypoint
 from .exception import InvalidError, deprecation_warning
 from .functions import _Function, _FunctionHandle
 from .gpu import _GPUConfig
@@ -110,6 +111,7 @@ class _Stub:
         self._mounts = mounts
         self._secrets = secrets
         self._function_handles = {}
+        self._local_entrypoints = {}
         super().__init__()
 
     @property
@@ -507,6 +509,32 @@ class _Stub:
     @property
     def registered_functions(self) -> List[str]:
         return list(self._function_handles.keys())
+
+    @property
+    def registered_entrypoints(self) -> Dict[str, Callable]:
+        return self._local_entrypoints
+
+    def local_entrypoint(self, raw_f=None, name: Optional[str] = None) -> _Entrypoint:
+        """Decorate functions to be used as entrypoints
+
+        E.g.
+        @stub.local_entrypoint
+        def main():
+            some_modal_function()
+
+        To run the function, either call it directly from code:
+        ```python
+        main()  # needs no stub.run() context
+        ```
+        Or from the CLI:
+        ```
+        modal app run stub_module.py::main
+        ```
+        """
+        info = FunctionInfo(raw_f, False, name_override=name)
+        entrypoint = _Entrypoint(info)
+        self._local_entrypoints[info.get_tag()] = entrypoint
+        return entrypoint
 
     @decorator_with_options
     def function(

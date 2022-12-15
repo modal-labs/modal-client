@@ -21,7 +21,7 @@ from modal.functions import _Function
 from modal.stub import _Stub
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
-from modal_utils.package_utils import import_stub, parse_stub_ref, NoSuchStub
+from modal_utils.package_utils import NoSuchStub, import_stub, parse_stub_ref
 
 DEFAULT_STUB_NAME = "stub"
 
@@ -48,25 +48,30 @@ async def run(
         sys.exit(1)
 
     _stub = synchronizer._translate_in(stub)
-    registered_functions_str = ", ".join(_stub.registered_functions)
+    function_choices = set(_stub.registered_functions) | set(_stub.registered_entrypoints.keys())
+    registered_functions_str = ", ".join(function_choices)
     if not function_name:
-        if len(_stub.registered_functions) == 1:
-            function_name = _stub.registered_functions[0]
+        if len(function_choices) == 1:
+            function_name = function_choices[0]
         else:
             print(
                 f"""You need to specify an entrypoint Modal function to run using --function-name=<name>
 Registered functions on the selected stub are: {registered_functions_str}"""
             )
             exit(1)
-    elif function_name not in _stub.registered_functions:
+    elif function_name not in function_choices:
         print(
             f"No function `{function_name}` could be found in the specified stub. Registered functions are: {registered_functions_str}"
         )
         exit(1)
 
-    async with _stub.run(detach=detach) as app:
-        func_handle = getattr(app, function_name)
-        await func_handle.call()
+    if function_name in _stub.registered_functions:
+        async with _stub.run(detach=detach) as app:
+            func_handle = getattr(app, function_name)
+            await func_handle.call()
+    else:
+        local_entrypoint = _stub.registered_entrypoints[function_name]
+        local_entrypoint()
 
 
 @app_cli.command("deploy", help="Deploy a Modal stub as an application.")
