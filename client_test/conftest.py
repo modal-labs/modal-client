@@ -502,7 +502,7 @@ async def aio_container_client(unix_servicer):
 
 
 @pytest_asyncio.fixture(scope="function")
-async def server_url_env(servicer, monkeypatch):
+async def server_url_env(servicer, monkeypatch, set_env_client):
     monkeypatch.setenv("MODAL_SERVER_URL", servicer.remote_addr)
     yield
 
