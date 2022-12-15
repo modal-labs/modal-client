@@ -102,6 +102,16 @@ async def ls(volume_name: str, path: str = typer.Argument(default="/")):
         for entry in entries:
             print(entry.path)
 
+    if path == "/" and not entries:
+        # TODO(erikbern): consider this a big fat TODO for
+        # rethinking how we create and work with shared volumes
+        # across cloud vendors
+        print(
+            "Note: this command only lists data in AWS."
+            " If you created data on an A100 running in GCP,"
+            " it will not be listed here."
+        )
+
 
 PIPE_PATH = Path("-")
 
