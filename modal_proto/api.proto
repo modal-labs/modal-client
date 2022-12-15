@@ -346,7 +346,7 @@ message Function {
   
   uint32 task_idle_timeout_secs = 25;
 
-  LocationConfig location = 26;
+  CloudProvider cloud = 26;
 }
 
 message FunctionCreateRequest {
@@ -663,10 +663,6 @@ enum CloudProvider {
   CLOUD_PROVIDER_AWS = 1;
   CLOUD_PROVIDER_GCP = 2;
   CLOUD_PROVIDER_AUTO = 3;
-}
-
-message LocationConfig {
-  CloudProvider cloud_provider = 1;
 }
 
 message Schedule {
