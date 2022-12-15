@@ -740,7 +740,7 @@ class _Function(Provider[_FunctionHandle]):
                 f"Invalid cloud provider: {value}. Value must be one of {[x.name.lower() for x in CloudProvider]} (case-insensitive)."
             )
         if cloud_provider != CloudProvider.AWS and not isinstance(self._gpu, A100):
-            raise InvalidError(f"Cloud selection only supported for functions running with A100 GPUs.")
+            raise InvalidError("Cloud selection only supported for functions running with A100 GPUs.")
 
         return cloud_provider.value
 
