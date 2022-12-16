@@ -4,7 +4,7 @@ import pytest
 import sys
 from typing import List
 
-from modal import Image, Secret, SharedVolume, Stub
+from modal import Image, Mount, Secret, SharedVolume, Stub
 from modal.exception import InvalidError, NotFoundError
 from modal.image import _dockerhub_python_version
 from modal_proto import api_pb2
@@ -189,3 +189,23 @@ def test_poetry(client, servicer):
         layers = get_image_layers(running_app["image"].object_id, servicer)
         context_files = {f.filename for layer in layers for f in layer.context_files}
         assert context_files == {"/.poetry.lock", "/.pyproject.toml", "/modal_requirements.txt"}
+
+
+def test_image_build_with_context_mount(client, servicer, tmp_path):
+    (tmp_path / "data.txt").write_text("hello")
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "sub").write_text("world")
+
+    data_mount = Mount(local_dir=tmp_path, remote_dir="/")
+
+    stub = Stub()
+    stub["image"] = Image.debian_slim().copy(data_mount, remote_path="/dummy")
+
+    with stub.run(client=client) as running_app:
+        layers = get_image_layers(running_app["image"].object_id, servicer)
+        assert "COPY . /dummy" in layers[0].dockerfile_commands
+        assert layers[0].context_mount_id == "mo-123"
+        files = {f.rel_filename: f.content for f in data_mount._get_files()}
+        assert files["data.txt"] == b"hello"
+        assert files[os.path.join("data", "sub")] == b"world"
+        assert len(files) == 2
