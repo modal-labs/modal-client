@@ -29,7 +29,10 @@ def asgi_app_wrapper(asgi_app):
             while True:
                 pop_task = tc.create_task(messages_from_app.get())
 
-                done, pending = await asyncio.wait([pop_task, app_task], return_when=asyncio.FIRST_COMPLETED)
+                try:
+                    done, pending = await asyncio.wait([pop_task, app_task], return_when=asyncio.FIRST_COMPLETED)
+                except asyncio.CancelledError:
+                    break
 
                 if pop_task in done:
                     yield pop_task.result()

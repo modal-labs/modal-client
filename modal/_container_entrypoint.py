@@ -1,11 +1,13 @@
 # Copyright Modal Labs 2022
 from __future__ import annotations
+
 import asyncio
 import base64
 import contextlib
 import importlib
 import inspect
 import math
+import signal
 import sys
 import time
 import traceback
@@ -72,6 +74,22 @@ def get_is_async(function):
         return False
     else:
         raise RuntimeError(f"Function {function} is a strange type {type(function)}")
+
+
+def run_with_signal_handler(coro):
+    """Execute coro in an event loop, with a signal handler that cancels
+    the task in the case of SIGINT or SIGTERM. Prevents stray cancellation errors
+    from propagating up."""
+
+    loop = asyncio.new_event_loop()
+    task = asyncio.ensure_future(coro, loop=loop)
+    for s in [signal.SIGINT, signal.SIGTERM]:
+        loop.add_signal_handler(s, task.cancel)
+    try:
+        result = loop.run_until_complete(task)
+    finally:
+        loop.close()
+    return result
 
 
 class _FunctionIOManager:
@@ -513,7 +531,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     if not is_async:
         call_function_sync(function_io_manager, obj, fun, is_generator)
     else:
-        asyncio.run(call_function_async(aio_function_io_manager, obj, fun, is_generator))
+        run_with_signal_handler(call_function_async(aio_function_io_manager, obj, fun, is_generator))
 
 
 if __name__ == "__main__":
