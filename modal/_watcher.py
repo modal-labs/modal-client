@@ -1,11 +1,13 @@
 # Copyright Modal Labs 2022
 import asyncio
+from enum import IntEnum
 from pathlib import Path
 from typing import Optional, Set, Union
 
 from aiostream import stream
 from rich.tree import Tree
 from watchfiles import awatch
+from watchfiles.main import FileChange
 
 from modal.functions import _Function
 from modal.mount import _Mount
@@ -13,13 +15,23 @@ from modal.stub import _Stub
 
 from ._output import OutputManager
 
-START = object()
-TIMEOUT = object()
+
+class AppChange(IntEnum):
+    """
+    Enum representing the type of a change in the Modal app state.
+    """
+
+    START = 1
+    TIMEOUT = 2
+
+
+FileChangeset = Set[FileChange]
+ChangeEvent = Union[AppChange, FileChangeset, None]
 
 
 async def _sleep(timeout: float):
     await asyncio.sleep(timeout)
-    yield TIMEOUT
+    yield AppChange.TIMEOUT
 
 
 async def _watch_paths(paths: Set[Union[str, Path]]):
@@ -61,7 +73,7 @@ async def watch(stub: _Stub, output_mgr: OutputManager, timeout: Optional[float]
 
     _print_watched_paths(paths, output_mgr, timeout)
 
-    yield START
+    yield AppChange.START
 
     timeout_agen = [] if timeout is None else [_sleep(timeout)]
 

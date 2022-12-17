@@ -17,6 +17,7 @@ from modal_utils.decorator_utils import decorator_with_options
 
 from ._function_utils import FunctionInfo
 from ._ipython import is_notebook
+from ._live_reload import process_change
 from ._output import OutputManager, step_completed, step_progress
 from ._pty import exec_cmd, write_stdin_to_pty_stream
 from .app import _App, container_app, is_local
@@ -334,7 +335,7 @@ class _Stub:
         Changes to decorator arguments (eg. `timeout`, `gpu`, `shared_volumes`) will not propogate on live updates,
         just web handle function bodies. Stop and restart your webhook serving process to propogate these changes.
         """
-        from ._watcher import TIMEOUT, watch
+        from ._watcher import AppChange, watch
 
         if not is_local():
             raise InvalidError(
@@ -367,9 +368,13 @@ class _Stub:
         existing_app_id = None
 
         try:
-            while event != TIMEOUT:
+            while event != AppChange.TIMEOUT:
                 if existing_app_id:
                     output_mgr.print_if_visible(f"⚡️ Updating app {existing_app_id}...")
+
+                if not isinstance(event, AppChange):
+                    # Recreate providers, as definitions may have been changed by users.
+                    _ = process_change(self, file_changeset=event)
 
                 async with self._run(client, output_mgr, existing_app_id, mode=StubRunMode.SERVE) as app:
                     client.set_pre_stop(app.disconnect)
@@ -653,7 +658,7 @@ class _Stub:
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         keep_warm: Union[bool, int] = False,  # Toggles an adaptively-sized warm pool for latency-sensitive apps.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
-    ):
+    ) -> _FunctionHandle:
         """Register a basic web endpoint with this application.
 
         This is the simple way to create a web endpoint on Modal. The function
@@ -722,7 +727,7 @@ class _Stub:
         keep_warm: Union[bool, int] = False,  # Toggles an adaptively-sized warm pool for latency-sensitive apps.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
         _webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
-    ):
+    ) -> _FunctionHandle:
         """Register an ASGI app with this application.
 
         Asynchronous Server Gateway Interface (ASGI) is a standard for Python
@@ -766,7 +771,7 @@ class _Stub:
         self,
         wsgi_app,
         **kwargs,
-    ):
+    ) -> _FunctionHandle:
         """Exposes a WSGI app. For a list of arguments, see the documentation for `asgi`."""
         asgi_decorator = self.asgi(_webhook_type=api_pb2.WEBHOOK_TYPE_WSGI_APP, **kwargs)
         return asgi_decorator(wsgi_app)
