@@ -81,8 +81,8 @@ def run_with_signal_handler(coro):
     the task in the case of SIGINT or SIGTERM. Prevents stray cancellation errors
     from propagating up."""
 
-    loop = asyncio.get_event_loop()
-    task = asyncio.ensure_future(coro)
+    loop = asyncio.new_event_loop()
+    task = asyncio.ensure_future(coro, loop=loop)
     for s in [signal.SIGINT, signal.SIGTERM]:
         loop.add_signal_handler(s, task.cancel)
     try:
