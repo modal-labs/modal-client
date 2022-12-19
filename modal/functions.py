@@ -50,9 +50,7 @@ from .client import _Client
 from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError
 from .exception import TimeoutError as _TimeoutError
 from .exception import deprecation_error, deprecation_warning
-from .gpu import A100
-from .gpu import Any as AnyGPU
-from .gpu import _GPUConfig
+from .gpu import _GPUConfig, parse_gpu_config
 from .image import _Image
 from .mount import _Mount
 from .object import Handle, Provider, Ref, RemoteRef
@@ -631,6 +629,19 @@ class CloudProvider(Enum):
     AUTO = api_pb2.CLOUD_PROVIDER_AUTO
 
 
+def parse_cloud_provider(value: str, gpu_config: api_pb2.GPUConfig) -> "api_pb2.CloudProvider.V":
+    try:
+        cloud_provider = CloudProvider[value.upper()]
+    except KeyError:
+        raise InvalidError(
+            f"Invalid cloud provider: {value}. Value must be one of {[x.name.lower() for x in CloudProvider]} (case-insensitive)."
+        )
+    if cloud_provider != CloudProvider.AWS and gpu_config.type != api_pb2.GPU_TYPE_A100:
+        raise InvalidError("Cloud selection only supported for functions running with A100 GPUs.")
+
+    return cloud_provider.value
+
+
 class _Function(Provider[_FunctionHandle]):
     """Functions are the basic units of serverless execution on Modal.
 
@@ -648,7 +659,7 @@ class _Function(Provider[_FunctionHandle]):
         secrets: Collection[_Secret] = (),
         schedule: Optional[Schedule] = None,
         is_generator=False,
-        gpu: Union[bool, _GPUConfig] = False,
+        gpu: Union[bool, str, _GPUConfig] = False,
         rate_limit: Optional[RateLimit] = None,
         # TODO: maybe break this out into a separate decorator for notebooks.
         serialized: bool = False,
@@ -716,7 +727,6 @@ class _Function(Provider[_FunctionHandle]):
 
         self._schedule = schedule
         self._is_generator = is_generator
-        self._gpu = gpu
         self._rate_limit = rate_limit
         self._mounts = mounts
         self._shared_volumes = shared_volumes
@@ -731,20 +741,9 @@ class _Function(Provider[_FunctionHandle]):
         self._keep_warm = keep_warm
         self._interactive = interactive
         self._tag = self._info.get_tag()
-        self._cloud_provider = self._get_cloud_provider(cloud_provider) if cloud_provider else None
+        self._gpu_config = parse_gpu_config(gpu)
+        self._cloud_provider = parse_cloud_provider(cloud_provider, self._gpu_config) if cloud_provider else None
         super().__init__()
-
-    def _get_cloud_provider(self, value: str) -> "api_pb2.CloudProvider.V":
-        try:
-            cloud_provider = CloudProvider[value.upper()]
-        except KeyError:
-            raise InvalidError(
-                f"Invalid cloud provider: {value}. Value must be one of {[x.name.lower() for x in CloudProvider]} (case-insensitive)."
-            )
-        if cloud_provider != CloudProvider.AWS and not isinstance(self._gpu, A100):
-            raise InvalidError("Cloud selection only supported for functions running with A100 GPUs.")
-
-        return cloud_provider.value
 
     async def _load(self, client, stub, app_id, loader, message_callback, existing_function_id):
         message_callback(f"Creating {self._tag}...")
@@ -844,16 +843,6 @@ class _Function(Provider[_FunctionHandle]):
             if cls:
                 class_serialized = cloudpickle.dumps(cls)
 
-        if isinstance(self._gpu, _GPUConfig):
-            gpu_config = self._gpu._to_proto()
-        elif self._gpu is True:
-            deprecation_warning(
-                date(2022, 12, 19), 'Setting gpu=True is deprecated. Use `gpu="any"` or `gpu=modal.gpu.Any()` instead.'
-            )
-            gpu_config = AnyGPU()._to_proto()
-        else:
-            gpu_config = None
-
         # Create function remotely
         function_definition = api_pb2.Function(
             module_name=self._info.module_name,
@@ -865,7 +854,7 @@ class _Function(Provider[_FunctionHandle]):
             function_serialized=function_serialized,
             class_serialized=class_serialized,
             function_type=function_type,
-            resources=api_pb2.Resources(milli_cpu=milli_cpu, gpu_config=gpu_config, memory_mb=self._memory),
+            resources=api_pb2.Resources(milli_cpu=milli_cpu, gpu_config=self._gpu_config, memory_mb=self._memory),
             rate_limit=rate_limit,
             webhook_config=self._webhook_config,
             shared_volume_mounts=shared_volume_mounts,
