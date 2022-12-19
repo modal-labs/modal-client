@@ -61,5 +61,7 @@ def parse_gpu_config(value: GPU_T) -> api_pb2.GPUConfig:
             date(2022, 12, 19), 'Setting gpu=True is deprecated. Use `gpu="any"` or `gpu=modal.gpu.Any()` instead.'
         )
         return Any()._to_proto()
-    else:
+    elif value is None or value is False:
         return api_pb2.GPUConfig()
+    else:
+        raise InvalidError(f"Invalid GPU config: {value}. Value must be a string, a GPUConfig object or `None`.")

@@ -725,6 +725,7 @@ class _Function(Provider[_FunctionHandle]):
         else:
             retry_policy = None
 
+        self._gpu = gpu
         self._schedule = schedule
         self._is_generator = is_generator
         self._rate_limit = rate_limit
