@@ -50,7 +50,9 @@ from .client import _Client
 from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError
 from .exception import TimeoutError as _TimeoutError
 from .exception import deprecation_error, deprecation_warning
-from .gpu import A100, T4, _GPUConfig
+from .gpu import A100
+from .gpu import Any as AnyGPU
+from .gpu import _GPUConfig
 from .image import _Image
 from .mount import _Mount
 from .object import Handle, Provider, Ref, RemoteRef
@@ -844,8 +846,11 @@ class _Function(Provider[_FunctionHandle]):
 
         if isinstance(self._gpu, _GPUConfig):
             gpu_config = self._gpu._to_proto()
-        elif self._gpu:
-            gpu_config = T4()._to_proto()
+        elif self._gpu is True:
+            deprecation_warning(
+                date(2022, 12, 19), 'Setting gpu=True is deprecated. Use `gpu="any"` or `gpu=modal.gpu.Any()` instead.'
+            )
+            gpu_config = AnyGPU()._to_proto()
         else:
             gpu_config = None
 

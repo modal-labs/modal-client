@@ -30,3 +30,8 @@ class A100(_GPUConfig):
 class A10G(_GPUConfig):
     def __init__(self, *, count: int = 1):
         super().__init__(api_pb2.GPU_TYPE_A10G, count)
+
+
+class Any(_GPUConfig):
+    def __init__(self, *, count: int = 1):
+        super().__init__(api_pb2.GPU_TYPE_ANY, count)
