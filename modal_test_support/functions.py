@@ -100,7 +100,7 @@ class CubeAsync:
 
 @stub.webhook
 def webhook(arg="world"):
-    return f"Hello, {arg}"
+    return {"hello": arg}
 
 
 class WebhookLifecycleClass:
@@ -118,7 +118,7 @@ class WebhookLifecycleClass:
     @stub.webhook
     def webhook(self, arg="world"):
         self._events.append("call")
-        return f"Hello, {arg}"
+        return {"hello": arg}
 
 
 if __name__ == "__main__":
@@ -133,3 +133,16 @@ def gen(n):
 @stub.function(is_generator=True)
 def fun_returning_gen(n):
     return gen(n)
+
+
+@stub.asgi
+def fastapi_app():
+    from fastapi import FastAPI
+
+    web_app = FastAPI()
+
+    @web_app.get("/foo")
+    async def foo(arg="world"):
+        return {"hello": arg}
+
+    return web_app
