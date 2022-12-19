@@ -20,7 +20,7 @@ async def get_files():
 
     for _, mount in fn_info.get_mounts().items():
         async for file_info in mount._get_files():
-            print(file_info.rel_filename)
+            print(file_info.mount_filename)
 
 
 if __name__ == "__main__":

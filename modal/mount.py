@@ -154,8 +154,8 @@ class _Mount(Provider[_MountHandle]):
 
                 for filename in gen:
                     if entry.condition(filename):
-                        rel_filename = entry.path_within_mount / Path(filename).relative_to(local_dir)
-                        futs.append(loop.run_in_executor(exe, get_file_upload_spec, filename, rel_filename))
+                        mount_filename = entry.path_within_mount / Path(filename).relative_to(local_dir)
+                        futs.append(loop.run_in_executor(exe, get_file_upload_spec, filename, mount_filename))
                 logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} workers")
                 for i, fut in enumerate(asyncio.as_completed(futs)):
                     try:
@@ -179,7 +179,7 @@ class _Mount(Provider[_MountHandle]):
             nonlocal n_files, uploaded_hashes, total_bytes
             message_callback(f"Mounting {message_label}: Uploaded {len(uploaded_hashes)}/{n_files} inspected files")
 
-            remote_filename = mount_file.rel_path.as_posix()
+            remote_filename = mount_file.mount_filename.as_posix()
             files.append(api_pb2.MountFile(filename=remote_filename, sha256_hex=mount_file.sha256_hex))
 
             request = api_pb2.MountPutFileRequest(sha256_hex=mount_file.sha256_hex)
