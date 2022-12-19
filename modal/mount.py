@@ -89,7 +89,7 @@ class _Mount(Provider[_MountHandle]):
                     recursive=recursive,
                 )
             elif local_file:
-                self.add_local_file(local_path=local_dir, path_within_mount=Path(remote_dir or "/"))
+                self.add_local_file(local_path=local_file, path_within_mount=Path(remote_dir or "/"))
 
         super().__init__()
 
@@ -112,7 +112,7 @@ class _Mount(Provider[_MountHandle]):
         )
         return self
 
-    def add_local_file(self, local_path: Union[str, bool], path_within_mount: Union[str, Path]):
+    def add_local_file(self, local_path: Union[str, Path], path_within_mount: Union[str, Path]):
         self._entries.append(
             _MountEntry(
                 local_dir=None,
