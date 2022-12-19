@@ -644,6 +644,7 @@ enum GPUType {
   GPU_TYPE_T4 = 1;
   GPU_TYPE_A100 = 2;
   GPU_TYPE_A10G = 3;
+  GPU_TYPE_ANY = 4;
 }
 
 message GPUConfig {
