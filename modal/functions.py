@@ -50,7 +50,7 @@ from .client import _Client
 from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError
 from .exception import TimeoutError as _TimeoutError
 from .exception import deprecation_error, deprecation_warning
-from .gpu import _GPUConfig, parse_gpu_config
+from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
 from .mount import _Mount
 from .object import Handle, Provider, Ref, RemoteRef
@@ -659,7 +659,7 @@ class _Function(Provider[_FunctionHandle]):
         secrets: Collection[_Secret] = (),
         schedule: Optional[Schedule] = None,
         is_generator=False,
-        gpu: Union[bool, str, _GPUConfig] = False,
+        gpu: GPU_T = None,
         rate_limit: Optional[RateLimit] = None,
         # TODO: maybe break this out into a separate decorator for notebooks.
         serialized: bool = False,

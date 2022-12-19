@@ -43,8 +43,11 @@ class Any(_GPUConfig):
 
 STRING_TO_GPU_CONFIG = {"t4": T4(), "a100": A100(), "a10g": A10G(), "any": Any()}
 
+# bool will be deprecated in future versions.
+GPU_T = Union[None, bool, str, _GPUConfig]
 
-def parse_gpu_config(value: Union[bool, str, _GPUConfig]) -> api_pb2.GPUConfig:
+
+def parse_gpu_config(value: GPU_T) -> api_pb2.GPUConfig:
     if isinstance(value, _GPUConfig):
         return value._to_proto()
     elif isinstance(value, str):
@@ -52,7 +55,7 @@ def parse_gpu_config(value: Union[bool, str, _GPUConfig]) -> api_pb2.GPUConfig:
             raise InvalidError(
                 f"Invalid GPU type: {value}. Value must be one of {list(STRING_TO_GPU_CONFIG.keys())} (case-insensitive)."
             )
-        return STRING_TO_GPU_CONFIG[value.lower()]
+        return STRING_TO_GPU_CONFIG[value.lower()]._to_proto()
     elif value is True:
         deprecation_warning(
             date(2022, 12, 19), 'Setting gpu=True is deprecated. Use `gpu="any"` or `gpu=modal.gpu.Any()` instead.'
