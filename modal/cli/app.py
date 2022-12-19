@@ -48,7 +48,7 @@ async def run(
         sys.exit(1)
 
     _stub = synchronizer._translate_in(stub)
-    function_choices = set(_stub.registered_functions) | set(_stub.registered_entrypoints.keys())
+    function_choices = list(set(_stub.registered_functions) | set(_stub.registered_entrypoints.keys()))
     registered_functions_str = ", ".join(function_choices)
     if not function_name:
         if len(function_choices) == 1:
@@ -65,13 +65,13 @@ Registered functions on the selected stub are: {registered_functions_str}"""
         )
         exit(1)
 
-    if function_name in _stub.registered_functions:
-        async with _stub.run(detach=detach) as app:
-            func_handle = getattr(app, function_name)
+    async with _stub.run(detach=detach) as app:
+        if function_name in _stub.registered_functions:
+            func_handle = getattr(app, function_name)  # gets FunctionHandle from app
             await func_handle.call()
-    else:
-        local_entrypoint = _stub.registered_entrypoints[function_name]
-        local_entrypoint()
+        else:
+            local_entrypoint = _stub.registered_entrypoints[function_name]
+            await local_entrypoint()
 
 
 @app_cli.command("deploy", help="Deploy a Modal stub as an application.")

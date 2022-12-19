@@ -7,6 +7,7 @@ from modal_utils.grpc_utils import retry_transient_errors
 
 from .client import _Client
 from .config import logger
+from .exception import InvalidError
 from .functions import _FunctionHandle
 from .object import Handle, Provider
 
@@ -136,7 +137,10 @@ class _App:
         """Create objects that have been defined but not created on the server."""
         for tag, provider in self._stub._blueprint.items():
             existing_object_id = self._tag_to_existing_id.get(tag)
-            self._tag_to_object[tag] = await self._load(provider, progress, existing_object_id)
+            try:
+                self._tag_to_object[tag] = await self._load(provider, progress, existing_object_id)
+            except:
+                raise InvalidError(f"{provider} is not a Modal object")
 
         # Create the app (and send a list of all tagged obs)
         # TODO(erikbern): we should delete objects from a previous version that are no longer needed

@@ -22,7 +22,6 @@ from ._pty import exec_cmd, write_stdin_to_pty_stream
 from .app import _App, container_app, is_local
 from .client import _Client
 from .config import config, logger
-from .entrypoints import _Entrypoint
 from .exception import InvalidError, deprecation_warning
 from .functions import _Function, _FunctionHandle
 from .gpu import _GPUConfig
@@ -88,6 +87,7 @@ class _Stub:
     _mounts: Collection[_Mount]
     _secrets: Collection[_Secret]
     _function_handles: Dict[str, _FunctionHandle]
+    _local_entrypoints: Dict[str, Callable]
 
     def __init__(
         self,
@@ -514,8 +514,12 @@ class _Stub:
     def registered_entrypoints(self) -> Dict[str, Callable]:
         return self._local_entrypoints
 
-    def local_entrypoint(self, raw_f=None, name: Optional[str] = None) -> _Entrypoint:
-        """Decorate functions to be used as entrypoints
+    def local_entrypoint(self, raw_f=None, name: Optional[str] = None):
+        """Decorate a function to be used as a CLI entrypoint for a Modal App
+
+        These functions can be used to do initialization of apps using local
+        assets. Note that regular Modal functions can also be used as entrypoints,
+        but unlike local_entrypoint Modal function are executed remotely.
 
         E.g.
         @stub.local_entrypoint
@@ -532,9 +536,8 @@ class _Stub:
         ```
         """
         info = FunctionInfo(raw_f, False, name_override=name)
-        entrypoint = _Entrypoint(info)
-        self._local_entrypoints[info.get_tag()] = entrypoint
-        return entrypoint
+        self._local_entrypoints[info.get_tag()] = raw_f
+        return raw_f
 
     @decorator_with_options
     def function(
