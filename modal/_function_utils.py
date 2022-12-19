@@ -66,7 +66,14 @@ def _is_modal_path(remote_path: Union[str, Path]):
 
 def filter_safe_mounts(mounts: typing.Dict[str, _Mount]):
     # exclude mounts that would overwrite Modal
-    return {local_dir: mount for local_dir, mount in mounts.items() if not _is_modal_path(mount._remote_dir)}
+    safe_mounts = {}
+    for local_dir, mount in mounts.items():
+        for entry in mount._entries:
+            if _is_modal_path(entry.path_within_mount):
+                break
+        else:
+            safe_mounts[local_dir] = mount
+    return safe_mounts
 
 
 def is_global_function(function_qual_name):

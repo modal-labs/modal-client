@@ -26,30 +26,30 @@ async def test_get_files(servicer, client, tmpdir):
         m = AioMount("/", local_dir=tmpdir, condition=lambda fn: fn.endswith(".py"), recursive=True)
         await running_app._load(m)  # TODO: is this something we want to expose?
         async for upload_spec in m._get_files():
-            files[upload_spec.rel_filename] = upload_spec
+            files[str(upload_spec.mount_filename)] = upload_spec
 
-        assert "small.py" in files
-        assert "large.py" in files
-        assert "fluff" not in files
-        assert files["small.py"].use_blob is False
-        assert files["small.py"].content == small_content
-        assert files["small.py"].sha256_hex == hashlib.sha256(small_content).hexdigest()
+        assert "/small.py" in files
+        assert "/large.py" in files
+        assert "/fluff" not in files
+        assert files["/small.py"].use_blob is False
+        assert files["/small.py"].content == small_content
+        assert files["/small.py"].sha256_hex == hashlib.sha256(small_content).hexdigest()
 
-        assert files["large.py"].use_blob is True
-        assert files["large.py"].content is None
-        assert files["large.py"].sha256_hex == hashlib.sha256(large_content).hexdigest()
+        assert files["/large.py"].use_blob is True
+        assert files["/large.py"].content is None
+        assert files["/large.py"].sha256_hex == hashlib.sha256(large_content).hexdigest()
         blob_id = max(servicer.blobs.keys())  # last uploaded one
         assert len(servicer.blobs[blob_id]) == len(large_content)
         assert servicer.blobs[blob_id] == large_content
 
-        assert servicer.files_sha2data[files["large.py"].sha256_hex] == {"data": b"", "data_blob_id": blob_id}
-        assert servicer.files_sha2data[files["small.py"].sha256_hex] == {
+        assert servicer.files_sha2data[files["/large.py"].sha256_hex] == {"data": b"", "data_blob_id": blob_id}
+        assert servicer.files_sha2data[files["/small.py"].sha256_hex] == {
             "data": small_content,
             "data_blob_id": "",
         }
 
 
-def test_create_mount(servicer, client):
+def test_create_mount_legacy_syntax(servicer, client):
     stub = Stub()
     with stub.run(client=client) as running_app:
         local_dir, cur_filename = os.path.split(__file__)
@@ -60,6 +60,23 @@ def test_create_mount(servicer, client):
 
         m = Mount(local_dir=local_dir, remote_dir=remote_dir, condition=condition)
         obj = running_app._load(m)  # TODO: is this something we want to expose?
+        assert obj.object_id == "mo-123"
+        assert f"/foo/{cur_filename}" in servicer.files_name2sha
+        sha256_hex = servicer.files_name2sha[f"/foo/{cur_filename}"]
+        assert sha256_hex in servicer.files_sha2data
+        assert servicer.files_sha2data[sha256_hex]["data"] == open(__file__, "rb").read()
+
+
+def test_create_mount(servicer, client):
+    stub = Stub()
+    with stub.run(client=client) as running_app:
+        local_dir, cur_filename = os.path.split(__file__)
+
+        def condition(fn):
+            return fn.endswith(".py")
+
+        m = Mount().add_local_dir(local_dir, path_within_mount="/foo", condition=condition)
+        obj = running_app._load(m)
         assert obj.object_id == "mo-123"
         assert f"/foo/{cur_filename}" in servicer.files_name2sha
         sha256_hex = servicer.files_name2sha[f"/foo/{cur_filename}"]

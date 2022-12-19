@@ -27,11 +27,12 @@ def test_mounted_files_script(test_dir):
         cwd=test_dir / Path("supports"),
         env={**os.environ, "PYTHONPATH": str(test_dir / Path("supports"))},
     )
-    assert p.returncode == 0
+
     stdout = p.stdout.decode("utf-8")
     stderr = p.stderr.decode("utf-8")
     print("stdout: ", stdout)
     print("stderr: ", stderr)
+    assert p.returncode == 0
     files = set(stdout.splitlines())
 
     assert len(files) == 7
@@ -105,9 +106,10 @@ def test_mounted_files_package(test_dir):
     assert any(["e.py" in f for f in files])
     assert any(["script.py" in f for f in files])
     assert any(["package.py" in f for f in files])
+    assert any(["pkg_a/__init__.py" in f for f in files])
 
     # Assert everything from `pkg_b` is in the output.
-    assert any(["__init__.py" in f for f in files])
+    assert any(["pkg_b/__init__.py" in f for f in files])
     assert any(["f.py" in f for f in files])
     assert any(["h.py" in f for f in files])
 
