@@ -282,33 +282,3 @@ def test_closure_valued_serialized_function(client, servicer):
     assert len(functions) == 2
     assert functions["ret_foo"]() == "foo"
     assert functions["ret_bar"]() == "bar"
-
-
-def test_gpu_true_function(client, servicer):
-    stub = Stub()
-
-    stub.function(dummy, gpu=True)
-    with stub.run(client=client):
-        pass
-
-    assert len(servicer.app_functions) == 1
-    func_def = next(iter(servicer.app_functions.values()))
-    assert func_def.resources.gpu == 0
-    assert func_def.resources.gpu_config.count == 1
-    assert func_def.resources.gpu_config.type == api_pb2.GPU_TYPE_T4
-
-
-def test_gpu_config_function(client, servicer):
-    import modal
-
-    stub = Stub()
-
-    stub.function(dummy, gpu=modal.gpu.A100())
-    with stub.run(client=client):
-        pass
-
-    assert len(servicer.app_functions) == 1
-    func_def = next(iter(servicer.app_functions.values()))
-    assert func_def.resources.gpu == 0
-    assert func_def.resources.gpu_config.count == 1
-    assert func_def.resources.gpu_config.type == api_pb2.GPU_TYPE_A100
