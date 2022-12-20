@@ -517,7 +517,7 @@ class _Stub:
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
         secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
         secrets: Collection[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
-        gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10g", ...) or object (`modal.GPU.A100()`, ...)
+        gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         rate_limit: Optional[RateLimit] = None,  # Optional RateLimit for the function
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Collection[_Mount] = (),
@@ -600,7 +600,7 @@ class _Stub:
         image: _Image = None,  # The image to run as the container for the function
         secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
         secrets: Collection[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
-        gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10g", ...) or object (`modal.GPU.A100()`, ...)
+        gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         mounts: Collection[_Mount] = (),
         shared_volumes: Dict[str, _SharedVolume] = {},
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
@@ -664,7 +664,7 @@ class _Stub:
         image: _Image = None,  # The image to run as the container for the function
         secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
         secrets: Collection[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
-        gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10g", ...) or object (`modal.GPU.A100()`, ...)
+        gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         mounts: Collection[_Mount] = (),
         shared_volumes: Dict[str, _SharedVolume] = {},
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
