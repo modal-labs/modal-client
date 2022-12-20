@@ -65,7 +65,7 @@ def run(
     stub_ref: str = typer.Argument(
         ..., help="Path to a Python file or module, optionally identifying the name of your stub: `./main.py:mystub`."
     ),
-    function_name: Optional[str] = typer.Argument(..., help="Name of the Modal function to run"),
+    function_name: str = typer.Argument(..., help="Name of the Modal function to run"),
     detach: bool = typer.Option(default=False, help="Allows app to continue running if local terminal disconnects."),
 ):
     try:
@@ -96,22 +96,14 @@ def run(
         )
         exit(1)
 
-    # typer "hack" to dynamically build the CLI from a specified stub
-    # by replacing the running command with one that uses the imported
-    # stub to create the specified function and rerun the command
-    run_replacement = typer.Typer()
-    stub_typer = typer.Typer()
+    func_typer = typer.Typer()
     if function_name in _stub.registered_functions:
-        stub_typer.command(name=function_name)(_get_run_wrapper_function_handle(_stub, function_name, detach))
+        func_typer.command(name=function_name)(_get_run_wrapper_function_handle(_stub, function_name, detach))
     else:
-        stub_typer.command(name=function_name)(_get_run_wrapper_local_entrypoint(_stub, function_name, detach))
-
-    run_replacement.add_typer(stub_typer, name=stub_ref, subcommand_metavar="FUNCTION")
-    app_cli.add_typer(run_replacement, name="run", subcommand_metavar="STUB_REF")  # overwrite the run command
-    from .entry_point import entrypoint_cli
+        func_typer.command(name=function_name)(_get_run_wrapper_local_entrypoint(_stub, function_name, detach))
 
     # TODO: propagate help to sub-invocation if enough arguments are available
-    entrypoint_cli(args=["app", "run", stub_ref, function_name] + ctx.args)
+    func_typer(args=ctx.args)
 
 
 @app_cli.command("deploy", help="Deploy a Modal stub as an application.")

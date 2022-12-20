@@ -31,7 +31,7 @@ entrypoint_cli = typer.Typer(
 
 
 @entrypoint_cli.callback()
-def root(
+def modal(
     ctx: typer.Context,
     version: bool = typer.Option(None, "--version", callback=version_callback),
 ):
