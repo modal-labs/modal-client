@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
+import functools
 import inspect
 import sys
 import traceback
@@ -13,6 +14,7 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.table import Table
 from rich.tree import Tree
+from synchronicity import Interface
 
 from modal._output import OutputManager, step_progress
 from modal.cli.utils import timestamp_to_local
@@ -28,13 +30,42 @@ DEFAULT_STUB_NAME = "stub"
 app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_args_is_help=True)
 
 
-@app_cli.command("run", help="Run a Modal function.")
-@synchronizer
-async def run(
+def _get_run_wrapper_function_handle(_stub, function_tag: str, detach: bool):
+    stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
+
+    @functools.wraps(_stub._blueprint[function_tag]._info.raw_f)
+    def f(*args, **kwargs):
+        with stub.run(detach=detach) as app:
+            function_handle = getattr(app, function_tag)
+            function_handle.call(*args, **kwargs)
+
+    return f
+
+
+def _get_run_wrapper_local_entrypoint(_stub, entrypoint_name: str, detach: bool):
+    stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
+    func = _stub._local_entrypoints[entrypoint_name]
+
+    isasync = inspect.iscoroutinefunction(func)
+
+    @functools.wraps(func)
+    def f(*args, **kwargs):
+        with stub.run(detach=detach):
+            if isasync:
+                asyncio.run(func(*args, **kwargs))
+            else:
+                func(*args, **kwargs)
+
+    return f
+
+
+@app_cli.command("run", help="Run a Modal function.", context_settings={"allow_extra_args": True})
+def run(
+    ctx: typer.Context,
     stub_ref: str = typer.Argument(
         ..., help="Path to a Python file or module, optionally identifying the name of your stub: `./main.py:mystub`."
     ),
-    function_name: Optional[str] = typer.Option(default=None, help="Name of the Modal function to run"),
+    function_name: Optional[str] = typer.Argument(..., help="Name of the Modal function to run"),
     detach: bool = typer.Option(default=False, help="Allows app to continue running if local terminal disconnects."),
 ):
     try:
@@ -55,8 +86,8 @@ async def run(
             function_name = function_choices[0]
         else:
             print(
-                f"""You need to specify an entrypoint Modal function to run using --function-name=<name>
-Registered functions on the selected stub are: {registered_functions_str}"""
+                f"""You need to specify an entrypoint Modal function to run, e.g. `modal app run app.py my_function [...args]`
+    Registered functions on the selected stub are: {registered_functions_str}"""
             )
             exit(1)
     elif function_name not in function_choices:
@@ -65,13 +96,22 @@ Registered functions on the selected stub are: {registered_functions_str}"""
         )
         exit(1)
 
-    async with _stub.run(detach=detach) as app:
-        if function_name in _stub.registered_functions:
-            func_handle = getattr(app, function_name)  # gets FunctionHandle from app
-            await func_handle.call()
-        else:
-            local_entrypoint = _stub.registered_entrypoints[function_name]
-            await local_entrypoint()
+    # typer "hack" to dynamically build the CLI from a specified stub
+    # by replacing the running command with one that uses the imported
+    # stub to create the specified function and rerun the command
+    run_replacement = typer.Typer()
+    stub_typer = typer.Typer()
+    if function_name in _stub.registered_functions:
+        stub_typer.command(name=function_name)(_get_run_wrapper_function_handle(_stub, function_name, detach))
+    else:
+        stub_typer.command(name=function_name)(_get_run_wrapper_local_entrypoint(_stub, function_name, detach))
+
+    run_replacement.add_typer(stub_typer, name=stub_ref, subcommand_metavar="FUNCTION")
+    app_cli.add_typer(run_replacement, name="run", subcommand_metavar="STUB_REF")  # overwrite the run command
+    from .entry_point import entrypoint_cli
+
+    # TODO: propagate help to sub-invocation if enough arguments are available
+    entrypoint_cli(args=["app", "run", stub_ref, function_name] + ctx.args)
 
 
 @app_cli.command("deploy", help="Deploy a Modal stub as an application.")
