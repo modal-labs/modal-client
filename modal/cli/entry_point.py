@@ -41,7 +41,9 @@ def modal(
 
 
 entrypoint_cli.add_typer(app_cli)
-entrypoint_cli.command(help="Run a Modal function.", context_settings={"allow_extra_args": True})(run.run)
+entrypoint_cli.command("run", help="Run a Modal function.", context_settings={"allow_extra_args": True})(run.run)
+entrypoint_cli.command("deploy", help="Deploy a Modal stub as an application.", no_args_is_help=True)(run.deploy)
+entrypoint_cli.command("shell", no_args_is_help=True)(run.shell)
 entrypoint_cli.add_typer(config_cli)
 entrypoint_cli.add_typer(env_cli)
 entrypoint_cli.add_typer(secret_cli)

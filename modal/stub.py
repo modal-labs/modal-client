@@ -383,7 +383,7 @@ class _Stub:
     ):
         """Deploy an app and export its objects persistently.
 
-        Typically, using the command-line tool `modal app deploy <module or script>`
+        Typically, using the command-line tool `modal deploy <module or script>`
         should be used, instead of this method.
 
         **Usage:**

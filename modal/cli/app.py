@@ -1,8 +1,5 @@
 # Copyright Modal Labs 2022
 import asyncio
-import inspect
-import sys
-import traceback
 from typing import List, Optional, Tuple
 
 import typer
@@ -22,7 +19,6 @@ from modal.functions import _Function
 from modal.stub import _Stub
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
-from modal_utils.package_utils import NoSuchStub, import_stub, parse_stub_ref
 
 DEFAULT_STUB_NAME = "stub"
 
@@ -30,33 +26,20 @@ app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_a
 
 
 @app_cli.command(
-    "run", help="Run a Modal function.", context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
+    "run",
+    help="[Moved] Run a Modal function.",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )
 def run():
     raise ClickException("Use the `modal run ...` command instead (no longer nested under `app`)")
 
 
-@app_cli.command("deploy", help="Deploy a Modal stub as an application.")
+@app_cli.command("deploy", help="[Moved] Deploy a Modal stub as an application.")
 def deploy(
     stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
     name: str = typer.Option(None, help="Name of the deployment."),
 ):
-    try:
-        import_path, stub_name = parse_stub_ref(stub_ref, DEFAULT_STUB_NAME)
-        stub = import_stub(import_path, stub_name)
-    except NoSuchStub:
-        _show_stub_ref_failure_help(import_path, stub_name)
-        sys.exit(1)
-    except Exception:
-        traceback.print_exc()
-        sys.exit(1)
-
-    if name is None:
-        name = stub.name
-
-    res = stub.deploy(name=name)
-    if inspect.iscoroutine(res):
-        asyncio.run(res)
+    raise ClickException("Use the `modal deploy ...` command instead (no longer nested under `app`)")
 
 
 def make_function_panel(idx: int, tag: str, function: _Function, stub: _Stub) -> Panel:
@@ -95,7 +78,7 @@ def choose_function(stub: _Stub, functions: List[Tuple[str, _Function]], console
     return functions[int(choice)][1]
 
 
-@app_cli.command("shell", no_args_is_help=True)
+@app_cli.command("shell", no_args_is_help=True, help="[Moved] Start a shell session in a Modal container")
 def shell(
     stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
     function_name: Optional[str] = typer.Option(
@@ -104,61 +87,7 @@ def shell(
     ),
     cmd: str = typer.Option(default="/bin/bash", help="Command to run inside the Modal image."),
 ):
-    """Run an interactive shell inside a Modal image.\n
-    **Examples:**\n
-    \n
-    - Start a bash shell using the spec for `my_function` in your stub:\n
-    ```bash\n
-    modal app shell hello_world.py --function-name my_function \n
-    ```\n
-    Note that you can select the function interactively if you omit the function name.\n
-    \n
-    - Start a `python` shell: \n
-    ```bash\n
-    modal app shell hello_world.py --cmd=python \n
-    ```\n
-    """
-    try:
-        import_path, stub_name = parse_stub_ref(stub_ref, DEFAULT_STUB_NAME)
-        stub = import_stub(import_path, stub_name)
-    except NoSuchStub:
-        _show_stub_ref_failure_help(import_path, stub_name)
-        sys.exit(1)
-    except Exception:
-        traceback.print_exc()
-        sys.exit(1)
-
-    console = Console()
-
-    if not console.is_terminal:
-        print("`modal app shell` can only be run from a terminal.")
-        sys.exit(1)
-
-    _stub = synchronizer._translate_in(stub)
-    functions = {tag: obj for tag, obj in _stub._blueprint.items() if isinstance(obj, _Function)}
-
-    if function_name is not None:
-        if function_name not in functions:
-            print(f"Function {function_name} not found in stub.")
-            sys.exit(1)
-        function = functions[function_name]
-    else:
-        function = choose_function(_stub, list(functions.items()), console)
-
-    if function is None:
-        res = stub.interactive_shell(cmd)
-    else:
-        res = stub.interactive_shell(
-            cmd,
-            mounts=function._mounts,
-            shared_volumes=function._shared_volumes,
-            image=function._image,
-            secrets=function._secrets,
-            gpu=function._gpu,
-        )
-
-    if inspect.iscoroutine(res):
-        asyncio.run(res)
+    raise ClickException("Use the `modal shell ...` command instead (no longer nested under `app`)")
 
 
 @app_cli.command("list")
