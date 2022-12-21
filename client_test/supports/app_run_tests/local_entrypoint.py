@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-import datetime
 
 import modal
 
@@ -16,8 +15,3 @@ def main():
     print("called locally")
     foo.call()
     foo.call()
-
-
-@stub.local_entrypoint
-def other(dt: datetime.datetime):
-    print(f"the day is {dt.day}")

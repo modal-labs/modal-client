@@ -1,6 +1,8 @@
 # Copyright Modal Labs 2022
 import typer
 
+from modal.cli import run
+
 from .app import app_cli
 from .config import config_cli
 from .env import env_cli
@@ -39,6 +41,7 @@ def modal(
 
 
 entrypoint_cli.add_typer(app_cli)
+entrypoint_cli.command(help="Run a Modal function.", context_settings={"allow_extra_args": True})(run.run)
 entrypoint_cli.add_typer(config_cli)
 entrypoint_cli.add_typer(env_cli)
 entrypoint_cli.add_typer(secret_cli)

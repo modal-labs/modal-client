@@ -105,30 +105,37 @@ def test_app_token_new(servicer, server_url_env):
     _run(["token", "new", "--env", "_test"])
 
 
-def test_app_run(servicer, server_url_env, test_dir):
+def test_run(servicer, server_url_env, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
-    _run(["app", "run", stub_file.as_posix(), "foo"])
+    _run(["run", stub_file.as_posix(), "foo"])
 
 
-def test_app_run_custom_stub(servicer, server_url_env, test_dir):
+def test_run_custom_stub(servicer, server_url_env, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "custom_stub.py"
-    res = _run(["app", "run", stub_file.as_posix(), "foo"], expected_exit_code=1)
+    res = _run(["run", stub_file.as_posix(), "foo"], expected_exit_code=1)
     assert "stub variable" in res.stdout  # error output
-    _run(["app", "run", stub_file.as_posix() + "::my_stub", "foo"])
+    _run(["run", stub_file.as_posix() + "::my_stub", "foo"])
 
 
-def test_app_run_aiostub(servicer, server_url_env, test_dir):
+def test_run_aiostub(servicer, server_url_env, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "async_stub.py"
-    _run(["app", "run", stub_file.as_posix(), "foo"])
+    _run(["run", stub_file.as_posix(), "foo"])
 
 
-def test_app_run_local_entrypoint(servicer, server_url_env, test_dir):
+def test_run_local_entrypoint(servicer, server_url_env, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "local_entrypoint.py"
 
-    res = _run(["app", "run", stub_file.as_posix(), "other", "2022-10-31"])
-    assert "the day is 31" in res.stdout
-    assert len(servicer.client_calls) == 0
-
-    res = _run(["app", "run", stub_file.as_posix(), "main"])
+    res = _run(["run", stub_file.as_posix(), "main"])
     assert "called locally" in res.stdout
     assert len(servicer.client_calls) == 2
+
+    res = _run(["run", stub_file.as_posix()])  # only one entry-point, no name needed
+    assert "called locally" in res.stdout
+    assert len(servicer.client_calls) == 4
+
+
+def test_run_parse_args(servicer, server_url_env, test_dir):
+    stub_file = test_dir / "supports" / "app_run_tests" / "cli_args.py"
+    res = _run(["run", stub_file.as_posix(), "func_with_args", "2022-10-31"])
+    assert "the day is 31" in res.stdout
+    assert len(servicer.client_calls) == 0

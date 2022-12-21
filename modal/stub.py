@@ -514,6 +514,7 @@ class _Stub:
     def registered_entrypoints(self) -> Dict[str, Callable]:
         return self._local_entrypoints
 
+    @decorator_with_options
     def local_entrypoint(self, raw_f=None, name: Optional[str] = None):
         """Decorate a function to be used as a CLI entrypoint for a Modal App
 
@@ -532,7 +533,7 @@ class _Stub:
         ```
         Or from the CLI:
         ```
-        modal app run stub_module.py::main
+        modal run stub_module.py::main
         ```
         """
         info = FunctionInfo(raw_f, False, name_override=name)
