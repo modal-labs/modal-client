@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 from typing import Any, Callable, Collection, Optional, Union
 
+import toml
+
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 from modal_utils.grpc_utils import retry_transient_errors
@@ -284,6 +286,23 @@ class _Image(Provider[_ImageHandle]):
             dockerfile_commands=dockerfile_commands,
             context_files=context_files,
         )
+
+    def pip_install_from_pyproject(
+        self,
+        pyproject_toml: str,
+    ):
+        """Install dependencies specified by a pyproject.toml file."""
+        from modal import is_local
+
+        # Don't re-run inside container.
+        if not is_local():
+            return []
+
+        pyproject_toml = os.path.expanduser(pyproject_toml)
+
+        config = toml.load(pyproject_toml)
+
+        return self.pip_install(config["project"]["dependencies"])
 
     def poetry_install_from_file(
         self,
