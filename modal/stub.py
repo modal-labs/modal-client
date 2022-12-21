@@ -519,7 +519,7 @@ class _Stub:
         """Decorate a function to be used as a CLI entrypoint for a Modal App
 
         These functions can be used to do initialization of apps using local
-        assets. Note that regular Modal functions can also be used as entrypoints,
+        assets. Note that regular Modal functions can also be used as cli entrypoints,
         but unlike local_entrypoint Modal function are executed remotely.
 
         E.g.
@@ -527,14 +527,17 @@ class _Stub:
         def main():
             some_modal_function()
 
-        To run the function, either call it directly from code:
-        ```python
-        main()  # needs no stub.run() context
+        You can call the entrypoint function within a Modal run context
+        directly from the CLI:
         ```
-        Or from the CLI:
+        modal run stub_module.py
         ```
-        modal run stub_module.py::main
+
+        If you have multiple local_entrypoint functions, you can qualify the name of your function as a second argument:
         ```
+        modal run stub_module.py some_other_function
+        ```
+
         """
         info = FunctionInfo(raw_f, False, name_override=name)
         self._local_entrypoints[info.get_tag()] = raw_f
