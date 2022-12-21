@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.black]
+line-length = 120
+
+[tool.mypy]
+python_version = "3.9"
+exclude = "build"
+ignore_missing_imports = true
+check_untyped_defs = true
+no_strict_optional = true
+namespace_packages = true
+
+[[tool.mypy.overrides]]
+module = [
+    "ddtrace.*",
+]
+check_untyped_defs = false
+follow_imports = "skip"
+
+[project]
+name = "foo"
+description = "bar"
+requires-python = ">=3.9"
+dependencies = [
+    "banana >=1.2.0",
+    "potato >=0.1.0",
+]
