@@ -292,6 +292,11 @@ class _Image(Provider[_ImageHandle]):
         pyproject_toml: str,
     ):
         """Install dependencies specified by a pyproject.toml file."""
+        from modal import is_local
+
+        # Don't re-run inside container.
+        if not is_local():
+            return []
 
         pyproject_toml = os.path.expanduser(pyproject_toml)
 
