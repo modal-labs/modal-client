@@ -4,11 +4,18 @@ import functools
 import inspect
 import sys
 import traceback
+from typing import List, Optional, Tuple
 
 import typer
+from rich.console import Console, Group
+from rich.markdown import Markdown
+from rich.panel import Panel
+from rich.prompt import Prompt
 from synchronicity import Interface
 
 from modal.cli.app import DEFAULT_STUB_NAME, _show_stub_ref_failure_help
+from modal.functions import _Function
+from modal.stub import _Stub
 from modal_utils.async_utils import synchronizer
 from modal_utils.package_utils import NoSuchStub, import_stub, parse_stub_ref
 
@@ -114,6 +121,42 @@ def deploy(
     res = stub.deploy(name=name)
     if inspect.iscoroutine(res):
         asyncio.run(res)
+
+
+def make_function_panel(idx: int, tag: str, function: _Function, stub: _Stub) -> Panel:
+    items = [
+        f"- {i}"
+        for i in [*function._mounts, function._image, *function._secrets, *function._shared_volumes.values()]
+        if i not in [stub._client_mount, *stub._function_mounts.values()]
+    ]
+    if function._gpu:
+        items.append("- GPU")
+    return Panel(
+        Markdown("\n".join(items)),
+        title=f"[bright_magenta]{idx}. [/bright_magenta][bold]{tag}[/bold]",
+        title_align="left",
+    )
+
+
+def choose_function(stub: _Stub, functions: List[Tuple[str, _Function]], console: Console):
+    if len(functions) == 0:
+        return None
+    elif len(functions) == 1:
+        return functions[0][1]
+
+    function_panels = [make_function_panel(idx, tag, obj, stub) for idx, (tag, obj) in enumerate(functions)]
+
+    renderable = Panel(Group(*function_panels))
+    console.print(renderable)
+
+    choice = Prompt.ask(
+        "[yellow] Pick a function definition to create a corresponding shell: [/yellow]",
+        choices=[str(i) for i in range(len(functions))],
+        default="0",
+        show_default=False,
+    )
+
+    return functions[int(choice)][1]
 
 
 def shell(

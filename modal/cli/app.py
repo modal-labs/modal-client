@@ -1,22 +1,17 @@
 # Copyright Modal Labs 2022
 import asyncio
-from typing import List, Optional, Tuple
 
 import typer
 from click import ClickException
 from google.protobuf import empty_pb2
-from rich.console import Console, Group
+from rich.console import Console
 from rich.markdown import Markdown
-from rich.panel import Panel
-from rich.prompt import Prompt
 from rich.table import Table
 from rich.tree import Tree
 
 from modal._output import OutputManager, step_progress
 from modal.cli.utils import timestamp_to_local
 from modal.client import AioClient
-from modal.functions import _Function
-from modal.stub import _Stub
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
 
@@ -34,59 +29,21 @@ def run():
     raise ClickException("Use the `modal run ...` command instead (no longer nested under `app`)")
 
 
-@app_cli.command("deploy", help="[Moved] Deploy a Modal stub as an application.")
-def deploy(
-    stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
-    name: str = typer.Option(None, help="Name of the deployment."),
-):
+@app_cli.command(
+    "deploy",
+    help="[Moved] Deploy a Modal stub as an application.",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def deploy():
     raise ClickException("Use the `modal deploy ...` command instead (no longer nested under `app`)")
 
 
-def make_function_panel(idx: int, tag: str, function: _Function, stub: _Stub) -> Panel:
-    items = [
-        f"- {i}"
-        for i in [*function._mounts, function._image, *function._secrets, *function._shared_volumes.values()]
-        if i not in [stub._client_mount, *stub._function_mounts.values()]
-    ]
-    if function._gpu:
-        items.append("- GPU")
-    return Panel(
-        Markdown("\n".join(items)),
-        title=f"[bright_magenta]{idx}. [/bright_magenta][bold]{tag}[/bold]",
-        title_align="left",
-    )
-
-
-def choose_function(stub: _Stub, functions: List[Tuple[str, _Function]], console: Console):
-    if len(functions) == 0:
-        return None
-    elif len(functions) == 1:
-        return functions[0][1]
-
-    function_panels = [make_function_panel(idx, tag, obj, stub) for idx, (tag, obj) in enumerate(functions)]
-
-    renderable = Panel(Group(*function_panels))
-    console.print(renderable)
-
-    choice = Prompt.ask(
-        "[yellow] Pick a function definition to create a corresponding shell: [/yellow]",
-        choices=[str(i) for i in range(len(functions))],
-        default="0",
-        show_default=False,
-    )
-
-    return functions[int(choice)][1]
-
-
-@app_cli.command("shell", no_args_is_help=True, help="[Moved] Start a shell session in a Modal container")
-def shell(
-    stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
-    function_name: Optional[str] = typer.Option(
-        default=None,
-        help="Name of the Modal function to run. If unspecified, Modal will prompt you for a function if running in interactive mode.",
-    ),
-    cmd: str = typer.Option(default="/bin/bash", help="Command to run inside the Modal image."),
-):
+@app_cli.command(
+    "shell",
+    help="[Moved] Start a shell session in a Modal container",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def shell():
     raise ClickException("Use the `modal shell ...` command instead (no longer nested under `app`)")
 
 

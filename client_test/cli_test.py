@@ -46,20 +46,20 @@ def _run(args, expected_exit_code=0):
 def test_app_deploy_success(servicer, mock_dir, set_env_client):
     with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
         # Deploy as a script in cwd
-        _run(["app", "deploy", "myapp.py"])
+        _run(["deploy", "myapp.py"])
 
         # Deploy as a module
-        _run(["app", "deploy", "myapp"])
+        _run(["deploy", "myapp"])
 
         # Deploy as a script with an absolute path
-        _run(["app", "deploy", os.path.abspath("myapp.py")])
+        _run(["deploy", os.path.abspath("myapp.py")])
 
     assert "my_app" in servicer.deployed_apps
 
 
 def test_app_deploy_with_name(servicer, mock_dir, set_env_client):
     with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
-        _run(["app", "deploy", "myapp.py", "--name", "my_app_foo"])
+        _run(["deploy", "myapp.py", "--name", "my_app_foo"])
 
     assert "my_app_foo" in servicer.deployed_apps
 
@@ -73,13 +73,13 @@ stub = AioStub("my_aio_app")
 
 def test_aio_app_deploy_success(servicer, mock_dir, set_env_client):
     with mock_dir({"myaioapp.py": dummy_aio_app_file}):
-        _run(["app", "deploy", "myaioapp.py"])
+        _run(["deploy", "myaioapp.py"])
 
     assert "my_aio_app" in servicer.deployed_apps
 
 
 def test_app_deploy_no_such_module():
-    res = _run(["app", "deploy", "does_not_exist.py"], 1)
+    res = _run(["deploy", "does_not_exist.py"], 1)
     assert "No such file or directory" in res.stdout
 
 
