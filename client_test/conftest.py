@@ -131,7 +131,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def AppGetObjects(self, stream):
         request: api_pb2.AppGetObjectsRequest = await stream.recv_message()
         object_ids = self.app_objects.get(request.app_id, {})
-        await stream.send_message(api_pb2.AppGetObjectsResponse(object_ids=object_ids))
+        items = [api_pb2.AppGetObjectsItem(tag=tag, object_id=object_id) for tag, object_id in object_ids.items()]
+        await stream.send_message(api_pb2.AppGetObjectsResponse(items=items))
 
     async def AppSetObjects(self, stream):
         request: api_pb2.AppSetObjectsRequest = await stream.recv_message()
@@ -223,7 +224,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.rate_limit_sleep_duration = None
             await stream.send_message(api_pb2.FunctionGetInputsResponse(rate_limit_sleep_duration=s))
         elif not self.container_inputs:
-            await asyncio.sleep(request.timeout)
+            await asyncio.sleep(1.0)
             await stream.send_message(api_pb2.FunctionGetInputsResponse(inputs=[]))
         else:
             await stream.send_message(self.container_inputs.pop(0))

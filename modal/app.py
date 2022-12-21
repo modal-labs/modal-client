@@ -212,7 +212,8 @@ class _App:
         obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
         obj_resp = await retry_transient_errors(client.stub.AppGetObjects, obj_req)
         app_page_url = f"https://modal.com/apps/{existing_app_id}"  # TODO (elias): this should come from the backend
-        return _App(stub, client, existing_app_id, app_page_url, tag_to_existing_id=dict(obj_resp.object_ids))
+        object_ids = {item.tag: item.object_id for item in obj_resp.items}
+        return _App(stub, client, existing_app_id, app_page_url, tag_to_existing_id=object_ids)
 
     @staticmethod
     async def _init_new(stub, client, description, detach, deploying) -> "_App":
