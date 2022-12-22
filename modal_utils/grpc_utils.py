@@ -62,6 +62,7 @@ class ChannelPool(Channel):
     _max_lifetime: float
     _max_active: float
     _subchannels: List[Subchannel]
+    _closed: bool
 
     def __init__(
         self,
@@ -75,9 +76,13 @@ class ChannelPool(Channel):
         self._max_requests = max_requests
         self._max_active = max_active
         self._max_lifetime = max_lifetime
+        self._closed = False
         super().__init__(*args, **kwargs)
 
     async def __connect__(self):
+        if self._closed:
+            raise BrokenPipeError("Channel pool is closed")
+
         now = time.time()
         # Remove any closed subchannels
         while len(self._subchannels) > 0 and not self._subchannels[-1].connected():
@@ -111,12 +116,30 @@ class ChannelPool(Channel):
         return self._subchannels[-1].protocol
 
     def close(self) -> None:
+        self._closed = True
         while len(self._subchannels) > 0:
             self._subchannels.pop(0).protocol.processor.close()
 
     def __del__(self) -> None:
         if len(self._subchannels) > 0:
             logger.warning("Channel pool not properly closed")
+
+
+class CloseableChannel(Channel):
+    """Fix close semantics of grpclib.Channel."""
+
+    def __init__(self, *args, **kwargs):
+        self._closed = False
+        super().__init__(*args, **kwargs)
+
+    async def __connect__(self) -> H2Protocol:
+        if self._closed:
+            raise BrokenPipeError("Channel is closed")
+        return await super().__connect__()
+
+    def close(self) -> None:
+        self._closed = True
+        super().close()
 
 
 def auth_metadata(client_type: Optional[int], credentials: Optional[Tuple[str, str]] = None) -> Dict[str, str]:
@@ -168,7 +191,7 @@ def create_channel(
     if use_pool:
         channel_cls = ChannelPool
     else:
-        channel_cls = Channel
+        channel_cls = CloseableChannel
 
     channel: Channel
     if o.scheme == "unix":
@@ -254,6 +277,7 @@ async def retry_transient_errors(
         try:
             return await fn(*args, metadata=metadata, timeout=timeout)
         except (StreamTerminatedError, GRPCError, socket.gaierror, asyncio.TimeoutError) as exc:
+
             if isinstance(exc, GRPCError) and exc.status not in status_codes:
                 raise exc
 
