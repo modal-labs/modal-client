@@ -826,6 +826,7 @@ message WebhookConfig {
   WebhookType type = 1;
   string method = 2;
   bool wait_for_response = 3;
+  string requested_suffix = 4;
 }
 
 service ModalClient {
