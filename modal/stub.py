@@ -596,6 +596,7 @@ class _Stub:
         raw_f,
         *,
         method: str = "GET",  # REST method for the created endpoint.
+        label: str = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
         image: _Image = None,  # The image to run as the container for the function
         secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
@@ -641,7 +642,10 @@ class _Stub:
             mounts=mounts,
             shared_volumes=shared_volumes,
             webhook_config=api_pb2.WebhookConfig(
-                type=api_pb2.WEBHOOK_TYPE_FUNCTION, method=method, wait_for_response=wait_for_response
+                type=api_pb2.WEBHOOK_TYPE_FUNCTION,
+                method=method,
+                wait_for_response=wait_for_response,
+                requested_suffix=label,
             ),
             cpu=cpu,
             memory=memory,
@@ -660,6 +664,7 @@ class _Stub:
         self,
         asgi_app,  # The asgi app
         *,
+        label: str = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
         image: _Image = None,  # The image to run as the container for the function
         secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
@@ -701,7 +706,9 @@ class _Stub:
             gpu=gpu,
             mounts=mounts,
             shared_volumes=shared_volumes,
-            webhook_config=api_pb2.WebhookConfig(type=_webhook_type, wait_for_response=wait_for_response),
+            webhook_config=api_pb2.WebhookConfig(
+                type=_webhook_type, wait_for_response=wait_for_response, requested_suffix=label
+            ),
             cpu=cpu,
             memory=memory,
             proxy=proxy,
