@@ -68,6 +68,20 @@ HINT: For relative imports to work, you might need to run your modal app as a mo
 - `python -m my_pkg.my_app` instead of `python my_pkg/my_app.py`
 - `modal app deploy my_pkg.my_app` instead of `modal app deploy my_pkg/my_app.py`
 """
+    elif isinstance(
+        exc, RuntimeError
+    ) and "CUDA error: no kernel image is available for execution on the device" in str(exc):
+        msg = (
+            exc.args[0]
+            + """\n
+HINT: This error usually indicates an outdated CUDA version. Older versions of torch (<=1.12)
+come with CUDA 10.2 by default. If pinning to an older torch version, you can specify a CUDA version
+manually, for example:
+-  image.pip_install(["torch==1.12.1+cu116"], "https://download.pytorch.org/whl/torch_stable.html")
+"""
+        )
+        exc.args = (msg,)
+
     return exc
 
 
