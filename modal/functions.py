@@ -687,7 +687,7 @@ class _Function(Provider[_FunctionHandle]):
         concurrency_limit: Optional[int] = None,
         container_idle_timeout: Optional[int] = None,
         cpu: Optional[float] = None,
-        keep_warm: bool = False,
+        keep_warm: Union[bool, int] = False,
         interactive: bool = False,
         name: Optional[str] = None,
         cloud_provider: Optional[str] = None,
@@ -858,6 +858,11 @@ class _Function(Provider[_FunctionHandle]):
             if cls:
                 class_serialized = cloudpickle.dumps(cls)
 
+        if self._keep_warm is True:
+            warm_pool_size = 2
+        else:
+            warm_pool_size = self._keep_warm or 0
+
         # Create function remotely
         function_definition = api_pb2.Function(
             module_name=self._info.module_name,
@@ -878,9 +883,9 @@ class _Function(Provider[_FunctionHandle]):
             timeout_secs=self._timeout,
             task_idle_timeout_secs=self._container_idle_timeout,
             concurrency_limit=self._concurrency_limit,
-            keep_warm=self._keep_warm,
             pty_info=pty_info,
             cloud_provider=self._cloud_provider,
+            warm_pool_size=warm_pool_size,
         )
         request = api_pb2.FunctionCreateRequest(
             app_id=app_id,
