@@ -44,7 +44,7 @@ def get_image_layers(image_id: str, servicer) -> List[api_pb2.Image]:
 
 def test_image_python_packages(client, servicer):
     stub = Stub()
-    stub["image"] = Image.debian_slim().pip_install(["numpy"])
+    stub["image"] = Image.debian_slim().pip_install("numpy")
     with stub.run(client=client) as running_app:
         layers = get_image_layers(running_app["image"].object_id, servicer)
         assert any("pip install numpy" in cmd for cmd in layers[0].dockerfile_commands)
@@ -54,8 +54,14 @@ def test_wrong_type(servicer, client):
     image = Image.debian_slim()
     for method in [image.pip_install, image.apt_install, image.run_commands]:
         method(["xyz"])
+        method("xyz")
+        method("xyz", ["def", "foo"], "ghi")
         with pytest.raises(InvalidError):
-            method("xyz")
+            method(3)
+        with pytest.raises(InvalidError):
+            method([3])
+        with pytest.raises(InvalidError):
+            method([["double-nested-package"]])
 
 
 def test_image_requirements_txt(servicer, client):
@@ -72,11 +78,15 @@ def test_image_requirements_txt(servicer, client):
 
 
 def test_empty_install(servicer, client):
-    with pytest.raises(TypeError):
-        Image.debian_slim().pip_install()  # Missing positional argument `packages`
-
     # Install functions with no packages should be ignored.
-    stub = Stub(image=Image.debian_slim().pip_install([]).apt_install([]))
+    stub = Stub(
+        image=Image.debian_slim()
+        .pip_install()
+        .pip_install([], [], [], [])
+        .apt_install([])
+        .run_commands()
+        .conda_install()
+    )
 
     with stub.run(client=client) as running_app:
         layers = get_image_layers(running_app["image"].object_id, servicer)
@@ -84,9 +94,7 @@ def test_empty_install(servicer, client):
 
 
 def test_debian_slim_apt_install(servicer, client):
-    stub = Stub(
-        image=Image.debian_slim().pip_install(["numpy"]).apt_install(["git", "ssh"]).pip_install(["scikit-learn"])
-    )
+    stub = Stub(image=Image.debian_slim().pip_install("numpy").apt_install("git", "ssh").pip_install("scikit-learn"))
 
     with stub.run(client=client) as running_app:
         layers = get_image_layers(running_app["image"].object_id, servicer)
@@ -109,9 +117,7 @@ def test_image_pip_install_pyproject(servicer, client):
 
 
 def test_conda_install(servicer, client):
-    stub = Stub(
-        image=Image.conda().pip_install(["numpy"]).conda_install(["pymc3", "theano"]).pip_install(["scikit-learn"])
-    )
+    stub = Stub(image=Image.conda().pip_install("numpy").conda_install("pymc3", "theano").pip_install("scikit-learn"))
 
     with stub.run(client=client) as running_app:
         layers = get_image_layers(running_app["image"].object_id, servicer)
@@ -164,7 +170,7 @@ def test_image_run_function(client, servicer):
     volume = SharedVolume().persist("test-vol")
     stub["image"] = (
         Image.debian_slim()
-        .pip_install(["pandas"])
+        .pip_install("pandas")
         .run_function(run_f, secrets=[Secret({"xyz": "123"})], shared_volumes={"/foo": volume})
     )
 

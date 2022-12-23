@@ -61,12 +61,27 @@ def _get_client_requirements_path():
     return os.path.join(modal_path, "requirements.txt")
 
 
-def _assert_list_of_str(function_name: str, arg_name: str, args: list[str]):
+def _flatten_str_args(function_name: str, arg_name: str, args: tuple[Union[str, list[str]], ...]) -> list[str]:
+    """Takes a tuple of strings, or string lists, and flattens it.
+
+    Raises an error if any of the elements are not strings or string lists.
+    """
     # TODO(erikbern): maybe we can just build somthing intelligent that checks
     # based on type annotations in real time?
     # Or use something like this? https://github.com/FelixTheC/strongtyping
-    if not isinstance(args, list) or any(not isinstance(arg, str) for arg in args):
-        raise InvalidError(f"{function_name}: {arg_name} must be a list of strings")
+
+    def is_str_list(x):
+        return isinstance(x, list) and all(isinstance(y, str) for y in x)
+
+    ret: list[str] = []
+    for x in args:
+        if isinstance(x, str):
+            ret.append(x)
+        elif is_str_list(x):
+            ret.extend(x)
+        else:
+            raise InvalidError(f"{function_name}: {arg_name} must only contain strings")
+    return ret
 
 
 class _ImageHandle(Handle, type_prefix="im"):
@@ -246,16 +261,16 @@ class _Image(Provider[_ImageHandle]):
 
     def pip_install(
         self,
-        packages: list[str],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
+        *packages: Union[str, list[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
         find_links: Optional[str] = None,
     ) -> "_Image":
         """Install a list of Python packages using pip."""
-        _assert_list_of_str("pip_install", "packages", packages)
-        if not packages:
+        pkgs = _flatten_str_args("pip_install", "packages", packages)
+        if not pkgs:
             return self
 
         find_links_arg = f"-f {find_links}" if find_links else ""
-        package_args = " ".join(shlex.quote(pkg) for pkg in packages)
+        package_args = " ".join(shlex.quote(pkg) for pkg in pkgs)
 
         dockerfile_commands = [
             "FROM base",
@@ -302,7 +317,7 @@ class _Image(Provider[_ImageHandle]):
 
         config = toml.load(pyproject_toml)
 
-        return self.pip_install(config["project"]["dependencies"])
+        return self.pip_install(*config["project"]["dependencies"])
 
     def poetry_install_from_file(
         self,
@@ -377,13 +392,16 @@ class _Image(Provider[_ImageHandle]):
 
     def run_commands(
         self,
-        commands: list[str],
+        *commands: Union[str, list[str]],
         secrets: Collection[_Secret] = [],
         gpu: bool = False,
     ):
         """Extend an image with a list of shell commands to run."""
-        _assert_list_of_str("run_commands", "commands", commands)
-        dockerfile_commands = ["FROM base"] + [f"RUN {cmd}" for cmd in commands]
+        cmds = _flatten_str_args("run_commands", "commands", commands)
+        if not cmds:
+            return self
+
+        dockerfile_commands = ["FROM base"] + [f"RUN {cmd}" for cmd in cmds]
 
         return self.extend(
             dockerfile_commands=dockerfile_commands,
@@ -442,15 +460,15 @@ class _Image(Provider[_ImageHandle]):
 
     def conda_install(
         self,
-        packages: list[str],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
-        *,
+        *packages: Union[str, list[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
         channels: list[str] = [],  # A list of Conda channels, eg. ["conda-forge", "nvidia"]
     ) -> "_Image":
         """Install a list of additional packages using conda."""
-        if not packages:
+        pkgs = _flatten_str_args("conda_install", "packages", packages)
+        if not pkgs:
             return self
 
-        package_args = " ".join(shlex.quote(pkg) for pkg in packages)
+        package_args = " ".join(shlex.quote(pkg) for pkg in pkgs)
         channel_args = "".join(f" -c {channel}" for channel in channels)
 
         dockerfile_commands = [
@@ -576,14 +594,14 @@ class _Image(Provider[_ImageHandle]):
 
     def apt_install(
         self,
-        packages: list[str],  # A list of packages, e.g. ["ssh", "libpq-dev"]
+        *packages: Union[str, list[str]],  # A list of packages, e.g. ["ssh", "libpq-dev"]
     ) -> "_Image":
         """Install a list of Debian packages using `apt`."""
-        _assert_list_of_str("apt_install", "packages", packages)
-        if not packages:
+        pkgs = _flatten_str_args("apt_install", "packages", packages)
+        if not pkgs:
             return self
 
-        package_args = " ".join(shlex.quote(pkg) for pkg in packages)
+        package_args = " ".join(shlex.quote(pkg) for pkg in pkgs)
 
         dockerfile_commands = [
             "FROM base",
@@ -618,7 +636,7 @@ class _Image(Provider[_ImageHandle]):
         image = (
             modal.Image
                 .debian_slim()
-                .pip_install(["torch"])
+                .pip_install("torch")
                 .run_function(my_build_function, secrets=[...], mounts=[...])
         )
         ```
