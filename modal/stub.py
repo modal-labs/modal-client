@@ -743,7 +743,7 @@ class _Stub:
         ```python
         import modal
 
-        stub = modal.Stub(image=modal.Image.debian_slim().apt_install(["vim"]))
+        stub = modal.Stub(image=modal.Image.debian_slim().apt_install("vim"))
 
         if __name__ == "__main__":
             stub.interactive_shell("/bin/bash")
@@ -755,7 +755,7 @@ class _Stub:
         import modal
 
         stub = modal.Stub()
-        app_image = modal.Image.debian_slim().apt_install(["vim"])
+        app_image = modal.Image.debian_slim().apt_install("vim")
 
         if __name__ == "__main__":
             stub.interactive_shell(cmd="/bin/bash", image=app_image)

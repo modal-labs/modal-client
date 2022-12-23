@@ -77,7 +77,7 @@ HINT: For relative imports to work, you might need to run your modal app as a mo
 HINT: This error usually indicates an outdated CUDA version. Older versions of torch (<=1.12)
 come with CUDA 10.2 by default. If pinning to an older torch version, you can specify a CUDA version
 manually, for example:
--  image.pip_install(["torch==1.12.1+cu116"], "https://download.pytorch.org/whl/torch_stable.html")
+-  image.pip_install("torch==1.12.1+cu116", find_links="https://download.pytorch.org/whl/torch_stable.html")
 """
         )
         exc.args = (msg,)

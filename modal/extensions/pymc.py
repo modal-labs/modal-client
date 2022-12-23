@@ -13,8 +13,8 @@ from modal_utils.async_utils import synchronize_apis, synchronizer
 
 pymc_stub = modal.Stub(
     image=modal.Image.conda()
-    .conda_install(["theano-pymc==1.1.2", "pymc3==3.11.2", "scikit-learn", "mkl-service"])
-    .apt_install(["zlib1g"])
+    .conda_install("theano-pymc==1.1.2", "pymc3==3.11.2", "scikit-learn", "mkl-service")
+    .apt_install("zlib1g")
 )
 
 # HACK: we need the aio version of the pymc app, so we can merge the sample processes
