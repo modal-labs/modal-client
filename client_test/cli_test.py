@@ -7,6 +7,7 @@ import typer.testing
 
 from modal.cli.entry_point import entrypoint_cli
 from modal.client import Client
+from modal_proto import api_pb2
 
 dummy_app_file = """
 import modal
@@ -108,6 +109,18 @@ def test_app_token_new(servicer, server_url_env):
 def test_run(servicer, server_url_env, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
     _run(["run", stub_file.as_posix()])
+
+
+def test_run_detach(servicer, server_url_env, test_dir):
+    stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
+    _run(["run", "--detach", stub_file.as_posix()])
+    assert servicer.app_state == {"ap-1": api_pb2.APP_STATE_DETACHED}
+
+
+def test_deploy(servicer, server_url_env, test_dir):
+    stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
+    _run(["deploy", "--name=deployment_name", stub_file.as_posix()])
+    assert servicer.app_state == {"ap-1": api_pb2.APP_STATE_DEPLOYED}
 
 
 def test_run_custom_stub(servicer, server_url_env, test_dir):
