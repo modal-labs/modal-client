@@ -6,7 +6,7 @@ import sys
 import warnings
 from datetime import date
 from enum import Enum
-from typing import AsyncGenerator, Callable, Collection, Dict, List, Optional
+from typing import AsyncGenerator, Callable, Collection, Dict, List, Optional, Union
 
 from rich.tree import Tree
 
@@ -566,7 +566,7 @@ class _Stub:
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         interactive: bool = False,  # Whether to run the function in interactive mode.
         _is_build_step: bool = False,  # Whether function is a build step; reserved for internal use.
-        keep_warm: bool = False,  # Toggles an adaptively-sized warm pool for latency-sensitive apps.
+        keep_warm: Union[bool, int] = False,  # Toggles an adaptively-sized warm pool for latency-sensitive apps.
         name: Optional[str] = None,  # Sets the Modal name of the function within the stub
         is_generator: Optional[bool] = None,  # If not set, it's inferred from the function signature
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
@@ -631,6 +631,7 @@ class _Stub:
         raw_f,
         *,
         method: str = "GET",  # REST method for the created endpoint.
+        label: str = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
         image: _Image = None,  # The image to run as the container for the function
         secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
@@ -645,7 +646,7 @@ class _Stub:
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
-        keep_warm: bool = False,  # Toggles an adaptively-sized warm pool for latency-sensitive apps.
+        keep_warm: Union[bool, int] = False,  # Toggles an adaptively-sized warm pool for latency-sensitive apps.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
     ):
         """Register a basic web endpoint with this application.
@@ -676,7 +677,10 @@ class _Stub:
             mounts=mounts,
             shared_volumes=shared_volumes,
             webhook_config=api_pb2.WebhookConfig(
-                type=api_pb2.WEBHOOK_TYPE_FUNCTION, method=method, wait_for_response=wait_for_response
+                type=api_pb2.WEBHOOK_TYPE_FUNCTION,
+                method=method,
+                wait_for_response=wait_for_response,
+                requested_suffix=label,
             ),
             cpu=cpu,
             memory=memory,
@@ -695,6 +699,7 @@ class _Stub:
         self,
         asgi_app,  # The asgi app
         *,
+        label: str = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
         image: _Image = None,  # The image to run as the container for the function
         secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
@@ -709,7 +714,7 @@ class _Stub:
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
-        keep_warm: bool = False,  # Toggles an adaptively-sized warm pool for latency-sensitive apps.
+        keep_warm: Union[bool, int] = False,  # Toggles an adaptively-sized warm pool for latency-sensitive apps.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
         _webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
     ):
@@ -736,7 +741,9 @@ class _Stub:
             gpu=gpu,
             mounts=mounts,
             shared_volumes=shared_volumes,
-            webhook_config=api_pb2.WebhookConfig(type=_webhook_type, wait_for_response=wait_for_response),
+            webhook_config=api_pb2.WebhookConfig(
+                type=_webhook_type, wait_for_response=wait_for_response, requested_suffix=label
+            ),
             cpu=cpu,
             memory=memory,
             proxy=proxy,

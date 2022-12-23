@@ -68,6 +68,20 @@ HINT: For relative imports to work, you might need to run your modal app as a mo
 - `python -m my_pkg.my_app` instead of `python my_pkg/my_app.py`
 - `modal deploy my_pkg.my_app` instead of `modal deploy my_pkg/my_app.py`
 """
+    elif isinstance(
+        exc, RuntimeError
+    ) and "CUDA error: no kernel image is available for execution on the device" in str(exc):
+        msg = (
+            exc.args[0]
+            + """\n
+HINT: This error usually indicates an outdated CUDA version. Older versions of torch (<=1.12)
+come with CUDA 10.2 by default. If pinning to an older torch version, you can specify a CUDA version
+manually, for example:
+-  image.pip_install(["torch==1.12.1+cu116"], "https://download.pytorch.org/whl/torch_stable.html")
+"""
+        )
+        exc.args = (msg,)
+
     return exc
 
 
@@ -673,7 +687,7 @@ class _Function(Provider[_FunctionHandle]):
         concurrency_limit: Optional[int] = None,
         container_idle_timeout: Optional[int] = None,
         cpu: Optional[float] = None,
-        keep_warm: bool = False,
+        keep_warm: Union[bool, int] = False,
         interactive: bool = False,
         name: Optional[str] = None,
         cloud_provider: Optional[str] = None,
@@ -844,6 +858,11 @@ class _Function(Provider[_FunctionHandle]):
             if cls:
                 class_serialized = cloudpickle.dumps(cls)
 
+        if self._keep_warm is True:
+            warm_pool_size = 2
+        else:
+            warm_pool_size = self._keep_warm or 0
+
         # Create function remotely
         function_definition = api_pb2.Function(
             module_name=self._info.module_name,
@@ -864,9 +883,9 @@ class _Function(Provider[_FunctionHandle]):
             timeout_secs=self._timeout,
             task_idle_timeout_secs=self._container_idle_timeout,
             concurrency_limit=self._concurrency_limit,
-            keep_warm=self._keep_warm,
             pty_info=pty_info,
             cloud_provider=self._cloud_provider,
+            warm_pool_size=warm_pool_size,
         )
         request = api_pb2.FunctionCreateRequest(
             app_id=app_id,

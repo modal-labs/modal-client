@@ -137,7 +137,7 @@ message AppGetObjectsItem {
 }
 
 message AppGetObjectsResponse {
-  map<string, string> object_ids = 1 [deprecated=true];  // remove once support for 0.0.22 is dropped
+  map<string, string> object_ids = 1 [deprecated=true]; // remove once support for 0.43.0 is dropped
   repeated AppGetObjectsItem items = 2;
 }
 
@@ -218,7 +218,6 @@ message ClientCreateResponse {
 
 message ClientHeartbeatRequest {
   string client_id = 1;
-  int32 num_connections = 2 [deprecated=true];
   string current_input_id = 3;
   double current_input_started_at = 4;
 }
@@ -306,7 +305,6 @@ message Function {
   string function_name = 2;
   repeated string mount_ids = 3;
   string image_id = 4;
-  string secret_id = 5 [deprecated=true];
   bytes function_serialized = 6;
 
   enum DefinitionType {
@@ -347,6 +345,8 @@ message Function {
   uint32 task_idle_timeout_secs = 25;
 
   CloudProvider cloud_provider = 26;
+
+  uint32 warm_pool_size = 27;
 }
 
 message FunctionCreateRequest {
@@ -370,7 +370,6 @@ message FunctionGetInputsItem {
 message FunctionGetInputsRequest {
   string function_id = 1;
   int32 max_values = 3;
-  float timeout = 4 [deprecated=true];
   float average_call_time = 5;
 }
 
@@ -390,7 +389,6 @@ message FunctionGetOutputsRequest {
   string function_call_id = 1;
   int32 max_values = 2;
   float timeout = 3;
-  bool return_empty_on_timeout = 5;  // deprecated - remove in followup PR
   string last_entry_id = 6;
 }
 
@@ -452,7 +450,6 @@ message FunctionPutOutputsItem {
   GenericResult result = 2;
   double input_started_at = 3;
   double output_created_at = 4;
-  string task_id = 5 [deprecated=true];
   int32 gen_index = 6; // ordering for generator outputs
 }
 
@@ -470,7 +467,6 @@ message FunctionRetryPolicy {
 
 message FunctionGetCallGraphRequest {
   // TODO: use input_id once we switch client submit API to return those.
-  string root_function_call_id = 1 [deprecated=true];
   string function_call_id = 2;
 }
 
@@ -618,10 +614,8 @@ message QueueCreateResponse {
 
 message QueueGetRequest {
   string queue_id = 1;
-  bool block = 2 [deprecated=true];
   float timeout = 3;
   int32 n_values = 4;
-  string idempotency_key = 5 [deprecated=true];
 }
 
 message QueueGetResponse {
@@ -630,7 +624,6 @@ message QueueGetResponse {
 
 message QueuePutRequest {
   string queue_id = 1;
-  string idempotency_key = 3 [deprecated=true];
   repeated bytes values = 4;
 }
 
@@ -835,6 +828,7 @@ message WebhookConfig {
   WebhookType type = 1;
   string method = 2;
   bool wait_for_response = 3;
+  string requested_suffix = 4;
 }
 
 service ModalClient {
