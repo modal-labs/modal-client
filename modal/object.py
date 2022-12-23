@@ -125,7 +125,7 @@ class Provider(Generic[H]):
     def local_uuid(self):
         return self._local_uuid
 
-    async def persist(self, label: str):
+    def persist(self, label: str):
         """Deploy a Modal app containing this object. This object can then be imported from other apps using
         the returned reference, or by calling `modal.SharedVolume.from_name(label)` (or the equivalent method
         on respective class).
