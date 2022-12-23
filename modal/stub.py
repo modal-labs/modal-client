@@ -794,7 +794,7 @@ class _Stub:
         )
 
         async with self.run():
-            await wrapped_fn(cmd)
+            await wrapped_fn.call(cmd)
 
 
 Stub, AioStub = synchronize_apis(_Stub)
