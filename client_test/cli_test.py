@@ -107,25 +107,25 @@ def test_app_token_new(servicer, server_url_env):
 
 def test_run(servicer, server_url_env, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
-    _run(["run", stub_file.as_posix(), "foo"])
+    _run(["run", stub_file.as_posix()])
 
 
 def test_run_custom_stub(servicer, server_url_env, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "custom_stub.py"
     res = _run(["run", stub_file.as_posix(), "foo"], expected_exit_code=1)
     assert "stub variable" in res.stdout  # error output
-    _run(["run", stub_file.as_posix() + "::my_stub", "foo"])
+    _run(["run", stub_file.as_posix() + "::my_stub.foo"])
 
 
 def test_run_aiostub(servicer, server_url_env, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "async_stub.py"
-    _run(["run", stub_file.as_posix(), "foo"])
+    _run(["run", stub_file.as_posix()])
 
 
 def test_run_local_entrypoint(servicer, server_url_env, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "local_entrypoint.py"
 
-    res = _run(["run", stub_file.as_posix(), "main"])
+    res = _run(["run", stub_file.as_posix() + "::stub.main"])  # explicit name
     assert "called locally" in res.stdout
     assert len(servicer.client_calls) == 2
 
@@ -136,6 +136,16 @@ def test_run_local_entrypoint(servicer, server_url_env, test_dir):
 
 def test_run_parse_args(servicer, server_url_env, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "cli_args.py"
-    res = _run(["run", stub_file.as_posix(), "func_with_args", "2022-10-31"])
-    assert "the day is 31" in res.stdout
-    assert len(servicer.client_calls) == 0
+    res = _run(["run", stub_file.as_posix()], expected_exit_code=2)
+    assert "Missing argument" in res.stdout
+
+    valid_call_args = [
+        ["run", stub_file.as_posix(), "2022-10-31"],
+        ["run", f"{stub_file.as_posix()}::stub.func_with_args", "2022-10-31"],
+        ["run", f"{stub_file.as_posix()}::.func_with_args", "2022-10-31"],
+        ["run", f"{stub_file.as_posix()}::stub", "2022-10-31"],
+    ]
+    for args in valid_call_args:
+        res = _run(args)
+        assert "the day is 31" in res.stdout
+        assert len(servicer.client_calls) == 0

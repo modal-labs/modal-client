@@ -4,7 +4,7 @@ import functools
 import inspect
 import sys
 import traceback
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 import typer
 from rich.console import Console, Group
@@ -13,7 +13,7 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 from synchronicity import Interface
 
-from modal.cli.app import DEFAULT_STUB_NAME, _show_stub_ref_failure_help
+from modal.cli.app import _show_stub_ref_failure_help
 from modal.functions import _Function
 from modal.stub import _Stub
 from modal_utils.async_utils import synchronizer
@@ -56,14 +56,13 @@ def run(
     stub_ref: str = typer.Argument(
         ..., help="Path to a Python file or module, optionally identifying the name of your stub: `./main.py:mystub`."
     ),
-    function_name: str = typer.Argument(None, help="Name of the Modal function to run"),
     detach: bool = typer.Option(default=False, help="Allows app to continue running if local terminal disconnects."),
 ):
     try:
-        import_path, stub_name = parse_stub_ref(stub_ref, DEFAULT_STUB_NAME)
-        stub = import_stub(import_path, stub_name)
+        stub_ref = parse_stub_ref(stub_ref)
+        stub = import_stub(stub_ref)
     except NoSuchStub:
-        _show_stub_ref_failure_help(import_path, stub_name)
+        _show_stub_ref_failure_help(stub_ref)
         sys.exit(1)
     except Exception:
         traceback.print_exc()
@@ -72,6 +71,7 @@ def run(
     _stub = synchronizer._translate_in(stub)
     function_choices = list(set(_stub.registered_functions) | set(_stub.registered_entrypoints.keys()))
     registered_functions_str = "\n".join(function_choices)
+    function_name = stub_ref.entrypoint_name
     if not function_name:
         if len(function_choices) == 1:
             function_name = function_choices[0]
@@ -81,13 +81,15 @@ def run(
             print(
                 f"""You need to specify an entrypoint Modal function to run, e.g. `modal run app.py my_function [...args]`.
 Registered functions and entrypoints on the selected stub are:
-{registered_functions_str} {_stub.registered_entrypoints}
+{registered_functions_str}
 """
             )
             exit(1)
     elif function_name not in function_choices:
         print(
-            f"No function `{function_name}` could be found in the specified stub. Registered functions are: {registered_functions_str}"
+            f"""No function `{function_name}` could be found in the specified stub. Registered functions and entrypoints are:
+
+{registered_functions_str}"""
         )
         exit(1)
 
@@ -106,10 +108,10 @@ def deploy(
     name: str = typer.Option(None, help="Name of the deployment."),
 ):
     try:
-        import_path, stub_name = parse_stub_ref(stub_ref, DEFAULT_STUB_NAME)
-        stub = import_stub(import_path, stub_name)
+        stub_ref = parse_stub_ref(stub_ref)
+        stub = import_stub(stub_ref)
     except NoSuchStub:
-        _show_stub_ref_failure_help(import_path, stub_name)
+        _show_stub_ref_failure_help(stub_ref)
         sys.exit(1)
     except Exception:
         traceback.print_exc()
@@ -161,10 +163,6 @@ def choose_function(stub: _Stub, functions: List[Tuple[str, _Function]], console
 
 def shell(
     stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
-    function_name: Optional[str] = typer.Option(
-        default=None,
-        help="Name of the Modal function to run. If unspecified, Modal will prompt you for a function if running in interactive mode.",
-    ),
     cmd: str = typer.Option(default="/bin/bash", help="Command to run inside the Modal image."),
 ):
     """Run an interactive shell inside a Modal image.\n
@@ -172,7 +170,7 @@ def shell(
     \n
     - Start a bash shell using the spec for `my_function` in your stub:\n
     ```bash\n
-    modal shell hello_world.py --function-name my_function \n
+    modal shell hello_world.py::stub.my_function \n
     ```\n
     Note that you can select the function interactively if you omit the function name.\n
     \n
@@ -182,10 +180,10 @@ def shell(
     ```\n
     """
     try:
-        import_path, stub_name = parse_stub_ref(stub_ref, DEFAULT_STUB_NAME)
-        stub = import_stub(import_path, stub_name)
+        stub_ref = parse_stub_ref(stub_ref)
+        stub = import_stub(stub_ref)
     except NoSuchStub:
-        _show_stub_ref_failure_help(import_path, stub_name)
+        _show_stub_ref_failure_help(stub_ref)
         sys.exit(1)
     except Exception:
         traceback.print_exc()
@@ -199,7 +197,7 @@ def shell(
 
     _stub = synchronizer._translate_in(stub)
     functions = {tag: obj for tag, obj in _stub._blueprint.items() if isinstance(obj, _Function)}
-
+    function_name = stub_ref.entrypoint_name
     if function_name is not None:
         if function_name not in functions:
             print(f"Function {function_name} not found in stub.")

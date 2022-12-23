@@ -14,8 +14,7 @@ from modal.cli.utils import timestamp_to_local
 from modal.client import AioClient
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
-
-DEFAULT_STUB_NAME = "stub"
+from modal_utils.package_utils import DEFAULT_STUB_NAME, StubRef
 
 app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_args_is_help=True)
 
@@ -114,16 +113,18 @@ async def list_stops(app_id: str):
     await aio_client.stub.AppStop(req)
 
 
-def _show_stub_ref_failure_help(import_path: str, stub_name: str) -> None:
+def _show_stub_ref_failure_help(stub_ref: StubRef) -> None:
+    stub_name = stub_ref.stub_name
+    import_path = stub_ref.file_or_module
     error_console = Console(stderr=True)
     guidance_msg = (
         (
-            f"Expected to find a stub variable named **`{stub_name}`** (the default stub name). If your `modal.Stub` is named differently, "
+            f"Expected to find a stub variable named **`{DEFAULT_STUB_NAME}`** (the default stub name). If your `modal.Stub` is named differently, "
             "you must specify it in the stub ref argument. "
             f"For example a stub variable `app_stub = modal.Stub()` in `{import_path}` would "
             f"be specified as `{import_path}::app_stub`."
         )
-        if stub_name == DEFAULT_STUB_NAME
+        if stub_name is None
         else (
             f"Expected to find a stub variable named **`{stub_name}`**. "
             f"Check the name of your stub variable in `{import_path}`. "
