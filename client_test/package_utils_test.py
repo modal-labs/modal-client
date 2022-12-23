@@ -91,5 +91,5 @@ def test_import_package_properly():
     rel_p = str(p.relative_to(os.getcwd()))
     print(f"abs_p={abs_p} rel_p={rel_p}")
 
-    assert import_stub(*parse_stub_ref(rel_p, "stub")) == "xyz"
-    assert import_stub(*parse_stub_ref(abs_p, "stub")) == "xyz"
+    assert import_stub(parse_stub_ref(rel_p)) == "xyz"
+    assert import_stub(parse_stub_ref(abs_p)) == "xyz"
