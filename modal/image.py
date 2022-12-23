@@ -398,6 +398,9 @@ class _Image(Provider[_ImageHandle]):
     ):
         """Extend an image with a list of shell commands to run."""
         cmds = _flatten_str_args("run_commands", "commands", commands)
+        if not cmds:
+            return self
+
         dockerfile_commands = ["FROM base"] + [f"RUN {cmd}" for cmd in cmds]
 
         return self.extend(

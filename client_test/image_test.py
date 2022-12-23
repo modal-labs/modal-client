@@ -79,7 +79,14 @@ def test_image_requirements_txt(servicer, client):
 
 def test_empty_install(servicer, client):
     # Install functions with no packages should be ignored.
-    stub = Stub(image=Image.debian_slim().pip_install().pip_install([], []).apt_install([]))
+    stub = Stub(
+        image=Image.debian_slim()
+        .pip_install()
+        .pip_install([], [], [], [])
+        .apt_install([])
+        .run_commands()
+        .conda_install()
+    )
 
     with stub.run(client=client) as running_app:
         layers = get_image_layers(running_app["image"].object_id, servicer)
