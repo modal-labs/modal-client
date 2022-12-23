@@ -58,11 +58,11 @@ def run(
     ),
     detach: bool = typer.Option(default=False, help="Allows app to continue running if local terminal disconnects."),
 ):
+    parsed_stub_ref = parse_stub_ref(stub_ref)
     try:
-        stub_ref = parse_stub_ref(stub_ref)
-        stub = import_stub(stub_ref)
+        stub = import_stub(parsed_stub_ref)
     except NoSuchStub:
-        _show_stub_ref_failure_help(stub_ref)
+        _show_stub_ref_failure_help(parsed_stub_ref)
         sys.exit(1)
     except Exception:
         traceback.print_exc()
@@ -71,7 +71,7 @@ def run(
     _stub = synchronizer._translate_in(stub)
     function_choices = list(set(_stub.registered_functions) | set(_stub.registered_entrypoints.keys()))
     registered_functions_str = "\n".join(function_choices)
-    function_name = stub_ref.entrypoint_name
+    function_name = parsed_stub_ref.entrypoint_name
     if not function_name:
         if len(function_choices) == 1:
             function_name = function_choices[0]
@@ -107,11 +107,11 @@ def deploy(
     stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
     name: str = typer.Option(None, help="Name of the deployment."),
 ):
+    parsed_stub_ref = parse_stub_ref(stub_ref)
     try:
-        stub_ref = parse_stub_ref(stub_ref)
-        stub = import_stub(stub_ref)
+        stub = import_stub(parsed_stub_ref)
     except NoSuchStub:
-        _show_stub_ref_failure_help(stub_ref)
+        _show_stub_ref_failure_help(parsed_stub_ref)
         sys.exit(1)
     except Exception:
         traceback.print_exc()
@@ -179,11 +179,11 @@ def shell(
     modal shell hello_world.py --cmd=python \n
     ```\n
     """
+    parsed_stub_ref = parse_stub_ref(stub_ref)
     try:
-        stub_ref = parse_stub_ref(stub_ref)
-        stub = import_stub(stub_ref)
+        stub = import_stub(parsed_stub_ref)
     except NoSuchStub:
-        _show_stub_ref_failure_help(stub_ref)
+        _show_stub_ref_failure_help(parsed_stub_ref)
         sys.exit(1)
     except Exception:
         traceback.print_exc()
@@ -197,7 +197,7 @@ def shell(
 
     _stub = synchronizer._translate_in(stub)
     functions = {tag: obj for tag, obj in _stub._blueprint.items() if isinstance(obj, _Function)}
-    function_name = stub_ref.entrypoint_name
+    function_name = parsed_stub_ref.entrypoint_name
     if function_name is not None:
         if function_name not in functions:
             print(f"Function {function_name} not found in stub.")
