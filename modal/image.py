@@ -61,11 +61,10 @@ def _get_client_requirements_path():
     return os.path.join(modal_path, "requirements.txt")
 
 
-def _flatten_str_list(function_name: str, arg_name: str, args: list[Union[str, list[str]]]) -> list[str]:
-    """Takes a list of strings, or string lists, and flattens it.
+def _flatten_str_args(function_name: str, arg_name: str, args: tuple[Union[str, list[str]], ...]) -> list[str]:
+    """Takes a tuple of strings, or string lists, and flattens it.
 
-    Raises an error if the argument is not a list, or if any of the elements are
-    not strings or string lists.
+    Raises an error if any of the elements are not strings or string lists.
     """
     # TODO(erikbern): maybe we can just build somthing intelligent that checks
     # based on type annotations in real time?
@@ -73,9 +72,6 @@ def _flatten_str_list(function_name: str, arg_name: str, args: list[Union[str, l
 
     def is_str_list(x):
         return isinstance(x, list) and all(isinstance(y, str) for y in x)
-
-    if not isinstance(args, list):
-        raise InvalidError(f"{function_name}: {arg_name} must be a list")
 
     ret: list[str] = []
     for x in args:
@@ -265,11 +261,11 @@ class _Image(Provider[_ImageHandle]):
 
     def pip_install(
         self,
-        *packages: list[Union[str, list[str]]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
+        *packages: Union[str, list[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
         find_links: Optional[str] = None,
     ) -> "_Image":
         """Install a list of Python packages using pip."""
-        pkgs = _flatten_str_list("pip_install", "packages", packages)
+        pkgs = _flatten_str_args("pip_install", "packages", packages)
         if not pkgs:
             return self
 
@@ -396,12 +392,12 @@ class _Image(Provider[_ImageHandle]):
 
     def run_commands(
         self,
-        *commands: list[Union[str, list[str]]],
+        *commands: Union[str, list[str]],
         secrets: Collection[_Secret] = [],
         gpu: bool = False,
     ):
         """Extend an image with a list of shell commands to run."""
-        cmds = _flatten_str_list("run_commands", "commands", commands)
+        cmds = _flatten_str_args("run_commands", "commands", commands)
         dockerfile_commands = ["FROM base"] + [f"RUN {cmd}" for cmd in cmds]
 
         return self.extend(
@@ -461,11 +457,11 @@ class _Image(Provider[_ImageHandle]):
 
     def conda_install(
         self,
-        *packages: list[Union[str, list[str]]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
+        *packages: Union[str, list[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
         channels: list[str] = [],  # A list of Conda channels, eg. ["conda-forge", "nvidia"]
     ) -> "_Image":
         """Install a list of additional packages using conda."""
-        pkgs = _flatten_str_list("conda_install", "packages", packages)
+        pkgs = _flatten_str_args("conda_install", "packages", packages)
         if not pkgs:
             return self
 
@@ -595,14 +591,14 @@ class _Image(Provider[_ImageHandle]):
 
     def apt_install(
         self,
-        *packages: list[Union[str, list[str]]],  # A list of packages, e.g. ["ssh", "libpq-dev"]
+        *packages: Union[str, list[str]],  # A list of packages, e.g. ["ssh", "libpq-dev"]
     ) -> "_Image":
         """Install a list of Debian packages using `apt`."""
-        _flatten_str_list("apt_install", "packages", packages)
-        if not packages:
+        pkgs = _flatten_str_args("apt_install", "packages", packages)
+        if not pkgs:
             return self
 
-        package_args = " ".join(shlex.quote(pkg) for pkg in packages)
+        package_args = " ".join(shlex.quote(pkg) for pkg in pkgs)
 
         dockerfile_commands = [
             "FROM base",
