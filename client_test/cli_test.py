@@ -120,3 +120,4 @@ def test_app_run_custom_stub(servicer, server_url_env, test_dir):
 def test_app_run_aiostub(servicer, server_url_env, test_dir):
     modal_file = test_dir / "supports" / "app_run_tests" / "async_stub.py"
     _run(["app", "run", modal_file.as_posix()])
+    assert len(servicer.client_calls) == 1
