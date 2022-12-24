@@ -13,6 +13,7 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.table import Table
 from rich.tree import Tree
+from synchronicity import Interface
 
 from modal._output import OutputManager, step_progress
 from modal.cli.utils import timestamp_to_local
@@ -21,7 +22,7 @@ from modal.functions import _Function
 from modal.stub import _Stub
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
-from modal_utils.package_utils import import_stub, parse_stub_ref, NoSuchStub
+from modal_utils.package_utils import NoSuchStub, import_stub, parse_stub_ref
 
 DEFAULT_STUB_NAME = "stub"
 
@@ -29,8 +30,7 @@ app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_a
 
 
 @app_cli.command("run", help="Run a Modal function.")
-@synchronizer
-async def run(
+def run(
     stub_ref: str = typer.Argument(
         ..., help="Path to a Python file or module, optionally identifying the name of your stub: `./main.py:mystub`."
     ),
@@ -63,10 +63,11 @@ Registered functions on the selected stub are: {registered_functions_str}"""
             f"No function `{function_name}` could be found in the specified stub. Registered functions are: {registered_functions_str}"
         )
         exit(1)
-
-    async with _stub.run(detach=detach) as app:
+    blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
+    with blocking_stub.run(detach=detach) as app:
         func_handle = getattr(app, function_name)
-        await func_handle.call()
+        blocking_function = synchronizer._translate_out(synchronizer._translate_in(func_handle), Interface.BLOCKING)
+        blocking_function.call()
 
 
 @app_cli.command("deploy", help="Deploy a Modal stub as an application.")
