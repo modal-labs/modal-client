@@ -119,7 +119,7 @@ def run_in_pty(fn, queue, pty_info: api_pb2.PTYInfo):
                 except asyncio.CancelledError:
                     return
 
-        t = threading.Thread(target=_read)
+        t = threading.Thread(target=_read, daemon=True)
         t.start()
 
         os.environ.update(
