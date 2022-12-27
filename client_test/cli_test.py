@@ -133,6 +133,7 @@ def test_run_custom_stub(servicer, server_url_env, test_dir):
 def test_run_aiostub(servicer, server_url_env, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "async_stub.py"
     _run(["run", stub_file.as_posix()])
+    assert len(servicer.client_calls) == 1
 
 
 def test_run_local_entrypoint(servicer, server_url_env, test_dir):

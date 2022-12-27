@@ -23,11 +23,11 @@ run_cli = typer.Typer(name="run")
 
 
 def _get_run_wrapper_function_handle(_stub, function_tag: str, detach: bool):
-    stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
+    blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
 
     @functools.wraps(_stub._blueprint[function_tag]._info.raw_f)
     def f(*args, **kwargs):
-        with stub.run(detach=detach) as app:
+        with blocking_stub.run(detach=detach) as app:
             function_handle = getattr(app, function_tag)
             function_handle.call(*args, **kwargs)
 
