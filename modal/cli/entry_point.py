@@ -52,8 +52,8 @@ entrypoint_cli_typer.command("deploy", help="Deploy a Modal stub as an applicati
 entrypoint_cli_typer.command("shell", no_args_is_help=True)(run.shell)
 
 entrypoint_cli = typer.main.get_command(entrypoint_cli_typer)
-entrypoint_cli.add_command(run.run, name="run")
-entrypoint_cli.list_commands(None)
+entrypoint_cli.add_command(run.run, name="run")  # type: ignore
+entrypoint_cli.list_commands(None)  # type: ignore
 
 if __name__ == "__main__":
     # this module is only called from tests, otherwise the parent package __init__.py is used as the entrypoint

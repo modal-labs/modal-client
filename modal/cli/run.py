@@ -87,14 +87,14 @@ class RunGroup(click.Group):
         elif function_name not in function_choices:
             print(
                 f"""No function `{function_name}` could be found in the specified stub. Registered functions and entrypoints are:
-    
+
     {registered_functions_str}"""
             )
             exit(1)
 
         # create a typer command for the selected function
         function_typer = typer.Typer()
-        detach = False
+
         if function_name in _stub.registered_functions:
             function_typer.command(name=function_name)(_get_run_wrapper_function_handle(_stub, function_name))
         else:
