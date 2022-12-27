@@ -3,6 +3,7 @@ import os
 import traceback
 
 import click
+import click.testing
 import pytest_asyncio
 
 from modal.cli.entry_point import entrypoint_cli
