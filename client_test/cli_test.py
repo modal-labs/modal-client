@@ -2,8 +2,8 @@
 import os
 import traceback
 
+import click
 import pytest_asyncio
-import typer.testing
 
 from modal.cli.entry_point import entrypoint_cli
 from modal.client import Client
@@ -35,7 +35,7 @@ async def set_env_client(aio_client):
 
 
 def _run(args, expected_exit_code=0):
-    runner = typer.testing.CliRunner()
+    runner = click.testing.CliRunner()
     res = runner.invoke(entrypoint_cli, args)
     if res.exit_code != expected_exit_code:
         print(res.stdout, "Trace:")

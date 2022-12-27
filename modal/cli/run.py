@@ -6,6 +6,7 @@ import sys
 import traceback
 from typing import List, Tuple
 
+import click
 import typer
 from rich.console import Console, Group
 from rich.markdown import Markdown
@@ -22,19 +23,22 @@ from modal_utils.package_utils import NoSuchStub, import_stub, parse_stub_ref
 run_cli = typer.Typer(name="run")
 
 
-def _get_run_wrapper_function_handle(_stub, function_tag: str, detach: bool):
+_detach = False  # hack: use global state to communicate the click context to the typer subcommand, see below
+
+
+def _get_run_wrapper_function_handle(_stub, function_tag: str):
     blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
 
     @functools.wraps(_stub._blueprint[function_tag]._info.raw_f)
     def f(*args, **kwargs):
-        with blocking_stub.run(detach=detach) as app:
+        with blocking_stub.run(detach=_detach) as app:
             function_handle = getattr(app, function_tag)
             function_handle.call(*args, **kwargs)
 
     return f
 
 
-def _get_run_wrapper_local_entrypoint(_stub, entrypoint_name: str, detach: bool):
+def _get_run_wrapper_local_entrypoint(_stub, entrypoint_name: str):
     stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
     func = _stub._local_entrypoints[entrypoint_name]
 
@@ -42,7 +46,7 @@ def _get_run_wrapper_local_entrypoint(_stub, entrypoint_name: str, detach: bool)
 
     @functools.wraps(func)
     def f(*args, **kwargs):
-        with stub.run(detach=detach):
+        with stub.run(detach=_detach):
             if isasync:
                 asyncio.run(func(*args, **kwargs))
             else:
@@ -51,56 +55,77 @@ def _get_run_wrapper_local_entrypoint(_stub, entrypoint_name: str, detach: bool)
     return f
 
 
-def run(
-    ctx: typer.Context,
-    stub_ref: str = typer.Argument(
-        ..., help="Path to a Python file or module, optionally identifying the name of your stub: `./main.py:mystub`."
-    ),
-    detach: bool = typer.Option(default=False, help="Allows app to continue running if local terminal disconnects."),
-):
-    parsed_stub_ref = parse_stub_ref(stub_ref)
-    try:
-        stub = import_stub(parsed_stub_ref)
-    except NoSuchStub:
-        _show_stub_ref_failure_help(parsed_stub_ref)
-        sys.exit(1)
-    except Exception:
-        traceback.print_exc()
-        sys.exit(1)
+class RunGroup(click.Group):
+    def get_command(self, ctx, stub_ref):
+        parsed_stub_ref = parse_stub_ref(stub_ref)
+        try:
+            stub = import_stub(parsed_stub_ref)
+        except NoSuchStub:
+            _show_stub_ref_failure_help(parsed_stub_ref)
+            sys.exit(1)
+        except Exception:
+            traceback.print_exc()
+            sys.exit(1)
 
-    _stub = synchronizer._translate_in(stub)
-    function_choices = list(set(_stub.registered_functions) | set(_stub.registered_entrypoints.keys()))
-    registered_functions_str = "\n".join(function_choices)
-    function_name = parsed_stub_ref.entrypoint_name
-    if not function_name:
-        if len(function_choices) == 1:
-            function_name = function_choices[0]
-        elif len(_stub.registered_entrypoints) == 1:
-            function_name = list(_stub.registered_entrypoints.keys())[0]
-        else:
+        _stub = synchronizer._translate_in(stub)
+        function_choices = list(set(_stub.registered_functions) | set(_stub.registered_entrypoints.keys()))
+        registered_functions_str = "\n".join(function_choices)
+        function_name = parsed_stub_ref.entrypoint_name
+        if not function_name:
+            if len(function_choices) == 1:
+                function_name = function_choices[0]
+            elif len(_stub.registered_entrypoints) == 1:
+                function_name = list(_stub.registered_entrypoints.keys())[0]
+            else:
+                print(
+                    f"""You need to specify an entrypoint Modal function to run, e.g. `modal run app.py my_function [...args]`.
+    Registered functions and entrypoints on the selected stub are:
+    {registered_functions_str}
+    """
+                )
+                exit(1)
+        elif function_name not in function_choices:
             print(
-                f"""You need to specify an entrypoint Modal function to run, e.g. `modal run app.py my_function [...args]`.
-Registered functions and entrypoints on the selected stub are:
-{registered_functions_str}
-"""
+                f"""No function `{function_name}` could be found in the specified stub. Registered functions and entrypoints are:
+    
+    {registered_functions_str}"""
             )
             exit(1)
-    elif function_name not in function_choices:
-        print(
-            f"""No function `{function_name}` could be found in the specified stub. Registered functions and entrypoints are:
 
-{registered_functions_str}"""
-        )
-        exit(1)
+        # create a typer command for the selected function
+        function_typer = typer.Typer()
+        detach = False
+        if function_name in _stub.registered_functions:
+            function_typer.command(name=function_name)(_get_run_wrapper_function_handle(_stub, function_name))
+        else:
+            # TODO: warn if using detach with local_entrypoint?
+            function_typer.command(name=function_name)(_get_run_wrapper_local_entrypoint(_stub, function_name))
 
-    func_typer = typer.Typer()
-    if function_name in _stub.registered_functions:
-        func_typer.command(name=function_name)(_get_run_wrapper_function_handle(_stub, function_name, detach))
-    else:
-        func_typer.command(name=function_name)(_get_run_wrapper_local_entrypoint(_stub, function_name, detach))
+        click_command = typer.main.get_command(function_typer)
+        click_command.params = [
+            param
+            for param in click_command.params
+            # remove default options from the typer command, since
+            # don't use it as the top level cli. Kinda janky...
+            if param.name not in ("show_completion", "install_completion")
+        ]
+        return click_command
 
-    # TODO: propagate help to sub-invocation if enough arguments are available
-    func_typer(args=ctx.args)
+
+@click.group(cls=RunGroup, subcommand_metavar="STUB_REF", help="Run a Modal function or entrypoint")
+@click.option("--detach", is_flag=True, help="Don't stop the app if the local process dies or disconnects.")
+@click.pass_context
+def run(ctx, detach):
+    # this triggers after `get_command` in the RunGroup has run, so the detach
+    # option can't be used within `get_command`.
+    # since subcommand is a typer command we can't easily pass the click context
+    # into it, and have to rely on global state instead
+
+    ctx.ensure_object(dict)
+    ctx.obj["detach"] = detach  # if subcommand would be a click command...
+
+    global _detach
+    _detach = detach
 
 
 def deploy(
