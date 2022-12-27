@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
-import functools
+import datetime
 import inspect
 import sys
 import traceback
@@ -15,6 +15,7 @@ from rich.prompt import Prompt
 from synchronicity import Interface
 
 from modal.cli.app import _show_stub_ref_failure_help
+from modal.exception import InvalidError
 from modal.functions import _Function
 from modal.stub import _Stub
 from modal_utils.async_utils import synchronizer
@@ -25,34 +26,65 @@ run_cli = typer.Typer(name="run")
 
 _detach = False  # hack: use global state to communicate the click context to the typer subcommand, see below
 
+option_parsers = {str: str, int: int, float: float, bool: bool, datetime.datetime: click.DateTime()}
 
-def _get_run_wrapper_function_handle(_stub, function_tag: str):
+
+class NoParserAvailable(InvalidError):
+    pass
+
+
+def _add_click_options(func, signature: inspect.Signature):
+    """Adds @click.option based on function signature
+
+    Kind of like typer, but using options instead of positional arguments
+    """
+    for param in signature.parameters.values():
+        param_type = str if param.annotation is inspect.Signature.empty else param.annotation
+        cli_name = "--" + param.name.replace("_", "-")
+        parser = option_parsers.get(param_type)
+        if parser is None:
+            raise NoParserAvailable(repr(param_type))
+        kwargs = {
+            "type": parser,
+        }
+        if param.default is not inspect.Signature.empty:
+            kwargs["default"] = param.default
+        else:
+            kwargs["required"] = True
+
+        click.option(cli_name, **kwargs)(func)
+    return func
+
+
+def _get_click_command_for_function_handle(_stub, function_tag: str):
     blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
+    raw_func = _stub._blueprint[function_tag]._info.raw_f
 
-    @functools.wraps(_stub._blueprint[function_tag]._info.raw_f)
-    def f(*args, **kwargs):
-        with blocking_stub.run(detach=_detach) as app:
+    @click.pass_context
+    def f(ctx, *args, **kwargs):
+        with blocking_stub.run(detach=ctx.obj["detach"]) as app:
             function_handle = getattr(app, function_tag)
             function_handle.call(*args, **kwargs)
 
-    return f
+    with_click_options = _add_click_options(f, inspect.signature(raw_func))
+    return click.command(with_click_options)
 
 
-def _get_run_wrapper_local_entrypoint(_stub, entrypoint_name: str):
-    stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
+def _get_click_command_for_local_entrypoint(_stub, entrypoint_name: str):
+    blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
     func = _stub._local_entrypoints[entrypoint_name]
-
     isasync = inspect.iscoroutinefunction(func)
 
-    @functools.wraps(func)
-    def f(*args, **kwargs):
-        with stub.run(detach=_detach):
+    @click.pass_context
+    def f(ctx, *args, **kwargs):
+        with blocking_stub.run(detach=ctx.obj["detach"]):
             if isasync:
                 asyncio.run(func(*args, **kwargs))
             else:
                 func(*args, **kwargs)
 
-    return f
+    with_click_options = _add_click_options(f, inspect.signature(func))
+    return click.command(with_click_options)
 
 
 class RunGroup(click.Group):
@@ -79,8 +111,8 @@ class RunGroup(click.Group):
             else:
                 print(
                     f"""You need to specify an entrypoint Modal function to run, e.g. `modal run app.py my_function [...args]`.
-    Registered functions and entrypoints on the selected stub are:
-    {registered_functions_str}
+Registered functions and entrypoints on the selected stub are:
+{registered_functions_str}
     """
                 )
                 exit(1)
@@ -96,19 +128,11 @@ class RunGroup(click.Group):
         function_typer = typer.Typer()
 
         if function_name in _stub.registered_functions:
-            function_typer.command(name=function_name)(_get_run_wrapper_function_handle(_stub, function_name))
+            click_command = _get_click_command_for_function_handle(_stub, function_name)
         else:
             # TODO: warn if using detach with local_entrypoint?
-            function_typer.command(name=function_name)(_get_run_wrapper_local_entrypoint(_stub, function_name))
+            click_command = _get_click_command_for_local_entrypoint(_stub, function_name)
 
-        click_command = typer.main.get_command(function_typer)
-        click_command.params = [
-            param
-            for param in click_command.params
-            # remove default options from the typer command, since
-            # don't use it as the top level cli. Kinda janky...
-            if param.name not in ("show_completion", "install_completion")
-        ]
         return click_command
 
 

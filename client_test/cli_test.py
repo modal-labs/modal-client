@@ -151,16 +151,25 @@ def test_run_local_entrypoint(servicer, server_url_env, test_dir):
 
 def test_run_parse_args(servicer, server_url_env, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "cli_args.py"
-    res = _run(["run", stub_file.as_posix()], expected_exit_code=2)
-    assert "Missing argument" in res.stdout
+    res = _run(["run", stub_file.as_posix()], expected_exit_code=1)
+    assert "You need to specify an entrypoint" in res.stdout
 
     valid_call_args = [
-        ["run", stub_file.as_posix(), "2022-10-31"],
-        ["run", f"{stub_file.as_posix()}::stub.func_with_args", "2022-10-31"],
-        ["run", f"{stub_file.as_posix()}::.func_with_args", "2022-10-31"],
-        ["run", f"{stub_file.as_posix()}::stub", "2022-10-31"],
+        (
+            [
+                "run",
+                f"{stub_file.as_posix()}::stub.dt_arg",
+                "--dt",
+                "2022-10-31",
+            ],
+            "the day is 31",
+        ),
+        (["run", f"{stub_file.as_posix()}::.dt_arg", "--dt=2022-10-31"], "the day is 31"),
+        (["run", f"{stub_file.as_posix()}::.int_arg", "--i=200"], "200"),
+        (["run", f"{stub_file.as_posix()}::.default_arg"], "10"),
+        (["run", f"{stub_file.as_posix()}::.unannotated_arg", "--i=2022-10-31"], "'2022-10-31'"),
     ]
-    for args in valid_call_args:
+    for args, expected in valid_call_args:
         res = _run(args)
-        assert "the day is 31" in res.stdout
+        assert expected in res.stdout
         assert len(servicer.client_calls) == 0
