@@ -533,9 +533,9 @@ class _Stub:
         modal run stub_module.py
         ```
 
-        If you have multiple local_entrypoint functions, you can qualify the name of your function as a second argument:
+        If you have multiple local_entrypoint functions, you can qualify the name of your stub and function:
         ```
-        modal run stub_module.py some_other_function
+        modal run stub_module.py::stub.some_other_function
         ```
 
         """
