@@ -1,5 +1,7 @@
 # Copyright Modal Labs 2022
 import os
+import pytest
+import sys
 import traceback
 
 import pytest_asyncio
@@ -121,3 +123,26 @@ def test_app_run_aiostub(servicer, server_url_env, test_dir):
     modal_file = test_dir / "supports" / "app_run_tests" / "async_stub.py"
     _run(["app", "run", modal_file.as_posix()])
     assert len(servicer.client_calls) == 1
+
+
+@pytest.fixture
+def fresh_main_thread_assertion_module(test_dir):
+    modules_to_unload = [n for n in sys.modules.keys() if "main_thread_assertion" in n]
+    assert len(modules_to_unload) <= 1
+    for mod in modules_to_unload:
+        sys.modules.pop(mod)
+    yield test_dir / "supports" / "app_run_tests" / "main_thread_assertion.py"
+
+
+def test_no_user_code_in_synchronicity_run(servicer, server_url_env, test_dir, fresh_main_thread_assertion_module):
+    pytest._did_load_main_thread_assertion = False
+    _run(["app", "run", fresh_main_thread_assertion_module.as_posix()])
+    assert pytest._did_load_main_thread_assertion
+    print()
+
+
+def test_no_user_code_in_synchronicity_deploy(servicer, server_url_env, test_dir, fresh_main_thread_assertion_module):
+    pytest._did_load_main_thread_assertion = False
+    _run(["app", "deploy", "--name", "foo", fresh_main_thread_assertion_module.as_posix()])
+    assert pytest._did_load_main_thread_assertion
+    print()
