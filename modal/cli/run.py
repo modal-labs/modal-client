@@ -106,7 +106,7 @@ class RunGroup(click.Group):
 
         _stub = synchronizer._translate_in(stub)
         function_choices = list(set(_stub.registered_functions) | set(_stub.registered_entrypoints.keys()))
-        registered_functions_str = "\n".join(function_choices)
+        registered_functions_str = "\n".join(sorted(function_choices))
         function_name = parsed_stub_ref.entrypoint_name
         if not function_name:
             if len(function_choices) == 1:
@@ -115,7 +115,7 @@ class RunGroup(click.Group):
                 function_name = list(_stub.registered_entrypoints.keys())[0]
             else:
                 print(
-                    f"""You need to specify an entrypoint Modal function to run, e.g. `modal run app.py my_function [...args]`.
+                    f"""You need to specify an entrypoint Modal function to run, e.g. `modal run app.py::stub.my_function [...args]`.
 Registered functions and entrypoints on the selected stub are:
 {registered_functions_str}
     """
