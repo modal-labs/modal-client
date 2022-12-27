@@ -77,6 +77,11 @@ def _get_click_command_for_local_entrypoint(_stub, entrypoint_name: str):
 
     @click.pass_context
     def f(ctx, *args, **kwargs):
+        if ctx.obj["detach"]:
+            print(
+                "Note that running a local entrypoint in detached mode only keeps the last triggered Modal function alive after the parent process has been killed or disconnected."
+            )
+
         with blocking_stub.run(detach=ctx.obj["detach"]):
             if isasync:
                 asyncio.run(func(*args, **kwargs))
@@ -124,13 +129,9 @@ Registered functions and entrypoints on the selected stub are:
             )
             exit(1)
 
-        # create a typer command for the selected function
-        function_typer = typer.Typer()
-
         if function_name in _stub.registered_functions:
             click_command = _get_click_command_for_function_handle(_stub, function_name)
         else:
-            # TODO: warn if using detach with local_entrypoint?
             click_command = _get_click_command_for_local_entrypoint(_stub, function_name)
 
         return click_command
