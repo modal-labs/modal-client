@@ -146,3 +146,32 @@ def fastapi_app():
         return {"hello": arg}
 
     return web_app
+
+
+class AsgiLifecycleClass:
+    _events: list[str] = []
+
+    def __init__(self):
+        self._events.append("init")
+
+    async def __aenter__(self):
+        from fastapi import FastAPI, Request
+
+        self._events.append("enter")
+
+        web_app = FastAPI()
+
+        @web_app.get("/foo")
+        async def foo(arg="world"):
+            self._events.append("call")
+            return {"hello": arg}
+
+        self._web_app = web_app
+
+    async def __aexit__(self, typ, exc, tb):
+        self._events.append("exit")
+
+    @stub.asgi
+    def fastapi_app(self):
+        self._events.append("asgi")
+        return self._web_app

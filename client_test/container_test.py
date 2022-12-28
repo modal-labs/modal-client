@@ -330,6 +330,10 @@ def test_webhook_lifecycle(unix_servicer, event_loop):
     second_message = deserialize(items[1].result.data, client)
     assert json.loads(second_message["body"]) == {"hello": "space"}
 
+    cls = sys.modules["modal_test_support.functions"].WebhookLifecycleClass
+
+    assert cls._events == ["init", "enter", "call", "exit"]
+
 
 @skip_windows
 def test_serialized_function(unix_servicer, event_loop):
@@ -436,3 +440,34 @@ def test_asgi(unix_servicer, event_loop):
     # Check EOF
     assert items[2].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     assert items[2].result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE
+
+
+@skip_windows
+def test_asgi_lifecycle(unix_servicer, event_loop):
+    scope = {
+        "method": "GET",
+        "type": "http",
+        "path": "/foo",
+        "headers": {},
+        "query_string": "arg=space",
+        "http_version": "2",
+    }
+    body = b""
+    inputs = _get_inputs(([scope, body], {}))
+    client, items = _run_container(
+        unix_servicer,
+        "modal_test_support.functions",
+        "AsgiLifecycleClass.fastapi_app",
+        inputs=inputs,
+        webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
+    )
+
+    assert len(items) == 3
+    assert items[1].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert items[1].result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
+    second_message = deserialize(items[1].result.data, client)
+    assert json.loads(second_message["body"]) == {"hello": "space"}
+
+    cls = sys.modules["modal_test_support.functions"].AsgiLifecycleClass
+
+    assert cls._events == ["init", "enter", "asgi", "call", "exit"]
