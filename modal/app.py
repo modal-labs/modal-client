@@ -27,7 +27,7 @@ class _App:
     import modal
 
     stub = modal.Stub()
-    stub.my_secret_object = modal.ref("my-secret")
+    stub.my_secret_object = modal.Secret.from_name("my-secret")
 
     if __name__ == "__main__":
         with stub.run() as app:
