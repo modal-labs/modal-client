@@ -12,7 +12,6 @@ from typing import (
     Dict,
     List,
     Optional,
-    Tuple,
     Type,
     TypeVar,
     cast,
@@ -25,7 +24,6 @@ from grpclib.exceptions import StreamTerminatedError
 from grpclib.protocol import H2Protocol
 from sentry_sdk import capture_exception
 
-from modal_proto import api_pb2
 from .logger import logger
 
 
@@ -119,23 +117,6 @@ class ChannelPool(Channel):
             logger.warning("Channel pool not properly closed")
 
 
-def auth_metadata(client_type: Optional[int], credentials: Optional[Tuple[str, str]] = None) -> Dict[str, str]:
-    if credentials and (client_type == api_pb2.CLIENT_TYPE_CLIENT or client_type == api_pb2.CLIENT_TYPE_WEB_SERVER):
-        token_id, token_secret = credentials
-        return {
-            "x-modal-token-id": token_id,
-            "x-modal-token-secret": token_secret,
-        }
-    elif credentials and client_type == api_pb2.CLIENT_TYPE_CONTAINER:
-        task_id, task_secret = credentials
-        return {
-            "x-modal-task-id": task_id,
-            "x-modal-task-secret": task_secret,
-        }
-    else:
-        return {}
-
-
 _SendType = TypeVar("_SendType")
 _RecvType = TypeVar("_RecvType")
 
@@ -148,8 +129,7 @@ RETRYABLE_GRPC_STATUS_CODES = [
 
 def create_channel(
     server_url: str,
-    client_type: Optional[int] = None,  # api_pb2.ClientType
-    credentials: Optional[Tuple[str, str]] = None,
+    metadata: Dict[str, str] = {},
     *,
     inject_tracing_context: Optional[Callable[[Dict[str, str]], None]] = None,
     use_pool: Optional[bool] = None,  # If None, inferred from the scheme
@@ -185,8 +165,6 @@ def create_channel(
         raise Exception(f"Unknown scheme: {o.scheme}")
 
     logger.debug(f"Connecting to {o.netloc} using scheme {o.scheme}")
-
-    metadata = auth_metadata(client_type, credentials)
 
     # Inject metadata for the client.
     async def send_request(event: grpclib.events.SendRequest) -> None:
