@@ -74,7 +74,7 @@ modal secret create my-credentials username=john password=-
     env_var_code = "\n    ".join(f'os.getenv("{name}")' for name in env_dict.keys()) if env_dict else "..."
 
     example_code = f"""
-@stub.function(secret=modal.ref("{secret_name}"))
+@stub.function(secret=modal.Secret.from_name("{secret_name}"))
 def some_function():
     {env_var_code}
 """

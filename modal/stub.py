@@ -328,6 +328,11 @@ class _Stub:
         This function is useful for developing and testing cron schedules, job queues, and webhooks,
         since they will run until the program is interrupted with `Ctrl + C` or other means.
         Any changes made to webhook handlers will show up almost immediately the next time the route is hit.
+
+        **Note**
+
+        Changes to decorator arguments (eg. `timeout`, `gpu`, `shared_volumes`) will not propogate on live updates,
+        just web handle function bodies. Stop and restart your webhook serving process to propogate these changes.
         """
         from ._watcher import TIMEOUT, watch
 
@@ -516,11 +521,11 @@ class _Stub:
 
     @decorator_with_options
     def local_entrypoint(self, raw_f=None, name: Optional[str] = None):
-        """Decorate a function to be used as a CLI entrypoint for a Modal App
+        """Decorate a function to be used as a CLI entrypoint for a Modal App.
 
         These functions can be used to do initialization of apps using local
-        assets. Note that regular Modal functions can also be used as cli entrypoints,
-        but unlike local_entrypoint Modal function are executed remotely.
+        assets. Note that regular Modal functions can also be used as CLI entrypoints,
+        but unlike `local_entrypoint` Modal function are executed remotely.
 
         E.g.
         @stub.local_entrypoint
@@ -533,7 +538,7 @@ class _Stub:
         modal run stub_module.py
         ```
 
-        If you have multiple local_entrypoint functions, you can qualify the name of your stub and function:
+        If you have multiple `local_entrypoint` functions, you can qualify the name of your stub and function:
         ```
         modal run stub_module.py::stub.some_other_function
         ```

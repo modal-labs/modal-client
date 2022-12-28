@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
-from datetime import date
 import sys
 import warnings
+from datetime import date
 
 
 class Error(Exception):
@@ -15,7 +15,7 @@ class Error(Exception):
 
     try:
         with stub.run():
-            f()
+            f.call()
     except modal.Error:
         # Catch any exception raised by Modal's systems.
         print("Responding to error...")
@@ -74,7 +74,7 @@ def deprecation_error(deprecated_on: date, msg: str):
 
 
 def deprecation_warning(deprecated_on: date, msg: str):
-    """Utility for getting the proper stack entry
+    """Utility for getting the proper stack entry.
 
     See the implementation of the built-in [warnings.warn](https://docs.python.org/3/library/warnings.html#available-functions).
     """
