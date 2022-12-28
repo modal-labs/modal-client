@@ -23,7 +23,7 @@ class _App:
     is running, you can get its `app_id`, `client`, and other useful properties
     from this object.
 
-    ```
+    ```python
     import modal
 
     stub = modal.Stub()
