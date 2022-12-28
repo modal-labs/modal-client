@@ -1,4 +1,6 @@
 # Copyright Modal Labs 2022
+from __future__ import annotations
+
 import asyncio
 import platform
 import time
@@ -39,6 +41,25 @@ CLIENT_CREATE_ATTEMPT_TIMEOUT = 4.0
 CLIENT_CREATE_TOTAL_TIMEOUT = 15.0
 
 
+def _get_metadata(client_type: Optional[int], credentials: Optional[tuple[str, str]], version: str) -> dict[str, str]:
+    if credentials and (client_type == api_pb2.CLIENT_TYPE_CLIENT or client_type == api_pb2.CLIENT_TYPE_WEB_SERVER):
+        token_id, token_secret = credentials
+        return {
+            "x-modal-token-id": token_id,
+            "x-modal-token-secret": token_secret,
+            "x-modal-client-version": version,
+        }
+    elif credentials and client_type == api_pb2.CLIENT_TYPE_CONTAINER:
+        task_id, task_secret = credentials
+        return {
+            "x-modal-task-id": task_id,
+            "x-modal-task-secret": task_secret,
+            "x-modal-client-version": version,
+        }
+    else:
+        return {}
+
+
 async def _http_check(url: str, timeout: float) -> str:
     # Used for sanity checking connection issues
     try:
@@ -77,6 +98,7 @@ class _Client:
         self._stub = None
         self._connected = False
         self._pre_stop: Optional[Callable[[], None]] = None
+        self._channel = None
 
     @property
     def stub(self):
@@ -90,10 +112,10 @@ class _Client:
             raise Exception("Client is already running")
         self._task_context = TaskContext(grace=1)
         await self._task_context.start()
+        metadata = _get_metadata(self.client_type, self.credentials, self.version)
         self._channel = create_channel(
             self.server_url,
-            self.client_type,
-            self.credentials,
+            metadata=metadata,
             inject_tracing_context=inject_tracing_context,
         )
         self._stub = api_grpc.ModalClientStub(self._channel)  # type: ignore
@@ -246,7 +268,8 @@ class _Client:
         """Gets a token through a web flow."""
 
         # Create a connection with no credentials
-        channel = create_channel(server_url, api_pb2.CLIENT_TYPE_CLIENT, None)
+        metadata = _get_metadata(api_pb2.CLIENT_TYPE_CLIENT, None, __version__)
+        channel = create_channel(server_url, metadata)
         stub = api_grpc.ModalClientStub(channel)  # type: ignore
 
         try:
