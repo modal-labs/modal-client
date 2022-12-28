@@ -102,7 +102,6 @@ message AppDeployResponse {
   string url = 1;
 }
 
-
 message AppGetByDeploymentNameRequest {
   DeploymentNamespace namespace = 1;
   string name = 2;
@@ -179,6 +178,10 @@ message AppSetObjectsRequest {
   string client_id = 3;
   repeated string unindexed_object_ids = 4;
   AppState new_app_state = 5; // promotes an app from initializing to this new state
+}
+
+message AppHeartbeatRequest {
+  string app_id = 1;
 }
 
 message BaseImage {
@@ -843,6 +846,7 @@ service ModalClient {
   rpc AppDeploy(AppDeployRequest) returns (AppDeployResponse);
   rpc AppGetByDeploymentName(AppGetByDeploymentNameRequest) returns (AppGetByDeploymentNameResponse);
   rpc AppStop(AppStopRequest) returns (google.protobuf.Empty);
+  rpc AppHeartbeat(AppHeartbeatRequest) returns (google.protobuf.Empty);
 
   // Blobs
   rpc BlobCreate(BlobCreateRequest) returns (BlobCreateResponse);
@@ -851,6 +855,9 @@ service ModalClient {
   // Clients
   rpc ClientCreate(ClientCreateRequest) returns (ClientCreateResponse);
   rpc ClientHeartbeat(ClientHeartbeatRequest) returns (google.protobuf.Empty);
+
+  // Container
+  rpc ContainerHeartbeat(google.protobuf.Empty) returns (google.protobuf.Empty);
 
   // Dicts
   rpc DictCreate(DictCreateRequest) returns (DictCreateResponse);
