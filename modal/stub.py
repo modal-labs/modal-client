@@ -6,7 +6,7 @@ import sys
 import warnings
 from datetime import date
 from enum import Enum
-from typing import AsyncGenerator, Collection, Dict, List, Optional, Union
+from typing import AsyncGenerator, Callable, Collection, Dict, List, Optional, Union
 
 from rich.tree import Tree
 
@@ -87,6 +87,7 @@ class _Stub:
     _mounts: Collection[_Mount]
     _secrets: Collection[_Secret]
     _function_handles: Dict[str, _FunctionHandle]
+    _local_entrypoints: Dict[str, Callable]
 
     def __init__(
         self,
@@ -110,6 +111,7 @@ class _Stub:
         self._mounts = mounts
         self._secrets = secrets
         self._function_handles = {}
+        self._local_entrypoints = {}
         super().__init__()
 
     @property
@@ -381,7 +383,7 @@ class _Stub:
     ):
         """Deploy an app and export its objects persistently.
 
-        Typically, using the command-line tool `modal app deploy <module or script>`
+        Typically, using the command-line tool `modal deploy <module or script>`
         should be used, instead of this method.
 
         **Usage:**
@@ -507,6 +509,39 @@ class _Stub:
     @property
     def registered_functions(self) -> List[str]:
         return list(self._function_handles.keys())
+
+    @property
+    def registered_entrypoints(self) -> Dict[str, Callable]:
+        return self._local_entrypoints
+
+    @decorator_with_options
+    def local_entrypoint(self, raw_f=None, name: Optional[str] = None):
+        """Decorate a function to be used as a CLI entrypoint for a Modal App
+
+        These functions can be used to do initialization of apps using local
+        assets. Note that regular Modal functions can also be used as cli entrypoints,
+        but unlike local_entrypoint Modal function are executed remotely.
+
+        E.g.
+        @stub.local_entrypoint
+        def main():
+            some_modal_function()
+
+        You can call the entrypoint function within a Modal run context
+        directly from the CLI:
+        ```
+        modal run stub_module.py
+        ```
+
+        If you have multiple local_entrypoint functions, you can qualify the name of your stub and function:
+        ```
+        modal run stub_module.py::stub.some_other_function
+        ```
+
+        """
+        info = FunctionInfo(raw_f, False, name_override=name)
+        self._local_entrypoints[info.get_tag()] = raw_f
+        return raw_f
 
     @decorator_with_options
     def function(
@@ -766,7 +801,7 @@ class _Stub:
         )
 
         async with self.run():
-            await wrapped_fn(cmd)
+            await wrapped_fn.call(cmd)
 
 
 Stub, AioStub = synchronize_apis(_Stub)

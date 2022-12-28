@@ -54,29 +54,31 @@ dir_containing_python_package = {
 
 
 @pytest.mark.parametrize(
-    ["dir_structure", "ref", "expected_stub_value"],
+    ["dir_structure", "ref", "expected_stub", "expected_entrypoint"],
     [
         # # file syntax
-        (empty_dir_with_python_file, "mod.py", "FOO"),
-        (empty_dir_with_python_file, "mod.py::stub", "FOO"),
-        (empty_dir_with_python_file, "mod.py:stub", "FOO"),
-        (empty_dir_with_python_file, "mod.py::other_stub", "BAR"),
-        (dir_containing_python_package, "pack/mod.py", "FOO"),
-        (dir_containing_python_package, "pack/sub/mod.py", "FOO"),
-        (dir_containing_python_package, "dir/sub/mod.py", "FOO"),
+        (empty_dir_with_python_file, "mod.py", "FOO", None),
+        (empty_dir_with_python_file, "mod.py::stub", "FOO", None),
+        (empty_dir_with_python_file, "mod.py:stub", "FOO", None),
+        (empty_dir_with_python_file, "mod.py::other_stub", "BAR", None),
+        (empty_dir_with_python_file, "mod.py::other_stub.func", "BAR", None),
+        (dir_containing_python_package, "pack/mod.py", "FOO", None),
+        (dir_containing_python_package, "pack/sub/mod.py", "FOO", None),
+        (dir_containing_python_package, "dir/sub/mod.py", "FOO", None),
         # python module syntax
-        (empty_dir_with_python_file, "mod", "FOO"),
-        (empty_dir_with_python_file, "mod::stub", "FOO"),
-        (empty_dir_with_python_file, "mod:stub", "FOO"),
-        (empty_dir_with_python_file, "mod::other_stub", "BAR"),
-        (dir_containing_python_package, "pack.mod", "FOO"),
-        (dir_containing_python_package, "pack.mod::other_stub", "BAR"),
+        (empty_dir_with_python_file, "mod", "FOO", None),
+        (empty_dir_with_python_file, "mod::stub", "FOO", None),
+        (empty_dir_with_python_file, "mod:stub", "FOO", None),
+        (empty_dir_with_python_file, "mod::other_stub", "BAR", None),
+        (dir_containing_python_package, "pack.mod", "FOO", None),
+        (dir_containing_python_package, "pack.mod::other_stub", "BAR", None),
     ],
 )
-def test_import_stub_by_ref(dir_structure, ref, expected_stub_value, mock_dir):
+def test_import_stub_by_ref(dir_structure, ref, expected_stub, expected_entrypoint, mock_dir):
     with mock_dir(dir_structure):
-        imported_stub = import_stub(*parse_stub_ref(ref, "stub"))
-        assert imported_stub == expected_stub_value
+        stub_ref = parse_stub_ref(ref)
+        imported_stub = import_stub(stub_ref)
+        assert imported_stub == expected_stub
 
 
 def test_import_package_properly():
@@ -89,5 +91,5 @@ def test_import_package_properly():
     rel_p = str(p.relative_to(os.getcwd()))
     print(f"abs_p={abs_p} rel_p={rel_p}")
 
-    assert import_stub(*parse_stub_ref(rel_p, "stub")) == "xyz"
-    assert import_stub(*parse_stub_ref(abs_p, "stub")) == "xyz"
+    assert import_stub(parse_stub_ref(rel_p)) == "xyz"
+    assert import_stub(parse_stub_ref(abs_p)) == "xyz"
