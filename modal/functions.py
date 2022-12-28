@@ -66,7 +66,7 @@ def exc_with_hints(exc: BaseException):
         exc.msg += """\n
 HINT: For relative imports to work, you might need to run your modal app as a module. Try:
 - `python -m my_pkg.my_app` instead of `python my_pkg/my_app.py`
-- `modal app deploy my_pkg.my_app` instead of `modal app deploy my_pkg/my_app.py`
+- `modal deploy my_pkg.my_app` instead of `modal deploy my_pkg/my_app.py`
 """
     elif isinstance(
         exc, RuntimeError

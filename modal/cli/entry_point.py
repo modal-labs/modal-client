@@ -1,6 +1,8 @@
 # Copyright Modal Labs 2022
 import typer
 
+from modal.cli import run
+
 from .app import app_cli
 from .config import config_cli
 from .env import env_cli
@@ -17,7 +19,7 @@ def version_callback(value: bool):
         raise typer.Exit()
 
 
-entrypoint_cli = typer.Typer(
+entrypoint_cli_typer = typer.Typer(
     no_args_is_help=True,
     add_completion=False,
     rich_markup_mode="markdown",
@@ -30,20 +32,28 @@ entrypoint_cli = typer.Typer(
 )
 
 
-@entrypoint_cli.callback()
-def root(
+@entrypoint_cli_typer.callback()
+def modal(
     ctx: typer.Context,
     version: bool = typer.Option(None, "--version", callback=version_callback),
 ):
     pass
 
 
-entrypoint_cli.add_typer(app_cli)
-entrypoint_cli.add_typer(config_cli)
-entrypoint_cli.add_typer(env_cli)
-entrypoint_cli.add_typer(secret_cli)
-entrypoint_cli.add_typer(token_cli)
-entrypoint_cli.add_typer(volume_cli)
+entrypoint_cli_typer.add_typer(app_cli)
+entrypoint_cli_typer.add_typer(config_cli)
+entrypoint_cli_typer.add_typer(env_cli)
+entrypoint_cli_typer.add_typer(secret_cli)
+entrypoint_cli_typer.add_typer(token_cli)
+entrypoint_cli_typer.add_typer(volume_cli)
+
+# entrypoint_cli_typer.command("run", help="Run a Modal function.", context_settings={"allow_extra_args": True})(run.run)
+entrypoint_cli_typer.command("deploy", help="Deploy a Modal stub as an application.", no_args_is_help=True)(run.deploy)
+entrypoint_cli_typer.command("shell", no_args_is_help=True)(run.shell)
+
+entrypoint_cli = typer.main.get_command(entrypoint_cli_typer)
+entrypoint_cli.add_command(run.run, name="run")  # type: ignore
+entrypoint_cli.list_commands(None)  # type: ignore
 
 if __name__ == "__main__":
     # this module is only called from tests, otherwise the parent package __init__.py is used as the entrypoint
