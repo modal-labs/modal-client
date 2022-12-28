@@ -24,8 +24,6 @@ from modal_utils.package_utils import NoSuchStub, import_stub, parse_stub_ref
 run_cli = typer.Typer(name="run")
 
 
-_detach = False  # hack: use global state to communicate the click context to the typer subcommand, see below
-
 option_parsers = {str: str, int: int, float: float, bool: bool, datetime.datetime: click.DateTime()}
 
 
@@ -141,16 +139,8 @@ Registered functions and entrypoints on the selected stub are:
 @click.option("--detach", is_flag=True, help="Don't stop the app if the local process dies or disconnects.")
 @click.pass_context
 def run(ctx, detach):
-    # this triggers after `get_command` in the RunGroup has run, so the detach
-    # option can't be used within `get_command`.
-    # since subcommand is a typer command we can't easily pass the click context
-    # into it, and have to rely on global state instead
-
     ctx.ensure_object(dict)
     ctx.obj["detach"] = detach  # if subcommand would be a click command...
-
-    global _detach
-    _detach = detach
 
 
 def deploy(
