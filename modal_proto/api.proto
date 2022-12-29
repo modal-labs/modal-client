@@ -234,6 +234,11 @@ message ContainerArguments {  // This is used to pass data from the worker to th
   map<string, string> tracing_context = 9;
 }
 
+message ContainerHeartbeatRequest {
+  string current_input_id = 1;
+  double current_input_started_at = 2;
+}
+
 message DictContainsRequest {
   string dict_id = 1;
   bytes key = 2;
@@ -857,7 +862,7 @@ service ModalClient {
   rpc ClientHeartbeat(ClientHeartbeatRequest) returns (google.protobuf.Empty);
 
   // Container
-  rpc ContainerHeartbeat(google.protobuf.Empty) returns (google.protobuf.Empty);
+  rpc ContainerHeartbeat(ContainerHeartbeatRequest) returns (google.protobuf.Empty);
 
   // Dicts
   rpc DictCreate(DictCreateRequest) returns (DictCreateResponse);
