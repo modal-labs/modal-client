@@ -107,11 +107,11 @@ class _Image(Provider[_ImageHandle]):
         base_images={},
         context_files={},
         dockerfile_commands: Union[list[str], Callable[[], list[str]]] = [],
-        secrets=[],
+        secrets: Collection[_Secret] = [],
         ref=None,
-        gpu=False,
+        gpu: bool = False,
         build_function=None,
-        context_mount: _Mount = None,
+        context_mount: Optional[_Mount] = None,
     ):
         if ref and (base_images or dockerfile_commands or context_files):
             raise InvalidError("No other arguments can be provided when initializing an image from a ref.")
@@ -125,6 +125,13 @@ class _Image(Provider[_ImageHandle]):
 
         if build_function and len(base_images) != 1:
             raise InvalidError("Cannot run a build function with multiple base images!")
+
+        for secret in secrets:
+            if not isinstance(secret, _Secret):
+                raise InvalidError(f"Secret {secret!r} must be a modal.Secret object")
+
+        if context_mount is not None and not isinstance(context_mount, _Mount):
+            raise InvalidError(f"Context mount {context_mount!r} must be a modal.Mount object")
 
         self._ref = ref
         self._base_images = base_images
