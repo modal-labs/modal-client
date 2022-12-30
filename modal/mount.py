@@ -162,7 +162,7 @@ class _Mount(Provider[_MountHandle]):
         try:
             await uploads_stream
         except aiostream.StreamEmpty:
-            logger.warning("Mount is empty.")
+            logger.warning(f"Mount of '{message_label}' is empty.")
 
         message_callback(f"Mounting {message_label}: Building mount")
         req = api_pb2.MountBuildRequest(app_id=app_id, existing_mount_id=existing_mount_id, files=files)
