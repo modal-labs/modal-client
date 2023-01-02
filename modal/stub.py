@@ -20,7 +20,7 @@ from ._ipython import is_notebook
 from ._output import OutputManager, step_completed, step_progress
 from ._pty import exec_cmd, write_stdin_to_pty_stream
 from .app import _App, container_app, is_local
-from .client import _Client
+from .client import _Client, HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT
 from .config import config, logger
 from .exception import InvalidError, deprecation_warning
 from .functions import _Function, _FunctionHandle
@@ -197,6 +197,13 @@ class _Stub:
 
         return image_handle._is_inside()
 
+    async def _heartbeat(self, client, app_id):
+        request = api_pb2.AppHeartbeatRequest(app_id=app_id)
+        # TODO(erikbern): we should capture exceptions here
+        # * if request fails: destroy the client
+        # * if server says the app is gone: print a helpful warning about detaching
+        await client.stub.AppHeartbeat(request, timeout=HEARTBEAT_TIMEOUT)
+
     @contextlib.asynccontextmanager
     async def _run(
         self,
@@ -227,6 +234,9 @@ class _Stub:
         aborted = False
         # Start tracking logs and yield context
         async with TaskContext(grace=config["logs_timeout"]) as tc:
+            # Start heartbeats loop to keep the client alive
+            tc.infinite_loop(lambda: self._heartbeat(client, self._app_id), sleep=HEARTBEAT_INTERVAL)
+
             status_spinner = step_progress("Running app...")
             with output_mgr.ctx_if_visible(output_mgr.make_live(step_progress("Initializing..."))):
                 app_id = app.app_id

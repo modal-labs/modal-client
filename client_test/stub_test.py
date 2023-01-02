@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import asyncio
 import logging
 import os
 import pytest
@@ -212,3 +213,15 @@ def test_detach_state(client, servicer):
     stub = Stub()
     with stub.run(client=client, detach=True) as app:
         assert servicer.app_state[app.app_id] == api_pb2.APP_STATE_DETACHED
+
+
+@pytest.mark.asyncio
+async def test_grpc_protocol(aio_client, servicer):
+    stub = AioStub()
+    async with stub.run(client=aio_client):
+        await asyncio.sleep(0.01)  # wait for heartbeat
+    assert len(servicer.requests) == 4
+    assert isinstance(servicer.requests[0], api_pb2.ClientCreateRequest)
+    assert isinstance(servicer.requests[1], api_pb2.AppCreateRequest)
+    assert isinstance(servicer.requests[2], api_pb2.AppHeartbeatRequest)
+    assert isinstance(servicer.requests[3], api_pb2.AppClientDisconnectRequest)
