@@ -139,9 +139,8 @@ class _Client:
             self._connected = True
         except GRPCError as exc:
             if exc.status == Status.FAILED_PRECONDITION:
-                # TODO: include a link to the latest package
                 raise VersionError(
-                    f"The client version {self.version} is too old. Please update to the latest package."
+                    f"The client version {self.version} is too old. Please update to the latest package on PyPi: https://pypi.org/project/modal-client"
                 )
             elif exc.status == Status.UNAUTHENTICATED:
                 raise AuthError(exc.message)
