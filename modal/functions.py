@@ -982,7 +982,6 @@ gather, aio_gather = synchronize_apis(_gather)
 
 
 _current_input_id: Optional[str] = None
-_current_input_started_at: Optional[float] = None
 
 
 def current_input_id() -> str:
@@ -999,19 +998,9 @@ def current_input_id() -> str:
     ```
     """
     global _current_input_id
-
     return _current_input_id
 
 
-def _get_current_input_started_at() -> float:
-    """mdmd:hidden"""
-    global _current_input_started_at
-
-    return _current_input_started_at
-
-
-def _set_current_input_id(input_id: str, started_at: Optional[float] = None):
+def _set_current_input_id(input_id: Optional[str]):
     global _current_input_id
-    global _current_input_started_at
     _current_input_id = input_id
-    _current_input_started_at = started_at

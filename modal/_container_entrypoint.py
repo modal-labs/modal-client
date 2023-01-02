@@ -107,7 +107,8 @@ class _FunctionIOManager:
         self.client = client
         self.calls_completed = 0
         self.total_user_time: float = 0
-        self.input_started_at: float = 0
+        self.current_input_id: Optional[str] = None
+        self.current_input_started_at: Optional[float] = None
         self._client = synchronizer._translate_in(self.client)  # make it a _Client object
         assert isinstance(self._client, _Client)
 
@@ -116,20 +117,12 @@ class _FunctionIOManager:
         await _App._init_container(self._client, self.app_id, self.task_id)
 
     async def _heartbeat(self):
-        from .functions import _get_current_input_started_at, current_input_id
+        request = api_pb2.ContainerHeartbeatRequest()
+        if self.current_input_id is not None:
+            request.current_input_id = self.current_input_id
+        if self.current_input_started_at is not None:
+            request.current_input_started_at = self.current_input_started_at
 
-        try:
-            # TODO(erikbern): we can just read internal variables
-            input_id = current_input_id()
-            started_at = _get_current_input_started_at()
-        except Exception:
-            input_id = None
-            started_at = None
-
-        request = api_pb2.ContainerHeartbeatRequest(
-            current_input_id=input_id,
-            current_input_started_at=started_at,
-        )
         # TODO(erikbern): capture exceptions?
         await self.client.stub.ContainerHeartbeat(request, timeout=HEARTBEAT_TIMEOUT)
 
@@ -244,12 +237,13 @@ class _FunctionIOManager:
             tc.create_task(self._send_outputs())
             try:
                 async for input_id, input_pb in self._generate_inputs():
-                    self.input_started_at = time.time()
                     args, kwargs = self.deserialize(input_pb.args) if input_pb.args else ((), {})
-                    _set_current_input_id(input_id, started_at=self.input_started_at)
+                    _set_current_input_id(input_id)
+                    self.current_input_id, self.current_input_started_at = (input_id, time.time())
                     yield input_id, args, kwargs
-                    _set_current_input_id(None, started_at=None)
-                    self.total_user_time += time.time() - self.input_started_at
+                    _set_current_input_id(None)
+                    self.total_user_time += time.time() - self.current_input_started_at
+                    self.current_input_id, self.current_input_started_at = (None, None)
                     self.calls_completed += 1
             finally:
                 await self.output_queue.put(None)
@@ -264,7 +258,7 @@ class _FunctionIOManager:
 
         output = api_pb2.FunctionPutOutputsItem(
             input_id=input_id,
-            input_started_at=self.input_started_at,
+            input_started_at=self.current_input_started_at,
             output_created_at=time.time(),
             gen_index=gen_index,
             result=api_pb2.GenericResult(**kwargs),
