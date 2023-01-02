@@ -27,7 +27,8 @@ def test_reload_of_function_defs(clean_up_file_changes, client, monkeypatch, ser
     app_functions_snapshots = []
 
     def make_revertable_file_modification(path: Path, new_contents: str) -> None:
-        clean_up_file_changes[path] = path.read_text()
+        if path not in clean_up_file_changes:
+            clean_up_file_changes[path] = path.read_text()
         path.write_text(new_contents)
 
     async def fake_watch(stub, output_mgr, timeout):
@@ -75,7 +76,8 @@ def test_reload_on_invalid_syntax(clean_up_file_changes, client, monkeypatch, se
     app_functions_snapshots = []
 
     def make_revertable_file_modification(path: Path, new_contents: str) -> None:
-        clean_up_file_changes[path] = path.read_text()
+        if path not in clean_up_file_changes:
+            clean_up_file_changes[path] = path.read_text()
         path.write_text(new_contents)
 
     async def fake_watch(stub, output_mgr, timeout):
@@ -100,6 +102,13 @@ def dummy():
         )
         yield {(Change.modified, str(stub_file))}
         app_functions_snapshots.append(copy.deepcopy(servicer.app_functions))
+        # Change the served module to include a valid AST but invalid Python syntax.
+        make_revertable_file_modification(
+            stub_file,
+            new_contents="return 42",
+        )
+        yield {(Change.modified, str(stub_file))}
+        app_functions_snapshots.append(copy.deepcopy(servicer.app_functions))
         # stop the served app
         yield AppChange.TIMEOUT
 
@@ -107,6 +116,5 @@ def dummy():
 
     stub.serve(client=client, timeout=None)
 
-    assert len(app_functions_snapshots) == 2
-    assert app_functions_snapshots[0]["fu-1"].webhook_config.method == "DELETE"
-    assert app_functions_snapshots[1]["fu-1"].webhook_config.method == "DELETE"
+    assert len(app_functions_snapshots) == 3
+    assert all(snap["fu-1"].webhook_config.method == "DELETE" for snap in app_functions_snapshots)
