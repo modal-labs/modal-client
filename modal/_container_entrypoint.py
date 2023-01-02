@@ -131,14 +131,14 @@ class _FunctionIOManager:
             current_input_started_at=started_at,
         )
         # TODO(erikbern): capture exceptions?
-        await self.client.stub.ContainerHeartbeat(request, timeout=HEARTBEAT_TIMEOUT)        
+        await self.client.stub.ContainerHeartbeat(request, timeout=HEARTBEAT_TIMEOUT)
 
     @contextlib.asynccontextmanager
     async def heartbeats(self):
         async with TaskContext(grace=1) as tc:
             tc.infinite_loop(self._heartbeat, sleep=HEARTBEAT_INTERVAL)
             yield
-        
+
     async def get_serialized_function(self) -> tuple[Optional[Any], Callable]:
         # Fetch the serialized function definition
         request = api_pb2.FunctionGetSerializedRequest(function_id=self.function_id)
