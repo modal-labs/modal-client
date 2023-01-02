@@ -436,3 +436,9 @@ def test_asgi(unix_servicer, event_loop):
     # Check EOF
     assert items[2].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     assert items[2].result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE
+
+
+@skip_windows
+def test_container_heartbeats(unix_servicer, event_loop):
+    client, items = _run_container(unix_servicer, "modal_test_support.functions", "square")
+    assert any(isinstance(request, api_pb2.ContainerHeartbeatRequest) for request in unix_servicer.requests)
