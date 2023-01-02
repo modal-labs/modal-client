@@ -212,6 +212,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
             raise GRPCError(self.heartbeat_status_code, f"Client {request.client_id} heartbeat failed.")
         await stream.send_message(Empty())
 
+    # Container
+
+    async def ContainerHeartbeat(self, stream):
+        request: api_pb2.ContainerHeartbeatRequest = await stream.recv_message()
+        self.requests.append(request)
+        await stream.send_message(Empty())
+
     ### Function
 
     async def FunctionGetInputs(self, stream):

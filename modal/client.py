@@ -155,9 +155,10 @@ class _Client:
                 # Tear down the channel pool etc
                 await self._stop()
 
-        # Start heartbeats
-        self._last_heartbeat = time.time()
-        self._task_context.infinite_loop(self._heartbeat, sleep=HEARTBEAT_INTERVAL)
+        if self.client_type != api_pb2.CLIENT_TYPE_CONTAINER:
+            # Start heartbeats
+            self._last_heartbeat = time.time()
+            self._task_context.infinite_loop(self._heartbeat, sleep=HEARTBEAT_INTERVAL)
 
         logger.debug("Client: Done starting")
 
@@ -191,18 +192,7 @@ class _Client:
 
     async def _heartbeat(self):
         if self._stub is not None:
-            from .functions import _get_current_input_started_at, current_input_id
-
-            try:
-                input_id = current_input_id()
-                started_at = _get_current_input_started_at()
-            except Exception:
-                input_id = None
-                started_at = None
-
-            req = api_pb2.ClientHeartbeatRequest(
-                client_id=self._client_id, current_input_id=input_id, current_input_started_at=started_at
-            )
+            req = api_pb2.ClientHeartbeatRequest()
             try:
                 await self.stub.ClientHeartbeat(req, timeout=HEARTBEAT_TIMEOUT)
                 self._last_heartbeat = time.time()

@@ -32,11 +32,9 @@ async def test_client(servicer, client):
 @pytest.mark.asyncio
 @skip_windows
 async def test_container_client(unix_servicer, aio_container_client):
-    await asyncio.sleep(0.1)  # wait for heartbeat
-    assert len(unix_servicer.requests) == 2
+    assert len(unix_servicer.requests) == 1  # no heartbeat, just ClientCreate
     assert isinstance(unix_servicer.requests[0], api_pb2.ClientCreateRequest)
     assert unix_servicer.requests[0].client_type == api_pb2.CLIENT_TYPE_CONTAINER
-    assert isinstance(unix_servicer.requests[1], api_pb2.ClientHeartbeatRequest)
 
 
 @pytest.mark.asyncio

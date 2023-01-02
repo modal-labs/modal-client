@@ -34,7 +34,7 @@ from ._serialization import deserialize, serialize
 from ._traceback import extract_traceback
 from ._tracing import extract_tracing_context, set_span_tag, trace, wrap
 from .app import _App
-from .client import Client, _Client
+from .client import Client, _Client, HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT
 from .config import logger
 from .exception import InvalidError
 from .functions import AioFunctionHandle, FunctionHandle, _set_current_input_id
@@ -115,6 +115,30 @@ class _FunctionIOManager:
     async def initialize_app(self):
         await _App._init_container(self._client, self.app_id, self.task_id)
 
+    async def _heartbeat(self):
+        from .functions import _get_current_input_started_at, current_input_id
+
+        try:
+            # TODO(erikbern): we can just read internal variables
+            input_id = current_input_id()
+            started_at = _get_current_input_started_at()
+        except Exception:
+            input_id = None
+            started_at = None
+
+        request = api_pb2.ContainerHeartbeatRequest(
+            current_input_id=input_id,
+            current_input_started_at=started_at,
+        )
+        # TODO(erikbern): capture exceptions?
+        await self.client.stub.ContainerHeartbeat(request, timeout=HEARTBEAT_TIMEOUT)        
+
+    @contextlib.asynccontextmanager
+    async def heartbeats(self):
+        async with TaskContext(grace=1) as tc:
+            tc.infinite_loop(self._heartbeat, sleep=HEARTBEAT_INTERVAL)
+            yield
+        
     async def get_serialized_function(self) -> tuple[Optional[Any], Callable]:
         # Fetch the serialized function definition
         request = api_pb2.FunctionGetSerializedRequest(function_id=self.function_id)
@@ -509,29 +533,30 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
     function_io_manager.initialize_app()
 
-    is_generator = function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
+    with function_io_manager.heartbeats():
+        is_generator = function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
 
-    # If this is a serialized function, fetch the definition from the server
-    if container_args.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
-        ser_cls, ser_fun = function_io_manager.get_serialized_function()
-    else:
-        ser_cls, ser_fun = None, None
+        # If this is a serialized function, fetch the definition from the server
+        if container_args.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
+            ser_cls, ser_fun = function_io_manager.get_serialized_function()
+        else:
+            ser_cls, ser_fun = None, None
 
-    # Initialize the function
-    with function_io_manager.handle_user_exception():
-        obj, fun, is_async = import_function(container_args.function_def, ser_cls, ser_fun)
+        # Initialize the function
+        with function_io_manager.handle_user_exception():
+            obj, fun, is_async = import_function(container_args.function_def, ser_cls, ser_fun)
 
-    if container_args.function_def.pty_info.enabled:
-        from modal import container_app
+        if container_args.function_def.pty_info.enabled:
+            from modal import container_app
 
-        input_stream_unwrapped = synchronizer._translate_in(container_app._pty_input_stream)
-        input_stream_blocking = synchronizer._translate_out(input_stream_unwrapped, Interface.BLOCKING)
-        fun = run_in_pty(fun, input_stream_blocking, container_args.function_def.pty_info)
+            input_stream_unwrapped = synchronizer._translate_in(container_app._pty_input_stream)
+            input_stream_blocking = synchronizer._translate_out(input_stream_unwrapped, Interface.BLOCKING)
+            fun = run_in_pty(fun, input_stream_blocking, container_args.function_def.pty_info)
 
-    if not is_async:
-        call_function_sync(function_io_manager, obj, fun, is_generator)
-    else:
-        run_with_signal_handler(call_function_async(aio_function_io_manager, obj, fun, is_generator))
+        if not is_async:
+            call_function_sync(function_io_manager, obj, fun, is_generator)
+        else:
+            run_with_signal_handler(call_function_async(aio_function_io_manager, obj, fun, is_generator))
 
 
 if __name__ == "__main__":
