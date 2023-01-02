@@ -219,6 +219,10 @@ message ClientCreateResponse {
   string deprecation_warning = 3;
 }
 
+message ClientHelloResponse {
+  string warning = 1;
+}
+
 message ClientHeartbeatRequest {
   string client_id = 1;
   string current_input_id = 3;
@@ -859,6 +863,7 @@ service ModalClient {
 
   // Clients
   rpc ClientCreate(ClientCreateRequest) returns (ClientCreateResponse);
+  rpc ClientHello(google.protobuf.Empty) returns (ClientHelloResponse);
   rpc ClientHeartbeat(ClientHeartbeatRequest) returns (google.protobuf.Empty);
 
   // Container
