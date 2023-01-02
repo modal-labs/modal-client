@@ -24,6 +24,7 @@ def test_reload_of_function_defs(clean_up_file_changes, client, monkeypatch, ser
     from client_test.supports.live_reload_tests.webhook import stub
 
     stub_file = test_dir / "supports" / "live_reload_tests" / "webhook.py"
+
     app_functions_snapshots = []
 
     def make_revertable_file_modification(path: Path, new_contents: str) -> None:
@@ -31,11 +32,9 @@ def test_reload_of_function_defs(clean_up_file_changes, client, monkeypatch, ser
             clean_up_file_changes[path] = path.read_text()
         path.write_text(new_contents)
 
+    # Provide a fixed list of events to stub.serve, recording the state of the app's
+    # Modal Functions in between events.
     async def fake_watch(stub, output_mgr, timeout):
-        """
-        Provide a fixed list of events to stub.serve, recording the state of the app's
-        Modal functions in between events.
-        """
         # begin serving
         yield AppChange.START
         app_functions_snapshots.append(copy.deepcopy(servicer.app_functions))
@@ -63,6 +62,43 @@ def dummy():
     assert len(app_functions_snapshots) == 2
     assert app_functions_snapshots[0]["fu-1"].webhook_config.method == "GET"
     assert app_functions_snapshots[1]["fu-1"].webhook_config.method == "POST"
+    for snap in app_functions_snapshots:
+        assert len(snap) == 1
+
+    app_functions_snapshots = []
+
+    async def fake_watch_adds_new_fn(stub, output_mgr, timeout):
+        yield AppChange.START
+        app_functions_snapshots.append(copy.deepcopy(servicer.app_functions))
+        make_revertable_file_modification(
+            stub_file,
+            new_contents="""
+import modal
+stub = modal.Stub()
+
+@stub.webhook(method="POST")
+def dummy():
+    say_hello.call(2)
+    pass
+
+@stub.function(timeout=3)  # Added new fn
+def say_hello(times: int = 3):
+    print("hello world! " * times)
+        """,
+        )
+        yield {(Change.modified, str(stub_file))}
+        app_functions_snapshots.append(copy.deepcopy(servicer.app_functions))
+        # stop the served app
+        yield AppChange.TIMEOUT
+
+    monkeypatch.setattr("modal._watcher.watch", fake_watch_adds_new_fn)
+
+    stub.serve(client=client, timeout=None)
+
+    assert len(app_functions_snapshots) == 2
+    # NOTE: the servicer is not reset between .serve calls, so the function IDs keep incrementing.
+    assert all(snap["fu-2"].webhook_config.method == "POST" for snap in app_functions_snapshots)
+    assert app_functions_snapshots[1]["fu-3"].function_name == "say_hello"
 
 
 def test_reload_on_invalid_syntax(clean_up_file_changes, client, monkeypatch, servicer, test_dir):
