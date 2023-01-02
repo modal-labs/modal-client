@@ -107,7 +107,7 @@ class _FunctionIOManager:
         self.client = client
         self.calls_completed = 0
         self.total_user_time: float = 0
-        self.current_input_id: Optional[float] = None
+        self.current_input_id: Optional[str] = None
         self.current_input_started_at: Optional[float] = None
         self._client = synchronizer._translate_in(self.client)  # make it a _Client object
         assert isinstance(self._client, _Client)
@@ -117,10 +117,12 @@ class _FunctionIOManager:
         await _App._init_container(self._client, self.app_id, self.task_id)
 
     async def _heartbeat(self):
-        request = api_pb2.ContainerHeartbeatRequest(
-            current_input_id=self.current_input_id,
-            current_input_started_at=self.current_input_started_at,
-        )
+        request = api_pb2.ContainerHeartbeatRequest()
+        if self.current_input_id is not None:
+            request.current_input_id = self.current_input_id
+        if self.current_input_started_at is not None:
+            request.current_input_started_at = self.current_input_started_at
+
         # TODO(erikbern): capture exceptions?
         await self.client.stub.ContainerHeartbeat(request, timeout=HEARTBEAT_TIMEOUT)
 
