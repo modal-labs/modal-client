@@ -27,6 +27,7 @@ async def test_client(servicer, client):
     assert isinstance(servicer.requests[0], api_pb2.ClientCreateRequest)
     assert servicer.requests[0].client_type == api_pb2.CLIENT_TYPE_CLIENT
     assert isinstance(servicer.requests[1], api_pb2.ClientHeartbeatRequest)
+    assert servicer.requests[1].client_id
 
 
 @pytest.mark.asyncio

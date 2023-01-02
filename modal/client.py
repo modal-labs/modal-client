@@ -192,7 +192,7 @@ class _Client:
 
     async def _heartbeat(self):
         if self._stub is not None:
-            req = api_pb2.ClientHeartbeatRequest()
+            req = api_pb2.ClientHeartbeatRequest(client_id=self._client_id)
             try:
                 await self.stub.ClientHeartbeat(req, timeout=HEARTBEAT_TIMEOUT)
                 self._last_heartbeat = time.time()
