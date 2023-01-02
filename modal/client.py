@@ -3,22 +3,18 @@ from __future__ import annotations
 
 import asyncio
 import platform
-import time
 import warnings
 import webbrowser
 from typing import Callable, Optional
 
 from aiohttp import ClientConnectorError, ClientResponseError
 from grpclib import GRPCError, Status
-from grpclib.exceptions import StreamTerminatedError
 from rich.console import Console
-from sentry_sdk import capture_exception
 
 from modal_proto import api_grpc, api_pb2
 from modal_utils import async_utils
-from modal_utils.async_utils import TaskContext, synchronize_apis
+from modal_utils.async_utils import synchronize_apis
 from modal_utils.grpc_utils import (
-    RETRYABLE_GRPC_STATUS_CODES,
     create_channel,
     retry_transient_errors,
 )

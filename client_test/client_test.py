@@ -1,11 +1,6 @@
 # Copyright Modal Labs 2022
-import asyncio
-import os
 import platform
 import pytest
-import time
-
-from grpclib import Status
 
 import modal.exception
 from modal.client import AioClient, Client
