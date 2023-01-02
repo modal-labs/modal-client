@@ -18,7 +18,7 @@ from ._output import OutputManager
 
 class AppChange(IntEnum):
     """
-    Enum representing the type of a change in the Modal app state.
+    Enum representing the type of a change in the Modal stub serving state.
     """
 
     START = 1
