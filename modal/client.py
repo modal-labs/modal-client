@@ -3,22 +3,18 @@ from __future__ import annotations
 
 import asyncio
 import platform
-import time
 import warnings
 import webbrowser
 from typing import Callable, Optional
 
 from aiohttp import ClientConnectorError, ClientResponseError
 from grpclib import GRPCError, Status
-from grpclib.exceptions import StreamTerminatedError
 from rich.console import Console
-from sentry_sdk import capture_exception
 
 from modal_proto import api_grpc, api_pb2
 from modal_utils import async_utils
-from modal_utils.async_utils import TaskContext, synchronize_apis
+from modal_utils.async_utils import synchronize_apis
 from modal_utils.grpc_utils import (
-    RETRYABLE_GRPC_STATUS_CODES,
     create_channel,
     retry_transient_errors,
 )
@@ -94,7 +90,6 @@ class _Client:
         self.client_type = client_type
         self.credentials = credentials
         self.version = version
-        self._task_context = None
         self._stub = None
         self._connected = False
         self._pre_stop: Optional[Callable[[], None]] = None
@@ -110,8 +105,6 @@ class _Client:
         logger.debug("Client: Starting")
         if self._stub:
             raise Exception("Client is already running")
-        self._task_context = TaskContext(grace=1)
-        await self._task_context.start()
         metadata = _get_metadata(self.client_type, self.credentials, self.version)
         self._channel = create_channel(
             self.server_url,
@@ -154,11 +147,6 @@ class _Client:
                 # Tear down the channel pool etc
                 await self._stop()
 
-        if self.client_type != api_pb2.CLIENT_TYPE_CONTAINER:
-            # Start heartbeats
-            self._last_heartbeat = time.time()
-            self._task_context.infinite_loop(self._heartbeat, sleep=HEARTBEAT_INTERVAL)
-
         logger.debug("Client: Done starting")
 
     def set_pre_stop(self, pre_stop: Callable[[], None]):
@@ -178,9 +166,6 @@ class _Client:
         # TODO: we should trigger this using an exit handler
         logger.debug("Client: Shutting down")
         self._stub = None  # prevent any additional calls
-        if self._task_context:
-            await self._task_context.stop()
-            self._task_context = None
         if self._channel:
             self._channel.close()
             self._channel = None
@@ -188,36 +173,6 @@ class _Client:
         # Needed to catch straggling CancelledErrors and GeneratorExits that propagate
         # through our chains of async generators.
         await asyncio.sleep(0.01)
-
-    async def _heartbeat(self):
-        if self._stub is not None:
-            req = api_pb2.ClientHeartbeatRequest(client_id=self._client_id)
-            try:
-                await self.stub.ClientHeartbeat(req, timeout=HEARTBEAT_TIMEOUT)
-                self._last_heartbeat = time.time()
-            except asyncio.CancelledError as exc:  # Raised by grpclib when the connection is closed
-                capture_exception(exc)
-                logger.warning("Client heartbeat: cancelled")
-                raise
-            except asyncio.TimeoutError as exc:  # Raised by grpclib when the request times out
-                capture_exception(exc)
-                logger.warning("Client heartbeat: timeout")
-            # Server terminates a connection abruptly.
-            except StreamTerminatedError as exc:
-                capture_exception(exc)
-                logger.warning("Client heartbeat: stream terminated")
-            except GRPCError as exc:
-                exc_string = await _grpc_exc_string(exc, "ClientHeartbeat", self.server_url, HEARTBEAT_TIMEOUT)
-                if exc.status == Status.NOT_FOUND:
-                    # server has deleted this client - perform graceful shutdown
-                    # can't simply await self._stop here since it recursively wait for this task as well
-                    logger.warning(exc_string)
-                    asyncio.ensure_future(self._stop())
-                elif exc.status in RETRYABLE_GRPC_STATUS_CODES:
-                    capture_exception(exc)
-                    logger.warning(exc_string)
-                else:
-                    raise ConnectionError(exc_string)
 
     async def __aenter__(self):
         try:
@@ -234,18 +189,6 @@ class _Client:
         async with self:
             # Just connect and disconnect
             pass
-
-    def _ok_to_recycle(self, override_time):
-        # Used to check if a singleton client can be reused safely
-        if not self._stub:
-            # Client has been stopped
-            return False
-        elif self._last_heartbeat < override_time - (HEARTBEAT_INTERVAL + HEARTBEAT_TIMEOUT):
-            # This can happen if a process goes into hibernation and then wakes up
-            # (eg AWS Lambdas between requests, or closing the lid of a laptop)
-            return False
-        else:
-            return True
 
     @property
     def client_id(self):
@@ -294,7 +237,7 @@ class _Client:
             channel.close()
 
     @classmethod
-    async def from_env(cls, _override_config=None, _override_time=None) -> "_Client":
+    async def from_env(cls, _override_config=None) -> "_Client":
         if _override_config:
             # Only used for testing
             c = _override_config
@@ -321,15 +264,11 @@ class _Client:
             client_type = api_pb2.CLIENT_TYPE_CLIENT
             credentials = None
 
-        if _override_time is None:
-            # Only used for testing
-            _override_time = time.time()
-
         if cls._client_from_env_lock is None:
             cls._client_from_env_lock = asyncio.Lock()
 
         async with cls._client_from_env_lock:
-            if cls._client_from_env and cls._client_from_env._ok_to_recycle(_override_time):
+            if cls._client_from_env:
                 return cls._client_from_env
             else:
                 client = _Client(server_url, client_type, credentials)
