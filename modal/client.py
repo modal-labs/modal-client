@@ -5,7 +5,7 @@ import asyncio
 import platform
 import warnings
 import webbrowser
-from typing import Callable, Optional
+from typing import Optional
 
 from aiohttp import ClientConnectorError, ClientResponseError
 from google.protobuf import empty_pb2
@@ -28,7 +28,6 @@ from .exception import (
     AuthError,
     ConnectionError,
     DeprecationError,
-    InvalidError,
     VersionError,
 )
 
@@ -222,7 +221,6 @@ class _Client:
             cls._client_from_env_lock = asyncio.Lock()
 
         async with cls._client_from_env_lock:
-            print("from env:", cls._client_from_env)
             if cls._client_from_env:
                 return cls._client_from_env
             else:

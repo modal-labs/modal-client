@@ -197,7 +197,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.requests.append(request)
         self.client_create_metadata = stream.metadata
         client_version = stream.metadata["x-modal-client-version"]
-        client_type = stream.metadata["x-modal-client-type"]
         if stream.metadata.get("x-modal-token-id") == "bad":
             raise GRPCError(Status.UNAUTHENTICATED, "bad bad bad")
         elif client_version == "timeout":
@@ -206,9 +205,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         elif client_version == "unauthenticated":
             raise GRPCError(Status.UNAUTHENTICATED, "failed authentication")
         elif client_version == "deprecated":
-            await stream.send_message(
-                api_pb2.ClientHelloResponse(warning="SUPER OLD")
-            )
+            await stream.send_message(api_pb2.ClientHelloResponse(warning="SUPER OLD"))
         elif pkg_resources.parse_version(client_version) < pkg_resources.parse_version(__version__):
             raise GRPCError(Status.FAILED_PRECONDITION, "Old client")
         else:
