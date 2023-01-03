@@ -37,23 +37,28 @@ CLIENT_CREATE_ATTEMPT_TIMEOUT = 4.0
 CLIENT_CREATE_TOTAL_TIMEOUT = 15.0
 
 
-def _get_metadata(client_type: Optional[int], credentials: Optional[tuple[str, str]], version: str) -> dict[str, str]:
+def _get_metadata(client_type: int, credentials: Optional[tuple[str, str]], version: str) -> dict[str, str]:
+    metadata = {
+        "x-modal-client-version": version,
+        "x-modal-client-type": str(client_type),
+    }
     if credentials and (client_type == api_pb2.CLIENT_TYPE_CLIENT or client_type == api_pb2.CLIENT_TYPE_WEB_SERVER):
         token_id, token_secret = credentials
-        return {
-            "x-modal-token-id": token_id,
-            "x-modal-token-secret": token_secret,
-            "x-modal-client-version": version,
-        }
+        metadata.update(
+            {
+                "x-modal-token-id": token_id,
+                "x-modal-token-secret": token_secret,
+            }
+        )
     elif credentials and client_type == api_pb2.CLIENT_TYPE_CONTAINER:
         task_id, task_secret = credentials
-        return {
-            "x-modal-task-id": task_id,
-            "x-modal-task-secret": task_secret,
-            "x-modal-client-version": version,
-        }
-    else:
-        return {}
+        metadata.update(
+            {
+                "x-modal-task-id": task_id,
+                "x-modal-task-secret": task_secret,
+            }
+        )
+    return metadata
 
 
 async def _http_check(url: str, timeout: float) -> str:
