@@ -17,7 +17,7 @@ from modal_utils.grpc_utils import retry_transient_errors
 from .config import config, logger
 from .exception import InvalidError, NotFoundError, RemoteError
 from .mount import _Mount
-from .object import Handle, Provider
+from .object import Handle, Provider, Ref
 from .secret import _Secret
 
 
@@ -127,7 +127,7 @@ class _Image(Provider[_ImageHandle]):
             raise InvalidError("Cannot run a build function with multiple base images!")
 
         for secret in secrets:
-            if not isinstance(secret, _Secret):
+            if not isinstance(secret, _Secret) and not isinstance(secret, Ref):
                 raise InvalidError(f"Secret {secret!r} must be a modal.Secret object")
 
         if context_mount is not None and not isinstance(context_mount, _Mount):
