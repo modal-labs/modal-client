@@ -696,6 +696,9 @@ class _Stub:
                 method=method,
                 wait_for_response=wait_for_response,
                 requested_suffix=label,
+                async_mode=api_pb2.WEBHOOK_ASYNC_MODE_DISABLED
+                if wait_for_response
+                else api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER,
             ),
             cpu=cpu,
             memory=memory,
@@ -757,7 +760,12 @@ class _Stub:
             mounts=mounts,
             shared_volumes=shared_volumes,
             webhook_config=api_pb2.WebhookConfig(
-                type=_webhook_type, wait_for_response=wait_for_response, requested_suffix=label
+                type=_webhook_type,
+                wait_for_response=wait_for_response,
+                requested_suffix=label,
+                async_mode=api_pb2.WEBHOOK_ASYNC_MODE_DISABLED
+                if wait_for_response
+                else api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER,
             ),
             cpu=cpu,
             memory=memory,
