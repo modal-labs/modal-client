@@ -50,6 +50,24 @@ def test_image_python_packages(client, servicer):
         assert any("pip install numpy" in cmd for cmd in layers[0].dockerfile_commands)
 
 
+def test_image_kwargs_validation(servicer, client):
+    stub = Stub()
+    stub["image"] = Image.debian_slim().run_commands(
+        "echo hi", secrets=[Secret({"xyz": "123"}), Secret.from_name("foo")]
+    )
+    with pytest.raises(InvalidError):
+        stub["image"] = Image.debian_slim().run_commands(
+            "echo hi",
+            secrets=[Secret({"xyz": "123"}), Secret.from_name("foo"), Mount(local_dir="/", remote_dir="/")],
+        )
+
+    stub = Stub()
+    stub["image"] = Image.debian_slim().copy(Mount(local_dir="/", remote_dir="/"), remote_path="/dummy")
+    stub["image"] = Image.debian_slim().copy(Mount.from_name("foo"), remote_path="/dummy")
+    with pytest.raises(InvalidError):
+        stub["image"] = Image.debian_slim().copy(Secret({"xyz": "123"}), remote_path="/dummy")
+
+
 def test_wrong_type(servicer, client):
     image = Image.debian_slim()
     for method in [image.pip_install, image.apt_install, image.run_commands]:
