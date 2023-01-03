@@ -130,7 +130,7 @@ class _Image(Provider[_ImageHandle]):
             if not isinstance(secret, _Secret) and not isinstance(secret, Ref):
                 raise InvalidError(f"Secret {secret!r} must be a modal.Secret object")
 
-        if context_mount is not None and not isinstance(context_mount, _Mount):
+        if context_mount is not None and not isinstance(context_mount, _Mount) and not isinstance(context_mount, Ref):
             raise InvalidError(f"Context mount {context_mount!r} must be a modal.Mount object")
 
         self._ref = ref
