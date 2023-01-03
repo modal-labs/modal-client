@@ -148,7 +148,6 @@ class _App:
         )
         req_set = api_pb2.AppSetObjectsRequest(
             app_id=self._app_id,
-            client_id=self._client.client_id,
             indexed_object_ids=indexed_object_ids,
             unindexed_object_ids=unindexed_object_ids,
             new_app_state=new_app_state,  # type: ignore
@@ -220,7 +219,6 @@ class _App:
         # Start app
         # TODO(erikbern): maybe this should happen outside of this method?
         app_req = api_pb2.AppCreateRequest(
-            client_id=client.client_id,
             description=description,
             initializing=deploying,
             detach=detach,

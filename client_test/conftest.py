@@ -91,6 +91,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.function_serialized = None
         self.class_serialized = None
 
+        self.client_hello_metadata = None
+
         @self.function_body
         def default_function_body(*args, **kwargs):
             return sum(arg**2 for arg in args) + sum(value**2 for key, value in kwargs.items())
@@ -210,9 +212,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
         else:
             await stream.send_message(api_pb2.ClientCreateResponse(client_id=client_id))
 
-        # Check new fields (TODO: use ClientHello for this)
+    async def ClientHello(self, stream):
+        request: Empty = await stream.recv_message()
+        self.requests.append(request)
+        self.client_create_metadata = stream.metadata
         assert "x-modal-client-version" in stream.metadata
         assert "x-modal-client-type" in stream.metadata
+        await stream.send_message(api_pb2.ClientHelloResponse())
 
     # Container
 

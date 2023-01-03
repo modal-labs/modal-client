@@ -2,6 +2,8 @@
 import platform
 import pytest
 
+from google.protobuf.empty_pb2 import Empty
+
 import modal.exception
 from modal.client import AioClient, Client
 from modal.exception import AuthError, ConnectionError, VersionError
@@ -18,16 +20,16 @@ skip_windows = pytest.mark.skipif(
 @pytest.mark.asyncio
 async def test_client(servicer, client):
     assert len(servicer.requests) == 1
-    assert isinstance(servicer.requests[0], api_pb2.ClientCreateRequest)
-    assert servicer.requests[0].client_type == api_pb2.CLIENT_TYPE_CLIENT
+    assert isinstance(servicer.requests[0], Empty)
+    assert servicer.client_create_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CLIENT)
 
 
 @pytest.mark.asyncio
 @skip_windows
 async def test_container_client(unix_servicer, aio_container_client):
-    assert len(unix_servicer.requests) == 1  # no heartbeat, just ClientCreate
-    assert isinstance(unix_servicer.requests[0], api_pb2.ClientCreateRequest)
-    assert unix_servicer.requests[0].client_type == api_pb2.CLIENT_TYPE_CONTAINER
+    assert len(unix_servicer.requests) == 1  # no heartbeat, just ClientHello
+    assert isinstance(unix_servicer.requests[0], Empty)
+    assert servicer.client_create_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CONTAINER)
 
 
 @pytest.mark.asyncio
@@ -133,7 +135,7 @@ def test_client_from_env(servicer):
         assert client_1 == client_2
 
     finally:
-        Client.stop_env_client()
+        Client.close_env_client()
 
     try:
         # After stopping, creating a new client should return a new one
@@ -142,4 +144,4 @@ def test_client_from_env(servicer):
         assert client_3 != client_1
         assert client_4 == client_3
     finally:
-        Client.stop_env_client()
+        Client.close_env_client()
