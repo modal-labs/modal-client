@@ -113,7 +113,6 @@ message AppDeployResponse {
 message AppGetByDeploymentNameRequest {
   DeploymentNamespace namespace = 1;
   string name = 2;
-  string client_id = 3;  // todo, not strictly needed
 }
 
 message AppGetByDeploymentNameResponse {

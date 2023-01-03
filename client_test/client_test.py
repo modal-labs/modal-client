@@ -29,7 +29,7 @@ async def test_client(servicer, client):
 async def test_container_client(unix_servicer, aio_container_client):
     assert len(unix_servicer.requests) == 1  # no heartbeat, just ClientHello
     assert isinstance(unix_servicer.requests[0], Empty)
-    assert servicer.client_create_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CONTAINER)
+    assert unix_servicer.client_create_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CONTAINER)
 
 
 @pytest.mark.asyncio
@@ -135,7 +135,7 @@ def test_client_from_env(servicer):
         assert client_1 == client_2
 
     finally:
-        Client.close_env_client()
+        Client.set_env_client(None)
 
     try:
         # After stopping, creating a new client should return a new one
@@ -144,4 +144,4 @@ def test_client_from_env(servicer):
         assert client_3 != client_1
         assert client_4 == client_3
     finally:
-        Client.close_env_client()
+        Client.set_env_client(None)

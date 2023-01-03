@@ -290,8 +290,7 @@ class _Stub:
                 if mode == StubRunMode.SERVE:
                     # Cancel logs loop since we're going to start another one.
                     logs_loop.cancel()
-                else:
-                    await app.disconnect()
+                await app.disconnect()
 
         if mode == StubRunMode.DEPLOY:
             output_mgr.print_if_visible(step_completed("App deployed! 🎉"))
@@ -439,7 +438,7 @@ class _Stub:
             client = await _Client.from_env()
 
         # Look up any existing deployment
-        app_req = api_pb2.AppGetByDeploymentNameRequest(name=name, namespace=namespace, client_id=client.client_id)
+        app_req = api_pb2.AppGetByDeploymentNameRequest(name=name, namespace=namespace)
         app_resp = await client.stub.AppGetByDeploymentName(app_req)
         existing_app_id = app_resp.app_id or None
         last_log_entry_id = app_resp.last_log_entry_id

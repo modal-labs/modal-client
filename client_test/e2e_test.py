@@ -42,11 +42,16 @@ def test_run_unconsumed_map(servicer):
 
 
 def test_auth_failure_last_line(servicer):
-    returncode, _, err = _cli(
+    returncode, out, err = _cli(
         ["-m", "modal_test_support.script"],
         servicer.remote_addr,
         extra_env={"MODAL_TOKEN_ID": "bad", "MODAL_TOKEN_SECRET": "bad"},
         check=False,
     )
-    assert returncode != 0
-    assert "bad bad bad" in err.strip().split("\n")[-1]  # err msg should be on the last line
+    try:
+        assert returncode != 0
+        assert "bad bad bad" in err.strip().split("\n")[-1]  # err msg should be on the last line
+    except Exception:
+        print("out:", repr(out))
+        print("err:", repr(err))
+        raise

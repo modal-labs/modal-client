@@ -124,7 +124,7 @@ class _Client:
             )
             if resp.warning:
                 ALARM_EMOJI = chr(0x1F6A8)
-                warnings.warn(f"{ALARM_EMOJI} {resp.deprecation_warning} {ALARM_EMOJI}", DeprecationError)
+                warnings.warn(f"{ALARM_EMOJI} {resp.warning} {ALARM_EMOJI}", DeprecationError)
         except GRPCError as exc:
             if exc.status == Status.FAILED_PRECONDITION:
                 raise VersionError(
@@ -222,10 +222,12 @@ class _Client:
             cls._client_from_env_lock = asyncio.Lock()
 
         async with cls._client_from_env_lock:
+            print("from env:", cls._client_from_env)
             if cls._client_from_env:
                 return cls._client_from_env
             else:
                 client = _Client(server_url, client_type, credentials)
+                async_utils.on_shutdown(client.close())
                 try:
                     await client.verify()
                 except AuthError:
@@ -239,20 +241,12 @@ class _Client:
                     else:
                         raise
                 cls._client_from_env = client
-                async_utils.on_shutdown(AioClient.close_env_client())
                 return client
 
     @classmethod
     def set_env_client(cls, client):
         """Just used from tests."""
         cls._client_from_env = client
-
-    @classmethod
-    async def close_env_client(cls):
-        # Only called from atexit handler and from tests
-        if cls._client_from_env is not None:
-            await cls._client_from_env.close()
-            cls._client_from_env = None
 
 
 Client, AioClient = synchronize_apis(_Client)
