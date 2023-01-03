@@ -50,7 +50,7 @@ async def list():
 
 def gen_usage_code(label):
     return f"""
-@stub.function(shared_volumes={{"/my_vol": modal.ref("{label}")}})
+@stub.function(shared_volumes={{"/my_vol": modal.SharedVolume.from_name("{label}")}})
 def some_func():
     os.listdir("/my_vol")
 """

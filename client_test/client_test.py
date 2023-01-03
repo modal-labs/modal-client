@@ -1,11 +1,6 @@
 # Copyright Modal Labs 2022
-import asyncio
-import os
 import platform
 import pytest
-import time
-
-from grpclib import Status
 
 import modal.exception
 from modal.client import AioClient, Client
@@ -22,21 +17,17 @@ skip_windows = pytest.mark.skipif(
 
 @pytest.mark.asyncio
 async def test_client(servicer, client):
-    await asyncio.sleep(0.1)  # wait for heartbeat
-    assert len(servicer.requests) == 2
+    assert len(servicer.requests) == 1
     assert isinstance(servicer.requests[0], api_pb2.ClientCreateRequest)
     assert servicer.requests[0].client_type == api_pb2.CLIENT_TYPE_CLIENT
-    assert isinstance(servicer.requests[1], api_pb2.ClientHeartbeatRequest)
 
 
 @pytest.mark.asyncio
 @skip_windows
 async def test_container_client(unix_servicer, aio_container_client):
-    await asyncio.sleep(0.1)  # wait for heartbeat
-    assert len(unix_servicer.requests) == 2
+    assert len(unix_servicer.requests) == 1  # no heartbeat, just ClientCreate
     assert isinstance(unix_servicer.requests[0], api_pb2.ClientCreateRequest)
     assert unix_servicer.requests[0].client_type == api_pb2.CLIENT_TYPE_CONTAINER
-    assert isinstance(unix_servicer.requests[1], api_pb2.ClientHeartbeatRequest)
 
 
 @pytest.mark.asyncio
@@ -117,36 +108,7 @@ async def test_client_unauthenticated(servicer):
             pass
 
 
-@pytest.mark.skipif(os.environ.get("GITHUB_ACTIONS") == "true", reason="Flakes in GitHub Actions")
-@pytest.mark.asyncio
-async def test_server_client_gone_disconnects_client(servicer):
-    async with AioClient(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
-        servicer.heartbeat_status_code = Status.NOT_FOUND
-        await client._heartbeat()
-        await asyncio.sleep(0)  # let event loop take care of cleanup
-
-        with pytest.raises(modal.exception.ConnectionError):
-            client.stub
-
-
-@pytest.mark.asyncio
-async def test_client_heartbeat_retry(servicer):
-    async with AioClient(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
-        servicer.heartbeat_status_code = Status.UNAVAILABLE
-        # No error.
-        await client._heartbeat()
-        servicer.heartbeat_status_code = Status.DEADLINE_EXCEEDED
-        # No error.
-        await client._heartbeat()
-        servicer.heartbeat_status_code = Status.UNAUTHENTICATED
-        # Raises.
-        with pytest.raises(ConnectionError) as excinfo:
-            await client._heartbeat()
-        assert "UNAUTHENTICATED" in str(excinfo.value)
-        assert "HTTP status" in str(excinfo.value)
-
-
-def client_from_env(remote_addr, _override_time=None):
+def client_from_env(remote_addr):
     _override_config = {
         "server_url": remote_addr,
         "token_id": "foo-id",
@@ -154,7 +116,7 @@ def client_from_env(remote_addr, _override_time=None):
         "task_id": None,
         "task_secret": None,
     }
-    return Client.from_env(_override_config=_override_config, _override_time=_override_time)
+    return Client.from_env(_override_config=_override_config)
 
 
 def test_client_from_env(servicer):
@@ -179,21 +141,5 @@ def test_client_from_env(servicer):
         client_4 = client_from_env(servicer.remote_addr)
         assert client_3 != client_1
         assert client_4 == client_3
-
-        # Inject a heartbeat failure in the client
-        servicer.heartbeat_status_code = Status.NOT_FOUND
-        client_3._heartbeat()
-
-        # Make sure the new env client is different
-        client_5 = client_from_env(servicer.remote_addr)
-        assert client_5 != client_4
-
-        # Fetch another one seconds later
-        client_6 = client_from_env(servicer.remote_addr, time.time() + 1)
-        assert client_6 == client_5
-
-        # Fetch another much later, should be different
-        client_7 = client_from_env(servicer.remote_addr, time.time() + 999)
-        assert client_7 != client_6
     finally:
         Client.stop_env_client()

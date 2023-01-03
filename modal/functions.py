@@ -62,11 +62,12 @@ from .shared_volume import _SharedVolume
 
 
 def exc_with_hints(exc: BaseException):
+    """mdmd:hidden"""
     if isinstance(exc, ImportError) and exc.msg == "attempted relative import with no known parent package":
         exc.msg += """\n
 HINT: For relative imports to work, you might need to run your modal app as a module. Try:
 - `python -m my_pkg.my_app` instead of `python my_pkg/my_app.py`
-- `modal app deploy my_pkg.my_app` instead of `modal app deploy my_pkg/my_app.py`
+- `modal deploy my_pkg.my_app` instead of `modal deploy my_pkg/my_app.py`
 """
     elif isinstance(
         exc, RuntimeError
@@ -422,6 +423,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
 
     def _initialize_from_proto(self, function: api_pb2.Function):
         self._is_generator = function.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
+        self._mute_cancellation = False
 
     def _set_local_app(self, app):
         """mdmd:hidden"""
@@ -594,7 +596,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
             return self.call_function(args, kwargs)
 
     async def enqueue(self, *args, **kwargs):
-        """**Deprecated.** Use `.submit()` instead when possible.
+        """**Deprecated.** Use `.spawn()` instead when possible.
 
         Calls the function with the given arguments, without waiting for the results.
         """
@@ -606,7 +608,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         Returns a `modal.functions.FunctionCall` object, that can later be polled or waited for using `.get(timeout=...)`.
         Conceptually similar to `multiprocessing.pool.apply_async`, or a Future/Promise in other contexts.
 
-        *Note:* `.submit()` on a modal generator function does call and execute the generator, but does not currently
+        *Note:* `.spawn()` on a modal generator function does call and execute the generator, but does not currently
         return a function handle for polling the result.
         """
         if self._is_generator:
@@ -617,6 +619,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         return _FunctionCall(invocation.client, invocation.function_call_id)
 
     async def submit(self, *args, **kwargs) -> Optional["_FunctionCall"]:
+        """**Deprecated.** Use `.spawn()` instead."""
         deprecation_warning(date(2022, 12, 5), "Function.submit is deprecated, use .spawn() instead")
         return await self.spawn(*args, **kwargs)
 
@@ -644,6 +647,7 @@ class CloudProvider(Enum):
 
 
 def parse_cloud_provider(value: str, gpu_config: api_pb2.GPUConfig) -> "api_pb2.CloudProvider.V":
+    """mdmd:hidden"""
     try:
         cloud_provider = CloudProvider[value.upper()]
     except KeyError:
@@ -920,7 +924,7 @@ Function, AioFunction = synchronize_apis(_Function)
 class _FunctionCall(Handle, type_prefix="fc"):
     """A reference to an executed function call
 
-    Constructed using `.submit(...)` on a Modal function with the same
+    Constructed using `.spawn(...)` on a Modal function with the same
     arguments that a function normally takes. Acts as a reference to
     an ongoing function call that can be passed around and used to
     poll or fetch function results at some later time.
@@ -954,7 +958,7 @@ FunctionCall, AioFunctionCall = synchronize_apis(_FunctionCall)
 async def _gather(*function_calls: _FunctionCall):
     """Wait until all Modal function calls have results before returning
 
-    Accepts a variable number of FunctionCall objects as returned by `Function.submit()`.
+    Accepts a variable number of FunctionCall objects as returned by `Function.spawn()`.
 
     Returns a list of results from each function call, or raises an exception
     of the first failing function call.
@@ -962,8 +966,8 @@ async def _gather(*function_calls: _FunctionCall):
     E.g.
 
     ```python notest
-    function_call_1 = slow_func_1.submit()
-    function_call_2 = slow_func_2.submit()
+    function_call_1 = slow_func_1.spawn()
+    function_call_2 = slow_func_2.spawn()
 
     result_1, result_2 = gather(function_call_1, function_call_2)
     ```
@@ -979,7 +983,6 @@ gather, aio_gather = synchronize_apis(_gather)
 
 
 _current_input_id: Optional[str] = None
-_current_input_started_at: Optional[float] = None
 
 
 def current_input_id() -> str:
@@ -996,19 +999,9 @@ def current_input_id() -> str:
     ```
     """
     global _current_input_id
-
     return _current_input_id
 
 
-def _get_current_input_started_at() -> float:
-    """mdmd:hidden"""
-    global _current_input_started_at
-
-    return _current_input_started_at
-
-
-def _set_current_input_id(input_id: str, started_at: Optional[float] = None):
+def _set_current_input_id(input_id: Optional[str]):
     global _current_input_id
-    global _current_input_started_at
     _current_input_id = input_id
-    _current_input_started_at = started_at

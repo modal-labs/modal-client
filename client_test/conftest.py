@@ -163,6 +163,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 (object_id,) = list(app_objects.values())
         await stream.send_message(api_pb2.AppLookupObjectResponse(object_id=object_id))
 
+    async def AppHeartbeat(self, stream):
+        request: api_pb2.ClientHeartbeatRequest = await stream.recv_message()
+        self.requests.append(request)
+        await stream.send_message(Empty())
+
     ### Blob
 
     async def BlobCreate(self, stream):
@@ -205,11 +210,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
         else:
             await stream.send_message(api_pb2.ClientCreateResponse(client_id=client_id))
 
-    async def ClientHeartbeat(self, stream):
-        request: api_pb2.ClientHeartbeatRequest = await stream.recv_message()
+    # Container
+
+    async def ContainerHeartbeat(self, stream):
+        request: api_pb2.ContainerHeartbeatRequest = await stream.recv_message()
         self.requests.append(request)
-        if self.heartbeat_status_code:
-            raise GRPCError(self.heartbeat_status_code, f"Client {request.client_id} heartbeat failed.")
         await stream.send_message(Empty())
 
     ### Function

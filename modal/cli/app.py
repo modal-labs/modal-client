@@ -1,198 +1,49 @@
 # Copyright Modal Labs 2022
 import asyncio
-import inspect
-import sys
-import traceback
-from typing import List, Optional, Tuple
 
 import typer
+from click import ClickException
 from google.protobuf import empty_pb2
-from rich.console import Console, Group
+from rich.console import Console
 from rich.markdown import Markdown
-from rich.panel import Panel
-from rich.prompt import Prompt
 from rich.table import Table
 from rich.tree import Tree
-from synchronicity import Interface
 
 from modal._output import OutputManager, step_progress
 from modal.cli.utils import timestamp_to_local
 from modal.client import AioClient
-from modal.functions import _Function
-from modal.stub import _Stub
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
-from modal_utils.package_utils import NoSuchStub, import_stub, parse_stub_ref
-
-DEFAULT_STUB_NAME = "stub"
+from modal_utils.package_utils import DEFAULT_STUB_NAME, StubRef
 
 app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_args_is_help=True)
 
 
-@app_cli.command("run", help="Run a Modal function.")
-def run(
-    stub_ref: str = typer.Argument(
-        ..., help="Path to a Python file or module, optionally identifying the name of your stub: `./main.py:mystub`."
-    ),
-    function_name: Optional[str] = typer.Option(default=None, help="Name of the Modal function to run"),
-    detach: bool = typer.Option(default=False, help="Allows app to continue running if local terminal disconnects."),
-):
-    try:
-        import_path, stub_name = parse_stub_ref(stub_ref, DEFAULT_STUB_NAME)
-        stub = import_stub(import_path, stub_name)
-    except NoSuchStub:
-        _show_stub_ref_failure_help(import_path, stub_name)
-        sys.exit(1)
-    except Exception:
-        traceback.print_exc()
-        sys.exit(1)
-
-    _stub = synchronizer._translate_in(stub)
-    registered_functions_str = ", ".join(_stub.registered_functions)
-    if not function_name:
-        if len(_stub.registered_functions) == 1:
-            function_name = _stub.registered_functions[0]
-        else:
-            print(
-                f"""You need to specify an entrypoint Modal function to run using --function-name=<name>
-Registered functions on the selected stub are: {registered_functions_str}"""
-            )
-            exit(1)
-    elif function_name not in _stub.registered_functions:
-        print(
-            f"No function `{function_name}` could be found in the specified stub. Registered functions are: {registered_functions_str}"
-        )
-        exit(1)
-    blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
-    with blocking_stub.run(detach=detach) as app:
-        func_handle = getattr(app, function_name)
-        blocking_function = synchronizer._translate_out(synchronizer._translate_in(func_handle), Interface.BLOCKING)
-        blocking_function.call()
+@app_cli.command(
+    "run",
+    help="[Moved] Run a Modal function.",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def run():
+    raise ClickException("Use the `modal run ...` command instead (no longer nested under `app`)")
 
 
-@app_cli.command("deploy", help="Deploy a Modal stub as an application.")
-def deploy(
-    stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
-    name: str = typer.Option(None, help="Name of the deployment."),
-):
-    try:
-        import_path, stub_name = parse_stub_ref(stub_ref, DEFAULT_STUB_NAME)
-        stub = import_stub(import_path, stub_name)
-    except NoSuchStub:
-        _show_stub_ref_failure_help(import_path, stub_name)
-        sys.exit(1)
-    except Exception:
-        traceback.print_exc()
-        sys.exit(1)
-
-    if name is None:
-        name = stub.name
-
-    res = stub.deploy(name=name)
-    if inspect.iscoroutine(res):
-        asyncio.run(res)
+@app_cli.command(
+    "deploy",
+    help="[Moved] Deploy a Modal stub as an application.",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def deploy():
+    raise ClickException("Use the `modal deploy ...` command instead (no longer nested under `app`)")
 
 
-def make_function_panel(idx: int, tag: str, function: _Function, stub: _Stub) -> Panel:
-    items = [
-        f"- {i}"
-        for i in [*function._mounts, function._image, *function._secrets, *function._shared_volumes.values()]
-        if i not in [stub._client_mount, *stub._function_mounts.values()]
-    ]
-    if function._gpu:
-        items.append("- GPU")
-    return Panel(
-        Markdown("\n".join(items)),
-        title=f"[bright_magenta]{idx}. [/bright_magenta][bold]{tag}[/bold]",
-        title_align="left",
-    )
-
-
-def choose_function(stub: _Stub, functions: List[Tuple[str, _Function]], console: Console):
-    if len(functions) == 0:
-        return None
-    elif len(functions) == 1:
-        return functions[0][1]
-
-    function_panels = [make_function_panel(idx, tag, obj, stub) for idx, (tag, obj) in enumerate(functions)]
-
-    renderable = Panel(Group(*function_panels))
-    console.print(renderable)
-
-    choice = Prompt.ask(
-        "[yellow] Pick a function definition to create a corresponding shell: [/yellow]",
-        choices=[str(i) for i in range(len(functions))],
-        default="0",
-        show_default=False,
-    )
-
-    return functions[int(choice)][1]
-
-
-@app_cli.command("shell", no_args_is_help=True)
-def shell(
-    stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
-    function_name: Optional[str] = typer.Option(
-        default=None,
-        help="Name of the Modal function to run. If unspecified, Modal will prompt you for a function if running in interactive mode.",
-    ),
-    cmd: str = typer.Option(default="/bin/bash", help="Command to run inside the Modal image."),
-):
-    """Run an interactive shell inside a Modal image.\n
-    **Examples:**\n
-    \n
-    - Start a bash shell using the spec for `my_function` in your stub:\n
-    ```bash\n
-    modal app shell hello_world.py --function-name my_function \n
-    ```\n
-    Note that you can select the function interactively if you omit the function name.\n
-    \n
-    - Start a `python` shell: \n
-    ```bash\n
-    modal app shell hello_world.py --cmd=python \n
-    ```\n
-    """
-    try:
-        import_path, stub_name = parse_stub_ref(stub_ref, DEFAULT_STUB_NAME)
-        stub = import_stub(import_path, stub_name)
-    except NoSuchStub:
-        _show_stub_ref_failure_help(import_path, stub_name)
-        sys.exit(1)
-    except Exception:
-        traceback.print_exc()
-        sys.exit(1)
-
-    console = Console()
-
-    if not console.is_terminal:
-        print("`modal app shell` can only be run from a terminal.")
-        sys.exit(1)
-
-    _stub = synchronizer._translate_in(stub)
-    functions = {tag: obj for tag, obj in _stub._blueprint.items() if isinstance(obj, _Function)}
-
-    if function_name is not None:
-        if function_name not in functions:
-            print(f"Function {function_name} not found in stub.")
-            sys.exit(1)
-        function = functions[function_name]
-    else:
-        function = choose_function(_stub, list(functions.items()), console)
-
-    if function is None:
-        res = stub.interactive_shell(cmd)
-    else:
-        res = stub.interactive_shell(
-            cmd,
-            mounts=function._mounts,
-            shared_volumes=function._shared_volumes,
-            image=function._image,
-            secrets=function._secrets,
-            gpu=function._gpu,
-        )
-
-    if inspect.iscoroutine(res):
-        asyncio.run(res)
+@app_cli.command(
+    "shell",
+    help="[Moved] Start a shell session in a Modal container",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def shell():
+    raise ClickException("Use the `modal shell ...` command instead (no longer nested under `app`)")
 
 
 @app_cli.command("list")
@@ -262,16 +113,18 @@ async def list_stops(app_id: str):
     await aio_client.stub.AppStop(req)
 
 
-def _show_stub_ref_failure_help(import_path: str, stub_name: str) -> None:
+def _show_stub_ref_failure_help(stub_ref: StubRef) -> None:
+    stub_name = stub_ref.stub_name
+    import_path = stub_ref.file_or_module
     error_console = Console(stderr=True)
     guidance_msg = (
         (
-            f"Expected to find a stub variable named **`{stub_name}`** (the default stub name). If your `modal.Stub` is named differently, "
+            f"Expected to find a stub variable named **`{DEFAULT_STUB_NAME}`** (the default stub name). If your `modal.Stub` is named differently, "
             "you must specify it in the stub ref argument. "
             f"For example a stub variable `app_stub = modal.Stub()` in `{import_path}` would "
             f"be specified as `{import_path}::app_stub`."
         )
-        if stub_name == DEFAULT_STUB_NAME
+        if stub_name is None
         else (
             f"Expected to find a stub variable named **`{stub_name}`**. "
             f"Check the name of your stub variable in `{import_path}`. "

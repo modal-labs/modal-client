@@ -72,6 +72,14 @@ enum WebhookType {
   WEBHOOK_TYPE_WSGI_APP = 3;
 }
 
+enum WebhookAsyncMode {
+  WEBHOOK_ASYNC_MODE_UNSPECIFIED = 0;
+  WEBHOOK_ASYNC_MODE_REDIRECT = 1;  // redirect immediately to result polling endpoint
+  WEBHOOK_ASYNC_MODE_DISABLED = 2; // no redirect, fail after timeout
+  WEBHOOK_ASYNC_MODE_TRIGGER = 3; // return immediately, same as old wait_for_response=False
+  WEBHOOK_ASYNC_MODE_AUTO = 4; // redirect to polling endpoint if execution time nears the timeout
+}
+
 message AppClientDisconnectRequest {
   string app_id = 1;
 }
@@ -101,7 +109,6 @@ message AppDeployRequest {
 message AppDeployResponse {
   string url = 1;
 }
-
 
 message AppGetByDeploymentNameRequest {
   DeploymentNamespace namespace = 1;
@@ -181,6 +188,10 @@ message AppSetObjectsRequest {
   AppState new_app_state = 5; // promotes an app from initializing to this new state
 }
 
+message AppHeartbeatRequest {
+  string app_id = 1;
+}
+
 message BaseImage {
   string image_id = 1;
   string docker_tag = 2;
@@ -216,6 +227,10 @@ message ClientCreateResponse {
   string deprecation_warning = 3;
 }
 
+message ClientHelloResponse {
+  string warning = 1;
+}
+
 message ClientHeartbeatRequest {
   string client_id = 1;
   string current_input_id = 3;
@@ -229,6 +244,11 @@ message ContainerArguments {  // This is used to pass data from the worker to th
   Function function_def = 7;
   ProxyInfo proxy_info = 8;
   map<string, string> tracing_context = 9;
+}
+
+message ContainerHeartbeatRequest {
+  string current_input_id = 1;
+  double current_input_started_at = 2;
 }
 
 message DictContainsRequest {
@@ -827,8 +847,9 @@ message TokenFlowWaitResponse {
 message WebhookConfig {
   WebhookType type = 1;
   string method = 2;
-  bool wait_for_response = 3;
+  bool wait_for_response = 3 [deprecated=true]; // rolled into async_mode - remove when ending support for 0.44
   string requested_suffix = 4;
+  WebhookAsyncMode async_mode = 5;
 }
 
 service ModalClient {
@@ -843,6 +864,7 @@ service ModalClient {
   rpc AppDeploy(AppDeployRequest) returns (AppDeployResponse);
   rpc AppGetByDeploymentName(AppGetByDeploymentNameRequest) returns (AppGetByDeploymentNameResponse);
   rpc AppStop(AppStopRequest) returns (google.protobuf.Empty);
+  rpc AppHeartbeat(AppHeartbeatRequest) returns (google.protobuf.Empty);
 
   // Blobs
   rpc BlobCreate(BlobCreateRequest) returns (BlobCreateResponse);
@@ -850,7 +872,11 @@ service ModalClient {
 
   // Clients
   rpc ClientCreate(ClientCreateRequest) returns (ClientCreateResponse);
+  rpc ClientHello(google.protobuf.Empty) returns (ClientHelloResponse);
   rpc ClientHeartbeat(ClientHeartbeatRequest) returns (google.protobuf.Empty);
+
+  // Container
+  rpc ContainerHeartbeat(ContainerHeartbeatRequest) returns (google.protobuf.Empty);
 
   // Dicts
   rpc DictCreate(DictCreateRequest) returns (DictCreateResponse);

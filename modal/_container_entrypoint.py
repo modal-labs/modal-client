@@ -34,7 +34,7 @@ from ._serialization import deserialize, serialize
 from ._traceback import extract_traceback
 from ._tracing import extract_tracing_context, set_span_tag, trace, wrap
 from .app import _App
-from .client import Client, _Client
+from .client import Client, _Client, HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT
 from .config import logger
 from .exception import InvalidError
 from .functions import AioFunctionHandle, FunctionHandle, _set_current_input_id
@@ -107,13 +107,30 @@ class _FunctionIOManager:
         self.client = client
         self.calls_completed = 0
         self.total_user_time: float = 0
-        self.input_started_at: float = 0
+        self.current_input_id: Optional[str] = None
+        self.current_input_started_at: Optional[float] = None
         self._client = synchronizer._translate_in(self.client)  # make it a _Client object
         assert isinstance(self._client, _Client)
 
     @wrap()
     async def initialize_app(self):
         await _App._init_container(self._client, self.app_id, self.task_id)
+
+    async def _heartbeat(self):
+        request = api_pb2.ContainerHeartbeatRequest()
+        if self.current_input_id is not None:
+            request.current_input_id = self.current_input_id
+        if self.current_input_started_at is not None:
+            request.current_input_started_at = self.current_input_started_at
+
+        # TODO(erikbern): capture exceptions?
+        await self.client.stub.ContainerHeartbeat(request, timeout=HEARTBEAT_TIMEOUT)
+
+    @contextlib.asynccontextmanager
+    async def heartbeats(self):
+        async with TaskContext(grace=1) as tc:
+            tc.infinite_loop(self._heartbeat, sleep=HEARTBEAT_INTERVAL)
+            yield
 
     async def get_serialized_function(self) -> tuple[Optional[Any], Callable]:
         # Fetch the serialized function definition
@@ -220,12 +237,13 @@ class _FunctionIOManager:
             tc.create_task(self._send_outputs())
             try:
                 async for input_id, input_pb in self._generate_inputs():
-                    self.input_started_at = time.time()
                     args, kwargs = self.deserialize(input_pb.args) if input_pb.args else ((), {})
-                    _set_current_input_id(input_id, started_at=self.input_started_at)
+                    _set_current_input_id(input_id)
+                    self.current_input_id, self.current_input_started_at = (input_id, time.time())
                     yield input_id, args, kwargs
-                    _set_current_input_id(None, started_at=None)
-                    self.total_user_time += time.time() - self.input_started_at
+                    _set_current_input_id(None)
+                    self.total_user_time += time.time() - self.current_input_started_at
+                    self.current_input_id, self.current_input_started_at = (None, None)
                     self.calls_completed += 1
             finally:
                 await self.output_queue.put(None)
@@ -240,7 +258,7 @@ class _FunctionIOManager:
 
         output = api_pb2.FunctionPutOutputsItem(
             input_id=input_id,
-            input_started_at=self.input_started_at,
+            input_started_at=self.current_input_started_at,
             output_created_at=time.time(),
             gen_index=gen_index,
             result=api_pb2.GenericResult(**kwargs),
@@ -509,29 +527,30 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
     function_io_manager.initialize_app()
 
-    is_generator = function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
+    with function_io_manager.heartbeats():
+        is_generator = function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
 
-    # If this is a serialized function, fetch the definition from the server
-    if container_args.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
-        ser_cls, ser_fun = function_io_manager.get_serialized_function()
-    else:
-        ser_cls, ser_fun = None, None
+        # If this is a serialized function, fetch the definition from the server
+        if container_args.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
+            ser_cls, ser_fun = function_io_manager.get_serialized_function()
+        else:
+            ser_cls, ser_fun = None, None
 
-    # Initialize the function
-    with function_io_manager.handle_user_exception():
-        obj, fun, is_async = import_function(container_args.function_def, ser_cls, ser_fun)
+        # Initialize the function
+        with function_io_manager.handle_user_exception():
+            obj, fun, is_async = import_function(container_args.function_def, ser_cls, ser_fun)
 
-    if container_args.function_def.pty_info.enabled:
-        from modal import container_app
+        if container_args.function_def.pty_info.enabled:
+            from modal import container_app
 
-        input_stream_unwrapped = synchronizer._translate_in(container_app._pty_input_stream)
-        input_stream_blocking = synchronizer._translate_out(input_stream_unwrapped, Interface.BLOCKING)
-        fun = run_in_pty(fun, input_stream_blocking, container_args.function_def.pty_info)
+            input_stream_unwrapped = synchronizer._translate_in(container_app._pty_input_stream)
+            input_stream_blocking = synchronizer._translate_out(input_stream_unwrapped, Interface.BLOCKING)
+            fun = run_in_pty(fun, input_stream_blocking, container_args.function_def.pty_info)
 
-    if not is_async:
-        call_function_sync(function_io_manager, obj, fun, is_generator)
-    else:
-        run_with_signal_handler(call_function_async(aio_function_io_manager, obj, fun, is_generator))
+        if not is_async:
+            call_function_sync(function_io_manager, obj, fun, is_generator)
+        else:
+            run_with_signal_handler(call_function_async(aio_function_io_manager, obj, fun, is_generator))
 
 
 if __name__ == "__main__":

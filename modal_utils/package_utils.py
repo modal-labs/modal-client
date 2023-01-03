@@ -1,10 +1,11 @@
 # Copyright Modal Labs 2022
+import dataclasses
 import importlib
 import inspect
 import os
 import sys
 from pathlib import Path
-from typing import Tuple
+from typing import Optional
 
 from importlib_metadata import PackageNotFoundError, files
 
@@ -45,25 +46,41 @@ def get_module_mount_info(module: str):
         return [(False, filename, lambda f: os.path.basename(f) == os.path.basename(filename))]
 
 
-def parse_stub_ref(stub_ref: str, default_stub_name: str) -> Tuple[str, str]:
+@dataclasses.dataclass
+class StubRef:
+    file_or_module: str
+    stub_name: Optional[str]
+    entrypoint_name: Optional[str]
+
+
+def parse_stub_ref(stub_ref: str) -> StubRef:
     if stub_ref.find("::") > 1:
-        import_path, stub_name = stub_ref.split("::")
+        file_or_module, stub_name = stub_ref.split("::")
     elif stub_ref.find(":") > 1:  # don't catch windows abs paths, e.g. C:\foo\bar
-        import_path, stub_name = stub_ref.split(":")
+        file_or_module, stub_name = stub_ref.split(":")
     else:
-        import_path, stub_name = stub_ref, default_stub_name
-    return import_path, stub_name
+        file_or_module, stub_name = stub_ref, None
+
+    if stub_name and "." in stub_name:
+        stub_name, function_name = stub_name.split(".", 1)
+    else:
+        function_name = None
+
+    return StubRef(file_or_module, stub_name, function_name)
 
 
 class NoSuchStub(modal.exception.NotFoundError):
     pass
 
 
-def import_stub(import_path: str, stub_name: str):
+DEFAULT_STUB_NAME = "stub"
+
+
+def import_stub(stub_ref: StubRef):
     if "" not in sys.path:
         # This seems to happen when running from a CLI
         sys.path.insert(0, "")
-
+    import_path = stub_ref.file_or_module
     if ".py" in import_path:
         # walk to the closest python package in the path and add that to the path
         # before importing, in case of imports etc. of other modules in that package
@@ -91,6 +108,7 @@ def import_stub(import_path: str, stub_name: str):
     else:
         module = importlib.import_module(import_path)
 
+    stub_name = stub_ref.stub_name or DEFAULT_STUB_NAME
     try:
         stub = getattr(module, stub_name)
     except AttributeError:
