@@ -210,6 +210,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         else:
             await stream.send_message(api_pb2.ClientCreateResponse(client_id=client_id))
 
+        # Check new fields (TODO: use ClientHello for this)
+        assert "x-modal-client-version" in stream.metadata
+        assert "x-modal-client-type" in stream.metadata
+
     # Container
 
     async def ContainerHeartbeat(self, stream):
