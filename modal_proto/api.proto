@@ -722,6 +722,7 @@ message SecretListResponse {
 
 message SharedVolumeCreateRequest {
   string app_id = 1;
+  CloudProvider cloud_provider = 2;
 }
 
 message SharedVolumeCreateResponse {
@@ -732,6 +733,7 @@ message SharedVolumeListItem {
   string label = 1;  // app name of object entity app
   string shared_volume_id = 2;
   double created_at = 3;
+  CloudProvider cloud_provider = 4;
 }
 
 message SharedVolumeListResponse {
