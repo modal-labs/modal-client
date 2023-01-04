@@ -487,7 +487,14 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         count_update_callback = self._output_mgr.function_progress_callback(self._tag) if self._output_mgr else None
 
         async for item in _map_invocation(
-            object_id, input_stream, kwargs, client, self._is_generator, order_outputs, return_exceptions, count_update_callback
+            object_id,
+            input_stream,
+            kwargs,
+            client,
+            self._is_generator,
+            order_outputs,
+            return_exceptions,
+            count_update_callback,
         ):
             yield item
 
@@ -497,7 +504,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         *input_iterators,  # one input iterator per argument in the mapped-over function/generator
         kwargs={},  # any extra keyword arguments for the function
         order_outputs=None,  # defaults to True for regular functions, False for generators
-        return_exceptions=False, # whether to propogate exceptions (False) or aggregate them in the results list (True)
+        return_exceptions=False,  # whether to propogate exceptions (False) or aggregate them in the results list (True)
     ):
         """Parallel map over a set of inputs.
 
