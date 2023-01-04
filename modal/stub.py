@@ -290,7 +290,8 @@ class _Stub:
                 if mode == StubRunMode.SERVE:
                     # Cancel logs loop since we're going to start another one.
                     logs_loop.cancel()
-                await app.disconnect()
+                else:
+                    await app.disconnect()
 
         if mode == StubRunMode.DEPLOY:
             output_mgr.print_if_visible(step_completed("App deployed! 🎉"))
@@ -385,6 +386,7 @@ class _Stub:
                     event = await event_agen.__anext__()
         finally:
             await event_agen.aclose()
+            await app.disconnect()
 
     async def deploy(
         self,
