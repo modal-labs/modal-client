@@ -1,5 +1,7 @@
 # Copyright Modal Labs 2022
 import os
+import pytest
+import sys
 import traceback
 
 import click
@@ -173,3 +175,26 @@ def test_run_parse_args(servicer, server_url_env, test_dir):
         res = _run(args)
         assert expected in res.stdout
         assert len(servicer.client_calls) == 0
+
+
+@pytest.fixture
+def fresh_main_thread_assertion_module(test_dir):
+    modules_to_unload = [n for n in sys.modules.keys() if "main_thread_assertion" in n]
+    assert len(modules_to_unload) <= 1
+    for mod in modules_to_unload:
+        sys.modules.pop(mod)
+    yield test_dir / "supports" / "app_run_tests" / "main_thread_assertion.py"
+
+
+def test_no_user_code_in_synchronicity_run(servicer, server_url_env, test_dir, fresh_main_thread_assertion_module):
+    pytest._did_load_main_thread_assertion = False
+    _run(["run", fresh_main_thread_assertion_module.as_posix()])
+    assert pytest._did_load_main_thread_assertion
+    print()
+
+
+def test_no_user_code_in_synchronicity_deploy(servicer, server_url_env, test_dir, fresh_main_thread_assertion_module):
+    pytest._did_load_main_thread_assertion = False
+    _run(["deploy", "--name", "foo", fresh_main_thread_assertion_module.as_posix()])
+    assert pytest._did_load_main_thread_assertion
+    print()
