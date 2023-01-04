@@ -178,6 +178,9 @@ class Provider(Generic[H]):
         ```
         """
         provider: RemoteRef = RemoteRef(app_name, tag, namespace)
+        # TODO(erikbern): this returns an object that looks like a P during static analysis,
+        # but is actually a RemoteRef during runtime. This seems pretty confusing and bad:
+        # we should return an object that's always P.
         return cast(P, provider)
 
 
