@@ -41,7 +41,7 @@ def _run(args, expected_exit_code=0):
     runner = click.testing.CliRunner()
     res = runner.invoke(entrypoint_cli, args)
     if res.exit_code != expected_exit_code:
-        print(res.stdout, "Trace:")
+        print("stdout:", repr(res.stdout))
         traceback.print_tb(res.exc_info[2])
         assert res.exit_code == expected_exit_code
     return res

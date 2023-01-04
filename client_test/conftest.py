@@ -91,6 +91,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.function_serialized = None
         self.class_serialized = None
 
+        self.client_hello_metadata = None
+
         @self.function_body
         def default_function_body(*args, **kwargs):
             return sum(arg**2 for arg in args) + sum(value**2 for key, value in kwargs.items())
@@ -190,29 +192,24 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     ### Client
 
-    async def ClientCreate(self, stream):
-        request: api_pb2.ClientCreateRequest = await stream.recv_message()
+    async def ClientHello(self, stream):
+        request: Empty = await stream.recv_message()
         self.requests.append(request)
-        client_id = "cl-123"
+        self.client_create_metadata = stream.metadata
+        client_version = stream.metadata["x-modal-client-version"]
         if stream.metadata.get("x-modal-token-id") == "bad":
             raise GRPCError(Status.UNAUTHENTICATED, "bad bad bad")
-        elif request.version == "timeout":
+        elif client_version == "timeout":
             await asyncio.sleep(60)
-            await stream.send_message(api_pb2.ClientCreateResponse(client_id=client_id))
-        elif request.version == "unauthenticated":
+            await stream.send_message(api_pb2.ClientHelloResponse())
+        elif client_version == "unauthenticated":
             raise GRPCError(Status.UNAUTHENTICATED, "failed authentication")
-        elif request.version == "deprecated":
-            await stream.send_message(
-                api_pb2.ClientCreateResponse(client_id=client_id, deprecation_warning="SUPER OLD")
-            )
-        elif pkg_resources.parse_version(request.version) < pkg_resources.parse_version(__version__):
+        elif client_version == "deprecated":
+            await stream.send_message(api_pb2.ClientHelloResponse(warning="SUPER OLD"))
+        elif pkg_resources.parse_version(client_version) < pkg_resources.parse_version(__version__):
             raise GRPCError(Status.FAILED_PRECONDITION, "Old client")
         else:
-            await stream.send_message(api_pb2.ClientCreateResponse(client_id=client_id))
-
-        # Check new fields (TODO: use ClientHello for this)
-        assert "x-modal-client-version" in stream.metadata
-        assert "x-modal-client-type" in stream.metadata
+            await stream.send_message(api_pb2.ClientHelloResponse())
 
     # Container
 

@@ -5,9 +5,10 @@ import asyncio
 import platform
 import warnings
 import webbrowser
-from typing import Callable, Optional
+from typing import Optional
 
 from aiohttp import ClientConnectorError, ClientResponseError
+from google.protobuf import empty_pb2
 from grpclib import GRPCError, Status
 from rich.console import Console
 
@@ -27,7 +28,6 @@ from .exception import (
     AuthError,
     ConnectionError,
     DeprecationError,
-    InvalidError,
     VersionError,
 )
 
@@ -95,46 +95,35 @@ class _Client:
         self.client_type = client_type
         self.credentials = credentials
         self.version = version
-        self._stub = None
-        self._connected = False
-        self._pre_stop: Optional[Callable[[], None]] = None
         self._channel = None
+        self._stub = None
 
     @property
     def stub(self):
         if self._stub is None:
-            raise ConnectionError("The client is not connected to the modal server")
+            metadata = _get_metadata(self.client_type, self.credentials, self.version)
+            self._channel = create_channel(
+                self.server_url,
+                metadata=metadata,
+                inject_tracing_context=inject_tracing_context,
+            )
+            self._stub = api_grpc.ModalClientStub(self._channel)  # type: ignore
+
         return self._stub
 
-    async def _start(self):
+    async def verify(self):
         logger.debug("Client: Starting")
-        if self._stub:
-            raise Exception("Client is already running")
-        metadata = _get_metadata(self.client_type, self.credentials, self.version)
-        self._channel = create_channel(
-            self.server_url,
-            metadata=metadata,
-            inject_tracing_context=inject_tracing_context,
-        )
-        self._stub = api_grpc.ModalClientStub(self._channel)  # type: ignore
         try:
-            req = api_pb2.ClientCreateRequest(
-                client_type=self.client_type,
-                version=self.version,
-            )
+            req = empty_pb2.Empty()
             resp = await retry_transient_errors(
-                self.stub.ClientCreate,
+                self.stub.ClientHello,
                 req,
                 attempt_timeout=CLIENT_CREATE_ATTEMPT_TIMEOUT,
                 total_timeout=CLIENT_CREATE_TOTAL_TIMEOUT,
             )
-            if resp.deprecation_warning:
+            if resp.warning:
                 ALARM_EMOJI = chr(0x1F6A8)
-                warnings.warn(f"{ALARM_EMOJI} {resp.deprecation_warning} {ALARM_EMOJI}", DeprecationError)
-            if not resp.client_id:
-                raise InvalidError("Did not get a client id from server")
-            self._client_id = resp.client_id
-            self._connected = True
+                warnings.warn(f"{ALARM_EMOJI} {resp.warning} {ALARM_EMOJI}", DeprecationError)
         except GRPCError as exc:
             if exc.status == Status.FAILED_PRECONDITION:
                 raise VersionError(
@@ -147,58 +136,17 @@ class _Client:
                 raise ConnectionError(exc_string)
         except (OSError, asyncio.TimeoutError) as exc:
             raise ConnectionError(str(exc))
-        finally:
-            if not self._connected:
-                # Tear down the channel pool etc
-                await self._stop()
 
-        logger.debug("Client: Done starting")
-
-    def set_pre_stop(self, pre_stop: Callable[[], None]):
-        """mdmd:hidden"""
-        # hack: stub.serve() gets into a losing race with the `on_shutdown` client
-        # teardown when an interrupt signal is received (eg. KeyboardInterrupt).
-        # By registering a pre-stop fn stub.serve() can have its teardown
-        # performed before the client is disconnected.
-        #
-        # ref: github.com/modal-labs/modal-client/pull/108
-        self._pre_stop = pre_stop
-
-    async def _stop(self):
-        if self._pre_stop:
-            logger.debug("Client: running pre-stop coroutine before shutting down")
-            await self._pre_stop()  # type: ignore
-        # TODO: we should trigger this using an exit handler
-        logger.debug("Client: Shutting down")
-        self._stub = None  # prevent any additional calls
-        if self._channel:
+    async def close(self):
+        if self._channel is not None:
             self._channel.close()
-            self._channel = None
-        logger.debug("Client: Done shutting down")
-        # Needed to catch straggling CancelledErrors and GeneratorExits that propagate
-        # through our chains of async generators.
-        await asyncio.sleep(0.01)
 
     async def __aenter__(self):
-        try:
-            await self._start()
-        except BaseException:
-            await self._stop()
-            raise
+        await self.verify()
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
-        await self._stop()
-
-    async def verify(self):
-        async with self:
-            # Just connect and disconnect
-            pass
-
-    @property
-    def client_id(self):
-        """A unique identifier for the Client."""
-        return self._client_id
+        await self.close()
 
     @classmethod
     async def token_flow(cls, env: str, server_url: str):
@@ -277,8 +225,9 @@ class _Client:
                 return cls._client_from_env
             else:
                 client = _Client(server_url, client_type, credentials)
+                async_utils.on_shutdown(client.close())
                 try:
-                    await client._start()
+                    await client.verify()
                 except AuthError:
                     if not credentials:
                         creds_missing_msg = (
@@ -290,20 +239,12 @@ class _Client:
                     else:
                         raise
                 cls._client_from_env = client
-                async_utils.on_shutdown(AioClient.stop_env_client())
                 return client
 
     @classmethod
     def set_env_client(cls, client):
         """Just used from tests."""
         cls._client_from_env = client
-
-    @classmethod
-    async def stop_env_client(cls):
-        # Only called from atexit handler and from tests
-        if cls._client_from_env is not None:
-            await cls._client_from_env._stop()
-            cls._client_from_env = None
 
 
 Client, AioClient = synchronize_apis(_Client)

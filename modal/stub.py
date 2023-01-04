@@ -382,11 +382,11 @@ class _Stub:
                     output_mgr.print_if_visible(f"⚡️ Updating app {existing_app_id}...")
 
                 async with self._run(client, output_mgr, existing_app_id, mode=StubRunMode.SERVE) as app:
-                    client.set_pre_stop(app.disconnect)
                     existing_app_id = app.app_id
                     event = await event_agen.__anext__()
         finally:
             await event_agen.aclose()
+            await app.disconnect()
 
     async def deploy(
         self,
@@ -440,7 +440,7 @@ class _Stub:
             client = await _Client.from_env()
 
         # Look up any existing deployment
-        app_req = api_pb2.AppGetByDeploymentNameRequest(name=name, namespace=namespace, client_id=client.client_id)
+        app_req = api_pb2.AppGetByDeploymentNameRequest(name=name, namespace=namespace)
         app_resp = await client.stub.AppGetByDeploymentName(app_req)
         existing_app_id = app_resp.app_id or None
         last_log_entry_id = app_resp.last_log_entry_id
