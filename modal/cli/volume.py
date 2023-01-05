@@ -29,6 +29,15 @@ FileType = api_pb2.SharedVolumeListFilesEntry.FileType
 volume_cli = Typer(name="volume", help="Read and edit shared volumes.", no_args_is_help=True)
 
 
+def get_location(cloud_provider: api_pb2.CloudProvider.ValueType) -> str:
+    if cloud_provider == api_pb2.CLOUD_PROVIDER_GCP:
+        return "GCP (us-east1)"
+    elif cloud_provider == api_pb2.CLOUD_PROVIDER_AWS:
+        return "AWS (us-east-1)"
+    else:
+        return ""
+
+
 @volume_cli.command(name="list", help="List the names of all shared volumes.")
 @synchronizer
 async def list():
@@ -37,10 +46,15 @@ async def list():
     if sys.stdout.isatty():
         table = Table(title="Shared Volumes")
         table.add_column("Name")
+        table.add_column("Location")
         table.add_column("Created at", justify="right")
         locale_tz = datetime.now().astimezone().tzinfo
         for item in response.items:
-            table.add_row(item.label, str(datetime.fromtimestamp(item.created_at, tz=locale_tz)))
+            table.add_row(
+                item.label,
+                get_location(item.cloud_provider),
+                str(datetime.fromtimestamp(item.created_at, tz=locale_tz)),
+            )
         console = Console()
         console.print(table)
     else:
