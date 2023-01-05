@@ -34,8 +34,7 @@ def set(
     if not no_verify:
         server_url = config.get("server_url", env=env)
         rich.print(f"Verifying token against [blue]{server_url}[/blue]")
-        client = Client(server_url, api_pb2.CLIENT_TYPE_CLIENT, (token_id, token_secret))
-        client.verify()
+        Client.verify(server_url, (token_id, token_secret))
         rich.print("[green]Token verified successfully[/green]")
 
     _store_user_config({"token_id": token_id, "token_secret": token_secret}, env=env)
@@ -50,8 +49,7 @@ def new(env: Optional[str] = env_option, no_verify: bool = False):
 
     if not no_verify:
         rich.print(f"Verifying token against [blue]{server_url}[/blue]")
-        client = Client(server_url, api_pb2.CLIENT_TYPE_CLIENT, (token_id, token_secret))
-        client.verify()
+        Client.verify(server_url, (token_id, token_secret))
         rich.print("[green]Token verified successfully[/green]")
 
     _store_user_config({"token_id": token_id, "token_secret": token_secret}, env=env)
