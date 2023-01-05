@@ -4,13 +4,11 @@ from __future__ import annotations
 import asyncio
 import platform
 import warnings
-import webbrowser
 from typing import Optional
 
 from aiohttp import ClientConnectorError, ClientResponseError
 from google.protobuf import empty_pb2
 from grpclib import GRPCError, Status
-from rich.console import Console
 
 from modal_proto import api_grpc, api_pb2
 from modal_utils import async_utils
@@ -160,39 +158,28 @@ class _Client:
             pass  # Will call ClientHello
 
     @classmethod
-    async def token_flow(cls, env: str, server_url: str):
-        """Gets a token through a web flow."""
-
+    async def unauthenticated_client(cls, env: str, server_url: str):
         # Create a connection with no credentials
-        async with _Client(server_url, api_pb2.CLIENT_TYPE_CLIENT, None, no_verify=True) as client:
-            # Create token creation request
-            # Send some strings identifying the computer (these are shown to the user for security reasons)
-            create_req = api_pb2.TokenFlowCreateRequest(
-                node_name=platform.node(),
-                platform_name=platform.platform(),
-            )
-            create_resp = await client.stub.TokenFlowCreate(create_req)
+        # To be used with the token flow
+        return _Client(server_url, api_pb2.CLIENT_TYPE_CLIENT, None, no_verify=True)
 
-            console = Console()
-            with console.status("Waiting for authentication in the web browser...", spinner="dots"):
-                # Open the web url in the browser
-                link_text = f"[link={create_resp.web_url}]{create_resp.web_url}[/link]"
-                console.print(f"Launching {link_text} in your browser window")
-                if webbrowser.open_new_tab(create_resp.web_url):
-                    console.print("If this is not showing up, please copy the URL into your web browser manually")
-                else:
-                    console.print(
-                        "[red]Was not able to launch web browser[/red]"
-                        " - please go to the URL manually and complete the flow"
-                    )
+    async def start_token_flow(self) -> tuple[str, str]:
+        # Create token creation request
+        # Send some strings identifying the computer (these are shown to the user for security reasons)
+        req = api_pb2.TokenFlowCreateRequest(
+            node_name=platform.node(),
+            platform_name=platform.platform(),
+        )
+        resp = await self.stub.TokenFlowCreate(req)
+        return (resp.token_flow_id, resp.web_url)
 
-                # Wait for token forever
-                while True:
-                    wait_req = api_pb2.TokenFlowWaitRequest(token_flow_id=create_resp.token_flow_id, timeout=15.0)
-                    wait_resp = await client.stub.TokenFlowWait(wait_req)
-                    if not wait_resp.timeout:
-                        console.print("[green]Success![/green]")
-                        return (wait_resp.token_id, wait_resp.token_secret)
+    async def finish_token_flow(self, token_flow_id) -> tuple[str, str]:
+        # Wait for token forever
+        while True:
+            req = api_pb2.TokenFlowWaitRequest(token_flow_id=token_flow_id, timeout=15.0)
+            resp = await self.stub.TokenFlowWait(req)
+            if not resp.timeout:
+                return (resp.token_id, resp.token_secret)
 
     @classmethod
     async def from_env(cls, _override_config=None) -> "_Client":
