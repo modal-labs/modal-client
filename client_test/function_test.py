@@ -4,6 +4,7 @@ import pytest
 import time
 
 import cloudpickle
+from synchronicity.exceptions import UserCodeException
 
 from modal import Proxy, Stub
 from modal.exception import DeprecationError, InvalidError
@@ -203,6 +204,28 @@ def test_function_exception(client, servicer):
         with pytest.raises(CustomException) as excinfo:
             failure_modal.call()
         assert "foo!" in str(excinfo.value)
+
+
+def custom_exception_function(x):
+    if x == 4:
+        raise CustomException("bad")
+    return x * x
+
+
+def test_map_exceptions(client, servicer):
+    stub = Stub()
+
+    custom_function_modal = stub.function(servicer.function_body(custom_exception_function))
+    with stub.run(client=client):
+        assert list(custom_function_modal.map(range(4))) == [0, 1, 4, 9]
+
+        with pytest.raises(CustomException) as excinfo:
+            list(custom_function_modal.map(range(6)))
+        assert "bad" in str(excinfo.value)
+
+        res = list(custom_function_modal.map(range(6), return_exceptions=True))
+        assert res[:4] == [0, 1, 4, 9] and res[5] == 25
+        assert type(res[4]) == UserCodeException and "bad" in str(res[4])
 
 
 def import_failure():
