@@ -679,7 +679,7 @@ class _Stub:
         [guide on web endpoints](https://modal.com/docs/guide/webhooks).
 
         All webhook requests have a 150s maximum request time for the HTTP request itself. However, the underlying functions can
-        run for longer.
+        run for longer and return results to the caller on completion.
 
         The two `wait_for_response` modes for webhooks are as follows:
         * wait_for_response=True - tries to fulfill the request on the original URL, but returns a 302 rediect after ~150s to a result url (original url with an added __modal_function_id=... query parameter)
