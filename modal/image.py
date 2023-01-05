@@ -277,7 +277,7 @@ class _Image(Provider[_ImageHandle]):
             return self
 
         find_links_arg = f"-f {find_links}" if find_links else ""
-        package_args = " ".join(shlex.quote(pkg) for pkg in pkgs)
+        package_args = " ".join(shlex.quote(pkg) for pkg in sorted(pkgs))
 
         dockerfile_commands = [
             "FROM base",
