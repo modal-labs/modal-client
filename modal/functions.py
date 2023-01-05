@@ -534,13 +534,15 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         async for item in self._map(input_stream, order_outputs, return_exceptions, kwargs):
             yield item
 
-    async def for_each(self, *input_iterators, **kwargs):
+    async def for_each(self, *input_iterators, kwargs={}, ignore_exceptions=False):
         """Execute function for all outputs, ignoring outputs
 
         Convenient alias for `.map()` in cases where the function just needs to be called.
         as the caller doesn't have to consume the generator to process the inputs.
         """
-        async for _ in self.map(*input_iterators, order_outputs=False, **kwargs):
+        async for _ in self.map(
+            *input_iterators, kwargs=kwargs, order_outputs=False, return_exceptions=ignore_exceptions
+        ):
             pass
 
     @warn_if_generator_is_not_consumed
