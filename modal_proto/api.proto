@@ -74,7 +74,6 @@ enum WebhookType {
 
 enum WebhookAsyncMode {
   WEBHOOK_ASYNC_MODE_UNSPECIFIED = 0;
-  WEBHOOK_ASYNC_MODE_REDIRECT = 1;  // redirect immediately to result polling endpoint
   WEBHOOK_ASYNC_MODE_DISABLED = 2; // no redirect, fail after timeout
   WEBHOOK_ASYNC_MODE_TRIGGER = 3; // return immediately, same as old wait_for_response=False
   WEBHOOK_ASYNC_MODE_AUTO = 4; // redirect to polling endpoint if execution time nears the timeout
