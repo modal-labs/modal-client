@@ -60,7 +60,7 @@ def new(env: Optional[str] = env_option, no_verify: bool = False):
                 console.print(
                     "[red]Was not able to launch web browser[/red]"
                     " - please go to the URL manually and complete the flow"
-                )        
+                )
         token_id, token_secret = client.finish_token_flow(token_flow_id)
         console.print("[green]Success![/green]")
 

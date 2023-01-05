@@ -89,7 +89,7 @@ class _Client:
         credentials,
         version=__version__,
         *,
-        no_verify=False,    
+        no_verify=False,
     ):
         self.server_url = server_url
         self.client_type = client_type
@@ -116,7 +116,7 @@ class _Client:
     async def _close(self):
         if self._channel is not None:
             self._channel.close()
-        
+
     async def _verify(self):
         logger.debug("Client: Starting")
         try:
