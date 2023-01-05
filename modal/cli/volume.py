@@ -63,9 +63,7 @@ def some_func():
 
 
 @volume_cli.command(name="create", help="Create a named shared volume.")
-def create(
-    name: str, cloud: str = typer.Option("aws", help=f"Cloud provider to create the volume in. One of aws|gcp.")
-):
+def create(name: str, cloud: str = typer.Option("aws", help="Cloud provider to create the volume in. One of aws|gcp.")):
     stub = modal.Stub()
     cloud_provider = parse_cloud_provider(cloud)
     stub.entity = modal.SharedVolume(cloud_provider=cloud_provider)

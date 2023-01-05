@@ -23,7 +23,7 @@ def parse_cloud_provider(value: str) -> "api_pb2.CloudProvider.V":
     return cloud_provider.value
 
 
-def display_location(cloud_provider: api_pb2.CloudProvider.ValueType) -> str:
+def display_location(cloud_provider: "api_pb2.CloudProvider.V") -> str:
     if cloud_provider == api_pb2.CLOUD_PROVIDER_GCP:
         return "GCP (us-east1)"
     elif cloud_provider == api_pb2.CLOUD_PROVIDER_AWS:
