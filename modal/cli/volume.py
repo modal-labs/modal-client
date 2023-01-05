@@ -18,6 +18,7 @@ from rich.table import Table
 from typer import Typer
 
 import modal
+from modal._location import display_location, parse_cloud_provider
 from modal.aio import aio_lookup
 from modal.client import AioClient
 from modal.shared_volume import AioSharedVolumeHandle, _SharedVolumeHandle
@@ -27,15 +28,6 @@ from modal_utils.async_utils import synchronizer
 FileType = api_pb2.SharedVolumeListFilesEntry.FileType
 
 volume_cli = Typer(name="volume", help="Read and edit shared volumes.", no_args_is_help=True)
-
-
-def get_location(cloud_provider: api_pb2.CloudProvider.ValueType) -> str:
-    if cloud_provider == api_pb2.CLOUD_PROVIDER_GCP:
-        return "GCP (us-east1)"
-    elif cloud_provider == api_pb2.CLOUD_PROVIDER_AWS:
-        return "AWS (us-east-1)"
-    else:
-        return ""
 
 
 @volume_cli.command(name="list", help="List the names of all shared volumes.")
@@ -52,7 +44,7 @@ async def list():
         for item in response.items:
             table.add_row(
                 item.label,
-                get_location(item.cloud_provider),
+                display_location(item.cloud_provider),
                 str(datetime.fromtimestamp(item.created_at, tz=locale_tz)),
             )
         console = Console()
@@ -71,12 +63,15 @@ def some_func():
 
 
 @volume_cli.command(name="create", help="Create a named shared volume.")
-def create(name: str):
+def create(
+    name: str, cloud: str = typer.Option("aws", help=f"Cloud provider to create the volume in. One of aws|gcp.")
+):
     stub = modal.Stub()
-    stub.entity = modal.SharedVolume()
+    cloud_provider = parse_cloud_provider(cloud)
+    stub.entity = modal.SharedVolume(cloud_provider=cloud_provider)
     stub.deploy(name=name, show_progress=False)
     console = Console()
-    console.print(f"Created volume '{name}'\n\nUsage:\n")
+    console.print(f"Created volume '{name}' in {display_location(cloud_provider)}. \n\nUsage:\n")
     usage = Syntax(gen_usage_code(name), "python")
     console.print(usage)
 

@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 import os
-from typing import AsyncIterator, BinaryIO, List
+from typing import AsyncIterator, BinaryIO, List, Optional
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
@@ -107,8 +107,9 @@ class _SharedVolume(Provider[_SharedVolumeHandle]):
     persist this object across app runs.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, cloud_provider: Optional[api_pb2.CloudProvider.ValueType] = None) -> None:
         """Construct a new shared volume, which is empty by default."""
+        self._cloud_provider = cloud_provider
         super().__init__()
 
     def __repr__(self):
@@ -122,7 +123,7 @@ class _SharedVolume(Provider[_SharedVolumeHandle]):
             # Volume already exists; do nothing.
             return _SharedVolumeHandle(client, existing_shared_volume_id)
 
-        req = api_pb2.SharedVolumeCreateRequest(app_id=app_id)
+        req = api_pb2.SharedVolumeCreateRequest(app_id=app_id, cloud_provider=self._cloud_provider)
         resp = await retry_transient_errors(client.stub.SharedVolumeCreate, req)
         message_callback("Created shared volume.")
         return _SharedVolumeHandle(client, resp.shared_volume_id)
