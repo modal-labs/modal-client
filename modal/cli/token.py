@@ -9,7 +9,6 @@ import typer
 
 from modal.client import Client
 from modal.config import _store_user_config, config, user_config_path
-from modal_proto import api_pb2
 
 token_cli = typer.Typer(name="token", help="Manage tokens.", no_args_is_help=True)
 
