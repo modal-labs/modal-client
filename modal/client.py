@@ -4,13 +4,11 @@ from __future__ import annotations
 import asyncio
 import platform
 import warnings
-import webbrowser
 from typing import Optional
 
 from aiohttp import ClientConnectorError, ClientResponseError
 from google.protobuf import empty_pb2
 from grpclib import GRPCError, Status
-from rich.console import Console
 
 from modal_proto import api_grpc, api_pb2
 from modal_utils import async_utils
@@ -90,28 +88,36 @@ class _Client:
         client_type,
         credentials,
         version=__version__,
+        *,
+        no_verify=False,
     ):
         self.server_url = server_url
         self.client_type = client_type
         self.credentials = credentials
         self.version = version
+        self.no_verify = no_verify
         self._channel = None
         self._stub = None
 
     @property
     def stub(self):
-        if self._stub is None:
-            metadata = _get_metadata(self.client_type, self.credentials, self.version)
-            self._channel = create_channel(
-                self.server_url,
-                metadata=metadata,
-                inject_tracing_context=inject_tracing_context,
-            )
-            self._stub = api_grpc.ModalClientStub(self._channel)  # type: ignore
-
         return self._stub
 
-    async def verify(self):
+    async def _open(self):
+        assert self._stub is None
+        metadata = _get_metadata(self.client_type, self.credentials, self.version)
+        self._channel = create_channel(
+            self.server_url,
+            metadata=metadata,
+            inject_tracing_context=inject_tracing_context,
+        )
+        self._stub = api_grpc.ModalClientStub(self._channel)  # type: ignore
+
+    async def _close(self):
+        if self._channel is not None:
+            self._channel.close()
+
+    async def _verify(self):
         logger.debug("Client: Starting")
         try:
             req = empty_pb2.Empty()
@@ -137,57 +143,43 @@ class _Client:
         except (OSError, asyncio.TimeoutError) as exc:
             raise ConnectionError(str(exc))
 
-    async def close(self):
-        if self._channel is not None:
-            self._channel.close()
-
     async def __aenter__(self):
-        await self.verify()
+        await self._open()
+        if not self.no_verify:
+            await self._verify()
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
-        await self.close()
+        await self._close()
 
     @classmethod
-    async def token_flow(cls, env: str, server_url: str):
-        """Gets a token through a web flow."""
+    async def verify(cls, server_url, credentials):
+        async with _Client(server_url, api_pb2.CLIENT_TYPE_CLIENT, credentials):
+            pass  # Will call ClientHello
 
+    @classmethod
+    async def unauthenticated_client(cls, env: str, server_url: str):
         # Create a connection with no credentials
-        metadata = _get_metadata(api_pb2.CLIENT_TYPE_CLIENT, None, __version__)
-        channel = create_channel(server_url, metadata)
-        stub = api_grpc.ModalClientStub(channel)  # type: ignore
+        # To be used with the token flow
+        return _Client(server_url, api_pb2.CLIENT_TYPE_CLIENT, None, no_verify=True)
 
-        try:
-            # Create token creation request
-            # Send some strings identifying the computer (these are shown to the user for security reasons)
-            create_req = api_pb2.TokenFlowCreateRequest(
-                node_name=platform.node(),
-                platform_name=platform.platform(),
-            )
-            create_resp = await stub.TokenFlowCreate(create_req)
+    async def start_token_flow(self) -> tuple[str, str]:
+        # Create token creation request
+        # Send some strings identifying the computer (these are shown to the user for security reasons)
+        req = api_pb2.TokenFlowCreateRequest(
+            node_name=platform.node(),
+            platform_name=platform.platform(),
+        )
+        resp = await self.stub.TokenFlowCreate(req)
+        return (resp.token_flow_id, resp.web_url)
 
-            console = Console()
-            with console.status("Waiting for authentication in the web browser...", spinner="dots"):
-                # Open the web url in the browser
-                link_text = f"[link={create_resp.web_url}]{create_resp.web_url}[/link]"
-                console.print(f"Launching {link_text} in your browser window")
-                if webbrowser.open_new_tab(create_resp.web_url):
-                    console.print("If this is not showing up, please copy the URL into your web browser manually")
-                else:
-                    console.print(
-                        "[red]Was not able to launch web browser[/red]"
-                        " - please go to the URL manually and complete the flow"
-                    )
-
-                # Wait for token forever
-                while True:
-                    wait_req = api_pb2.TokenFlowWaitRequest(token_flow_id=create_resp.token_flow_id, timeout=15.0)
-                    wait_resp = await stub.TokenFlowWait(wait_req)
-                    if not wait_resp.timeout:
-                        console.print("[green]Success![/green]")
-                        return (wait_resp.token_id, wait_resp.token_secret)
-        finally:
-            channel.close()
+    async def finish_token_flow(self, token_flow_id) -> tuple[str, str]:
+        # Wait for token forever
+        while True:
+            req = api_pb2.TokenFlowWaitRequest(token_flow_id=token_flow_id, timeout=15.0)
+            resp = await self.stub.TokenFlowWait(req)
+            if not resp.timeout:
+                return (resp.token_id, resp.token_secret)
 
     @classmethod
     async def from_env(cls, _override_config=None) -> "_Client":
@@ -225,9 +217,10 @@ class _Client:
                 return cls._client_from_env
             else:
                 client = _Client(server_url, client_type, credentials)
-                async_utils.on_shutdown(client.close())
+                await client._open()
+                async_utils.on_shutdown(client._close())
                 try:
-                    await client.verify()
+                    await client._verify()
                 except AuthError:
                     if not credentials:
                         creds_missing_msg = (
