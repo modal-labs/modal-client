@@ -544,7 +544,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
             pass
 
     @warn_if_generator_is_not_consumed
-    async def starmap(self, input_iterator, kwargs={}, order_outputs=None):
+    async def starmap(self, input_iterator, kwargs={}, order_outputs=None, return_exceptions=False):
         """Like `map` but spreads arguments over multiple function arguments
 
         Assumes every input is a sequence (e.g. a tuple)
@@ -562,7 +562,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
             order_outputs = not self._is_generator
 
         input_stream = stream.iterate(input_iterator)
-        async for item in self._map(input_stream, order_outputs, kwargs):
+        async for item in self._map(input_stream, order_outputs, return_exceptions, kwargs):
             yield item
 
     async def call_function(self, args, kwargs):
