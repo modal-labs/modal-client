@@ -245,3 +245,11 @@ def test_image_build_with_context_mount(client, servicer, tmp_path):
         assert files["data.txt"] == b"hello"
         assert files[os.path.join("data", "sub")] == b"world"
         assert len(files) == 2
+
+
+def test_image_env(client, servicer):
+    stub = Stub(image=Image.debian_slim().env(HELLO="world!"))
+
+    with stub.run(client=client) as running_app:
+        layers = get_image_layers(running_app["image"].object_id, servicer)
+        assert any("ENV HELLO=" in cmd and "world!" in cmd for cmd in layers[0].dockerfile_commands)
