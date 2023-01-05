@@ -269,6 +269,7 @@ async def _map_invocation(
     client: _Client,
     is_generator: bool,
     order_outputs: bool,
+    return_exceptions: bool,
     count_update_callback: Optional[Callable[[int, int], None]],
 ):
     request = api_pb2.FunctionMapRequest(function_id=function_id, parent_input_id=current_input_id())
@@ -353,7 +354,13 @@ async def _map_invocation(
                     yield item
 
     async def fetch_output(item):
-        output = await _process_result(item.result, client.stub, client)
+        try:
+            output = await _process_result(item.result, client.stub, client)
+        except Exception as e:
+            if return_exceptions:
+                output = e
+            else:
+                raise e
         return (item.idx, output)
 
     async def poll_outputs():
@@ -471,7 +478,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
     def is_generator(self) -> bool:
         return self._is_generator
 
-    async def _map(self, input_stream: AsyncIterable, order_outputs: bool, kwargs={}):
+    async def _map(self, input_stream: AsyncIterable, order_outputs: bool, return_exceptions: bool, kwargs={}):
         if order_outputs and self._is_generator:
             raise ValueError("Can't return ordered results for a generator")
 
@@ -480,7 +487,14 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         count_update_callback = self._output_mgr.function_progress_callback(self._tag) if self._output_mgr else None
 
         async for item in _map_invocation(
-            object_id, input_stream, kwargs, client, self._is_generator, order_outputs, count_update_callback
+            object_id,
+            input_stream,
+            kwargs,
+            client,
+            self._is_generator,
+            order_outputs,
+            return_exceptions,
+            count_update_callback,
         ):
             yield item
 
@@ -490,6 +504,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         *input_iterators,  # one input iterator per argument in the mapped-over function/generator
         kwargs={},  # any extra keyword arguments for the function
         order_outputs=None,  # defaults to True for regular functions, False for generators
+        return_exceptions=False,  # whether to propogate exceptions (False) or aggregate them in the results list (True)
     ):
         """Parallel map over a set of inputs.
 
@@ -516,7 +531,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
             order_outputs = not self._is_generator
 
         input_stream = stream.zip(*(stream.iterate(it) for it in input_iterators))
-        async for item in self._map(input_stream, order_outputs, kwargs):
+        async for item in self._map(input_stream, order_outputs, return_exceptions, kwargs):
             yield item
 
     async def for_each(self, *input_iterators, **kwargs):
@@ -529,7 +544,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
             pass
 
     @warn_if_generator_is_not_consumed
-    async def starmap(self, input_iterator, kwargs={}, order_outputs=None):
+    async def starmap(self, input_iterator, kwargs={}, order_outputs=None, return_exceptions=False):
         """Like `map` but spreads arguments over multiple function arguments
 
         Assumes every input is a sequence (e.g. a tuple)
@@ -547,7 +562,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
             order_outputs = not self._is_generator
 
         input_stream = stream.iterate(input_iterator)
-        async for item in self._map(input_stream, order_outputs, kwargs):
+        async for item in self._map(input_stream, order_outputs, return_exceptions, kwargs):
             yield item
 
     async def call_function(self, args, kwargs):
