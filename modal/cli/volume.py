@@ -18,6 +18,7 @@ from rich.table import Table
 from typer import Typer
 
 import modal
+from modal._location import display_location, parse_cloud_provider
 from modal.aio import aio_lookup
 from modal.client import AioClient
 from modal.shared_volume import AioSharedVolumeHandle, _SharedVolumeHandle
@@ -37,10 +38,15 @@ async def list():
     if sys.stdout.isatty():
         table = Table(title="Shared Volumes")
         table.add_column("Name")
+        table.add_column("Location")
         table.add_column("Created at", justify="right")
         locale_tz = datetime.now().astimezone().tzinfo
         for item in response.items:
-            table.add_row(item.label, str(datetime.fromtimestamp(item.created_at, tz=locale_tz)))
+            table.add_row(
+                item.label,
+                display_location(item.cloud_provider),
+                str(datetime.fromtimestamp(item.created_at, tz=locale_tz)),
+            )
         console = Console()
         console.print(table)
     else:
@@ -57,12 +63,13 @@ def some_func():
 
 
 @volume_cli.command(name="create", help="Create a named shared volume.")
-def create(name: str):
+def create(name: str, cloud: str = typer.Option("aws", help="Cloud provider to create the volume in. One of aws|gcp.")):
     stub = modal.Stub()
-    stub.entity = modal.SharedVolume()
+    cloud_provider = parse_cloud_provider(cloud)
+    stub.entity = modal.SharedVolume(cloud_provider=cloud_provider)
     stub.deploy(name=name, show_progress=False)
     console = Console()
-    console.print(f"Created volume '{name}'\n\nUsage:\n")
+    console.print(f"Created volume '{name}' in {display_location(cloud_provider)}. \n\nUsage:\n")
     usage = Syntax(gen_usage_code(name), "python")
     console.print(usage)
 
@@ -101,16 +108,6 @@ async def ls(volume_name: str, path: str = typer.Argument(default="/")):
     else:
         for entry in entries:
             print(entry.path)
-
-    if path == "/" and not entries:
-        # TODO(erikbern): consider this a big fat TODO for
-        # rethinking how we create and work with shared volumes
-        # across cloud vendors
-        print(
-            "Note: this command only lists data in AWS."
-            " If you created data on an A100 running in GCP,"
-            " it will not be listed here."
-        )
 
 
 PIPE_PATH = Path("-")
