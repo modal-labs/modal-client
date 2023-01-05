@@ -7,7 +7,6 @@ import time
 import warnings
 from dataclasses import dataclass
 from datetime import date, timedelta
-from enum import Enum
 from pathlib import Path
 from typing import (
     Any,
@@ -42,6 +41,7 @@ from ._blob_utils import (
 )
 from ._call_graph import InputInfo, reconstruct_call_graph
 from ._function_utils import FunctionInfo, LocalFunctionError, load_function_from_module
+from ._location import CloudProvider, parse_cloud_provider
 from ._output import OutputManager
 from ._pty import get_pty_info
 from ._serialization import deserialize, serialize
@@ -640,26 +640,6 @@ class _FunctionHandle(Handle, type_prefix="fu"):
 FunctionHandle, AioFunctionHandle = synchronize_apis(_FunctionHandle)
 
 
-class CloudProvider(Enum):
-    AWS = api_pb2.CLOUD_PROVIDER_AWS
-    GCP = api_pb2.CLOUD_PROVIDER_GCP
-    AUTO = api_pb2.CLOUD_PROVIDER_AUTO
-
-
-def parse_cloud_provider(value: str, gpu_config: api_pb2.GPUConfig) -> "api_pb2.CloudProvider.V":
-    """mdmd:hidden"""
-    try:
-        cloud_provider = CloudProvider[value.upper()]
-    except KeyError:
-        raise InvalidError(
-            f"Invalid cloud provider: {value}. Value must be one of {[x.name.lower() for x in CloudProvider]} (case-insensitive)."
-        )
-    if cloud_provider != CloudProvider.AWS and gpu_config.type != api_pb2.GPU_TYPE_A100:
-        raise InvalidError("Cloud selection only supported for functions running with A100 GPUs.")
-
-    return cloud_provider.value
-
-
 class _Function(Provider[_FunctionHandle]):
     """Functions are the basic units of serverless execution on Modal.
 
@@ -761,7 +741,12 @@ class _Function(Provider[_FunctionHandle]):
         self._interactive = interactive
         self._tag = self._info.get_tag()
         self._gpu_config = parse_gpu_config(gpu)
-        self._cloud_provider = parse_cloud_provider(cloud_provider, self._gpu_config) if cloud_provider else None
+        if cloud_provider:
+            self._cloud_provider = parse_cloud_provider(cloud_provider)
+            if self._cloud_provider != CloudProvider.AWS and self._gpu_config.type != api_pb2.GPU_TYPE_A100:
+                raise InvalidError("Cloud selection only supported for functions running with A100 GPUs.")
+        else:
+            self._cloud_provider = None
         super().__init__()
 
     async def _load(self, client, stub, app_id, loader, message_callback, existing_function_id):
