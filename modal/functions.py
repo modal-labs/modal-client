@@ -526,6 +526,18 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         If applied to a `stub.generator`, the results are returned as they are finished and can be
         out of order. By yielding zero or more than once, mapping over generators can also be used
         as a "flat map".
+
+        `return_exceptions` can be used to treat exceptions as successful results:
+        ```python notest
+        @stub.function
+        def my_func(a):
+            if a == 2:
+                raise Exception("ohno")
+            return a ** 2
+
+        # [0, 1, UserCodeException(Exception('ohno'))]
+        print(list(my_func.map(range(3), return_exceptions=True)))
+        ```
         """
         if order_outputs is None:
             order_outputs = not self._is_generator
