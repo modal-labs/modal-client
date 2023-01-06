@@ -664,9 +664,6 @@ class _Image(Provider[_ImageHandle]):
         )
         ```
         """
-        # TODO environment replacement, '$' is disallowed for now
-        if any("$" in val for (key, val) in vars.items()):
-            raise ValueError("'$' not allowed in values")
         return self.extend(
             dockerfile_commands=["FROM base"] + [f"ENV {key}={shlex.quote(val)}" for (key, val) in vars.items()]
         )
