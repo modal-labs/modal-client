@@ -650,7 +650,7 @@ class _Image(Provider[_ImageHandle]):
         """
         return self.extend(build_function=(raw_function, kwargs))
 
-    def env(self, **vars) -> "_Image":
+    def env(self, vars: dict[str, str]) -> "_Image":
         """Sets the environmental variables of the image.
 
         **Example**

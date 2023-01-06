@@ -248,7 +248,7 @@ def test_image_build_with_context_mount(client, servicer, tmp_path):
 
 
 def test_image_env(client, servicer):
-    stub = Stub(image=Image.debian_slim().env(HELLO="world!"))
+    stub = Stub(image=Image.debian_slim().env({"HELLO": "world!"}))
 
     with stub.run(client=client) as running_app:
         layers = get_image_layers(running_app["image"].object_id, servicer)
