@@ -650,6 +650,24 @@ class _Image(Provider[_ImageHandle]):
         """
         return self.extend(build_function=(raw_function, kwargs))
 
+    def env(self, vars: dict[str, str]) -> "_Image":
+        """Sets the environmental variables of the image.
+
+        **Example**
+
+        ```python
+        image = (
+            modal.Image.conda()
+                .env({"CONDA_OVERRIDE_CUDA": "11.2"})
+                .conda_install("jax", "cuda-nvcc", channels=["conda-forge", "nvidia"])
+                .pip_install("dm-haiku", "optax")
+        )
+        ```
+        """
+        return self.extend(
+            dockerfile_commands=["FROM base"] + [f"ENV {key}={shlex.quote(val)}" for (key, val) in vars.items()]
+        )
+
 
 synchronize_apis(_ImageHandle)
 Image, AioImage = synchronize_apis(_Image)
