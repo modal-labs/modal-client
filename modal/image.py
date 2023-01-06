@@ -281,13 +281,9 @@ class _Image(Provider[_ImageHandle]):
         flags = [
             ("--find-links", find_links),  # TODO(erikbern): allow multiple?
             ("--index-url", index_url),
-            ("--extra-index-url", extra_index_url)  # TODO(erikbern): allow multiple?
+            ("--extra-index-url", extra_index_url),  # TODO(erikbern): allow multiple?
         ]
-        extra_args = " ".join(
-            flag + " " + shlex.quote(value)
-            for flag, value in flags
-            if value is not None
-        )
+        extra_args = " ".join(flag + " " + shlex.quote(value) for flag, value in flags if value is not None)
         package_args = " ".join(shlex.quote(pkg) for pkg in pkgs)
 
         dockerfile_commands = [

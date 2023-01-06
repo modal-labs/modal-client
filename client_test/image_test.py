@@ -53,10 +53,8 @@ def test_image_python_packages(client, servicer):
         layers = get_image_layers(running_app["image"].object_id, servicer)
         assert any("pip install numpy" in cmd for cmd in layers[0].dockerfile_commands)
         assert any(
-            "pip install numpy scipy"
-            " --find-links 'https://abc?q=123'"
-            " --extra-index-url https://xyz"
-            in cmd for cmd in layers[0].dockerfile_commands
+            "pip install numpy scipy --find-links 'https://abc?q=123' --extra-index-url https://xyz" in cmd
+            for cmd in layers[0].dockerfile_commands
         )
 
 
