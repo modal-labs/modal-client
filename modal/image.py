@@ -655,12 +655,12 @@ class _Image(Provider[_ImageHandle]):
 
         **Example**
 
-        ```python notest
+        ```python
         image = (
             modal.Image.conda()
-                .env(CONDA_OVERRIDE_CUDA="11.2")
-                .conda_install(["jax", "cuda-nvcc"], channels=["conda-forge", "nvidia"])
-                .pip_install(["dm-haiku", "optax"])
+                .env({"CONDA_OVERRIDE_CUDA": "11.2"})
+                .conda_install("jax", "cuda-nvcc", channels=["conda-forge", "nvidia"])
+                .pip_install("dm-haiku", "optax")
         )
         ```
         """
