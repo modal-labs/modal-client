@@ -44,10 +44,18 @@ def get_image_layers(image_id: str, servicer) -> List[api_pb2.Image]:
 
 def test_image_python_packages(client, servicer):
     stub = Stub()
-    stub["image"] = Image.debian_slim().pip_install("numpy")
+    stub["image"] = (
+        Image.debian_slim()
+        .pip_install("numpy")
+        .pip_install("numpy", "scipy", extra_index_url="https://xyz", find_links="https://abc?q=123")
+    )
     with stub.run(client=client) as running_app:
         layers = get_image_layers(running_app["image"].object_id, servicer)
         assert any("pip install numpy" in cmd for cmd in layers[0].dockerfile_commands)
+        assert any(
+            "pip install numpy scipy --find-links 'https://abc?q=123' --extra-index-url https://xyz" in cmd
+            for cmd in layers[0].dockerfile_commands
+        )
 
 
 def test_image_kwargs_validation(servicer, client):

@@ -269,19 +269,29 @@ class _Image(Provider[_ImageHandle]):
     def pip_install(
         self,
         *packages: Union[str, list[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
-        find_links: Optional[str] = None,
+        find_links: Optional[str] = None,  # Passes -f (--find-links) pip install
+        index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
+        extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
     ) -> "_Image":
         """Install a list of Python packages using pip."""
         pkgs = _flatten_str_args("pip_install", "packages", packages)
         if not pkgs:
             return self
 
-        find_links_arg = f"-f {find_links}" if find_links else ""
+        flags = [
+            ("--find-links", find_links),  # TODO(erikbern): allow multiple?
+            ("--index-url", index_url),
+            ("--extra-index-url", extra_index_url),  # TODO(erikbern): allow multiple?
+        ]
+        extra_args = " ".join(flag + " " + shlex.quote(value) for flag, value in flags if value is not None)
         package_args = " ".join(shlex.quote(pkg) for pkg in pkgs)
 
         dockerfile_commands = [
             "FROM base",
-            f"RUN python -m pip install {package_args} {find_links_arg}",
+            f"RUN python -m pip install {package_args} {extra_args}",
+            # TODO(erikbern): if extra_args is empty, we add a superfluous space at the end.
+            # However removing it at this point would cause image hashes to change.
+            # Maybe let's remove it later when/if client requirements change.
         ]
 
         return self.extend(dockerfile_commands=dockerfile_commands)
