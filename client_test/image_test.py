@@ -142,6 +142,24 @@ def test_image_pip_install_pyproject(servicer, client):
         assert any("pip install 'banana >=1.2.0' 'potato >=0.1.0'" in cmd for cmd in layers[0].dockerfile_commands)
 
 
+def test_image_pip_install_pyproject_with_optionals(servicer, client):
+    pyproject_toml = os.path.join(os.path.dirname(__file__), "supports/test-pyproject.toml")
+
+    stub = Stub()
+    stub["image"] = Image.debian_slim().pip_install_from_pyproject(
+        pyproject_toml, optional_dependencies=["dev", "test"]
+    )
+    with stub.run(client=client) as running_app:
+        layers = get_image_layers(running_app["image"].object_id, servicer)
+
+        print(layers[0].dockerfile_commands)
+        assert any(
+            "pip install 'banana >=1.2.0' 'potato >=0.1.0' 'linting-tool >=0.0.0' 'pytest >=1.2.0'" in cmd
+            for cmd in layers[0].dockerfile_commands
+        )
+        assert not (any("'mkdocs >=1.4.2'" in cmd for cmd in layers[0].dockerfile_commands))
+
+
 def test_conda_install(servicer, client):
     stub = Stub(image=Image.conda().pip_install("numpy").conda_install("pymc3", "theano").pip_install("scikit-learn"))
 
