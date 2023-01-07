@@ -20,7 +20,7 @@ from ._ipython import is_notebook
 from ._output import OutputManager, step_completed, step_progress
 from ._pty import exec_cmd, write_stdin_to_pty_stream
 from .app import _App, container_app, is_local
-from .client import _Client, HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT
+from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
 from .exception import InvalidError, deprecation_warning
 from .functions import _Function, _FunctionHandle
@@ -677,12 +677,25 @@ class _Stub:
 
         To learn how to use Modal with popular web frameworks, see the
         [guide on web endpoints](https://modal.com/docs/guide/webhooks).
+
+        All webhook requests have a 150s maximum request time for the HTTP request itself. However, the underlying functions can
+        run for longer and return results to the caller on completion.
+
+        The two `wait_for_response` modes for webhooks are as follows:
+        * wait_for_response=True - tries to fulfill the request on the original URL, but returns a 302 rediect after ~150s to a result url (original url with an added __modal_function_id=... query parameter)
+        * wait_for_response=False - immediately returns a 202 ACCEPTED response with a json payload: {"result_url": "..."} containing the result "redirect" url from above (which in turn redirects to itself every 150s)
         """
         if image is None:
             image = self._get_default_image()
         info = FunctionInfo(raw_f)
         mounts = [*self._get_function_mounts(info), *mounts]
         secrets = self._get_function_secrets(raw_f, secret, secrets)
+
+        if not wait_for_response:
+            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
+        else:
+            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
+
         function = _Function(
             info,
             image=image,
@@ -694,11 +707,8 @@ class _Stub:
             webhook_config=api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_FUNCTION,
                 method=method,
-                wait_for_response=wait_for_response,
                 requested_suffix=label,
-                async_mode=api_pb2.WEBHOOK_ASYNC_MODE_DISABLED
-                if wait_for_response
-                else api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER,
+                async_mode=_response_mode,
             ),
             cpu=cpu,
             memory=memory,
@@ -745,12 +755,22 @@ class _Stub:
 
         To learn how to use Modal with popular web frameworks, see the
         [guide on web endpoints](https://modal.com/docs/guide/webhooks).
+
+        The two `wait_for_response` modes for webhooks are as follows:
+        * wait_for_response=True - tries to fulfill the request on the original URL, but returns a 302 redirect after ~150s to a result URL (original URL with an added `__modal_function_id=fc-1234abcd` query parameter)
+        * wait_for_response=False - immediately returns a 202 ACCEPTED response with a json payload: {"result_url": "..."} containing the result "redirect" url from above (which in turn redirects to itself every 150s)
         """
         if image is None:
             image = self._get_default_image()
         info = FunctionInfo(asgi_app)
         mounts = [*self._get_function_mounts(info), *mounts]
         secrets = self._get_function_secrets(asgi_app, secret, secrets)
+
+        if not wait_for_response:
+            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
+        else:
+            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
+
         function = _Function(
             info,
             image=image,
@@ -759,14 +779,7 @@ class _Stub:
             gpu=gpu,
             mounts=mounts,
             shared_volumes=shared_volumes,
-            webhook_config=api_pb2.WebhookConfig(
-                type=_webhook_type,
-                wait_for_response=wait_for_response,
-                requested_suffix=label,
-                async_mode=api_pb2.WEBHOOK_ASYNC_MODE_DISABLED
-                if wait_for_response
-                else api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER,
-            ),
+            webhook_config=api_pb2.WebhookConfig(type=_webhook_type, requested_suffix=label, async_mode=_response_mode),
             cpu=cpu,
             memory=memory,
             proxy=proxy,
