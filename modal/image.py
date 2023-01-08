@@ -322,13 +322,13 @@ class _Image(Provider[_ImageHandle]):
     def pip_install_from_pyproject(
         self,
         pyproject_toml: str,
-        optional_dependencies: Optional[List[str]] = None,
+        optional_dependencies: List[str] = [],
     ):
         """Install dependencies specified by a pyproject.toml file.
 
         When optional_dependencies, a list of the keys of the
-        optional-dependencies section(s) of the pyproject.toml file 
-        (e.g. test, doc, experiment, etc), is provided, 
+        optional-dependencies section(s) of the pyproject.toml file
+        (e.g. test, doc, experiment, etc), is provided,
         all of those packages in each section are installed as well."""
         from modal import is_local
 
@@ -339,15 +339,16 @@ class _Image(Provider[_ImageHandle]):
         pyproject_toml = os.path.expanduser(pyproject_toml)
 
         config = toml.load(pyproject_toml)
+
+        dependencies = []
+        dependencies.extend(config["project"]["dependencies"])
         if optional_dependencies:
             optionals = config["project"]["optional-dependencies"]
-            for dep in optional_dependencies:
-                if dep in optionals:
-                    config["project"]["dependencies"].extend(
-                        config["project"]["optional-dependencies"][dep]
-                    )
+            for dep_group_name in optional_dependencies:
+                if dep_group_name in optionals:
+                    dependencies.extend(optionals[dep_group_name])
 
-        return self.pip_install(*config["project"]["dependencies"])
+        return self.pip_install(*dependencies)
 
     def poetry_install_from_file(
         self,
