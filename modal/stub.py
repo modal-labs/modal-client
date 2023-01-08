@@ -382,11 +382,11 @@ class _Stub:
                     output_mgr.print_if_visible(f"⚡️ Updating app {existing_app_id}...")
 
                 async with self._run(client, output_mgr, existing_app_id, mode=StubRunMode.SERVE) as app:
+                    client.set_pre_stop(app.disconnect)
                     existing_app_id = app.app_id
                     event = await event_agen.__anext__()
         finally:
             await event_agen.aclose()
-            await app.disconnect()
 
     async def deploy(
         self,

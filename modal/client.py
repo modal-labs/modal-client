@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import platform
 import warnings
-from typing import Optional
+from typing import Callable, Optional
 
 from aiohttp import ClientConnectorError, ClientResponseError
 from google.protobuf import empty_pb2
@@ -13,21 +13,13 @@ from grpclib import GRPCError, Status
 from modal_proto import api_grpc, api_pb2
 from modal_utils import async_utils
 from modal_utils.async_utils import synchronize_apis
-from modal_utils.grpc_utils import (
-    create_channel,
-    retry_transient_errors,
-)
+from modal_utils.grpc_utils import create_channel, retry_transient_errors
 from modal_utils.http_utils import http_client_with_tls
 from modal_version import __version__
 
 from ._tracing import inject_tracing_context
 from .config import config, logger
-from .exception import (
-    AuthError,
-    ConnectionError,
-    DeprecationError,
-    VersionError,
-)
+from .exception import AuthError, ConnectionError, DeprecationError, VersionError
 
 HEARTBEAT_INTERVAL = 15.0
 HEARTBEAT_TIMEOUT = 10.1
@@ -96,6 +88,7 @@ class _Client:
         self.credentials = credentials
         self.version = version
         self.no_verify = no_verify
+        self._pre_stop: Optional[Callable[[], None]] = None
         self._channel = None
         self._stub = None
 
@@ -114,8 +107,22 @@ class _Client:
         self._stub = api_grpc.ModalClientStub(self._channel)  # type: ignore
 
     async def _close(self):
+        if self._pre_stop is not None:
+            logger.debug("Client: running pre-stop coroutine before shutting down")
+            await self._pre_stop()  # type: ignore
+
         if self._channel is not None:
             self._channel.close()
+
+    def set_pre_stop(self, pre_stop: Callable[[], None]):
+        """mdmd:hidden"""
+        # hack: stub.serve() gets into a losing race with the `on_shutdown` client
+        # teardown when an interrupt signal is received (eg. KeyboardInterrupt).
+        # By registering a pre-stop fn stub.serve() can have its teardown
+        # performed before the client is disconnected.
+        #
+        # ref: github.com/modal-labs/modal-client/pull/108
+        self._pre_stop = pre_stop
 
     async def _verify(self):
         logger.debug("Client: Starting")
