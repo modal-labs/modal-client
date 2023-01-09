@@ -6,7 +6,7 @@ import os
 import shlex
 import sys
 from pathlib import Path
-from typing import Any, Callable, Collection, Optional, Union
+from typing import Any, Callable, Collection, List, Optional, Union
 
 import toml
 
@@ -322,8 +322,14 @@ class _Image(Provider[_ImageHandle]):
     def pip_install_from_pyproject(
         self,
         pyproject_toml: str,
+        optional_dependencies: List[str] = [],
     ):
-        """Install dependencies specified by a pyproject.toml file."""
+        """Install dependencies specified by a pyproject.toml file.
+
+        When optional_dependencies, a list of the keys of the
+        optional-dependencies section(s) of the pyproject.toml file
+        (e.g. test, doc, experiment, etc), is provided,
+        all of those packages in each section are installed as well."""
         from modal import is_local
 
         # Don't re-run inside container.
@@ -334,7 +340,15 @@ class _Image(Provider[_ImageHandle]):
 
         config = toml.load(pyproject_toml)
 
-        return self.pip_install(*config["project"]["dependencies"])
+        dependencies = []
+        dependencies.extend(config["project"]["dependencies"])
+        if optional_dependencies:
+            optionals = config["project"]["optional-dependencies"]
+            for dep_group_name in optional_dependencies:
+                if dep_group_name in optionals:
+                    dependencies.extend(optionals[dep_group_name])
+
+        return self.pip_install(*dependencies)
 
     def poetry_install_from_file(
         self,
