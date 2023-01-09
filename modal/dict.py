@@ -43,7 +43,9 @@ class _DictHandle(Handle, type_prefix="di"):
         return resp.found
 
     async def len(self) -> int:
-        """Returns the length of the dictionary."""
+        """
+        Returns the length of the dictionary, _including any expired keys_.
+        """
         req = api_pb2.DictLenRequest(dict_id=self.object_id)
         resp = await self._client.stub.DictLen(req)
         return resp.len
@@ -104,8 +106,11 @@ class _Dict(Provider[_DictHandle]):
     Keys and values can be essentially any object, so long as it can be
     serialized by `cloudpickle`, including Modal objects.
 
-    A `Dict`'s lifetime matches the lifetime of the app it's attached to. On app completion
-    or after stopping an app any associated `Dict` objects are cleaned up.
+    **Lifetime of dictionary and its items**
+
+    A `Dict`'s lifetime matches the lifetime of the app it's attached to, but invididual keys expire after 30 days.
+    Because of this, `Dict`s are best used as a cache and not relied on for persistent storage.
+    On app completion or after stopping an app any associated `Dict` objects are cleaned up.
 
     **Usage**
 
