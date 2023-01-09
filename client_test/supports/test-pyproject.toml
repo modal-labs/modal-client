@@ -28,3 +28,14 @@ dependencies = [
     "banana >=1.2.0",
     "potato >=0.1.0",
 ]
+
+[project.optional-dependencies]
+dev = [
+    "linting-tool >=0.0.0",
+]
+test = [
+    "pytest >=1.2.0",
+]
+doc = [
+    "mkdocs >=1.4.2",
+]
