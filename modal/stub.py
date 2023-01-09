@@ -20,7 +20,7 @@ from ._ipython import is_notebook
 from ._output import OutputManager, step_completed, step_progress
 from ._pty import exec_cmd, write_stdin_to_pty_stream
 from .app import _App, container_app, is_local
-from .client import _Client, HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT
+from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
 from .exception import InvalidError, deprecation_warning
 from .functions import _Function, _FunctionHandle
@@ -386,7 +386,8 @@ class _Stub:
                     event = await event_agen.__anext__()
         finally:
             await event_agen.aclose()
-            await app.disconnect()
+            if app:
+                await app.disconnect()
 
     async def deploy(
         self,
