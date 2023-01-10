@@ -355,8 +355,12 @@ class OutputManager:
                             else:
                                 # If we're not showing progress, there's no need to buffer lines,
                                 # because the progress spinner can't interfere with output.
-                                self.stdout.write(log.data)
-                                self.stdout.flush()
+                                #
+                                # Flush data in chunks because write is blocking.
+                                # TODO: make non-blocking write work.
+                                for i in range(0, len(log.data), 64):
+                                    self.stdout.write(log.data[i : i + 64])
+                                    self.stdout.flush()
             for stream in line_buffers.values():
                 stream.finalize()
 
