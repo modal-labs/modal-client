@@ -1,7 +1,9 @@
 # Copyright Modal Labs 2022
+import asyncio
 import contextlib
 import inspect
 import os
+import signal
 import sys
 import warnings
 from datetime import date
@@ -17,6 +19,7 @@ from modal_utils.decorator_utils import decorator_with_options
 
 from ._function_utils import FunctionInfo
 from ._ipython import is_notebook
+from ._live_reload import MODAL_AUTORELOAD_ENV, restart_serve
 from ._output import OutputManager, step_completed, step_progress
 from ._pty import exec_cmd, write_stdin_to_pty_stream
 from .app import _App, container_app, is_local
@@ -243,8 +246,11 @@ class _Stub:
                 logs_loop = tc.create_task(
                     output_mgr.get_logs_loop(app_id, client, status_spinner, last_log_entry_id or "")
                 )
-            initialized_msg = f"Initialized. [grey70]View app at [underline]{app._app_page_url}[/underline][/grey70]"
-            output_mgr.print_if_visible(step_completed(initialized_msg))
+            if MODAL_AUTORELOAD_ENV not in os.environ:
+                initialized_msg = (
+                    f"Initialized. [grey70]View app at [underline]{app._app_page_url}[/underline][/grey70]"
+                )
+                output_mgr.print_if_visible(step_completed(initialized_msg))
 
             try:
                 # Create all members
@@ -303,7 +309,7 @@ class _Stub:
                 )
             else:
                 output_mgr.print_if_visible(step_completed("App aborted."))
-        else:
+        elif mode != StubRunMode.SERVE:
             output_mgr.print_if_visible(step_completed("App completed."))
         self._app_id = None
 
@@ -344,7 +350,7 @@ class _Stub:
         Changes to decorator arguments (eg. `timeout`, `gpu`, `shared_volumes`) will not propogate on live updates,
         just web handle function bodies. Stop and restart your webhook serving process to propogate these changes.
         """
-        from ._watcher import TIMEOUT, watch
+        from ._watcher import AppChange, watch
 
         if not is_local():
             raise InvalidError(
@@ -367,26 +373,42 @@ class _Stub:
         if client is None:
             client = await _Client.from_env()
 
-        output_mgr = OutputManager(stdout, show_progress)
         if timeout is None:
             timeout = config["serve_timeout"]
-        event_agen = watch(self, output_mgr, timeout)
-        event = await event_agen.__anext__()
 
-        app = None
-        existing_app_id = None
+        output_mgr = OutputManager(stdout, show_progress)
 
-        try:
-            while event != TIMEOUT:
-                if existing_app_id:
-                    output_mgr.print_if_visible(f"⚡️ Updating app {existing_app_id}...")
-
+        if MODAL_AUTORELOAD_ENV in os.environ:
+            existing_app_id = os.environ[MODAL_AUTORELOAD_ENV]
+            output_mgr.print_if_visible(f"⚡️ Updating app {existing_app_id}...")
+            try:
                 async with self._run(client, output_mgr, existing_app_id, mode=StubRunMode.SERVE) as app:
+                    await asyncio.sleep(1e10)  # never awake except for exceptions
+            except asyncio.exceptions.CancelledError:
+                return
+        else:
+            event_agen = watch(self, output_mgr, timeout)
+            event = await event_agen.__anext__()
+
+            curr_proc = None
+            try:
+                async with self._run(client, output_mgr, None, mode=StubRunMode.SERVE) as app:
                     client.set_pre_stop(app.disconnect)
                     existing_app_id = app.app_id
+                    event = await event_agen.__anext__()  # wait for 1st modification before restarting
+
+                while event != AppChange.TIMEOUT:
+                    curr_proc = await restart_serve(
+                        existing_app_id=app.app_id, prev_proc=curr_proc, output_mgr=output_mgr
+                    )
                     event = await event_agen.__anext__()
-        finally:
-            await event_agen.aclose()
+            finally:
+                if curr_proc:
+                    try:
+                        curr_proc.send_signal(signal.SIGINT)
+                    except ProcessLookupError:
+                        logger.warning("Could not interrupt app serve. Supervised process already terminated.")
+                await event_agen.aclose()
 
     async def deploy(
         self,
