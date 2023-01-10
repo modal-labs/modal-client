@@ -919,8 +919,17 @@ class _Function(Provider[_FunctionHandle]):
             raise
 
         if response.web_url:
+            # Ensure terms used here match terms used in modal.com/docs/guide/webhook-urls doc.
+            if response.web_url_info.truncated:
+                suffix = " [grey70](label truncated)[/grey70]"
+            elif response.web_url_info.has_unique_hash:
+                suffix = " [grey70](label includes conflict-avoidance hash)[/grey70]"
+            else:
+                suffix = ""
             # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
-            message_callback(f"Created {self._tag} => [magenta underline]{response.web_url}[/magenta underline]")
+            message_callback(
+                f"Created {self._tag} => [magenta underline]{response.web_url}[/magenta underline]{suffix}"
+            )
         else:
             message_callback(f"Created {self._tag}.")
 
