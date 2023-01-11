@@ -155,8 +155,6 @@ _SETTINGS = {
     "automount": _Setting(True, transform=lambda x: x not in ("", "0")),
     "tracing_enabled": _Setting(False, transform=lambda x: x not in ("", "0")),
     "profiling_enabled": _Setting(False, transform=lambda x: x not in ("", "0")),
-    "worker_proxy_active": _Setting(False, transform=lambda x: x not in ("", "0")),
-    "server_socket_filename": _Setting("unix:/tmp/modal-external-server.sock"),
 }
 
 
