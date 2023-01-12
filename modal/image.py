@@ -99,7 +99,7 @@ class _Image(Provider[_ImageHandle]):
     """Base class for container images to run functions in.
 
     Do not construct this class directly; instead use one of its static factory methods,
-    like `modal.Image.from_dockerhub` or `modal.Image.conda`.
+    such as `modal.Image.debian_slim`, `modal.Image.from_dockerhub`, or `modal.Image.conda`.
     """
 
     def __init__(
@@ -261,6 +261,20 @@ class _Image(Provider[_ImageHandle]):
         return _Image(base_images={"base": self}, **kwargs)
 
     def copy(self, mount: _Mount, remote_path: Union[str, Path] = "."):
+        """Copy the entire contents of a `modal.Mount` into an image.
+        Useful when files only available locally are required during the image
+        build process.
+
+        **Example**
+
+        ```python
+        static_images_dir = "./static"
+        # place all static images in root of mount
+        mount = modal.Mount(local_dir=static_images_dir, remote_dir="/")
+        # place mount's contents into /static directory of image.
+        image = modal.Image.debian_slim().copy(mount, remote_path="/static")
+        ```
+        """
         return self.extend(
             dockerfile_commands=["FROM base", f"COPY . {remote_path}"],  # copy everything from the supplied mount
             context_mount=mount,
@@ -273,7 +287,14 @@ class _Image(Provider[_ImageHandle]):
         index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
         extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
     ) -> "_Image":
-        """Install a list of Python packages using pip."""
+        """Install a list of Python packages using pip.
+
+        **Example**
+
+        ```python
+        image = modal.Image.debian_slim().pip_install("click", "httpx~=0.23.3")
+        ```
+        """
         pkgs = _flatten_str_args("pip_install", "packages", packages)
         if not pkgs:
             return self
@@ -324,10 +345,10 @@ class _Image(Provider[_ImageHandle]):
         pyproject_toml: str,
         optional_dependencies: List[str] = [],
     ):
-        """Install dependencies specified by a pyproject.toml file.
+        """Install dependencies specified by a `pyproject.toml` file.
 
-        When optional_dependencies, a list of the keys of the
-        optional-dependencies section(s) of the pyproject.toml file
+        When `optional_dependencies`, a list of the keys of the
+        optional-dependencies section(s) of the `pyproject.toml` file
         (e.g. test, doc, experiment, etc), is provided,
         all of those packages in each section are installed as well."""
         from modal import is_local
@@ -356,8 +377,8 @@ class _Image(Provider[_ImageHandle]):
         poetry_lockfile: Optional[
             str
         ] = None,  # Path to the lockfile. If not provided, uses poetry.lock in the same directory.
-        ignore_lockfile=False,  # If set to True, it will not use poetry.lock
-        old_installer=False,  # If set to True, use old installer. See https://github.com/python-poetry/poetry/issues/3336
+        ignore_lockfile: bool = False,  # If set to True, it will not use poetry.lock
+        old_installer: bool = False,  # If set to True, use old installer. See https://github.com/python-poetry/poetry/issues/3336
     ):
         """Install poetry dependencies specified by a pyproject.toml file.
 
@@ -381,7 +402,7 @@ class _Image(Provider[_ImageHandle]):
             if poetry_lockfile is None:
                 p = Path(poetry_pyproject_toml).parent / "poetry.lock"
                 if not p.exists():
-                    raise NotFoundError(f"poetry.lock not found at {p}")
+                    raise NotFoundError(f"poetry.lock not found at inferred location, {p}")
                 poetry_lockfile = p.as_posix()
             context_files["/.poetry.lock"] = poetry_lockfile
             dockerfile_commands += ["COPY /.poetry.lock /tmp/poetry/poetry.lock"]
@@ -543,7 +564,9 @@ class _Image(Provider[_ImageHandle]):
         You can use the `setup_commands` argument to run any
         commands in the image before Modal is installed.
         This might be useful if Python or pip is not installed.
-        For instance:
+
+        **Example**
+
         ```python
         modal.Image.from_dockerhub(
           "gisops/valhalla:latest",
@@ -627,7 +650,14 @@ class _Image(Provider[_ImageHandle]):
         self,
         *packages: Union[str, list[str]],  # A list of packages, e.g. ["ssh", "libpq-dev"]
     ) -> "_Image":
-        """Install a list of Debian packages using `apt`."""
+        """Install a list of Debian packages using `apt`.
+
+        **Example**
+
+        ```python
+        image = modal.Image.debian_slim().apt_install("git")
+        ```
+        """
         pkgs = _flatten_str_args("apt_install", "packages", packages)
         if not pkgs:
             return self
