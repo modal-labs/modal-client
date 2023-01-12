@@ -360,7 +360,7 @@ class OutputManager:
                                 written = 0
                                 while written < len(log.data):
                                     try:
-                                        written += os.write(self.stdout.fileno(), log.data.encode("utf-8"))
+                                        written += os.write(self.stdout.fileno(), log.data[written:].encode("utf-8"))
                                         self.stdout.flush()
                                     except BlockingIOError:
                                         # Just try again.
