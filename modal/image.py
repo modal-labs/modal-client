@@ -317,6 +317,49 @@ class _Image(Provider[_ImageHandle]):
 
         return self.extend(dockerfile_commands=dockerfile_commands)
 
+    def pip_install_private_repos(
+        self,
+        *repositories: str,
+        git_user: str,
+        secrets: Collection[_Secret] = [],
+    ) -> "_Image":
+        """
+        Install a list of Python packages from private git repositories using pip.
+
+        Currently supports Github only, and requires a modal.Secret be provided that
+        contains GITHUB_TOKEN key-value pair. This token should have permissions to read the
+        provided list of private repositories.
+
+        For Github it is recommended to use a "fine-grained" access tokens (beta). These tokens
+        are repo-scoped, and avoid granting read permission across all of a user's private repos.
+
+        ```python
+        image = (
+            modal.Image
+            .debian_slim()
+            .pip_install_private_repos(
+                "github.com/ecorp/private-one@1.0.0",
+                "github.com/ecorp/private-two@main"
+                "github.com/ecorp/private-three@d4776502"
+                "github.com/ecorp/private-four#subdirectory=inner",  # install from 'inner' on latest of default branch
+                secrets=[modal.Secret.from_name("github-read-private")],
+            )
+        )
+        ```
+        """
+        if not secrets:
+            raise InvalidError(
+                "No secrets provided to function. Installing private packages requires tokens to be passed via modal.Secret objects."
+            )
+
+        # TODO: validate user inputs
+
+        dockerfile_commands = [
+            "FROM base",
+            "RUN apt-get update",
+            f"RUN apt-get install -y git",
+        ] + [f"RUN python3 -m pip install git+https://{git_user}:$GITHUB_TOKEN@{repo_ref}" for repo_ref in repositories]
+
     def pip_install_from_requirements(
         self,
         requirements_txt: str,  # Path to a requirements.txt file.
