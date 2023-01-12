@@ -3,6 +3,7 @@ import asyncio
 import contextlib
 import functools
 import os
+import platform
 import select
 import sys
 import traceback
@@ -11,6 +12,8 @@ from typing import Optional, Tuple, no_type_check
 from modal.queue import _QueueHandle
 from modal_proto import api_pb2
 from modal_utils.async_utils import TaskContext
+
+from .exception import InvalidError
 
 
 def get_winsz(fd) -> Tuple[Optional[int], Optional[int]]:
@@ -148,6 +151,9 @@ def get_pty_info() -> api_pb2.PTYInfo:
 
 @contextlib.asynccontextmanager
 async def write_stdin_to_pty_stream(queue: _QueueHandle):
+    if platform.system() == "Windows":
+        raise InvalidError("Interactive mode is not currently supported on Windows.")
+
     quit_pipe_read, quit_pipe_write = os.pipe()
 
     set_nonblocking(sys.stdin.fileno())
