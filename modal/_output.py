@@ -358,14 +358,17 @@ class OutputManager:
 
                                 data = log.data.encode("utf-8")
                                 written = 0
+                                n_retries = 0
                                 while written < len(data):
                                     try:
                                         written += self.stdout.buffer.write(data[written:])
                                         self.stdout.flush()
                                     except BlockingIOError:
-                                        pass
-                                        # Just try again.
-                                        # self.stdout.flush()
+                                        if n_retries >= 5:
+                                            raise
+                                        n_retries += 1
+                                        await asyncio.sleep(0.1)
+
             for stream in line_buffers.values():
                 stream.finalize()
 
