@@ -3,6 +3,7 @@ import asyncio
 import contextlib
 import functools
 import io
+import os
 import platform
 import re
 import sys
@@ -355,12 +356,15 @@ class OutputManager:
                             else:
                                 # If we're not showing progress, there's no need to buffer lines,
                                 # because the progress spinner can't interfere with output.
-                                #
-                                # Flush data in chunks because write is blocking.
-                                # TODO: make non-blocking write work.
-                                for i in range(0, len(log.data), 64):
-                                    self.stdout.write(log.data[i : i + 64])
-                                    self.stdout.flush()
+
+                                written = 0
+                                while written < len(log.data):
+                                    try:
+                                        written += os.write(self.stdout.fileno(), log.data.encode("utf-8"))
+                                        self.stdout.flush()
+                                    except BlockingIOError:
+                                        # Just try again.
+                                        self.stdout.flush()
             for stream in line_buffers.values():
                 stream.finalize()
 
@@ -381,8 +385,10 @@ class OutputManager:
                     logger.debug("Stream closed. Retrying ...")
                     continue
                 raise
+            except Exception as exc:
+                logger.exception(f"Failed to fetch logs: {exc}")
+                await asyncio.sleep(1)
 
             if last_log_batch_entry_id is None:
                 break
-            # TODO: catch errors, sleep, and retry?
         logger.debug("Logging exited gracefully")
