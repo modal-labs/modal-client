@@ -5,10 +5,12 @@ import site
 import sys
 import sysconfig
 import typing
+from enum import Enum
 from pathlib import Path
-from typing import Dict, Union, Any, Optional, Type, Callable
+from typing import Any, Callable, Dict, Optional, Type, Union
 
 from modal_proto import api_pb2
+
 from ._serialization import serialize
 from .config import config, logger
 from .exception import InvalidError
@@ -29,6 +31,12 @@ SYS_PREFIXES = set(
         site.getusersitepackages(),
     )
 )
+
+
+class FunctionInfoType(Enum):
+    PACKAGE = "package"
+    FILE = "file"
+    SERIALIZED = "serialized"
 
 
 class LocalFunctionError(InvalidError):
@@ -95,8 +103,7 @@ class FunctionInfo:
             self.module_name = module.__spec__.name
             self.remote_dir = os.path.join(ROOT_DIR, module.__package__.split(".")[0])
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
-            self.is_package = True
-            self.is_file = False
+            self.type = FunctionInfoType.PACKAGE
             self.serialized_function = None
         elif hasattr(module, "__file__") and not serialized:
             # This generally covers the case where it's invoked with
@@ -105,15 +112,13 @@ class FunctionInfo:
             self.module_name = inspect.getmodulename(self.file)
             self.base_dir = os.path.dirname(self.file)
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
-            self.is_package = False
-            self.is_file = True
+            self.type = FunctionInfoType.FILE
             self.serialized_function = None
         else:
             self.module_name = None
             self.base_dir = os.path.abspath("")  # get current dir
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_SERIALIZED
-            self.is_package = False
-            self.is_file = False
+            self.type = FunctionInfoType.SERIALIZED
             self.serialized_function = serialize(self.raw_f)
             logger.debug(f"Serializing {self.raw_f.__qualname__}, size is {len(self.serialized_function)}")
 
@@ -126,7 +131,7 @@ class FunctionInfo:
                 )
 
     def get_mounts(self) -> Dict[str, _Mount]:
-        if self.is_package:
+        if self.type == FunctionInfoType.PACKAGE:
             mounts = {
                 self.base_dir: _Mount(
                     local_dir=self.base_dir,
@@ -135,7 +140,7 @@ class FunctionInfo:
                     condition=package_mount_condition,
                 )
             }
-        elif self.is_file:
+        elif self.type == FunctionInfoType.FILE:
             mounts = {
                 self.file: _Mount(
                     local_file=self.file,
@@ -143,7 +148,7 @@ class FunctionInfo:
                 )
             }
         else:
-            return {}
+            mounts = {}
 
         if not config.get("automount"):
             return filter_safe_mounts(mounts)
