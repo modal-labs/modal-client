@@ -3,7 +3,6 @@ import asyncio
 import contextlib
 import functools
 import io
-import os
 import platform
 import re
 import sys
@@ -361,11 +360,12 @@ class OutputManager:
                                 written = 0
                                 while written < len(data):
                                     try:
-                                        written += os.write(self.stdout.fileno(), data[written:])
+                                        written += self.stdout.buffer.write(data[written:])
                                         self.stdout.flush()
                                     except BlockingIOError:
+                                        pass
                                         # Just try again.
-                                        self.stdout.flush()
+                                        # self.stdout.flush()
             for stream in line_buffers.values():
                 stream.finalize()
 
