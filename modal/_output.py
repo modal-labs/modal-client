@@ -357,10 +357,11 @@ class OutputManager:
                                 # If we're not showing progress, there's no need to buffer lines,
                                 # because the progress spinner can't interfere with output.
 
+                                data = log.data.encode("utf-8")
                                 written = 0
-                                while written < len(log.data):
+                                while written < len(data):
                                     try:
-                                        written += os.write(self.stdout.fileno(), log.data[written:].encode("utf-8"))
+                                        written += os.write(self.stdout.fileno(), data[written:])
                                         self.stdout.flush()
                                     except BlockingIOError:
                                         # Just try again.
