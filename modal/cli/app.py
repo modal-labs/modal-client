@@ -2,8 +2,9 @@
 import asyncio
 
 import typer
-from click import ClickException
+from click import ClickException, UsageError
 from google.protobuf import empty_pb2
+from grpclib import GRPCError, Status
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.table import Table
@@ -100,6 +101,11 @@ def app_logs(app_id: str):
 
     try:
         sync_command()
+    except GRPCError as exc:
+        if exc.status in (Status.INVALID_ARGUMENT, Status.NOT_FOUND):
+            raise UsageError(exc.message)
+        else:
+            raise
     except KeyboardInterrupt:
         pass
 

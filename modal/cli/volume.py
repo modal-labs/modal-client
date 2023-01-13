@@ -10,6 +10,7 @@ from tempfile import NamedTemporaryFile
 from typing import Optional, Tuple
 
 import typer
+from click import UsageError
 from google.protobuf import empty_pb2
 from grpclib import GRPCError, Status
 from rich.console import Console
@@ -89,8 +90,7 @@ async def ls(volume_name: str, path: str = typer.Argument(default="/")):
         entries = await volume.listdir(path)
     except GRPCError as exc:
         if exc.status in (Status.INVALID_ARGUMENT, Status.NOT_FOUND):
-            print(exc.message, file=sys.stderr)
-            return
+            raise UsageError(exc.message)
         raise
 
     if sys.stdout.isatty():
