@@ -317,6 +317,71 @@ class _Image(Provider[_ImageHandle]):
 
         return self.extend(dockerfile_commands=dockerfile_commands)
 
+    def pip_install_private_repos(
+        self,
+        *repositories: str,
+        git_user: str,
+        secrets: Collection[_Secret] = [],
+    ) -> "_Image":
+        """
+        Install a list of Python packages from private git repositories using pip.
+
+        This method currently supports Github only, and requires a `modal.Secret` be provided that
+        contains a `GITHUB_TOKEN` key-value pair. This token should have permissions to read the
+        provided list of private Github repositories.
+
+        We recommend using Github's ['fine-grained' access tokens](https://github.blog/2022-10-18-introducing-fine-grained-personal-access-tokens-for-github/).
+        These tokens are repo-scoped, and avoid granting read permission across all of a user's private repos.
+
+        **Example**
+
+        ```python
+        image = (
+            modal.Image
+            .debian_slim()
+            .pip_install_private_repos(
+                "github.com/ecorp/private-one@1.0.0",
+                "github.com/ecorp/private-two@main"
+                "github.com/ecorp/private-three@d4776502"
+                # install from 'inner' directory on default branch.
+                "github.com/ecorp/private-four#subdirectory=inner",
+                git_user="erikbern",
+                secrets=[modal.Secret.from_name("github-read-private")],
+            )
+        )
+        ```
+        """
+        if not secrets:
+            raise InvalidError(
+                "No secrets provided to function. Installing private packages requires tokens to be passed via modal.Secret objects."
+            )
+
+        def valid_repo_ref(repo_ref) -> bool:
+            if not isinstance(repo_ref, str):
+                return False
+            parts = repo_ref.split("/")
+            if parts[0] != "github.com":
+                return False
+            return True
+
+        invalid_repos = [r for r in repositories if not valid_repo_ref(r)]
+        if invalid_repos:
+            raise InvalidError(
+                f"{len(invalid_repos)} out of {len(repositories)} given repository refs are invalid. "
+                f"Invalid refs: {invalid_repos}. "
+            )
+
+        secret_names = ",".join([s.app_name if hasattr(s, "app_name") else str(s) for s in secrets])  # type: ignore
+        dockerfile_commands = [
+            "FROM base",
+            f"RUN bash -c \"[[ -v GITHUB_TOKEN ]] || (echo 'GITHUB_TOKEN env var not set by provided modal.Secret(s): {secret_names}' && exit 1)\"",
+            "RUN apt-get update && apt-get install -y git",
+        ] + [f"RUN python3 -m pip install git+https://{git_user}:$GITHUB_TOKEN@{repo_ref}" for repo_ref in repositories]
+        return self.extend(
+            dockerfile_commands=dockerfile_commands,
+            secrets=secrets,
+        )
+
     def pip_install_from_requirements(
         self,
         requirements_txt: str,  # Path to a requirements.txt file.
