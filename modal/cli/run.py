@@ -115,7 +115,7 @@ class RunGroup(click.Group):
             else:
                 print(
                     f"""You need to specify an entrypoint Modal function to run, e.g.
-                    
+
 modal run app.py::stub.my_function [...args]
 
 Registered functions and local entrypoints on the selected stub are:
@@ -157,7 +157,7 @@ If your module only has a single stub called `stub` and your stub has a single l
 
 
  > modal run my_project.my_app
- 
+
 """,
 )
 @click.option("--detach", is_flag=True, help="Don't stop the app if the local process dies or disconnects.")
