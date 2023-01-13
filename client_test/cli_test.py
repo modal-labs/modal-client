@@ -3,6 +3,7 @@ import os
 import pytest
 import sys
 import traceback
+import unittest.mock
 
 import click
 import click.testing
@@ -106,7 +107,8 @@ def test_secret_create(servicer, set_env_client):
 
 
 def test_app_token_new(servicer, server_url_env):
-    _run(["token", "new", "--env", "_test"])
+    with unittest.mock.patch("webbrowser.open_new_tab", lambda url: False):
+        _run(["token", "new", "--env", "_test"])
 
 
 def test_run(servicer, server_url_env, test_dir):
