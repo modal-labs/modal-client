@@ -10,6 +10,7 @@ from typing import Optional
 from importlib_metadata import PackageNotFoundError, files
 
 import modal.exception
+from modal_utils.async_utils import synchronizer
 
 
 def get_file_formats(module):
@@ -113,4 +114,15 @@ def import_stub(stub_ref: StubRef):
         stub = getattr(module, stub_name)
     except AttributeError:
         raise NoSuchStub(f"No stub named {stub_name} could be found in module {module}")
+
+    try:
+        _stub = synchronizer._translate_in(stub)
+    except Exception:
+        raise NoSuchStub(f"{stub_name} in module {module} is not a modal.Stub or modal.AioStub instance")
+
+    import modal.stub
+
+    if not isinstance(_stub, modal.stub._Stub):
+        raise NoSuchStub(f"{stub_name} in module {module} is not a modal.Stub or modal.AioStub instance")
+
     return stub

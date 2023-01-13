@@ -114,6 +114,28 @@ def test_run(servicer, server_url_env, test_dir):
     _run(["run", stub_file.as_posix()])
 
 
+def test_help_message_unspecified_function(servicer, server_url_env, test_dir):
+    stub_file = test_dir / "supports" / "app_run_tests" / "stub_with_multiple_functions.py"
+    result = _run(["run", stub_file.as_posix()], expected_exit_code=1)
+
+    # should suggest available functions on the stub:
+    assert "foo" in result.stdout
+    assert "bar" in result.stdout
+
+    result = _run(
+        ["run", stub_file.as_posix(), "--help"], expected_exit_code=1
+    )  # TODO: help should not return non-zero
+    # help should also available functions on the stub:
+    assert "foo" in result.stdout
+    assert "bar" in result.stdout
+
+
+def test_help_message_when_using_function_as_stub(servicer, server_url_env, test_dir):
+    stub_file = test_dir / "supports" / "app_run_tests" / "stub_with_multiple_functions.py"
+    result = _run(["run", stub_file.as_posix() + "::foo"], expected_exit_code=1)
+    assert "Expected to find a stub variable named foo" in result.stdout
+
+
 def test_run_detach(servicer, server_url_env, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
     _run(["run", "--detach", stub_file.as_posix()])
@@ -170,6 +192,8 @@ def test_run_parse_args(servicer, server_url_env, test_dir):
         (["run", f"{stub_file.as_posix()}::.int_arg", "--i=200"], "200"),
         (["run", f"{stub_file.as_posix()}::.default_arg"], "10"),
         (["run", f"{stub_file.as_posix()}::.unannotated_arg", "--i=2022-10-31"], "'2022-10-31'"),
+        # TODO: fix class references
+        # (["run", f"{stub_file.as_posix()}::.ALifecycle.some_method", "--i=hello"], "'hello'")
     ]
     for args, expected in valid_call_args:
         res = _run(args)
