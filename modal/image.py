@@ -371,7 +371,7 @@ class _Image(Provider[_ImageHandle]):
                 f"Invalid refs: {invalid_repos}. "
             )
 
-        secret_names = ",".join([s.app_name if hasattr(s, "app_name") else str(s) for s in secrets])
+        secret_names = ",".join([s.app_name if hasattr(s, "app_name") else str(s) for s in secrets])  # type: ignore
         dockerfile_commands = [
             "FROM base",
             f"RUN bash -c \"[[ -v GITHUB_TOKEN ]] || (echo 'GITHUB_TOKEN env var not set by provided modal.Secret(s): {secret_names}' && exit 1)\"",
