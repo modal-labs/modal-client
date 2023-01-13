@@ -160,6 +160,41 @@ def test_image_pip_install_pyproject_with_optionals(servicer, client):
         assert not (any("'mkdocs >=1.4.2'" in cmd for cmd in layers[0].dockerfile_commands))
 
 
+def test_image_pip_install_private_repos(servicer, client):
+    stub = Stub()
+    with pytest.raises(InvalidError):
+        stub["image"] = Image.debian_slim().pip_install_private_repos(
+            "github.com/ecorp/private-one@1.0.0",
+            git_user="erikbern",
+            secrets=[],  # Invalid: missing secret
+        )
+
+    bad_repo_refs = [
+        "ecorp/private-one@1.0.0",
+    ]
+    for invalid_ref in bad_repo_refs:
+        with pytest.raises(InvalidError):
+            stub["image"] = Image.debian_slim().pip_install_private_repos(
+                invalid_ref,
+                git_user="erikbern",
+                secrets=[Secret.from_name("test-gh-read")],
+            )
+
+    stub["image"] = Image.debian_slim().pip_install_private_repos(
+        "github.com/corp/private-one@1.0.0",
+        git_user="erikbern",
+        secrets=[Secret({"GITHUB_TOKEN": "not-a-secret"})],
+    )
+
+    with stub.run(client=client) as running_app:
+        layers = get_image_layers(running_app["image"].object_id, servicer)
+        assert len(layers[0].secret_ids) == 1
+        assert any(
+            "pip install git+https://erikbern:$GITHUB_TOKEN@github.com/corp/private-one@1.0.0" in cmd
+            for cmd in layers[0].dockerfile_commands
+        )
+
+
 def test_conda_install(servicer, client):
     stub = Stub(image=Image.conda().pip_install("numpy").conda_install("pymc3", "theano").pip_install("scikit-learn"))
 
