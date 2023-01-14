@@ -472,6 +472,11 @@ class _FunctionHandle(Handle, type_prefix="fu"):
     @property
     def web_url(self) -> str:
         """URL of a Function running as a web endpoint."""
+        from modal import is_local
+
+        if not is_local():
+            raise InvalidError("Function.web_url is not accessible from inside a container")
+
         function_handle = self._get_live_handle()
         return function_handle._web_url
 
