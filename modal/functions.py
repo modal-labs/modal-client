@@ -431,6 +431,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
     def _initialize_from_proto(self, function: api_pb2.Function):
         self._is_generator = function.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
         self._mute_cancellation = False
+        self._output_mgr: Optional[OutputManager] = None
 
     def _set_local_app(self, app):
         """mdmd:hidden"""
