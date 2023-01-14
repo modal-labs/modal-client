@@ -431,6 +431,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
     def _initialize_from_proto(self, function: api_pb2.Function):
         self._is_generator = function.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
         self._mute_cancellation = False
+        self._output_mgr = None
 
     def _set_local_app(self, app):
         """mdmd:hidden"""
@@ -471,6 +472,11 @@ class _FunctionHandle(Handle, type_prefix="fu"):
     @property
     def web_url(self) -> str:
         """URL of a Function running as a web endpoint."""
+        from modal import is_local
+
+        if not is_local():
+            raise InvalidError("Function.web_url is not accessible from inside a container")
+
         function_handle = self._get_live_handle()
         return function_handle._web_url
 
