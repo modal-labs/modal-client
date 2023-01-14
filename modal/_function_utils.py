@@ -87,8 +87,8 @@ class FunctionInfo:
             # This is a "real" module, eg. examples.logs.f
             # Get the package path
             # Note: __import__ always returns the top-level package.
-            module_file = module.__file__
-            package_paths = __import__(module.__package__).__path__
+            module_file = os.path.abspath(module.__file__)
+            package_paths = [os.path.abspath(p) for p in __import__(module.__package__).__path__]
             # There might be multiple package paths in some weird cases
             base_dirs = [
                 base_dir for base_dir in package_paths if os.path.commonpath((base_dir, module_file)) == base_dir
