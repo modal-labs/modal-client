@@ -50,13 +50,13 @@ class _SharedVolumeHandle(Handle, type_prefix="sv"):
         else:
             data = fp.read()
             req = api_pb2.SharedVolumePutFileRequest(shared_volume_id=self._object_id, path=remote_path, data=data)
-        await self._client.stub.SharedVolumePutFile(req)
+        await retry_transient_errors(self._client.stub.SharedVolumePutFile, req)
         return data_size  # might be better if this is returned from the server
 
     async def read_file(self, path: str) -> AsyncIterator[bytes]:
         """Read a file from the shared volume"""
         req = api_pb2.SharedVolumeGetFileRequest(shared_volume_id=self._object_id, path=path)
-        response = await self._client.stub.SharedVolumeGetFile(req)
+        response = await retry_transient_errors(self._client.stub.SharedVolumeGetFile, req)
         if response.WhichOneof("data_oneof") == "data":
             yield response.data
         else:
@@ -71,13 +71,13 @@ class _SharedVolumeHandle(Handle, type_prefix="sv"):
         * Passing a glob path (including at least one * or ** sequence) returns all files matching that glob path (using absolute paths)
         """
         req = api_pb2.SharedVolumeListFilesRequest(shared_volume_id=self._object_id, path=path)
-        response = await self._client.stub.SharedVolumeListFiles(req)
+        response = await retry_transient_errors(self._client.stub.SharedVolumeListFiles, req)
         return list(response.entries)
 
     async def remove_file(self, path: str, recursive=False):
         """Remove a file in a shared volume"""
         req = api_pb2.SharedVolumeRemoveFileRequest(shared_volume_id=self._object_id, path=path, recursive=recursive)
-        await self._client.stub.SharedVolumeRemoveFile(req)
+        await retry_transient_errors(self._client.stub.SharedVolumeRemoveFile, req)
 
 
 SharedVolumeHandle, AioSharedVolumeHandle = synchronize_apis(_SharedVolumeHandle)
