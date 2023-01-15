@@ -132,7 +132,7 @@ class _App:
         """
         return self._local_uuid_to_object.get(obj.local_uuid)
 
-    async def _create_all_objects(self, progress: Tree, new_app_state: int):  # api_pb2.AppState.ValueType
+    async def _create_all_objects(self, progress: Tree, new_app_state: int):  # api_pb2.AppState.V
         """Create objects that have been defined but not created on the server."""
         for tag, provider in self._stub._blueprint.items():
             existing_object_id = self._tag_to_existing_id.get(tag)
@@ -152,7 +152,7 @@ class _App:
             unindexed_object_ids=unindexed_object_ids,
             new_app_state=new_app_state,  # type: ignore
         )
-        await self._client.stub.AppSetObjects(req_set)
+        await retry_transient_errors(self._client.stub.AppSetObjects, req_set)
         return self._tag_to_object
 
     async def disconnect(self):
