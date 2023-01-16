@@ -133,11 +133,9 @@ async def put(
         remote_path = remote_path + os.path.basename(local_path)
 
     if Path(local_path).is_dir():
-        print("Directory uploads are currently not supported", file=sys.stderr)
-        exit(1)
+        raise UsageError("Directory uploads are currently not supported")
     elif "*" in local_path:
-        print("Glob uploads are currently not supported", file=sys.stderr)
-        exit(1)
+        raise UsageError("Glob uploads are currently not supported")
     else:
         with Path(local_path).open("rb") as fd:
             written_bytes = await volume.write_file(remote_path, fd)
@@ -219,12 +217,10 @@ async def get(volume_name: str, remote_path: str, local_destination: str = typer
             destination = destination / remote_path.rsplit("/")[-1]
 
         if destination.exists() and not force:
-            print(f"'{destination}' already exists", file=sys.stderr)
-            exit(1)
+            raise UsageError(f"'{destination}' already exists")
 
         if not destination.parent.exists():
-            print(f"Local directory '{destination.parent}' does not exist", file=sys.stderr)
-            exit(1)
+            raise UsageError(f"Local directory '{destination.parent}' does not exist")
 
     @contextmanager
     def _destination_stream():
@@ -243,8 +239,7 @@ async def get(volume_name: str, remote_path: str, local_destination: str = typer
                 b += len(chunk)
     except GRPCError as exc:
         if exc.status in (Status.NOT_FOUND, Status.INVALID_ARGUMENT):
-            print(exc.message, file=sys.stderr)
-            exit(1)
+            raise UsageError(exc.message)
 
     if destination != PIPE_PATH:
         print(f"Wrote {b} bytes to '{destination}'", file=sys.stderr)
@@ -262,6 +257,5 @@ async def rm(
         await volume.remove_file(remote_path, recursive=recursive)
     except GRPCError as exc:
         if exc.status in (Status.NOT_FOUND, Status.INVALID_ARGUMENT):
-            print(exc.message, file=sys.stderr)
-            exit(1)
+            raise UsageError(exc.message)
         raise
