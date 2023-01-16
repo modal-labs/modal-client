@@ -367,6 +367,9 @@ message Function {
   CloudProvider cloud_provider = 26;
 
   uint32 warm_pool_size = 27;
+
+  string web_url = 28;
+  WebUrlInfo web_url_info = 29;
 }
 
 message FunctionCreateRequest {
@@ -378,8 +381,9 @@ message FunctionCreateRequest {
 
 message FunctionCreateResponse {
   string function_id = 1;
-  string web_url = 2;
-  WebUrlInfo web_url_info = 3;
+  string web_url = 2;  // TODO(erikbern): deprecated shortly (moving it into Function)
+  WebUrlInfo web_url_info = 3;  // TODO(erikbern): deprecated shortly (moving it into Function)
+  Function function = 4;
 }
 
 message FunctionGetInputsItem {
