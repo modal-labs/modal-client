@@ -22,7 +22,7 @@ async def test_persistent_object(servicer, aio_client):
 def square(x):
     # This function isn't deployed anyway
     pass
-            
+
 
 @pytest.mark.asyncio
 async def test_lookup_function(servicer, aio_client):
