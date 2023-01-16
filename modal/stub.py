@@ -237,9 +237,6 @@ class _Stub:
         aborted = False
         # Start tracking logs and yield context
         async with TaskContext(grace=config["logs_timeout"]) as tc:
-            # Start heartbeats loop to keep the client alive
-            tc.infinite_loop(lambda: self._heartbeat(client, self._app_id), sleep=HEARTBEAT_INTERVAL)
-
             status_spinner = step_progress("Running app...")
             with output_mgr.ctx_if_visible(output_mgr.make_live(step_progress("Initializing..."))):
                 app_id = app.app_id
@@ -259,6 +256,10 @@ class _Stub:
                     await app._create_all_objects(create_progress, post_init_state)
                 create_progress.label = step_completed("Created objects.")
                 output_mgr.print_if_visible(create_progress)
+
+                # Start heartbeats loop to keep the client alive
+                if post_init_state == api_pb2.APP_STATE_EPHEMERAL:
+                    tc.infinite_loop(lambda: self._heartbeat(client, self._app_id), sleep=HEARTBEAT_INTERVAL)
 
                 # Update all functions client-side to point to the running app
                 for tag, obj in self._function_handles.items():
