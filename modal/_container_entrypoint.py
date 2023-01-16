@@ -34,7 +34,7 @@ from ._serialization import deserialize, serialize
 from ._traceback import extract_traceback
 from ._tracing import extract_tracing_context, set_span_tag, trace, wrap
 from .app import _App
-from .client import Client, _Client, HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT
+from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .config import logger
 from .exception import InvalidError
 from .functions import AioFunctionHandle, FunctionHandle, _set_current_input_id
