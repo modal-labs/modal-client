@@ -36,3 +36,4 @@ async def test_lookup_function(servicer, aio_client):
 
     # Make sure we can call this function
     assert await f.call(2, 4) == 20
+    assert [r async for r in f.map([5, 2], [4, 3])] == [41, 13]
