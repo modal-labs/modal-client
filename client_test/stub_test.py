@@ -9,8 +9,8 @@ from grpclib import GRPCError, Status
 
 import modal.app
 from modal import Stub
-from modal.aio import AioApp, AioQueue, AioStub
-from modal.exception import InvalidError, NotFoundError
+from modal.aio import AioQueue, AioStub
+from modal.exception import InvalidError
 from modal_proto import api_pb2
 from modal_test_support import module_1, module_2
 

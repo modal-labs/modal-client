@@ -1,8 +1,8 @@
 # Copyright Modal Labs 2023
 import pytest
 
-from modal.aio import AioApp, AioQueue, AioStub, aio_lookup
-from modal.exception import InvalidError, NotFoundError
+from modal.aio import AioQueue, AioStub, aio_lookup
+from modal.exception import NotFoundError
 
 
 @pytest.mark.asyncio
