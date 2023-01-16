@@ -146,7 +146,7 @@ Registered functions and local entrypoints on the selected stub are:
 
 STUB_REF should be of the format:
 
-{file or module}[::[{stub name}].{function name}]
+`{file or module}[::[{stub name}].{function name}]`
 
 Examples:
 To run the hello_world function (or local entrypoint) of stub `stub` in my_app.py:
