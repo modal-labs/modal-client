@@ -133,8 +133,11 @@ def _show_stub_ref_failure_help(stub_ref: StubRef) -> None:
         if stub_name is None
         else (
             f"Expected to find a stub variable named **`{stub_name}`**. "
-            f"Check the name of your stub variable in `{import_path}`. "
-            f"It should look like `{stub_name} = modal.Stub(…)`."
+            f"Check the name of your stub variable in `{import_path}`.\n"
+            f"""It should look like:
+
+    {stub_name} = modal.Stub(…)
+"""
         )
     )
     error_console.print(f"[bold red]Could not locate stub variable in {import_path}.")

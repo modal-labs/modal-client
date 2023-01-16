@@ -3,6 +3,7 @@ import os
 import pytest
 from pathlib import Path
 
+from modal_utils.async_utils import synchronizer
 from modal_utils.package_utils import get_module_mount_info, import_stub, parse_stub_ref
 
 
@@ -23,20 +24,23 @@ def test_get_module_mount_info():
 # Some helper vars for import_stub tests:
 
 python_module_src = """
-stub = "FOO"
-other_stub = "BAR"
+import modal
+stub = modal.Stub("FOO")
+other_stub = modal.Stub("BAR")
 assert not __package__
 """
 
 python_package_src = """
-stub = "FOO"
-other_stub = "BAR"
+import modal
+stub = modal.Stub("FOO")
+other_stub = modal.Stub("BAR")
 assert __package__ == "pack"
 """
 
 python_subpackage_src = """
-stub = "FOO"
-other_stub = "BAR"
+import modal
+stub = modal.Stub("FOO")
+other_stub = modal.Stub("BAR")
 assert __package__ == "pack.sub"
 """
 
@@ -54,7 +58,7 @@ dir_containing_python_package = {
 
 
 @pytest.mark.parametrize(
-    ["dir_structure", "ref", "expected_stub", "expected_entrypoint"],
+    ["dir_structure", "ref", "expected_stub_name", "expected_entrypoint"],
     [
         # # file syntax
         (empty_dir_with_python_file, "mod.py", "FOO", None),
@@ -74,11 +78,12 @@ dir_containing_python_package = {
         (dir_containing_python_package, "pack.mod::other_stub", "BAR", None),
     ],
 )
-def test_import_stub_by_ref(dir_structure, ref, expected_stub, expected_entrypoint, mock_dir):
+def test_import_stub_by_ref(dir_structure, ref, expected_stub_name, expected_entrypoint, mock_dir):
     with mock_dir(dir_structure):
         stub_ref = parse_stub_ref(ref)
         imported_stub = import_stub(stub_ref)
-        assert imported_stub == expected_stub
+        _stub = synchronizer._translate_in(imported_stub)
+        assert _stub._name == expected_stub_name
 
 
 def test_import_package_properly():
@@ -91,5 +96,5 @@ def test_import_package_properly():
     rel_p = str(p.relative_to(os.getcwd()))
     print(f"abs_p={abs_p} rel_p={rel_p}")
 
-    assert import_stub(parse_stub_ref(rel_p)) == "xyz"
-    assert import_stub(parse_stub_ref(abs_p)) == "xyz"
+    assert synchronizer._translate_in(import_stub(parse_stub_ref(rel_p)))._name == "xyz"
+    assert synchronizer._translate_in(import_stub(parse_stub_ref(abs_p)))._name == "xyz"
