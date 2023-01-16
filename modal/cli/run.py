@@ -103,6 +103,7 @@ class RunGroup(click.Group):
             sys.exit(1)
 
         _stub = synchronizer._translate_in(stub)
+
         function_choices = list(set(_stub.registered_functions) | set(_stub.registered_entrypoints.keys()))
         registered_functions_str = "\n".join(sorted(function_choices))
         function_name = parsed_stub_ref.entrypoint_name
@@ -113,8 +114,11 @@ class RunGroup(click.Group):
                 function_name = list(_stub.registered_entrypoints.keys())[0]
             else:
                 print(
-                    f"""You need to specify an entrypoint Modal function to run, e.g. `modal run app.py::stub.my_function [...args]`.
-Registered functions and entrypoints on the selected stub are:
+                    f"""You need to specify an entrypoint Modal function to run, e.g.
+
+modal run app.py::stub.my_function [...args]
+
+Registered functions and local entrypoints on the selected stub are:
 {registered_functions_str}
     """
                 )
@@ -123,7 +127,7 @@ Registered functions and entrypoints on the selected stub are:
             print(
                 f"""No function `{function_name}` could be found in the specified stub. Registered functions and entrypoints are:
 
-    {registered_functions_str}"""
+{registered_functions_str}"""
             )
             exit(1)
 
@@ -135,7 +139,27 @@ Registered functions and entrypoints on the selected stub are:
         return click_command
 
 
-@click.group(cls=RunGroup, subcommand_metavar="STUB_REF", help="Run a Modal function or entrypoint")
+@click.group(
+    cls=RunGroup,
+    subcommand_metavar="STUB_REF",
+    help="""Run a Modal function or local entrypoint
+
+STUB_REF should be of the format:
+
+{file or module}[::[{stub name}].{function name}]
+
+Examples:
+To run the hello_world function (or local entrypoint) of stub `stub` in my_app.py:
+
+ > modal run my_app.py::stub.hello_world
+
+If your module only has a single stub called `stub` and your stub has a single local entrypoint (or single function), you can omit the stub/function part:
+
+
+ > modal run my_project.my_app
+
+""",
+)
 @click.option("--detach", is_flag=True, help="Don't stop the app if the local process dies or disconnects.")
 @click.pass_context
 def run(ctx, detach):

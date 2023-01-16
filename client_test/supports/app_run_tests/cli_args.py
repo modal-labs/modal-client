@@ -24,3 +24,9 @@ def default_arg(i: int = 10):
 @stub.local_entrypoint
 def unannotated_arg(i):
     print(repr(i))
+
+
+class ALifecycle:
+    @stub.function
+    def some_method(self, i):
+        print(repr(i))
