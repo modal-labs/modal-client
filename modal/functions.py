@@ -42,6 +42,7 @@ from ._blob_utils import (
 )
 from ._call_graph import InputInfo, reconstruct_call_graph
 from ._function_utils import FunctionInfo, LocalFunctionError, load_function_from_module
+from ._load_context import LoadContext
 from ._location import CloudProvider, parse_cloud_provider
 from ._output import OutputManager
 from ._pty import get_pty_info
@@ -782,11 +783,11 @@ class _Function(Provider[_FunctionHandle]):
             self._cloud_provider = None
         super().__init__()
 
-    async def _load(self, client, stub, app_id, loader, message_callback, existing_function_id):
-        message_callback(f"Creating {self._tag}...")
+    async def _load(self, load_context: LoadContext):
+        load_context.set_message(f"Creating {self._tag}...")
 
         if self._proxy:
-            proxy_id = await loader(self._proxy)
+            proxy_id = await load_context.load(self._proxy)
             # HACK: remove this once we stop using ssh tunnels for this.
             if self._image:
                 self._image = self._image.run_commands(["apt-get install -yq ssh"])
@@ -797,13 +798,13 @@ class _Function(Provider[_FunctionHandle]):
         if self._image is not None:
             if not isinstance(self._image, _Image):
                 raise InvalidError(f"Expected modal.Image object. Got {type(self._image)}.")
-            image_id = await loader(self._image)
+            image_id = await load_context.load(self._image)
         else:
             image_id = None  # Happens if it's a notebook function
         secret_ids = []
         for secret in self._secrets:
             try:
-                secret_id = await loader(secret)
+                secret_id = await load_context.load(secret)
             except NotFoundError as ex:
                 if isinstance(secret, RemoteRef) and secret.tag is None:
                     msg = "Secret {!r} was not found".format(secret.app_name)
@@ -815,7 +816,7 @@ class _Function(Provider[_FunctionHandle]):
 
         mount_ids = []
         for mount in self._mounts:
-            mount_ids.append(await loader(mount))
+            mount_ids.append(await load_context.load(mount))
 
         if not isinstance(self._shared_volumes, dict):
             raise InvalidError("shared_volumes must be a dict[str, SharedVolume] where the keys are paths")
@@ -834,7 +835,7 @@ class _Function(Provider[_FunctionHandle]):
                 raise InvalidError(f"Shared volume {abs_path} cannot be mounted at /tmp.")
 
             shared_volume_mounts.append(
-                api_pb2.SharedVolumeMount(mount_path=path, shared_volume_id=await loader(shared_volume))
+                api_pb2.SharedVolumeMount(mount_path=path, shared_volume_id=await load_context.load(shared_volume))
             )
 
         if self._is_generator:
@@ -910,13 +911,13 @@ class _Function(Provider[_FunctionHandle]):
             warm_pool_size=warm_pool_size,
         )
         request = api_pb2.FunctionCreateRequest(
-            app_id=app_id,
+            app_id=load_context.app_id,
             function=function_definition,
             schedule=self._schedule.proto_message if self._schedule is not None else None,
-            existing_function_id=existing_function_id,
+            existing_function_id=load_context.existing_object_id,
         )
         try:
-            response = await client.stub.FunctionCreate(request)
+            response = await load_context.client.stub.FunctionCreate(request)
         except GRPCError as exc:
             if exc.status == Status.INVALID_ARGUMENT:
                 raise InvalidError(exc.message)
@@ -931,13 +932,13 @@ class _Function(Provider[_FunctionHandle]):
             else:
                 suffix = ""
             # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
-            message_callback(
+            load_context.set_message(
                 f"Created {self._tag} => [magenta underline]{response.web_url}[/magenta underline]{suffix}"
             )
         else:
-            message_callback(f"Created {self._tag}.")
+            load_context.set_message(f"Created {self._tag}.")
 
-        return _FunctionHandle._from_id(response.function_id, client, response.function)
+        return _FunctionHandle._from_id(response.function_id, load_context.client, response.function)
 
     @property
     def tag(self):

@@ -16,6 +16,7 @@ from google.protobuf.message import Message
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 
+from ._load_context import LoadContext
 from ._object_meta import ObjectMeta
 from .client import _Client
 from .exception import InvalidError, NotFoundError
@@ -145,12 +146,7 @@ class Provider(Generic[H]):
 
     async def _load(
         self,
-        client: _Client,
-        stub: "_Stub",
-        app_id: str,
-        loader: Callable[["Provider"], Awaitable[str]],
-        message_callback: Callable[[str], None],
-        existing_object_id: Optional[str] = None,
+        load_context: LoadContext
     ) -> H:
         raise NotImplementedError(f"Object factory of class {type(self)} has no load method")
 
@@ -200,14 +196,9 @@ class RemoteRef(Ref[H]):
 
     async def _load(
         self,
-        client: _Client,
-        stub: "_Stub",
-        app_id: str,
-        loader: Callable[["Provider"], Awaitable[str]],
-        message_callback: Callable[[str], None],
-        existing_object_id: Optional[str] = None,
+        load_context: LoadContext,
     ) -> H:
-        handle = await Handle.from_app(self.app_name, self.tag, self.namespace, client)
+        handle = await Handle.from_app(self.app_name, self.tag, self.namespace, load_context.client)
         return cast(H, handle)
 
 
@@ -222,16 +213,11 @@ class PersistedRef(Ref[H]):
 
     async def _load(
         self,
-        client: _Client,
-        stub: "_Stub",
-        app_id: str,
-        loader: Callable[["Provider"], Awaitable[str]],
-        message_callback: Callable[[str], None],
-        existing_object_id: Optional[str] = None,
+        load_context: LoadContext,
     ) -> H:
         from .stub import _Stub
 
         _stub = _Stub(self.app_name, _object=self.definition)
-        await _stub.deploy(client=client)
-        handle = await Handle.from_app(self.app_name, client=client)
+        await _stub.deploy(client=load_context.client)
+        handle = await Handle.from_app(self.app_name, client=load_context.client)
         return cast(H, handle)

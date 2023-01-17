@@ -2,6 +2,7 @@
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 
+from ._load_context import LoadContext
 from .object import Handle, Provider
 
 
@@ -30,15 +31,15 @@ class _Secret(Provider[_SecretHandle]):
     def __repr__(self):
         return f"Secret([{', '.join(self._env_dict.keys())}])"
 
-    async def _load(self, client, stub, app_id, loader, message_callback, existing_secret_id):
+    async def _load(self, load_context: LoadContext):
         req = api_pb2.SecretCreateRequest(
-            app_id=app_id,
+            app_id=load_context.app_id,
             env_dict=self._env_dict,
             template_type=self._template_type,
-            existing_secret_id=existing_secret_id,
+            existing_secret_id=load_context.existing_object_id,
         )
-        resp = await client.stub.SecretCreate(req)
-        return _SecretHandle(client, resp.secret_id)
+        resp = await load_context.client.stub.SecretCreate(req)
+        return _SecretHandle(load_context.client, resp.secret_id)
 
 
 Secret, AioSecret = synchronize_apis(_Secret)
