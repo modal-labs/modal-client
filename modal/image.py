@@ -14,6 +14,7 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 from modal_utils.grpc_utils import retry_transient_errors
 
+from . import is_local
 from .config import config, logger
 from .exception import InvalidError, NotFoundError, RemoteError
 from .mount import _Mount
@@ -445,11 +446,17 @@ class _Image(Provider[_ImageHandle]):
         ignore_lockfile: bool = False,  # If set to True, it will not use poetry.lock
         old_installer: bool = False,  # If set to True, use old installer. See https://github.com/python-poetry/poetry/issues/3336
     ):
-        """Install poetry dependencies specified by a pyproject.toml file.
+        """Install poetry *dependencies* specified by a pyproject.toml file.
 
         The path to the lockfile is inferred, if not provided. However, the
         file has to exist, unless `ignore_lockfile` is set to `True`.
+
+        Note that the root project of the poetry project is not installed,
+        only the dependencies. For including local packages see `modal.create_package_mounts`
         """
+        if not is_local():
+            # existence checks can fail in global scope of the containers
+            return
 
         poetry_pyproject_toml = os.path.expanduser(poetry_pyproject_toml)
 
