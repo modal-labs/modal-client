@@ -7,7 +7,6 @@ from modal_utils.grpc_utils import retry_transient_errors
 
 from .client import _Client
 from .config import logger
-from .functions import _FunctionHandle
 from .object import Handle, Provider
 
 if TYPE_CHECKING:

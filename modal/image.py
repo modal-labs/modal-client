@@ -149,7 +149,7 @@ class _Image(Provider[_ImageHandle]):
     async def _load(self, client, stub, app_id, loader, message_callback, existing_image_id):
         if self._ref:
             image_id = await loader(self._ref)
-            return _ImageHandle._from_id(image_id, client)
+            return _ImageHandle._from_id(image_id, client, None)
 
         # Recursively build base images
         base_image_ids: list[str] = []
