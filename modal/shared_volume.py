@@ -8,6 +8,7 @@ from modal_utils.grpc_utils import retry_transient_errors
 from modal_utils.hash_utils import get_sha256_hex
 
 from ._blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
+from ._resolver import Resolver
 from .object import Handle, Provider
 
 
@@ -118,15 +119,15 @@ class _SharedVolume(Provider[_SharedVolumeHandle]):
     def _get_creating_message(self) -> str:
         return "Creating shared volume..."
 
-    async def _load(self, client, stub, app_id, loader, message_callback, existing_shared_volume_id):
-        if existing_shared_volume_id:
+    async def _load(self, resolver: Resolver):
+        if resolver.existing_object_id:
             # Volume already exists; do nothing.
-            return _SharedVolumeHandle(client, existing_shared_volume_id)
+            return _SharedVolumeHandle(resolver.client, resolver.existing_object_id)
 
-        req = api_pb2.SharedVolumeCreateRequest(app_id=app_id, cloud_provider=self._cloud_provider)
-        resp = await retry_transient_errors(client.stub.SharedVolumeCreate, req)
-        message_callback("Created shared volume.")
-        return _SharedVolumeHandle(client, resp.shared_volume_id)
+        req = api_pb2.SharedVolumeCreateRequest(app_id=resolver.app_id, cloud_provider=self._cloud_provider)
+        resp = await retry_transient_errors(resolver.client.stub.SharedVolumeCreate, req)
+        resolver.set_message("Created shared volume.")
+        return _SharedVolumeHandle(resolver.client, resp.shared_volume_id)
 
 
 SharedVolume, AioSharedVolume = synchronize_apis(_SharedVolume)
