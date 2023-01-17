@@ -166,7 +166,9 @@ class _Mount(Provider[_MountHandle]):
             logger.warning(f"Mount of '{message_label}' is empty.")
 
         resolver.set_message(f"Mounting {message_label}: Building mount")
-        req = api_pb2.MountBuildRequest(app_id=resolver.app_id, existing_mount_id=resolver.existing_object_id, files=files)
+        req = api_pb2.MountBuildRequest(
+            app_id=resolver.app_id, existing_mount_id=resolver.existing_object_id, files=files
+        )
         resp = await retry_transient_errors(resolver.client.stub.MountBuild, req, base_delay=1)
         resolver.set_message(f"Mounted {message_label} at {self._remote_dir}")
 

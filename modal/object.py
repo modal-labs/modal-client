@@ -144,10 +144,7 @@ class Provider(Generic[H]):
         """
         return PersistedRef(label, definition=self)
 
-    async def _load(
-        self,
-        resolver: Resolver
-    ) -> H:
+    async def _load(self, resolver: Resolver) -> H:
         raise NotImplementedError(f"Object factory of class {type(self)} has no load method")
 
     @classmethod

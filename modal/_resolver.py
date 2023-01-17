@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2023
 from typing import Awaitable, Callable, Optional
 
+
 class Resolver:
     _app: "_App"
 
@@ -9,7 +10,15 @@ class Resolver:
     existing_object_id: Optional[str]
     stub: "_Stub"
 
-    def __init__(self, stub: "_Stub", app: "_App", progress: Optional["Tree"], client: "_Client", app_id: str, existing_object_id: Optional[str]):
+    def __init__(
+        self,
+        stub: "_Stub",
+        app: "_App",
+        progress: Optional["Tree"],
+        client: "_Client",
+        app_id: str,
+        existing_object_id: Optional[str],
+    ):
         self._app = app
         self._progress = progress
         self._last_message = None
@@ -45,5 +54,6 @@ class Resolver:
         # Change message to a completed step
         # TODO: make this a context mgr __exit__ ?
         from ._output import step_completed
+
         if self._progress and self._last_message:
             self._step_node.label = step_completed(self._last_message, is_substep=True)
