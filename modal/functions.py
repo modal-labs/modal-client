@@ -55,7 +55,8 @@ from .exception import deprecation_error, deprecation_warning
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
 from .mount import _Mount
-from .object import Handle, Provider, Ref
+from .object import Handle, Provider
+from .proxy import _Proxy
 from .rate_limit import RateLimit
 from .retries import Retries
 from .schedule import Schedule
@@ -699,7 +700,7 @@ class _Function(Provider[_FunctionHandle]):
         shared_volumes: Dict[str, _SharedVolume] = {},
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         memory: Optional[int] = None,
-        proxy: Optional[Ref] = None,
+        proxy: Optional[_Proxy] = None,
         retries: Optional[Union[int, Retries]] = None,
         timeout: Optional[int] = None,
         concurrency_limit: Optional[int] = None,

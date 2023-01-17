@@ -66,10 +66,11 @@ async def watch(stub: _Stub, output_mgr: OutputManager, timeout: Optional[float]
         if isinstance(object, _Function):
             for mount in object._mounts:
                 if isinstance(mount, _Mount):
-                    if mount._local_dir is not None:
-                        paths.add(mount._local_dir)
-                    elif mount._local_file is not None:
-                        paths.add(mount._local_file)
+                    # TODO(erikbern): this is pretty ugly, but we want to ignore
+                    # any _Mount that's just a remote reference. Let's rethink this.
+                    for attr in ["_local_dir", "_local_file"]:
+                        if getattr(mount, attr, None):
+                            paths.add(getattr(mount, attr))
 
     _print_watched_paths(paths, output_mgr, timeout)
 

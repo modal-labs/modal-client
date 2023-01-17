@@ -19,7 +19,7 @@ from ._resolver import Resolver
 from .config import config, logger
 from .exception import InvalidError, NotFoundError, RemoteError
 from .mount import _Mount
-from .object import Handle, Provider, Ref
+from .object import Handle, Provider
 from .secret import _Secret
 
 
@@ -129,10 +129,10 @@ class _Image(Provider[_ImageHandle]):
             raise InvalidError("Cannot run a build function with multiple base images!")
 
         for secret in secrets:
-            if not isinstance(secret, _Secret) and not isinstance(secret, Ref):
+            if not isinstance(secret, _Secret):
                 raise InvalidError(f"Secret {secret!r} must be a modal.Secret object")
 
-        if context_mount is not None and not isinstance(context_mount, _Mount) and not isinstance(context_mount, Ref):
+        if context_mount is not None and not isinstance(context_mount, _Mount):
             raise InvalidError(f"Context mount {context_mount!r} must be a modal.Mount object")
 
         self._ref = ref

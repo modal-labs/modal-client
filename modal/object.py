@@ -139,7 +139,19 @@ class Provider(Generic[H]):
         ```
 
         """
-        return PersistedRef(label, definition=self)
+        async def _load_persisted(resolver: Resolver) -> H:
+            from .stub import _Stub
+
+            _stub = _Stub(label, _object=self)
+            await _stub.deploy(client=resolver.client)
+            handle = await Handle.from_app(label, client=resolver.client)
+            return cast(H, handle)
+
+        # Create a class of type cls, but use the base constructor
+        cls = type(self)
+        obj = cls.__new__(cls)
+        Provider.__init__(obj, _load_persisted)
+        return obj
 
     @classmethod
     def from_name(
@@ -169,28 +181,3 @@ class Provider(Generic[H]):
         obj = cls.__new__(cls)
         Provider.__init__(obj, _load_remote)
         return obj
-
-
-class Ref(Provider[H]):
-    pass
-
-
-class PersistedRef(Ref[H]):
-    def __init__(self, app_name: str, definition: H):
-        self.app_name = app_name
-        self.definition = definition
-        super().__init__(self._load)
-
-    def __repr__(self):
-        return f"PersistedRef<{self.definition}>({self.app_name})"
-
-    async def _load(
-        self,
-        resolver: Resolver,
-    ) -> H:
-        from .stub import _Stub
-
-        _stub = _Stub(self.app_name, _object=self.definition)
-        await _stub.deploy(client=resolver.client)
-        handle = await Handle.from_app(self.app_name, client=resolver.client)
-        return cast(H, handle)
