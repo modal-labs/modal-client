@@ -1,24 +1,11 @@
 # Copyright Modal Labs 2023
-from typing import Awaitable, Callable, Optional
+from typing import Optional
 
 
 class Resolver:
-    _app: "_App"
-
-    client: "_Client"
-    app_id: str
-    existing_object_id: Optional[str]
-    stub: "_Stub"
-
-    def __init__(
-        self,
-        stub: "_Stub",
-        app: "_App",
-        progress: Optional["Tree"],
-        client: "_Client",
-        app_id: str,
-        existing_object_id: Optional[str],
-    ):
+    # Unfortunately we can't use type annotations much in this file,
+    # since that leads to circular dependencies
+    def __init__(self, stub, app, progress, client, app_id: str, existing_object_id: Optional[str]):
         self._app = app
         self._progress = progress
         self._last_message = None
@@ -31,13 +18,13 @@ class Resolver:
         self.app_id = app_id
         self.existing_object_id = existing_object_id
 
-    async def load(self, obj: "Provider") -> str:
+    async def load(self, obj) -> str:
         # assert isinstance(obj, Provider)
         created_obj = await self._app._load(obj, progress=self._progress)
         # assert isinstance(created_obj, Handle)
         return created_obj.object_id
 
-    def set_message(self, message):
+    def set_message(self, message: str):
         from ._output import (  # Lazy import to only import `rich` when necessary.
             step_progress,
             step_progress_update,
