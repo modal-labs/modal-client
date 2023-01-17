@@ -781,7 +781,7 @@ class _Function(Provider[_FunctionHandle]):
                 raise InvalidError("Cloud selection only supported for functions running with A100 GPUs.")
         else:
             self._cloud_provider = None
-        super().__init__()
+        super().__init__(self._load)
 
     async def _load(self, resolver: Resolver):
         resolver.set_message(f"Creating {self._tag}...")

@@ -26,7 +26,7 @@ class _Secret(Provider[_SecretHandle]):
     def __init__(self, env_dict={}, template_type=""):
         self._env_dict = env_dict
         self._template_type = template_type
-        super().__init__()
+        super().__init__(self._load)
 
     def __repr__(self):
         return f"Secret([{', '.join(self._env_dict.keys())}])"

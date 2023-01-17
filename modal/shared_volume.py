@@ -111,7 +111,7 @@ class _SharedVolume(Provider[_SharedVolumeHandle]):
     def __init__(self, cloud_provider: "Optional[api_pb2.CloudProvider.V]" = None) -> None:
         """Construct a new shared volume, which is empty by default."""
         self._cloud_provider = cloud_provider
-        super().__init__()
+        super().__init__(self._load)
 
     def __repr__(self):
         return "SharedVolume()"

@@ -1,6 +1,8 @@
 # Copyright Modal Labs 2022
 import uuid
 from typing import (
+    Awaitable,
+    Callable,
     Generic,
     Optional,
     Type,
@@ -108,8 +110,9 @@ P = TypeVar("P", bound="Provider")
 
 
 class Provider(Generic[H]):
-    def __init__(self):
+    def __init__(self, load: Callable[[Resolver], Awaitable[None]]):
         self._local_uuid = str(uuid.uuid4())
+        self._load = load
 
     @property
     def local_uuid(self):
@@ -137,9 +140,6 @@ class Provider(Generic[H]):
 
         """
         return PersistedRef(label, definition=self)
-
-    async def _load(self, resolver: Resolver) -> H:
-        raise NotImplementedError(f"Object factory of class {type(self)} has no load method")
 
     @classmethod
     def from_name(
@@ -180,7 +180,7 @@ class RemoteRef(Ref[H]):
         self.app_name = app_name
         self.tag = tag
         self.namespace = namespace
-        super().__init__()
+        super().__init__(self._load)
 
     def __repr__(self):
         return f"Ref({self.app_name})"
@@ -197,7 +197,7 @@ class PersistedRef(Ref[H]):
     def __init__(self, app_name: str, definition: H):
         self.app_name = app_name
         self.definition = definition
-        super().__init__()
+        super().__init__(self._load)
 
     def __repr__(self):
         return f"PersistedRef<{self.definition}>({self.app_name})"

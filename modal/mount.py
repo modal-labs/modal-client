@@ -78,7 +78,7 @@ class _Mount(Provider[_MountHandle]):
         self._remote_dir = remote_dir
         self._condition = condition
         self._recursive = recursive
-        super().__init__()
+        super().__init__(self._load)
 
     def __repr__(self):
         return f"Mount({self._local_file or self._local_dir})"

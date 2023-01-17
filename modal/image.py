@@ -143,7 +143,7 @@ class _Image(Provider[_ImageHandle]):
         self._gpu = gpu
         self._build_function = build_function
         self._context_mount = context_mount
-        super().__init__()
+        super().__init__(self._load)
 
     def __repr__(self):
         return f"Image({self._dockerfile_commands})"
