@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2023
 from typing import Awaitable, Callable, Optional
 
-class LoadContext:
+class Resolver:
     _app: "_App"
 
     client: "_Client"

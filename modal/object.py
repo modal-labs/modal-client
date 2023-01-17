@@ -16,7 +16,7 @@ from google.protobuf.message import Message
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 
-from ._load_context import LoadContext
+from ._resolver import Resolver
 from ._object_meta import ObjectMeta
 from .client import _Client
 from .exception import InvalidError, NotFoundError
@@ -146,7 +146,7 @@ class Provider(Generic[H]):
 
     async def _load(
         self,
-        load_context: LoadContext
+        resolver: Resolver
     ) -> H:
         raise NotImplementedError(f"Object factory of class {type(self)} has no load method")
 
@@ -196,9 +196,9 @@ class RemoteRef(Ref[H]):
 
     async def _load(
         self,
-        load_context: LoadContext,
+        resolver: Resolver,
     ) -> H:
-        handle = await Handle.from_app(self.app_name, self.tag, self.namespace, load_context.client)
+        handle = await Handle.from_app(self.app_name, self.tag, self.namespace, resolver.client)
         return cast(H, handle)
 
 
@@ -213,11 +213,11 @@ class PersistedRef(Ref[H]):
 
     async def _load(
         self,
-        load_context: LoadContext,
+        resolver: Resolver,
     ) -> H:
         from .stub import _Stub
 
         _stub = _Stub(self.app_name, _object=self.definition)
-        await _stub.deploy(client=load_context.client)
-        handle = await Handle.from_app(self.app_name, client=load_context.client)
+        await _stub.deploy(client=resolver.client)
+        handle = await Handle.from_app(self.app_name, client=resolver.client)
         return cast(H, handle)

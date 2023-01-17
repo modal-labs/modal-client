@@ -147,15 +147,15 @@ class _Image(Provider[_ImageHandle]):
     def __repr__(self):
         return f"Image({self._dockerfile_commands})"
 
-    async def _load(self, load_context: LoadContext):
+    async def _load(self, resolver: Resolver):
         if self._ref:
-            image_id = await load_context.load(self._ref)
-            return _ImageHandle._from_id(image_id, load_context.client, None)
+            image_id = await resolver.load(self._ref)
+            return _ImageHandle._from_id(image_id, resolver.client, None)
 
         # Recursively build base images
         base_image_ids: list[str] = []
         for image in self._base_images.values():
-            base_image_ids.append(await load_context.load(image))
+            base_image_ids.append(await resolver.load(image))
         base_images_pb2s = [
             api_pb2.BaseImage(docker_tag=docker_tag, image_id=image_id)
             for docker_tag, image_id in zip(self._base_images.keys(), base_image_ids)
@@ -164,7 +164,7 @@ class _Image(Provider[_ImageHandle]):
         secret_ids = []
         for secret in self._secrets:
             try:
-                secret_id = await load_context.load(secret)
+                secret_id = await resolver.load(secret)
             except NotFoundError as ex:
                 raise NotFoundError(str(ex) + "\n" + "You can add secrets to your account at https://modal.com/secrets")
             secret_ids.append(secret_id)
@@ -183,8 +183,8 @@ class _Image(Provider[_ImageHandle]):
             base_images = list(self._base_images.values())
             assert len(base_images) == 1
             kwargs = {"timeout": 86400, **kwargs, "image": base_images[0], "_is_build_step": True}
-            build_function_handle = load_context.stub.function(**kwargs)(fn)
-            build_function_id = await load_context.load(build_function_handle._function)
+            build_function_handle = resolver.stub.function(**kwargs)(fn)
+            build_function_id = await resolver.load(build_function_handle._function)
         else:
             build_function_def = None
             build_function_id = None
@@ -197,7 +197,7 @@ class _Image(Provider[_ImageHandle]):
             dockerfile_commands = self._dockerfile_commands
 
         if self._context_mount:
-            context_mount_id = await load_context.load(self._context_mount)
+            context_mount_id = await resolver.load(self._context_mount)
         else:
             context_mount_id = None
 
@@ -212,18 +212,18 @@ class _Image(Provider[_ImageHandle]):
         )
 
         req = api_pb2.ImageGetOrCreateRequest(
-            app_id=load_context.app_id,
+            app_id=resolver.app_id,
             image=image_definition,
-            existing_image_id=load_context.existing_object_id,  # TODO: ignored
+            existing_image_id=resolver.existing_object_id,  # TODO: ignored
             build_function_id=build_function_id,
         )
-        resp = await load_context.client.stub.ImageGetOrCreate(req)
+        resp = await resolver.client.stub.ImageGetOrCreate(req)
         image_id = resp.image_id
 
         logger.debug("Waiting for image %s" % image_id)
         while True:
             request = api_pb2.ImageJoinRequest(image_id=image_id, timeout=55)
-            response = await retry_transient_errors(load_context.client.stub.ImageJoin, request)
+            response = await retry_transient_errors(resolver.client.stub.ImageJoin, request)
             if not response.result.status:
                 continue
             elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
@@ -237,7 +237,7 @@ class _Image(Provider[_ImageHandle]):
             else:
                 raise RemoteError("Unknown status %s!" % response.result.status)
 
-        return _ImageHandle(load_context.client, image_id)
+        return _ImageHandle(resolver.client, image_id)
 
     def extend(self, **kwargs) -> "_Image":
         """Extend an image (named "base") with additional options or commands.

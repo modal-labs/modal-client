@@ -5,7 +5,7 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 from modal_utils.grpc_utils import retry_transient_errors
 
-from ._load_context import LoadContext
+from ._resolver import Resolver
 from .client import _Client
 from .config import logger
 from .object import Handle, Provider
@@ -80,12 +80,12 @@ class _App:
             # We already created this object before, shortcut this method
             return cached_obj
 
-        load_context = LoadContext(self._stub, self, progress, self._client, self.app_id, existing_object_id)
+        resolver = Resolver(self._stub, self, progress, self._client, self.app_id, existing_object_id)
 
         # Create object
-        created_obj = await obj._load(load_context)
+        created_obj = await obj._load(resolver)
 
-        load_context.set_finish()  # finishes any message
+        resolver.set_finish()  # finishes any message
 
         if existing_object_id is not None and created_obj.object_id != existing_object_id:
             # TODO(erikbern): this is a very ugly fix to a problem that's on the server side.
