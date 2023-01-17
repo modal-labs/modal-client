@@ -19,7 +19,7 @@ from modal.exception import InvalidError
 from modal.functions import _Function
 from modal.stub import _Stub
 from modal_utils.async_utils import synchronizer
-from modal_utils.package_utils import NoSuchStub, import_stub, parse_stub_ref
+from modal_utils.package_utils import NoSuchObject, import_object, parse_import_ref
 
 run_cli = typer.Typer(name="run")
 
@@ -92,44 +92,28 @@ def _get_click_command_for_local_entrypoint(_stub, entrypoint_name: str):
 
 class RunGroup(click.Group):
     def get_command(self, ctx, stub_ref):
-        parsed_stub_ref = parse_stub_ref(stub_ref)
+        import_ref = parse_import_ref(stub_ref)
         try:
-            stub = import_stub(parsed_stub_ref)
-        except NoSuchStub:
-            _show_stub_ref_failure_help(parsed_stub_ref)
+            raw_object = import_object(import_ref)
+        except NoSuchObject:
+            _show_stub_ref_failure_help(import_ref)
             sys.exit(1)
         except Exception:
             traceback.print_exc()
             sys.exit(1)
 
-        _stub = synchronizer._translate_in(stub)
+        try:
+            stub_or_function = synchronizer._translate_in(raw_object)
+        except:
+            raise TypeError(f"{raw_object} is not a Modal Function or Stub")
 
-        function_choices = list(set(_stub.registered_functions) | set(_stub.registered_entrypoints.keys()))
-        registered_functions_str = "\n".join(sorted(function_choices))
-        function_name = parsed_stub_ref.entrypoint_name
-        if not function_name:
-            if len(function_choices) == 1:
-                function_name = function_choices[0]
-            elif len(_stub.registered_entrypoints) == 1:
-                function_name = list(_stub.registered_entrypoints.keys())[0]
-            else:
-                print(
-                    f"""You need to specify an entrypoint Modal function to run, e.g.
-
-modal run app.py::stub.my_function [...args]
-
-Registered functions and local entrypoints on the selected stub are:
-{registered_functions_str}
-    """
-                )
-                exit(1)
-        elif function_name not in function_choices:
-            print(
-                f"""No function `{function_name}` could be found in the specified stub. Registered functions and entrypoints are:
-
-{registered_functions_str}"""
-            )
-            exit(1)
+        if isinstance(stub_or_function, _Stub):
+            # infer function or display help for how to select one
+            _stub = stub_or_function
+            _function = infer_function_or_help(_stub)
+        elif isinstance(stub_or_function, _Function):
+            _function = stub_or_function
+            _stub = stub_or_function._stub
 
         if function_name in _stub.registered_functions:
             click_command = _get_click_command_for_function_handle(_stub, function_name)
@@ -137,6 +121,28 @@ Registered functions and local entrypoints on the selected stub are:
             click_command = _get_click_command_for_local_entrypoint(_stub, function_name)
 
         return click_command
+
+
+def infer_function_or_help(_stub: _Stub):
+    function_choices = list(set(_stub.registered_functions) | set(_stub.registered_entrypoints.keys()))
+    registered_functions_str = "\n".join(sorted(function_choices))
+    if len(function_choices) == 1:
+        function_name = function_choices[0]
+    elif len(_stub.registered_entrypoints) == 1:
+        # if there is a single local_entrypoint, use that regardless of
+        # other functions on the stub
+        function_name = list(_stub.registered_entrypoints.keys())[0]
+    else:
+        help_text = f"""You need to specify an entrypoint Modal function to run, e.g.
+
+modal run app.py::stub.my_function [...args]
+
+Registered functions and local entrypoints on the selected stub are:
+{registered_functions_str}
+"""
+        raise click.UsageError(help_text)
+
+    return _stub[function_name]
 
 
 @click.group(
@@ -171,10 +177,10 @@ def deploy(
     stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
     name: str = typer.Option(None, help="Name of the deployment."),
 ):
-    parsed_stub_ref = parse_stub_ref(stub_ref)
+    parsed_stub_ref = parse_import_ref(stub_ref)
     try:
-        stub = import_stub(parsed_stub_ref)
-    except NoSuchStub:
+        stub = import_object(parsed_stub_ref)
+    except NoSuchObject:
         _show_stub_ref_failure_help(parsed_stub_ref)
         sys.exit(1)
     except Exception:
@@ -243,10 +249,10 @@ def shell(
     modal shell hello_world.py --cmd=python \n
     ```\n
     """
-    parsed_stub_ref = parse_stub_ref(stub_ref)
+    parsed_stub_ref = parse_import_ref(stub_ref)
     try:
-        stub = import_stub(parsed_stub_ref)
-    except NoSuchStub:
+        stub = import_object(parsed_stub_ref)
+    except NoSuchObject:
         _show_stub_ref_failure_help(parsed_stub_ref)
         sys.exit(1)
     except Exception:

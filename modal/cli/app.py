@@ -15,7 +15,7 @@ from modal.cli.utils import timestamp_to_local
 from modal.client import AioClient
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
-from modal_utils.package_utils import DEFAULT_STUB_NAME, StubRef
+from modal_utils.package_utils import DEFAULT_STUB_NAME, ImportRef
 
 app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_args_is_help=True)
 
@@ -119,7 +119,7 @@ async def list_stops(app_id: str):
     await aio_client.stub.AppStop(req)
 
 
-def _show_stub_ref_failure_help(stub_ref: StubRef) -> None:
+def _show_stub_ref_failure_help(stub_ref: ImportRef) -> None:
     stub_name = stub_ref.stub_name
     import_path = stub_ref.file_or_module
     error_console = Console(stderr=True)

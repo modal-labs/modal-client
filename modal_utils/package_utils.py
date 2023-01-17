@@ -1,16 +1,16 @@
 # Copyright Modal Labs 2022
 import dataclasses
 import importlib
+import importlib.util
 import inspect
 import os
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from importlib_metadata import PackageNotFoundError, files
 
 import modal.exception
-from modal_utils.async_utils import synchronizer
 
 
 def get_file_formats(module):
@@ -48,40 +48,32 @@ def get_module_mount_info(module: str):
 
 
 @dataclasses.dataclass
-class StubRef:
+class ImportRef:
     file_or_module: str
-    stub_name: Optional[str]
-    entrypoint_name: Optional[str]
+    object_path: Optional[str]
 
 
-def parse_stub_ref(stub_ref: str) -> StubRef:
-    if stub_ref.find("::") > 1:
-        file_or_module, stub_name = stub_ref.split("::")
-    elif stub_ref.find(":") > 1:  # don't catch windows abs paths, e.g. C:\foo\bar
-        file_or_module, stub_name = stub_ref.split(":")
+def parse_import_ref(object_ref: str) -> ImportRef:
+    if object_ref.find("::") > 1:
+        file_or_module, object_path = object_ref.split("::", 1)
     else:
-        file_or_module, stub_name = stub_ref, None
+        file_or_module, object_path = object_ref, None
 
-    if stub_name and "." in stub_name:
-        stub_name, function_name = stub_name.split(".", 1)
-    else:
-        function_name = None
-
-    return StubRef(file_or_module, stub_name, function_name)
+    return ImportRef(file_or_module, object_path)
 
 
-class NoSuchStub(modal.exception.NotFoundError):
+class NoSuchObject(modal.exception.NotFoundError):
     pass
 
 
 DEFAULT_STUB_NAME = "stub"
 
 
-def import_stub(stub_ref: StubRef):
+def import_object(import_ref: ImportRef):
     if "" not in sys.path:
         # This seems to happen when running from a CLI
         sys.path.insert(0, "")
-    import_path = stub_ref.file_or_module
+    import_path = import_ref.file_or_module
     if ".py" in import_path:
         # walk to the closest python package in the path and add that to the path
         # before importing, in case of imports etc. of other modules in that package
@@ -109,20 +101,33 @@ def import_stub(stub_ref: StubRef):
     else:
         module = importlib.import_module(import_path)
 
-    stub_name = stub_ref.stub_name or DEFAULT_STUB_NAME
-    try:
-        stub = getattr(module, stub_name)
-    except AttributeError:
-        raise NoSuchStub(f"No stub named {stub_name} could be found in module {module}")
+    obj_path = import_ref.object_path or DEFAULT_STUB_NAME  # get variable named "stub" by default
 
-    try:
-        _stub = synchronizer._translate_in(stub)
-    except Exception:
-        raise NoSuchStub(f"{stub_name} in module {module} is not a modal.Stub or modal.AioStub instance")
+    return get_by_object_path(module, obj_path)
 
-    import modal.stub
 
-    if not isinstance(_stub, modal.stub._Stub):
-        raise NoSuchStub(f"{stub_name} in module {module} is not a modal.Stub or modal.AioStub instance")
+def get_by_object_path(obj: Any, obj_path: str):
+    # attempt to resolve '.'-delimited object path in a parent object
+    # If one path segment doesn't exist, try to instead reference *items*
+    # with dot-delimited keys until a matching object is found
+    #
+    # Note: this is eager, so no backtracking is performed in case an
+    # earlier match fails at some later point in the path expansion
+    orig_obj = obj
+    prefix = ""
+    for segment in obj_path.split("."):
+        attr = prefix + segment
+        try:
+            if "." in attr:
+                obj = obj[attr]
+            else:
+                obj = getattr(obj, attr)
+        except (AttributeError, KeyError):
+            prefix = f"{prefix}{segment}."
+        else:
+            prefix = ""
 
-    return stub
+    if prefix:
+        raise NoSuchObject(f"No object {obj_path} could be found in module {orig_obj}")
+
+    return obj

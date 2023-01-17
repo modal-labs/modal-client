@@ -47,6 +47,15 @@ class StubRunMode(Enum):
     SERVE = "serve"
 
 
+class LocalEntrypoint:
+    def __init__(self, raw_f, stub):
+        self.raw_f = raw_f
+        self.stub = stub
+
+    def call(self, *args, **kwargs):
+        return self.raw_f(*args, **kwargs)
+
+
 class _Stub:
     """A `Stub` is a description of how to create a Modal application.
 
@@ -114,7 +123,7 @@ class _Stub:
         self._mounts = mounts
         self._secrets = secrets
         self._function_handles = {}
-        self._local_entrypoints = {}
+        self._local_entrypoints: Dict[str, LocalEntrypoint] = {}
         super().__init__()
 
     @property
@@ -549,7 +558,7 @@ class _Stub:
         return list(self._function_handles.keys())
 
     @property
-    def registered_entrypoints(self) -> Dict[str, Callable]:
+    def registered_entrypoints(self) -> Dict[str, LocalEntrypoint]:
         return self._local_entrypoints
 
     @decorator_with_options
@@ -578,7 +587,7 @@ class _Stub:
 
         """
         info = FunctionInfo(raw_f, False, name_override=name)
-        self._local_entrypoints[info.get_tag()] = raw_f
+        self._local_entrypoints[info.get_tag()] = LocalEntrypoint(raw_f, self)
         return raw_f
 
     @decorator_with_options
@@ -629,6 +638,7 @@ class _Stub:
 
         function = _Function(
             info,
+            _stub=self,
             image=image,
             secrets=secrets,
             schedule=schedule,
@@ -721,6 +731,7 @@ class _Stub:
 
         function = _Function(
             info,
+            _stub=self,
             image=image,
             secrets=secrets,
             is_generator=True,
@@ -796,6 +807,7 @@ class _Stub:
 
         function = _Function(
             info,
+            _stub=self,
             image=image,
             secrets=secrets,
             is_generator=True,

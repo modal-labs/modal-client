@@ -688,6 +688,7 @@ class _Function(Provider[_FunctionHandle]):
     def __init__(
         self,
         function_info: FunctionInfo,
+        _stub,
         image=None,
         secrets: Collection[_Secret] = (),
         schedule: Optional[Schedule] = None,
@@ -713,6 +714,7 @@ class _Function(Provider[_FunctionHandle]):
     ) -> None:
         """mdmd:hidden"""
         raw_f = function_info.raw_f
+        self._stub = _stub
         assert callable(raw_f)
         self._info = FunctionInfo(raw_f, serialized, name_override=name)
         if schedule is not None:

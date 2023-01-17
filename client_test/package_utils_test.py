@@ -3,8 +3,15 @@ import os
 import pytest
 from pathlib import Path
 
+from modal.functions import _Function
+from modal.stub import _Stub
 from modal_utils.async_utils import synchronizer
-from modal_utils.package_utils import get_module_mount_info, import_stub, parse_stub_ref
+from modal_utils.package_utils import (
+    get_by_object_path,
+    get_module_mount_info,
+    import_object,
+    parse_import_ref,
+)
 
 
 def test_get_module_mount_info():
@@ -27,6 +34,14 @@ python_module_src = """
 import modal
 stub = modal.Stub("FOO")
 other_stub = modal.Stub("BAR")
+@other_stub.function
+def func():
+    pass
+class Parent:
+    @stub.function
+    def meth(self):
+        pass
+
 assert not __package__
 """
 
@@ -34,6 +49,9 @@ python_package_src = """
 import modal
 stub = modal.Stub("FOO")
 other_stub = modal.Stub("BAR")
+@other_stub.function
+def func():
+    pass
 assert __package__ == "pack"
 """
 
@@ -41,6 +59,9 @@ python_subpackage_src = """
 import modal
 stub = modal.Stub("FOO")
 other_stub = modal.Stub("BAR")
+@other_stub.function
+def func():
+    pass
 assert __package__ == "pack.sub"
 """
 
@@ -58,32 +79,31 @@ dir_containing_python_package = {
 
 
 @pytest.mark.parametrize(
-    ["dir_structure", "ref", "expected_stub_name", "expected_entrypoint"],
+    ["dir_structure", "ref", "expected_object_type"],
     [
         # # file syntax
-        (empty_dir_with_python_file, "mod.py", "FOO", None),
-        (empty_dir_with_python_file, "mod.py::stub", "FOO", None),
-        (empty_dir_with_python_file, "mod.py:stub", "FOO", None),
-        (empty_dir_with_python_file, "mod.py::other_stub", "BAR", None),
-        (empty_dir_with_python_file, "mod.py::other_stub.func", "BAR", None),
-        (dir_containing_python_package, "pack/mod.py", "FOO", None),
-        (dir_containing_python_package, "pack/sub/mod.py", "FOO", None),
-        (dir_containing_python_package, "dir/sub/mod.py", "FOO", None),
-        # python module syntax
-        (empty_dir_with_python_file, "mod", "FOO", None),
-        (empty_dir_with_python_file, "mod::stub", "FOO", None),
-        (empty_dir_with_python_file, "mod:stub", "FOO", None),
-        (empty_dir_with_python_file, "mod::other_stub", "BAR", None),
-        (dir_containing_python_package, "pack.mod", "FOO", None),
-        (dir_containing_python_package, "pack.mod::other_stub", "BAR", None),
+        (empty_dir_with_python_file, "mod.py", _Stub),
+        (empty_dir_with_python_file, "mod.py::stub", _Stub),
+        (empty_dir_with_python_file, "mod.py::stub.Parent.meth", _Function),
+        (empty_dir_with_python_file, "mod.py::other_stub", _Stub),
+        (empty_dir_with_python_file, "mod.py::other_stub.func", _Function),
+        (dir_containing_python_package, "pack/mod.py", _Stub),
+        (dir_containing_python_package, "pack/sub/mod.py", _Stub),
+        (dir_containing_python_package, "dir/sub/mod.py", _Stub),
+        # # python module syntax
+        (empty_dir_with_python_file, "mod", _Stub),
+        (empty_dir_with_python_file, "mod::stub", _Stub),
+        (empty_dir_with_python_file, "mod::other_stub", _Stub),
+        (dir_containing_python_package, "pack.mod", _Stub),
+        (dir_containing_python_package, "pack.mod::other_stub", _Stub),
     ],
 )
-def test_import_stub_by_ref(dir_structure, ref, expected_stub_name, expected_entrypoint, mock_dir):
+def test_import_object(dir_structure, ref, expected_object_type, mock_dir):
     with mock_dir(dir_structure):
-        stub_ref = parse_stub_ref(ref)
-        imported_stub = import_stub(stub_ref)
-        _stub = synchronizer._translate_in(imported_stub)
-        assert _stub._name == expected_stub_name
+        stub_ref = parse_import_ref(ref)
+        imported_stub = import_object(stub_ref)
+        _translated_obj = synchronizer._translate_in(imported_stub)
+        assert isinstance(_translated_obj, expected_object_type)
 
 
 def test_import_package_properly():
@@ -96,5 +116,21 @@ def test_import_package_properly():
     rel_p = str(p.relative_to(os.getcwd()))
     print(f"abs_p={abs_p} rel_p={rel_p}")
 
-    assert synchronizer._translate_in(import_stub(parse_stub_ref(rel_p)))._name == "xyz"
-    assert synchronizer._translate_in(import_stub(parse_stub_ref(abs_p)))._name == "xyz"
+    assert synchronizer._translate_in(import_object(parse_import_ref(rel_p)))._name == "xyz"
+    assert synchronizer._translate_in(import_object(parse_import_ref(abs_p)))._name == "xyz"
+
+
+def test_get_by_object_path():
+    class NS(dict):
+        def __getattr__(self, n):
+            return dict.__getitem__(self, n)
+
+    # simple
+    assert get_by_object_path(NS(foo="bar"), "foo") == "bar"
+
+    # nested simple
+    assert get_by_object_path(NS(foo=NS(bar="baz")), "foo.bar") == "baz"
+
+    # try to find item keys with periods in them (ugh).
+    # this helps resolving lifecycled functions
+    assert get_by_object_path(NS({"foo.bar": "baz"}), "foo.bar") == "baz"
