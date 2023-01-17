@@ -1,9 +1,6 @@
 # Copyright Modal Labs 2022
 import uuid
 from typing import (
-    TYPE_CHECKING,
-    Awaitable,
-    Callable,
     Generic,
     Optional,
     Type,
@@ -16,12 +13,10 @@ from google.protobuf.message import Message
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 
+from ._resolver import Resolver
 from ._object_meta import ObjectMeta
 from .client import _Client
 from .exception import InvalidError, NotFoundError
-
-if TYPE_CHECKING:
-    from .stub import _Stub
 
 H = TypeVar("H", bound="Handle")
 
@@ -143,15 +138,7 @@ class Provider(Generic[H]):
         """
         return PersistedRef(label, definition=self)
 
-    async def _load(
-        self,
-        client: _Client,
-        stub: "_Stub",
-        app_id: str,
-        loader: Callable[["Provider"], Awaitable[str]],
-        message_callback: Callable[[str], None],
-        existing_object_id: Optional[str] = None,
-    ) -> H:
+    async def _load(self, resolver: Resolver) -> H:
         raise NotImplementedError(f"Object factory of class {type(self)} has no load method")
 
     @classmethod
@@ -200,14 +187,9 @@ class RemoteRef(Ref[H]):
 
     async def _load(
         self,
-        client: _Client,
-        stub: "_Stub",
-        app_id: str,
-        loader: Callable[["Provider"], Awaitable[str]],
-        message_callback: Callable[[str], None],
-        existing_object_id: Optional[str] = None,
+        resolver: Resolver,
     ) -> H:
-        handle = await Handle.from_app(self.app_name, self.tag, self.namespace, client)
+        handle = await Handle.from_app(self.app_name, self.tag, self.namespace, resolver.client)
         return cast(H, handle)
 
 
@@ -222,16 +204,11 @@ class PersistedRef(Ref[H]):
 
     async def _load(
         self,
-        client: _Client,
-        stub: "_Stub",
-        app_id: str,
-        loader: Callable[["Provider"], Awaitable[str]],
-        message_callback: Callable[[str], None],
-        existing_object_id: Optional[str] = None,
+        resolver: Resolver,
     ) -> H:
         from .stub import _Stub
 
         _stub = _Stub(self.app_name, _object=self.definition)
-        await _stub.deploy(client=client)
-        handle = await Handle.from_app(self.app_name, client=client)
+        await _stub.deploy(client=resolver.client)
+        handle = await Handle.from_app(self.app_name, client=resolver.client)
         return cast(H, handle)

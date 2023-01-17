@@ -5,6 +5,7 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 from modal_utils.grpc_utils import retry_transient_errors
 
+from ._resolver import Resolver
 from .client import _Client
 from .config import logger
 from .object import Handle, Provider
@@ -74,40 +75,17 @@ class _App:
         self, obj: Provider, progress: Optional[Tree] = None, existing_object_id: Optional[str] = None
     ) -> Handle:
         """Send a server request to create an object in this app, and return its ID."""
-        from ._output import (  # Lazy import to only import `rich` when necessary.
-            step_completed,
-            step_progress,
-            step_progress_update,
-        )
-
         cached_obj = self._load_cached(obj)
         if cached_obj is not None:
             # We already created this object before, shortcut this method
             return cached_obj
 
-        async def loader(obj: Provider) -> str:
-            assert isinstance(obj, Provider)
-            created_obj = await self._load(obj, progress=progress)
-            assert isinstance(created_obj, Handle)
-            return created_obj.object_id
-
-        last_message, spinner, step_node = None, None, None
-
-        def set_message(message):
-            nonlocal last_message, spinner, step_node
-            last_message = message
-            if progress:
-                if step_node is None:
-                    spinner = step_progress()
-                    step_node = progress.add(spinner)
-                step_progress_update(spinner, message)
+        resolver = Resolver(self._stub, self, progress, self._client, self.app_id, existing_object_id)
 
         # Create object
-        created_obj = await obj._load(self.client, self._stub, self.app_id, loader, set_message, existing_object_id)
+        created_obj = await obj._load(resolver)
 
-        # Change message to a completed step
-        if progress and last_message:
-            step_node.label = step_completed(last_message, is_substep=True)
+        resolver.set_finish()  # finishes any message
 
         if existing_object_id is not None and created_obj.object_id != existing_object_id:
             # TODO(erikbern): this is a very ugly fix to a problem that's on the server side.
