@@ -133,7 +133,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def AppGetObjects(self, stream):
         request: api_pb2.AppGetObjectsRequest = await stream.recv_message()
         object_ids = self.app_objects.get(request.app_id, {})
-        items = [api_pb2.AppGetObjectsItem(tag=tag, object_id=object_id) for tag, object_id in object_ids.items()]
+        items = [
+            api_pb2.AppGetObjectsItem(tag=tag, object_id=object_id, function=self.app_functions.get(object_id))
+            for tag, object_id in object_ids.items()
+        ]
         await stream.send_message(api_pb2.AppGetObjectsResponse(items=items))
 
     async def AppSetObjects(self, stream):

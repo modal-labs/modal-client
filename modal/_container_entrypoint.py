@@ -114,7 +114,7 @@ class _FunctionIOManager:
 
     @wrap()
     async def initialize_app(self):
-        await _App._init_container(self._client, self.app_id, self.task_id)
+        await _App._init_container(self._client, self.app_id)
 
     async def _heartbeat(self):
         request = api_pb2.ContainerHeartbeatRequest()

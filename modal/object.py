@@ -40,7 +40,7 @@ class Handle(metaclass=ObjectMeta):
 
     def _initialize_from_proto(self, proto: Message):
         pass  # default implementation
-        
+
     @staticmethod
     def _from_id(object_id: str, client: _Client, proto: Optional[Message]):
         parts = object_id.split("-")
