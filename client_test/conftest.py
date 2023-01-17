@@ -93,6 +93,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.client_hello_metadata = None
 
+        self.dicts = {}
+
         @self.function_body
         def default_function_body(*args, **kwargs):
             return sum(arg**2 for arg in args) + sum(value**2 for key, value in kwargs.items())
@@ -221,6 +223,24 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.ContainerHeartbeatRequest = await stream.recv_message()
         self.requests.append(request)
         await stream.send_message(Empty())
+
+    ### Dict
+
+    async def DictCreate(self, stream):
+        dict_id = f"di-{len(self.dicts)}"
+        self.dicts[dict_id] = {}
+        await stream.send_message(api_pb2.DictCreateResponse(dict_id=dict_id))
+
+    async def DictGet(self, stream):
+        request: api_pb2.DictGetRequest = await stream.recv_message()
+        d = self.dicts[request.dict_id]
+        await stream.send_message(api_pb2.DictGetResponse(value=d.get(request.key), found=bool(request.key in d)))
+
+    async def DictUpdate(self, stream):
+        request: api_pb2.DictUpdateRequest = await stream.recv_message()
+        for update in request.updates:
+            self.dicts[request.dict_id][update.key] = update.value
+        await stream.send_message(api_pb2.DictUpdateResponse())
 
     ### Function
 
