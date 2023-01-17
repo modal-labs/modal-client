@@ -7,7 +7,6 @@ from modal_utils.grpc_utils import retry_transient_errors
 
 from .client import _Client
 from .config import logger
-from .functions import _FunctionHandle
 from .object import Handle, Provider
 
 if TYPE_CHECKING:
@@ -180,7 +179,7 @@ class _App:
         return self._tag_to_object[tag]
 
     @staticmethod
-    async def _init_container(client, app_id, task_id):
+    async def _init_container(client, app_id):
         """Used by the container to bootstrap the app and all its objects."""
         # This is a bit of a hacky thing:
         global _container_app, _is_container_app
@@ -189,13 +188,10 @@ class _App:
         self._client = client
         self._app_id = app_id
 
-        req = api_pb2.AppGetObjectsRequest(app_id=app_id, task_id=task_id)
+        req = api_pb2.AppGetObjectsRequest(app_id=app_id)
         resp = await retry_transient_errors(self._client.stub.AppGetObjects, req)
         for item in resp.items:
-            obj = Handle._from_id(item.object_id, self._client)
-            if isinstance(obj, _FunctionHandle):
-                # TODO(erikbern): treating this as a special case right now, but we should generalize it
-                obj._initialize_from_proto(item.function)
+            obj = Handle._from_id(item.object_id, self._client, item.function)
             self._tag_to_object[item.tag] = obj
 
         if "image" not in self._tag_to_object:

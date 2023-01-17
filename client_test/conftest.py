@@ -133,7 +133,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def AppGetObjects(self, stream):
         request: api_pb2.AppGetObjectsRequest = await stream.recv_message()
         object_ids = self.app_objects.get(request.app_id, {})
-        items = [api_pb2.AppGetObjectsItem(tag=tag, object_id=object_id) for tag, object_id in object_ids.items()]
+        items = [
+            api_pb2.AppGetObjectsItem(tag=tag, object_id=object_id, function=self.app_functions.get(object_id))
+            for tag, object_id in object_ids.items()
+        ]
         await stream.send_message(api_pb2.AppGetObjectsResponse(items=items))
 
     async def AppSetObjects(self, stream):
@@ -163,7 +166,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 object_id = app_objects.get(request.object_tag)
             else:
                 (object_id,) = list(app_objects.values())
-        await stream.send_message(api_pb2.AppLookupObjectResponse(object_id=object_id))
+        function = self.app_functions.get(object_id)
+        await stream.send_message(api_pb2.AppLookupObjectResponse(object_id=object_id, function=function))
 
     async def AppHeartbeat(self, stream):
         request: api_pb2.ClientHeartbeatRequest = await stream.recv_message()
@@ -251,13 +255,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
             function_id = f"fu-{self.n_functions}"
         if request.schedule:
             self.function2schedule[function_id] = request.schedule
-        if request.function.webhook_config.type:
-            web_url = "http://xyz.internal"
-        else:
-            web_url = None
+        function = api_pb2.Function()
+        function.CopyFrom(request.function)
+        if function.webhook_config.type:
+            function.web_url = "http://xyz.internal"
 
-        self.app_functions[function_id] = request.function
-        await stream.send_message(api_pb2.FunctionCreateResponse(function_id=function_id, web_url=web_url))
+        self.app_functions[function_id] = function
+        await stream.send_message(api_pb2.FunctionCreateResponse(function_id=function_id, function=function))
 
     async def FunctionMap(self, stream):
         self.fcidx += 1

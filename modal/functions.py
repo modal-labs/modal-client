@@ -22,6 +22,7 @@ from typing import (
 
 import cloudpickle
 from aiostream import pipe, stream
+from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.exceptions import UserCodeException
 
@@ -428,8 +429,10 @@ class _FunctionHandle(Handle, type_prefix="fu"):
     def _set_mute_cancellation(self, value=True):
         self._mute_cancellation = value
 
-    def _initialize_from_proto(self, function: api_pb2.Function):
-        self._is_generator = function.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
+    def _initialize_from_proto(self, proto: Message):
+        assert isinstance(proto, api_pb2.Function)
+        self._is_generator = proto.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
+        self._web_url = proto.web_url
         self._mute_cancellation = False
         self._output_mgr = None
 
@@ -472,11 +475,6 @@ class _FunctionHandle(Handle, type_prefix="fu"):
     @property
     def web_url(self) -> str:
         """URL of a Function running as a web endpoint."""
-        from modal import is_local
-
-        if not is_local():
-            raise InvalidError("Function.web_url is not accessible from inside a container")
-
         function_handle = self._get_live_handle()
         return function_handle._web_url
 
@@ -939,7 +937,7 @@ class _Function(Provider[_FunctionHandle]):
         else:
             message_callback(f"Created {self._tag}.")
 
-        return _FunctionHandle(self, response.web_url, client, response.function_id)
+        return _FunctionHandle._from_id(response.function_id, client, response.function)
 
     @property
     def tag(self):

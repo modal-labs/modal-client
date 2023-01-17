@@ -29,7 +29,9 @@ class Unpickler(pickle.Unpickler):
 
     def persistent_load(self, pid):
         object_id = pid
-        return Handle._from_id(object_id, self.client)
+        # TODO(erikbern): we should get the proto somehow,
+        # for functions
+        return Handle._from_id(object_id, self.client, None)
 
 
 def serialize(obj):

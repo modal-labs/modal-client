@@ -37,3 +37,13 @@ async def test_lookup_function(servicer, aio_client):
     # Make sure we can call this function
     assert await f.call(2, 4) == 20
     assert [r async for r in f.map([5, 2], [4, 3])] == [41, 13]
+
+
+@pytest.mark.asyncio
+async def test_webhook_lookup(servicer, aio_client):
+    stub = AioStub()
+    stub.webhook(square, method="POST")
+    await stub.deploy("my-webhook", client=aio_client)
+
+    f = await aio_lookup("my-webhook", client=aio_client)
+    assert f.web_url
