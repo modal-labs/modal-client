@@ -9,7 +9,7 @@ from grpclib import GRPCError, Status
 
 import modal.app
 from modal import Stub
-from modal.aio import AioQueue, AioStub
+from modal.aio import AioDict, AioQueue, AioStub
 from modal.exception import InvalidError
 from modal_proto import api_pb2
 from modal_test_support import module_1, module_2
@@ -18,26 +18,26 @@ from modal_test_support import module_1, module_2
 @pytest.mark.asyncio
 async def test_kwargs(servicer, aio_client):
     stub = AioStub(
-        q1=AioQueue(),
-        q2=AioQueue(),
+        d=AioDict(),
+        q=AioQueue(),
     )
     async with stub.run(client=aio_client) as app:
-        await app["q1"].put("foo")
-        await app["q2"].put("bar")
-        assert await app["q1"].get() == "foo"
-        assert await app["q2"].get() == "bar"
+        await app["d"].put("foo", "bar")
+        await app["q"].put("baz")
+        assert await app["d"].get("foo") == "bar"
+        assert await app["q"].get() == "baz"
 
 
 @pytest.mark.asyncio
 async def test_attrs(servicer, aio_client):
     stub = AioStub()
-    stub.q1 = AioQueue()
-    stub.q2 = AioQueue()
+    stub.d = AioDict()
+    stub.q = AioQueue()
     async with stub.run(client=aio_client) as app:
-        await app.q1.put("foo")
-        await app.q2.put("bar")
-        assert await app.q1.get() == "foo"
-        assert await app.q2.get() == "bar"
+        await app.d.put("foo", "bar")
+        await app.q.put("baz")
+        assert await app.d.get("foo") == "bar"
+        assert await app.q.get() == "baz"
 
 
 def square(x):
