@@ -782,7 +782,8 @@ class _Function(Provider[_FunctionHandle]):
                 raise InvalidError("Cloud selection only supported for functions running with A100 GPUs.")
         else:
             self._cloud_provider = None
-        super().__init__(self._load)
+        rep = "Function({self._tag})"
+        super().__init__(self._load, rep)
 
     async def _load(self, resolver: Resolver):
         resolver.set_message(f"Creating {self._tag}...")
@@ -807,8 +808,8 @@ class _Function(Provider[_FunctionHandle]):
             try:
                 secret_id = await resolver.load(secret)
             except NotFoundError as ex:
-                if isinstance(secret, _Secret) and secret.tag is None:
-                    msg = "Secret {!r} was not found".format(secret.app_name)
+                if isinstance(secret, _Secret):
+                    msg = f"Secret {secret} was not found"
                 else:
                     msg = str(ex)
                 msg += ". You can add secrets to your account at https://modal.com/secrets"

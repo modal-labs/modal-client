@@ -110,9 +110,13 @@ P = TypeVar("P", bound="Provider")
 
 
 class Provider(Generic[H]):
-    def __init__(self, load: Callable[[Resolver], Awaitable[None]]):
+    def __init__(self, load: Callable[[Resolver], Awaitable[H]], rep: str):
         self._local_uuid = str(uuid.uuid4())
         self._load = load
+        self._rep = rep
+
+    def __repr__(self):
+        return self._rep
 
     @property
     def local_uuid(self):
@@ -139,6 +143,7 @@ class Provider(Generic[H]):
         ```
 
         """
+
         async def _load_persisted(resolver: Resolver) -> H:
             from .stub import _Stub
 
@@ -150,7 +155,8 @@ class Provider(Generic[H]):
         # Create a class of type cls, but use the base constructor
         cls = type(self)
         obj = cls.__new__(cls)
-        Provider.__init__(obj, _load_persisted)
+        rep = f"PersistedRef<{self}>({label})"
+        Provider.__init__(obj, _load_persisted, rep)
         return obj
 
     @classmethod
@@ -179,5 +185,6 @@ class Provider(Generic[H]):
         # Create a class of type cls, but use the base constructor
         # TODO(erikbern): No Provider subclass should override __init__
         obj = cls.__new__(cls)
-        Provider.__init__(obj, _load_remote)
+        rep = f"Ref({app_name})"
+        Provider.__init__(obj, _load_remote, rep)
         return obj

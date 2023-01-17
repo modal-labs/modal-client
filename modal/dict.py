@@ -137,7 +137,7 @@ class _Dict(Provider[_DictHandle]):
     def __init__(self, data={}):
         """Create a new dictionary, optionally filled with initial data."""
         self._data = data
-        super().__init__(self._load)
+        super().__init__(self._load, "Dict()")
 
     async def _load(self, resolver: Resolver):
         serialized = _serialize_dict(self._data)
