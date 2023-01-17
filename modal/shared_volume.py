@@ -122,7 +122,7 @@ class _SharedVolume(Provider[_SharedVolumeHandle]):
     async def _load(self, resolver: Resolver):
         if resolver.existing_object_id:
             # Volume already exists; do nothing.
-            return _SharedVolumeHandle(resolver.client, resolver.existing_objectid)
+            return _SharedVolumeHandle(resolver.client, resolver.existing_object_id)
 
         req = api_pb2.SharedVolumeCreateRequest(app_id=resolver.app_id, cloud_provider=self._cloud_provider)
         resp = await retry_transient_errors(resolver.client.stub.SharedVolumeCreate, req)

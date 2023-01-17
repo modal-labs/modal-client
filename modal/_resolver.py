@@ -1,11 +1,23 @@
 # Copyright Modal Labs 2023
-from typing import Optional
+from typing import TYPE_CHECKING, Optional, TypeVar
+
+if TYPE_CHECKING:
+    from rich.spinner import Spinner
+    from rich.tree import Tree
+else:
+    Spinner = TypeVar("Spinner")
+    Tree = TypeVar("Tree")
 
 
 class Resolver:
     # Unfortunately we can't use type annotations much in this file,
     # since that leads to circular dependencies
-    def __init__(self, stub, app, progress, client, app_id: str, existing_object_id: Optional[str]):
+    _progress: Optional[Tree]
+    _last_message: Optional[str]
+    _spinner: Optional[Spinner]
+    _step_node: Optional[Tree]
+
+    def __init__(self, stub, app, progress: Optional[Tree], client, app_id: str, existing_object_id: Optional[str]):
         self._app = app
         self._progress = progress
         self._last_message = None

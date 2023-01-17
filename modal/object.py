@@ -1,9 +1,6 @@
 # Copyright Modal Labs 2022
 import uuid
 from typing import (
-    TYPE_CHECKING,
-    Awaitable,
-    Callable,
     Generic,
     Optional,
     Type,
@@ -20,9 +17,6 @@ from ._resolver import Resolver
 from ._object_meta import ObjectMeta
 from .client import _Client
 from .exception import InvalidError, NotFoundError
-
-if TYPE_CHECKING:
-    from .stub import _Stub
 
 H = TypeVar("H", bound="Handle")
 

@@ -15,6 +15,7 @@ from modal_utils.async_utils import synchronize_apis
 from modal_utils.grpc_utils import retry_transient_errors
 
 from . import is_local
+from ._resolver import Resolver
 from .config import config, logger
 from .exception import InvalidError, NotFoundError, RemoteError
 from .mount import _Mount
