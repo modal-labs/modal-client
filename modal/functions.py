@@ -55,7 +55,7 @@ from .exception import deprecation_error, deprecation_warning
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
 from .mount import _Mount
-from .object import Handle, Provider, Ref, RemoteRef
+from .object import Handle, Provider, Ref
 from .rate_limit import RateLimit
 from .retries import Retries
 from .schedule import Schedule
@@ -806,7 +806,7 @@ class _Function(Provider[_FunctionHandle]):
             try:
                 secret_id = await resolver.load(secret)
             except NotFoundError as ex:
-                if isinstance(secret, RemoteRef) and secret.tag is None:
+                if isinstance(secret, _Secret) and secret.tag is None:
                     msg = "Secret {!r} was not found".format(secret.app_name)
                 else:
                     msg = str(ex)

@@ -159,38 +159,20 @@ class Provider(Generic[H]):
             pass
         ```
         """
-        provider: RemoteRef = RemoteRef(app_name, tag, namespace)
-        # TODO(erikbern): this returns an object that looks like a P during static analysis,
-        # but is actually a RemoteRef during runtime. This seems pretty confusing and bad:
-        # we should return an object that's always P.
-        return cast(P, provider)
+
+        async def _load_remote(resolver: Resolver) -> H:
+            handle = await Handle.from_app(app_name, tag, namespace, resolver.client)
+            return cast(H, handle)
+
+        # Create a class of type cls, but use the base constructor
+        # TODO(erikbern): No Provider subclass should override __init__
+        obj = cls.__new__(cls)
+        Provider.__init__(obj, _load_remote)
+        return obj
 
 
 class Ref(Provider[H]):
     pass
-
-
-class RemoteRef(Ref[H]):
-    def __init__(
-        self,
-        app_name: str,
-        tag: Optional[str] = None,
-        namespace: Optional[int] = None,  # api_pb2.DEPLOYMENT_NAMESPACE
-    ):
-        self.app_name = app_name
-        self.tag = tag
-        self.namespace = namespace
-        super().__init__(self._load)
-
-    def __repr__(self):
-        return f"Ref({self.app_name})"
-
-    async def _load(
-        self,
-        resolver: Resolver,
-    ) -> H:
-        handle = await Handle.from_app(self.app_name, self.tag, self.namespace, resolver.client)
-        return cast(H, handle)
 
 
 class PersistedRef(Ref[H]):
