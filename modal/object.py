@@ -11,6 +11,8 @@ from typing import (
     cast,
 )
 
+from google.protobuf.message import Message
+
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 
@@ -36,8 +38,11 @@ class Handle(metaclass=ObjectMeta):
         self._client = client
         self._object_id = object_id
 
+    def _initialize_from_proto(self, proto: Message):
+        pass  # default implementation
+        
     @staticmethod
-    def _from_id(object_id, client):
+    def _from_id(object_id: str, client: _Client, proto: Optional[Message]):
         parts = object_id.split("-")
         if len(parts) != 2:
             raise InvalidError(f"Object id {object_id} has no dash in it")
@@ -47,12 +52,9 @@ class Handle(metaclass=ObjectMeta):
         object_cls = ObjectMeta.prefix_to_type[prefix]
         obj = Handle.__new__(object_cls)
         Handle.__init__(obj, client, object_id=object_id)
+        if proto is not None:
+            obj._initialize_from_proto(proto)
         return obj
-
-    @classmethod
-    async def from_id(cls: Type[H], object_id: str) -> H:
-        client = await _Client.from_env()
-        return Handle._from_id(object_id, client)
 
     @property
     def object_id(self):
@@ -77,15 +79,8 @@ class Handle(metaclass=ObjectMeta):
         response = await client.stub.AppLookupObject(request)
         if not response.object_id:
             raise NotFoundError(response.error_message)
-        obj = Handle._from_id(response.object_id, client)
-
-        # TODO(erikbern): There's a weird special case for functions right now that we should generalize
-        from .functions import _FunctionHandle
-
-        if isinstance(obj, _FunctionHandle):
-            obj._initialize_from_proto(response.function)
-
-        return obj
+        proto = response.function  # TODO: handle different object types
+        return Handle._from_id(response.object_id, client, proto)
 
 
 async def _lookup(

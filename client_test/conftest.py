@@ -251,13 +251,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
             function_id = f"fu-{self.n_functions}"
         if request.schedule:
             self.function2schedule[function_id] = request.schedule
-        if request.function.webhook_config.type:
-            web_url = "http://xyz.internal"
-        else:
-            web_url = None
+        function = api_pb2.Function()
+        function.CopyFrom(request.function)
+        if function.webhook_config.type:
+            function.web_url = "http://xyz.internal"
 
-        self.app_functions[function_id] = request.function
-        await stream.send_message(api_pb2.FunctionCreateResponse(function_id=function_id, web_url=web_url))
+        self.app_functions[function_id] = function
+        await stream.send_message(api_pb2.FunctionCreateResponse(function_id=function_id, function=function))
 
     async def FunctionMap(self, stream):
         self.fcidx += 1

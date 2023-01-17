@@ -193,9 +193,6 @@ class _App:
         resp = await retry_transient_errors(self._client.stub.AppGetObjects, req)
         for item in resp.items:
             obj = Handle._from_id(item.object_id, self._client)
-            if isinstance(obj, _FunctionHandle):
-                # TODO(erikbern): treating this as a special case right now, but we should generalize it
-                obj._initialize_from_proto(item.function)
             self._tag_to_object[item.tag] = obj
 
         if "image" not in self._tag_to_object:
