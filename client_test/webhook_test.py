@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import pytest
 
-from modal.aio import AioStub
+from modal.aio import AioApp, AioStub
 
 stub = AioStub()
 
@@ -13,8 +13,12 @@ async def f(x):
 
 @pytest.mark.asyncio
 async def test_webhook(servicer, aio_client):
-    async with stub.run(client=aio_client):
+    async with stub.run(client=aio_client) as app:
         assert f.web_url
+
+        # Make sure the container gets the app id as well
+        container_app = await AioApp._init_container(aio_client, app.app_id)
+        assert container_app.f.web_url
 
 
 def test_webhook_cors():
