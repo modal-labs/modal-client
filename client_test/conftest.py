@@ -163,7 +163,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 object_id = app_objects.get(request.object_tag)
             else:
                 (object_id,) = list(app_objects.values())
-        await stream.send_message(api_pb2.AppLookupObjectResponse(object_id=object_id))
+        function = self.app_functions.get(object_id)
+        await stream.send_message(api_pb2.AppLookupObjectResponse(object_id=object_id, function=function))
 
     async def AppHeartbeat(self, stream):
         request: api_pb2.ClientHeartbeatRequest = await stream.recv_message()
