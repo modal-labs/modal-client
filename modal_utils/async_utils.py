@@ -4,7 +4,8 @@ import concurrent.futures
 import functools
 import inspect
 import time
-from typing import Any, List, Optional, Set
+from typing import Any, Awaitable, Callable, List, Optional, Set, TypeVar
+from typing_extensions import ParamSpec
 
 import synchronicity
 
@@ -310,3 +311,18 @@ def on_shutdown(coro):
             raise
 
     asyncio.create_task(wrapper())
+
+
+T = TypeVar("T")
+P = ParamSpec("P")
+
+
+def asyncify(f: Callable[P, T]) -> Callable[P, Awaitable[T]]:
+    """Convert a blocking function into one that runs in the current loop's executor."""
+
+    @functools.wraps(f)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> Awaitable[T]:
+        loop = asyncio.get_running_loop()
+        return loop.run_in_executor(None, functools.partial(f, *args, **kwargs))
+
+    return wrapper

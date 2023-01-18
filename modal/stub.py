@@ -30,7 +30,8 @@ from .functions import _Function, _FunctionHandle
 from .gpu import GPU_T
 from .image import _Image
 from .mount import _create_client_mount, _Mount, client_mount_name
-from .object import Provider, Ref
+from .object import Provider
+from .proxy import _Proxy
 from .queue import _Queue
 from .rate_limit import RateLimit
 from .schedule import Schedule
@@ -597,7 +598,7 @@ class _Stub:
         shared_volumes: Dict[str, _SharedVolume] = {},
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MB. This is a soft limit.
-        proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
+        proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
@@ -679,7 +680,7 @@ class _Stub:
         shared_volumes: Dict[str, _SharedVolume] = {},
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MB. This is a soft limit.
-        proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
+        proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
@@ -760,7 +761,7 @@ class _Stub:
         shared_volumes: Dict[str, _SharedVolume] = {},
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MB. This is a soft limit.
-        proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
+        proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.

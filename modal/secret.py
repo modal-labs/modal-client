@@ -26,10 +26,8 @@ class _Secret(Provider[_SecretHandle]):
     def __init__(self, env_dict={}, template_type=""):
         self._env_dict = env_dict
         self._template_type = template_type
-        super().__init__()
-
-    def __repr__(self):
-        return f"Secret([{', '.join(self._env_dict.keys())}])"
+        rep = f"Secret([{', '.join(self._env_dict.keys())}])"
+        super().__init__(self._load, rep)
 
     async def _load(self, resolver: Resolver):
         req = api_pb2.SecretCreateRequest(
