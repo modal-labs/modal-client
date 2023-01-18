@@ -24,18 +24,23 @@ def dummy():
     pass  # not actually used in test (servicer returns sum of square of all args)
 
 
-def test_run_function(client):
+def test_run_function(client, servicer):
+    assert len(servicer.cleared_function_calls) == 0
     with stub.run(client=client):
         assert foo.call(2, 4) == 20
+        assert len(servicer.cleared_function_calls) == 1
 
 
-def test_map(client):
+def test_map(client, servicer):
     stub = Stub()
     dummy_modal = stub.function(dummy)
 
+    assert len(servicer.cleared_function_calls) == 0
     with stub.run(client=client):
         assert list(dummy_modal.map([5, 2], [4, 3])) == [41, 13]
+        assert len(servicer.cleared_function_calls) == 1
         assert set(dummy_modal.map([5, 2], [4, 3], order_outputs=False)) == {13, 41}
+        assert len(servicer.cleared_function_calls) == 2
 
 
 _side_effect_count = 0
@@ -108,13 +113,16 @@ def test_function_future(client, servicer):
 
         servicer.function_is_running = False
         assert future.get(0.01) == "hello"
+        assert future.object_id not in servicer.cleared_function_calls
 
         with pytest.warns(DeprecationError):
-            future = later_modal.submit()
+            future = later_modal.spawn()
             assert isinstance(future, FunctionCall)
 
         servicer.function_is_running = True
         assert future.object_id == "fc-2"
+
+        assert future.object_id not in servicer.cleared_function_calls
 
 
 @pytest.mark.asyncio
@@ -132,6 +140,7 @@ async def test_function_future_async(client, servicer):
 
         servicer.function_is_running = False
         assert await future.get(0.01) == "hello"
+        assert future.object_id not in servicer.cleared_function_calls  # keep results around a bit longer for futures
 
 
 def later_gen():
@@ -148,6 +157,19 @@ async def test_generator(client, servicer):
 
     later_gen_modal = stub.function(later_gen)
     assert later_gen_modal.is_generator
+
+    def dummy():
+        yield "bar"
+        yield "baz"
+
+    servicer.function_body(dummy)
+
+    assert len(servicer.cleared_function_calls) == 0
+    with stub.run(client=client):
+        res = later_gen_modal.call()
+        assert hasattr(res, "__iter__")  # strangely inspect.isgenerator returns false
+        assert list(res) == ["bar", "baz"]
+        assert len(servicer.cleared_function_calls) == 1
 
 
 @pytest.mark.asyncio
