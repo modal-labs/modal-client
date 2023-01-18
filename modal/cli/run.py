@@ -16,8 +16,8 @@ from synchronicity import Interface
 
 from modal.cli.app import _show_stub_ref_failure_help
 from modal.exception import InvalidError
-from modal.functions import _Function
-from modal.stub import _Stub
+from modal.functions import _Function, _FunctionHandle
+from modal.stub import LocalEntrypoint, _Stub
 from modal_utils.async_utils import synchronizer
 from modal_utils.package_utils import NoSuchObject, import_object, parse_import_ref
 
@@ -54,23 +54,26 @@ def _add_click_options(func, signature: inspect.Signature):
     return func
 
 
-def _get_click_command_for_function_handle(_stub, function_tag: str):
+def _get_click_command_for_function(_stub, function_tag):
     blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
-    raw_func = _stub._blueprint[function_tag]._info.raw_f
+
+    _function = _stub[function_tag]
+    raw_func = _function._info.raw_f
 
     @click.pass_context
     def f(ctx, *args, **kwargs):
         with blocking_stub.run(detach=ctx.obj["detach"]) as app:
-            function_handle = getattr(app, function_tag)
-            function_handle.call(*args, **kwargs)
+            _function_handle = app[function_tag]
+            _function_handle.call(*args, **kwargs)
 
+    # TODO: handle `self` when raw_func is an unbound method (e.g. method on lifecycle class)
     with_click_options = _add_click_options(f, inspect.signature(raw_func))
     return click.command(with_click_options)
 
 
-def _get_click_command_for_local_entrypoint(_stub, entrypoint_name: str):
+def _get_click_command_for_local_entrypoint(_stub, entrypoint: LocalEntrypoint):
     blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
-    func = _stub._local_entrypoints[entrypoint_name]
+    func = entrypoint.raw_f
     isasync = inspect.iscoroutinefunction(func)
 
     @click.pass_context
@@ -105,20 +108,25 @@ class RunGroup(click.Group):
         try:
             stub_or_function = synchronizer._translate_in(raw_object)
         except:
-            raise TypeError(f"{raw_object} is not a Modal Function or Stub")
+            raise click.UsageError(f"{raw_object} is not a Modal entity (should be a Stub or Function)")
 
         if isinstance(stub_or_function, _Stub):
             # infer function or display help for how to select one
             _stub = stub_or_function
             _function = infer_function_or_help(_stub)
-        elif isinstance(stub_or_function, _Function):
+        elif isinstance(stub_or_function, (_Function, _FunctionHandle, LocalEntrypoint)):
             _function = stub_or_function
             _stub = stub_or_function._stub
-
-        if function_name in _stub.registered_functions:
-            click_command = _get_click_command_for_function_handle(_stub, function_name)
         else:
-            click_command = _get_click_command_for_local_entrypoint(_stub, function_name)
+            raise click.UsageError(f"{raw_object} is not a Modal entity (should be a Stub or Function)")
+
+        if isinstance(_function, LocalEntrypoint):
+            click_command = _get_click_command_for_local_entrypoint(_stub, _function)
+        else:
+            if isinstance(_function, _FunctionHandle):
+                _function = _function._function
+            tag = _function._info.get_tag()
+            click_command = _get_click_command_for_function(_stub, tag)
 
         return click_command
 

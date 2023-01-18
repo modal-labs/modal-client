@@ -120,26 +120,17 @@ async def list_stops(app_id: str):
 
 
 def _show_stub_ref_failure_help(stub_ref: ImportRef) -> None:
-    stub_name = stub_ref.stub_name
+    object_path = stub_ref.object_path
     import_path = stub_ref.file_or_module
     error_console = Console(stderr=True)
-    guidance_msg = (
-        (
+    error_console.print(f"[bold red] Could not locate Modal stub or function {object_path} in {import_path}.")
+
+    if object_path is None:
+        guidance_msg = (
             f"Expected to find a stub variable named **`{DEFAULT_STUB_NAME}`** (the default stub name). If your `modal.Stub` is named differently, "
             "you must specify it in the stub ref argument. "
             f"For example a stub variable `app_stub = modal.Stub()` in `{import_path}` would "
             f"be specified as `{import_path}::app_stub`."
         )
-        if stub_name is None
-        else (
-            f"Expected to find a stub variable named **`{stub_name}`**. "
-            f"Check the name of your stub variable in `{import_path}`.\n"
-            f"""It should look like:
-
-    {stub_name} = modal.Stub(…)
-"""
-        )
-    )
-    error_console.print(f"[bold red]Could not locate stub variable in {import_path}.")
-    md = Markdown(guidance_msg)
-    error_console.print(md)
+        md = Markdown(guidance_msg)
+        error_console.print(md)

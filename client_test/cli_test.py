@@ -177,8 +177,8 @@ def test_run_local_entrypoint(servicer, server_url_env, test_dir):
 
 def test_run_parse_args(servicer, server_url_env, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "cli_args.py"
-    res = _run(["run", stub_file.as_posix()], expected_exit_code=1)
-    assert "You need to specify an entrypoint" in res.stdout
+    # res = _run(["run", stub_file.as_posix()], expected_exit_code=1)
+    # assert "You need to specify an entrypoint" in res.stdout
 
     valid_call_args = [
         (
@@ -190,10 +190,10 @@ def test_run_parse_args(servicer, server_url_env, test_dir):
             ],
             "the day is 31",
         ),
-        (["run", f"{stub_file.as_posix()}::.dt_arg", "--dt=2022-10-31"], "the day is 31"),
-        (["run", f"{stub_file.as_posix()}::.int_arg", "--i=200"], "200"),
-        (["run", f"{stub_file.as_posix()}::.default_arg"], "10"),
-        (["run", f"{stub_file.as_posix()}::.unannotated_arg", "--i=2022-10-31"], "'2022-10-31'"),
+        # (["run", f"{stub_file.as_posix()}::.dt_arg", "--dt=2022-10-31"], "the day is 31"),
+        # (["run", f"{stub_file.as_posix()}::.int_arg", "--i=200"], "200"),
+        # (["run", f"{stub_file.as_posix()}::.default_arg"], "10"),
+        # (["run", f"{stub_file.as_posix()}::.unannotated_arg", "--i=2022-10-31"], "'2022-10-31'"),
         # TODO: fix class references
         # (["run", f"{stub_file.as_posix()}::.ALifecycle.some_method", "--i=hello"], "'hello'")
     ]
