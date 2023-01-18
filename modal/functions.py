@@ -42,10 +42,10 @@ from ._blob_utils import (
 )
 from ._call_graph import InputInfo, reconstruct_call_graph
 from ._function_utils import FunctionInfo, LocalFunctionError, load_function_from_module
-from ._resolver import Resolver
 from ._location import CloudProvider, parse_cloud_provider
 from ._output import OutputManager
 from ._pty import get_pty_info
+from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._traceback import append_modal_tb
 from .client import _Client
@@ -198,7 +198,7 @@ class _Invocation:
             raise Exception("Could not create function call - the input queue seems to be full")
         return _Invocation(client.stub, function_call_id, client)
 
-    async def pop_function_call_outputs(self, timeout: Optional[float] = None):
+    async def pop_function_call_outputs(self, timeout: Optional[float], clear_on_success: bool):
         t0 = time.time()
         if timeout is None:
             backend_timeout = 55.0
@@ -211,6 +211,7 @@ class _Invocation:
                 function_call_id=self.function_call_id,
                 timeout=backend_timeout,
                 last_entry_id="0-0",
+                clear_on_success=clear_on_success,
             )
             response = await retry_transient_errors(
                 self.stub.FunctionGetOutputs,
@@ -228,12 +229,19 @@ class _Invocation:
                     break
 
     async def run_function(self):
-        result = (await stream.list(self.pop_function_call_outputs()))[0]
+        # waits indefinitely for a single result for the function, and clear the outputs buffer after
+        result = (await stream.list(self.pop_function_call_outputs(timeout=None, clear_on_success=True)))[0]
         assert not result.gen_status
         return await _process_result(result, self.stub, self.client)
 
-    async def poll_function(self, timeout: Optional[float] = 0):
-        results = await stream.list(self.pop_function_call_outputs(timeout=timeout))
+    async def poll_function(self, timeout: Optional[float] = None):
+        # waits up to timeout for a result from a function
+        # * timeout=0 means a single poll
+        # * timeout=None means wait indefinitely
+        # raises TimeoutError if there is no result before timeout
+        # Intended to be used for future polling, and as such keeps
+        # results around after returning them
+        results = await stream.list(self.pop_function_call_outputs(timeout=timeout, clear_on_success=False))
 
         if len(results) == 0:
             raise TimeoutError()
@@ -243,23 +251,34 @@ class _Invocation:
     async def run_generator(self):
         last_entry_id = "0-0"
         completed = False
-        while not completed:
+        try:
+            while not completed:
+                request = api_pb2.FunctionGetOutputsRequest(
+                    function_call_id=self.function_call_id,
+                    timeout=55.0,
+                    last_entry_id=last_entry_id,
+                    clear_on_success=False,  # there could be more results
+                )
+                response = await retry_transient_errors(
+                    self.stub.FunctionGetOutputs,
+                    request,
+                )
+                if len(response.outputs) > 0:
+                    last_entry_id = response.last_entry_id
+                    for item in response.outputs:
+                        if item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
+                            completed = True
+                            break
+                        yield await _process_result(item.result, self.stub, self.client)
+        finally:
+            # "ack" that we have all outputs we are interested in and let backend clear results
             request = api_pb2.FunctionGetOutputsRequest(
                 function_call_id=self.function_call_id,
-                timeout=55.0,
-                last_entry_id=last_entry_id,
+                timeout=0,
+                last_entry_id="0-0",
+                clear_on_success=True,
             )
-            response = await retry_transient_errors(
-                self.stub.FunctionGetOutputs,
-                request,
-            )
-            if len(response.outputs) > 0:
-                last_entry_id = response.last_entry_id
-                for item in response.outputs:
-                    if item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
-                        completed = True
-                        break
-                    yield await _process_result(item.result, self.stub, self.client)
+            await self.stub.FunctionGetOutputs(request)
 
 
 MAP_INVOCATION_CHUNK_SIZE = 100
@@ -330,6 +349,7 @@ async def _map_invocation(
                 function_call_id=function_call_id,
                 timeout=55,
                 last_entry_id=last_entry_id,
+                clear_on_success=False,
             )
             response = await retry_transient_errors(
                 client.stub.FunctionGetOutputs,
@@ -356,6 +376,20 @@ async def _map_invocation(
                     del pending_outputs[item.input_id]
                     yield item
 
+    async def get_all_outputs_and_clean_up():
+        try:
+            async for item in get_all_outputs():
+                yield item
+        finally:
+            # "ack" that we have all outputs we are interested in and let backend clear results
+            request = api_pb2.FunctionGetOutputsRequest(
+                function_call_id=function_call_id,
+                timeout=0,
+                last_entry_id="0-0",
+                clear_on_success=True,
+            )
+            await client.stub.FunctionGetOutputs(request)
+
     async def fetch_output(item):
         try:
             output = await _process_result(item.result, client.stub, client)
@@ -367,7 +401,7 @@ async def _map_invocation(
         return (item.idx, output)
 
     async def poll_outputs():
-        outputs = stream.iterate(get_all_outputs())
+        outputs = stream.iterate(get_all_outputs_and_clean_up())
         outputs_fetched = outputs | pipe.map(fetch_output, ordered=True, task_limit=BLOB_MAX_PARALLELISM)
 
         # map to store out-of-order outputs received

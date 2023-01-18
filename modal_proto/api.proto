@@ -415,6 +415,7 @@ message FunctionGetOutputsRequest {
   int32 max_values = 2;
   float timeout = 3;
   string last_entry_id = 6;
+  bool clear_on_success = 7; // expires *any* remaining outputs soon after this call, not just the returned ones
 }
 
 message FunctionGetOutputsResponse {
