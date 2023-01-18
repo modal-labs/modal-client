@@ -11,7 +11,7 @@ from typing import Optional, Tuple, no_type_check
 
 from modal.queue import _QueueHandle
 from modal_proto import api_pb2
-from modal_utils.async_utils import TaskContext
+from modal_utils.async_utils import TaskContext, asyncify
 
 from .exception import InvalidError
 
@@ -158,6 +158,7 @@ async def write_stdin_to_pty_stream(queue: _QueueHandle):
 
     set_nonblocking(sys.stdin.fileno())
 
+    @asyncify
     def _read_char() -> Optional[bytes]:
         nonlocal quit_pipe_read
         # TODO: Windows support.
@@ -169,7 +170,7 @@ async def write_stdin_to_pty_stream(queue: _QueueHandle):
     async def _write():
         await queue.put(b"\n")
         while True:
-            char = await asyncio.get_event_loop().run_in_executor(None, _read_char)
+            char = await _read_char()
             if char is None:
                 return
             await queue.put(char)
