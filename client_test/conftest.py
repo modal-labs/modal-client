@@ -95,6 +95,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.dicts = {}
 
+        self.cleared_function_calls = set()
+
         @self.function_body
         def default_function_body(*args, **kwargs):
             return sum(arg**2 for arg in args) + sum(value**2 for key, value in kwargs.items())
@@ -301,12 +303,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def FunctionGetOutputs(self, stream):
         request: api_pb2.FunctionGetOutputsRequest = await stream.recv_message()
+        if request.clear_on_success:
+            self.cleared_function_calls.add(request.function_call_id)
 
         client_calls = self.client_calls.get(request.function_call_id, [])
         if client_calls and not self.function_is_running:
             popidx = len(client_calls) // 2  # simulate that results don't always come in order
             (idx, input_id), (args, kwargs) = client_calls.pop(popidx)
-            # Just return the sum of squares of all args
             try:
                 res = self._function_body(*args, **kwargs)
             except Exception as exc:
@@ -330,9 +333,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
             outputs = []
             for index, value in enumerate(results):
+                gen_status = api_pb2.GenericResult.GENERATOR_STATUS_UNSPECIFIED
+                if inspect.isgenerator(res):
+                    gen_status = api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
+
                 result = api_pb2.GenericResult(
                     status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
                     data=cloudpickle.dumps(value),
+                    gen_status=gen_status,
                 )
                 item = api_pb2.FunctionGetOutputsItem(
                     input_id=input_id,
@@ -341,6 +349,17 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     gen_index=index,
                 )
                 outputs.append(item)
+
+            if inspect.isgenerator(res):
+                finish_item = api_pb2.FunctionGetOutputsItem(
+                    input_id=input_id,
+                    idx=idx,
+                    result=api_pb2.GenericResult(
+                        status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
+                        gen_status=api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE,
+                    ),
+                )
+                outputs.append(finish_item)
 
             await stream.send_message(api_pb2.FunctionGetOutputsResponse(outputs=outputs))
         else:
