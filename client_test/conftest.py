@@ -327,7 +327,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if inspect.iscoroutine(res):
                 results = [await res]
             elif inspect.isgenerator(res):
-                results = res
+                results = list(res)
             else:
                 results = [res]
 

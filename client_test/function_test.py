@@ -116,7 +116,7 @@ def test_function_future(client, servicer):
         assert future.object_id not in servicer.cleared_function_calls
 
         with pytest.warns(DeprecationError):
-            future = later_modal.spawn()
+            future = later_modal.submit()
             assert isinstance(future, FunctionCall)
 
         servicer.function_is_running = True
