@@ -321,8 +321,8 @@ def asyncify(f: Callable[P, T]) -> Callable[P, Awaitable[T]]:
     """Convert a blocking function into one that runs in the current loop's executor."""
 
     @functools.wraps(f)
-    async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> Awaitable[T]:
         loop = asyncio.get_running_loop()
-        loop.run_in_executor(None, functools.partial(f, *args, **kwargs))
+        return loop.run_in_executor(None, functools.partial(f, *args, **kwargs))
 
     return wrapper
