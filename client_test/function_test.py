@@ -305,3 +305,11 @@ def test_closure_valued_serialized_function(client, servicer):
     assert len(functions) == 2
     assert functions["ret_foo"]() == "foo"
     assert functions["ret_bar"]() == "bar"
+
+
+def test_from_id(client, servicer):
+    # obj = Function.from_id("fu-123", client)
+    # assert obj.object_id == "fu-123"
+
+    obj = FunctionCall.from_id("fc-123", client)
+    assert obj.object_id == "fc-123"

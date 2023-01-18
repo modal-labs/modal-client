@@ -166,6 +166,7 @@ message AppLookupObjectRequest {
   DeploymentNamespace namespace = 2;
   string app_name = 3;
   string object_tag = 4;
+  string object_id = 5;
 }
 
 message AppLookupObjectResponse {
