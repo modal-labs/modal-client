@@ -35,7 +35,7 @@ class StubFilesFilter(DefaultFilter):
         self,
         *,
         # A directory filter is used to only watch certain files within a directory.
-        # Watching specific files is discourage on Linux, so to watch a file we watch its
+        # Watching specific files is discouraged on Linux, so to watch a file we watch its
         # containing directory and then filter that directory's changes for relevant files.
         # https://github.com/notify-rs/notify/issues/394
         dir_filters: Dict[Path, Optional[Set[str]]],
