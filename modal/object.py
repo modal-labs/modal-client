@@ -1,6 +1,8 @@
 # Copyright Modal Labs 2022
 import uuid
 from typing import (
+    Awaitable,
+    Callable,
     Generic,
     Optional,
     Type,
@@ -116,8 +118,13 @@ P = TypeVar("P", bound="Provider")
 
 
 class Provider(Generic[H]):
-    def __init__(self):
+    def __init__(self, load: Callable[[Resolver], Awaitable[H]], rep: str):
         self._local_uuid = str(uuid.uuid4())
+        self._load = load
+        self._rep = rep
+
+    def __repr__(self):
+        return self._rep
 
     @property
     def local_uuid(self):
@@ -144,10 +151,21 @@ class Provider(Generic[H]):
         ```
 
         """
-        return PersistedRef(label, definition=self)
 
-    async def _load(self, resolver: Resolver) -> H:
-        raise NotImplementedError(f"Object factory of class {type(self)} has no load method")
+        async def _load_persisted(resolver: Resolver) -> H:
+            from .stub import _Stub
+
+            _stub = _Stub(label, _object=self)
+            await _stub.deploy(client=resolver.client)
+            handle = await Handle.from_app(label, client=resolver.client)
+            return cast(H, handle)
+
+        # Create a class of type cls, but use the base constructor
+        cls = type(self)
+        obj = cls.__new__(cls)
+        rep = f"PersistedRef<{self}>({label})"
+        Provider.__init__(obj, _load_persisted, rep)
+        return obj
 
     @classmethod
     def from_name(
@@ -167,56 +185,14 @@ class Provider(Generic[H]):
             pass
         ```
         """
-        provider: RemoteRef = RemoteRef(app_name, tag, namespace)
-        # TODO(erikbern): this returns an object that looks like a P during static analysis,
-        # but is actually a RemoteRef during runtime. This seems pretty confusing and bad:
-        # we should return an object that's always P.
-        return cast(P, provider)
 
+        async def _load_remote(resolver: Resolver) -> H:
+            handle = await Handle.from_app(app_name, tag, namespace, resolver.client)
+            return cast(H, handle)
 
-class Ref(Provider[H]):
-    pass
-
-
-class RemoteRef(Ref[H]):
-    def __init__(
-        self,
-        app_name: str,
-        tag: Optional[str] = None,
-        namespace: Optional[int] = None,  # api_pb2.DEPLOYMENT_NAMESPACE
-    ):
-        self.app_name = app_name
-        self.tag = tag
-        self.namespace = namespace
-        super().__init__()
-
-    def __repr__(self):
-        return f"Ref({self.app_name})"
-
-    async def _load(
-        self,
-        resolver: Resolver,
-    ) -> H:
-        handle = await Handle.from_app(self.app_name, self.tag, self.namespace, resolver.client)
-        return cast(H, handle)
-
-
-class PersistedRef(Ref[H]):
-    def __init__(self, app_name: str, definition: H):
-        self.app_name = app_name
-        self.definition = definition
-        super().__init__()
-
-    def __repr__(self):
-        return f"PersistedRef<{self.definition}>({self.app_name})"
-
-    async def _load(
-        self,
-        resolver: Resolver,
-    ) -> H:
-        from .stub import _Stub
-
-        _stub = _Stub(self.app_name, _object=self.definition)
-        await _stub.deploy(client=resolver.client)
-        handle = await Handle.from_app(self.app_name, client=resolver.client)
-        return cast(H, handle)
+        # Create a class of type cls, but use the base constructor
+        # TODO(erikbern): No Provider subclass should override __init__
+        obj = cls.__new__(cls)
+        rep = f"Ref({app_name})"
+        Provider.__init__(obj, _load_remote, rep)
+        return obj
