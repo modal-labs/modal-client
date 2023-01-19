@@ -136,17 +136,17 @@ class _Dict(Provider[_DictHandle]):
 
     def __init__(self, data={}):
         """Create a new dictionary, optionally filled with initial data."""
-        self._data = data
-        super().__init__(self._load, "Dict()")
 
-    async def _load(self, resolver: Resolver):
-        serialized = _serialize_dict(self._data)
-        req = api_pb2.DictCreateRequest(
-            app_id=resolver.app_id, data=serialized, existing_dict_id=resolver.existing_object_id
-        )
-        response = await resolver.client.stub.DictCreate(req)
-        logger.debug("Created dict with id %s" % response.dict_id)
-        return _DictHandle(resolver.client, response.dict_id)
+        async def _load(resolver: Resolver) -> _DictHandle:
+            serialized = _serialize_dict(data)
+            req = api_pb2.DictCreateRequest(
+                app_id=resolver.app_id, data=serialized, existing_dict_id=resolver.existing_object_id
+            )
+            response = await resolver.client.stub.DictCreate(req)
+            logger.debug("Created dict with id %s" % response.dict_id)
+            return _DictHandle(resolver.client, response.dict_id)
+
+        super().__init__(_load, "Dict()")
 
 
 Dict, AioDict = synchronize_apis(_Dict)
