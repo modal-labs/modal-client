@@ -238,6 +238,31 @@ def choose_function(stub: _Stub, functions: List[Tuple[str, _Function]], console
     return functions[int(choice)][1]
 
 
+def serve(
+    stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
+):
+    """Run an web endpoint(s) associated with a Modal stub and hot-reload code.
+    **Examples:**\n
+    \n
+    ```bash\n
+    modal serve hello_world.py
+    ```\n
+    """
+    parsed_stub_ref = parse_stub_ref(stub_ref)
+    try:
+        stub = import_stub(parsed_stub_ref)
+    except NoSuchStub:
+        _show_stub_ref_failure_help(parsed_stub_ref)
+        sys.exit(1)
+    except Exception:
+        traceback.print_exc()
+        sys.exit(1)
+
+    _stub = synchronizer._translate_in(stub)
+    blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
+    blocking_stub.serve()
+
+
 def shell(
     stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
     cmd: str = typer.Option(default="/bin/bash", help="Command to run inside the Modal image."),
