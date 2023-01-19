@@ -166,7 +166,7 @@ class FunctionInfo:
             modules.append(module)
 
         for m in modules:
-            if getattr(m, "__package__", None):
+            if getattr(m, "__package__", None) and getattr(m, "__path__", None):
                 package_path = __import__(m.__package__).__path__
                 for raw_path in package_path:
                     path = os.path.realpath(raw_path)
