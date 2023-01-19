@@ -24,7 +24,20 @@ from modal_utils.package_utils import NoSuchStub, import_stub, parse_stub_ref
 run_cli = typer.Typer(name="run")
 
 
-option_parsers = {str: str, int: int, float: float, bool: bool, datetime.datetime: click.DateTime()}
+# Why do we need to support both types and the strings? Because something weird with
+# how __annotations__ works in Python (which inspect.signature uses). See #220.
+option_parsers = {
+    str: str,
+    "str": str,
+    int: int,
+    "int": int,
+    float: float,
+    "float": float,
+    bool: bool,
+    "bool": bool,
+    datetime.datetime: click.DateTime(),
+    "datetime.datetime": click.DateTime(),
+}
 
 
 class NoParserAvailable(InvalidError):
