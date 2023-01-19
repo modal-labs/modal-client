@@ -4,7 +4,7 @@ import datetime
 import inspect
 import sys
 import traceback
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import click
 import typer
@@ -240,6 +240,7 @@ def choose_function(stub: _Stub, functions: List[Tuple[str, _Function]], console
 
 def serve(
     stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
+    timeout: Optional[float] = None,
 ):
     """Run an web endpoint(s) associated with a Modal stub and hot-reload code.
     **Examples:**\n
@@ -260,7 +261,7 @@ def serve(
 
     _stub = synchronizer._translate_in(stub)
     blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
-    blocking_stub.serve()
+    blocking_stub.serve(timeout=timeout)
 
 
 def shell(
