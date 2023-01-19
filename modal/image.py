@@ -286,6 +286,7 @@ class _Image(Provider[_ImageHandle]):
         find_links: Optional[str] = None,  # Passes -f (--find-links) pip install
         index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
         extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
+        pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
     ) -> "_Image":
         """Install a list of Python packages using pip.
 
@@ -305,6 +306,8 @@ class _Image(Provider[_ImageHandle]):
             ("--extra-index-url", extra_index_url),  # TODO(erikbern): allow multiple?
         ]
         extra_args = " ".join(flag + " " + shlex.quote(value) for flag, value in flags if value is not None)
+        if pre:
+            extra_args += " --pre"
         package_args = " ".join(shlex.quote(pkg) for pkg in pkgs)
 
         dockerfile_commands = [
