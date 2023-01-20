@@ -124,7 +124,7 @@ class _FunctionIOManager:
             request.current_input_started_at = self.current_input_started_at
 
         # TODO(erikbern): capture exceptions?
-        await self.client.stub.ContainerHeartbeat(request, timeout=HEARTBEAT_TIMEOUT)
+        await retry_transient_errors(self.client.stub.ContainerHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT)
 
     @contextlib.asynccontextmanager
     async def heartbeats(self):
