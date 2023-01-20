@@ -582,6 +582,15 @@ class _Image(Provider[_ImageHandle]):
         return _Image(
             dockerfile_commands=dockerfile_commands,
             context_files={"/modal_requirements.txt": requirements_path},
+        ).dockerfile_commands(
+            [
+                "ENV CONDA_EXE=/usr/local/bin/conda",
+                "ENV CONDA_PREFIX=/usr/local",
+                "ENV CONDA_PROMPT_MODIFIER=(base)",
+                "ENV CONDA_SHLVL=1",
+                "ENV CONDA_PYTHON_EXE=/usr/local/bin/python",
+                "ENV CONDA_DEFAULT_ENV=base",
+            ]
         )
 
     def conda_install(
