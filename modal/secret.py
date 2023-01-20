@@ -24,20 +24,18 @@ class _Secret(Provider[_SecretHandle]):
     """
 
     def __init__(self, env_dict={}, template_type=""):
-        self._env_dict = env_dict
-        self._template_type = template_type
-        rep = f"Secret([{', '.join(self._env_dict.keys())}])"
-        super().__init__(self._load, rep)
+        async def _load(resolver: Resolver) -> _SecretHandle:
+            req = api_pb2.SecretCreateRequest(
+                app_id=resolver.app_id,
+                env_dict=env_dict,
+                template_type=template_type,
+                existing_secret_id=resolver.existing_object_id,
+            )
+            resp = await resolver.client.stub.SecretCreate(req)
+            return _SecretHandle(resolver.client, resp.secret_id)
 
-    async def _load(self, resolver: Resolver):
-        req = api_pb2.SecretCreateRequest(
-            app_id=resolver.app_id,
-            env_dict=self._env_dict,
-            template_type=self._template_type,
-            existing_secret_id=resolver.existing_object_id,
-        )
-        resp = await resolver.client.stub.SecretCreate(req)
-        return _SecretHandle(resolver.client, resp.secret_id)
+        rep = f"Secret([{', '.join(env_dict.keys())}])"
+        super().__init__(_load, rep)
 
 
 Secret, AioSecret = synchronize_apis(_Secret)
