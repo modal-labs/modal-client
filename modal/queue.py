@@ -136,12 +136,12 @@ class _Queue(Provider[_QueueHandle]):
     """
 
     def __init__(self):
-        super().__init__(self._load, "Queue()")
+        async def _load(resolver: Resolver) -> _QueueHandle:
+            request = api_pb2.QueueCreateRequest(app_id=resolver.app_id, existing_queue_id=resolver.existing_object_id)
+            response = await resolver.client.stub.QueueCreate(request)
+            return _QueueHandle(resolver.client, response.queue_id)
 
-    async def _load(self, resolver: Resolver):
-        request = api_pb2.QueueCreateRequest(app_id=resolver.app_id, existing_queue_id=resolver.existing_object_id)
-        response = await resolver.client.stub.QueueCreate(request)
-        return _QueueHandle(resolver.client, response.queue_id)
+        super().__init__(_load, "Queue()")
 
 
 Queue, AioQueue = synchronize_apis(_Queue)

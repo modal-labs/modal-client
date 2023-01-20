@@ -3,7 +3,14 @@ from pathlib import Path
 
 import jupytext
 import pytest
-from nbclient.exceptions import CellExecutionError
+import warnings
+
+try:
+    from nbclient.exceptions import CellExecutionError
+except ModuleNotFoundError:
+    # TODO(erikbern): sometimes my local jupyter packages end up in a bad state,
+    # but we don't want that to cause pytest to fail on startup.
+    warnings.warn("failed importing nbclient")
 
 
 @pytest.fixture
