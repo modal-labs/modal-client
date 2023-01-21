@@ -135,108 +135,101 @@ class _Image(Provider[_ImageHandle]):
         if context_mount is not None and not isinstance(context_mount, _Mount):
             raise InvalidError(f"Context mount {context_mount!r} must be a modal.Mount object")
 
-        self._ref = ref
-        self._base_images = base_images
-        self._context_files = context_files
-        self._dockerfile_commands = dockerfile_commands
-        self._secrets = secrets
-        self._gpu = gpu
-        self._build_function = build_function
-        self._context_mount = context_mount
-        rep = f"Image({self._dockerfile_commands})"
-        super().__init__(self._load, rep)
+        async def _load(resolver: Resolver):
+            if ref:
+                image_id = await resolver.load(ref)
+                return _ImageHandle._from_id(image_id, resolver.client, None)
 
-    async def _load(self, resolver: Resolver):
-        if self._ref:
-            image_id = await resolver.load(self._ref)
-            return _ImageHandle._from_id(image_id, resolver.client, None)
+            # Recursively build base images
+            base_image_ids: list[str] = []
+            for image in base_images.values():
+                base_image_ids.append(await resolver.load(image))
+            base_images_pb2s = [
+                api_pb2.BaseImage(docker_tag=docker_tag, image_id=image_id)
+                for docker_tag, image_id in zip(base_images.keys(), base_image_ids)
+            ]
 
-        # Recursively build base images
-        base_image_ids: list[str] = []
-        for image in self._base_images.values():
-            base_image_ids.append(await resolver.load(image))
-        base_images_pb2s = [
-            api_pb2.BaseImage(docker_tag=docker_tag, image_id=image_id)
-            for docker_tag, image_id in zip(self._base_images.keys(), base_image_ids)
-        ]
+            secret_ids = []
+            for secret in secrets:
+                try:
+                    secret_id = await resolver.load(secret)
+                except NotFoundError as ex:
+                    raise NotFoundError(
+                        str(ex) + "\n" + "You can add secrets to your account at https://modal.com/secrets"
+                    )
+                secret_ids.append(secret_id)
 
-        secret_ids = []
-        for secret in self._secrets:
-            try:
-                secret_id = await resolver.load(secret)
-            except NotFoundError as ex:
-                raise NotFoundError(str(ex) + "\n" + "You can add secrets to your account at https://modal.com/secrets")
-            secret_ids.append(secret_id)
+            context_file_pb2s = []
+            for filename, path in context_files.items():
+                with open(path, "rb") as f:
+                    context_file_pb2s.append(api_pb2.ImageContextFile(filename=filename, data=f.read()))
 
-        context_file_pb2s = []
-        for filename, path in self._context_files.items():
-            with open(path, "rb") as f:
-                context_file_pb2s.append(api_pb2.ImageContextFile(filename=filename, data=f.read()))
+            if build_function:
+                (fn, kwargs) = build_function
+                # Plaintext source and arg definition for the function, so it's part of the image
+                # hash. We can't use the cloudpickle hash because it's not very stable.
+                build_function_def = f"{inspect.getsource(fn)}\n{repr(kwargs)}"
 
-        if self._build_function:
-            (fn, kwargs) = self._build_function
-            # Plaintext source and arg definition for the function, so it's part of the image
-            # hash. We can't use the cloudpickle hash because it's not very stable.
-            build_function_def = f"{inspect.getsource(fn)}\n{repr(kwargs)}"
-
-            base_images = list(self._base_images.values())
-            assert len(base_images) == 1
-            kwargs = {"timeout": 86400, **kwargs, "image": base_images[0], "_is_build_step": True}
-            build_function_handle = resolver.stub.function(**kwargs)(fn)
-            build_function_id = await resolver.load(build_function_handle._function)
-        else:
-            build_function_def = None
-            build_function_id = None
-
-        dockerfile_commands: list[str]
-        if callable(self._dockerfile_commands):
-            # It's a closure (see DockerfileImage)
-            dockerfile_commands = self._dockerfile_commands()
-        else:
-            dockerfile_commands = self._dockerfile_commands
-
-        if self._context_mount:
-            context_mount_id = await resolver.load(self._context_mount)
-        else:
-            context_mount_id = None
-
-        image_definition = api_pb2.Image(
-            base_images=base_images_pb2s,
-            dockerfile_commands=dockerfile_commands,
-            context_files=context_file_pb2s,
-            secret_ids=secret_ids,
-            gpu=self._gpu,
-            build_function_def=build_function_def,
-            context_mount_id=context_mount_id,
-        )
-
-        req = api_pb2.ImageGetOrCreateRequest(
-            app_id=resolver.app_id,
-            image=image_definition,
-            existing_image_id=resolver.existing_object_id,  # TODO: ignored
-            build_function_id=build_function_id,
-        )
-        resp = await resolver.client.stub.ImageGetOrCreate(req)
-        image_id = resp.image_id
-
-        logger.debug("Waiting for image %s" % image_id)
-        while True:
-            request = api_pb2.ImageJoinRequest(image_id=image_id, timeout=55)
-            response = await retry_transient_errors(resolver.client.stub.ImageJoin, request)
-            if not response.result.status:
-                continue
-            elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
-                raise RemoteError(response.result.exception)
-            elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
-                raise RemoteError("Image build terminated due to external shut-down. Please try again.")
-            elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
-                raise RemoteError("Image build timed out. Please try again with a larger `timeout` parameter.")
-            elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
-                break
+                (base_image,) = list(base_images.values())
+                kwargs = {"timeout": 86400, **kwargs, "image": base_image, "_is_build_step": True}
+                build_function_handle = resolver.stub.function(**kwargs)(fn)
+                build_function_id = await resolver.load(build_function_handle._function)
             else:
-                raise RemoteError("Unknown status %s!" % response.result.status)
+                build_function_def = None
+                build_function_id = None
 
-        return _ImageHandle(resolver.client, image_id)
+            dockerfile_commands_list: list[str]
+            if callable(dockerfile_commands):
+                # It's a closure (see DockerfileImage)
+                dockerfile_commands_list = dockerfile_commands()
+            else:
+                dockerfile_commands_list = dockerfile_commands
+
+            if context_mount:
+                context_mount_id = await resolver.load(context_mount)
+            else:
+                context_mount_id = None
+
+            image_definition = api_pb2.Image(
+                base_images=base_images_pb2s,
+                dockerfile_commands=dockerfile_commands_list,
+                context_files=context_file_pb2s,
+                secret_ids=secret_ids,
+                gpu=gpu,
+                build_function_def=build_function_def,
+                context_mount_id=context_mount_id,
+            )
+
+            req = api_pb2.ImageGetOrCreateRequest(
+                app_id=resolver.app_id,
+                image=image_definition,
+                existing_image_id=resolver.existing_object_id,  # TODO: ignored
+                build_function_id=build_function_id,
+            )
+            resp = await resolver.client.stub.ImageGetOrCreate(req)
+            image_id = resp.image_id
+
+            logger.debug("Waiting for image %s" % image_id)
+            while True:
+                request = api_pb2.ImageJoinRequest(image_id=image_id, timeout=55)
+                response = await retry_transient_errors(resolver.client.stub.ImageJoin, request)
+                if not response.result.status:
+                    continue
+                elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
+                    raise RemoteError(response.result.exception)
+                elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
+                    raise RemoteError("Image build terminated due to external shut-down. Please try again.")
+                elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
+                    raise RemoteError("Image build timed out. Please try again with a larger `timeout` parameter.")
+                elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
+                    break
+                else:
+                    raise RemoteError("Unknown status %s!" % response.result.status)
+
+            return _ImageHandle(resolver.client, image_id)
+
+        rep = f"Image({dockerfile_commands})"
+        super().__init__(_load, rep)
 
     def extend(self, **kwargs) -> "_Image":
         """Extend an image (named "base") with additional options or commands.
