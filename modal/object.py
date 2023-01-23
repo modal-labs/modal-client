@@ -30,6 +30,8 @@ class Handle(metaclass=ObjectMeta):
     well as distributed data structures like Queues or Dicts.
     """
 
+    _type_prefix: Optional[str]
+
     def __init__(self, client=None, object_id=None):
         """mdmd:hidden"""
         self._client = client
@@ -118,7 +120,7 @@ class Provider(Generic[H]):
 
     @classmethod
     def get_handle_cls(cls):
-        (base,) = cls.__orig_bases__
+        (base,) = cls.__orig_bases__  # type: ignore
         (handle_cls,) = base.__args__
         return handle_cls
 
