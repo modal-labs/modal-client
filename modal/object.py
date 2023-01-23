@@ -42,6 +42,8 @@ class Handle(metaclass=ObjectMeta):
 
     @staticmethod
     def _from_id(object_id: str, client: _Client, proto: Optional[Message]):
+        # TOOD(erikbern): this should be a classmethod that requires cls._type_prefix
+        # to match the object_id (meaning, you have to call _from_id on a subclass).
         parts = object_id.split("-")
         if len(parts) != 2:
             raise InvalidError(f"Object id {object_id} has no dash in it")
