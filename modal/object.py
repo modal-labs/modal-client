@@ -8,7 +8,6 @@ from typing import (
     Optional,
     Type,
     TypeVar,
-    get_args,
 )
 
 from google.protobuf.message import Message
@@ -119,7 +118,9 @@ class Provider(Generic[H]):
 
     @classmethod
     def get_handle_cls(cls):
-        return get_args(cls.__orig_bases__[0])[0]
+        (base,) = cls.__orig_bases__
+        (handle_cls,) = base.__args__
+        return handle_cls
 
     def __repr__(self):
         return self._rep
