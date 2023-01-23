@@ -8,7 +8,7 @@ from typing import (
     Optional,
     Type,
     TypeVar,
-    cast,
+    get_args,
 )
 
 from google.protobuf.message import Message
@@ -73,15 +73,18 @@ class Handle(metaclass=ObjectMeta):
         tag: Optional[str] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT,
         client: Optional[_Client] = None,
+        _allow_untyped: bool = False,
     ) -> H:
         """Returns a handle to a tagged object in a deployment on Modal."""
         if client is None:
             client = await _Client.from_env()
+        if not _allow_untyped:
+            assert cls._type_prefix
         request = api_pb2.AppLookupObjectRequest(
             app_name=app_name,
             object_tag=tag,
             namespace=namespace,
-            # TODO(erikbern): include the type here
+            type_prefix=cls._type_prefix,  # TODO: assert this exists
         )
         response = await client.stub.AppLookupObject(request)
         if not response.object_id:
@@ -100,7 +103,7 @@ async def _lookup(
         date(2023, 1, 23),
         "modal.lookup is deprecated. Use corresponding class methods instead," " e.g. modal.Secret.lookup, etc.",
     )
-    return await Handle.from_app(app_name, tag, namespace, client)
+    return await Handle.from_app(app_name, tag, namespace, client, _allow_untyped=True)
 
 
 lookup, aio_lookup = synchronize_apis(_lookup)
@@ -113,6 +116,10 @@ class Provider(Generic[H]):
         self._local_uuid = str(uuid.uuid4())
         self._load = load
         self._rep = rep
+
+    @classmethod
+    def get_handle_cls(cls):
+        return get_args(cls.__orig_bases__[0])[0]
 
     def __repr__(self):
         return self._rep
@@ -142,17 +149,18 @@ class Provider(Generic[H]):
         ```
 
         """
+        cls = type(self)
 
         async def _load_persisted(resolver: Resolver) -> H:
             from .stub import _Stub
 
             _stub = _Stub(label, _object=self)
             await _stub.deploy(client=resolver.client)
-            handle = await Handle.from_app(label, client=resolver.client)
-            return cast(H, handle)
+            handle_cls = cls.get_handle_cls()
+            handle: H = await handle_cls.from_app(label, client=resolver.client)
+            return handle
 
         # Create a class of type cls, but use the base constructor
-        cls = type(self)
         obj = cls.__new__(cls)
         rep = f"PersistedRef<{self}>({label})"
         Provider.__init__(obj, _load_persisted, rep)
@@ -178,8 +186,9 @@ class Provider(Generic[H]):
         """
 
         async def _load_remote(resolver: Resolver) -> H:
-            handle = await Handle.from_app(app_name, tag, namespace, resolver.client)
-            return cast(H, handle)
+            handle_cls = cls.get_handle_cls()
+            handle: H = await handle_cls.from_app(app_name, tag, namespace, resolver.client)
+            return handle
 
         # Create a class of type cls, but use the base constructor
         # TODO(erikbern): No Provider subclass should override __init__
@@ -195,7 +204,7 @@ class Provider(Generic[H]):
         tag: Optional[str] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT,
         client: Optional[_Client] = None,
-    ):
+    ) -> H:
         """
         General purpose method to retrieve Modal objects such as
         functions, shared volumes, and secrets.
@@ -211,4 +220,6 @@ class Provider(Generic[H]):
             ...
         ```
         """
-        return await Handle.from_app(app_name, tag, namespace, client)
+        handle_cls = cls.get_handle_cls()
+        handle: H = await handle_cls.from_app(app_name, tag, namespace, client)
+        return handle
