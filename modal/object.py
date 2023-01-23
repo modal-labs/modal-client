@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+from datetime import date
 import uuid
 from typing import (
     Awaitable,
@@ -18,7 +19,7 @@ from modal_utils.async_utils import synchronize_apis
 from ._resolver import Resolver
 from ._object_meta import ObjectMeta
 from .client import _Client
-from .exception import InvalidError, NotFoundError
+from .exception import InvalidError, NotFoundError, deprecation_warning
 
 H = TypeVar("H", bound="Handle")
 
@@ -80,6 +81,7 @@ class Handle(metaclass=ObjectMeta):
             app_name=app_name,
             object_tag=tag,
             namespace=namespace,
+            # TODO(erikbern): include the type here
         )
         response = await client.stub.AppLookupObject(request)
         if not response.object_id:
@@ -94,21 +96,10 @@ async def _lookup(
     namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT,
     client: Optional[_Client] = None,
 ) -> Handle:
-    """
-    General purpose method to retrieve Modal objects such as
-    functions, shared volumes, and secrets.
-
-    ```python notest
-    import modal
-
-    square = modal.lookup("my-shared-app", "square")
-    assert square(3) == 9
-
-    vol = modal.lookup("my-shared-volume")
-    for chunk in vol.read_file("my_db_dump.csv"):
-        ...
-    ```
-    """
+    deprecation_warning(
+        date(2023, 1, 23),
+        "modal.lookup is deprecated. Use corresponding class methods instead," " e.g. modal.Secret.lookup, etc.",
+    )
     return await Handle.from_app(app_name, tag, namespace, client)
 
 
@@ -196,3 +187,28 @@ class Provider(Generic[H]):
         rep = f"Ref({app_name})"
         Provider.__init__(obj, _load_remote, rep)
         return obj
+
+    @classmethod
+    async def lookup(
+        cls: Type[P],
+        app_name: str,
+        tag: Optional[str] = None,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT,
+        client: Optional[_Client] = None,
+    ):
+        """
+        General purpose method to retrieve Modal objects such as
+        functions, shared volumes, and secrets.
+
+        ```python notest
+        import modal
+
+        square = modal.Function.lookup("my-shared-app", "square")
+        assert square(3) == 9
+
+        vol = modal.SharedVolume.lookup("my-shared-volume")
+        for chunk in vol.read_file("my_db_dump.csv"):
+            ...
+        ```
+        """
+        return await Handle.from_app(app_name, tag, namespace, client)
