@@ -51,7 +51,7 @@ from ._traceback import append_modal_tb
 from .client import _Client
 from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError
 from .exception import TimeoutError as _TimeoutError
-from .exception import deprecation_error, deprecation_warning
+from .exception import deprecation_error
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
 from .mount import _Mount
@@ -654,15 +654,11 @@ class _FunctionHandle(Handle, type_prefix="fu"):
             return self.call_function(args, kwargs)
 
     def __call__(self, *args, **kwargs):
-        deprecation_warning(
+        deprecation_error(
             date(2022, 12, 5),
-            "Calling a function directly is deprecated. Use f.call(...) instead."
+            "Calling a function directly is no longer possible. Use f.call(...) instead."
             " In a future version of Modal, f(...) will be used to call a function in the same process.",
         )
-        if self._is_generator:
-            return self.call_generator(args, kwargs)
-        else:
-            return self.call_function(args, kwargs)
 
     async def enqueue(self, *args, **kwargs):
         """**Deprecated.** Use `.spawn()` instead when possible.
@@ -687,10 +683,9 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         invocation = await self.call_function_nowait(args, kwargs)
         return _FunctionCall(invocation.client, invocation.function_call_id)
 
-    async def submit(self, *args, **kwargs) -> Optional["_FunctionCall"]:
+    async def submit(self, *args, **kwargs):
         """**Deprecated.** Use `.spawn()` instead."""
-        deprecation_warning(date(2022, 12, 5), "Function.submit is deprecated, use .spawn() instead")
-        return await self.spawn(*args, **kwargs)
+        deprecation_error(date(2022, 12, 5), "Function.submit is no longer supported. Use .spawn() instead")
 
     def get_raw_f(self) -> Callable:
         """Return the inner Python object wrapped by this Modal Function."""
