@@ -352,7 +352,7 @@ class OutputManager:
                                     stream = LineBufferedOutput(functools.partial(self._print_log, log.file_descriptor))
                                     line_buffers[log.file_descriptor] = stream
                                 stream.write(log.data)
-                            else:
+                            elif hasattr(self.stdout, "buffer"):
                                 # If we're not showing progress, there's no need to buffer lines,
                                 # because the progress spinner can't interfere with output.
 
@@ -368,6 +368,11 @@ class OutputManager:
                                             raise
                                         n_retries += 1
                                         await asyncio.sleep(0.1)
+                            else:
+                                # `stdout` isn't always buffered (e.g. %%capture in Jupyter notebooks redirects it to
+                                # io.StringIO).
+                                self.stdout.write(log.data)
+                                self.stdout.flush()
 
             for stream in line_buffers.values():
                 stream.finalize()
