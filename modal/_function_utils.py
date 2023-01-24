@@ -37,6 +37,7 @@ class FunctionInfoType(Enum):
     PACKAGE = "package"
     FILE = "file"
     SERIALIZED = "serialized"
+    NOTEBOOK = "notebook"
 
 
 class LocalFunctionError(InvalidError):
@@ -118,9 +119,12 @@ class FunctionInfo:
             self.module_name = None
             self.base_dir = os.path.abspath("")  # get current dir
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_SERIALIZED
-            self.type = FunctionInfoType.SERIALIZED
             self.serialized_function = serialize(self.raw_f)
             logger.debug(f"Serializing {self.raw_f.__qualname__}, size is {len(self.serialized_function)}")
+            if serialized:
+                self.type = FunctionInfoType.SERIALIZED
+            else:
+                self.type = FunctionInfoType.NOTEBOOK
 
         if self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
             # Sanity check that this function is defined in global scope
@@ -147,6 +151,9 @@ class FunctionInfo:
                     remote_dir=ROOT_DIR,
                 )
             }
+        elif self.type == FunctionInfoType.NOTEBOOK:
+            # Don't auto-mount anything for notebooks.
+            return {}
         else:
             mounts = {}
 
