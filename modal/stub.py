@@ -25,7 +25,7 @@ from ._pty import exec_cmd, write_stdin_to_pty_stream
 from .app import _App, container_app, is_local
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
-from .exception import InvalidError, deprecation_warning
+from .exception import InvalidError, deprecation_error
 from .functions import _Function, _FunctionHandle
 from .gpu import GPU_T
 from .image import _Image
@@ -658,10 +658,8 @@ class _Stub:
         return self._add_function(function)
 
     @decorator_with_options
-    def generator(self, raw_f=None, **kwargs) -> _FunctionHandle:
-        deprecation_warning(date(2022, 12, 1), "Stub.generator is deprecated. Use .function() instead.")
-        kwargs.update(dict(is_generator=True))
-        return self.function(raw_f, **kwargs)
+    def generator(self, raw_f=None, **kwargs):
+        deprecation_error(date(2022, 12, 1), "Stub.generator is no longer supported. Use .function() instead.")
 
     @decorator_with_options
     def webhook(

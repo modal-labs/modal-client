@@ -115,9 +115,10 @@ def test_function_future(client, servicer):
         assert future.get(0.01) == "hello"
         assert future.object_id not in servicer.cleared_function_calls
 
-        with pytest.warns(DeprecationError):
-            future = later_modal.submit()
-            assert isinstance(future, FunctionCall)
+        with pytest.raises(DeprecationError):
+            later_modal.submit()
+
+        future = later_modal.spawn()
 
         servicer.function_is_running = True
         assert future.object_id == "fc-2"
@@ -151,9 +152,8 @@ def later_gen():
 async def test_generator(client, servicer):
     stub = Stub()
 
-    with pytest.warns(DeprecationError):
-        later_gen_modal = stub.generator(later_gen)
-    assert later_gen_modal.is_generator
+    with pytest.raises(DeprecationError):
+        stub.generator(later_gen)
 
     later_gen_modal = stub.function(later_gen)
     assert later_gen_modal.is_generator
