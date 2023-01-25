@@ -92,6 +92,7 @@ class _Stub:
     _secrets: Collection[_Secret]
     _function_handles: Dict[str, _FunctionHandle]
     _local_entrypoints: Dict[str, Callable]
+    _local_mounts: List[_Mount]
 
     def __init__(
         self,
@@ -116,6 +117,7 @@ class _Stub:
         self._secrets = secrets
         self._function_handles = {}
         self._local_entrypoints = {}
+        self._local_mounts = []
         super().__init__()
 
     @property
@@ -522,7 +524,7 @@ class _Stub:
         else:
             return [*secrets, *self._secrets]
 
-    def _add_function(self, function: _Function) -> _FunctionHandle:
+    def _add_function(self, function: _Function, mounts: List[_Mount]) -> _FunctionHandle:
         if function.tag in self._blueprint:
             old_function = self._blueprint[function.tag]
             if isinstance(old_function, _Function):
@@ -535,6 +537,11 @@ class _Stub:
             else:
                 logger.warning(f"Warning: tag {function.tag} exists but is overridden by function")
         self._blueprint[function.tag] = function
+
+        # Track all mounts. This is needed for file watching
+        for mount in mounts:
+            if mount.is_local():
+                self._local_mounts.append(mount)
 
         # We now need to create an actual handle.
         # This is a bit weird since the object isn't actually created yet,
@@ -655,7 +662,7 @@ class _Stub:
             # Don't add function to stub if it's a build step.
             return _FunctionHandle(function)
 
-        return self._add_function(function)
+        return self._add_function(function, mounts)
 
     @decorator_with_options
     def generator(self, raw_f=None, **kwargs):
@@ -741,7 +748,7 @@ class _Stub:
             keep_warm=keep_warm,
             cloud_provider=cloud,
         )
-        return self._add_function(function)
+        return self._add_function(function, mounts)
 
     @decorator_with_options
     def asgi(
@@ -811,7 +818,7 @@ class _Stub:
             keep_warm=keep_warm,
             cloud_provider=cloud,
         )
-        return self._add_function(function)
+        return self._add_function(function, mounts)
 
     @decorator_with_options
     def wsgi(

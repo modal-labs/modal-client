@@ -78,8 +78,14 @@ class _Mount(Provider[_MountHandle]):
         self._remote_dir = remote_dir
         self._condition = condition
         self._recursive = recursive
+        self._is_local = True
         rep = f"Mount({self._local_file or self._local_dir})"
         super().__init__(self._load, rep)
+
+    def is_local(self):
+        # TODO(erikbern): since any remote ref bypasses the constructor,
+        # we can rely on it to be set. Let's clean this up later.
+        return getattr(self, "_is_local", False)
 
     async def _get_files(self):
         if self._local_file:
