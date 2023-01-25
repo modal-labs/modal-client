@@ -620,7 +620,7 @@ class _Stub:
         if image is None:
             image = self._get_default_image()
         info = FunctionInfo(raw_f, serialized=serialized, name_override=name)
-        mounts = [*self._get_function_mounts(info), *mounts]
+        base_mounts = self._get_function_mounts(info)
         secrets = self._get_function_secrets(raw_f, secret, secrets)
 
         if interactive:
@@ -643,6 +643,7 @@ class _Stub:
             gpu=gpu,
             rate_limit=rate_limit,
             serialized=serialized,
+            base_mounts=base_mounts,
             mounts=mounts,
             shared_volumes=shared_volumes,
             memory=memory,
@@ -662,7 +663,7 @@ class _Stub:
             # Don't add function to stub if it's a build step.
             return _FunctionHandle(function)
 
-        return self._add_function(function, mounts)
+        return self._add_function(function, [*base_mounts, *mounts])
 
     @decorator_with_options
     def generator(self, raw_f=None, **kwargs):
@@ -716,7 +717,7 @@ class _Stub:
         if image is None:
             image = self._get_default_image()
         info = FunctionInfo(raw_f)
-        mounts = [*self._get_function_mounts(info), *mounts]
+        base_mounts = self._get_function_mounts(info)
         secrets = self._get_function_secrets(raw_f, secret, secrets)
 
         if not wait_for_response:
@@ -730,6 +731,7 @@ class _Stub:
             secrets=secrets,
             is_generator=True,
             gpu=gpu,
+            base_mounts=base_mounts,
             mounts=mounts,
             shared_volumes=shared_volumes,
             webhook_config=api_pb2.WebhookConfig(
@@ -748,7 +750,7 @@ class _Stub:
             keep_warm=keep_warm,
             cloud_provider=cloud,
         )
-        return self._add_function(function, mounts)
+        return self._add_function(function, [*base_mounts, *mounts])
 
     @decorator_with_options
     def asgi(
@@ -791,7 +793,7 @@ class _Stub:
         if image is None:
             image = self._get_default_image()
         info = FunctionInfo(asgi_app)
-        mounts = [*self._get_function_mounts(info), *mounts]
+        base_mounts = self._get_function_mounts(info)
         secrets = self._get_function_secrets(asgi_app, secret, secrets)
 
         if not wait_for_response:
@@ -805,6 +807,7 @@ class _Stub:
             secrets=secrets,
             is_generator=True,
             gpu=gpu,
+            base_mounts=base_mounts,
             mounts=mounts,
             shared_volumes=shared_volumes,
             webhook_config=api_pb2.WebhookConfig(type=_webhook_type, requested_suffix=label, async_mode=_response_mode),
@@ -818,7 +821,7 @@ class _Stub:
             keep_warm=keep_warm,
             cloud_provider=cloud,
         )
-        return self._add_function(function, mounts)
+        return self._add_function(function, [*base_mounts, *mounts])
 
     @decorator_with_options
     def wsgi(
