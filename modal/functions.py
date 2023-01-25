@@ -814,170 +814,173 @@ class _Function(Provider[_FunctionHandle]):
         else:
             self._cloud_provider = None
         rep = "Function({self._tag})"
-        super().__init__(self._load, rep)
+        self._panel_items = [
+            str(i) for i in [*self._mounts, self._image, *self._secrets, *self._shared_volumes.values()]
+        ]
+        if self._gpu:
+            self._panel_items.append("GPU")
+
+        async def _load(resolver: Resolver):
+            resolver.set_message(f"Creating {self._tag}...")
+
+            if self._proxy:
+                proxy_id = await resolver.load(self._proxy)
+                # HACK: remove this once we stop using ssh tunnels for this.
+                if self._image:
+                    self._image = self._image.run_commands(["apt-get install -yq ssh"])
+            else:
+                proxy_id = None
+
+            # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
+            if self._image is not None:
+                if not isinstance(self._image, _Image):
+                    raise InvalidError(f"Expected modal.Image object. Got {type(self._image)}.")
+                image_id = await resolver.load(self._image)
+            else:
+                image_id = None  # Happens if it's a notebook function
+            secret_ids = []
+            for secret in self._secrets:
+                try:
+                    secret_id = await resolver.load(secret)
+                except NotFoundError as ex:
+                    if isinstance(secret, _Secret):
+                        msg = f"Secret {secret} was not found"
+                    else:
+                        msg = str(ex)
+                    msg += ". You can add secrets to your account at https://modal.com/secrets"
+                    raise NotFoundError(msg)
+                secret_ids.append(secret_id)
+
+            mount_ids = []
+            for mount in [*self._base_mounts, *self._mounts]:
+                mount_ids.append(await resolver.load(mount))
+
+            if not isinstance(self._shared_volumes, dict):
+                raise InvalidError("shared_volumes must be a dict[str, SharedVolume] where the keys are paths")
+            shared_volume_mounts = []
+            # Relies on dicts being ordered (true as of Python 3.6).
+            for path, shared_volume in self._shared_volumes.items():
+                # TODO: check paths client-side on Windows as well.
+                path = Path(path).as_posix()
+                abs_path = os.path.abspath(path)
+
+                if platform.system() != "Windows" and path != abs_path:
+                    raise InvalidError(f"Shared volume {abs_path} must be a canonical, absolute path.")
+                elif platform.system() != "Windows" and abs_path == "/":
+                    raise InvalidError(f"Shared volume {abs_path} cannot be mounted into root directory.")
+                elif platform.system() != "Windows" and abs_path == "/tmp":
+                    raise InvalidError(f"Shared volume {abs_path} cannot be mounted at /tmp.")
+
+                shared_volume_mounts.append(
+                    api_pb2.SharedVolumeMount(mount_path=path, shared_volume_id=await resolver.load(shared_volume))
+                )
+
+            if self._is_generator:
+                function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
+            else:
+                function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
+
+            rate_limit = self._rate_limit._to_proto() if self._rate_limit else None
+            retry_policy = self._retry_policy._to_proto() if self._retry_policy else None
+
+            if self._cpu is not None and self._cpu < 0.0:
+                raise InvalidError(f"Invalid fractional CPU value {self._cpu}. Cannot have negative CPU resources.")
+            milli_cpu = int(1000 * self._cpu) if self._cpu is not None else None
+
+            if self._interactive:
+                pty_info = get_pty_info()
+                if self._concurrency_limit and self._concurrency_limit > 1:
+                    warnings.warn(
+                        "Interactive functions require `concurrency_limit=1`. The concurrency limit will be overridden."
+                    )
+                self._concurrency_limit = 1
+            else:
+                pty_info = None
+
+            function_serialized = None
+            class_serialized = None
+            if self._info.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
+                # Use cloudpickle. Used when working w/ Jupyter notebooks.
+                # serialize at _load time, not function decoration time
+                # otherwise we can't capture a surrounding class for lifetime methods etc.
+                function_serialized = self._info.serialized_function
+                mod = inspect.getmodule(self._raw_f)
+
+                try:
+                    cls, _ = load_function_from_module(mod, self._raw_f.__qualname__)
+                except LocalFunctionError:
+                    # if a serialized function is defined within a function scope
+                    # we can't load it from the module and detect its parent class
+                    # TODO: fix this somehow... maybe put the decorator on the
+                    #       class instead for entrypoint classes
+                    cls = None
+
+                if cls:
+                    class_serialized = cloudpickle.dumps(cls)
+
+            if self._keep_warm is True:
+                warm_pool_size = 2
+            else:
+                warm_pool_size = self._keep_warm or 0
+
+            # Create function remotely
+            function_definition = api_pb2.Function(
+                module_name=self._info.module_name,
+                function_name=self._info.function_name,
+                mount_ids=mount_ids,
+                secret_ids=secret_ids,
+                image_id=image_id,
+                definition_type=self._info.definition_type,
+                function_serialized=function_serialized,
+                class_serialized=class_serialized,
+                function_type=function_type,
+                resources=api_pb2.Resources(milli_cpu=milli_cpu, gpu_config=self._gpu_config, memory_mb=self._memory),
+                rate_limit=rate_limit,
+                webhook_config=self._webhook_config,
+                shared_volume_mounts=shared_volume_mounts,
+                proxy_id=proxy_id,
+                retry_policy=retry_policy,
+                timeout_secs=self._timeout,
+                task_idle_timeout_secs=self._container_idle_timeout,
+                concurrency_limit=self._concurrency_limit,
+                pty_info=pty_info,
+                cloud_provider=self._cloud_provider,
+                warm_pool_size=warm_pool_size,
+            )
+            request = api_pb2.FunctionCreateRequest(
+                app_id=resolver.app_id,
+                function=function_definition,
+                schedule=self._schedule.proto_message if self._schedule is not None else None,
+                existing_function_id=resolver.existing_object_id,
+            )
+            try:
+                response = await resolver.client.stub.FunctionCreate(request)
+            except GRPCError as exc:
+                if exc.status == Status.INVALID_ARGUMENT:
+                    raise InvalidError(exc.message)
+                raise
+
+            if response.web_url:
+                # Ensure terms used here match terms used in modal.com/docs/guide/webhook-urls doc.
+                if response.web_url_info.truncated:
+                    suffix = " [grey70](label truncated)[/grey70]"
+                elif response.web_url_info.has_unique_hash:
+                    suffix = " [grey70](label includes conflict-avoidance hash)[/grey70]"
+                else:
+                    suffix = ""
+                # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
+                resolver.set_message(
+                    f"Created {self._tag} => [magenta underline]{response.web_url}[/magenta underline]{suffix}"
+                )
+            else:
+                resolver.set_message(f"Created {self._tag}.")
+
+            return _FunctionHandle._from_id(response.function_id, resolver.client, response.function)
+
+        super().__init__(_load, rep)
 
     def get_panel_items(self) -> List[str]:
-        items = [str(i) for i in [*self._mounts, self._image, *self._secrets, *self._shared_volumes.values()]]
-        if self._gpu:
-            items.append("GPU")
-        return items
-
-    async def _load(self, resolver: Resolver):
-        resolver.set_message(f"Creating {self._tag}...")
-
-        if self._proxy:
-            proxy_id = await resolver.load(self._proxy)
-            # HACK: remove this once we stop using ssh tunnels for this.
-            if self._image:
-                self._image = self._image.run_commands(["apt-get install -yq ssh"])
-        else:
-            proxy_id = None
-
-        # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
-        if self._image is not None:
-            if not isinstance(self._image, _Image):
-                raise InvalidError(f"Expected modal.Image object. Got {type(self._image)}.")
-            image_id = await resolver.load(self._image)
-        else:
-            image_id = None  # Happens if it's a notebook function
-        secret_ids = []
-        for secret in self._secrets:
-            try:
-                secret_id = await resolver.load(secret)
-            except NotFoundError as ex:
-                if isinstance(secret, _Secret):
-                    msg = f"Secret {secret} was not found"
-                else:
-                    msg = str(ex)
-                msg += ". You can add secrets to your account at https://modal.com/secrets"
-                raise NotFoundError(msg)
-            secret_ids.append(secret_id)
-
-        mount_ids = []
-        for mount in [*self._base_mounts, *self._mounts]:
-            mount_ids.append(await resolver.load(mount))
-
-        if not isinstance(self._shared_volumes, dict):
-            raise InvalidError("shared_volumes must be a dict[str, SharedVolume] where the keys are paths")
-        shared_volume_mounts = []
-        # Relies on dicts being ordered (true as of Python 3.6).
-        for path, shared_volume in self._shared_volumes.items():
-            # TODO: check paths client-side on Windows as well.
-            path = Path(path).as_posix()
-            abs_path = os.path.abspath(path)
-
-            if platform.system() != "Windows" and path != abs_path:
-                raise InvalidError(f"Shared volume {abs_path} must be a canonical, absolute path.")
-            elif platform.system() != "Windows" and abs_path == "/":
-                raise InvalidError(f"Shared volume {abs_path} cannot be mounted into root directory.")
-            elif platform.system() != "Windows" and abs_path == "/tmp":
-                raise InvalidError(f"Shared volume {abs_path} cannot be mounted at /tmp.")
-
-            shared_volume_mounts.append(
-                api_pb2.SharedVolumeMount(mount_path=path, shared_volume_id=await resolver.load(shared_volume))
-            )
-
-        if self._is_generator:
-            function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
-        else:
-            function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
-
-        rate_limit = self._rate_limit._to_proto() if self._rate_limit else None
-        retry_policy = self._retry_policy._to_proto() if self._retry_policy else None
-
-        if self._cpu is not None and self._cpu < 0.0:
-            raise InvalidError(f"Invalid fractional CPU value {self._cpu}. Cannot have negative CPU resources.")
-        milli_cpu = int(1000 * self._cpu) if self._cpu is not None else None
-
-        if self._interactive:
-            pty_info = get_pty_info()
-            if self._concurrency_limit and self._concurrency_limit > 1:
-                warnings.warn(
-                    "Interactive functions require `concurrency_limit=1`. The concurrency limit will be overridden."
-                )
-            self._concurrency_limit = 1
-        else:
-            pty_info = None
-
-        function_serialized = None
-        class_serialized = None
-        if self._info.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
-            # Use cloudpickle. Used when working w/ Jupyter notebooks.
-            # serialize at _load time, not function decoration time
-            # otherwise we can't capture a surrounding class for lifetime methods etc.
-            function_serialized = self._info.serialized_function
-            mod = inspect.getmodule(self._raw_f)
-
-            try:
-                cls, _ = load_function_from_module(mod, self._raw_f.__qualname__)
-            except LocalFunctionError:
-                # if a serialized function is defined within a function scope
-                # we can't load it from the module and detect its parent class
-                # TODO: fix this somehow... maybe put the decorator on the
-                #       class instead for entrypoint classes
-                cls = None
-
-            if cls:
-                class_serialized = cloudpickle.dumps(cls)
-
-        if self._keep_warm is True:
-            warm_pool_size = 2
-        else:
-            warm_pool_size = self._keep_warm or 0
-
-        # Create function remotely
-        function_definition = api_pb2.Function(
-            module_name=self._info.module_name,
-            function_name=self._info.function_name,
-            mount_ids=mount_ids,
-            secret_ids=secret_ids,
-            image_id=image_id,
-            definition_type=self._info.definition_type,
-            function_serialized=function_serialized,
-            class_serialized=class_serialized,
-            function_type=function_type,
-            resources=api_pb2.Resources(milli_cpu=milli_cpu, gpu_config=self._gpu_config, memory_mb=self._memory),
-            rate_limit=rate_limit,
-            webhook_config=self._webhook_config,
-            shared_volume_mounts=shared_volume_mounts,
-            proxy_id=proxy_id,
-            retry_policy=retry_policy,
-            timeout_secs=self._timeout,
-            task_idle_timeout_secs=self._container_idle_timeout,
-            concurrency_limit=self._concurrency_limit,
-            pty_info=pty_info,
-            cloud_provider=self._cloud_provider,
-            warm_pool_size=warm_pool_size,
-        )
-        request = api_pb2.FunctionCreateRequest(
-            app_id=resolver.app_id,
-            function=function_definition,
-            schedule=self._schedule.proto_message if self._schedule is not None else None,
-            existing_function_id=resolver.existing_object_id,
-        )
-        try:
-            response = await resolver.client.stub.FunctionCreate(request)
-        except GRPCError as exc:
-            if exc.status == Status.INVALID_ARGUMENT:
-                raise InvalidError(exc.message)
-            raise
-
-        if response.web_url:
-            # Ensure terms used here match terms used in modal.com/docs/guide/webhook-urls doc.
-            if response.web_url_info.truncated:
-                suffix = " [grey70](label truncated)[/grey70]"
-            elif response.web_url_info.has_unique_hash:
-                suffix = " [grey70](label includes conflict-avoidance hash)[/grey70]"
-            else:
-                suffix = ""
-            # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
-            resolver.set_message(
-                f"Created {self._tag} => [magenta underline]{response.web_url}[/magenta underline]{suffix}"
-            )
-        else:
-            resolver.set_message(f"Created {self._tag}.")
-
-        return _FunctionHandle._from_id(response.function_id, resolver.client, response.function)
+        return self._panel_items
 
     @property
     def tag(self):
