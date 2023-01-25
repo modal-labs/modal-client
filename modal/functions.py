@@ -445,6 +445,8 @@ class FunctionStats:
 class _FunctionHandle(Handle, type_prefix="fu"):
     """Interact with a Modal Function of a live app."""
 
+    _web_url: Optional[str]
+
     @classmethod
     def from_stub_dummy(cls, function: "_Function"):
         # This is a bit of a hack until we merge handles and providers
