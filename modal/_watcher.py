@@ -10,7 +10,6 @@ from rich.tree import Tree
 from watchfiles import Change, DefaultFilter, awatch
 from watchfiles.main import FileChange
 
-from modal.functions import _Function
 from modal.mount import _Mount
 from modal.stub import _Stub
 
@@ -102,22 +101,8 @@ def _watch_args_from_mounts(mounts: List[_Mount]) -> Tuple[Set[Union[str, Path]]
     return paths, watch_filter
 
 
-def _is_local_mount(mount) -> bool:
-    if not isinstance(mount, _Mount):
-        return False
-    # TODO(erikbern): this is pretty ugly, but we want to ignore
-    # any _Mount that's just a remote reference. Let's rethink this.
-    return getattr(mount, "_local_dir", None) or getattr(mount, "_local_file", None)
-
-
 async def watch(stub: _Stub, output_mgr: OutputManager, timeout: Optional[float]):
-    # Iterate through all mounts for all functions and
-    # collect unique directories and files to watch
-    all_mounts = []
-    for object in stub._blueprint.values():
-        if isinstance(object, _Function):
-            all_mounts.extend([mount for mount in object._mounts if _is_local_mount(mount)])
-    paths, watch_filter = _watch_args_from_mounts(mounts=all_mounts)
+    paths, watch_filter = _watch_args_from_mounts(mounts=stub._local_mounts)
 
     _print_watched_paths(paths, output_mgr, timeout)
 
