@@ -84,7 +84,7 @@ class _Mount(Provider[_MountHandle]):
 
     def is_local(self):
         # TODO(erikbern): since any remote ref bypasses the constructor,
-        # we can rely on it to be set. Let's clean this up later.
+        # we can't rely on it to be set. Let's clean this up later.
         return getattr(self, "_is_local", False)
 
     async def _get_files(self):
