@@ -725,6 +725,7 @@ class _Function(Provider[_FunctionHandle]):
         rate_limit: Optional[RateLimit] = None,
         # TODO: maybe break this out into a separate decorator for notebooks.
         serialized: bool = False,
+        base_mounts: Collection[_Mount] = (),
         mounts: Collection[_Mount] = (),
         shared_volumes: Dict[str, _SharedVolume] = {},
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
@@ -791,6 +792,7 @@ class _Function(Provider[_FunctionHandle]):
         self._schedule = schedule
         self._is_generator = is_generator
         self._rate_limit = rate_limit
+        self._base_mounts = base_mounts
         self._mounts = mounts
         self._shared_volumes = shared_volumes
         self._webhook_config = webhook_config
@@ -813,6 +815,12 @@ class _Function(Provider[_FunctionHandle]):
             self._cloud_provider = None
         rep = "Function({self._tag})"
         super().__init__(self._load, rep)
+
+    def get_panel_items(self) -> List[str]:
+        items = [str(i) for i in [*self._mounts, self._image, *self._secrets, *self._shared_volumes.values()]]
+        if self._gpu:
+            items.append("GPU")
+        return items
 
     async def _load(self, resolver: Resolver):
         resolver.set_message(f"Creating {self._tag}...")
@@ -846,7 +854,7 @@ class _Function(Provider[_FunctionHandle]):
             secret_ids.append(secret_id)
 
         mount_ids = []
-        for mount in self._mounts:
+        for mount in [*self._base_mounts, *self._mounts]:
             mount_ids.append(await resolver.load(mount))
 
         if not isinstance(self._shared_volumes, dict):

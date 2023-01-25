@@ -203,13 +203,7 @@ def deploy(
 
 
 def make_function_panel(idx: int, tag: str, function: _Function, stub: _Stub) -> Panel:
-    items = [
-        f"- {i}"
-        for i in [*function._mounts, function._image, *function._secrets, *function._shared_volumes.values()]
-        if i not in [stub._client_mount, *stub._function_mounts.values()]
-    ]
-    if function._gpu:
-        items.append("- GPU")
+    items = [f"- {i}" for i in function.get_panel_items()]
     return Panel(
         Markdown("\n".join(items)),
         title=f"[bright_magenta]{idx}. [/bright_magenta][bold]{tag}[/bold]",
