@@ -26,10 +26,7 @@ def client_mount_name():
 
 
 class _MountHandle(Handle, type_prefix="mo"):
-    def __init__(self, local_dir=None, local_file=None, client=None, object_id=None):
-        self._local_dir = local_dir
-        self._local_file = local_file
-        super().__init__(client=client, object_id=object_id)
+    pass
 
 
 class _Mount(Provider[_MountHandle]):
@@ -177,7 +174,7 @@ class _Mount(Provider[_MountHandle]):
         resolver.set_message(f"Mounted {message_label} at {self._remote_dir}")
 
         logger.debug(f"Uploaded {len(uploaded_hashes)}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
-        return _MountHandle(self._local_dir, self._local_file, resolver.client, resp.mount_id)
+        return _MountHandle._from_id(resp.mount_id, resolver.client, None)
 
 
 Mount, AioMount = synchronize_apis(_Mount)
