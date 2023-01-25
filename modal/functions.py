@@ -681,7 +681,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
             return None
 
         invocation = await self.call_function_nowait(args, kwargs)
-        return _FunctionCall(invocation.client, invocation.function_call_id)
+        return _FunctionCall._from_id(invocation.function_call_id, invocation.client, None)
 
     async def submit(self, *args, **kwargs):
         """**Deprecated.** Use `.spawn()` instead."""

@@ -226,7 +226,7 @@ class _Image(Provider[_ImageHandle]):
                 else:
                     raise RemoteError("Unknown status %s!" % response.result.status)
 
-            return _ImageHandle(resolver.client, image_id)
+            return _ImageHandle._from_id(image_id, resolver.client, None)
 
         rep = f"Image({dockerfile_commands})"
         super().__init__(_load, rep)
