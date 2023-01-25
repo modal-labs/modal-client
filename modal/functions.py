@@ -787,7 +787,6 @@ class _Function(Provider[_FunctionHandle]):
         else:
             retry_policy = None
 
-        self._gpu = gpu
         self._schedule = schedule
         self._is_generator = is_generator
         self._rate_limit = rate_limit
@@ -795,8 +794,6 @@ class _Function(Provider[_FunctionHandle]):
         self._mounts = mounts
         self._shared_volumes = shared_volumes
         self._webhook_config = webhook_config
-        self._cpu = cpu
-        self._memory = memory
         self._retry_policy = retry_policy
         self._timeout = timeout
         self._concurrency_limit = concurrency_limit
@@ -804,16 +801,16 @@ class _Function(Provider[_FunctionHandle]):
         self._keep_warm = keep_warm
         self._interactive = interactive
         self._tag = self._info.get_tag()
-        self._gpu_config = parse_gpu_config(gpu)
+        gpu_config = parse_gpu_config(gpu)
         if cloud_provider:
             self._cloud_provider = parse_cloud_provider(cloud_provider)
-            if self._cloud_provider != CloudProvider.AWS and self._gpu_config.type != api_pb2.GPU_TYPE_A100:
+            if self._cloud_provider != CloudProvider.AWS and gpu_config.type != api_pb2.GPU_TYPE_A100:
                 raise InvalidError("Cloud selection only supported for functions running with A100 GPUs.")
         else:
             self._cloud_provider = None
         rep = "Function({self._tag})"
         self._panel_items = [str(i) for i in [*self._mounts, image, *self._secrets, *self._shared_volumes.values()]]
-        if self._gpu:
+        if gpu_config:
             self._panel_items.append("GPU")
 
         if proxy and image:
@@ -880,9 +877,9 @@ class _Function(Provider[_FunctionHandle]):
             rate_limit = self._rate_limit._to_proto() if self._rate_limit else None
             retry_policy = self._retry_policy._to_proto() if self._retry_policy else None
 
-            if self._cpu is not None and self._cpu < 0.0:
-                raise InvalidError(f"Invalid fractional CPU value {self._cpu}. Cannot have negative CPU resources.")
-            milli_cpu = int(1000 * self._cpu) if self._cpu is not None else None
+            if cpu is not None and cpu < 0.0:
+                raise InvalidError(f"Invalid fractional CPU value {cpu}. Cannot have negative CPU resources.")
+            milli_cpu = int(1000 * cpu) if cpu is not None else None
 
             if self._interactive:
                 pty_info = get_pty_info()
@@ -931,7 +928,7 @@ class _Function(Provider[_FunctionHandle]):
                 function_serialized=function_serialized,
                 class_serialized=class_serialized,
                 function_type=function_type,
-                resources=api_pb2.Resources(milli_cpu=milli_cpu, gpu_config=self._gpu_config, memory_mb=self._memory),
+                resources=api_pb2.Resources(milli_cpu=milli_cpu, gpu_config=gpu_config, memory_mb=memory),
                 rate_limit=rate_limit,
                 webhook_config=self._webhook_config,
                 shared_volume_mounts=shared_volume_mounts,
