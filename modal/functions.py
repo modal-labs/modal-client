@@ -753,7 +753,6 @@ class _Function(Provider[_FunctionHandle]):
         # assert not synchronizer.is_synchronized(image)
 
         self._raw_f = raw_f
-        self._image = image
         self._secrets = secrets
 
         if retries:
@@ -798,7 +797,6 @@ class _Function(Provider[_FunctionHandle]):
         self._webhook_config = webhook_config
         self._cpu = cpu
         self._memory = memory
-        self._proxy = proxy
         self._retry_policy = retry_policy
         self._timeout = timeout
         self._concurrency_limit = concurrency_limit
@@ -814,28 +812,27 @@ class _Function(Provider[_FunctionHandle]):
         else:
             self._cloud_provider = None
         rep = "Function({self._tag})"
-        self._panel_items = [
-            str(i) for i in [*self._mounts, self._image, *self._secrets, *self._shared_volumes.values()]
-        ]
+        self._panel_items = [str(i) for i in [*self._mounts, image, *self._secrets, *self._shared_volumes.values()]]
         if self._gpu:
             self._panel_items.append("GPU")
+
+        if proxy and image:
+            # HACK: remove this once we stop using ssh tunnels for this.
+            image = image.run_commands(["apt-get install -yq ssh"])
 
         async def _load(resolver: Resolver):
             resolver.set_message(f"Creating {self._tag}...")
 
-            if self._proxy:
-                proxy_id = await resolver.load(self._proxy)
-                # HACK: remove this once we stop using ssh tunnels for this.
-                if self._image:
-                    self._image = self._image.run_commands(["apt-get install -yq ssh"])
+            if proxy:
+                proxy_id = await resolver.load(proxy)
             else:
                 proxy_id = None
 
             # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
-            if self._image is not None:
-                if not isinstance(self._image, _Image):
-                    raise InvalidError(f"Expected modal.Image object. Got {type(self._image)}.")
-                image_id = await resolver.load(self._image)
+            if image is not None:
+                if not isinstance(image, _Image):
+                    raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
+                image_id = await resolver.load(image)
             else:
                 image_id = None  # Happens if it's a notebook function
             secret_ids = []
