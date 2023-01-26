@@ -5,7 +5,7 @@ import os
 import shlex
 import sys
 from pathlib import Path
-from typing import Any, Callable, Collection, List, Optional, Union
+from typing import Any, Callable, Collection, Dict, List, Optional, Union
 
 import toml
 
@@ -18,9 +18,11 @@ from ._function_utils import FunctionInfo
 from ._resolver import Resolver
 from .config import config, logger
 from .exception import InvalidError, NotFoundError, RemoteError
+from .gpu import GPU_T
 from .mount import _get_client_mount, _Mount
 from .object import Handle, Provider
 from .secret import _Secret
+from .shared_volume import _SharedVolume
 
 
 def _validate_python_version(version: str) -> None:
