@@ -540,11 +540,22 @@ class _Stub:
 
     @property
     def registered_functions(self) -> List[str]:
+        """Names of modal.Function objects registered on the stub."""
         return list(self._function_handles.keys())
 
     @property
     def registered_entrypoints(self) -> Dict[str, Callable]:
+        """Names of local CLI entrypoints registered on the stub."""
         return self._local_entrypoints
+
+    @property
+    def registered_endpoints(self) -> List[str]:
+        """Names of web endpoint (ie. webhook) functions registered on the stub."""
+        return list(
+            tag
+            for tag, handle in self._function_handles.items()
+            if handle._function._webhook_config and handle._function._webhook_config.type
+        )
 
     @decorator_with_options
     def local_entrypoint(self, raw_f=None, name: Optional[str] = None):
@@ -650,6 +661,7 @@ class _Stub:
 
     @decorator_with_options
     def generator(self, raw_f=None, **kwargs):
+        """Stub.generator is no longer supported. Use .function() instead."""
         deprecation_error(date(2022, 12, 1), "Stub.generator is no longer supported. Use .function() instead.")
 
     @decorator_with_options

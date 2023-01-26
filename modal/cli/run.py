@@ -117,7 +117,10 @@ class RunGroup(click.Group):
 
         _stub = synchronizer._translate_in(stub)
 
-        function_choices = list(set(_stub.registered_functions) | set(_stub.registered_entrypoints.keys()))
+        function_choices = list(
+            (set(_stub.registered_functions) - set(_stub.registered_endpoints))
+            | set(_stub.registered_entrypoints.keys())
+        )
         registered_functions_str = "\n".join(sorted(function_choices))
         function_name = parsed_stub_ref.entrypoint_name
         if not function_name:
