@@ -105,8 +105,8 @@ def _render_stack(self, stack: Stack) -> RenderResult:
 
         first = frame_index == 0
         # Patched Modal-specific code.
-        if frame.filename.startswith("<"):
-            next_task_id, frame_filename = frame.filename.split(":", 2)
+        if frame.filename.startswith("<") and ":" in frame.filename:
+            next_task_id, frame_filename = frame.filename.split(":", 1)
             next_task_id = next_task_id.strip("<>")
         else:
             frame_filename = frame.filename

@@ -132,7 +132,6 @@ message AppGetLogsRequest {
 
 message AppGetObjectsRequest {
   string app_id = 1;
-  string task_id = 2;
 }
 
 message AppGetObjectsItem {
@@ -167,6 +166,7 @@ message AppLookupObjectRequest {
   DeploymentNamespace namespace = 2;
   string app_name = 3;
   string object_tag = 4;
+  string object_id = 5;
 }
 
 message AppLookupObjectResponse {
@@ -367,6 +367,9 @@ message Function {
   CloudProvider cloud_provider = 26;
 
   uint32 warm_pool_size = 27;
+
+  string web_url = 28;
+  WebUrlInfo web_url_info = 29;
 }
 
 message FunctionCreateRequest {
@@ -378,8 +381,9 @@ message FunctionCreateRequest {
 
 message FunctionCreateResponse {
   string function_id = 1;
-  string web_url = 2;
-  WebUrlInfo web_url_info = 3;
+  string web_url = 2;  // TODO(erikbern): deprecated shortly (moving it into Function)
+  WebUrlInfo web_url_info = 3;  // TODO(erikbern): deprecated shortly (moving it into Function)
+  Function function = 4;
 }
 
 message FunctionGetInputsItem {
@@ -411,6 +415,7 @@ message FunctionGetOutputsRequest {
   int32 max_values = 2;
   float timeout = 3;
   string last_entry_id = 6;
+  bool clear_on_success = 7; // expires *any* remaining outputs soon after this call, not just the returned ones
 }
 
 message FunctionGetOutputsResponse {

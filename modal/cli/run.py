@@ -4,7 +4,7 @@ import datetime
 import inspect
 import sys
 import traceback
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import click
 import typer
@@ -24,7 +24,20 @@ from modal_utils.package_utils import NoSuchObject, import_object, parse_import_
 run_cli = typer.Typer(name="run")
 
 
-option_parsers = {str: str, int: int, float: float, bool: bool, datetime.datetime: click.DateTime()}
+# Why do we need to support both types and the strings? Because something weird with
+# how __annotations__ works in Python (which inspect.signature uses). See #220.
+option_parsers = {
+    str: str,
+    "str": str,
+    int: int,
+    "int": int,
+    float: float,
+    "float": float,
+    bool: bool,
+    "bool": bool,
+    datetime.datetime: click.DateTime(),
+    "datetime.datetime": click.DateTime(),
+}
 
 
 class NoParserAvailable(InvalidError):
@@ -160,7 +173,7 @@ Registered functions and local entrypoints on the selected stub are:
 
 STUB_REF should be of the format:
 
-{file or module}[::[{stub name}].{function name}]
+`{file or module}[::[{stub name}].{function name}]`
 
 Examples:
 To run the hello_world function (or local entrypoint) of stub `stub` in my_app.py:
@@ -204,13 +217,7 @@ def deploy(
 
 
 def make_function_panel(idx: int, tag: str, function: _Function, stub: _Stub) -> Panel:
-    items = [
-        f"- {i}"
-        for i in [*function._mounts, function._image, *function._secrets, *function._shared_volumes.values()]
-        if i not in [stub._client_mount, *stub._function_mounts.values()]
-    ]
-    if function._gpu:
-        items.append("- GPU")
+    items = [f"- {i}" for i in function.get_panel_items()]
     return Panel(
         Markdown("\n".join(items)),
         title=f"[bright_magenta]{idx}. [/bright_magenta][bold]{tag}[/bold]",
@@ -237,6 +244,32 @@ def choose_function(stub: _Stub, functions: List[Tuple[str, _Function]], console
     )
 
     return functions[int(choice)][1]
+
+
+def serve(
+    stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
+    timeout: Optional[float] = None,
+):
+    """Run an web endpoint(s) associated with a Modal stub and hot-reload code.
+    **Examples:**\n
+    \n
+    ```bash\n
+    modal serve hello_world.py
+    ```\n
+    """
+    parsed_stub_ref = parse_stub_ref(stub_ref)
+    try:
+        stub = import_stub(parsed_stub_ref)
+    except NoSuchStub:
+        _show_stub_ref_failure_help(parsed_stub_ref)
+        sys.exit(1)
+    except Exception:
+        traceback.print_exc()
+        sys.exit(1)
+
+    _stub = synchronizer._translate_in(stub)
+    blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
+    blocking_stub.serve(timeout=timeout)
 
 
 def shell(

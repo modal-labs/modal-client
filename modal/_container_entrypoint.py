@@ -34,7 +34,7 @@ from ._serialization import deserialize, serialize
 from ._traceback import extract_traceback
 from ._tracing import extract_tracing_context, set_span_tag, trace, wrap
 from .app import _App
-from .client import Client, _Client, HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT
+from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .config import logger
 from .exception import InvalidError
 from .functions import AioFunctionHandle, FunctionHandle, _set_current_input_id
@@ -114,7 +114,7 @@ class _FunctionIOManager:
 
     @wrap()
     async def initialize_app(self):
-        await _App._init_container(self._client, self.app_id, self.task_id)
+        await _App._init_container(self._client, self.app_id)
 
     async def _heartbeat(self):
         request = api_pb2.ContainerHeartbeatRequest()
@@ -124,7 +124,7 @@ class _FunctionIOManager:
             request.current_input_started_at = self.current_input_started_at
 
         # TODO(erikbern): capture exceptions?
-        await self.client.stub.ContainerHeartbeat(request, timeout=HEARTBEAT_TIMEOUT)
+        await retry_transient_errors(self.client.stub.ContainerHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT)
 
     @contextlib.asynccontextmanager
     async def heartbeats(self):

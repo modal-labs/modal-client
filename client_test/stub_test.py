@@ -9,8 +9,8 @@ from grpclib import GRPCError, Status
 
 import modal.app
 from modal import Stub
-from modal.aio import AioApp, AioQueue, AioStub, aio_lookup
-from modal.exception import InvalidError, NotFoundError
+from modal.aio import AioDict, AioQueue, AioStub
+from modal.exception import InvalidError
 from modal_proto import api_pb2
 from modal_test_support import module_1, module_2
 
@@ -18,44 +18,26 @@ from modal_test_support import module_1, module_2
 @pytest.mark.asyncio
 async def test_kwargs(servicer, aio_client):
     stub = AioStub(
-        q1=AioQueue(),
-        q2=AioQueue(),
+        d=AioDict(),
+        q=AioQueue(),
     )
     async with stub.run(client=aio_client) as app:
-        await app["q1"].put("foo")
-        await app["q2"].put("bar")
-        assert await app["q1"].get() == "foo"
-        assert await app["q2"].get() == "bar"
+        await app["d"].put("foo", "bar")
+        await app["q"].put("baz")
+        assert await app["d"].get("foo") == "bar"
+        assert await app["q"].get() == "baz"
 
 
 @pytest.mark.asyncio
 async def test_attrs(servicer, aio_client):
     stub = AioStub()
-    stub.q1 = AioQueue()
-    stub.q2 = AioQueue()
+    stub.d = AioDict()
+    stub.q = AioQueue()
     async with stub.run(client=aio_client) as app:
-        await app.q1.put("foo")
-        await app.q2.put("bar")
-        assert await app.q1.get() == "foo"
-        assert await app.q2.get() == "bar"
-
-
-@pytest.mark.asyncio
-async def test_persistent_object(servicer, aio_client):
-    stub_1 = AioStub()
-    stub_1["q_1"] = AioQueue()
-    await stub_1.deploy("my-queue", client=aio_client)
-
-    stub_2 = AioStub()
-    async with stub_2.run(client=aio_client) as app_2:
-        assert isinstance(app_2, AioApp)
-
-        q_3 = await aio_lookup("my-queue", client=aio_client)
-        # assert isinstance(q_3, AioQueue)  # TODO(erikbern): it's a AioQueueHandler
-        assert q_3.object_id == "qu-1"
-
-        with pytest.raises(NotFoundError):
-            await aio_lookup("bazbazbaz", client=aio_client)
+        await app.d.put("foo", "bar")
+        await app.q.put("baz")
+        assert await app.d.get("foo") == "bar"
+        assert await app.q.get() == "baz"
 
 
 def square(x):

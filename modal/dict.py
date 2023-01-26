@@ -5,6 +5,7 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 from modal_utils.grpc_utils import retry_transient_errors
 
+from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from .config import logger
 from .object import Handle, Provider
@@ -135,15 +136,17 @@ class _Dict(Provider[_DictHandle]):
 
     def __init__(self, data={}):
         """Create a new dictionary, optionally filled with initial data."""
-        self._data = data
-        super().__init__()
 
-    async def _load(self, client, stub, app_id, loader, message_callback, existing_dict_id):
-        serialized = _serialize_dict(self._data)
-        req = api_pb2.DictCreateRequest(app_id=app_id, data=serialized, existing_dict_id=existing_dict_id)
-        response = await client.stub.DictCreate(req)
-        logger.debug("Created dict with id %s" % response.dict_id)
-        return _DictHandle(client, response.dict_id)
+        async def _load(resolver: Resolver) -> _DictHandle:
+            serialized = _serialize_dict(data)
+            req = api_pb2.DictCreateRequest(
+                app_id=resolver.app_id, data=serialized, existing_dict_id=resolver.existing_object_id
+            )
+            response = await resolver.client.stub.DictCreate(req)
+            logger.debug("Created dict with id %s" % response.dict_id)
+            return _DictHandle._from_id(response.dict_id, resolver.client, None)
+
+        super().__init__(_load, "Dict()")
 
 
 Dict, AioDict = synchronize_apis(_Dict)

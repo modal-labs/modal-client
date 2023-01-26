@@ -49,6 +49,7 @@ entrypoint_cli_typer.add_typer(volume_cli)
 
 # entrypoint_cli_typer.command("run", help="Run a Modal function.", context_settings={"allow_extra_args": True})(run.run)
 entrypoint_cli_typer.command("deploy", help="Deploy a Modal stub as an application.", no_args_is_help=True)(run.deploy)
+entrypoint_cli_typer.command("serve", no_args_is_help=True)(run.serve)
 entrypoint_cli_typer.command("shell", no_args_is_help=True)(run.shell)
 
 entrypoint_cli = typer.main.get_command(entrypoint_cli_typer)

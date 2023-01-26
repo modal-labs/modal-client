@@ -22,6 +22,7 @@ from typing import (
 
 import cloudpickle
 from aiostream import pipe, stream
+from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.exceptions import UserCodeException
 
@@ -44,16 +45,18 @@ from ._function_utils import FunctionInfo, LocalFunctionError, load_function_fro
 from ._location import CloudProvider, parse_cloud_provider
 from ._output import OutputManager
 from ._pty import get_pty_info
+from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._traceback import append_modal_tb
 from .client import _Client
 from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError
 from .exception import TimeoutError as _TimeoutError
-from .exception import deprecation_error, deprecation_warning
+from .exception import deprecation_error
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
 from .mount import _Mount
-from .object import Handle, Provider, Ref, RemoteRef
+from .object import Handle, Provider
+from .proxy import _Proxy
 from .rate_limit import RateLimit
 from .retries import Retries
 from .schedule import Schedule
@@ -195,7 +198,7 @@ class _Invocation:
             raise Exception("Could not create function call - the input queue seems to be full")
         return _Invocation(client.stub, function_call_id, client)
 
-    async def pop_function_call_outputs(self, timeout: Optional[float] = None):
+    async def pop_function_call_outputs(self, timeout: Optional[float], clear_on_success: bool):
         t0 = time.time()
         if timeout is None:
             backend_timeout = 55.0
@@ -208,6 +211,7 @@ class _Invocation:
                 function_call_id=self.function_call_id,
                 timeout=backend_timeout,
                 last_entry_id="0-0",
+                clear_on_success=clear_on_success,
             )
             response = await retry_transient_errors(
                 self.stub.FunctionGetOutputs,
@@ -225,12 +229,19 @@ class _Invocation:
                     break
 
     async def run_function(self):
-        result = (await stream.list(self.pop_function_call_outputs()))[0]
+        # waits indefinitely for a single result for the function, and clear the outputs buffer after
+        result = (await stream.list(self.pop_function_call_outputs(timeout=None, clear_on_success=True)))[0]
         assert not result.gen_status
         return await _process_result(result, self.stub, self.client)
 
-    async def poll_function(self, timeout: Optional[float] = 0):
-        results = await stream.list(self.pop_function_call_outputs(timeout=timeout))
+    async def poll_function(self, timeout: Optional[float] = None):
+        # waits up to timeout for a result from a function
+        # * timeout=0 means a single poll
+        # * timeout=None means wait indefinitely
+        # raises TimeoutError if there is no result before timeout
+        # Intended to be used for future polling, and as such keeps
+        # results around after returning them
+        results = await stream.list(self.pop_function_call_outputs(timeout=timeout, clear_on_success=False))
 
         if len(results) == 0:
             raise TimeoutError()
@@ -240,23 +251,34 @@ class _Invocation:
     async def run_generator(self):
         last_entry_id = "0-0"
         completed = False
-        while not completed:
+        try:
+            while not completed:
+                request = api_pb2.FunctionGetOutputsRequest(
+                    function_call_id=self.function_call_id,
+                    timeout=55.0,
+                    last_entry_id=last_entry_id,
+                    clear_on_success=False,  # there could be more results
+                )
+                response = await retry_transient_errors(
+                    self.stub.FunctionGetOutputs,
+                    request,
+                )
+                if len(response.outputs) > 0:
+                    last_entry_id = response.last_entry_id
+                    for item in response.outputs:
+                        if item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
+                            completed = True
+                            break
+                        yield await _process_result(item.result, self.stub, self.client)
+        finally:
+            # "ack" that we have all outputs we are interested in and let backend clear results
             request = api_pb2.FunctionGetOutputsRequest(
                 function_call_id=self.function_call_id,
-                timeout=55.0,
-                last_entry_id=last_entry_id,
+                timeout=0,
+                last_entry_id="0-0",
+                clear_on_success=True,
             )
-            response = await retry_transient_errors(
-                self.stub.FunctionGetOutputs,
-                request,
-            )
-            if len(response.outputs) > 0:
-                last_entry_id = response.last_entry_id
-                for item in response.outputs:
-                    if item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
-                        completed = True
-                        break
-                    yield await _process_result(item.result, self.stub, self.client)
+            await self.stub.FunctionGetOutputs(request)
 
 
 MAP_INVOCATION_CHUNK_SIZE = 100
@@ -327,6 +349,7 @@ async def _map_invocation(
                 function_call_id=function_call_id,
                 timeout=55,
                 last_entry_id=last_entry_id,
+                clear_on_success=False,
             )
             response = await retry_transient_errors(
                 client.stub.FunctionGetOutputs,
@@ -353,6 +376,20 @@ async def _map_invocation(
                     del pending_outputs[item.input_id]
                     yield item
 
+    async def get_all_outputs_and_clean_up():
+        try:
+            async for item in get_all_outputs():
+                yield item
+        finally:
+            # "ack" that we have all outputs we are interested in and let backend clear results
+            request = api_pb2.FunctionGetOutputsRequest(
+                function_call_id=function_call_id,
+                timeout=0,
+                last_entry_id="0-0",
+                clear_on_success=True,
+            )
+            await client.stub.FunctionGetOutputs(request)
+
     async def fetch_output(item):
         try:
             output = await _process_result(item.result, client.stub, client)
@@ -364,7 +401,7 @@ async def _map_invocation(
         return (item.idx, output)
 
     async def poll_outputs():
-        outputs = stream.iterate(get_all_outputs())
+        outputs = stream.iterate(get_all_outputs_and_clean_up())
         outputs_fetched = outputs | pipe.map(fetch_output, ordered=True, task_limit=BLOB_MAX_PARALLELISM)
 
         # map to store out-of-order outputs received
@@ -408,7 +445,21 @@ class FunctionStats:
 class _FunctionHandle(Handle, type_prefix="fu"):
     """Interact with a Modal Function of a live app."""
 
-    def __init__(self, function: "_Function", web_url=None, client=None, object_id=None):
+    _web_url: Optional[str]
+
+    @classmethod
+    def from_stub_dummy(cls, function: "_Function"):
+        # This is a bit of a hack until we merge handles and providers
+        # See Stub._add_function
+        # Basically we pre-initialize FunctionHandle before we have an object id for them
+        # Later once we merge those objects, we should be able to get rid of this
+        obj = cls.__new__(cls)
+        obj._client = None
+        obj._object_id = None
+        obj._initialize_stub_dummy(function)
+        return obj
+
+    def _initialize_stub_dummy(self, function: "_Function"):
         self._local_app = None
         self._progress = None
 
@@ -416,20 +467,20 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         self._tag = function._tag
         self._is_generator = function._is_generator
         self._raw_f = function._raw_f
-        self._web_url = web_url
+        self._web_url = None
         self._output_mgr: Optional[OutputManager] = None
         self._function = function
         self._mute_cancellation = (
             False  # set when a user terminates the app intentionally, to prevent useless traceback spam
         )
 
-        super().__init__(client=client, object_id=object_id)
-
     def _set_mute_cancellation(self, value=True):
         self._mute_cancellation = value
 
-    def _initialize_from_proto(self, function: api_pb2.Function):
-        self._is_generator = function.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
+    def _initialize_from_proto(self, proto: Message):
+        assert isinstance(proto, api_pb2.Function)
+        self._is_generator = proto.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
+        self._web_url = proto.web_url
         self._mute_cancellation = False
         self._output_mgr = None
 
@@ -472,11 +523,6 @@ class _FunctionHandle(Handle, type_prefix="fu"):
     @property
     def web_url(self) -> str:
         """URL of a Function running as a web endpoint."""
-        from modal import is_local
-
-        if not is_local():
-            raise InvalidError("Function.web_url is not accessible from inside a container")
-
         function_handle = self._get_live_handle()
         return function_handle._web_url
 
@@ -620,15 +666,11 @@ class _FunctionHandle(Handle, type_prefix="fu"):
             return self.call_function(args, kwargs)
 
     def __call__(self, *args, **kwargs):
-        deprecation_warning(
+        deprecation_error(
             date(2022, 12, 5),
-            "Calling a function directly is deprecated. Use f.call(...) instead."
+            "Calling a function directly is no longer possible. Use f.call(...) instead."
             " In a future version of Modal, f(...) will be used to call a function in the same process.",
         )
-        if self._is_generator:
-            return self.call_generator(args, kwargs)
-        else:
-            return self.call_function(args, kwargs)
 
     async def enqueue(self, *args, **kwargs):
         """**Deprecated.** Use `.spawn()` instead when possible.
@@ -651,12 +693,11 @@ class _FunctionHandle(Handle, type_prefix="fu"):
             return None
 
         invocation = await self.call_function_nowait(args, kwargs)
-        return _FunctionCall(invocation.client, invocation.function_call_id)
+        return _FunctionCall._from_id(invocation.function_call_id, invocation.client, None)
 
-    async def submit(self, *args, **kwargs) -> Optional["_FunctionCall"]:
+    async def submit(self, *args, **kwargs):
         """**Deprecated.** Use `.spawn()` instead."""
-        deprecation_warning(date(2022, 12, 5), "Function.submit is deprecated, use .spawn() instead")
-        return await self.spawn(*args, **kwargs)
+        deprecation_error(date(2022, 12, 5), "Function.submit is no longer supported. Use .spawn() instead")
 
     def get_raw_f(self) -> Callable:
         """Return the inner Python object wrapped by this Modal Function."""
@@ -697,11 +738,12 @@ class _Function(Provider[_FunctionHandle]):
         rate_limit: Optional[RateLimit] = None,
         # TODO: maybe break this out into a separate decorator for notebooks.
         serialized: bool = False,
+        base_mounts: Collection[_Mount] = (),
         mounts: Collection[_Mount] = (),
         shared_volumes: Dict[str, _SharedVolume] = {},
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         memory: Optional[int] = None,
-        proxy: Optional[Ref] = None,
+        proxy: Optional[_Proxy] = None,
         retries: Optional[Union[int, Retries]] = None,
         timeout: Optional[int] = None,
         concurrency_limit: Optional[int] = None,
@@ -764,6 +806,7 @@ class _Function(Provider[_FunctionHandle]):
         self._schedule = schedule
         self._is_generator = is_generator
         self._rate_limit = rate_limit
+        self._base_mounts = base_mounts
         self._mounts = mounts
         self._shared_volumes = shared_volumes
         self._webhook_config = webhook_config
@@ -784,13 +827,20 @@ class _Function(Provider[_FunctionHandle]):
                 raise InvalidError("Cloud selection only supported for functions running with A100 GPUs.")
         else:
             self._cloud_provider = None
-        super().__init__()
+        rep = "Function({self._tag})"
+        super().__init__(self._load, rep)
 
-    async def _load(self, client, stub, app_id, loader, message_callback, existing_function_id):
-        message_callback(f"Creating {self._tag}...")
+    def get_panel_items(self) -> List[str]:
+        items = [str(i) for i in [*self._mounts, self._image, *self._secrets, *self._shared_volumes.values()]]
+        if self._gpu:
+            items.append("GPU")
+        return items
+
+    async def _load(self, resolver: Resolver):
+        resolver.set_message(f"Creating {self._tag}...")
 
         if self._proxy:
-            proxy_id = await loader(self._proxy)
+            proxy_id = await resolver.load(self._proxy)
             # HACK: remove this once we stop using ssh tunnels for this.
             if self._image:
                 self._image = self._image.run_commands(["apt-get install -yq ssh"])
@@ -801,16 +851,16 @@ class _Function(Provider[_FunctionHandle]):
         if self._image is not None:
             if not isinstance(self._image, _Image):
                 raise InvalidError(f"Expected modal.Image object. Got {type(self._image)}.")
-            image_id = await loader(self._image)
+            image_id = await resolver.load(self._image)
         else:
             image_id = None  # Happens if it's a notebook function
         secret_ids = []
         for secret in self._secrets:
             try:
-                secret_id = await loader(secret)
+                secret_id = await resolver.load(secret)
             except NotFoundError as ex:
-                if isinstance(secret, RemoteRef) and secret.tag is None:
-                    msg = "Secret {!r} was not found".format(secret.app_name)
+                if isinstance(secret, _Secret):
+                    msg = f"Secret {secret} was not found"
                 else:
                     msg = str(ex)
                 msg += ". You can add secrets to your account at https://modal.com/secrets"
@@ -818,8 +868,8 @@ class _Function(Provider[_FunctionHandle]):
             secret_ids.append(secret_id)
 
         mount_ids = []
-        for mount in self._mounts:
-            mount_ids.append(await loader(mount))
+        for mount in [*self._base_mounts, *self._mounts]:
+            mount_ids.append(await resolver.load(mount))
 
         if not isinstance(self._shared_volumes, dict):
             raise InvalidError("shared_volumes must be a dict[str, SharedVolume] where the keys are paths")
@@ -838,7 +888,7 @@ class _Function(Provider[_FunctionHandle]):
                 raise InvalidError(f"Shared volume {abs_path} cannot be mounted at /tmp.")
 
             shared_volume_mounts.append(
-                api_pb2.SharedVolumeMount(mount_path=path, shared_volume_id=await loader(shared_volume))
+                api_pb2.SharedVolumeMount(mount_path=path, shared_volume_id=await resolver.load(shared_volume))
             )
 
         if self._is_generator:
@@ -914,13 +964,13 @@ class _Function(Provider[_FunctionHandle]):
             warm_pool_size=warm_pool_size,
         )
         request = api_pb2.FunctionCreateRequest(
-            app_id=app_id,
+            app_id=resolver.app_id,
             function=function_definition,
             schedule=self._schedule.proto_message if self._schedule is not None else None,
-            existing_function_id=existing_function_id,
+            existing_function_id=resolver.existing_object_id,
         )
         try:
-            response = await client.stub.FunctionCreate(request)
+            response = await resolver.client.stub.FunctionCreate(request)
         except GRPCError as exc:
             if exc.status == Status.INVALID_ARGUMENT:
                 raise InvalidError(exc.message)
@@ -935,13 +985,13 @@ class _Function(Provider[_FunctionHandle]):
             else:
                 suffix = ""
             # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
-            message_callback(
+            resolver.set_message(
                 f"Created {self._tag} => [magenta underline]{response.web_url}[/magenta underline]{suffix}"
             )
         else:
-            message_callback(f"Created {self._tag}.")
+            resolver.set_message(f"Created {self._tag}.")
 
-        return _FunctionHandle(self, response.web_url, client, response.function_id)
+        return _FunctionHandle._from_id(response.function_id, resolver.client, response.function)
 
     @property
     def tag(self):

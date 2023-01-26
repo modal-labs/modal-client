@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 import uuid
 from typing import (
-    TYPE_CHECKING,
     Awaitable,
     Callable,
     Generic,
@@ -11,15 +10,15 @@ from typing import (
     cast,
 )
 
+from google.protobuf.message import Message
+
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 
+from ._resolver import Resolver
 from ._object_meta import ObjectMeta
 from .client import _Client
 from .exception import InvalidError, NotFoundError
-
-if TYPE_CHECKING:
-    from .stub import _Stub
 
 H = TypeVar("H", bound="Handle")
 
@@ -31,13 +30,19 @@ class Handle(metaclass=ObjectMeta):
     well as distributed data structures like Queues or Dicts.
     """
 
-    def __init__(self, client=None, object_id=None):
+    def __init__(self):
+        raise Exception("__init__ disallowed, use proper classmethods")
+
+    def _initialize_handle(self, client: _Client, object_id: str):
         """mdmd:hidden"""
         self._client = client
         self._object_id = object_id
 
+    def _initialize_from_proto(self, proto: Message):
+        pass  # default implementation
+
     @staticmethod
-    def _from_id(object_id, client):
+    def _from_id(object_id: str, client: _Client, proto: Optional[Message]):
         parts = object_id.split("-")
         if len(parts) != 2:
             raise InvalidError(f"Object id {object_id} has no dash in it")
@@ -46,13 +51,10 @@ class Handle(metaclass=ObjectMeta):
             raise InvalidError(f"Object prefix {prefix} does not correspond to a type")
         object_cls = ObjectMeta.prefix_to_type[prefix]
         obj = Handle.__new__(object_cls)
-        Handle.__init__(obj, client, object_id=object_id)
+        Handle._initialize_handle(obj, client, object_id)
+        if proto is not None:
+            obj._initialize_from_proto(proto)
         return obj
-
-    @classmethod
-    async def from_id(cls: Type[H], object_id: str) -> H:
-        client = await _Client.from_env()
-        return Handle._from_id(object_id, client)
 
     @property
     def object_id(self):
@@ -77,15 +79,8 @@ class Handle(metaclass=ObjectMeta):
         response = await client.stub.AppLookupObject(request)
         if not response.object_id:
             raise NotFoundError(response.error_message)
-        obj = Handle._from_id(response.object_id, client)
-
-        # TODO(erikbern): There's a weird special case for functions right now that we should generalize
-        from .functions import _FunctionHandle
-
-        if isinstance(obj, _FunctionHandle):
-            obj._initialize_from_proto(response.function)
-
-        return obj
+        proto = response.function  # TODO: handle different object types
+        return Handle._from_id(response.object_id, client, proto)
 
 
 async def _lookup(
@@ -118,8 +113,13 @@ P = TypeVar("P", bound="Provider")
 
 
 class Provider(Generic[H]):
-    def __init__(self):
+    def __init__(self, load: Callable[[Resolver], Awaitable[H]], rep: str):
         self._local_uuid = str(uuid.uuid4())
+        self._load = load
+        self._rep = rep
+
+    def __repr__(self):
+        return self._rep
 
     @property
     def local_uuid(self):
@@ -146,18 +146,21 @@ class Provider(Generic[H]):
         ```
 
         """
-        return PersistedRef(label, definition=self)
 
-    async def _load(
-        self,
-        client: _Client,
-        stub: "_Stub",
-        app_id: str,
-        loader: Callable[["Provider"], Awaitable[str]],
-        message_callback: Callable[[str], None],
-        existing_object_id: Optional[str] = None,
-    ) -> H:
-        raise NotImplementedError(f"Object factory of class {type(self)} has no load method")
+        async def _load_persisted(resolver: Resolver) -> H:
+            from .stub import _Stub
+
+            _stub = _Stub(label, _object=self)
+            await _stub.deploy(client=resolver.client)
+            handle = await Handle.from_app(label, client=resolver.client)
+            return cast(H, handle)
+
+        # Create a class of type cls, but use the base constructor
+        cls = type(self)
+        obj = cls.__new__(cls)
+        rep = f"PersistedRef<{self}>({label})"
+        Provider.__init__(obj, _load_persisted, rep)
+        return obj
 
     @classmethod
     def from_name(
@@ -177,66 +180,14 @@ class Provider(Generic[H]):
             pass
         ```
         """
-        provider: RemoteRef = RemoteRef(app_name, tag, namespace)
-        # TODO(erikbern): this returns an object that looks like a P during static analysis,
-        # but is actually a RemoteRef during runtime. This seems pretty confusing and bad:
-        # we should return an object that's always P.
-        return cast(P, provider)
 
+        async def _load_remote(resolver: Resolver) -> H:
+            handle = await Handle.from_app(app_name, tag, namespace, resolver.client)
+            return cast(H, handle)
 
-class Ref(Provider[H]):
-    pass
-
-
-class RemoteRef(Ref[H]):
-    def __init__(
-        self,
-        app_name: str,
-        tag: Optional[str] = None,
-        namespace: Optional[int] = None,  # api_pb2.DEPLOYMENT_NAMESPACE
-    ):
-        self.app_name = app_name
-        self.tag = tag
-        self.namespace = namespace
-        super().__init__()
-
-    def __repr__(self):
-        return f"Ref({self.app_name})"
-
-    async def _load(
-        self,
-        client: _Client,
-        stub: "_Stub",
-        app_id: str,
-        loader: Callable[["Provider"], Awaitable[str]],
-        message_callback: Callable[[str], None],
-        existing_object_id: Optional[str] = None,
-    ) -> H:
-        handle = await Handle.from_app(self.app_name, self.tag, self.namespace, client)
-        return cast(H, handle)
-
-
-class PersistedRef(Ref[H]):
-    def __init__(self, app_name: str, definition: H):
-        self.app_name = app_name
-        self.definition = definition
-        super().__init__()
-
-    def __repr__(self):
-        return f"PersistedRef<{self.definition}>({self.app_name})"
-
-    async def _load(
-        self,
-        client: _Client,
-        stub: "_Stub",
-        app_id: str,
-        loader: Callable[["Provider"], Awaitable[str]],
-        message_callback: Callable[[str], None],
-        existing_object_id: Optional[str] = None,
-    ) -> H:
-        from .stub import _Stub
-
-        _stub = _Stub(self.app_name, _object=self.definition)
-        await _stub.deploy(client=client)
-        handle = await Handle.from_app(self.app_name, client=client)
-        return cast(H, handle)
+        # Create a class of type cls, but use the base constructor
+        # TODO(erikbern): No Provider subclass should override __init__
+        obj = cls.__new__(cls)
+        rep = f"Ref({app_name})"
+        Provider.__init__(obj, _load_remote, rep)
+        return obj

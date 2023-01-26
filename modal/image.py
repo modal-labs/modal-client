@@ -14,10 +14,12 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 from modal_utils.grpc_utils import retry_transient_errors
 
+from . import is_local
+from ._resolver import Resolver
 from .config import config, logger
 from .exception import InvalidError, NotFoundError, RemoteError
 from .mount import _Mount
-from .object import Handle, Provider, Ref
+from .object import Handle, Provider
 from .secret import _Secret
 
 
@@ -127,116 +129,107 @@ class _Image(Provider[_ImageHandle]):
             raise InvalidError("Cannot run a build function with multiple base images!")
 
         for secret in secrets:
-            if not isinstance(secret, _Secret) and not isinstance(secret, Ref):
+            if not isinstance(secret, _Secret):
                 raise InvalidError(f"Secret {secret!r} must be a modal.Secret object")
 
-        if context_mount is not None and not isinstance(context_mount, _Mount) and not isinstance(context_mount, Ref):
+        if context_mount is not None and not isinstance(context_mount, _Mount):
             raise InvalidError(f"Context mount {context_mount!r} must be a modal.Mount object")
 
-        self._ref = ref
-        self._base_images = base_images
-        self._context_files = context_files
-        self._dockerfile_commands = dockerfile_commands
-        self._secrets = secrets
-        self._gpu = gpu
-        self._build_function = build_function
-        self._context_mount = context_mount
-        super().__init__()
+        async def _load(resolver: Resolver):
+            if ref:
+                image_id = await resolver.load(ref)
+                return _ImageHandle._from_id(image_id, resolver.client, None)
 
-    def __repr__(self):
-        return f"Image({self._dockerfile_commands})"
+            # Recursively build base images
+            base_image_ids: list[str] = []
+            for image in base_images.values():
+                base_image_ids.append(await resolver.load(image))
+            base_images_pb2s = [
+                api_pb2.BaseImage(docker_tag=docker_tag, image_id=image_id)
+                for docker_tag, image_id in zip(base_images.keys(), base_image_ids)
+            ]
 
-    async def _load(self, client, stub, app_id, loader, message_callback, existing_image_id):
-        if self._ref:
-            image_id = await loader(self._ref)
-            return _ImageHandle._from_id(image_id, client)
+            secret_ids = []
+            for secret in secrets:
+                try:
+                    secret_id = await resolver.load(secret)
+                except NotFoundError as ex:
+                    raise NotFoundError(
+                        str(ex) + "\n" + "You can add secrets to your account at https://modal.com/secrets"
+                    )
+                secret_ids.append(secret_id)
 
-        # Recursively build base images
-        base_image_ids: list[str] = []
-        for image in self._base_images.values():
-            base_image_ids.append(await loader(image))
-        base_images_pb2s = [
-            api_pb2.BaseImage(docker_tag=docker_tag, image_id=image_id)
-            for docker_tag, image_id in zip(self._base_images.keys(), base_image_ids)
-        ]
+            context_file_pb2s = []
+            for filename, path in context_files.items():
+                with open(path, "rb") as f:
+                    context_file_pb2s.append(api_pb2.ImageContextFile(filename=filename, data=f.read()))
 
-        secret_ids = []
-        for secret in self._secrets:
-            try:
-                secret_id = await loader(secret)
-            except NotFoundError as ex:
-                raise NotFoundError(str(ex) + "\n" + "You can add secrets to your account at https://modal.com/secrets")
-            secret_ids.append(secret_id)
+            if build_function:
+                (fn, kwargs) = build_function
+                # Plaintext source and arg definition for the function, so it's part of the image
+                # hash. We can't use the cloudpickle hash because it's not very stable.
+                build_function_def = f"{inspect.getsource(fn)}\n{repr(kwargs)}"
 
-        context_file_pb2s = []
-        for filename, path in self._context_files.items():
-            with open(path, "rb") as f:
-                context_file_pb2s.append(api_pb2.ImageContextFile(filename=filename, data=f.read()))
-
-        if self._build_function:
-            (fn, kwargs) = self._build_function
-            # Plaintext source and arg definition for the function, so it's part of the image
-            # hash. We can't use the cloudpickle hash because it's not very stable.
-            build_function_def = f"{inspect.getsource(fn)}\n{repr(kwargs)}"
-
-            base_images = list(self._base_images.values())
-            assert len(base_images) == 1
-            kwargs = {"timeout": 86400, **kwargs, "image": base_images[0], "_is_build_step": True}
-            build_function_handle = stub.function(**kwargs)(fn)
-            build_function_id = await loader(build_function_handle._function)
-        else:
-            build_function_def = None
-            build_function_id = None
-
-        dockerfile_commands: list[str]
-        if callable(self._dockerfile_commands):
-            # It's a closure (see DockerfileImage)
-            dockerfile_commands = self._dockerfile_commands()
-        else:
-            dockerfile_commands = self._dockerfile_commands
-
-        if self._context_mount:
-            context_mount_id = await loader(self._context_mount)
-        else:
-            context_mount_id = None
-
-        image_definition = api_pb2.Image(
-            base_images=base_images_pb2s,
-            dockerfile_commands=dockerfile_commands,
-            context_files=context_file_pb2s,
-            secret_ids=secret_ids,
-            gpu=self._gpu,
-            build_function_def=build_function_def,
-            context_mount_id=context_mount_id,
-        )
-
-        req = api_pb2.ImageGetOrCreateRequest(
-            app_id=app_id,
-            image=image_definition,
-            existing_image_id=existing_image_id,  # TODO: ignored
-            build_function_id=build_function_id,
-        )
-        resp = await client.stub.ImageGetOrCreate(req)
-        image_id = resp.image_id
-
-        logger.debug("Waiting for image %s" % image_id)
-        while True:
-            request = api_pb2.ImageJoinRequest(image_id=image_id, timeout=55)
-            response = await retry_transient_errors(client.stub.ImageJoin, request)
-            if not response.result.status:
-                continue
-            elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
-                raise RemoteError(response.result.exception)
-            elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
-                raise RemoteError("Image build terminated due to external shut-down. Please try again.")
-            elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
-                raise RemoteError("Image build timed out. Please try again with a larger `timeout` parameter.")
-            elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
-                break
+                (base_image,) = list(base_images.values())
+                kwargs = {"timeout": 86400, **kwargs, "image": base_image, "_is_build_step": True}
+                build_function_handle = resolver.stub.function(**kwargs)(fn)
+                build_function_id = await resolver.load(build_function_handle._function)
             else:
-                raise RemoteError("Unknown status %s!" % response.result.status)
+                build_function_def = None
+                build_function_id = None
 
-        return _ImageHandle(client, image_id)
+            dockerfile_commands_list: list[str]
+            if callable(dockerfile_commands):
+                # It's a closure (see DockerfileImage)
+                dockerfile_commands_list = dockerfile_commands()
+            else:
+                dockerfile_commands_list = dockerfile_commands
+
+            if context_mount:
+                context_mount_id = await resolver.load(context_mount)
+            else:
+                context_mount_id = None
+
+            image_definition = api_pb2.Image(
+                base_images=base_images_pb2s,
+                dockerfile_commands=dockerfile_commands_list,
+                context_files=context_file_pb2s,
+                secret_ids=secret_ids,
+                gpu=gpu,
+                build_function_def=build_function_def,
+                context_mount_id=context_mount_id,
+            )
+
+            req = api_pb2.ImageGetOrCreateRequest(
+                app_id=resolver.app_id,
+                image=image_definition,
+                existing_image_id=resolver.existing_object_id,  # TODO: ignored
+                build_function_id=build_function_id,
+            )
+            resp = await resolver.client.stub.ImageGetOrCreate(req)
+            image_id = resp.image_id
+
+            logger.debug("Waiting for image %s" % image_id)
+            while True:
+                request = api_pb2.ImageJoinRequest(image_id=image_id, timeout=55)
+                response = await retry_transient_errors(resolver.client.stub.ImageJoin, request)
+                if not response.result.status:
+                    continue
+                elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
+                    raise RemoteError(response.result.exception)
+                elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
+                    raise RemoteError("Image build terminated due to external shut-down. Please try again.")
+                elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
+                    raise RemoteError("Image build timed out. Please try again with a larger `timeout` parameter.")
+                elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
+                    break
+                else:
+                    raise RemoteError("Unknown status %s!" % response.result.status)
+
+            return _ImageHandle._from_id(image_id, resolver.client, None)
+
+        rep = f"Image({dockerfile_commands})"
+        super().__init__(_load, rep)
 
     def extend(self, **kwargs) -> "_Image":
         """Extend an image (named "base") with additional options or commands.
@@ -286,6 +279,7 @@ class _Image(Provider[_ImageHandle]):
         find_links: Optional[str] = None,  # Passes -f (--find-links) pip install
         index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
         extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
+        pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
     ) -> "_Image":
         """Install a list of Python packages using pip.
 
@@ -305,6 +299,8 @@ class _Image(Provider[_ImageHandle]):
             ("--extra-index-url", extra_index_url),  # TODO(erikbern): allow multiple?
         ]
         extra_args = " ".join(flag + " " + shlex.quote(value) for flag, value in flags if value is not None)
+        if pre:
+            extra_args += " --pre"
         package_args = " ".join(shlex.quote(pkg) for pkg in pkgs)
 
         dockerfile_commands = [
@@ -445,11 +441,17 @@ class _Image(Provider[_ImageHandle]):
         ignore_lockfile: bool = False,  # If set to True, it will not use poetry.lock
         old_installer: bool = False,  # If set to True, use old installer. See https://github.com/python-poetry/poetry/issues/3336
     ):
-        """Install poetry dependencies specified by a pyproject.toml file.
+        """Install poetry *dependencies* specified by a pyproject.toml file.
 
         The path to the lockfile is inferred, if not provided. However, the
         file has to exist, unless `ignore_lockfile` is set to `True`.
+
+        Note that the root project of the poetry project is not installed,
+        only the dependencies. For including local packages see `modal.create_package_mounts`
         """
+        if not is_local():
+            # existence checks can fail in global scope of the containers
+            return
 
         poetry_pyproject_toml = os.path.expanduser(poetry_pyproject_toml)
 
@@ -573,6 +575,15 @@ class _Image(Provider[_ImageHandle]):
         return _Image(
             dockerfile_commands=dockerfile_commands,
             context_files={"/modal_requirements.txt": requirements_path},
+        ).dockerfile_commands(
+            [
+                "ENV CONDA_EXE=/usr/local/bin/conda",
+                "ENV CONDA_PREFIX=/usr/local",
+                "ENV CONDA_PROMPT_MODIFIER=(base)",
+                "ENV CONDA_SHLVL=1",
+                "ENV CONDA_PYTHON_EXE=/usr/local/bin/python",
+                "ENV CONDA_DEFAULT_ENV=base",
+            ]
         )
 
     def conda_install(

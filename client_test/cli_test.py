@@ -224,3 +224,8 @@ def test_no_user_code_in_synchronicity_deploy(servicer, server_url_env, test_dir
     _run(["deploy", "--name", "foo", fresh_main_thread_assertion_module.as_posix()])
     assert pytest._did_load_main_thread_assertion
     print()
+
+
+def test_serve(servicer, server_url_env, test_dir):
+    stub_file = test_dir / "supports" / "app_run_tests" / "webhook.py"
+    _run(["serve", stub_file.as_posix(), "--timeout", "3"])

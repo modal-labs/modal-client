@@ -8,6 +8,7 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 from modal_utils.grpc_utils import retry_transient_errors
 
+from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from .object import Handle, Provider
 
@@ -134,10 +135,13 @@ class _Queue(Provider[_QueueHandle]):
     The queue can contain any object serializable by `cloudpickle`.
     """
 
-    async def _load(self, client, stub, app_id, loader, message_callback, existing_object_id):
-        request = api_pb2.QueueCreateRequest(app_id=app_id, existing_queue_id=existing_object_id)
-        response = await client.stub.QueueCreate(request)
-        return _QueueHandle(client, response.queue_id)
+    def __init__(self):
+        async def _load(resolver: Resolver) -> _QueueHandle:
+            request = api_pb2.QueueCreateRequest(app_id=resolver.app_id, existing_queue_id=resolver.existing_object_id)
+            response = await resolver.client.stub.QueueCreate(request)
+            return _QueueHandle._from_id(response.queue_id, resolver.client, None)
+
+        super().__init__(_load, "Queue()")
 
 
 Queue, AioQueue = synchronize_apis(_Queue)

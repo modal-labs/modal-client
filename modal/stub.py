@@ -25,12 +25,13 @@ from ._pty import exec_cmd, write_stdin_to_pty_stream
 from .app import _App, container_app, is_local
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
-from .exception import InvalidError, deprecation_warning
+from .exception import InvalidError, deprecation_error
 from .functions import _Function, _FunctionHandle
 from .gpu import GPU_T
 from .image import _Image
 from .mount import _create_client_mount, _Mount, client_mount_name
-from .object import Provider, Ref
+from .object import Provider
+from .proxy import _Proxy
 from .queue import _Queue
 from .rate_limit import RateLimit
 from .schedule import Schedule
@@ -100,6 +101,7 @@ class _Stub:
     _secrets: Collection[_Secret]
     _function_handles: Dict[str, _FunctionHandle]
     _local_entrypoints: Dict[str, Callable]
+    _local_mounts: List[_Mount]
 
     def __init__(
         self,
@@ -124,6 +126,7 @@ class _Stub:
         self._secrets = secrets
         self._function_handles = {}
         self._local_entrypoints: Dict[str, LocalEntrypoint] = {}
+        self._local_mounts = []
         super().__init__()
 
     @property
@@ -246,6 +249,9 @@ class _Stub:
         aborted = False
         # Start tracking logs and yield context
         async with TaskContext(grace=config["logs_timeout"]) as tc:
+            # Start heartbeats loop to keep the client alive
+            tc.infinite_loop(lambda: self._heartbeat(client, self._app_id), sleep=HEARTBEAT_INTERVAL)
+
             status_spinner = step_progress("Running app...")
             with output_mgr.ctx_if_visible(output_mgr.make_live(step_progress("Initializing..."))):
                 app_id = app.app_id
@@ -265,10 +271,6 @@ class _Stub:
                     await app._create_all_objects(create_progress, post_init_state)
                 create_progress.label = step_completed("Created objects.")
                 output_mgr.print_if_visible(create_progress)
-
-                # Start heartbeats loop to keep the client alive
-                if post_init_state == api_pb2.APP_STATE_EPHEMERAL:
-                    tc.infinite_loop(lambda: self._heartbeat(client, self._app_id), sleep=HEARTBEAT_INTERVAL)
 
                 # Update all functions client-side to point to the running app
                 for tag, obj in self._function_handles.items():
@@ -531,7 +533,7 @@ class _Stub:
         else:
             return [*secrets, *self._secrets]
 
-    def _add_function(self, function: _Function) -> _FunctionHandle:
+    def _add_function(self, function: _Function, mounts: List[_Mount]) -> _FunctionHandle:
         if function.tag in self._blueprint:
             old_function = self._blueprint[function.tag]
             if isinstance(old_function, _Function):
@@ -545,11 +547,16 @@ class _Stub:
                 logger.warning(f"Warning: tag {function.tag} exists but is overridden by function")
         self._blueprint[function.tag] = function
 
+        # Track all mounts. This is needed for file watching
+        for mount in mounts:
+            if mount.is_local():
+                self._local_mounts.append(mount)
+
         # We now need to create an actual handle.
         # This is a bit weird since the object isn't actually created yet,
         # but functions are weird and live and the global scope
         # These will be set with the correct object id when the app starts.
-        function_handle = _FunctionHandle(function)
+        function_handle = _FunctionHandle.from_stub_dummy(function)
         self._function_handles[function.tag] = function_handle
         return function_handle
 
@@ -606,7 +613,7 @@ class _Stub:
         shared_volumes: Dict[str, _SharedVolume] = {},
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MB. This is a soft limit.
-        proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
+        proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
@@ -622,7 +629,7 @@ class _Stub:
         if image is None:
             image = self._get_default_image()
         info = FunctionInfo(raw_f, serialized=serialized, name_override=name)
-        mounts = [*self._get_function_mounts(info), *mounts]
+        base_mounts = self._get_function_mounts(info)
         secrets = self._get_function_secrets(raw_f, secret, secrets)
 
         if interactive:
@@ -646,6 +653,7 @@ class _Stub:
             gpu=gpu,
             rate_limit=rate_limit,
             serialized=serialized,
+            base_mounts=base_mounts,
             mounts=mounts,
             shared_volumes=shared_volumes,
             memory=memory,
@@ -663,15 +671,13 @@ class _Stub:
 
         if _is_build_step:
             # Don't add function to stub if it's a build step.
-            return _FunctionHandle(function)
+            return _FunctionHandle.from_stub_dummy(function)
 
-        return self._add_function(function)
+        return self._add_function(function, [*base_mounts, *mounts])
 
     @decorator_with_options
-    def generator(self, raw_f=None, **kwargs) -> _FunctionHandle:
-        deprecation_warning(date(2022, 12, 1), "Stub.generator is deprecated. Use .function() instead.")
-        kwargs.update(dict(is_generator=True))
-        return self.function(raw_f, **kwargs)
+    def generator(self, raw_f=None, **kwargs):
+        deprecation_error(date(2022, 12, 1), "Stub.generator is no longer supported. Use .function() instead.")
 
     @decorator_with_options
     def webhook(
@@ -689,7 +695,7 @@ class _Stub:
         shared_volumes: Dict[str, _SharedVolume] = {},
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MB. This is a soft limit.
-        proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
+        proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
@@ -721,7 +727,7 @@ class _Stub:
         if image is None:
             image = self._get_default_image()
         info = FunctionInfo(raw_f)
-        mounts = [*self._get_function_mounts(info), *mounts]
+        base_mounts = self._get_function_mounts(info)
         secrets = self._get_function_secrets(raw_f, secret, secrets)
 
         if not wait_for_response:
@@ -736,6 +742,7 @@ class _Stub:
             secrets=secrets,
             is_generator=True,
             gpu=gpu,
+            base_mounts=base_mounts,
             mounts=mounts,
             shared_volumes=shared_volumes,
             webhook_config=api_pb2.WebhookConfig(
@@ -754,7 +761,7 @@ class _Stub:
             keep_warm=keep_warm,
             cloud_provider=cloud,
         )
-        return self._add_function(function)
+        return self._add_function(function, [*base_mounts, *mounts])
 
     @decorator_with_options
     def asgi(
@@ -771,7 +778,7 @@ class _Stub:
         shared_volumes: Dict[str, _SharedVolume] = {},
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MB. This is a soft limit.
-        proxy: Optional[Ref] = None,  # Reference to a Modal Proxy to use in front of this function.
+        proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
@@ -797,7 +804,7 @@ class _Stub:
         if image is None:
             image = self._get_default_image()
         info = FunctionInfo(asgi_app)
-        mounts = [*self._get_function_mounts(info), *mounts]
+        base_mounts = self._get_function_mounts(info)
         secrets = self._get_function_secrets(asgi_app, secret, secrets)
 
         if not wait_for_response:
@@ -812,6 +819,7 @@ class _Stub:
             secrets=secrets,
             is_generator=True,
             gpu=gpu,
+            base_mounts=base_mounts,
             mounts=mounts,
             shared_volumes=shared_volumes,
             webhook_config=api_pb2.WebhookConfig(type=_webhook_type, requested_suffix=label, async_mode=_response_mode),
@@ -825,7 +833,7 @@ class _Stub:
             keep_warm=keep_warm,
             cloud_provider=cloud,
         )
-        return self._add_function(function)
+        return self._add_function(function, [*base_mounts, *mounts])
 
     @decorator_with_options
     def wsgi(

@@ -16,6 +16,8 @@ async def test_async_factory(servicer, client):
 @pytest.mark.asyncio
 async def test_use_object(servicer, client):
     stub = AioStub()
-    stub["my_q"] = AioQueue.from_name("foo-queue")
+    q = AioQueue.from_name("foo-queue")
+    assert isinstance(q, AioQueue)
+    stub["my_q"] = q
     async with stub.run(client=client) as running_app:
         assert running_app["my_q"].object_id == "qu-foo"
