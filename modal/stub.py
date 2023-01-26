@@ -597,7 +597,6 @@ class _Stub:
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         interactive: bool = False,  # Whether to run the function in interactive mode.
-        _is_build_step: bool = False,  # Whether function is a build step; reserved for internal use.
         keep_warm: Union[bool, int] = False,  # Toggles an adaptively-sized warm pool for latency-sensitive apps.
         name: Optional[str] = None,  # Sets the Modal name of the function within the stub
         is_generator: Optional[bool] = None,  # If not set, it's inferred from the function signature
@@ -646,10 +645,6 @@ class _Stub:
             name=name,
             cloud_provider=cloud,
         )
-
-        if _is_build_step:
-            # Don't add function to stub if it's a build step.
-            return _FunctionHandle.from_stub_dummy(function)
 
         return self._add_function(function, [*base_mounts, *mounts])
 

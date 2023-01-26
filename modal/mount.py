@@ -202,9 +202,7 @@ def _get_client_mount():
     if config["sync_entrypoint"]:
         return _create_client_mount()
     else:
-        return _Mount.from_name(
-            client_mount_name(), namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL
-        )
+        return _Mount.from_name(client_mount_name(), namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
 
 
 async def _create_package_mounts(module_names: Collection[str]) -> List[_Mount]:

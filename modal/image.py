@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 from __future__ import annotations
 
-import inspect
 import os
 import shlex
 import sys
@@ -15,10 +14,11 @@ from modal_utils.async_utils import synchronize_apis
 from modal_utils.grpc_utils import retry_transient_errors
 
 from . import is_local
+from ._function_utils import FunctionInfo
 from ._resolver import Resolver
 from .config import config, logger
 from .exception import InvalidError, NotFoundError, RemoteError
-from .mount import _Mount
+from .mount import _get_client_mount, _Mount
 from .object import Handle, Provider
 from .secret import _Secret
 
@@ -165,15 +165,8 @@ class _Image(Provider[_ImageHandle]):
                     context_file_pb2s.append(api_pb2.ImageContextFile(filename=filename, data=f.read()))
 
             if build_function:
-                (fn, kwargs) = build_function
-                # Plaintext source and arg definition for the function, so it's part of the image
-                # hash. We can't use the cloudpickle hash because it's not very stable.
-                build_function_def = f"{inspect.getsource(fn)}\n{repr(kwargs)}"
-
-                (base_image,) = list(base_images.values())
-                kwargs = {"timeout": 86400, **kwargs, "image": base_image, "_is_build_step": True}
-                build_function_handle = resolver.stub.function(**kwargs)(fn)
-                build_function_id = await resolver.load(build_function_handle._function)
+                build_function_def = build_function.get_build_def()
+                build_function_id = await resolver.load(build_function)
             else:
                 build_function_def = None
                 build_function_id = None
@@ -750,8 +743,16 @@ class _Image(Provider[_ImageHandle]):
 
     def run_function(
         self,
-        raw_function: Callable[[], Any],
-        **kwargs,
+        raw_f: Callable[[], Any],
+        *,
+        secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
+        secrets: Collection[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
+        gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
+        mounts: Collection[_Mount] = (),
+        shared_volumes: Dict[str, _SharedVolume] = {},
+        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
+        memory: Optional[int] = None,  # How much memory to request, in MB. This is a soft limit.
+        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
     ) -> "_Image":
         """Run user-defined function `raw_function` as an image build step. The function runs just like an ordinary Modal
         function, and any kwargs accepted by `@stub.function` (such as `Mount`s, `SharedVolume`s, and resource requests) can
@@ -778,7 +779,28 @@ class _Image(Provider[_ImageHandle]):
         )
         ```
         """
-        return self.extend(build_function=(raw_function, kwargs))
+        from .functions import _Function
+
+        info = FunctionInfo(raw_f)
+        base_mounts = [_get_client_mount()]
+        for key, mount in info.get_mounts().items():
+            base_mounts.append(mount)
+
+        function = _Function(
+            info,
+            image=self,
+            secret=secret,
+            secrets=secrets,
+            gpu=gpu,
+            base_mounts=base_mounts,
+            mounts=mounts,
+            shared_volumes=shared_volumes,
+            memory=memory,
+            timeout=86400,
+            cpu=cpu,
+            cloud_provider=cloud,
+        )
+        return self.extend(build_function=function)
 
     def env(self, vars: dict[str, str]) -> "_Image":
         """Sets the environmental variables of the image.

@@ -1000,6 +1000,18 @@ class _Function(Provider[_FunctionHandle]):
         """mdmd:hidden"""
         return self._tag
 
+    def get_build_def(self):
+        # Used to check whether we should rebuild an image using run_function
+        # Plaintext source and arg definition for the function, so it's part of the image
+        # hash. We can't use the cloudpickle hash because it's not very stable.
+        kwargs = dict(
+            secrets=repr(self._secrets),
+            gpu_config=repr(self._gpu_config),
+            mounts=repr(self._mounts),
+            shared_volumes=repr(self._shared_volumes),
+        )
+        return f"{inspect.getsource(self._raw_f)}\n{repr(kwargs)}"
+
 
 Function, AioFunction = synchronize_apis(_Function)
 
