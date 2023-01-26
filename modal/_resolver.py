@@ -17,7 +17,7 @@ class Resolver:
     _spinner: Optional[Spinner]
     _step_node: Optional[Tree]
 
-    def __init__(self, stub, app, progress: Optional[Tree], client, app_id: str, existing_object_id: Optional[str]):
+    def __init__(self, app, progress: Optional[Tree], client, app_id: str, existing_object_id: Optional[str]):
         self._app = app
         self._progress = progress
         self._last_message = None
@@ -25,7 +25,6 @@ class Resolver:
         self._step_node = None
 
         # Accessible by objects
-        self.stub = stub
         self.client = client
         self.app_id = app_id
         self.existing_object_id = existing_object_id

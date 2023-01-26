@@ -16,7 +16,7 @@ from modal_version import __version__
 
 from ._blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec
 from ._resolver import Resolver
-from .config import logger
+from .config import config, logger
 from .exception import InvalidError, NotFoundError
 from .object import Handle, Provider
 
@@ -196,6 +196,13 @@ def _create_client_mount():
 
 
 _, aio_create_client_mount = synchronize_apis(_create_client_mount)
+
+
+def _get_client_mount():
+    if config["sync_entrypoint"]:
+        return _create_client_mount()
+    else:
+        return _Mount.from_name(client_mount_name(), namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
 
 
 async def _create_package_mounts(module_names: Collection[str]) -> List[_Mount]:
