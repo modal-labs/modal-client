@@ -1001,6 +1001,7 @@ class _Function(Provider[_FunctionHandle]):
         return self._tag
 
     def get_build_def(self):
+        """mdmd:hidden"""
         # Used to check whether we should rebuild an image using run_function
         # Plaintext source and arg definition for the function, so it's part of the image
         # hash. We can't use the cloudpickle hash because it's not very stable.
