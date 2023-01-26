@@ -29,7 +29,7 @@ from .exception import InvalidError, deprecation_error
 from .functions import _Function, _FunctionHandle
 from .gpu import GPU_T
 from .image import _Image
-from .mount import _create_client_mount, _Mount, client_mount_name
+from .mount import _get_client_mount, _Mount
 from .object import Provider
 from .proxy import _Proxy
 from .queue import _Queue
@@ -500,12 +500,7 @@ class _Stub:
 
         # Create client mount
         if self._client_mount is None:
-            if config["sync_entrypoint"]:
-                self._client_mount = _create_client_mount()
-            else:
-                self._client_mount = _Mount.from_name(
-                    client_mount_name(), namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL
-                )
+            self._client_mount = _get_client_mount()
         mounts.append(self._client_mount)
 
         # Create function mounts
