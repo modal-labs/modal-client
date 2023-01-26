@@ -730,6 +730,7 @@ class _Function(Provider[_FunctionHandle]):
         self,
         function_info: FunctionInfo,
         image=None,
+        secret: Optional[_Secret] = None,
         secrets: Collection[_Secret] = (),
         schedule: Optional[Schedule] = None,
         is_generator=False,
@@ -766,7 +767,10 @@ class _Function(Provider[_FunctionHandle]):
 
         self._raw_f = raw_f
         self._image = image
-        self._secrets = secrets
+        if secret:
+            self._secrets = [secret, *secrets]
+        else:
+            self._secrets = secrets
 
         if retries:
             if isinstance(retries, int):

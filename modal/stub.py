@@ -511,14 +511,6 @@ class _Stub:
 
         return mounts
 
-    def _get_function_secrets(self, raw_f, secret: Optional[_Secret] = None, secrets: Collection[_Secret] = ()):
-        if secret and secrets:
-            raise InvalidError(f"Function {raw_f} has both singular `secret` and plural `secrets` attached")
-        if secret:
-            return [secret, *self._secrets]
-        else:
-            return [*secrets, *self._secrets]
-
     def _add_function(self, function: _Function, mounts: List[_Mount]) -> _FunctionHandle:
         if function.tag in self._blueprint:
             old_function = self._blueprint[function.tag]
@@ -616,7 +608,7 @@ class _Stub:
             image = self._get_default_image()
         info = FunctionInfo(raw_f, serialized=serialized, name_override=name)
         base_mounts = self._get_function_mounts(info)
-        secrets = self._get_function_secrets(raw_f, secret, secrets)
+        secrets = [*self._secrets, *secrets]
 
         if interactive:
             if self._pty_input_stream:
@@ -632,6 +624,7 @@ class _Stub:
         function = _Function(
             info,
             image=image,
+            secret=secret,
             secrets=secrets,
             schedule=schedule,
             is_generator=is_generator,
@@ -713,7 +706,7 @@ class _Stub:
             image = self._get_default_image()
         info = FunctionInfo(raw_f)
         base_mounts = self._get_function_mounts(info)
-        secrets = self._get_function_secrets(raw_f, secret, secrets)
+        secrets = [*self._secrets, *secrets]
 
         if not wait_for_response:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
@@ -723,6 +716,7 @@ class _Stub:
         function = _Function(
             info,
             image=image,
+            secret=secret,
             secrets=secrets,
             is_generator=True,
             gpu=gpu,
@@ -789,7 +783,7 @@ class _Stub:
             image = self._get_default_image()
         info = FunctionInfo(asgi_app)
         base_mounts = self._get_function_mounts(info)
-        secrets = self._get_function_secrets(asgi_app, secret, secrets)
+        secrets = [*self._secrets, *secrets]
 
         if not wait_for_response:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
@@ -799,6 +793,7 @@ class _Stub:
         function = _Function(
             info,
             image=image,
+            secret=secret,
             secrets=secrets,
             is_generator=True,
             gpu=gpu,
