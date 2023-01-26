@@ -144,7 +144,7 @@ class _Dict(Provider[_DictHandle]):
             )
             response = await resolver.client.stub.DictCreate(req)
             logger.debug("Created dict with id %s" % response.dict_id)
-            return _DictHandle(resolver.client, response.dict_id)
+            return _DictHandle._from_id(response.dict_id, resolver.client, None)
 
         super().__init__(_load, "Dict()")
 

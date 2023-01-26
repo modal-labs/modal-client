@@ -330,8 +330,8 @@ def test_closure_valued_serialized_function(client, servicer):
 
 
 def test_from_id(client, servicer):
-    # obj = Function.from_id("fu-123", client)
+    # obj = Function._from_id("fu-123", client, None)
     # assert obj.object_id == "fu-123"
 
-    obj = FunctionCall.from_id("fc-123", client)
+    obj = FunctionCall._from_id("fc-123", client, None)
     assert obj.object_id == "fc-123"
