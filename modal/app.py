@@ -80,7 +80,7 @@ class _App:
             # We already created this object before, shortcut this method
             return cached_obj
 
-        resolver = Resolver(self._stub, self, progress, self._client, self.app_id, existing_object_id)
+        resolver = Resolver(self, progress, self._client, self.app_id, existing_object_id)
 
         # Create object
         created_obj = await obj._load(resolver)
