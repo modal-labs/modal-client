@@ -445,7 +445,21 @@ class FunctionStats:
 class _FunctionHandle(Handle, type_prefix="fu"):
     """Interact with a Modal Function of a live app."""
 
-    def __init__(self, function: "_Function", web_url=None, client=None, object_id=None):
+    _web_url: Optional[str]
+
+    @classmethod
+    def from_stub_dummy(cls, function: "_Function"):
+        # This is a bit of a hack until we merge handles and providers
+        # See Stub._add_function
+        # Basically we pre-initialize FunctionHandle before we have an object id for them
+        # Later once we merge those objects, we should be able to get rid of this
+        obj = cls.__new__(cls)
+        obj._client = None
+        obj._object_id = None
+        obj._initialize_stub_dummy(function)
+        return obj
+
+    def _initialize_stub_dummy(self, function: "_Function"):
         self._local_app = None
         self._progress = None
 
@@ -453,14 +467,12 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         self._tag = function._tag
         self._is_generator = function._is_generator
         self._raw_f = function._raw_f
-        self._web_url = web_url
+        self._web_url = None
         self._output_mgr: Optional[OutputManager] = None
         self._function = function
         self._mute_cancellation = (
             False  # set when a user terminates the app intentionally, to prevent useless traceback spam
         )
-
-        super().__init__(client=client, object_id=object_id)
 
     def _set_mute_cancellation(self, value=True):
         self._mute_cancellation = value
@@ -681,7 +693,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
             return None
 
         invocation = await self.call_function_nowait(args, kwargs)
-        return _FunctionCall(invocation.client, invocation.function_call_id)
+        return _FunctionCall._from_id(invocation.function_call_id, invocation.client, None)
 
     async def submit(self, *args, **kwargs):
         """**Deprecated.** Use `.spawn()` instead."""

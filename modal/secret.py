@@ -32,7 +32,7 @@ class _Secret(Provider[_SecretHandle]):
                 existing_secret_id=resolver.existing_object_id,
             )
             resp = await resolver.client.stub.SecretCreate(req)
-            return _SecretHandle(resolver.client, resp.secret_id)
+            return _SecretHandle._from_id(resp.secret_id, resolver.client, None)
 
         rep = f"Secret([{', '.join(env_dict.keys())}])"
         super().__init__(_load, rep)

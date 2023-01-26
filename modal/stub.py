@@ -547,7 +547,7 @@ class _Stub:
         # This is a bit weird since the object isn't actually created yet,
         # but functions are weird and live and the global scope
         # These will be set with the correct object id when the app starts.
-        function_handle = _FunctionHandle(function)
+        function_handle = _FunctionHandle.from_stub_dummy(function)
         self._function_handles[function.tag] = function_handle
         return function_handle
 
@@ -661,7 +661,7 @@ class _Stub:
 
         if _is_build_step:
             # Don't add function to stub if it's a build step.
-            return _FunctionHandle(function)
+            return _FunctionHandle.from_stub_dummy(function)
 
         return self._add_function(function, [*base_mounts, *mounts])
 

@@ -139,7 +139,7 @@ class _Queue(Provider[_QueueHandle]):
         async def _load(resolver: Resolver) -> _QueueHandle:
             request = api_pb2.QueueCreateRequest(app_id=resolver.app_id, existing_queue_id=resolver.existing_object_id)
             response = await resolver.client.stub.QueueCreate(request)
-            return _QueueHandle(resolver.client, response.queue_id)
+            return _QueueHandle._from_id(response.queue_id, resolver.client, None)
 
         super().__init__(_load, "Queue()")
 
