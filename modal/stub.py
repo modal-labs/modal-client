@@ -548,7 +548,9 @@ class _Stub:
         return list(
             tag
             for tag, handle in self._function_handles.items()
-            if handle._function._webhook_config and handle._function._webhook_config.type
+            if hasattr(handle, "_function")
+            and handle._function._webhook_config
+            and handle._function._webhook_config.type
         )
 
     @decorator_with_options
