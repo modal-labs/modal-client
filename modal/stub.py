@@ -528,7 +528,9 @@ class _Stub:
             if mount.is_local():
                 self._local_mounts.append(mount)
 
-        return function._precreated_function_handle
+        function_handle = function._precreated_function_handle
+        self._function_handles[function.tag] = function_handle
+        return function_handle
 
     @property
     def registered_functions(self) -> List[str]:
