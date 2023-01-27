@@ -3,12 +3,15 @@ import pytest
 
 from modal.aio import AioApp, AioFunctionHandle, AioStub, aio_container_app
 
+from .supports.skip import skip_windows
+
 
 def my_f_1(x):
     # Body doesn't matter, the fixture overrides this anyway
     return x**3
 
 
+@skip_windows
 @pytest.mark.asyncio
 async def test_container_function_initialization(unix_servicer, aio_container_client):
     unix_servicer.app_objects["ap-123"] = {
