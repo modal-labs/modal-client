@@ -16,7 +16,6 @@ from typing import (
     Dict,
     List,
     Optional,
-    Tuple,
     Union,
 )
 
@@ -176,8 +175,8 @@ class _Invocation:
                 "\n"
                 "Modal functions can only be called within an app. "
                 "Try calling it from another running modal function or from an app run context:\n\n"
-                "with app.run():\n"
-                "    my_modal_function()\n"
+                "with stub.run():\n"
+                "    my_modal_function.call()\n"
             )
         request = api_pb2.FunctionMapRequest(function_id=function_id, parent_input_id=current_input_id())
         response = await retry_transient_errors(client.stub.FunctionMap, request)
@@ -448,84 +447,37 @@ class _FunctionHandle(Handle, type_prefix="fu"):
     _web_url: Optional[str]
     _function: "_Function"
 
-    @classmethod
-    def from_stub_dummy(cls, function: "_Function"):
-        # This is a bit of a hack until we merge handles and providers
-        # See Stub._add_function
-        # Basically we pre-initialize FunctionHandle before we have an object id for them
-        # Later once we merge those objects, we should be able to get rid of this
-        obj = cls.__new__(cls)
-        obj._client = None
-        obj._object_id = None
-        obj._initialize_stub_dummy(function)
-        return obj
-
-    def _initialize_stub_dummy(self, function: "_Function"):
-        self._local_app = None
-        self._progress = None
-
-        # These are some stupid lines, let's rethink
-        self._tag = function._tag
-        self._is_generator = function._is_generator
-        self._raw_f = function._raw_f
-        self._web_url = None
-        self._output_mgr: Optional[OutputManager] = None
-        self._function = function
-        self._mute_cancellation = (
-            False  # set when a user terminates the app intentionally, to prevent useless traceback spam
-        )
-
     def _set_mute_cancellation(self, value=True):
         self._mute_cancellation = value
 
-    def _initialize_from_proto(self, proto: Message):
-        assert isinstance(proto, api_pb2.Function)
-        self._is_generator = proto.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
-        self._web_url = proto.web_url
-        self._mute_cancellation = False
-        self._output_mgr = None
+    def _initialize_from_proto(self, proto: Optional[Message]):
+        self._progress = None
+        self._is_generator = None
+        self._raw_f = None
+        self._web_url = None
+        self._output_mgr: Optional[OutputManager] = None
+        self._mute_cancellation = (
+            False  # set when a user terminates the app intentionally, to prevent useless traceback spam
+        )
+        self._function_name = None
 
-    def _set_local_app(self, app):
-        """mdmd:hidden"""
-        self._local_app = app
+        if proto is not None:
+            assert isinstance(proto, api_pb2.Function)
+            self._is_generator = proto.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
+            self._web_url = proto.web_url
+            self._function_name = proto.function_name
 
     def _set_output_mgr(self, output_mgr: OutputManager):
         """mdmd:hidden"""
         self._output_mgr = output_mgr
 
-    def _get_live_handle(self) -> "_FunctionHandle":
-        # Functions are sort of "special" in the sense that they are just global objects not attached to an app
-        # the way other objects are. So in order to work with functions, we need to look up the running app
-        # in runtime. Either we're inside a container, in which case it's a singleton, or we're in the client,
-        # in which case we can set the running app on all functions when we run the app.
-        if self._client and self._object_id:
-            # Can happen if this is a function loaded from a different app or something
-            return self
-
-        # avoid circular import
-        from .app import _container_app, is_local
-
-        if is_local():
-            if self._local_app is None:
-                raise InvalidError(
-                    "App is not running. You might need to put the function call inside a `with stub.run():` block."
-                )
-            app = self._local_app
-        else:
-            app = _container_app
-        obj = app[self._tag]
-        assert isinstance(obj, _FunctionHandle)
-        return obj
-
-    def _get_context(self) -> Tuple[_Client, str]:
-        function_handle = self._get_live_handle()
-        return (function_handle._client, function_handle._object_id)
+    def _set_raw_f(self, raw_f):
+        self._raw_f = raw_f
 
     @property
     def web_url(self) -> str:
         """URL of a Function running as a web endpoint."""
-        function_handle = self._get_live_handle()
-        return function_handle._web_url
+        return self._web_url
 
     @property
     def is_generator(self) -> bool:
@@ -535,15 +487,15 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         if order_outputs and self._is_generator:
             raise ValueError("Can't return ordered results for a generator")
 
-        client, object_id = self._get_context()
-
-        count_update_callback = self._output_mgr.function_progress_callback(self._tag) if self._output_mgr else None
+        count_update_callback = (
+            self._output_mgr.function_progress_callback(self._function_name) if self._output_mgr else None
+        )
 
         async for item in _map_invocation(
-            object_id,
+            self._object_id,
             input_stream,
             kwargs,
-            client,
+            self._client,
             self._is_generator,
             order_outputs,
             return_exceptions,
@@ -634,8 +586,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
 
     async def call_function(self, args, kwargs):
         """mdmd:hidden"""
-        client, object_id = self._get_context()
-        invocation = await _Invocation.create(object_id, args, kwargs, client)
+        invocation = await _Invocation.create(self._object_id, args, kwargs, self._client)
         try:
             return await invocation.run_function()
         except asyncio.CancelledError:
@@ -645,20 +596,17 @@ class _FunctionHandle(Handle, type_prefix="fu"):
 
     async def call_function_nowait(self, args, kwargs):
         """mdmd:hidden"""
-        client, object_id = self._get_context()
-        return await _Invocation.create(object_id, args, kwargs, client)
+        return await _Invocation.create(self._object_id, args, kwargs, self._client)
 
     @warn_if_generator_is_not_consumed
     async def call_generator(self, args, kwargs):
         """mdmd:hidden"""
-        client, object_id = self._get_context()
-        invocation = await _Invocation.create(object_id, args, kwargs, client)
+        invocation = await _Invocation.create(self._object_id, args, kwargs, self._client)
         async for res in invocation.run_generator():
             yield res
 
     async def _call_generator_nowait(self, args, kwargs):
-        client, object_id = self._get_context()
-        return await _Invocation.create(object_id, args, kwargs, client)
+        return await _Invocation.create(self._object_id, args, kwargs, self._client)
 
     def call(self, *args, **kwargs):
         if self._is_generator:
@@ -707,8 +655,9 @@ class _FunctionHandle(Handle, type_prefix="fu"):
     async def get_current_stats(self) -> FunctionStats:
         """Return a `FunctionStats` object describing the current function's queue and runner counts."""
 
-        client, object_id = self._get_context()
-        resp = await client.stub.FunctionGetCurrentStats(api_pb2.FunctionGetCurrentStatsRequest(function_id=object_id))
+        resp = await self._client.stub.FunctionGetCurrentStats(
+            api_pb2.FunctionGetCurrentStatsRequest(function_id=self._object_id)
+        )
         return FunctionStats(
             backlog=resp.backlog, num_active_runners=resp.num_active_tasks, num_total_runners=resp.num_total_tasks
         )
@@ -830,6 +779,11 @@ class _Function(Provider[_FunctionHandle]):
                 raise InvalidError("Cloud selection only supported for functions running with A100 GPUs.")
         else:
             self._cloud_provider = None
+
+        self._precreated_function_handle = _FunctionHandle._new()
+        self._precreated_function_handle._initialize_from_proto(None)
+        self._precreated_function_handle._set_raw_f(raw_f)
+
         rep = "Function({self._tag})"
         super().__init__(self._load, rep)
 
@@ -994,7 +948,12 @@ class _Function(Provider[_FunctionHandle]):
         else:
             resolver.set_message(f"Created {self._tag}.")
 
-        return _FunctionHandle._from_id(response.function_id, resolver.client, response.function)
+        # Update the precreated function handle (todo: hack until we merge providers/handles)
+        self._precreated_function_handle._initialize_handle(resolver.client, response.function_id)
+        self._precreated_function_handle._initialize_from_proto(response.function)
+
+        # Instead of returning a new object, just return the precreated one
+        return self._precreated_function_handle
 
     @property
     def tag(self):
