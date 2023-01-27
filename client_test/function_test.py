@@ -329,9 +329,12 @@ def test_closure_valued_serialized_function(client, servicer):
     assert functions["ret_bar"]() == "bar"
 
 
-def test_from_id(client, servicer):
-    # obj = Function._from_id("fu-123", client, None)
-    # assert obj.object_id == "fu-123"
-
+def test_from_id_internal(client, servicer):
     obj = FunctionCall._from_id("fc-123", client, None)
+    assert obj.object_id == "fc-123"
+
+
+def test_from_id(client, servicer):
+    # Used in a few examples to construct FunctionCall objects
+    obj = FunctionCall.from_id("fc-123", client)
     assert obj.object_id == "fc-123"
