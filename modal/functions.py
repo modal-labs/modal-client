@@ -175,8 +175,8 @@ class _Invocation:
                 "\n"
                 "Modal functions can only be called within an app. "
                 "Try calling it from another running modal function or from an app run context:\n\n"
-                "with app.run():\n"
-                "    my_modal_function()\n"
+                "with stub.run():\n"
+                "    my_modal_function.call()\n"
             )
         request = api_pb2.FunctionMapRequest(function_id=function_id, parent_input_id=current_input_id())
         response = await retry_transient_errors(client.stub.FunctionMap, request)
