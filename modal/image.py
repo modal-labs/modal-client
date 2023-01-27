@@ -502,7 +502,7 @@ class _Image(Provider[_ImageHandle]):
             dockerfile_commands=_dockerfile_commands,
             context_files=context_files,
             secrets=secrets,
-            gpu_config=parse_gpu_config(gpu),
+            gpu_config=parse_gpu_config(gpu, warn_on_true=False),
         )
 
     def run_commands(
@@ -521,7 +521,7 @@ class _Image(Provider[_ImageHandle]):
         return self.extend(
             dockerfile_commands=dockerfile_commands,
             secrets=secrets,
-            gpu_config=parse_gpu_config(gpu),
+            gpu_config=parse_gpu_config(gpu, warn_on_true=False),
         )
 
     @staticmethod
