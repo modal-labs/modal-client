@@ -790,10 +790,25 @@ class _Function(Provider[_FunctionHandle]):
         else:
             self._cloud_provider = None
 
-        self._precreated_function_handle = _FunctionHandle._new()
-        self._precreated_function_handle._initialize_from_proto(None)
-        self._precreated_function_handle._set_raw_f(raw_f)
-        self._precreated_function_handle._set_is_web_endpoint(webhook_config is not None)
+        # TODO(erikbern): this is a bit if a janky solution to the problem of assigning
+        # ids to all global functions. We can't do this from the app, since the app doesn't
+        # "know" its stub and its providers. So we "steal" the objects from here just based
+        # on the tag. This is ugly but will work 99.99% of the time. I'll think of something
+        # better!
+        from .app import _container_app
+
+        if _container_app is not None:
+            try:
+                function_handle = _container_app[self._tag]
+            except KeyError:
+                function_handle = _FunctionHandle._new()
+        else:
+            function_handle = _FunctionHandle._new()
+        function_handle._initialize_from_proto(None)
+        function_handle._set_raw_f(raw_f)
+        function_handle._set_is_web_endpoint(webhook_config is not None)
+
+        self._precreated_function_handle = function_handle
 
         rep = "Function({self._tag})"
         super().__init__(self._load, rep)
