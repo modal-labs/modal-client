@@ -156,6 +156,7 @@ async def test_generator(client, servicer):
         stub.generator(later_gen)
 
     later_gen_modal = stub.function(later_gen)
+    assert later_gen_modal.is_generator
 
     def dummy():
         yield "bar"
@@ -165,7 +166,6 @@ async def test_generator(client, servicer):
 
     assert len(servicer.cleared_function_calls) == 0
     with stub.run(client=client):
-        assert later_gen_modal.is_generator
         res = later_gen_modal.call()
         assert hasattr(res, "__iter__")  # strangely inspect.isgenerator returns false
         assert list(res) == ["bar", "baz"]
