@@ -445,6 +445,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
     """Interact with a Modal Function of a live app."""
 
     _web_url: Optional[str]
+    _function: "_Function"
 
     def _set_mute_cancellation(self, value=True):
         self._mute_cancellation = value
