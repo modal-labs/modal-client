@@ -549,7 +549,7 @@ class _Stub:
         return self._local_entrypoints
 
     @property
-    def registered_endpoints(self) -> List[str]:
+    def registered_web_endpoints(self) -> List[str]:
         """Names of web endpoint (ie. webhook) functions registered on the stub."""
         return list(
             tag
