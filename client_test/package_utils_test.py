@@ -4,7 +4,7 @@ import pytest
 from pathlib import Path
 
 from modal.functions import _Function
-from modal.stub import _Stub
+from modal.stub import LocalEntrypoint, _Stub
 from modal_utils.async_utils import synchronizer
 from modal_utils.package_utils import (
     get_by_object_path,
@@ -29,7 +29,14 @@ def test_get_module_mount_info():
 
 
 # Some helper vars for import_stub tests:
+local_entrypoint_src = """
+import modal
 
+stub = modal.Stub()
+@stub.local_entrypoint
+def main():
+    pass
+"""
 python_module_src = """
 import modal
 stub = modal.Stub("FOO")
@@ -72,6 +79,7 @@ dir_containing_python_package = {
     "dir": {"sub": {"mod.py": python_module_src}},
     "pack": {
         "mod.py": python_package_src,
+        "local.py": local_entrypoint_src,
         "__init__.py": "",
         "sub": {"mod.py": python_subpackage_src, "__init__.py": ""},
     },
@@ -96,13 +104,14 @@ dir_containing_python_package = {
         (empty_dir_with_python_file, "mod::other_stub", _Stub),
         (dir_containing_python_package, "pack.mod", _Stub),
         (dir_containing_python_package, "pack.mod::other_stub", _Stub),
+        (dir_containing_python_package, "pack/local.py::stub.main", LocalEntrypoint),
     ],
 )
 def test_import_object(dir_structure, ref, expected_object_type, mock_dir):
     with mock_dir(dir_structure):
         stub_ref = parse_import_ref(ref)
-        imported_stub = import_object(stub_ref)
-        _translated_obj = synchronizer._translate_in(imported_stub)
+        imported_object = import_object(stub_ref)
+        _translated_obj = synchronizer._translate_in(imported_object)
         assert isinstance(_translated_obj, expected_object_type)
 
 

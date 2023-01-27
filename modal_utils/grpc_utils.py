@@ -242,6 +242,7 @@ async def retry_transient_errors(
                 # no point sleeping if that's going to push us past the deadline
                 raise exc
 
+            print("Retry!")
             n_retries += 1
             if not (isinstance(exc, GRPCError) and exc.status in ignore_errors):
                 capture_exception(exc)

@@ -6,7 +6,6 @@ from click import ClickException, UsageError
 from google.protobuf import empty_pb2
 from grpclib import GRPCError, Status
 from rich.console import Console
-from rich.markdown import Markdown
 from rich.table import Table
 from rich.tree import Tree
 
@@ -15,7 +14,6 @@ from modal.cli.utils import timestamp_to_local
 from modal.client import AioClient
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
-from modal_utils.package_utils import DEFAULT_STUB_NAME, ImportRef
 
 app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_args_is_help=True)
 
@@ -117,20 +115,3 @@ async def list_stops(app_id: str):
     aio_client = await AioClient.from_env()
     req = api_pb2.AppStopRequest(app_id=app_id)
     await aio_client.stub.AppStop(req)
-
-
-def _show_stub_ref_failure_help(stub_ref: ImportRef) -> None:
-    object_path = stub_ref.object_path
-    import_path = stub_ref.file_or_module
-    error_console = Console(stderr=True)
-    error_console.print(f"[bold red] Could not locate Modal stub or function {object_path} in {import_path}.")
-
-    if object_path is None:
-        guidance_msg = (
-            f"Expected to find a stub variable named **`{DEFAULT_STUB_NAME}`** (the default stub name). If your `modal.Stub` is named differently, "
-            "you must specify it in the stub ref argument. "
-            f"For example a stub variable `app_stub = modal.Stub()` in `{import_path}` would "
-            f"be specified as `{import_path}::app_stub`."
-        )
-        md = Markdown(guidance_msg)
-        error_console.print(md)

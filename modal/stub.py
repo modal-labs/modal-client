@@ -51,9 +51,9 @@ class StubRunMode(Enum):
 class LocalEntrypoint:
     def __init__(self, raw_f, stub):
         self.raw_f = raw_f
-        self.stub = stub
+        self._stub = stub
 
-    def call(self, *args, **kwargs):
+    def __call__(self, *args, **kwargs):
         return self.raw_f(*args, **kwargs)
 
 
@@ -150,7 +150,7 @@ class _Stub:
         return " ".join(args)
 
     def __getitem__(self, tag: str):
-        # Deprecated?
+        # Deprecated? Note: this is currently the only way to refer to lifecycled methods on the stub, since they have . in the tag
         return self._blueprint[tag]
 
     def __setitem__(self, tag: str, obj: Provider):
@@ -548,8 +548,8 @@ class _Stub:
         return function_handle
 
     @property
-    def registered_functions(self) -> List[str]:
-        return list(self._function_handles.keys())
+    def registered_functions(self) -> Dict[str, _FunctionHandle]:
+        return self._function_handles
 
     @property
     def registered_entrypoints(self) -> Dict[str, LocalEntrypoint]:
@@ -581,8 +581,8 @@ class _Stub:
 
         """
         info = FunctionInfo(raw_f, False, name_override=name)
-        self._local_entrypoints[info.get_tag()] = LocalEntrypoint(raw_f, self)
-        return raw_f
+        entrypoint = self._local_entrypoints[info.get_tag()] = LocalEntrypoint(raw_f, self)
+        return entrypoint
 
     @decorator_with_options
     def function(
