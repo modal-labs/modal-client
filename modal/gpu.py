@@ -47,7 +47,7 @@ STRING_TO_GPU_CONFIG = {"t4": T4(), "a100": A100(), "a10g": A10G(), "any": Any()
 GPU_T = Union[None, bool, str, _GPUConfig]
 
 
-def parse_gpu_config(value: GPU_T) -> api_pb2.GPUConfig:
+def parse_gpu_config(value: GPU_T, warn_on_true: bool = True) -> api_pb2.GPUConfig:
     if isinstance(value, _GPUConfig):
         return value._to_proto()
     elif isinstance(value, str):
@@ -57,9 +57,10 @@ def parse_gpu_config(value: GPU_T) -> api_pb2.GPUConfig:
             )
         return STRING_TO_GPU_CONFIG[value.lower()]._to_proto()
     elif value is True:
-        deprecation_warning(
-            date(2022, 12, 19), 'Setting gpu=True is deprecated. Use `gpu="any"` or `gpu=modal.gpu.Any()` instead.'
-        )
+        if warn_on_true:
+            deprecation_warning(
+                date(2022, 12, 19), 'Setting gpu=True is deprecated. Use `gpu="any"` or `gpu=modal.gpu.Any()` instead.'
+            )
         return Any()._to_proto()
     elif value is None or value is False:
         return api_pb2.GPUConfig()
