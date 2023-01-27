@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-import platform
 import pytest
 
 from google.protobuf.empty_pb2 import Empty
@@ -9,12 +8,9 @@ from modal.client import AioClient, Client
 from modal.exception import AuthError, ConnectionError, VersionError
 from modal_proto import api_pb2
 
-TEST_TIMEOUT = 4.0  # align this with the container client timeout in client.py
+from .supports.skip import skip_windows
 
-skip_windows = pytest.mark.skipif(
-    platform.system() == "Windows",
-    reason="Windows doesn't have UNIX sockets",
-)
+TEST_TIMEOUT = 4.0  # align this with the container client timeout in client.py
 
 
 @pytest.mark.asyncio
