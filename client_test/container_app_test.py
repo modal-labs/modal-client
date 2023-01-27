@@ -7,27 +7,35 @@ from .supports.skip import skip_windows
 
 
 def my_f_1(x):
-    # Body doesn't matter, the fixture overrides this anyway
-    return x**3
+    pass
+
+
+def my_f_2(x):
+    pass
 
 
 @skip_windows
 @pytest.mark.asyncio
 async def test_container_function_initialization(unix_servicer, aio_container_client):
+    stub = AioStub()
+    my_f_1_container = stub.function(my_f_1)
+
     unix_servicer.app_objects["ap-123"] = {
         "my_f_1": "fu-123",
         "my_f_2": "fu-456",
     }
     await AioApp._init_container(aio_container_client, "ap-123")
 
-    # Make sure the app has a handle for this function
-    f = aio_container_app["my_f_1"]
-    assert isinstance(f, AioFunctionHandle)
+    # Make sure these functions exist and have the right type
+    my_f_1_app = aio_container_app["my_f_1"]
+    my_f_2_app = aio_container_app["my_f_1"]
+    assert isinstance(my_f_1_app, AioFunctionHandle)
+    assert isinstance(my_f_2_app, AioFunctionHandle)
 
-    # Now, let's create a function with this name
-    stub = AioStub()
-    f = stub.function(my_f_1)
-    assert isinstance(f, AioFunctionHandle)
+    # Make sure we can call my_f_1 inside the container
+    assert await my_f_1_container.call(42) == 1764
 
-    # We should be able to call this function inside the container
-    assert await f.call(42) == 1764
+    # Now, let's create my_f_2 after the app started running
+    # This might happen if some local module is imported lazily
+    my_f_2_container = stub.function(my_f_2)
+    assert await my_f_2_container.call(42) == 1764
