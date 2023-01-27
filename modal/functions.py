@@ -731,6 +731,7 @@ class _Function(Provider[_FunctionHandle]):
         function_info: FunctionInfo,
         _stub,
         image=None,
+        secret: Optional[_Secret] = None,
         secrets: Collection[_Secret] = (),
         schedule: Optional[Schedule] = None,
         is_generator=False,
@@ -768,7 +769,10 @@ class _Function(Provider[_FunctionHandle]):
 
         self._raw_f = raw_f
         self._image = image
-        self._secrets = secrets
+        if secret:
+            self._secrets = [secret, *secrets]
+        else:
+            self._secrets = secrets
 
         if retries:
             if isinstance(retries, int):
@@ -997,6 +1001,19 @@ class _Function(Provider[_FunctionHandle]):
     def tag(self):
         """mdmd:hidden"""
         return self._tag
+
+    def get_build_def(self):
+        """mdmd:hidden"""
+        # Used to check whether we should rebuild an image using run_function
+        # Plaintext source and arg definition for the function, so it's part of the image
+        # hash. We can't use the cloudpickle hash because it's not very stable.
+        kwargs = dict(
+            secrets=repr(self._secrets),
+            gpu_config=repr(self._gpu_config),
+            mounts=repr(self._mounts),
+            shared_volumes=repr(self._shared_volumes),
+        )
+        return f"{inspect.getsource(self._raw_f)}\n{repr(kwargs)}"
 
 
 Function, AioFunction = synchronize_apis(_Function)

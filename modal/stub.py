@@ -29,7 +29,7 @@ from .exception import InvalidError, deprecation_error
 from .functions import _Function, _FunctionHandle
 from .gpu import GPU_T
 from .image import _Image
-from .mount import _create_client_mount, _Mount, client_mount_name
+from .mount import _get_client_mount, _Mount
 from .object import Provider
 from .proxy import _Proxy
 from .queue import _Queue
@@ -509,12 +509,7 @@ class _Stub:
 
         # Create client mount
         if self._client_mount is None:
-            if config["sync_entrypoint"]:
-                self._client_mount = _create_client_mount()
-            else:
-                self._client_mount = _Mount.from_name(
-                    client_mount_name(), namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL
-                )
+            self._client_mount = _get_client_mount()
         mounts.append(self._client_mount)
 
         # Create function mounts
@@ -524,14 +519,6 @@ class _Stub:
             mounts.append(self._function_mounts[key])
 
         return mounts
-
-    def _get_function_secrets(self, raw_f, secret: Optional[_Secret] = None, secrets: Collection[_Secret] = ()):
-        if secret and secrets:
-            raise InvalidError(f"Function {raw_f} has both singular `secret` and plural `secrets` attached")
-        if secret:
-            return [secret, *self._secrets]
-        else:
-            return [*secrets, *self._secrets]
 
     def _add_function(self, function: _Function, mounts: List[_Mount]) -> _FunctionHandle:
         if function.tag in self._blueprint:
@@ -619,7 +606,6 @@ class _Stub:
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         interactive: bool = False,  # Whether to run the function in interactive mode.
-        _is_build_step: bool = False,  # Whether function is a build step; reserved for internal use.
         keep_warm: Union[bool, int] = False,  # Toggles an adaptively-sized warm pool for latency-sensitive apps.
         name: Optional[str] = None,  # Sets the Modal name of the function within the stub
         is_generator: Optional[bool] = None,  # If not set, it's inferred from the function signature
@@ -630,7 +616,7 @@ class _Stub:
             image = self._get_default_image()
         info = FunctionInfo(raw_f, serialized=serialized, name_override=name)
         base_mounts = self._get_function_mounts(info)
-        secrets = self._get_function_secrets(raw_f, secret, secrets)
+        secrets = [*self._secrets, *secrets]
 
         if interactive:
             if self._pty_input_stream:
@@ -647,6 +633,7 @@ class _Stub:
             info,
             _stub=self,
             image=image,
+            secret=secret,
             secrets=secrets,
             schedule=schedule,
             is_generator=is_generator,
@@ -668,10 +655,6 @@ class _Stub:
             name=name,
             cloud_provider=cloud,
         )
-
-        if _is_build_step:
-            # Don't add function to stub if it's a build step.
-            return _FunctionHandle.from_stub_dummy(function)
 
         return self._add_function(function, [*base_mounts, *mounts])
 
@@ -728,7 +711,7 @@ class _Stub:
             image = self._get_default_image()
         info = FunctionInfo(raw_f)
         base_mounts = self._get_function_mounts(info)
-        secrets = self._get_function_secrets(raw_f, secret, secrets)
+        secrets = [*self._secrets, *secrets]
 
         if not wait_for_response:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
@@ -739,6 +722,7 @@ class _Stub:
             info,
             _stub=self,
             image=image,
+            secret=secret,
             secrets=secrets,
             is_generator=True,
             gpu=gpu,
@@ -805,7 +789,7 @@ class _Stub:
             image = self._get_default_image()
         info = FunctionInfo(asgi_app)
         base_mounts = self._get_function_mounts(info)
-        secrets = self._get_function_secrets(asgi_app, secret, secrets)
+        secrets = [*self._secrets, *secrets]
 
         if not wait_for_response:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
@@ -816,6 +800,7 @@ class _Stub:
             info,
             _stub=self,
             image=image,
+            secret=secret,
             secrets=secrets,
             is_generator=True,
             gpu=gpu,
