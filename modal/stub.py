@@ -545,13 +545,7 @@ class _Stub:
     @property
     def registered_web_endpoints(self) -> List[str]:
         """Names of web endpoint (ie. webhook) functions registered on the stub."""
-        return list(
-            tag
-            for tag, handle in self._function_handles.items()
-            if hasattr(handle, "_function")
-            and handle._function._webhook_config
-            and handle._function._webhook_config.type
-        )
+        return [tag for tag, handle in self._function_handles.items() if handle.is_web_endpoint]
 
     @decorator_with_options
     def local_entrypoint(self, raw_f=None, name: Optional[str] = None):
