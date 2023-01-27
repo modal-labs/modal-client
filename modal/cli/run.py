@@ -126,6 +126,7 @@ class RunGroup(click.Group):
             elif len(_stub.registered_entrypoints) == 1:
                 function_name = list(_stub.registered_entrypoints.keys())[0]
             else:
+                # TODO(erikbern): better error message if there's *zero* functions / entrypoints
                 print(
                     f"""You need to specify an entrypoint Modal function to run, e.g.
 
