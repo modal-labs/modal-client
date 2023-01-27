@@ -56,6 +56,15 @@ class Handle(metaclass=ObjectMeta):
             obj._initialize_from_proto(proto)
         return obj
 
+    @classmethod
+    async def from_id(cls, object_id: str, client: Optional[_Client] = None):
+        # This is used in a few examples to construct FunctionCall objects
+        # TODO(erikbern): doesn't use _initialize_from_proto - let's use AppLookupObjectRequest?
+        # TODO(erikbern): this should probably be on the provider?
+        if client is None:
+            client = await _Client.from_env()
+        return cls._from_id(object_id, client, None)
+
     @property
     def object_id(self):
         return self._object_id
