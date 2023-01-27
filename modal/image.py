@@ -18,7 +18,7 @@ from ._function_utils import FunctionInfo
 from ._resolver import Resolver
 from .config import config, logger
 from .exception import InvalidError, NotFoundError, RemoteError
-from .gpu import GPU_T
+from .gpu import GPU_T, parse_gpu_config
 from .mount import _get_client_mount, _Mount
 from .object import Handle, Provider
 from .secret import _Secret
@@ -113,7 +113,7 @@ class _Image(Provider[_ImageHandle]):
         dockerfile_commands: Union[list[str], Callable[[], list[str]]] = [],
         secrets: Collection[_Secret] = [],
         ref=None,
-        gpu: bool = False,
+        gpu_config: api_pb2.GPUConfig = api_pb2.GPUConfig(),
         build_function=None,
         context_mount: Optional[_Mount] = None,
     ):
@@ -190,9 +190,10 @@ class _Image(Provider[_ImageHandle]):
                 dockerfile_commands=dockerfile_commands_list,
                 context_files=context_file_pb2s,
                 secret_ids=secret_ids,
-                gpu=gpu,
+                gpu=bool(gpu_config.type),  # Note: as of 2023-01-27, server still uses this
                 build_function_def=build_function_def,
                 context_mount_id=context_mount_id,
+                gpu_config=gpu_config,  # Note: as of 2023-01-27, server ignores this
             )
 
             req = api_pb2.ImageGetOrCreateRequest(
@@ -486,7 +487,7 @@ class _Image(Provider[_ImageHandle]):
         dockerfile_commands: Union[str, list[str]],
         context_files: dict[str, str] = {},
         secrets: Collection[_Secret] = [],
-        gpu: bool = False,
+        gpu: GPU_T = None,
     ):
         """Extend an image with arbitrary Dockerfile-like commands."""
 
@@ -501,14 +502,14 @@ class _Image(Provider[_ImageHandle]):
             dockerfile_commands=_dockerfile_commands,
             context_files=context_files,
             secrets=secrets,
-            gpu=gpu,
+            gpu_config=parse_gpu_config(gpu),
         )
 
     def run_commands(
         self,
         *commands: Union[str, list[str]],
         secrets: Collection[_Secret] = [],
-        gpu: bool = False,
+        gpu: GPU_T = None,
     ):
         """Extend an image with a list of shell commands to run."""
         cmds = _flatten_str_args("run_commands", "commands", commands)
@@ -520,7 +521,7 @@ class _Image(Provider[_ImageHandle]):
         return self.extend(
             dockerfile_commands=dockerfile_commands,
             secrets=secrets,
-            gpu=gpu,
+            gpu_config=parse_gpu_config(gpu),
         )
 
     @staticmethod
