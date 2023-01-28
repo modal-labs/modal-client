@@ -18,7 +18,7 @@ def my_f_2(x):
 @pytest.mark.asyncio
 async def test_container_function_initialization(unix_servicer, aio_container_client):
     stub = AioStub()
-    my_f_1_container = stub.function(my_f_1)
+    # my_f_1_container = stub.function(my_f_1)
 
     unix_servicer.app_objects["ap-123"] = {
         "my_f_1": "fu-123",

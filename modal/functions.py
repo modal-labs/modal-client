@@ -676,6 +676,28 @@ class _FunctionHandle(Handle, type_prefix="fu"):
 FunctionHandle, AioFunctionHandle = synchronize_apis(_FunctionHandle)
 
 
+def _get_container_function(tag: str):
+    # TODO(erikbern): this is a bit if a janky solution to the problem of assigning
+    # ids to all global functions. We can't do this from the app, since the app doesn't
+    # "know" its stub and its providers. So we "steal" the objects from here just based
+    # on the tag. This is ugly but will work 99.99% of the time. I'll think of something
+    # better!
+    from .app import _container_app
+
+    if _container_app is None:
+        return None
+
+    try:
+        handle = _container_app[tag]
+    except KeyError:
+        return None
+
+    if isinstance(handle, _FunctionHandle):
+        return handle
+    else:
+        return None
+
+
 class _Function(Provider[_FunctionHandle]):
     """Functions are the basic units of serverless execution on Modal.
 
@@ -790,19 +812,8 @@ class _Function(Provider[_FunctionHandle]):
         else:
             self._cloud_provider = None
 
-        # TODO(erikbern): this is a bit if a janky solution to the problem of assigning
-        # ids to all global functions. We can't do this from the app, since the app doesn't
-        # "know" its stub and its providers. So we "steal" the objects from here just based
-        # on the tag. This is ugly but will work 99.99% of the time. I'll think of something
-        # better!
-        from .app import _container_app
-
-        if _container_app is not None:
-            try:
-                function_handle = _container_app[self._tag]
-            except KeyError:
-                function_handle = _FunctionHandle._new()
-        else:
+        function_handle = _get_container_function(self._tag)
+        if function_handle is None:
             function_handle = _FunctionHandle._new()
         function_handle._initialize_from_proto(None)
         function_handle._set_raw_f(raw_f)
