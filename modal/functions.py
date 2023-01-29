@@ -812,6 +812,12 @@ class _Function(Provider[_FunctionHandle]):
         else:
             self._cloud_provider = None
 
+        self._panel_items = [
+            str(i) for i in [*self._mounts, self._image, *self._secrets, *self._shared_volumes.values()]
+        ]
+        if self._gpu:
+            self._panel_items.append("GPU")
+
         function_handle = _get_container_function(self._tag)
         if function_handle is None:
             function_handle = _FunctionHandle._new()
@@ -823,12 +829,6 @@ class _Function(Provider[_FunctionHandle]):
 
         rep = "Function({self._tag})"
         super().__init__(self._load, rep)
-
-    def get_panel_items(self) -> List[str]:
-        items = [str(i) for i in [*self._mounts, self._image, *self._secrets, *self._shared_volumes.values()]]
-        if self._gpu:
-            items.append("GPU")
-        return items
 
     async def _load(self, resolver: Resolver):
         resolver.set_message(f"Creating {self._tag}...")
@@ -991,6 +991,9 @@ class _Function(Provider[_FunctionHandle]):
 
         # Instead of returning a new object, just return the precreated one
         return self._precreated_function_handle
+
+    def get_panel_items(self) -> List[str]:
+        return self._panel_items
 
     @property
     def tag(self):
