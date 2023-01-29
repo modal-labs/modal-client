@@ -318,9 +318,12 @@ class _Image(Provider[_ImageHandle]):
         """
         Install a list of Python packages from private git repositories using pip.
 
-        This method currently supports Github only, and requires a `modal.Secret` be provided that
-        contains a `GITHUB_TOKEN` key-value pair. This token should have permissions to read the
-        provided list of private Github repositories.
+        This method currently supports Github and Gitlab only.
+
+        - **Github:** Provide a `modal.Secret` that contains a `GITHUB_TOKEN` key-value pair
+        - **Gitlab:** Provide a `modal.Secret` that contains a `GITLAB_TOKEN` key-value pair
+
+        These API tokens should have permissions to read the list of private repositories provided as arguments.
 
         We recommend using Github's ['fine-grained' access tokens](https://github.blog/2022-10-18-introducing-fine-grained-personal-access-tokens-for-github/).
         These tokens are repo-scoped, and avoid granting read permission across all of a user's private repos.
@@ -348,15 +351,19 @@ class _Image(Provider[_ImageHandle]):
                 "No secrets provided to function. Installing private packages requires tokens to be passed via modal.Secret objects."
             )
 
-        def valid_repo_ref(repo_ref) -> bool:
+        invalid_repos = []
+        install_urls = []
+        for repo_ref in repositories:
             if not isinstance(repo_ref, str):
-                return False
+                invalid_repos.append(r)
             parts = repo_ref.split("/")
-            if parts[0] != "github.com":
-                return False
-            return True
+            if parts[0] == "github.com":
+                install_urls.append(f"git+https://{git_user}:$GITHUB_TOKEN@{repo_ref}")
+            elif parts[0] == "gitlab.com":
+                install_urls.append(f"git+https://{git_user}:$GITLAB_TOKEN@{repo_ref}")
+            else:
+                invalid_repos.append(repo_ref)
 
-        invalid_repos = [r for r in repositories if not valid_repo_ref(r)]
         if invalid_repos:
             raise InvalidError(
                 f"{len(invalid_repos)} out of {len(repositories)} given repository refs are invalid. "
@@ -364,11 +371,18 @@ class _Image(Provider[_ImageHandle]):
             )
 
         secret_names = ",".join([s.app_name if hasattr(s, "app_name") else str(s) for s in secrets])  # type: ignore
-        dockerfile_commands = [
-            "FROM base",
-            f"RUN bash -c \"[[ -v GITHUB_TOKEN ]] || (echo 'GITHUB_TOKEN env var not set by provided modal.Secret(s): {secret_names}' && exit 1)\"",
-            "RUN apt-get update && apt-get install -y git",
-        ] + [f"RUN python3 -m pip install git+https://{git_user}:$GITHUB_TOKEN@{repo_ref}" for repo_ref in repositories]
+        dockerfile_commands = ["FROM base"]
+        if any(r.startswith("github") for r in repositories):
+            dockerfile_commands.append(
+                f"RUN bash -c \"[[ -v GITHUB_TOKEN ]] || (echo 'GITHUB_TOKEN env var not set by provided modal.Secret(s): {secret_names}' && exit 1)\"",
+            )
+        if any(r.startswith("gitlab") for r in repositories):
+            dockerfile_commands.append(
+                f"RUN bash -c \"[[ -v GITLAB_TOKEN ]] || (echo 'GITLAB_TOKEN env var not set by provided modal.Secret(s): {secret_names}' && exit 1)\"",
+            )
+
+        dockerfile_commands.extend(["RUN apt-get update && apt-get install -y git"])
+        dockerfile_commands.extend([f"RUN python3 -m pip install {url}" for url in install_urls])
         return self.extend(
             dockerfile_commands=dockerfile_commands,
             secrets=secrets,
