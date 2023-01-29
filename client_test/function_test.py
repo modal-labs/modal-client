@@ -342,7 +342,7 @@ def test_from_id(client, servicer):
 
 def test_panel(client, servicer):
     stub = Stub()
-    dummy_modal = stub.function(dummy)
+    stub.function(dummy)
     function = stub["dummy"]
     assert isinstance(function, Function)
     image = stub._get_default_image()
