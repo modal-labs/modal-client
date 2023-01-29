@@ -8,7 +8,7 @@ from synchronicity.exceptions import UserCodeException
 
 from modal import Proxy, Stub
 from modal.exception import DeprecationError, InvalidError
-from modal.functions import FunctionCall, gather
+from modal.functions import Function, FunctionCall, gather
 from modal.stub import AioStub
 from modal_proto import api_pb2
 
@@ -338,3 +338,12 @@ def test_from_id(client, servicer):
     # Used in a few examples to construct FunctionCall objects
     obj = FunctionCall.from_id("fc-123", client)
     assert obj.object_id == "fc-123"
+
+
+def test_panel(client, servicer):
+    stub = Stub()
+    dummy_modal = stub.function(dummy)
+    function = stub["dummy"]
+    assert isinstance(function, Function)
+    image = stub._get_default_image()
+    assert function.get_panel_items() == [repr(image)]
