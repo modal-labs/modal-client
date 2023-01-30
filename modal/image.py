@@ -355,7 +355,7 @@ class _Image(Provider[_ImageHandle]):
         install_urls = []
         for repo_ref in repositories:
             if not isinstance(repo_ref, str):
-                invalid_repos.append(r)
+                invalid_repos.append(repo_ref)
             parts = repo_ref.split("/")
             if parts[0] == "github.com":
                 install_urls.append(f"git+https://{git_user}:$GITHUB_TOKEN@{repo_ref}")
