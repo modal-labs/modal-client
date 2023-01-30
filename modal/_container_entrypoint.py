@@ -112,8 +112,11 @@ class _FunctionIOManager:
         self._client = synchronizer._translate_in(self.client)  # make it a _Client object
         assert isinstance(self._client, _Client)
 
+    def set_is_container(self):
+        _App.set_is_container(True)
+
     @wrap()
-    async def initialize_app(self):
+    async def init_container(self):
         await _App.init_container(self._client, self.app_id)
 
     async def _heartbeat(self):
@@ -532,9 +535,8 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     _function_io_manager = _FunctionIOManager(container_args, client)
     function_io_manager, aio_function_io_manager = synchronize_apis(_function_io_manager)
 
-    # Initialize the app
-    # TODO(erikbern): use the stub here
-    function_io_manager.initialize_app()
+    # Before we import any code, we need to set a global that we're inside the container
+    function_io_manager.set_is_container()
 
     with function_io_manager.heartbeats():
         is_generator = function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
@@ -548,6 +550,9 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Initialize the function
         with function_io_manager.handle_user_exception():
             obj, fun, is_async, stub = import_function(container_args.function_def, ser_cls, ser_fun)
+
+        # Initialize the app
+        function_io_manager.init_container()
 
         if container_args.function_def.pty_info.enabled:
             from modal import container_app

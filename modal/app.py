@@ -174,10 +174,14 @@ class _App:
             await self._load(_default_image)
 
     @staticmethod
+    def set_is_container(is_container_app: bool):
+        global _is_container_app
+        _is_container_app = is_container_app
+
+    @staticmethod
     async def init_container(client: _Client, app_id: str) -> _App:
         """Used by the container to bootstrap the app and all its objects."""
-        global _container_app, _is_container_app
-        _is_container_app = True
+        global _container_app
         await _container_app._init_container(client, app_id)
         return _container_app
 
