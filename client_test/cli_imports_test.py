@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2023
 import os
 import pytest
 from pathlib import Path

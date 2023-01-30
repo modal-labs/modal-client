@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2023
 """Utilities for CLI references to Modal entities
 
 For example, the function reference of `modal run some_file.py::stub.foo_func`
