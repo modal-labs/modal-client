@@ -49,7 +49,7 @@ class Any(_GPUConfig):
         super().__init__(api_pb2.GPU_TYPE_ANY, count, memory)
 
 
-STRING_TO_GPU_CONFIG = {"t4": T4(), "a100": A100(), "a100-20g": A100(memory=20),"a10g": A10G(), "any": Any()}
+STRING_TO_GPU_CONFIG = {"t4": T4(), "a100": A100(), "a100-20g": A100(memory=20), "a10g": A10G(), "any": Any()}
 
 # bool will be deprecated in future versions.
 GPU_T = Union[None, bool, str, _GPUConfig]
