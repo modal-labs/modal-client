@@ -797,14 +797,18 @@ class _Image(Provider[_ImageHandle]):
         )
         ```
         """
-        from .functions import _Function
+        from .functions import _Function, _FunctionHandle
 
         info = FunctionInfo(raw_f)
         base_mounts = [_get_client_mount()]
         for key, mount in info.get_mounts().items():
             base_mounts.append(mount)
 
+        function_handle = _FunctionHandle._new()
+        function_handle._initialize_from_proto(None)
+
         function = _Function(
+            function_handle,
             info,
             image=self,
             secret=secret,
