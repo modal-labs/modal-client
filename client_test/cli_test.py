@@ -262,7 +262,15 @@ def test_shell(servicer, server_url_env, test_dir):
     async def noop_async_context_manager(*args, **kwargs):
         yield
 
+    ran_cmd = None
+
+    @servicer.function_body
+    def dummy_exec(cmd: str):
+        nonlocal ran_cmd
+        ran_cmd = cmd
+
     with mock.patch("rich.console.Console.is_terminal", True), mock.patch(
         "modal._pty.get_pty_info", mock_get_pty_info
     ), mock.patch("modal._pty.write_stdin_to_pty_stream", noop_async_context_manager):
         _run(["shell", stub_file.as_posix() + "::foo"])
+    assert ran_cmd == "/bin/bash"
