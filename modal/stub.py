@@ -93,6 +93,7 @@ class _Stub:
     _function_handles: Dict[str, _FunctionHandle]
     _local_entrypoints: Dict[str, Callable]
     _local_mounts: List[_Mount]
+    _app: Optional[_App]  # Used in the container only (right now)
 
     def __init__(
         self,
@@ -118,6 +119,7 @@ class _Stub:
         self._function_handles = {}
         self._local_entrypoints = {}
         self._local_mounts = []
+        self._app = None
         super().__init__()
 
     @property
@@ -202,6 +204,9 @@ class _Stub:
                 assert image_handle is not None, "fatal: default image should be loaded in App.init_container()"
 
         return image_handle._is_inside()
+
+    def set_app(self, app: _App):
+        self._app = app
 
     async def _heartbeat(self, client, app_id):
         request = api_pb2.AppHeartbeatRequest(app_id=app_id)
@@ -509,6 +514,22 @@ class _Stub:
 
         return mounts
 
+    def _create_function_handle(self, info: FunctionInfo, is_web_endpoint: bool = False):
+        tag = info.get_tag()
+        if self._app:
+            # This case only happens if the function is created lazily inside a container,
+            # so it's a bit of an edge case
+            return self._app[tag]
+            # TOOD(erikbern): handle KeyError
+        else:
+            function_handle = _FunctionHandle._new()
+            function_handle._initialize_from_proto(None)
+            function_handle._set_raw_f(info.raw_f)
+            function_handle._set_is_web_endpoint(is_web_endpoint)
+            function_handle._set_stub(self)  # Used by the container entrypoint to find the stub
+            self._function_handles[tag] = function_handle
+            return function_handle
+
     def _add_function(self, function: _Function, mounts: List[_Mount]) -> _FunctionHandle:
         if function.tag in self._blueprint:
             old_function = self._blueprint[function.tag]
@@ -527,11 +548,6 @@ class _Stub:
         for mount in mounts:
             if mount.is_local():
                 self._local_mounts.append(mount)
-
-        function_handle = function._precreated_function_handle
-        function_handle.set_stub(self)  # Used by the container entrypoint to find the stub
-        self._function_handles[function.tag] = function_handle
-        return function_handle
 
     @property
     def registered_functions(self) -> List[str]:
@@ -608,6 +624,7 @@ class _Stub:
         if image is None:
             image = self._get_default_image()
         info = FunctionInfo(raw_f, serialized=serialized, name_override=name)
+        function_handle = self._create_function_handle(info, False)
         base_mounts = self._get_function_mounts(info)
         secrets = [*self._secrets, *secrets]
 
@@ -623,6 +640,7 @@ class _Stub:
             is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
 
         function = _Function(
+            function_handle,
             info,
             image=image,
             secret=secret,
@@ -647,8 +665,8 @@ class _Stub:
             name=name,
             cloud_provider=cloud,
         )
-
-        return self._add_function(function, [*base_mounts, *mounts])
+        self._add_function(function, [*base_mounts, *mounts])
+        return function_handle
 
     @decorator_with_options
     def generator(self, raw_f=None, **kwargs):
@@ -703,6 +721,7 @@ class _Stub:
         if image is None:
             image = self._get_default_image()
         info = FunctionInfo(raw_f)
+        function_handle = self._create_function_handle(info, True)
         base_mounts = self._get_function_mounts(info)
         secrets = [*self._secrets, *secrets]
 
@@ -712,6 +731,7 @@ class _Stub:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
 
         function = _Function(
+            function_handle,
             info,
             image=image,
             secret=secret,
@@ -737,7 +757,8 @@ class _Stub:
             keep_warm=keep_warm,
             cloud_provider=cloud,
         )
-        return self._add_function(function, [*base_mounts, *mounts])
+        self._add_function(function, [*base_mounts, *mounts])
+        return function_handle
 
     @decorator_with_options
     def asgi(
@@ -780,6 +801,7 @@ class _Stub:
         if image is None:
             image = self._get_default_image()
         info = FunctionInfo(asgi_app)
+        function_handle = self._create_function_handle(info, True)
         base_mounts = self._get_function_mounts(info)
         secrets = [*self._secrets, *secrets]
 
@@ -789,6 +811,7 @@ class _Stub:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
 
         function = _Function(
+            function_handle,
             info,
             image=image,
             secret=secret,
@@ -809,7 +832,8 @@ class _Stub:
             keep_warm=keep_warm,
             cloud_provider=cloud,
         )
-        return self._add_function(function, [*base_mounts, *mounts])
+        self._add_function(function, [*base_mounts, *mounts])
+        return function_handle
 
     @decorator_with_options
     def wsgi(

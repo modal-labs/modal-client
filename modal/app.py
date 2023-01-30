@@ -185,6 +185,9 @@ class _App:
 
             await self._load(_default_image)
 
+        # Set the app of the stub
+        stub.set_app(self)
+
     @staticmethod
     def set_is_container(is_container_app: bool):
         global _is_container_app
