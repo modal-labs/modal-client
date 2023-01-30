@@ -472,7 +472,7 @@ async def call_function_async(
 
 
 @wrap()
-def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> tuple[Any, Callable, bool, Optional["_Stub"]]:
+def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> tuple[Any, Callable, bool, Any]:
     # This is not in function_io_manager, so that any global scope code that runs during import
     # runs on the main thread.
 
@@ -484,7 +484,7 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> tuple[A
         module = importlib.import_module(function_def.module_name)
         cls, fun = load_function_from_module(module, function_def.function_name)
 
-    stub: Optional["_Stub"] = None
+    stub = None  # TODO(erikbern): type annotation
 
     # The decorator is typically in global scope, but may have been applied independently
     if isinstance(fun, (FunctionHandle, AioFunctionHandle)):
