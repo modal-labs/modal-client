@@ -186,7 +186,8 @@ class _App:
             await self._load(_default_image)
 
         # Set the app of the stub
-        stub.set_app(self)
+        if stub is not None:
+            stub.set_app(self)
 
     @staticmethod
     def set_is_container(is_container_app: bool):
