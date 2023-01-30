@@ -3,28 +3,25 @@ import asyncio
 import datetime
 import inspect
 import sys
-import traceback
-from typing import Optional, Union
+from typing import Optional
 
 import click
 import typer
-from rich.console import Console, Group
-from rich.markdown import Markdown
-from rich.panel import Panel
-from rich.prompt import Prompt
+from rich.console import Console
 from synchronicity import Interface
 
 from modal.exception import InvalidError
-from modal.functions import _Function, _FunctionHandle
-from modal.stub import LocalEntrypoint, _Stub
+from modal.functions import _FunctionHandle
+from modal.stub import LocalEntrypoint
 from modal_utils.async_utils import synchronizer
 
 from .import_refs import (
     DEFAULT_STUB_NAME,
-    ImportRef,
     NoSuchObject,
     get_by_object_path,
-    import_object,
+    import_file_or_module,
+    import_function,
+    import_stub,
     parse_import_ref,
 )
 
@@ -113,40 +110,9 @@ def _get_click_command_for_local_entrypoint(_stub, entrypoint: LocalEntrypoint):
     return click.command(with_click_options)
 
 
-def get_main_function(import_ref_str: str, interactive: bool) -> Union[_Function, LocalEntrypoint]:
-    import_ref = parse_import_ref(import_ref_str)
-    try:
-        module = import_object(import_ref)
-        obj_path = import_ref.object_path or DEFAULT_STUB_NAME  # get variable named "stub" by default
-        raw_object = get_by_object_path(module, obj_path)
-    except NoSuchObject:
-        _show_no_auto_detectable_function_help(import_ref)
-        sys.exit(1)
-    except Exception:
-        traceback.print_exc()
-        sys.exit(1)
-
-    try:
-        stub_or_function = synchronizer._translate_in(raw_object)
-    except:
-        raise click.UsageError(f"{raw_object} is not a Modal entity (should be a Stub or Function)")
-
-    if isinstance(stub_or_function, _Stub):
-        # infer function or display help for how to select one
-        _stub = stub_or_function
-        _function = infer_function_or_help(_stub, interactive)
-        return _function
-    if isinstance(stub_or_function, _FunctionHandle):
-        return stub_or_function._function
-    elif isinstance(stub_or_function, (_Function, LocalEntrypoint)):
-        return stub_or_function
-    else:
-        raise click.UsageError(f"{raw_object} is not a Modal entity (should be a Stub or Function)")
-
-
 class RunGroup(click.Group):
     def get_command(self, ctx, stub_ref):
-        _function = get_main_function(stub_ref, interactive=False)
+        _function = import_function(stub_ref, interactive=False)
         _stub = _function._stub
         if isinstance(_function, LocalEntrypoint):
             click_command = _get_click_command_for_local_entrypoint(_stub, _function)
@@ -157,37 +123,6 @@ class RunGroup(click.Group):
             click_command = _get_click_command_for_function(_stub, tag)
 
         return click_command
-
-
-def infer_function_or_help(_stub: _Stub, interactive: bool):
-    function_choices = list(set(_stub.registered_functions.keys()) | set(_stub.registered_entrypoints.keys()))
-    registered_functions_str = "\n".join(sorted(function_choices))
-    if len(_stub.registered_entrypoints) == 1:
-        # if there is a single local_entrypoint, use that regardless of
-        # other functions on the stub
-        function_name = list(_stub.registered_entrypoints.keys())[0]
-        print(f"Using local_entrypoint {function_name}")
-    elif len(function_choices) == 1:
-        function_name = function_choices[0]
-        print(f"Using function {function_name}")
-    elif interactive:
-        console = Console()
-        function_name = choose_function_interactive(_stub, console)
-    else:
-        help_text = f"""You need to specify a Modal function or local entrypoint to run, e.g.
-
-modal run app.py::my_function [...args]
-
-Registered functions and local entrypoints on the selected stub are:
-{registered_functions_str}
-"""
-        raise click.UsageError(help_text)
-
-    if function_name in _stub.registered_entrypoints:
-        # entrypoint is in entrypoint registry, for now
-        return _stub.registered_entrypoints[function_name]
-
-    return _stub[function_name]  # functions are in blueprint
 
 
 @click.group(
@@ -223,13 +158,12 @@ def deploy(
     name: str = typer.Option(None, help="Name of the deployment."),
 ):
     import_ref = parse_import_ref(stub_ref)
+    module = import_file_or_module(import_ref.file_or_module)
     try:
-        stub = import_object(import_ref)
+        object_path = import_ref.object_path or DEFAULT_STUB_NAME
+        stub = get_by_object_path(module, object_path)
     except NoSuchObject:
-        _show_no_auto_detectable_function_help(import_ref)
-        sys.exit(1)
-    except Exception:
-        traceback.print_exc()
+        _show_no_auto_detectable_stub(import_ref)
         sys.exit(1)
 
     if name is None:
@@ -238,33 +172,6 @@ def deploy(
     res = stub.deploy(name=name)
     if inspect.iscoroutine(res):
         asyncio.run(res)
-
-
-def make_function_panel(idx: int, tag: str, function: _Function, stub: _Stub) -> Panel:
-    items = [f"- {i}" for i in function.get_panel_items()]
-    return Panel(
-        Markdown("\n".join(items)),
-        title=f"[bright_magenta]{idx}. [/bright_magenta][bold]{tag}[/bold]",
-        title_align="left",
-    )
-
-
-def choose_function_interactive(stub: _Stub, console: Console) -> str:
-    # TODO: allow selection of local_entrypoints when used from `modal run`
-    functions = list(stub.registered_functions.items())
-    function_panels = [make_function_panel(idx, tag, obj, stub) for idx, (tag, obj) in enumerate(functions)]
-
-    renderable = Panel(Group(*function_panels))
-    console.print(renderable)
-
-    choice = Prompt.ask(
-        "[yellow] Pick a function definition: [/yellow]",
-        choices=[str(i) for i in range(len(functions))],
-        default="0",
-        show_default=False,
-    )
-
-    return functions[int(choice)][0]
 
 
 def serve(
@@ -278,17 +185,7 @@ def serve(
     modal serve hello_world.py
     ```\n
     """
-    import_ref = parse_import_ref(stub_ref)
-    try:
-        stub = import_object(import_ref)
-    except NoSuchObject:
-        _show_no_auto_detectable_function_help(import_ref)
-        sys.exit(1)
-    except Exception:
-        traceback.print_exc()
-        sys.exit(1)
-
-    _stub = synchronizer._translate_in(stub)
+    _stub = import_stub(stub_ref)
     blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
     blocking_stub.serve(timeout=timeout)
 
@@ -311,21 +208,9 @@ def shell(
     modal shell hello_world.py --cmd=python \n
     ```\n
     """
-    import_ref = parse_import_ref(stub_ref)
-    try:
-        stub_or_func = import_object(import_ref)
-    except NoSuchObject:
-        _show_no_auto_detectable_function_help(import_ref)
-        sys.exit(1)
-    except Exception:
-        traceback.print_exc()
-        sys.exit(1)
-
     console = Console()
-
     if not console.is_terminal:
-        print("`modal shell` can only be run from a terminal.")
-        sys.exit(1)
+        raise click.UsageError("`modal shell` can only be run from a terminal.")
 
     if function is None:
         res = stub.interactive_shell(cmd)
@@ -341,34 +226,3 @@ def shell(
 
     if inspect.iscoroutine(res):
         asyncio.run(res)
-
-
-def _show_no_auto_detectable_function_help(stub_ref: ImportRef) -> None:
-    object_path = stub_ref.object_path
-    import_path = stub_ref.file_or_module
-    error_console = Console(stderr=True)
-    error_console.print(f"[bold red]Could not find Modal stub or function '{object_path}' in {import_path}.[/bold red]")
-    guidance_msg = (
-        f"Try specifiy"
-        f"For example a stub variable `app_stub = modal.Stub()` in `{import_path}` would "
-        f"be specified as `{import_path}::app_stub`."
-    )
-    md = Markdown(guidance_msg)
-    error_console.print(md)
-
-
-def _show_no_auto_detectable_stub(stub_ref: ImportRef) -> None:
-    object_path = stub_ref.object_path
-    import_path = stub_ref.file_or_module
-    error_console = Console(stderr=True)
-    error_console.print(f"[bold red]Could not find Modal stub '{object_path}' in {import_path}.[/bold red]")
-
-    if object_path is None:
-        guidance_msg = (
-            f"Expected to find a stub variable named **`{DEFAULT_STUB_NAME}`** (the default stub name). If your `modal.Stub` is named differently, "
-            "you must specify it in the stub ref argument. "
-            f"For example a stub variable `app_stub = modal.Stub()` in `{import_path}` would "
-            f"be specified as `{import_path}::app_stub`."
-        )
-        md = Markdown(guidance_msg)
-        error_console.print(md)
