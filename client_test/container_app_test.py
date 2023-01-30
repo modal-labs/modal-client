@@ -24,7 +24,7 @@ async def test_container_function_initialization(unix_servicer, aio_container_cl
         "my_f_1": "fu-123",
         "my_f_2": "fu-456",
     }
-    await AioApp._init_container(aio_container_client, "ap-123")
+    await AioApp.init_container(aio_container_client, "ap-123")
 
     # Make sure these functions exist and have the right type
     my_f_1_app = aio_container_app["my_f_1"]
