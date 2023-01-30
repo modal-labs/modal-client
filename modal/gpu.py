@@ -30,10 +30,11 @@ class T4(_GPUConfig):
 
 class A100(_GPUConfig):
     def __init__(self, *, count: int = 1, memory: int = 0):
+        allowed_memory_values = {0, 20, 40}
+        if memory not in allowed_memory_values:
+            raise ValueError(f"A100s can only have memory values of {allowed_memory_values} => {memory=}")
         if memory == 20:
             super().__init__(api_pb2.GPU_TYPE_A100_20G, count, memory)
-        elif memory != 0:
-            raise ValueError(f"A100s can only have memory value of 0 or 20 => {memory=}")
         else:
             super().__init__(api_pb2.GPU_TYPE_A100, count, memory)
 
