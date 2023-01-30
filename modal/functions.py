@@ -485,6 +485,9 @@ class _FunctionHandle(Handle, type_prefix="fu"):
     def _set_raw_f(self, raw_f):
         self._raw_f = raw_f
 
+    def _set_function(self, function: "_Function"):
+        self._function = function
+
     @property
     def web_url(self) -> str:
         """URL of a Function running as a web endpoint."""
@@ -826,6 +829,7 @@ class _Function(Provider[_FunctionHandle]):
             function_handle = _FunctionHandle._new()
         function_handle._initialize_from_proto(None)
         function_handle._set_raw_f(raw_f)
+        function_handle._set_function(self)
         function_handle._set_is_web_endpoint(webhook_config is not None)
 
         self._precreated_function_handle = function_handle
