@@ -2,7 +2,6 @@
 import asyncio
 import datetime
 import inspect
-import sys
 from typing import Optional
 
 import click
@@ -15,15 +14,7 @@ from modal.functions import _FunctionHandle
 from modal.stub import LocalEntrypoint
 from modal_utils.async_utils import synchronizer
 
-from .import_refs import (
-    DEFAULT_STUB_NAME,
-    NoSuchObject,
-    get_by_object_path,
-    import_file_or_module,
-    import_function,
-    import_stub,
-    parse_import_ref,
-)
+from .import_refs import import_function, import_stub
 
 run_cli = typer.Typer(name="run")
 
@@ -112,7 +103,7 @@ def _get_click_command_for_local_entrypoint(_stub, entrypoint: LocalEntrypoint):
 
 class RunGroup(click.Group):
     def get_command(self, ctx, stub_ref):
-        _function = import_function(stub_ref, interactive=False)
+        _function = import_function(stub_ref, accept_local_entrypoint=True, interactive=False)
         _stub = _function._stub
         if isinstance(_function, LocalEntrypoint):
             click_command = _get_click_command_for_local_entrypoint(_stub, _function)
@@ -127,22 +118,29 @@ class RunGroup(click.Group):
 
 @click.group(
     cls=RunGroup,
-    subcommand_metavar="STUB_REF",
+    subcommand_metavar="FUNC_REF",
     help="""Run a Modal function or local entrypoint
 
-STUB_REF should be of the format:
+FUNC_REF should be of the format:
 
-`{file or module}[::[{stub name}].{function name}]`
+`{file or module}::{function name}`
+
+Alternatively you can refer to the function via the stub:
+
+`{file or module}::{stub variable name}.{function name}`
 
 Examples:
-To run the hello_world function (or local entrypoint) of stub `stub` in my_app.py:
+To run the hello_world function (or local entrypoint) in my_app.py:
 
- > modal run my_app.py::stub.hello_world
+ > modal run my_app.py::hello_world
 
 If your module only has a single stub called `stub` and your stub has a single local entrypoint (or single function), you can omit the stub/function part:
 
+ > modal run my_app.py
+ 
+Instead of pointing to a file, you can also use the Python module path to a a file:
 
- > modal run my_project.my_app
+> modal run my_project.my_app
 
 """,
 )
@@ -157,28 +155,20 @@ def deploy(
     stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
     name: str = typer.Option(None, help="Name of the deployment."),
 ):
-    import_ref = parse_import_ref(stub_ref)
-    module = import_file_or_module(import_ref.file_or_module)
-    try:
-        object_path = import_ref.object_path or DEFAULT_STUB_NAME
-        stub = get_by_object_path(module, object_path)
-    except NoSuchObject:
-        _show_no_auto_detectable_stub(import_ref)
-        sys.exit(1)
+    _stub = import_stub(stub_ref)
 
     if name is None:
-        name = stub.name
+        name = _stub.name
 
-    res = stub.deploy(name=name)
-    if inspect.iscoroutine(res):
-        asyncio.run(res)
+    blocking_stub = synchronizer._translate_out(_stub, interface=Interface.BLOCKING)
+    blocking_stub.deploy(name=name)
 
 
 def serve(
     stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
     timeout: Optional[float] = None,
 ):
-    """Run an web endpoint(s) associated with a Modal stub and hot-reload code.
+    """Run a web endpoint(s) associated with a Modal stub and hot-reload code.
     **Examples:**\n
     \n
     ```bash\n
@@ -199,7 +189,7 @@ def shell(
     \n
     - Start a bash shell using the spec for `my_function` in your stub:\n
     ```bash\n
-    modal shell hello_world.py::stub.my_function \n
+    modal shell hello_world.py::my_function \n
     ```\n
     Note that you can select the function interactively if you omit the function name.\n
     \n

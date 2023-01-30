@@ -166,20 +166,6 @@ Registered functions and local entrypoints on the selected stub are:
     return _stub[function_name]  # functions are in blueprint
 
 
-def _show_no_auto_detectable_function_help(stub_ref: ImportRef) -> None:
-    object_path = stub_ref.object_path
-    import_path = stub_ref.file_or_module
-    error_console = Console(stderr=True)
-    error_console.print(f"[bold red]Could not find Modal stub or function '{object_path}' in {import_path}.[/bold red]")
-    guidance_msg = (
-        f"Try specifiy"
-        f"For example a stub variable `app_stub = modal.Stub()` in `{import_path}` would "
-        f"be specified as `{import_path}::app_stub`."
-    )
-    md = Markdown(guidance_msg)
-    error_console.print(md)
-
-
 def _show_no_auto_detectable_stub(stub_ref: ImportRef) -> None:
     object_path = stub_ref.object_path
     import_path = stub_ref.file_or_module
@@ -218,6 +204,26 @@ def import_stub(stub_ref: str) -> _Stub:
     return _stub
 
 
+def _show_function_ref_help(stub_ref: ImportRef) -> None:
+    object_path = stub_ref.object_path
+    import_path = stub_ref.file_or_module
+    error_console = Console(stderr=True)
+    error_console.print(
+        f"[bold red]Could not find Modal function or local entrypoint '{object_path}' in {import_path}.[/bold red]"
+    )
+    guidance_msg = f"""For example, the `foo` function in:
+```
+stub = modal.Stub()
+
+@stub.function
+def foo():
+    ...
+```
+would be be specified as `{import_path}::foo` or `{import_path}::stub.foo"""
+    md = Markdown(guidance_msg)
+    error_console.print(md)
+
+
 def import_function(
     func_ref: str, accept_local_entrypoint=True, interactive=False
 ) -> Union[_Function, LocalEntrypoint]:
@@ -227,13 +233,14 @@ def import_function(
         obj_path = import_ref.object_path or DEFAULT_STUB_NAME  # get variable named "stub" by default
         raw_object = get_by_object_path(module, obj_path)
     except NoSuchObject:
-        _show_no_auto_detectable_function_help(import_ref)
+        _show_function_ref_help(import_ref)
         sys.exit(1)
 
     try:
         stub_or_function = synchronizer._translate_in(raw_object)
     except:
-        raise click.UsageError(f"{raw_object} is not a Modal entity (should be a Stub or Function)")
+        _show_function_ref_help(import_ref)
+        sys.exit(1)
 
     if isinstance(stub_or_function, _Stub):
         # infer function or display help for how to select one
@@ -242,7 +249,13 @@ def import_function(
         return _function
     if isinstance(stub_or_function, _FunctionHandle):
         return stub_or_function._function
-    elif isinstance(stub_or_function, (_Function, LocalEntrypoint)):
+    elif isinstance(stub_or_function, _Function):
+        return stub_or_function
+    elif isinstance(stub_or_function, LocalEntrypoint):
+        if not accept_local_entrypoint:
+            raise click.UsageError(
+                f"{func_ref} is not a Modal Function (a Modal local_entrypoint can't be used in this context)"
+            )
         return stub_or_function
     else:
         raise click.UsageError(f"{raw_object} is not a Modal entity (should be a Stub or Function)")
