@@ -17,6 +17,7 @@ from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.exceptions import UserCodeException
 
+from modal import _pty
 from modal_proto import api_pb2
 from modal_utils.async_utils import (
     queue_batch_iterator,
@@ -35,7 +36,6 @@ from ._call_graph import InputInfo, reconstruct_call_graph
 from ._function_utils import FunctionInfo, LocalFunctionError, load_function_from_module
 from ._location import CloudProvider, parse_cloud_provider
 from ._output import OutputManager
-from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._traceback import append_modal_tb
@@ -905,7 +905,7 @@ class _Function(Provider[_FunctionHandle]):
         milli_cpu = int(1000 * self._cpu) if self._cpu is not None else None
 
         if self._interactive:
-            pty_info = get_pty_info()
+            pty_info = _pty.get_pty_info()
             if self._concurrency_limit and self._concurrency_limit > 1:
                 warnings.warn(
                     "Interactive functions require `concurrency_limit=1`. The concurrency limit will be overridden."

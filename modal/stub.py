@@ -17,11 +17,12 @@ from modal_utils.app_utils import is_valid_app_name
 from modal_utils.async_utils import TaskContext, synchronize_apis
 from modal_utils.decorator_utils import decorator_with_options
 
+from . import _pty
 from ._function_utils import FunctionInfo
 from ._ipython import is_notebook
 from ._live_reload import MODAL_AUTORELOAD_ENV, restart_serve
 from ._output import OutputManager, step_completed, step_progress
-from ._pty import exec_cmd, write_stdin_to_pty_stream
+from ._pty import exec_cmd
 from .app import _App, container_app, is_local
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
@@ -285,7 +286,7 @@ class _Stub:
 
                 if self._pty_input_stream:
                     output_mgr._visible_progress = False
-                    async with write_stdin_to_pty_stream(app._pty_input_stream):
+                    async with _pty.write_stdin_to_pty_stream(app._pty_input_stream):
                         yield app
                     output_mgr._visible_progress = True
                 else:

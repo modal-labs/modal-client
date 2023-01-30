@@ -4,6 +4,8 @@ import pytest
 import sys
 import traceback
 import unittest.mock
+from contextlib import asynccontextmanager
+from unittest import mock
 
 import click
 import click.testing
@@ -188,8 +190,8 @@ def test_run_local_entrypoint(servicer, server_url_env, test_dir):
 
 def test_run_parse_args(servicer, server_url_env, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "cli_args.py"
-    # res = _run(["run", stub_file.as_posix()], expected_exit_code=1)
-    # assert "You need to specify an entrypoint" in res.stdout
+    res = _run(["run", stub_file.as_posix()], expected_exit_code=2)
+    assert "You need to specify a Modal function or local entrypoint to run" in res.stdout
 
     valid_call_args = [
         (
@@ -240,3 +242,27 @@ def test_no_user_code_in_synchronicity_deploy(servicer, server_url_env, test_dir
 def test_serve(servicer, server_url_env, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "webhook.py"
     _run(["serve", stub_file.as_posix(), "--timeout", "3"])
+
+
+def test_shell(servicer, server_url_env, test_dir):
+    stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
+
+    def mock_get_pty_info() -> api_pb2.PTYInfo:
+        rows, cols = (64, 128)
+        return api_pb2.PTYInfo(
+            enabled=True,
+            winsz_rows=rows,
+            winsz_cols=cols,
+            env_term=os.environ.get("TERM"),
+            env_colorterm=os.environ.get("COLORTERM"),
+            env_term_program=os.environ.get("TERM_PROGRAM"),
+        )
+
+    @asynccontextmanager
+    async def noop_async_context_manager(*args, **kwargs):
+        yield
+
+    with mock.patch("rich.console.Console.is_terminal", True), mock.patch(
+        "modal._pty.get_pty_info", mock_get_pty_info
+    ), mock.patch("modal._pty.write_stdin_to_pty_stream", noop_async_context_manager):
+        _run(["shell", stub_file.as_posix() + "::foo"])

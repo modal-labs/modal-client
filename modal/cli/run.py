@@ -181,7 +181,9 @@ def serve(
 
 
 def shell(
-    stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
+    func_ref: str = typer.Argument(
+        ..., help="Path to a Python file with a Stub or Modal function whose container to run.", metavar="FUNC_REF"
+    ),
     cmd: str = typer.Option(default="/bin/bash", help="Command to run inside the Modal image."),
 ):
     """Run an interactive shell inside a Modal image.\n
@@ -202,17 +204,18 @@ def shell(
     if not console.is_terminal:
         raise click.UsageError("`modal shell` can only be run from a terminal.")
 
-    if function is None:
-        res = stub.interactive_shell(cmd)
-    else:
-        res = stub.interactive_shell(
-            cmd,
-            mounts=function._mounts,
-            shared_volumes=function._shared_volumes,
-            image=function._image,
-            secrets=function._secrets,
-            gpu=function._gpu,
-        )
+    _function = import_function(func_ref)
+    _stub = _function._stub
+    blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
 
-    if inspect.iscoroutine(res):
-        asyncio.run(res)
+    if _function is None:
+        blocking_stub.interactive_shell(cmd)
+    else:
+        blocking_stub.interactive_shell(
+            cmd,
+            mounts=_function._mounts,
+            shared_volumes=_function._shared_volumes,
+            image=_function._image,
+            secrets=_function._secrets,
+            gpu=_function._gpu,
+        )
