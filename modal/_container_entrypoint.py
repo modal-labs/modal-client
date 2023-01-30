@@ -116,8 +116,8 @@ class _FunctionIOManager:
         _App.set_is_container(True)
 
     @wrap()
-    async def init_container(self):
-        await _App.init_container(self._client, self.app_id)
+    async def init_container(self, stub):
+        await _App.init_container(self._client, self.app_id, stub)
 
     async def _heartbeat(self):
         request = api_pb2.ContainerHeartbeatRequest()
@@ -552,7 +552,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             obj, fun, is_async, stub = import_function(container_args.function_def, ser_cls, ser_fun)
 
         # Initialize the app
-        function_io_manager.init_container()
+        function_io_manager.init_container(stub)
 
         if container_args.function_def.pty_info.enabled:
             from modal import container_app

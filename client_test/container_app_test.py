@@ -20,13 +20,13 @@ def my_f_2(x):
 @pytest.mark.asyncio
 async def test_container_function_initialization(unix_servicer, aio_container_client):
     stub = AioStub()
-    # my_f_1_container = stub.function(my_f_1)
+    my_f_1_container = stub.function(my_f_1)
 
     unix_servicer.app_objects["ap-123"] = {
         "my_f_1": "fu-123",
         "my_f_2": "fu-456",
     }
-    await AioApp.init_container(aio_container_client, "ap-123")
+    await AioApp.init_container(aio_container_client, "ap-123", stub)
 
     # Make sure these functions exist and have the right type
     my_f_1_app = aio_container_app["my_f_1"]
@@ -35,10 +35,7 @@ async def test_container_function_initialization(unix_servicer, aio_container_cl
     assert isinstance(my_f_2_app, AioFunctionHandle)
 
     # Make sure we can call my_f_1 inside the container
-    # assert await my_f_1_container.call(42) == 1764
-    # TODO(erikbern): it's actually impossible for a stub function
-    # to be created before the app inside a container, so let's
-    # ignore this issue for now. It's just theoretical.
+    assert await my_f_1_container.call(42) == 1764
 
     # Now, let's create my_f_2 after the app started running
     # This might happen if some local module is imported lazily

@@ -158,14 +158,26 @@ class _App:
     def __getattr__(self, tag: str) -> Handle:
         return self._tag_to_object[tag]
 
-    async def _init_container(self, client: _Client, app_id: str):
+    async def _init_container(self, client: _Client, app_id: str, stub):
         self._client = client
         self._app_id = app_id
+
+        # Get existing function handles from the stub if provided
+        if stub:
+            stub_handles = stub._function_handles
+        else:
+            stub_handles = {}
 
         req = api_pb2.AppGetObjectsRequest(app_id=app_id)
         resp = await retry_transient_errors(self._client.stub.AppGetObjects, req)
         for item in resp.items:
-            obj = Handle._from_id(item.object_id, self._client, item.function)
+            if item.tag in stub_handles:
+                obj = stub_handles[item.tag]
+                obj._initialize_handle(self._client, item.object_id)
+                if item.function:
+                    obj._initialize_from_proto(item.function)
+            else:
+                obj = Handle._from_id(item.object_id, self._client, item.function)
             self._tag_to_object[item.tag] = obj
 
         if "image" not in self._tag_to_object:
@@ -179,10 +191,10 @@ class _App:
         _is_container_app = is_container_app
 
     @staticmethod
-    async def init_container(client: _Client, app_id: str) -> _App:
+    async def init_container(client: _Client, app_id: str, stub) -> _App:
         """Used by the container to bootstrap the app and all its objects."""
         global _container_app
-        await _container_app._init_container(client, app_id)
+        await _container_app._init_container(client, app_id, stub)
         return _container_app
 
     @staticmethod
