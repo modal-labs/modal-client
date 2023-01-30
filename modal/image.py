@@ -1,12 +1,11 @@
 # Copyright Modal Labs 2022
 from __future__ import annotations
 
-import inspect
 import os
 import shlex
 import sys
 from pathlib import Path
-from typing import Any, Callable, Collection, List, Optional, Union
+from typing import Any, Callable, Collection, Dict, List, Optional, Union
 
 import toml
 
@@ -15,12 +14,15 @@ from modal_utils.async_utils import synchronize_apis
 from modal_utils.grpc_utils import retry_transient_errors
 
 from . import is_local
+from ._function_utils import FunctionInfo
 from ._resolver import Resolver
 from .config import config, logger
 from .exception import InvalidError, NotFoundError, RemoteError
-from .mount import _Mount
+from .gpu import GPU_T, parse_gpu_config
+from .mount import _get_client_mount, _Mount
 from .object import Handle, Provider
 from .secret import _Secret
+from .shared_volume import _SharedVolume
 
 
 def _validate_python_version(version: str) -> None:
@@ -111,7 +113,7 @@ class _Image(Provider[_ImageHandle]):
         dockerfile_commands: Union[list[str], Callable[[], list[str]]] = [],
         secrets: Collection[_Secret] = [],
         ref=None,
-        gpu: bool = False,
+        gpu_config: api_pb2.GPUConfig = api_pb2.GPUConfig(),
         build_function=None,
         context_mount: Optional[_Mount] = None,
     ):
@@ -135,108 +137,95 @@ class _Image(Provider[_ImageHandle]):
         if context_mount is not None and not isinstance(context_mount, _Mount):
             raise InvalidError(f"Context mount {context_mount!r} must be a modal.Mount object")
 
-        self._ref = ref
-        self._base_images = base_images
-        self._context_files = context_files
-        self._dockerfile_commands = dockerfile_commands
-        self._secrets = secrets
-        self._gpu = gpu
-        self._build_function = build_function
-        self._context_mount = context_mount
-        rep = f"Image({self._dockerfile_commands})"
-        super().__init__(self._load, rep)
+        async def _load(resolver: Resolver):
+            if ref:
+                image_id = await resolver.load(ref)
+                return _ImageHandle._from_id(image_id, resolver.client, None)
 
-    async def _load(self, resolver: Resolver):
-        if self._ref:
-            image_id = await resolver.load(self._ref)
+            # Recursively build base images
+            base_image_ids: list[str] = []
+            for image in base_images.values():
+                base_image_ids.append(await resolver.load(image))
+            base_images_pb2s = [
+                api_pb2.BaseImage(docker_tag=docker_tag, image_id=image_id)
+                for docker_tag, image_id in zip(base_images.keys(), base_image_ids)
+            ]
+
+            secret_ids = []
+            for secret in secrets:
+                try:
+                    secret_id = await resolver.load(secret)
+                except NotFoundError as ex:
+                    raise NotFoundError(
+                        str(ex) + "\n" + "You can add secrets to your account at https://modal.com/secrets"
+                    )
+                secret_ids.append(secret_id)
+
+            context_file_pb2s = []
+            for filename, path in context_files.items():
+                with open(path, "rb") as f:
+                    context_file_pb2s.append(api_pb2.ImageContextFile(filename=filename, data=f.read()))
+
+            if build_function:
+                build_function_def = build_function.get_build_def()
+                build_function_id = await resolver.load(build_function)
+            else:
+                build_function_def = None
+                build_function_id = None
+
+            dockerfile_commands_list: list[str]
+            if callable(dockerfile_commands):
+                # It's a closure (see DockerfileImage)
+                dockerfile_commands_list = dockerfile_commands()
+            else:
+                dockerfile_commands_list = dockerfile_commands
+
+            if context_mount:
+                context_mount_id = await resolver.load(context_mount)
+            else:
+                context_mount_id = None
+
+            image_definition = api_pb2.Image(
+                base_images=base_images_pb2s,
+                dockerfile_commands=dockerfile_commands_list,
+                context_files=context_file_pb2s,
+                secret_ids=secret_ids,
+                gpu=bool(gpu_config.type),  # Note: as of 2023-01-27, server still uses this
+                build_function_def=build_function_def,
+                context_mount_id=context_mount_id,
+                gpu_config=gpu_config,  # Note: as of 2023-01-27, server ignores this
+            )
+
+            req = api_pb2.ImageGetOrCreateRequest(
+                app_id=resolver.app_id,
+                image=image_definition,
+                existing_image_id=resolver.existing_object_id,  # TODO: ignored
+                build_function_id=build_function_id,
+            )
+            resp = await resolver.client.stub.ImageGetOrCreate(req)
+            image_id = resp.image_id
+
+            logger.debug("Waiting for image %s" % image_id)
+            while True:
+                request = api_pb2.ImageJoinRequest(image_id=image_id, timeout=55)
+                response = await retry_transient_errors(resolver.client.stub.ImageJoin, request)
+                if not response.result.status:
+                    continue
+                elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
+                    raise RemoteError(response.result.exception)
+                elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
+                    raise RemoteError("Image build terminated due to external shut-down. Please try again.")
+                elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
+                    raise RemoteError("Image build timed out. Please try again with a larger `timeout` parameter.")
+                elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
+                    break
+                else:
+                    raise RemoteError("Unknown status %s!" % response.result.status)
+
             return _ImageHandle._from_id(image_id, resolver.client, None)
 
-        # Recursively build base images
-        base_image_ids: list[str] = []
-        for image in self._base_images.values():
-            base_image_ids.append(await resolver.load(image))
-        base_images_pb2s = [
-            api_pb2.BaseImage(docker_tag=docker_tag, image_id=image_id)
-            for docker_tag, image_id in zip(self._base_images.keys(), base_image_ids)
-        ]
-
-        secret_ids = []
-        for secret in self._secrets:
-            try:
-                secret_id = await resolver.load(secret)
-            except NotFoundError as ex:
-                raise NotFoundError(str(ex) + "\n" + "You can add secrets to your account at https://modal.com/secrets")
-            secret_ids.append(secret_id)
-
-        context_file_pb2s = []
-        for filename, path in self._context_files.items():
-            with open(path, "rb") as f:
-                context_file_pb2s.append(api_pb2.ImageContextFile(filename=filename, data=f.read()))
-
-        if self._build_function:
-            (fn, kwargs) = self._build_function
-            # Plaintext source and arg definition for the function, so it's part of the image
-            # hash. We can't use the cloudpickle hash because it's not very stable.
-            build_function_def = f"{inspect.getsource(fn)}\n{repr(kwargs)}"
-
-            base_images = list(self._base_images.values())
-            assert len(base_images) == 1
-            kwargs = {"timeout": 86400, **kwargs, "image": base_images[0], "_is_build_step": True}
-            build_function_handle = resolver.stub.function(**kwargs)(fn)
-            build_function_id = await resolver.load(build_function_handle._function)
-        else:
-            build_function_def = None
-            build_function_id = None
-
-        dockerfile_commands: list[str]
-        if callable(self._dockerfile_commands):
-            # It's a closure (see DockerfileImage)
-            dockerfile_commands = self._dockerfile_commands()
-        else:
-            dockerfile_commands = self._dockerfile_commands
-
-        if self._context_mount:
-            context_mount_id = await resolver.load(self._context_mount)
-        else:
-            context_mount_id = None
-
-        image_definition = api_pb2.Image(
-            base_images=base_images_pb2s,
-            dockerfile_commands=dockerfile_commands,
-            context_files=context_file_pb2s,
-            secret_ids=secret_ids,
-            gpu=self._gpu,
-            build_function_def=build_function_def,
-            context_mount_id=context_mount_id,
-        )
-
-        req = api_pb2.ImageGetOrCreateRequest(
-            app_id=resolver.app_id,
-            image=image_definition,
-            existing_image_id=resolver.existing_object_id,  # TODO: ignored
-            build_function_id=build_function_id,
-        )
-        resp = await resolver.client.stub.ImageGetOrCreate(req)
-        image_id = resp.image_id
-
-        logger.debug("Waiting for image %s" % image_id)
-        while True:
-            request = api_pb2.ImageJoinRequest(image_id=image_id, timeout=55)
-            response = await retry_transient_errors(resolver.client.stub.ImageJoin, request)
-            if not response.result.status:
-                continue
-            elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
-                raise RemoteError(response.result.exception)
-            elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
-                raise RemoteError("Image build terminated due to external shut-down. Please try again.")
-            elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
-                raise RemoteError("Image build timed out. Please try again with a larger `timeout` parameter.")
-            elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
-                break
-            else:
-                raise RemoteError("Unknown status %s!" % response.result.status)
-
-        return _ImageHandle(resolver.client, image_id)
+        rep = f"Image({dockerfile_commands})"
+        super().__init__(_load, rep)
 
     def extend(self, **kwargs) -> "_Image":
         """Extend an image (named "base") with additional options or commands.
@@ -329,9 +318,12 @@ class _Image(Provider[_ImageHandle]):
         """
         Install a list of Python packages from private git repositories using pip.
 
-        This method currently supports Github only, and requires a `modal.Secret` be provided that
-        contains a `GITHUB_TOKEN` key-value pair. This token should have permissions to read the
-        provided list of private Github repositories.
+        This method currently supports Github and Gitlab only.
+
+        - **Github:** Provide a `modal.Secret` that contains a `GITHUB_TOKEN` key-value pair
+        - **Gitlab:** Provide a `modal.Secret` that contains a `GITLAB_TOKEN` key-value pair
+
+        These API tokens should have permissions to read the list of private repositories provided as arguments.
 
         We recommend using Github's ['fine-grained' access tokens](https://github.blog/2022-10-18-introducing-fine-grained-personal-access-tokens-for-github/).
         These tokens are repo-scoped, and avoid granting read permission across all of a user's private repos.
@@ -359,15 +351,19 @@ class _Image(Provider[_ImageHandle]):
                 "No secrets provided to function. Installing private packages requires tokens to be passed via modal.Secret objects."
             )
 
-        def valid_repo_ref(repo_ref) -> bool:
+        invalid_repos = []
+        install_urls = []
+        for repo_ref in repositories:
             if not isinstance(repo_ref, str):
-                return False
+                invalid_repos.append(repo_ref)
             parts = repo_ref.split("/")
-            if parts[0] != "github.com":
-                return False
-            return True
+            if parts[0] == "github.com":
+                install_urls.append(f"git+https://{git_user}:$GITHUB_TOKEN@{repo_ref}")
+            elif parts[0] == "gitlab.com":
+                install_urls.append(f"git+https://{git_user}:$GITLAB_TOKEN@{repo_ref}")
+            else:
+                invalid_repos.append(repo_ref)
 
-        invalid_repos = [r for r in repositories if not valid_repo_ref(r)]
         if invalid_repos:
             raise InvalidError(
                 f"{len(invalid_repos)} out of {len(repositories)} given repository refs are invalid. "
@@ -375,11 +371,18 @@ class _Image(Provider[_ImageHandle]):
             )
 
         secret_names = ",".join([s.app_name if hasattr(s, "app_name") else str(s) for s in secrets])  # type: ignore
-        dockerfile_commands = [
-            "FROM base",
-            f"RUN bash -c \"[[ -v GITHUB_TOKEN ]] || (echo 'GITHUB_TOKEN env var not set by provided modal.Secret(s): {secret_names}' && exit 1)\"",
-            "RUN apt-get update && apt-get install -y git",
-        ] + [f"RUN python3 -m pip install git+https://{git_user}:$GITHUB_TOKEN@{repo_ref}" for repo_ref in repositories]
+        dockerfile_commands = ["FROM base"]
+        if any(r.startswith("github") for r in repositories):
+            dockerfile_commands.append(
+                f"RUN bash -c \"[[ -v GITHUB_TOKEN ]] || (echo 'GITHUB_TOKEN env var not set by provided modal.Secret(s): {secret_names}' && exit 1)\"",
+            )
+        if any(r.startswith("gitlab") for r in repositories):
+            dockerfile_commands.append(
+                f"RUN bash -c \"[[ -v GITLAB_TOKEN ]] || (echo 'GITLAB_TOKEN env var not set by provided modal.Secret(s): {secret_names}' && exit 1)\"",
+            )
+
+        dockerfile_commands.extend(["RUN apt-get update && apt-get install -y git"])
+        dockerfile_commands.extend([f"RUN python3 -m pip install {url}" for url in install_urls])
         return self.extend(
             dockerfile_commands=dockerfile_commands,
             secrets=secrets,
@@ -498,7 +501,7 @@ class _Image(Provider[_ImageHandle]):
         dockerfile_commands: Union[str, list[str]],
         context_files: dict[str, str] = {},
         secrets: Collection[_Secret] = [],
-        gpu: bool = False,
+        gpu: GPU_T = None,
     ):
         """Extend an image with arbitrary Dockerfile-like commands."""
 
@@ -513,14 +516,14 @@ class _Image(Provider[_ImageHandle]):
             dockerfile_commands=_dockerfile_commands,
             context_files=context_files,
             secrets=secrets,
-            gpu=gpu,
+            gpu_config=parse_gpu_config(gpu, warn_on_true=False),
         )
 
     def run_commands(
         self,
         *commands: Union[str, list[str]],
         secrets: Collection[_Secret] = [],
-        gpu: bool = False,
+        gpu: GPU_T = None,
     ):
         """Extend an image with a list of shell commands to run."""
         cmds = _flatten_str_args("run_commands", "commands", commands)
@@ -532,7 +535,7 @@ class _Image(Provider[_ImageHandle]):
         return self.extend(
             dockerfile_commands=dockerfile_commands,
             secrets=secrets,
-            gpu=gpu,
+            gpu_config=parse_gpu_config(gpu, warn_on_true=False),
         )
 
     @staticmethod
@@ -582,6 +585,15 @@ class _Image(Provider[_ImageHandle]):
         return _Image(
             dockerfile_commands=dockerfile_commands,
             context_files={"/modal_requirements.txt": requirements_path},
+        ).dockerfile_commands(
+            [
+                "ENV CONDA_EXE=/usr/local/bin/conda",
+                "ENV CONDA_PREFIX=/usr/local",
+                "ENV CONDA_PROMPT_MODIFIER=(base)",
+                "ENV CONDA_SHLVL=1",
+                "ENV CONDA_PYTHON_EXE=/usr/local/bin/python",
+                "ENV CONDA_DEFAULT_ENV=base",
+            ]
         )
 
     def conda_install(
@@ -748,8 +760,17 @@ class _Image(Provider[_ImageHandle]):
 
     def run_function(
         self,
-        raw_function: Callable[[], Any],
-        **kwargs,
+        raw_f: Callable[[], Any],
+        *,
+        secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
+        secrets: Collection[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
+        gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
+        mounts: Collection[_Mount] = (),
+        shared_volumes: Dict[str, _SharedVolume] = {},
+        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
+        memory: Optional[int] = None,  # How much memory to request, in MB. This is a soft limit.
+        timeout: Optional[int] = 86400,  # Maximum execution time of the function in seconds.
+        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
     ) -> "_Image":
         """Run user-defined function `raw_function` as an image build step. The function runs just like an ordinary Modal
         function, and any kwargs accepted by `@stub.function` (such as `Mount`s, `SharedVolume`s, and resource requests) can
@@ -776,7 +797,28 @@ class _Image(Provider[_ImageHandle]):
         )
         ```
         """
-        return self.extend(build_function=(raw_function, kwargs))
+        from .functions import _Function
+
+        info = FunctionInfo(raw_f)
+        base_mounts = [_get_client_mount()]
+        for key, mount in info.get_mounts().items():
+            base_mounts.append(mount)
+
+        function = _Function(
+            info,
+            image=self,
+            secret=secret,
+            secrets=secrets,
+            gpu=gpu,
+            base_mounts=base_mounts,
+            mounts=mounts,
+            shared_volumes=shared_volumes,
+            memory=memory,
+            timeout=timeout,
+            cpu=cpu,
+            cloud_provider=cloud,
+        )
+        return self.extend(build_function=function)
 
     def env(self, vars: dict[str, str]) -> "_Image":
         """Sets the environmental variables of the image.

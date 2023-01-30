@@ -1,4 +1,6 @@
 # Copyright Modal Labs 2022
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Dict, Optional, TypeVar
 
 from modal_proto import api_pb2
@@ -80,7 +82,7 @@ class _App:
             # We already created this object before, shortcut this method
             return cached_obj
 
-        resolver = Resolver(self._stub, self, progress, self._client, self.app_id, existing_object_id)
+        resolver = Resolver(self, progress, self._client, self.app_id, existing_object_id)
 
         # Create object
         created_obj = await obj._load(resolver)
@@ -156,13 +158,7 @@ class _App:
     def __getattr__(self, tag: str) -> Handle:
         return self._tag_to_object[tag]
 
-    @staticmethod
-    async def _init_container(client, app_id):
-        """Used by the container to bootstrap the app and all its objects."""
-        # This is a bit of a hacky thing:
-        global _container_app, _is_container_app
-        _is_container_app = True
-        self = _container_app
+    async def _init_container(self, client: _Client, app_id: str):
         self._client = client
         self._app_id = app_id
 
@@ -177,7 +173,13 @@ class _App:
 
             await self._load(_default_image)
 
-        return self
+    @staticmethod
+    async def init_container(client: _Client, app_id: str) -> _App:
+        """Used by the container to bootstrap the app and all its objects."""
+        global _container_app, _is_container_app
+        _is_container_app = True
+        await _container_app._init_container(client, app_id)
+        return _container_app
 
     @staticmethod
     async def _init_existing(stub, client, existing_app_id):

@@ -29,7 +29,7 @@ from .exception import InvalidError, deprecation_error
 from .functions import _Function, _FunctionHandle
 from .gpu import GPU_T
 from .image import _Image
-from .mount import _create_client_mount, _Mount, client_mount_name
+from .mount import _get_client_mount, _Mount
 from .object import Provider
 from .proxy import _Proxy
 from .queue import _Queue
@@ -92,6 +92,7 @@ class _Stub:
     _secrets: Collection[_Secret]
     _function_handles: Dict[str, _FunctionHandle]
     _local_entrypoints: Dict[str, Callable]
+    _local_mounts: List[_Mount]
 
     def __init__(
         self,
@@ -116,6 +117,7 @@ class _Stub:
         self._secrets = secrets
         self._function_handles = {}
         self._local_entrypoints = {}
+        self._local_mounts = []
         super().__init__()
 
     @property
@@ -261,9 +263,8 @@ class _Stub:
                 create_progress.label = step_completed("Created objects.")
                 output_mgr.print_if_visible(create_progress)
 
-                # Update all functions client-side to point to the running app
+                # Update all functions client-side to have the output mgr
                 for tag, obj in self._function_handles.items():
-                    obj._set_local_app(app)
                     obj._set_output_mgr(output_mgr)
 
                 # Cancel logs loop after creating objects for a deployment.
@@ -287,7 +288,6 @@ class _Stub:
                 # mute cancellation errors on all function handles to prevent exception spam
                 for tag, obj in self._function_handles.items():
                     obj._set_mute_cancellation(True)
-                    getattr(app, tag)._set_mute_cancellation(True)  # app has a separate function handle
 
                 if detach:
                     logs_loop.cancel()
@@ -498,12 +498,7 @@ class _Stub:
 
         # Create client mount
         if self._client_mount is None:
-            if config["sync_entrypoint"]:
-                self._client_mount = _create_client_mount()
-            else:
-                self._client_mount = _Mount.from_name(
-                    client_mount_name(), namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL
-                )
+            self._client_mount = _get_client_mount()
         mounts.append(self._client_mount)
 
         # Create function mounts
@@ -514,15 +509,7 @@ class _Stub:
 
         return mounts
 
-    def _get_function_secrets(self, raw_f, secret: Optional[_Secret] = None, secrets: Collection[_Secret] = ()):
-        if secret and secrets:
-            raise InvalidError(f"Function {raw_f} has both singular `secret` and plural `secrets` attached")
-        if secret:
-            return [secret, *self._secrets]
-        else:
-            return [*secrets, *self._secrets]
-
-    def _add_function(self, function: _Function) -> _FunctionHandle:
+    def _add_function(self, function: _Function, mounts: List[_Mount]) -> _FunctionHandle:
         if function.tag in self._blueprint:
             old_function = self._blueprint[function.tag]
             if isinstance(old_function, _Function):
@@ -536,21 +523,29 @@ class _Stub:
                 logger.warning(f"Warning: tag {function.tag} exists but is overridden by function")
         self._blueprint[function.tag] = function
 
-        # We now need to create an actual handle.
-        # This is a bit weird since the object isn't actually created yet,
-        # but functions are weird and live and the global scope
-        # These will be set with the correct object id when the app starts.
-        function_handle = _FunctionHandle(function)
+        # Track all mounts. This is needed for file watching
+        for mount in mounts:
+            if mount.is_local():
+                self._local_mounts.append(mount)
+
+        function_handle = function._precreated_function_handle
         self._function_handles[function.tag] = function_handle
         return function_handle
 
     @property
     def registered_functions(self) -> List[str]:
+        """Names of modal.Function objects registered on the stub."""
         return list(self._function_handles.keys())
 
     @property
     def registered_entrypoints(self) -> Dict[str, Callable]:
+        """Names of local CLI entrypoints registered on the stub."""
         return self._local_entrypoints
+
+    @property
+    def registered_web_endpoints(self) -> List[str]:
+        """Names of web endpoint (ie. webhook) functions registered on the stub."""
+        return [tag for tag, handle in self._function_handles.items() if handle.is_web_endpoint]
 
     @decorator_with_options
     def local_entrypoint(self, raw_f=None, name: Optional[str] = None):
@@ -603,7 +598,6 @@ class _Stub:
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         interactive: bool = False,  # Whether to run the function in interactive mode.
-        _is_build_step: bool = False,  # Whether function is a build step; reserved for internal use.
         keep_warm: Union[bool, int] = False,  # Toggles an adaptively-sized warm pool for latency-sensitive apps.
         name: Optional[str] = None,  # Sets the Modal name of the function within the stub
         is_generator: Optional[bool] = None,  # If not set, it's inferred from the function signature
@@ -613,8 +607,8 @@ class _Stub:
         if image is None:
             image = self._get_default_image()
         info = FunctionInfo(raw_f, serialized=serialized, name_override=name)
-        mounts = [*self._get_function_mounts(info), *mounts]
-        secrets = self._get_function_secrets(raw_f, secret, secrets)
+        base_mounts = self._get_function_mounts(info)
+        secrets = [*self._secrets, *secrets]
 
         if interactive:
             if self._pty_input_stream:
@@ -630,12 +624,14 @@ class _Stub:
         function = _Function(
             info,
             image=image,
+            secret=secret,
             secrets=secrets,
             schedule=schedule,
             is_generator=is_generator,
             gpu=gpu,
             rate_limit=rate_limit,
             serialized=serialized,
+            base_mounts=base_mounts,
             mounts=mounts,
             shared_volumes=shared_volumes,
             memory=memory,
@@ -651,14 +647,11 @@ class _Stub:
             cloud_provider=cloud,
         )
 
-        if _is_build_step:
-            # Don't add function to stub if it's a build step.
-            return _FunctionHandle(function)
-
-        return self._add_function(function)
+        return self._add_function(function, [*base_mounts, *mounts])
 
     @decorator_with_options
     def generator(self, raw_f=None, **kwargs):
+        """Stub.generator is no longer supported. Use .function() instead."""
         deprecation_error(date(2022, 12, 1), "Stub.generator is no longer supported. Use .function() instead.")
 
     @decorator_with_options
@@ -709,8 +702,8 @@ class _Stub:
         if image is None:
             image = self._get_default_image()
         info = FunctionInfo(raw_f)
-        mounts = [*self._get_function_mounts(info), *mounts]
-        secrets = self._get_function_secrets(raw_f, secret, secrets)
+        base_mounts = self._get_function_mounts(info)
+        secrets = [*self._secrets, *secrets]
 
         if not wait_for_response:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
@@ -720,9 +713,11 @@ class _Stub:
         function = _Function(
             info,
             image=image,
+            secret=secret,
             secrets=secrets,
             is_generator=True,
             gpu=gpu,
+            base_mounts=base_mounts,
             mounts=mounts,
             shared_volumes=shared_volumes,
             webhook_config=api_pb2.WebhookConfig(
@@ -741,7 +736,7 @@ class _Stub:
             keep_warm=keep_warm,
             cloud_provider=cloud,
         )
-        return self._add_function(function)
+        return self._add_function(function, [*base_mounts, *mounts])
 
     @decorator_with_options
     def asgi(
@@ -784,8 +779,8 @@ class _Stub:
         if image is None:
             image = self._get_default_image()
         info = FunctionInfo(asgi_app)
-        mounts = [*self._get_function_mounts(info), *mounts]
-        secrets = self._get_function_secrets(asgi_app, secret, secrets)
+        base_mounts = self._get_function_mounts(info)
+        secrets = [*self._secrets, *secrets]
 
         if not wait_for_response:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
@@ -795,9 +790,11 @@ class _Stub:
         function = _Function(
             info,
             image=image,
+            secret=secret,
             secrets=secrets,
             is_generator=True,
             gpu=gpu,
+            base_mounts=base_mounts,
             mounts=mounts,
             shared_volumes=shared_volumes,
             webhook_config=api_pb2.WebhookConfig(type=_webhook_type, requested_suffix=label, async_mode=_response_mode),
@@ -811,7 +808,7 @@ class _Stub:
             keep_warm=keep_warm,
             cloud_provider=cloud,
         )
-        return self._add_function(function)
+        return self._add_function(function, [*base_mounts, *mounts])
 
     @decorator_with_options
     def wsgi(

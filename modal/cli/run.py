@@ -117,7 +117,10 @@ class RunGroup(click.Group):
 
         _stub = synchronizer._translate_in(stub)
 
-        function_choices = list(set(_stub.registered_functions) | set(_stub.registered_entrypoints.keys()))
+        function_choices = list(
+            (set(_stub.registered_functions) - set(_stub.registered_web_endpoints))
+            | set(_stub.registered_entrypoints.keys())
+        )
         registered_functions_str = "\n".join(sorted(function_choices))
         function_name = parsed_stub_ref.entrypoint_name
         if not function_name:
@@ -126,6 +129,7 @@ class RunGroup(click.Group):
             elif len(_stub.registered_entrypoints) == 1:
                 function_name = list(_stub.registered_entrypoints.keys())[0]
             else:
+                # TODO(erikbern): better error message if there's *zero* functions / entrypoints
                 print(
                     f"""You need to specify an entrypoint Modal function to run, e.g.
 
@@ -203,13 +207,7 @@ def deploy(
 
 
 def make_function_panel(idx: int, tag: str, function: _Function, stub: _Stub) -> Panel:
-    items = [
-        f"- {i}"
-        for i in [*function._mounts, function._image, *function._secrets, *function._shared_volumes.values()]
-        if i not in [stub._client_mount, *stub._function_mounts.values()]
-    ]
-    if function._gpu:
-        items.append("- GPU")
+    items = [f"- {i}" for i in function.get_panel_items()]
     return Panel(
         Markdown("\n".join(items)),
         title=f"[bright_magenta]{idx}. [/bright_magenta][bold]{tag}[/bold]",

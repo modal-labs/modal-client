@@ -4,7 +4,7 @@ import pytest
 import sys
 from typing import List
 
-from modal import Image, Mount, Secret, SharedVolume, Stub
+from modal import Image, Mount, Secret, SharedVolume, Stub, gpu
 from modal.exception import InvalidError, NotFoundError
 from modal.image import _dockerhub_python_version
 from modal_proto import api_pb2
@@ -171,6 +171,7 @@ def test_image_pip_install_private_repos(servicer, client):
 
     bad_repo_refs = [
         "ecorp/private-one@1.0.0",
+        "gitspace.com/corp/private-one@1.0.0",
     ]
     for invalid_ref in bad_repo_refs:
         with pytest.raises(InvalidError):
@@ -182,15 +183,20 @@ def test_image_pip_install_private_repos(servicer, client):
 
     stub["image"] = Image.debian_slim().pip_install_private_repos(
         "github.com/corp/private-one@1.0.0",
+        "gitlab.com/corp2/private-two@0.0.2",
         git_user="erikbern",
-        secrets=[Secret({"GITHUB_TOKEN": "not-a-secret"})],
+        secrets=[Secret({"GITHUB_TOKEN": "not-a-secret"}), Secret({"GITLAB_TOKEN": "not-a-secret"})],
     )
 
     with stub.run(client=client) as running_app:
         layers = get_image_layers(running_app["image"].object_id, servicer)
-        assert len(layers[0].secret_ids) == 1
+        assert len(layers[0].secret_ids) == 2
         assert any(
             "pip install git+https://erikbern:$GITHUB_TOKEN@github.com/corp/private-one@1.0.0" in cmd
+            for cmd in layers[0].dockerfile_commands
+        )
+        assert any(
+            "pip install git+https://erikbern:$GITLAB_TOKEN@gitlab.com/corp2/private-two@0.0.2" in cmd
             for cmd in layers[0].dockerfile_commands
         )
 
@@ -314,3 +320,22 @@ def test_image_env(client, servicer):
     with stub.run(client=client) as running_app:
         layers = get_image_layers(running_app["image"].object_id, servicer)
         assert any("ENV HELLO=" in cmd and "world!" in cmd for cmd in layers[0].dockerfile_commands)
+
+
+def test_image_gpu(client, servicer):
+    stub = Stub(image=Image.debian_slim().run_commands("echo 0"))
+    with stub.run(client=client) as running_app:
+        layers = get_image_layers(running_app["image"].object_id, servicer)
+        assert layers[0].gpu_config.type == api_pb2.GPU_TYPE_UNSPECIFIED
+
+    # TODO(erikbern): reenable this warning when we actually support different GPU types
+    # with pytest.warns(DeprecationError):
+    stub = Stub(image=Image.debian_slim().run_commands("echo 1", gpu=True))
+    with stub.run(client=client) as running_app:
+        layers = get_image_layers(running_app["image"].object_id, servicer)
+        assert layers[0].gpu_config.type == api_pb2.GPU_TYPE_ANY
+
+    stub = Stub(image=Image.debian_slim().run_commands("echo 2", gpu=gpu.A10G()))
+    with stub.run(client=client) as running_app:
+        layers = get_image_layers(running_app["image"].object_id, servicer)
+        assert layers[0].gpu_config.type == api_pb2.GPU_TYPE_A10G

@@ -16,7 +16,7 @@ from modal_version import __version__
 
 from ._blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec
 from ._resolver import Resolver
-from .config import logger
+from .config import config, logger
 from .exception import InvalidError, NotFoundError
 from .object import Handle, Provider
 
@@ -26,10 +26,7 @@ def client_mount_name():
 
 
 class _MountHandle(Handle, type_prefix="mo"):
-    def __init__(self, local_dir=None, local_file=None, client=None, object_id=None):
-        self._local_dir = local_dir
-        self._local_file = local_file
-        super().__init__(client=client, object_id=object_id)
+    pass
 
 
 class _Mount(Provider[_MountHandle]):
@@ -78,8 +75,14 @@ class _Mount(Provider[_MountHandle]):
         self._remote_dir = remote_dir
         self._condition = condition
         self._recursive = recursive
+        self._is_local = True
         rep = f"Mount({self._local_file or self._local_dir})"
         super().__init__(self._load, rep)
+
+    def is_local(self):
+        # TODO(erikbern): since any remote ref bypasses the constructor,
+        # we can't rely on it to be set. Let's clean this up later.
+        return getattr(self, "_is_local", False)
 
     async def _get_files(self):
         if self._local_file:
@@ -171,7 +174,7 @@ class _Mount(Provider[_MountHandle]):
         resolver.set_message(f"Mounted {message_label} at {self._remote_dir}")
 
         logger.debug(f"Uploaded {len(uploaded_hashes)}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
-        return _MountHandle(self._local_dir, self._local_file, resolver.client, resp.mount_id)
+        return _MountHandle._from_id(resp.mount_id, resolver.client, None)
 
 
 Mount, AioMount = synchronize_apis(_Mount)
@@ -193,6 +196,13 @@ def _create_client_mount():
 
 
 _, aio_create_client_mount = synchronize_apis(_create_client_mount)
+
+
+def _get_client_mount():
+    if config["sync_entrypoint"]:
+        return _create_client_mount()
+    else:
+        return _Mount.from_name(client_mount_name(), namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
 
 
 async def _create_package_mounts(module_names: Collection[str]) -> List[_Mount]:

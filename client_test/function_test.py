@@ -8,7 +8,7 @@ from synchronicity.exceptions import UserCodeException
 
 from modal import Proxy, Stub
 from modal.exception import DeprecationError, InvalidError
-from modal.functions import FunctionCall, gather
+from modal.functions import Function, FunctionCall, gather
 from modal.stub import AioStub
 from modal_proto import api_pb2
 
@@ -156,7 +156,6 @@ async def test_generator(client, servicer):
         stub.generator(later_gen)
 
     later_gen_modal = stub.function(later_gen)
-    assert later_gen_modal.is_generator
 
     def dummy():
         yield "bar"
@@ -166,6 +165,7 @@ async def test_generator(client, servicer):
 
     assert len(servicer.cleared_function_calls) == 0
     with stub.run(client=client):
+        assert later_gen_modal.is_generator
         res = later_gen_modal.call()
         assert hasattr(res, "__iter__")  # strangely inspect.isgenerator returns false
         assert list(res) == ["bar", "baz"]
@@ -329,9 +329,21 @@ def test_closure_valued_serialized_function(client, servicer):
     assert functions["ret_bar"]() == "bar"
 
 
-def test_from_id(client, servicer):
-    # obj = Function.from_id("fu-123", client)
-    # assert obj.object_id == "fu-123"
+def test_from_id_internal(client, servicer):
+    obj = FunctionCall._from_id("fc-123", client, None)
+    assert obj.object_id == "fc-123"
 
+
+def test_from_id(client, servicer):
+    # Used in a few examples to construct FunctionCall objects
     obj = FunctionCall.from_id("fc-123", client)
     assert obj.object_id == "fc-123"
+
+
+def test_panel(client, servicer):
+    stub = Stub()
+    stub.function(dummy)
+    function = stub["dummy"]
+    assert isinstance(function, Function)
+    image = stub._get_default_image()
+    assert function.get_panel_items() == [repr(image)]
