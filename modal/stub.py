@@ -514,13 +514,14 @@ class _Stub:
 
         return mounts
 
-    def _create_function_handle(self, info: FunctionInfo, is_web_endpoint: bool = False):
+    def _create_function_handle(self, info: FunctionInfo, is_web_endpoint: bool = False) -> _FunctionHandle:
         tag = info.get_tag()
         if self._app:
             # This case only happens if the function is created lazily inside a container,
             # so it's a bit of an edge case
-            return self._app[tag]
-            # TOOD(erikbern): handle KeyError
+            handle = self._app[tag]  # TOOD(erikbern): handle KeyError
+            assert isinstance(handle, _FunctionHandle)  # TODO(erikbern): handle failure
+            return handle
         else:
             function_handle = _FunctionHandle._new()
             function_handle._initialize_from_proto(None)
@@ -530,7 +531,7 @@ class _Stub:
             self._function_handles[tag] = function_handle
             return function_handle
 
-    def _add_function(self, function: _Function, mounts: List[_Mount]) -> _FunctionHandle:
+    def _add_function(self, function: _Function, mounts: List[_Mount]):
         if function.tag in self._blueprint:
             old_function = self._blueprint[function.tag]
             if isinstance(old_function, _Function):
