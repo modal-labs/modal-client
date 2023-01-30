@@ -65,7 +65,7 @@ async def test_is_inside(servicer, unix_servicer, aio_client, aio_container_clie
         unix_servicer.app_objects[app_id] = servicer.app_objects[app_id]
 
         # Pretend that we're inside the container
-        await AioApp.init_container(aio_container_client, app_id)
+        await AioApp.init_container(aio_container_client, app_id, stub)
 
         # Pretend that we're inside image 1
         with mock.patch.dict(os.environ, {"MODAL_IMAGE_ID": image_1_id}):
