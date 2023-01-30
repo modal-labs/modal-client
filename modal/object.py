@@ -33,12 +33,22 @@ class Handle(metaclass=ObjectMeta):
     def __init__(self):
         raise Exception("__init__ disallowed, use proper classmethods")
 
+    def _init(self):
+        self._client = None
+        self._object_id = None
+
+    @classmethod
+    def _new(cls):
+        obj = Handle.__new__(cls)
+        obj._init()
+        return obj
+
     def _initialize_handle(self, client: _Client, object_id: str):
         """mdmd:hidden"""
         self._client = client
         self._object_id = object_id
 
-    def _initialize_from_proto(self, proto: Message):
+    def _initialize_from_proto(self, proto: Optional[Message]):
         pass  # default implementation
 
     @staticmethod
@@ -50,11 +60,20 @@ class Handle(metaclass=ObjectMeta):
         if prefix not in ObjectMeta.prefix_to_type:
             raise InvalidError(f"Object prefix {prefix} does not correspond to a type")
         object_cls = ObjectMeta.prefix_to_type[prefix]
-        obj = Handle.__new__(object_cls)
-        Handle._initialize_handle(obj, client, object_id)
+        obj = object_cls._new()
+        obj._initialize_handle(client, object_id)
         if proto is not None:
             obj._initialize_from_proto(proto)
         return obj
+
+    @classmethod
+    async def from_id(cls, object_id: str, client: Optional[_Client] = None):
+        # This is used in a few examples to construct FunctionCall objects
+        # TODO(erikbern): doesn't use _initialize_from_proto - let's use AppLookupObjectRequest?
+        # TODO(erikbern): this should probably be on the provider?
+        if client is None:
+            client = await _Client.from_env()
+        return cls._from_id(object_id, client, None)
 
     @property
     def object_id(self):

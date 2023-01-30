@@ -136,8 +136,12 @@ def choose_function_interactive(stub: _Stub, console: Console) -> str:
 
 
 def infer_function_or_help(_stub: _Stub, interactive: bool):
-    function_choices = list(set(_stub.registered_functions.keys()) | set(_stub.registered_entrypoints.keys()))
+    function_choices = list(
+        (set(_stub.registered_functions.keys()) - set(_stub.registered_web_endpoints))
+        | set(_stub.registered_entrypoints.keys())
+    )
     registered_functions_str = "\n".join(sorted(function_choices))
+    # TODO(erikbern): better error message if there's *zero* functions / entrypoints
     if len(_stub.registered_entrypoints) == 1:
         # if there is a single local_entrypoint, use that regardless of
         # other functions on the stub

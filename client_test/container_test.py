@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 from __future__ import annotations
 import json
-import platform
 import pytest
 import sys
 import time
@@ -16,15 +15,11 @@ from modal.client import Client
 from modal.exception import InvalidError
 from modal_proto import api_pb2
 
+from .supports.skip import skip_windows
+
 EXTRA_TOLERANCE_DELAY = 1.0
 FUNCTION_CALL_ID = "fc-123"
 SLEEP_DELAY = 0.1
-
-
-skip_windows = pytest.mark.skipif(
-    platform.system() == "Windows",
-    reason="Windows doesn't have UNIX sockets",
-)
 
 
 def _get_inputs(args=((42,), {})) -> list[api_pb2.FunctionGetInputsResponse]:

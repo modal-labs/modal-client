@@ -4,7 +4,7 @@ import pytest
 import sys
 from typing import List
 
-from modal import Image, Mount, Secret, SharedVolume, Stub
+from modal import Image, Mount, Secret, SharedVolume, Stub, gpu
 from modal.exception import InvalidError, NotFoundError
 from modal.image import _dockerhub_python_version
 from modal_proto import api_pb2
@@ -314,3 +314,22 @@ def test_image_env(client, servicer):
     with stub.run(client=client) as running_app:
         layers = get_image_layers(running_app["image"].object_id, servicer)
         assert any("ENV HELLO=" in cmd and "world!" in cmd for cmd in layers[0].dockerfile_commands)
+
+
+def test_image_gpu(client, servicer):
+    stub = Stub(image=Image.debian_slim().run_commands("echo 0"))
+    with stub.run(client=client) as running_app:
+        layers = get_image_layers(running_app["image"].object_id, servicer)
+        assert layers[0].gpu_config.type == api_pb2.GPU_TYPE_UNSPECIFIED
+
+    # TODO(erikbern): reenable this warning when we actually support different GPU types
+    # with pytest.warns(DeprecationError):
+    stub = Stub(image=Image.debian_slim().run_commands("echo 1", gpu=True))
+    with stub.run(client=client) as running_app:
+        layers = get_image_layers(running_app["image"].object_id, servicer)
+        assert layers[0].gpu_config.type == api_pb2.GPU_TYPE_ANY
+
+    stub = Stub(image=Image.debian_slim().run_commands("echo 2", gpu=gpu.A10G()))
+    with stub.run(client=client) as running_app:
+        layers = get_image_layers(running_app["image"].object_id, servicer)
+        assert layers[0].gpu_config.type == api_pb2.GPU_TYPE_A10G

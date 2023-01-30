@@ -272,9 +272,8 @@ class _Stub:
                 create_progress.label = step_completed("Created objects.")
                 output_mgr.print_if_visible(create_progress)
 
-                # Update all functions client-side to point to the running app
+                # Update all functions client-side to have the output mgr
                 for tag, obj in self._function_handles.items():
-                    obj._set_local_app(app)
                     obj._set_output_mgr(output_mgr)
 
                 # Cancel logs loop after creating objects for a deployment.
@@ -298,7 +297,6 @@ class _Stub:
                 # mute cancellation errors on all function handles to prevent exception spam
                 for tag, obj in self._function_handles.items():
                     obj._set_mute_cancellation(True)
-                    getattr(app, tag)._set_mute_cancellation(True)  # app has a separate function handle
 
                 if detach:
                     logs_loop.cancel()
@@ -539,21 +537,24 @@ class _Stub:
             if mount.is_local():
                 self._local_mounts.append(mount)
 
-        # We now need to create an actual handle.
-        # This is a bit weird since the object isn't actually created yet,
-        # but functions are weird and live and the global scope
-        # These will be set with the correct object id when the app starts.
-        function_handle = _FunctionHandle.from_stub_dummy(function)
+        function_handle = function._precreated_function_handle
         self._function_handles[function.tag] = function_handle
         return function_handle
 
     @property
     def registered_functions(self) -> Dict[str, _FunctionHandle]:
+        """All modal.Function objects registered on the stub."""
         return self._function_handles
 
     @property
     def registered_entrypoints(self) -> Dict[str, LocalEntrypoint]:
+        """All local CLI entrypoints registered on the stub."""
         return self._local_entrypoints
+
+    @property
+    def registered_web_endpoints(self) -> List[str]:
+        """Names of web endpoint (ie. webhook) functions registered on the stub."""
+        return [tag for tag, handle in self._function_handles.items() if handle.is_web_endpoint]
 
     @decorator_with_options
     def local_entrypoint(self, raw_f=None, name: Optional[str] = None):
@@ -660,6 +661,7 @@ class _Stub:
 
     @decorator_with_options
     def generator(self, raw_f=None, **kwargs):
+        """Stub.generator is no longer supported. Use .function() instead."""
         deprecation_error(date(2022, 12, 1), "Stub.generator is no longer supported. Use .function() instead.")
 
     @decorator_with_options
