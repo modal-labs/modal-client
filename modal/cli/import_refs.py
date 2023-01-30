@@ -119,7 +119,7 @@ def make_function_panel(idx: int, tag: str, function: _Function, stub: _Stub) ->
 
 def choose_function_interactive(stub: _Stub, console: Console) -> str:
     # TODO: allow selection of local_entrypoints when used from `modal run`
-    functions = list(stub.registered_functions.items())
+    functions = [(tag, function_handle._function) for tag, function_handle in stub.registered_functions.items()]
     function_panels = [make_function_panel(idx, tag, obj, stub) for idx, (tag, obj) in enumerate(functions)]
 
     renderable = Panel(Group(*function_panels))
@@ -199,7 +199,7 @@ def import_stub(stub_ref: str) -> _Stub:
 
     try:
         _stub = synchronizer._translate_in(raw_object)
-    except:
+    except Exception:
         raise click.UsageError(f"{raw_object} is not a Modal Stub")
 
     if not isinstance(_stub, _Stub):
@@ -242,7 +242,7 @@ def import_function(
 
     try:
         stub_or_function = synchronizer._translate_in(raw_object)
-    except:
+    except Exception:
         _show_function_ref_help(import_ref)
         sys.exit(1)
 

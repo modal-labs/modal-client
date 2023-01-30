@@ -8,7 +8,7 @@ import sys
 import warnings
 from datetime import date
 from enum import Enum
-from typing import AsyncGenerator, Callable, Collection, Dict, List, Optional, Union
+from typing import AsyncGenerator, Collection, Dict, List, Optional, Union
 
 from rich.tree import Tree
 
@@ -101,7 +101,7 @@ class _Stub:
     _mounts: Collection[_Mount]
     _secrets: Collection[_Secret]
     _function_handles: Dict[str, _FunctionHandle]
-    _local_entrypoints: Dict[str, Callable]
+    _local_entrypoints: Dict[str, LocalEntrypoint]
     _local_mounts: List[_Mount]
 
     def __init__(
@@ -126,7 +126,7 @@ class _Stub:
         self._mounts = mounts
         self._secrets = secrets
         self._function_handles = {}
-        self._local_entrypoints: Dict[str, LocalEntrypoint] = {}
+        self._local_entrypoints = {}
         self._local_mounts = []
         super().__init__()
 

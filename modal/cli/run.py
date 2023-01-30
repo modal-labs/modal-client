@@ -10,7 +10,7 @@ from rich.console import Console
 from synchronicity import Interface
 
 from modal.exception import InvalidError
-from modal.functions import _FunctionHandle
+from modal.functions import _Function, _FunctionHandle
 from modal.stub import LocalEntrypoint
 from modal_utils.async_utils import synchronizer
 
@@ -137,7 +137,7 @@ To run the hello_world function (or local entrypoint) in my_app.py:
 If your module only has a single stub called `stub` and your stub has a single local entrypoint (or single function), you can omit the stub/function part:
 
  > modal run my_app.py
- 
+
 Instead of pointing to a file, you can also use the Python module path to a a file:
 
 > modal run my_project.my_app
@@ -204,7 +204,8 @@ def shell(
     if not console.is_terminal:
         raise click.UsageError("`modal shell` can only be run from a terminal.")
 
-    _function = import_function(func_ref)
+    _function = import_function(func_ref, accept_local_entrypoint=False, interactive=True)
+    assert isinstance(_function, _Function)  # ensured by accept_local_entrypoint=False
     _stub = _function._stub
     blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
 
