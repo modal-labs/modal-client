@@ -1,7 +1,9 @@
 # Copyright Modal Labs 2022
+import os
 import pytest
+from unittest import mock
 
-from modal.aio import AioApp, AioFunctionHandle, AioStub, aio_container_app
+from modal.aio import AioApp, AioFunctionHandle, AioImage, AioStub, aio_container_app
 
 from .supports.skip import skip_windows
 
@@ -42,3 +44,40 @@ async def test_container_function_initialization(unix_servicer, aio_container_cl
     # This might happen if some local module is imported lazily
     my_f_2_container = stub.function(my_f_2)
     assert await my_f_2_container.call(42) == 1764
+
+
+@skip_windows
+@pytest.mark.asyncio
+async def test_is_inside(servicer, unix_servicer, aio_client, aio_container_client):
+    image_1 = AioImage.debian_slim().pip_install(["abc"])
+    image_2 = AioImage.debian_slim().pip_install(["def"])
+    stub = AioStub(image=image_1, image_2=image_2)
+
+    # No container is running
+    assert not stub.is_inside()
+    assert not stub.is_inside(image_1)
+    assert not stub.is_inside(image_2)
+
+    # Run container
+    async with stub.run(client=aio_client) as app:
+        app_id = app.app_id
+        image_1_id = app["image"].object_id
+        image_2_id = app["image_2"].object_id
+
+        # Copy the app objects to the container servicer
+        unix_servicer.app_objects[app_id] = servicer.app_objects[app_id]
+
+        # Pretend that we're inside the container
+        await AioApp.init_container(aio_container_client, app_id)
+
+        # Pretend that we're inside image 1
+        with mock.patch.dict(os.environ, {"MODAL_IMAGE_ID": image_1_id}):
+            assert stub.is_inside()
+            assert stub.is_inside(image_1)
+            assert not stub.is_inside(image_2)
+
+        # Pretend that we're inside image 2
+        with mock.patch.dict(os.environ, {"MODAL_IMAGE_ID": image_2_id}):
+            assert not stub.is_inside()  # refers to the default image (todo: should we?)
+            assert not stub.is_inside(image_1)
+            assert stub.is_inside(image_2)
