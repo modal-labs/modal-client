@@ -90,11 +90,8 @@ def test_cloud_provider_selection(client, servicer):
         stub.function(dummy, cloud="gcp")
 
 
-A100_GPU_MEMORY_MAPPING = {
-    0: api_pb2.GPU_TYPE_A100,
-    20: api_pb2.GPU_TYPE_A100_20G,
-    40: api_pb2.GPU_TYPE_A100
-}
+A100_GPU_MEMORY_MAPPING = {0: api_pb2.GPU_TYPE_A100, 20: api_pb2.GPU_TYPE_A100_20G, 40: api_pb2.GPU_TYPE_A100}
+
 
 @pytest.mark.parametrize("memory,gpu_type", A100_GPU_MEMORY_MAPPING.items())
 def test_memory_selection_gpu_variant(client, servicer, memory, gpu_type):
