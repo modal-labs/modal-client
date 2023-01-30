@@ -208,14 +208,23 @@ def import_stub(stub_ref: str) -> _Stub:
     return _stub
 
 
-def _show_function_ref_help(stub_ref: ImportRef) -> None:
+def _show_function_ref_help(stub_ref: ImportRef, base_cmd) -> None:
     object_path = stub_ref.object_path
     import_path = stub_ref.file_or_module
     error_console = Console(stderr=True)
-    error_console.print(
-        f"[bold red]Could not find Modal function or local entrypoint '{object_path}' in {import_path}.[/bold red]"
-    )
-    guidance_msg = f"""For example, the `foo` function in:
+    if object_path:
+        error_console.print(
+            f"[bold red]Could not find Modal function or local entrypoint '{object_path}' in '{import_path}'.[/bold red]"
+        )
+    else:
+        error_console.print(
+            f"[bold red]No function was specified, and no [green]`stub`[/green] variable could be found in '{import_path}'.[/bold red]"
+        )
+    guidance_msg = f"""
+Usage:
+{base_cmd} <file_or_module_path>::<function_name>
+
+Given the following example `app.py`:
 ```
 stub = modal.Stub()
 
@@ -223,13 +232,12 @@ stub = modal.Stub()
 def foo():
     ...
 ```
-would be be specified as `{import_path}::foo` or `{import_path}::stub.foo"""
-    md = Markdown(guidance_msg)
-    error_console.print(md)
+You would run foo as [bold green]{base_cmd} app.py::foo[/bold green]"""
+    error_console.print(guidance_msg)
 
 
 def import_function(
-    func_ref: str, accept_local_entrypoint=True, interactive=False
+    func_ref: str, base_cmd: str, accept_local_entrypoint=True, interactive=False
 ) -> Union[_Function, LocalEntrypoint]:
     import_ref = parse_import_ref(func_ref)
     try:
@@ -237,13 +245,13 @@ def import_function(
         obj_path = import_ref.object_path or DEFAULT_STUB_NAME  # get variable named "stub" by default
         raw_object = get_by_object_path(module, obj_path)
     except NoSuchObject:
-        _show_function_ref_help(import_ref)
+        _show_function_ref_help(import_ref, base_cmd)
         sys.exit(1)
 
     try:
         stub_or_function = synchronizer._translate_in(raw_object)
     except Exception:
-        _show_function_ref_help(import_ref)
+        _show_function_ref_help(import_ref, base_cmd)
         sys.exit(1)
 
     if isinstance(stub_or_function, _Stub):
