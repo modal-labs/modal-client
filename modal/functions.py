@@ -446,6 +446,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
 
     _web_url: Optional[str]
     _function: "_Function"
+    _stub: "_Stub"  # Used by the container entrypoint to look up the stub
 
     def _set_mute_cancellation(self, value=True):
         self._mute_cancellation = value
@@ -483,6 +484,13 @@ class _FunctionHandle(Handle, type_prefix="fu"):
 
     def _set_raw_f(self, raw_f):
         self._raw_f = raw_f
+
+    def set_stub(self, stub: "_Stub"):
+        self._stub = stub
+
+    @property
+    def stub(self) -> "_Stub":
+        return self._stub
 
     @property
     def web_url(self) -> str:

@@ -529,6 +529,7 @@ class _Stub:
                 self._local_mounts.append(mount)
 
         function_handle = function._precreated_function_handle
+        function_handle.set_stub(self)  # Used by the container entrypoint to find the stub
         self._function_handles[function.tag] = function_handle
         return function_handle
 

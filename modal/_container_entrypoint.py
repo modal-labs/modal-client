@@ -469,7 +469,7 @@ async def call_function_async(
 
 
 @wrap()
-def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> tuple[Any, Callable, bool]:
+def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> tuple[Any, Callable, bool, Optional["_Stub"]]:
     # This is not in function_io_manager, so that any global scope code that runs during import
     # runs on the main thread.
 
@@ -481,10 +481,17 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> tuple[A
         module = importlib.import_module(function_def.module_name)
         cls, fun = load_function_from_module(module, function_def.function_name)
 
+    stub: Optional["_Stub"] = None
+
     # The decorator is typically in global scope, but may have been applied independently
     if isinstance(fun, (FunctionHandle, AioFunctionHandle)):
-        _function_proxy = synchronizer._translate_in(fun)
-        fun = _function_proxy.get_raw_f()
+        _function_handle = synchronizer._translate_in(fun)
+        fun = _function_handle.get_raw_f()
+        stub = _function_handle.stub
+    else:
+        # TODO(erikbern): This warning might be a bit extra pedantic.
+        # It happens when functions aren't decorated in global scope.
+        logger.warning("Was not able to obtain stub." " Accessing properties on the stub may not work.")
 
     # Check this property before we turn it into a method
     is_async = get_is_async(fun)
@@ -501,17 +508,17 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> tuple[A
     if function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP:
         # function returns an asgi_app, that we can use as a callable.
         asgi_app = fun()
-        return obj, asgi_app_wrapper(asgi_app), True
+        return obj, asgi_app_wrapper(asgi_app), True, stub
     elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_WSGI_APP:
         # function returns an wsgi_app, that we can use as a callable.
         wsgi_app = fun()
-        return obj, wsgi_app_wrapper(wsgi_app), True
+        return obj, wsgi_app_wrapper(wsgi_app), True, stub
     elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
         # function is webhook without an ASGI app. Create one for it.
         asgi_app = webhook_asgi_app(fun, function_def.webhook_config.method)
-        return obj, asgi_app_wrapper(asgi_app), True
+        return obj, asgi_app_wrapper(asgi_app), True, stub
     else:
-        return obj, fun, is_async
+        return obj, fun, is_async, stub
 
 
 def main(container_args: api_pb2.ContainerArguments, client: Client):
@@ -525,6 +532,8 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     _function_io_manager = _FunctionIOManager(container_args, client)
     function_io_manager, aio_function_io_manager = synchronize_apis(_function_io_manager)
 
+    # Initialize the app
+    # TODO(erikbern): use the stub here
     function_io_manager.initialize_app()
 
     with function_io_manager.heartbeats():
@@ -538,7 +547,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         # Initialize the function
         with function_io_manager.handle_user_exception():
-            obj, fun, is_async = import_function(container_args.function_def, ser_cls, ser_fun)
+            obj, fun, is_async, stub = import_function(container_args.function_def, ser_cls, ser_fun)
 
         if container_args.function_def.pty_info.enabled:
             from modal import container_app
