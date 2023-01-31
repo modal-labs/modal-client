@@ -460,26 +460,16 @@ class _FunctionHandle(Handle, type_prefix="fu"):
             False  # set when a user terminates the app intentionally, to prevent useless traceback spam
         )
         self._function_name = None
-        self._is_web_endpoint = None
 
         if proto is not None:
             assert isinstance(proto, api_pb2.Function)
             self._is_generator = proto.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
             self._web_url = proto.web_url
-            self._is_web_endpoint = bool(proto.web_url)
             self._function_name = proto.function_name
 
     def _set_output_mgr(self, output_mgr: OutputManager):
         """mdmd:hidden"""
         self._output_mgr = output_mgr
-
-    @property
-    def is_web_endpoint(self):
-        return self._is_web_endpoint
-
-    def _set_is_web_endpoint(self, value: bool):
-        # Used by provider to pre-set this for not-yet created handles
-        self._is_web_endpoint = value
 
     def _set_raw_f(self, raw_f):
         self._raw_f = raw_f

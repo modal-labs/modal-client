@@ -91,6 +91,7 @@ class _Stub:
     _mounts: Collection[_Mount]
     _secrets: Collection[_Secret]
     _function_handles: Dict[str, _FunctionHandle]
+    _web_endpoints: List[str]  # Used by the CLI
     _local_entrypoints: Dict[str, Callable]
     _local_mounts: List[_Mount]
     _app: Optional[_App]
@@ -119,6 +120,7 @@ class _Stub:
         self._function_handles = {}
         self._local_entrypoints = {}
         self._local_mounts = []
+        self._web_endpoints = []
 
         self._app = None
         if not is_local():
@@ -504,7 +506,7 @@ class _Stub:
 
         return mounts
 
-    def _get_function_handle(self, info: FunctionInfo, is_web_endpoint: bool) -> _FunctionHandle:
+    def _get_function_handle(self, info: FunctionInfo) -> _FunctionHandle:
         tag = info.get_tag()
         function_handle: Optional[_FunctionHandle] = None
         if self._app:
@@ -523,7 +525,6 @@ class _Stub:
             function_handle = _FunctionHandle._new()
             function_handle._initialize_from_proto(None)
 
-        function_handle._set_is_web_endpoint(is_web_endpoint)
         function_handle._set_raw_f(info.raw_f)
         self._function_handles[tag] = function_handle
         return function_handle
@@ -560,7 +561,7 @@ class _Stub:
     @property
     def registered_web_endpoints(self) -> List[str]:
         """Names of web endpoint (ie. webhook) functions registered on the stub."""
-        return [tag for tag, handle in self._function_handles.items() if handle.is_web_endpoint]
+        return self._web_endpoints
 
     @decorator_with_options
     def local_entrypoint(self, raw_f=None, name: Optional[str] = None):
@@ -622,7 +623,7 @@ class _Stub:
         if image is None:
             image = self._get_default_image()
         info = FunctionInfo(raw_f, serialized=serialized, name_override=name)
-        function_handle = self._get_function_handle(info, False)
+        function_handle = self._get_function_handle(info)
         base_mounts = self._get_function_mounts(info)
         secrets = [*self._secrets, *secrets]
 
@@ -720,7 +721,8 @@ class _Stub:
         if image is None:
             image = self._get_default_image()
         info = FunctionInfo(raw_f)
-        function_handle = self._get_function_handle(info, True)
+        function_handle = self._get_function_handle(info)
+        self._web_endpoints.append(info.get_tag())
         base_mounts = self._get_function_mounts(info)
         secrets = [*self._secrets, *secrets]
 
@@ -800,7 +802,8 @@ class _Stub:
         if image is None:
             image = self._get_default_image()
         info = FunctionInfo(asgi_app)
-        function_handle = self._get_function_handle(info, True)
+        function_handle = self._get_function_handle(info)
+        self._web_endpoints.append(info.get_tag())
         base_mounts = self._get_function_mounts(info)
         secrets = [*self._secrets, *secrets]
 
