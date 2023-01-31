@@ -209,7 +209,7 @@ class _App:
         # Just used for tests
         global _is_container_app, _container_app
         _is_container_app = False
-        _container_app.__init__(None, None, None, None)
+        _container_app.__init__(None, None, None, None)  # type: ignore
 
 
 App, AioApp = synchronize_apis(_App)
