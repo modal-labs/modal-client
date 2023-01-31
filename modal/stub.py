@@ -414,7 +414,7 @@ class _Stub:
     async def deploy(
         self,
         name: str = None,  # Unique name of the deployment. Subsequent deploys with the same name overwrites previous ones. Falls back to the app name
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client=None,
         stdout=None,
         show_progress=None,
