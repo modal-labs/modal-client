@@ -81,3 +81,28 @@ async def test_is_inside(servicer, unix_servicer, aio_client, aio_container_clie
             assert not stub.is_inside()  # refers to the default image (todo: should we?)
             assert not stub.is_inside(image_1)
             assert stub.is_inside(image_2)
+
+
+def f():
+    pass
+
+
+@skip_windows
+@pytest.mark.asyncio
+async def test_is_inside_default_image(servicer, unix_servicer, aio_client, aio_container_client):
+    stub = AioStub()
+    stub.function(f)
+
+    assert not stub.is_inside()
+
+    async with stub.run(client=aio_client) as app:
+        from modal.stub import _default_image
+
+        default_image_handle = await app._load(_default_image)
+        default_image_id = default_image_handle.object_id
+        app_id = app.app_id
+
+        await AioApp.init_container(aio_container_client, app_id)
+
+        with mock.patch.dict(os.environ, {"MODAL_IMAGE_ID": default_image_id}):
+            assert stub.is_inside()
