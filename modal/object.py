@@ -41,6 +41,7 @@ class Handle(metaclass=ObjectMeta):
     def _new(cls):
         obj = Handle.__new__(cls)
         obj._init()
+        obj._initialize_from_proto(None)
         return obj
 
     def _initialize_handle(self, client: _Client, object_id: str):
@@ -62,8 +63,7 @@ class Handle(metaclass=ObjectMeta):
         object_cls = ObjectMeta.prefix_to_type[prefix]
         obj = object_cls._new()
         obj._initialize_handle(client, object_id)
-        if proto is not None:
-            obj._initialize_from_proto(proto)
+        obj._initialize_from_proto(proto)
         return obj
 
     @classmethod

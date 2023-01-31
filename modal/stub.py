@@ -523,7 +523,6 @@ class _Stub:
 
         if function_handle is None:
             function_handle = _FunctionHandle._new()
-            function_handle._initialize_from_proto(None)
 
         function_handle._set_raw_f(info.raw_f)
         self._function_handles[tag] = function_handle
