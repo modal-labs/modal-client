@@ -676,28 +676,6 @@ class _FunctionHandle(Handle, type_prefix="fu"):
 FunctionHandle, AioFunctionHandle = synchronize_apis(_FunctionHandle)
 
 
-def _get_container_function(tag: str):
-    # TODO(erikbern): this is a bit if a janky solution to the problem of assigning
-    # ids to all global functions. We can't do this from the app, since the app doesn't
-    # "know" its stub and its providers. So we "steal" the objects from here just based
-    # on the tag. This is ugly but will work 99.99% of the time. I'll think of something
-    # better!
-    from .app import _container_app
-
-    if _container_app is None:
-        return None
-
-    try:
-        handle = _container_app[tag]
-    except KeyError:
-        return None
-
-    if isinstance(handle, _FunctionHandle):
-        return handle
-    else:
-        return None
-
-
 class _Function(Provider[_FunctionHandle]):
     """Functions are the basic units of serverless execution on Modal.
 
@@ -710,6 +688,7 @@ class _Function(Provider[_FunctionHandle]):
 
     def __init__(
         self,
+        function_handle: _FunctionHandle,
         function_info: FunctionInfo,
         image=None,
         secret: Optional[_Secret] = None,
@@ -818,14 +797,7 @@ class _Function(Provider[_FunctionHandle]):
         if self._gpu:
             self._panel_items.append("GPU")
 
-        function_handle = _get_container_function(self._tag)
-        if function_handle is None:
-            function_handle = _FunctionHandle._new()
-        function_handle._initialize_from_proto(None)
-        function_handle._set_raw_f(raw_f)
-        function_handle._set_is_web_endpoint(webhook_config is not None)
-
-        self._precreated_function_handle = function_handle
+        self._function_handle = function_handle
 
         rep = "Function({self._tag})"
         super().__init__(self._load, rep)
@@ -986,11 +958,11 @@ class _Function(Provider[_FunctionHandle]):
             resolver.set_message(f"Created {self._tag}.")
 
         # Update the precreated function handle (todo: hack until we merge providers/handles)
-        self._precreated_function_handle._initialize_handle(resolver.client, response.function_id)
-        self._precreated_function_handle._initialize_from_proto(response.function)
+        self._function_handle._initialize_handle(resolver.client, response.function_id)
+        self._function_handle._initialize_from_proto(response.function)
 
         # Instead of returning a new object, just return the precreated one
-        return self._precreated_function_handle
+        return self._function_handle
 
     def get_panel_items(self) -> List[str]:
         return self._panel_items

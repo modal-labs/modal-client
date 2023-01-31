@@ -22,7 +22,7 @@ from ._ipython import is_notebook
 from ._live_reload import MODAL_AUTORELOAD_ENV, restart_serve
 from ._output import OutputManager, step_completed, step_progress
 from ._pty import exec_cmd, write_stdin_to_pty_stream
-from .app import _App, container_app, is_local
+from .app import _App, _container_app, is_local
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
 from .exception import InvalidError, deprecation_error
@@ -125,7 +125,7 @@ class _Stub:
             # TODO(erikbern): in theory there could be multiple stubs defined.
             # We should try to determine whether this is in fact the "right" one.
             # We could probably do this by looking at the app's name.
-            self._app = container_app
+            self._app = _container_app
 
     @property
     def name(self) -> str:
@@ -183,7 +183,7 @@ class _Stub:
         assert isinstance(image, _Image)
         for tag, provider in self._blueprint.items():
             if provider == image:
-                image_handle = container_app[tag]
+                image_handle = self._app[tag]
                 break
         else:
             raise InvalidError(
@@ -503,7 +503,31 @@ class _Stub:
 
         return mounts
 
-    def _add_function(self, function: _Function, mounts: List[_Mount]) -> _FunctionHandle:
+    def _get_function_handle(self, info: FunctionInfo, is_web_endpoint: bool) -> _FunctionHandle:
+        tag = info.get_tag()
+        function_handle: Optional[_FunctionHandle] = None
+        if self._app:
+            # Grab the existing function handle from the running app
+            # TODO: handle missing items, or wrong types
+            try:
+                handle = self._app[tag]
+                if isinstance(handle, _FunctionHandle):
+                    function_handle = handle
+                else:
+                    logger.warning(f"Object {tag} has wrong type {type(handle)}")
+            except KeyError:
+                logger.warning(f"Could not find app function {tag}")
+
+        if function_handle is None:
+            function_handle = _FunctionHandle._new()
+            function_handle._initialize_from_proto(None)
+
+        function_handle._set_is_web_endpoint(is_web_endpoint)
+        function_handle._set_raw_f(info.raw_f)
+        self._function_handles[tag] = function_handle
+        return function_handle
+
+    def _add_function(self, function: _Function, mounts: List[_Mount]):
         if function.tag in self._blueprint:
             old_function = self._blueprint[function.tag]
             if isinstance(old_function, _Function):
@@ -521,10 +545,6 @@ class _Stub:
         for mount in mounts:
             if mount.is_local():
                 self._local_mounts.append(mount)
-
-        function_handle = function._precreated_function_handle
-        self._function_handles[function.tag] = function_handle
-        return function_handle
 
     @property
     def registered_functions(self) -> List[str]:
@@ -601,6 +621,7 @@ class _Stub:
         if image is None:
             image = self._get_default_image()
         info = FunctionInfo(raw_f, serialized=serialized, name_override=name)
+        function_handle = self._get_function_handle(info, False)
         base_mounts = self._get_function_mounts(info)
         secrets = [*self._secrets, *secrets]
 
@@ -616,6 +637,7 @@ class _Stub:
             is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
 
         function = _Function(
+            function_handle,
             info,
             image=image,
             secret=secret,
@@ -641,7 +663,8 @@ class _Stub:
             cloud_provider=cloud,
         )
 
-        return self._add_function(function, [*base_mounts, *mounts])
+        self._add_function(function, [*base_mounts, *mounts])
+        return function_handle
 
     @decorator_with_options
     def generator(self, raw_f=None, **kwargs):
@@ -696,6 +719,7 @@ class _Stub:
         if image is None:
             image = self._get_default_image()
         info = FunctionInfo(raw_f)
+        function_handle = self._get_function_handle(info, True)
         base_mounts = self._get_function_mounts(info)
         secrets = [*self._secrets, *secrets]
 
@@ -705,6 +729,7 @@ class _Stub:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
 
         function = _Function(
+            function_handle,
             info,
             image=image,
             secret=secret,
@@ -730,7 +755,8 @@ class _Stub:
             keep_warm=keep_warm,
             cloud_provider=cloud,
         )
-        return self._add_function(function, [*base_mounts, *mounts])
+        self._add_function(function, [*base_mounts, *mounts])
+        return function_handle
 
     @decorator_with_options
     def asgi(
@@ -773,6 +799,7 @@ class _Stub:
         if image is None:
             image = self._get_default_image()
         info = FunctionInfo(asgi_app)
+        function_handle = self._get_function_handle(info, True)
         base_mounts = self._get_function_mounts(info)
         secrets = [*self._secrets, *secrets]
 
@@ -782,6 +809,7 @@ class _Stub:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
 
         function = _Function(
+            function_handle,
             info,
             image=image,
             secret=secret,
@@ -802,7 +830,8 @@ class _Stub:
             keep_warm=keep_warm,
             cloud_provider=cloud,
         )
-        return self._add_function(function, [*base_mounts, *mounts])
+        self._add_function(function, [*base_mounts, *mounts])
+        return function_handle
 
     @decorator_with_options
     def wsgi(

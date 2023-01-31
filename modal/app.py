@@ -113,7 +113,6 @@ class _App:
 
     async def _create_all_objects(self, progress: Tree, new_app_state: int):  # api_pb2.AppState.V
         """Create objects that have been defined but not created on the server."""
-        print(self._stub._blueprint)
         for tag, provider in self._stub._blueprint.items():
             existing_object_id = self._tag_to_existing_id.get(tag)
             self._tag_to_object[tag] = await self._load(provider, progress, existing_object_id)
