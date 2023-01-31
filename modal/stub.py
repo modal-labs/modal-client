@@ -28,7 +28,7 @@ from .config import config, logger
 from .exception import InvalidError, deprecation_error
 from .functions import _Function, _FunctionHandle
 from .gpu import GPU_T
-from .image import _Image
+from .image import _Image, _ImageHandle
 from .mount import _get_client_mount, _Mount
 from .object import Provider
 from .proxy import _Proxy
@@ -195,6 +195,7 @@ class _Stub:
                 )
             )
 
+        assert isinstance(image_handle, _ImageHandle)
         return image_handle._is_inside()
 
     async def _heartbeat(self, client, app_id):
