@@ -93,6 +93,7 @@ class _Stub:
     _function_handles: Dict[str, _FunctionHandle]
     _local_entrypoints: Dict[str, Callable]
     _local_mounts: List[_Mount]
+    _app: Optional[_App]
 
     def __init__(
         self,
@@ -118,7 +119,13 @@ class _Stub:
         self._function_handles = {}
         self._local_entrypoints = {}
         self._local_mounts = []
-        super().__init__()
+
+        self._app = None
+        if not is_local():
+            # TODO(erikbern): in theory there could be multiple stubs defined.
+            # We should try to determine whether this is in fact the "right" one.
+            # We could probably do this by looking at the app's name.
+            self._app = container_app
 
     @property
     def name(self) -> str:
@@ -166,40 +173,27 @@ class _Stub:
 
     def is_inside(self, image: Optional[_Image] = None) -> bool:
         """Returns if the program is currently running inside a container for this app."""
-        # TODO(erikbern): Add a client test for this function.
-        if is_local():
+        if not self._app:
             return False
+        elif image is None:
+            # stub.app is set, which means we're inside this stub (no specific image)
+            return True
 
-        if image is not None:
-            assert isinstance(image, _Image)
-            for tag, provider in self._blueprint.items():
-                if provider == image:
-                    image_handle = container_app[tag]
-                    break
-            else:
-                raise InvalidError(
-                    inspect.cleandoc(
-                        """`is_inside` only works for an image associated with an App. For instance:
-                        stub.image = DebianSlim()
-                        if stub.is_inside(stub.image):
-                        print("I'm inside!")"""
-                    )
-                )
+        # We need to look up the image handle from the image provider
+        assert isinstance(image, _Image)
+        for tag, provider in self._blueprint.items():
+            if provider == image:
+                image_handle = container_app[tag]
+                break
         else:
-            if "image" in self._blueprint:
-                image_handle = container_app["image"]
-            else:
-                # At this point in the code, we are sure that the app is running
-                # remotely, so it needs be able to load the ID of the default image.
-                # However, we cannot call `self.load(_default_image)` because it is
-                # an async function.
-                #
-                # Instead we load the image in App.init_container(), and this allows
-                # us to retrieve its object ID from cache here.
-                image_handle = container_app._load_cached(_default_image)
-
-                # Check to make sure internal invariants are upheld.
-                assert image_handle is not None, "fatal: default image should be loaded in App.init_container()"
+            raise InvalidError(
+                inspect.cleandoc(
+                    """`is_inside` only works for an image associated with an App. For instance:
+                    stub.image = DebianSlim()
+                    if stub.is_inside(stub.image):
+                    print("I'm inside!")"""
+                )
+            )
 
         return image_handle._is_inside()
 
