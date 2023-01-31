@@ -8,16 +8,7 @@ import warnings
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
-from typing import (
-    Any,
-    AsyncIterable,
-    Callable,
-    Collection,
-    Dict,
-    List,
-    Optional,
-    Union,
-)
+from typing import Any, AsyncIterable, Callable, Collection, Dict, List, Optional, Union
 
 import cloudpickle
 from aiostream import pipe, stream
@@ -976,6 +967,8 @@ class _Function(Provider[_FunctionHandle]):
                 suffix = " [grey70](label truncated)[/grey70]"
             elif response.web_url_info.has_unique_hash:
                 suffix = " [grey70](label includes conflict-avoidance hash)[/grey70]"
+            elif response.web_url_info.label_stolen:
+                suffix = " [grey70](label stolen)[/grey70]"
             else:
                 suffix = ""
             # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
