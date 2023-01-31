@@ -77,7 +77,7 @@ class _App:
         self, obj: Provider, progress: Optional[Tree] = None, existing_object_id: Optional[str] = None
     ) -> Handle:
         """Send a server request to create an object in this app, and return its ID."""
-        cached_obj = self._load_cached(obj)
+        cached_obj = self._local_uuid_to_object.get(obj.local_uuid)
         if cached_obj is not None:
             # We already created this object before, shortcut this method
             return cached_obj
@@ -103,13 +103,6 @@ class _App:
 
         self._local_uuid_to_object[obj.local_uuid] = created_obj
         return created_obj
-
-    def _load_cached(self, obj: Provider) -> Optional[Handle]:
-        """Try to load a previously-loaded object, without making network requests.
-
-        Returns `None` if the object has not been previously loaded.
-        """
-        return self._local_uuid_to_object.get(obj.local_uuid)
 
     async def _create_all_objects(self, progress: Tree, new_app_state: int):  # api_pb2.AppState.V
         """Create objects that have been defined but not created on the server."""
