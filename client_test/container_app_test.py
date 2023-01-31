@@ -19,14 +19,15 @@ def my_f_2(x):
 @skip_windows
 @pytest.mark.asyncio
 async def test_container_function_initialization(unix_servicer, aio_container_client):
-    stub = AioStub()
-    # my_f_1_container = stub.function(my_f_1)
-
     unix_servicer.app_objects["ap-123"] = {
         "my_f_1": "fu-123",
         "my_f_2": "fu-456",
     }
+
     await AioApp.init_container(aio_container_client, "ap-123")
+
+    stub = AioStub()
+    # my_f_1_container = stub.function(my_f_1)
 
     # Make sure these functions exist and have the right type
     my_f_1_app = aio_container_app["my_f_1"]
@@ -51,7 +52,11 @@ async def test_container_function_initialization(unix_servicer, aio_container_cl
 async def test_is_inside(servicer, unix_servicer, aio_client, aio_container_client):
     image_1 = AioImage.debian_slim().pip_install(["abc"])
     image_2 = AioImage.debian_slim().pip_install(["def"])
-    stub = AioStub(image=image_1, image_2=image_2)
+
+    def get_stub():
+        return AioStub(image=image_1, image_2=image_2)
+
+    stub = get_stub()
 
     # No container is running
     assert not stub.is_inside()
@@ -70,6 +75,9 @@ async def test_is_inside(servicer, unix_servicer, aio_client, aio_container_clie
         # Pretend that we're inside the container
         await AioApp.init_container(aio_container_client, app_id)
 
+        # Create a new stub (TODO: tie it to the previous stub through name or similar)
+        stub = get_stub()
+
         # Pretend that we're inside image 1
         with mock.patch.dict(os.environ, {"MODAL_IMAGE_ID": image_1_id}):
             assert stub.is_inside()
@@ -78,7 +86,7 @@ async def test_is_inside(servicer, unix_servicer, aio_client, aio_container_clie
 
         # Pretend that we're inside image 2
         with mock.patch.dict(os.environ, {"MODAL_IMAGE_ID": image_2_id}):
-            assert not stub.is_inside()  # refers to the default image (todo: should we?)
+            assert stub.is_inside()
             assert not stub.is_inside(image_1)
             assert stub.is_inside(image_2)
 
@@ -106,6 +114,9 @@ async def test_is_inside_default_image(servicer, unix_servicer, aio_client, aio_
         unix_servicer.app_objects[app_id] = servicer.app_objects[app_id]
 
         await AioApp.init_container(aio_container_client, app_id)
+
+        # Create a new stub (TODO: tie it to the previous stub through name or similar)
+        stub = AioStub()
 
         with mock.patch.dict(os.environ, {"MODAL_IMAGE_ID": default_image_id}):
             assert stub.is_inside()
