@@ -1,2 +1,2 @@
 # Copyright Modal Labs 2023
-build_number = 1012
+build_number = 1018
