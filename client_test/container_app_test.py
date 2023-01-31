@@ -102,6 +102,9 @@ async def test_is_inside_default_image(servicer, unix_servicer, aio_client, aio_
         default_image_id = default_image_handle.object_id
         app_id = app.app_id
 
+        # Copy the app objects to the container servicer
+        unix_servicer.app_objects[app_id] = servicer.app_objects[app_id]
+
         await AioApp.init_container(aio_container_client, app_id)
 
         with mock.patch.dict(os.environ, {"MODAL_IMAGE_ID": default_image_id}):
