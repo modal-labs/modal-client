@@ -789,7 +789,7 @@ class _Function(Provider[_FunctionHandle]):
 
         self._function_handle = function_handle
 
-        rep = "Function({self._tag})"
+        rep = r"Function({self._tag})"
         super().__init__(self._load, rep)
 
     async def _load(self, resolver: Resolver):
