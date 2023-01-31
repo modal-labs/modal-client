@@ -206,8 +206,10 @@ class _App:
 
     @staticmethod
     def _reset_container():
-        global _is_container_app
+        # Just used for tests
+        global _is_container_app, _container_app
         _is_container_app = False
+        _container_app.__init__(None, None, None, None)
 
 
 App, AioApp = synchronize_apis(_App)
