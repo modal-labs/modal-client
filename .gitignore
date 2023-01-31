@@ -6,4 +6,5 @@ __pycache__
 *.output.ipynb
 *.iml
 .venv
+venv/
 build/
