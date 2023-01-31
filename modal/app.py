@@ -168,11 +168,6 @@ class _App:
             obj = Handle._from_id(item.object_id, self._client, item.function)
             self._tag_to_object[item.tag] = obj
 
-        if "image" not in self._tag_to_object:
-            from .stub import _default_image
-
-            await self._load(_default_image)
-
     @staticmethod
     async def init_container(client: _Client, app_id: str) -> _App:
         """Used by the container to bootstrap the app and all its objects."""

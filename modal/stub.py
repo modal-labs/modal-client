@@ -25,7 +25,7 @@ from ._pty import exec_cmd, write_stdin_to_pty_stream
 from .app import _App, container_app, is_local
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
-from .exception import InvalidError, deprecation_error
+from .exception import InvalidError, ExecutionError, deprecation_error
 from .functions import _Function, _FunctionHandle
 from .gpu import GPU_T
 from .image import _Image
@@ -166,7 +166,6 @@ class _Stub:
 
     def is_inside(self, image: Optional[_Image] = None) -> bool:
         """Returns if the program is currently running inside a container for this app."""
-        # TODO(erikbern): Add a client test for this function.
         if is_local():
             return False
 
@@ -182,24 +181,14 @@ class _Stub:
                         """`is_inside` only works for an image associated with an App. For instance:
                         stub.image = DebianSlim()
                         if stub.is_inside(stub.image):
-                        print("I'm inside!")"""
+                            print("I'm inside!")"""
                     )
                 )
         else:
-            if "image" in self._blueprint:
+            try:
                 image_handle = container_app["image"]
-            else:
-                # At this point in the code, we are sure that the app is running
-                # remotely, so it needs be able to load the ID of the default image.
-                # However, we cannot call `self.load(_default_image)` because it is
-                # an async function.
-                #
-                # Instead we load the image in App.init_container(), and this allows
-                # us to retrieve its object ID from cache here.
-                image_handle = container_app._load_cached(_default_image)
-
-                # Check to make sure internal invariants are upheld.
-                assert image_handle is not None, "fatal: default image should be loaded in App.init_container()"
+            except KeyError:
+                raise ExecutionError("There is no default image for this stub")
 
         return image_handle._is_inside()
 
