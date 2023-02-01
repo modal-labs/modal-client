@@ -23,6 +23,9 @@ enum AppState {
 
   // App is created and in process of deployment.
   APP_STATE_INITIALIZING = 6;
+
+  // Same as stopped but prevented from being garbage collected
+  APP_STATE_DISABLED = 7;
 }
 
 enum ClientType {
