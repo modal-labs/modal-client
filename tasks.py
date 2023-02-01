@@ -31,6 +31,11 @@ def protoc(ctx):
 
 
 @task
+def lint(ctx):
+    ctx.run("ruff .", pty=True)
+
+
+@task
 def mypy(ctx):
     ctx.run("mypy .", pty=True)
 

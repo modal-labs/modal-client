@@ -136,7 +136,7 @@ _env = os.environ.get("MODAL_ENV", _config_active_env())
 
 class _Setting(typing.NamedTuple):
     default: typing.Any = None
-    transform: typing.Callable[[str], typing.Any] = lambda x: x
+    transform: typing.Callable[[str], typing.Any] = lambda x: x  # noqa: E731
 
 
 _SETTINGS = {
