@@ -502,7 +502,9 @@ class _Image(Provider[_ImageHandle]):
         context_files: dict[str, str] = {},
         secrets: Collection[_Secret] = [],
         gpu: GPU_T = None,
-        context_mount: Optional[_Mount] = None,
+        context_mount: Optional[
+            _Mount
+        ] = None,  # modal.Mount with local files to supply as build context for COPY commands
     ):
         """Extend an image with arbitrary Dockerfile-like commands."""
 
@@ -679,7 +681,12 @@ class _Image(Provider[_ImageHandle]):
         )
 
     @staticmethod
-    def from_dockerfile(path: Union[str, Path], context_mount: Optional[_Mount] = None) -> "_Image":
+    def from_dockerfile(
+        path: Union[str, Path],
+        context_mount: Optional[
+            _Mount
+        ] = None,  # modal.Mount with local files to supply as build context for COPY commands
+    ) -> "_Image":
         """Build a Modal image from a local Dockerfile.
 
         Note that the following must be true about the image you provide:
