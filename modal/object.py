@@ -1,22 +1,14 @@
 # Copyright Modal Labs 2022
 import uuid
-from typing import (
-    Awaitable,
-    Callable,
-    Generic,
-    Optional,
-    Type,
-    TypeVar,
-    cast,
-)
+from typing import Awaitable, Callable, Generic, Optional, Type, TypeVar, cast
 
 from google.protobuf.message import Message
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 
-from ._resolver import Resolver
 from ._object_meta import ObjectMeta
+from ._resolver import Resolver
 from .client import _Client
 from .exception import InvalidError, NotFoundError
 
@@ -84,7 +76,7 @@ class Handle(metaclass=ObjectMeta):
         cls: Type[H],
         app_name: str,
         tag: Optional[str] = None,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
     ) -> H:
         """Returns a handle to a tagged object in a deployment on Modal."""
@@ -105,7 +97,7 @@ class Handle(metaclass=ObjectMeta):
 async def _lookup(
     app_name: str,
     tag: Optional[str] = None,
-    namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT,
+    namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
     client: Optional[_Client] = None,
 ) -> Handle:
     """
@@ -183,7 +175,7 @@ class Provider(Generic[H]):
 
     @classmethod
     def from_name(
-        cls: Type[P], app_name: str, tag: Optional[str] = None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT
+        cls: Type[P], app_name: str, tag: Optional[str] = None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE
     ) -> P:
         """Returns a reference to an Modal object of any type
 
