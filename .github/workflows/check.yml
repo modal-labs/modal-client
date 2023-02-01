@@ -27,7 +27,7 @@ jobs:
         with:
           version: "3.10"
 
-      - run: flake8 .
+      - run: inv lint
 
   mypy:
     name: Mypy
