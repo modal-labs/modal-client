@@ -502,6 +502,9 @@ class _Image(Provider[_ImageHandle]):
         context_files: dict[str, str] = {},
         secrets: Collection[_Secret] = [],
         gpu: GPU_T = None,
+        context_mount: Optional[
+            _Mount
+        ] = None,  # modal.Mount with local files to supply as build context for COPY commands
     ):
         """Extend an image with arbitrary Dockerfile-like commands."""
 
@@ -517,6 +520,7 @@ class _Image(Provider[_ImageHandle]):
             context_files=context_files,
             secrets=secrets,
             gpu_config=parse_gpu_config(gpu, warn_on_true=False),
+            context_mount=context_mount,
         )
 
     def run_commands(
@@ -677,10 +681,15 @@ class _Image(Provider[_ImageHandle]):
         )
 
     @staticmethod
-    def from_dockerfile(path: Union[str, Path]) -> "_Image":
+    def from_dockerfile(
+        path: Union[str, Path],
+        context_mount: Optional[
+            _Mount
+        ] = None,  # modal.Mount with local files to supply as build context for COPY commands
+    ) -> "_Image":
         """Build a Modal image from a local Dockerfile.
 
-        Note that the the following must be true about the image you provide:
+        Note that the following must be true about the image you provide:
 
         - Python 3.7 or above needs to be present and available as `python`.
         - `pip` needs to be installed and available as `pip`.
@@ -693,7 +702,7 @@ class _Image(Provider[_ImageHandle]):
             with open(path) as f:
                 return f.read().split("\n")
 
-        base_image = _Image(dockerfile_commands=base_dockerfile_commands)
+        base_image = _Image(dockerfile_commands=base_dockerfile_commands, context_mount=context_mount)
 
         requirements_path = _get_client_requirements_path()
 
