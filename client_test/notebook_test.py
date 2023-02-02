@@ -52,7 +52,7 @@ Inspect the output notebook: {output_notebook_path}
 
 
 def test_notebook_outputs_status(notebook_runner, test_dir):
-    from IPython.terminal import embed  # noqa
+    from IPython.terminal import interactiveshell  # noqa
 
     input_notebook_path = test_dir / "supports" / "notebooks" / "simple.notebook.py"
     tagged_cells = notebook_runner(input_notebook_path)
