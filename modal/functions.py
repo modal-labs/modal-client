@@ -790,7 +790,7 @@ class _Function(Provider[_FunctionHandle]):
             proxy_id = await resolver.load(self._proxy)
             # HACK: remove this once we stop using ssh tunnels for this.
             if self._image:
-                self._image = self._image.run_commands(["apt-get install -yq ssh"])
+                self._image = self._image.apt_install("autossh")
         else:
             proxy_id = None
 
