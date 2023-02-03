@@ -17,7 +17,8 @@ def proxy_tunnel(info: api_pb2.ProxyInfo):
         f.write(info.proxy_key)
         f.close()
         cmd = [
-            "ssh",
+            "autossh",
+            "-M 0",  # don't use a monitoring port for autossh
             "-i",
             t.name,  # use pem file
             "-T",  # ignore the tty
@@ -28,6 +29,10 @@ def proxy_tunnel(info: api_pb2.ProxyInfo):
             f"ubuntu@{info.elastic_ip}",
             "-o",
             "StrictHostKeyChecking=no",  # avoid prompt for host
+            "-o",
+            "ServerAliveInterval=5",  # seconds before client sends keepalive to server
+            "-o",
+            "ServerAliveCountMax=1",  # number of failures before terminating ssh (autossh will restart)
         ]
         p = subprocess.Popen(cmd)
 
