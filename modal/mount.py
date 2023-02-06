@@ -4,7 +4,7 @@ import concurrent.futures
 import os
 import time
 from pathlib import Path
-from typing import Callable, Collection, List, Optional, Union
+from typing import AsyncGenerator, Callable, Collection, List, Optional, Union
 
 import aiostream
 
@@ -27,6 +27,40 @@ def client_mount_name():
 
 class _MountHandle(Handle, type_prefix="mo"):
     pass
+
+
+def _get_file(local_file: str) -> FileUploadSpec:
+    relpath = os.path.basename(str(local_file))
+    return get_file_upload_spec(str(local_file), relpath)
+
+
+async def _get_files(local_dir: str, recursive: bool, condition: Callable[[str], bool]) -> AsyncGenerator[FileUploadSpec, None]:
+    local_dir = os.path.expanduser(local_dir)
+    if not os.path.exists(local_dir):
+        raise FileNotFoundError(local_dir)
+    if not os.path.isdir(local_dir):
+        raise NotADirectoryError(local_dir)
+
+    loop = asyncio.get_event_loop()
+    with concurrent.futures.ThreadPoolExecutor() as exe:
+        futs = []
+        if recursive:
+            gen = (os.path.join(root, name) for root, dirs, files in os.walk(local_dir) for name in files)
+        else:
+            gen = (dir_entry.path for dir_entry in os.scandir(local_dir) if dir_entry.is_file())
+
+        for filename in gen:
+            rel_filename = os.path.relpath(filename, local_dir)
+            if condition(filename):
+                futs.append(loop.run_in_executor(exe, get_file_upload_spec, filename, rel_filename))
+        logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} workers")
+        for i, fut in enumerate(asyncio.as_completed(futs)):
+            try:
+                yield await fut
+            except FileNotFoundError as exc:
+                # Can happen with temporary files (e.g. emacs will write temp files and delete them quickly)
+                logger.info(f"Ignoring file not found: {exc}")
+
 
 
 class _Mount(Provider[_MountHandle]):
@@ -84,38 +118,6 @@ class _Mount(Provider[_MountHandle]):
         # we can't rely on it to be set. Let's clean this up later.
         return getattr(self, "_is_local", False)
 
-    async def _get_files(self):
-        if self._local_file:
-            relpath = os.path.basename(str(self._local_file))
-            yield get_file_upload_spec(str(self._local_file), relpath)
-            return
-
-        local_dir = os.path.expanduser(self._local_dir)
-        if not os.path.exists(local_dir):
-            raise FileNotFoundError(local_dir)
-        if not os.path.isdir(local_dir):
-            raise NotADirectoryError(local_dir)
-
-        loop = asyncio.get_event_loop()
-        with concurrent.futures.ThreadPoolExecutor() as exe:
-            futs = []
-            if self._recursive:
-                gen = (os.path.join(root, name) for root, dirs, files in os.walk(local_dir) for name in files)
-            else:
-                gen = (dir_entry.path for dir_entry in os.scandir(local_dir) if dir_entry.is_file())
-
-            for filename in gen:
-                rel_filename = os.path.relpath(filename, local_dir)
-                if self._condition(filename):
-                    futs.append(loop.run_in_executor(exe, get_file_upload_spec, filename, rel_filename))
-            logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} workers")
-            for i, fut in enumerate(asyncio.as_completed(futs)):
-                try:
-                    yield await fut
-                except FileNotFoundError as exc:
-                    # Can happen with temporary files (e.g. emacs will write temp files and delete them quickly)
-                    logger.info(f"Ignoring file not found: {exc}")
-
     async def _load(self, resolver: Resolver):
         # Run a threadpool to compute hash values, and use concurrent coroutines to register files.
         t0 = time.time()
@@ -123,23 +125,22 @@ class _Mount(Provider[_MountHandle]):
 
         n_files = 0
         uploaded_hashes: set[str] = set()
-        files: list[api_pb2.MountFile] = []
         total_bytes = 0
         message_label = self._local_dir or self._local_file
 
-        async def _put_file(mount_file: FileUploadSpec):
+        async def _put_file(mount_file: FileUploadSpec) -> api_pb2.MountFile:
             nonlocal n_files, uploaded_hashes, total_bytes
             resolver.set_message(f"Mounting {message_label}: Uploaded {len(uploaded_hashes)}/{n_files} inspected files")
 
             remote_filename = (Path(self._remote_dir) / Path(mount_file.rel_filename)).as_posix()
-            files.append(api_pb2.MountFile(filename=remote_filename, sha256_hex=mount_file.sha256_hex))
+            file_proto = api_pb2.MountFile(filename=remote_filename, sha256_hex=mount_file.sha256_hex)
 
             request = api_pb2.MountPutFileRequest(sha256_hex=mount_file.sha256_hex)
             response = await retry_transient_errors(resolver.client.stub.MountPutFile, request, base_delay=1)
 
             n_files += 1
             if response.exists or mount_file.sha256_hex in uploaded_hashes:
-                return
+                return file_proto
             uploaded_hashes.add(mount_file.sha256_hex)
             total_bytes += mount_file.size
 
@@ -153,19 +154,25 @@ class _Mount(Provider[_MountHandle]):
                 logger.debug(f"Uploading file {mount_file.filename} to {remote_filename} ({mount_file.size} bytes)")
                 request2 = api_pb2.MountPutFileRequest(data=mount_file.content, sha256_hex=mount_file.sha256_hex)
             await retry_transient_errors(resolver.client.stub.MountPutFile, request2, base_delay=1)
+            return file_proto
 
         logger.debug(f"Uploading mount using {n_concurrent_uploads} uploads")
 
         # Create async generator
-        files_stream = aiostream.stream.iterate(self._get_files())
+        if self._local_file:
+            files = [_get_file(self._local_file)]
+        else:
+            files = _get_files(self._local_dir, self._recursive, self._condition)
+        files_stream = aiostream.stream.iterate(files)
 
         # Upload files
         uploads_stream = aiostream.stream.map(files_stream, _put_file, task_limit=n_concurrent_uploads)
         try:
-            await uploads_stream
+            files: List[api_pb2.MountFile] = await aiostream.stream.list(uploads_stream)
         except aiostream.StreamEmpty:
             logger.warning(f"Mount of '{message_label}' is empty.")
 
+        # Build mount
         resolver.set_message(f"Mounting {message_label}: Building mount")
         req = api_pb2.MountBuildRequest(
             app_id=resolver.app_id, existing_mount_id=resolver.existing_object_id, files=files
