@@ -402,6 +402,7 @@ class _Stub:
                             event = await event_agen.__anext__()
                         return
 
+                # live-reloading loop
                 while event != AppChange.TIMEOUT:
                     curr_proc = await restart_serve(
                         existing_app_id=app.app_id, prev_proc=curr_proc, output_mgr=output_mgr
