@@ -400,6 +400,7 @@ class _Stub:
                                 "Live-reload skipped. This feature is unsupported below Python 3.8. Upgrade to Python 3.8+ to enable live-reloading."
                             )
                             event = await event_agen.__anext__()
+                        return
 
                 while event != AppChange.TIMEOUT:
                     curr_proc = await restart_serve(
