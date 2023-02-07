@@ -209,8 +209,8 @@ class FunctionInfo:
                     or not os.path.exists(path)
                 ):
                     continue
-                dirpath = Path(os.path.dirname(path)).resolve()
-                if not dirpath.is_relative_to(self.base_dir):
+                dirpath = PurePosixPath(Path(os.path.dirname(path)).resolve().as_posix())
+                if not dirpath.as_posix().startswith(Path(self.base_dir).as_posix()):
                     continue  # TODO(elias) some kind of heuristic for how to handle things outside of the cwd?
 
                 relpath = dirpath.relative_to(self.base_dir)
