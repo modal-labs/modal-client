@@ -1,9 +1,11 @@
 # Copyright Modal Labs 2022
+import abc
 import asyncio
 import concurrent.futures
 import dataclasses
 import os
 import time
+import typing
 from pathlib import Path
 from typing import Callable, Collection, List, Optional, Union, Tuple
 
@@ -26,8 +28,21 @@ def client_mount_name():
     return f"modal-client-mount-{__version__}"
 
 
+class _MountEntry(metaclass=abc.ABCMeta):
+    remote_path: Path
+
+    def description(self) -> str:
+        ...
+
+    def get_files_to_upload(self) -> typing.Iterator[Tuple[Path, str]]:
+        ...
+
+    def watch_entry(self) -> Tuple[Path, Path]:
+        ...
+
+
 @dataclasses.dataclass
-class _MountFile:
+class _MountFile(_MountEntry):
     local_file: Path
     remote_path: Path
 
@@ -48,7 +63,7 @@ class _MountFile:
 
 
 @dataclasses.dataclass
-class _MountDir:
+class _MountDir(_MountEntry):
     local_dir: Path
     remote_path: Path
     condition: Callable[[str], bool]
@@ -79,9 +94,6 @@ class _MountDir:
 
     def watch_entry(self):
         return self.local_dir, None
-
-
-_MountEntry = Union[_MountFile, _MountDir]
 
 
 class _MountHandle(Handle, type_prefix="mo"):
@@ -191,7 +203,7 @@ class _Mount(Provider[_MountHandle]):
         return ", ".join(local_contents)
 
     async def _get_files(self):
-        all_files: List[Tuple[Path, Path]] = []
+        all_files: List[Tuple[Path, str]] = []
         for entry in self._entries:
             all_files += list(entry.get_files_to_upload())
 
