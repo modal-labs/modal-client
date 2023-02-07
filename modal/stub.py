@@ -393,8 +393,16 @@ class _Stub:
                 async with self._run(client, output_mgr, None, mode=StubRunMode.SERVE) as app:
                     client.set_pre_stop(app.disconnect)
                     existing_app_id = app.app_id
-                    event = await event_agen.__anext__()  # wait for 1st modification before restarting
+                    event = await event_agen.__anext__()
+                    if sys.version_info.major == 3 and sys.version_info.minor <= 7:
+                        while event != AppChange.TIMEOUT:
+                            output_mgr.print_if_visible(
+                                "Live-reload skipped. This feature is unsupported below Python 3.8. Upgrade to Python 3.8+ to enable live-reloading."
+                            )
+                            event = await event_agen.__anext__()
+                        return
 
+                # live-reloading loop
                 while event != AppChange.TIMEOUT:
                     curr_proc = await restart_serve(
                         existing_app_id=app.app_id, prev_proc=curr_proc, output_mgr=output_mgr
