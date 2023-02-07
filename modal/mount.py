@@ -42,6 +42,10 @@ class _MountFile:
         rel_filename = mount_path.relative_to("/").as_posix()
         yield local_file, rel_filename
 
+    def watch_entry(self):
+        parent = self.local_file.parent
+        return parent, self.local_file
+
 
 @dataclasses.dataclass
 class _MountDir:
@@ -72,6 +76,9 @@ class _MountDir:
                 mount_path = self.remote_path / Path(local_filename).relative_to(local_dir)
                 rel_filename = mount_path.relative_to("/").as_posix()
                 yield local_filename, rel_filename
+
+    def watch_entry(self):
+        return self.local_dir, None
 
 
 _MountEntry = Union[_MountFile, _MountDir]
