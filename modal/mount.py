@@ -6,7 +6,7 @@ import dataclasses
 import os
 import time
 import typing
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Callable, Collection, List, Optional, Union, Tuple
 
 import aiostream
@@ -29,7 +29,7 @@ def client_mount_name():
 
 
 class _MountEntry(metaclass=abc.ABCMeta):
-    remote_path: Path
+    remote_path: PurePosixPath
 
     def description(self) -> str:
         ...
@@ -44,7 +44,7 @@ class _MountEntry(metaclass=abc.ABCMeta):
 @dataclasses.dataclass
 class _MountFile(_MountEntry):
     local_file: Path
-    remote_path: Path
+    remote_path: PurePosixPath
 
     def description(self) -> str:
         return self.local_file.as_posix()
@@ -53,9 +53,9 @@ class _MountFile(_MountEntry):
         local_file = self.local_file.expanduser()
         if not local_file.exists():
             raise FileNotFoundError(local_file)
-        mount_path = self.remote_path / self.local_file.name
-        rel_filename = mount_path.relative_to("/").as_posix()
-        yield local_file, rel_filename
+
+        rel_filename = self.remote_path
+        yield local_file, rel_filename.as_posix()
 
     def watch_entry(self):
         parent = self.local_file.parent
@@ -65,7 +65,7 @@ class _MountFile(_MountEntry):
 @dataclasses.dataclass
 class _MountDir(_MountEntry):
     local_dir: Path
-    remote_path: Path
+    remote_path: PurePosixPath
     condition: Callable[[str], bool]
     recursive: bool
 
@@ -88,9 +88,9 @@ class _MountDir(_MountEntry):
 
         for local_filename in gen:
             if self.condition(local_filename):
-                mount_path = self.remote_path / Path(local_filename).relative_to(local_dir)
-                rel_filename = mount_path.relative_to("/").as_posix()
-                yield local_filename, rel_filename
+                local_relpath = Path(local_filename).relative_to(local_dir)
+                mount_path = self.remote_path / local_relpath.as_posix()
+                yield local_filename, mount_path.as_posix()
 
     def watch_entry(self):
         return self.local_dir, None
@@ -124,7 +124,7 @@ class _Mount(Provider[_MountHandle]):
     def __init__(
         self,
         # Mount path within the container.
-        remote_dir: Union[str, Path] = "/",
+        remote_dir: Union[str, PurePosixPath] = None,
         *,
         # Local directory to mount.
         local_dir: Optional[Union[str, Path]] = None,
@@ -142,14 +142,16 @@ class _Mount(Provider[_MountHandle]):
                 raise InvalidError("Cannot specify both local_file and local_dir as arguments to Mount.")
 
             if local_dir:
+                remote_path = PurePosixPath(remote_dir)
                 self.add_local_dir(
                     local_path=local_dir,
-                    remote_path=remote_dir,
+                    remote_path=remote_path,
                     condition=condition,
                     recursive=recursive,
                 )
             elif local_file:
-                self.add_local_file(local_path=local_file, remote_path=remote_dir)
+                remote_path = PurePosixPath(remote_dir) / Path(local_file).name
+                self.add_local_file(local_path=local_file, remote_path=remote_path)
 
         self._is_local = True
         rep = f"Mount({self._entries})"
@@ -164,33 +166,39 @@ class _Mount(Provider[_MountHandle]):
         self,
         local_path: Union[str, Path],
         *,
-        remote_path: Union[str, Path] = None,  # Where the directory is placed within in the mount
+        remote_path: Union[str, PurePosixPath] = None,  # Where the directory is placed within in the mount
         condition: Callable[[str], bool] = lambda path: True,  # Filter function for file selection
         recursive: bool = True,  # add files from subdirectories as well
     ):
         local_path = Path(local_path)
-        if not remote_path:
+        if remote_path is None:
             remote_path = local_path.name
+        remote_path = PurePosixPath(remote_path)
+        if remote_path.is_absolute():
+            remote_path = remote_path.relative_to("/")
 
         self._entries.append(
             _MountDir(
                 local_dir=Path(local_path),
                 condition=condition,
-                remote_path=Path(remote_path),
+                remote_path=remote_path,
                 recursive=recursive,
             )
         )
         return self
 
-    def add_local_file(self, local_path: Union[str, Path], remote_path: Union[str, Path] = None):
+    def add_local_file(self, local_path: Union[str, Path], remote_path: Union[str, PurePosixPath] = None):
         local_path = Path(local_path)
         if remote_path is None:
             remote_path = local_path.name
+        remote_path = PurePosixPath(remote_path)
+        if remote_path.is_absolute():
+            remote_path = remote_path.relative_to("/")
 
         self._entries.append(
             _MountFile(
                 local_file=local_path,
-                remote_path=Path(remote_path),
+                remote_path=PurePosixPath(remote_path),
             )
         )
         return self

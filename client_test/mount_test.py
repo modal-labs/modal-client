@@ -26,7 +26,7 @@ async def test_get_files(servicer, client, tmpdir):
         m = AioMount("/", local_dir=tmpdir, condition=lambda fn: fn.endswith(".py"), recursive=True)
         await running_app._load(m)  # TODO: is this something we want to expose?
         async for upload_spec in m._get_files():
-            files[upload_spec.mount_filename.as_posix()] = upload_spec
+            files[upload_spec.mount_filename] = upload_spec
 
         assert "small.py" in files
         assert "large.py" in files
