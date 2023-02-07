@@ -80,6 +80,7 @@ class _Mount(Provider[_MountHandle]):
         super().__init__(self._load, rep)
 
     def is_local(self):
+        """mdmd:hidden"""
         # TODO(erikbern): since any remote ref bypasses the constructor,
         # we can't rely on it to be set. Let's clean this up later.
         return getattr(self, "_is_local", False)
