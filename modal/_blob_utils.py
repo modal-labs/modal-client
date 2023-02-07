@@ -121,7 +121,7 @@ async def blob_iter(blob_id, stub) -> AsyncIterator[bytes]:
 @dataclasses.dataclass
 class FileUploadSpec:
     filename: str
-    rel_filename: str
+    mount_filename: str
 
     use_blob: bool
     content: Optional[bytes]  # typically None if using blob, required otherwise
@@ -129,7 +129,7 @@ class FileUploadSpec:
     size: int
 
 
-def get_file_upload_spec(filename: str, rel_filename: str) -> FileUploadSpec:
+def get_file_upload_spec(filename: str, mount_filename: str) -> FileUploadSpec:
     # Somewhat CPU intensive, so we run it in a thread/process
     size = os.path.getsize(filename)
     if size >= LARGE_FILE_LIMIT:
@@ -142,4 +142,6 @@ def get_file_upload_spec(filename: str, rel_filename: str) -> FileUploadSpec:
         with open(filename, "rb") as fp:
             content = fp.read()
         sha256_hex = get_sha256_hex(content)
-    return FileUploadSpec(filename, rel_filename, use_blob=use_blob, content=content, sha256_hex=sha256_hex, size=size)
+    return FileUploadSpec(
+        filename, mount_filename, use_blob=use_blob, content=content, sha256_hex=sha256_hex, size=size
+    )

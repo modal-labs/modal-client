@@ -1,10 +1,13 @@
 # Copyright Modal Labs 2022
+import abc
 import asyncio
 import concurrent.futures
+import dataclasses
 import os
 import time
-from pathlib import Path
-from typing import Callable, Collection, List, Optional, Union
+import typing
+from pathlib import Path, PurePosixPath
+from typing import Callable, Collection, List, Optional, Union, Tuple
 
 import aiostream
 
@@ -23,6 +26,74 @@ from .object import Handle, Provider
 
 def client_mount_name():
     return f"modal-client-mount-{__version__}"
+
+
+class _MountEntry(metaclass=abc.ABCMeta):
+    remote_path: PurePosixPath
+
+    def description(self) -> str:
+        ...
+
+    def get_files_to_upload(self) -> typing.Iterator[Tuple[Path, str]]:
+        ...
+
+    def watch_entry(self) -> Tuple[Path, Path]:
+        ...
+
+
+@dataclasses.dataclass
+class _MountFile(_MountEntry):
+    local_file: Path
+    remote_path: PurePosixPath
+
+    def description(self) -> str:
+        return str(self.local_file)
+
+    def get_files_to_upload(self):
+        local_file = self.local_file.expanduser()
+        if not local_file.exists():
+            raise FileNotFoundError(local_file)
+
+        rel_filename = self.remote_path
+        yield local_file, rel_filename.as_posix()
+
+    def watch_entry(self):
+        parent = self.local_file.parent
+        return parent, self.local_file
+
+
+@dataclasses.dataclass
+class _MountDir(_MountEntry):
+    local_dir: Path
+    remote_path: PurePosixPath
+    condition: Callable[[str], bool]
+    recursive: bool
+
+    def description(self):
+        return str(self.local_dir)
+
+    def get_files_to_upload(self):
+        local_dir = self.local_dir.expanduser()
+
+        if not local_dir.exists():
+            raise FileNotFoundError(local_dir)
+
+        if not local_dir.is_dir():
+            raise NotADirectoryError(local_dir)
+
+        if self.recursive:
+            gen = (os.path.join(root, name) for root, dirs, files in os.walk(local_dir) for name in files)
+        else:
+            gen = (dir_entry.path for dir_entry in os.scandir(local_dir) if dir_entry.is_file())
+
+        for local_filename in gen:
+            if self.condition(local_filename):
+                local_relpath = Path(local_filename).relative_to(local_dir)
+                mount_path = self.remote_path / local_relpath.as_posix()
+                yield local_filename, mount_path.as_posix()
+
+    def watch_entry(self):
+        return self.local_dir, None
 
 
 class _MountHandle(Handle, type_prefix="mo"):
@@ -50,10 +121,12 @@ class _Mount(Provider[_MountHandle]):
     the file's contents to skip uploading files that have been uploaded before.
     """
 
+    _entries: List[_MountEntry]
+
     def __init__(
         self,
         # Mount path within the container.
-        remote_dir: Union[str, Path],
+        remote_dir: Union[str, PurePosixPath] = None,
         *,
         # Local directory to mount.
         local_dir: Optional[Union[str, Path]] = None,
@@ -63,20 +136,32 @@ class _Mount(Provider[_MountHandle]):
         condition: Callable[[str], bool] = lambda path: True,
         # Optional flag to toggle if subdirectories should be mounted recursively.
         recursive: bool = True,
+        _entries: List[_MountEntry] = None,  # internal - don't use
     ):
-        if local_file is not None and local_dir is not None:
-            raise InvalidError("Cannot specify both local_file and local_dir as arguments to Mount.")
+        if _entries:
+            self._entries = _entries
+            assert local_file is None and local_dir is None
+        else:
+            self._entries = []
+            if local_file or local_dir:
+                # TODO: add deprecation warning here for legacy API
+                if local_file is not None and local_dir is not None:
+                    raise InvalidError("Cannot specify both local_file and local_dir as arguments to Mount.")
 
-        if local_file is None and local_dir is None:
-            raise InvalidError("Must provide at least one of local_file and local_dir to Mount.")
+                if local_dir:
+                    remote_path = PurePosixPath(remote_dir)
+                    self._entries = self.add_local_dir(
+                        local_path=local_dir,
+                        remote_path=remote_path,
+                        condition=condition,
+                        recursive=recursive,
+                    )._entries
+                elif local_file:
+                    remote_path = PurePosixPath(remote_dir) / Path(local_file).name
+                    self._entries = self.add_local_file(local_path=local_file, remote_path=remote_path)._entries
 
-        self._local_dir = local_dir
-        self._local_file = local_file
-        self._remote_dir = remote_dir
-        self._condition = condition
-        self._recursive = recursive
         self._is_local = True
-        rep = f"Mount({self._local_file or self._local_dir})"
+        rep = f"Mount({self._entries})"
         super().__init__(self._load, rep)
 
     def is_local(self):
@@ -85,30 +170,61 @@ class _Mount(Provider[_MountHandle]):
         # we can't rely on it to be set. Let's clean this up later.
         return getattr(self, "_is_local", False)
 
-    async def _get_files(self):
-        if self._local_file:
-            relpath = os.path.basename(str(self._local_file))
-            yield get_file_upload_spec(str(self._local_file), relpath)
-            return
+    def add_local_dir(
+        self,
+        local_path: Union[str, Path],
+        *,
+        remote_path: Union[str, PurePosixPath] = None,  # Where the directory is placed within in the mount
+        condition: Callable[[str], bool] = lambda path: True,  # Filter function for file selection
+        recursive: bool = True,  # add files from subdirectories as well
+    ):
+        local_path = Path(local_path)
+        if remote_path is None:
+            remote_path = local_path.name
+        remote_path = PurePosixPath("/", remote_path)
 
-        local_dir = os.path.expanduser(self._local_dir)
-        if not os.path.exists(local_dir):
-            raise FileNotFoundError(local_dir)
-        if not os.path.isdir(local_dir):
-            raise NotADirectoryError(local_dir)
+        return _Mount(
+            _entries=self._entries
+            + [
+                _MountDir(
+                    local_dir=local_path,
+                    condition=condition,
+                    remote_path=remote_path,
+                    recursive=recursive,
+                )
+            ]
+        )
+
+    def add_local_file(self, local_path: Union[str, Path], remote_path: Union[str, PurePosixPath] = None):
+        local_path = Path(local_path)
+        if remote_path is None:
+            remote_path = local_path.name
+        remote_path = PurePosixPath("/", remote_path)
+        return _Mount(
+            _entries=self._entries
+            + [
+                _MountFile(
+                    local_file=local_path,
+                    remote_path=PurePosixPath(remote_path),
+                )
+            ]
+        )
+
+    def _description(self):
+        local_contents = [e.description() for e in self._entries]
+        return ", ".join(local_contents)
+
+    async def _get_files(self):
+        all_files: List[Tuple[Path, str]] = []
+        for entry in self._entries:
+            all_files += list(entry.get_files_to_upload())
 
         loop = asyncio.get_event_loop()
         with concurrent.futures.ThreadPoolExecutor() as exe:
             futs = []
-            if self._recursive:
-                gen = (os.path.join(root, name) for root, dirs, files in os.walk(local_dir) for name in files)
-            else:
-                gen = (dir_entry.path for dir_entry in os.scandir(local_dir) if dir_entry.is_file())
+            for local_filename, remote_filename in all_files:
+                futs.append(loop.run_in_executor(exe, get_file_upload_spec, local_filename, remote_filename))
 
-            for filename in gen:
-                rel_filename = os.path.relpath(filename, local_dir)
-                if self._condition(filename):
-                    futs.append(loop.run_in_executor(exe, get_file_upload_spec, filename, rel_filename))
             logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} workers")
             for i, fut in enumerate(asyncio.as_completed(futs)):
                 try:
@@ -116,11 +232,6 @@ class _Mount(Provider[_MountHandle]):
                 except FileNotFoundError as exc:
                     # Can happen with temporary files (e.g. emacs will write temp files and delete them quickly)
                     logger.info(f"Ignoring file not found: {exc}")
-
-    async def _get_remote_files(self):
-        # Used by tests
-        async for file_spec in self._get_files():
-            yield (Path(self._remote_dir) / Path(file_spec.rel_filename)).as_posix()
 
     async def _load(self, resolver: Resolver):
         # Run a threadpool to compute hash values, and use concurrent coroutines to register files.
@@ -131,13 +242,15 @@ class _Mount(Provider[_MountHandle]):
         uploaded_hashes: set[str] = set()
         files: list[api_pb2.MountFile] = []
         total_bytes = 0
-        message_label = self._local_dir or self._local_file
+        message_label = self._description()
 
         async def _put_file(mount_file: FileUploadSpec):
             nonlocal n_files, uploaded_hashes, total_bytes
-            resolver.set_message(f"Mounting {message_label}: Uploaded {len(uploaded_hashes)}/{n_files} inspected files")
+            resolver.set_message(
+                f"Creating mount {message_label}: Uploaded {len(uploaded_hashes)}/{n_files} inspected files"
+            )
 
-            remote_filename = (Path(self._remote_dir) / Path(mount_file.rel_filename)).as_posix()
+            remote_filename = mount_file.mount_filename
             files.append(api_pb2.MountFile(filename=remote_filename, sha256_hex=mount_file.sha256_hex))
 
             request = api_pb2.MountPutFileRequest(sha256_hex=mount_file.sha256_hex)
@@ -172,12 +285,12 @@ class _Mount(Provider[_MountHandle]):
         except aiostream.StreamEmpty:
             logger.warning(f"Mount of '{message_label}' is empty.")
 
-        resolver.set_message(f"Mounting {message_label}: Building mount")
+        resolver.set_message(f"Creating mount {message_label}: Building mount")
         req = api_pb2.MountBuildRequest(
             app_id=resolver.app_id, existing_mount_id=resolver.existing_object_id, files=files
         )
         resp = await retry_transient_errors(resolver.client.stub.MountBuild, req, base_delay=1)
-        resolver.set_message(f"Mounted {message_label} at {self._remote_dir}")
+        resolver.set_message(f"Created mount {message_label}")
 
         logger.debug(f"Uploaded {len(uploaded_hashes)}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
         return _MountHandle._from_id(resp.mount_id, resolver.client, None)

@@ -61,7 +61,7 @@ async def _sleep(timeout: float):
     yield AppChange.TIMEOUT
 
 
-async def _watch_paths(paths: Set[Union[str, Path]], watch_filter: StubFilesFilter):
+async def _watch_paths(paths: Set[Path], watch_filter: StubFilesFilter):
     try:
         async for changes in awatch(*paths, step=500, watch_filter=watch_filter):
             yield changes
@@ -70,7 +70,7 @@ async def _watch_paths(paths: Set[Union[str, Path]], watch_filter: StubFilesFilt
         pass
 
 
-def _print_watched_paths(paths: Set[Union[str, Path]], output_mgr: OutputManager, timeout: Optional[float]):
+def _print_watched_paths(paths: Set[Path], output_mgr: OutputManager, timeout: Optional[float]):
     if timeout:
         msg = f"⚡️ Serving for {timeout} seconds... hit Ctrl-C to stop!"
     else:
@@ -84,18 +84,18 @@ def _print_watched_paths(paths: Set[Union[str, Path]], output_mgr: OutputManager
     output_mgr.print_if_visible(output_tree)
 
 
-def _watch_args_from_mounts(mounts: List[_Mount]) -> Tuple[Set[Union[str, Path]], StubFilesFilter]:
+def _watch_args_from_mounts(mounts: List[_Mount]) -> Tuple[Set[Path], StubFilesFilter]:
     paths = set()
-    dir_filters: Dict[Path, Set[str]] = defaultdict(set)
+    dir_filters: Dict[Path, Optional[Set[str]]] = defaultdict(set)
     for mount in mounts:
-        if mount._local_dir is not None:
-            paths.add(mount._local_dir)
-            dir_filters[Path(mount._local_dir)] = None
-        elif mount._local_file is not None:
-            parent = Path(mount._local_file).parent
-            paths.add(parent)
-            if dir_filters[parent] is not None:
-                dir_filters[parent].add(str(mount._local_file))
+        # TODO(elias): Make this part of the mount class instead, since it uses so much internals
+        for entry in mount._entries:
+            path, filter_file = entry.watch_entry()
+            paths.add(path)
+            if filter_file is None:
+                dir_filters[path] = None
+            elif dir_filters[path] is not None:
+                dir_filters[path].add(filter_file.as_posix())
 
     watch_filter = StubFilesFilter(dir_filters=dict(dir_filters))
     return paths, watch_filter

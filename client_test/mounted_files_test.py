@@ -32,11 +32,12 @@ def test_mounted_files_script(supports_dir):
         cwd=supports_dir,
         env={**os.environ, "PYTHONPATH": str(supports_dir)},
     )
-    assert p.returncode == 0
+
     stdout = p.stdout.decode("utf-8")
     stderr = p.stderr.decode("utf-8")
     print("stdout: ", stdout)
     print("stderr: ", stderr)
+    assert p.returncode == 0
     files = set(stdout.splitlines())
 
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
