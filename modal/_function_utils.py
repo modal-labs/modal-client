@@ -209,7 +209,7 @@ class FunctionInfo:
                     or not os.path.exists(path)
                 ):
                     continue
-                relpath = Path(os.path.relpath(os.path.dirname(path), self.base_dir))
+                relpath = Path(os.path.relpath(os.path.dirname(path), self.base_dir)).resolve()
                 mounts[path] = _Mount(
                     local_file=path,
                     remote_dir=ROOT_DIR / PurePosixPath(relpath.as_posix()),

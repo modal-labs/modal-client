@@ -158,6 +158,7 @@ class _Mount(Provider[_MountHandle]):
         super().__init__(self._load, rep)
 
     def is_local(self):
+        """mdmd:hidden"""
         # TODO(erikbern): since any remote ref bypasses the constructor,
         # we can't rely on it to be set. Let's clean this up later.
         return getattr(self, "_is_local", False)
@@ -228,6 +229,11 @@ class _Mount(Provider[_MountHandle]):
                 except FileNotFoundError as exc:
                     # Can happen with temporary files (e.g. emacs will write temp files and delete them quickly)
                     logger.info(f"Ignoring file not found: {exc}")
+
+    async def _get_remote_files(self):
+        # Used by tests
+        async for file_spec in self._get_files():
+            yield (Path(self._remote_dir) / Path(file_spec.rel_filename)).as_posix()
 
     async def _load(self, resolver: Resolver):
         # Run a threadpool to compute hash values, and use concurrent coroutines to register files.

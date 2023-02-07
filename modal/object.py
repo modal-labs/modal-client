@@ -108,7 +108,7 @@ async def _lookup(
     import modal
 
     square = modal.lookup("my-shared-app", "square")
-    assert square(3) == 9
+    assert square.call(3) == 9
 
     vol = modal.lookup("my-shared-volume")
     for chunk in vol.read_file("my_db_dump.csv"):

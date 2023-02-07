@@ -2,7 +2,7 @@
 aiohttp==3.8.3
 aiostream==0.4.4
 asgiref==3.5.2
-certifi==2021.10.8
+certifi>=2022.12.07
 cloudpickle==2.0.0;python_version<'3.11'
 cloudpickle==2.2.0;python_version>='3.11'
 ddtrace==1.5.2;python_version<'3.11'

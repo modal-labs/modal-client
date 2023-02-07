@@ -393,6 +393,7 @@ message FunctionGetInputsItem {
   string input_id = 1;
   FunctionInput input = 2;
   bool kill_switch = 3;
+  string function_call_id = 4;
 }
 
 message FunctionGetInputsRequest {
@@ -813,6 +814,8 @@ message TaskLogs {
   double timestamp = 7;
   FileDescriptor file_descriptor = 8;
   TaskProgress task_progress = 9;
+  string function_call_id = 10;
+  string input_id = 11;
 }
 
 enum ProgressType {
