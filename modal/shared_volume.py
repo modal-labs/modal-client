@@ -34,7 +34,7 @@ class _SharedVolumeHandle(Handle, type_prefix="sv"):
     async def write_file(self, remote_path: str, fp: BinaryIO):
         """Write from a file object to a path on the shared volume, atomically.
 
-        Will create any needed parent directories automatically
+        Will create any needed parent directories automatically.
 
         If remote_path ends with `/` it's assumed to be a directory and the
         file will be uploaded with its current name to that directory.
@@ -68,7 +68,7 @@ class _SharedVolumeHandle(Handle, type_prefix="sv"):
         """List all files in a directory in the shared volume.
 
         * Passing a directory path lists all files in the directory (names are relative to the directory)
-        * Passing a file path returns a list containing only that file's listing description.
+        * Passing a file path returns a list containing only that file's listing description
         * Passing a glob path (including at least one * or ** sequence) returns all files matching that glob path (using absolute paths)
         """
         req = api_pb2.SharedVolumeListFilesRequest(shared_volume_id=self._object_id, path=path)
@@ -76,7 +76,7 @@ class _SharedVolumeHandle(Handle, type_prefix="sv"):
         return list(response.entries)
 
     async def remove_file(self, path: str, recursive=False):
-        """Remove a file in a shared volume"""
+        """Remove a file in a shared volume."""
         req = api_pb2.SharedVolumeRemoveFileRequest(shared_volume_id=self._object_id, path=path, recursive=recursive)
         await retry_transient_errors(self._client.stub.SharedVolumeRemoveFile, req)
 

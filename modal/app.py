@@ -163,7 +163,7 @@ class _App:
 
     @staticmethod
     async def init_container(client: _Client, app_id: str) -> _App:
-        """Used by the container to bootstrap the app and all its objects."""
+        """Used by the container to bootstrap the app and all its objects. Not intended to be called by Modal users."""
         global _container_app, _is_container_app
         _is_container_app = True
         await _container_app._init_container(client, app_id)
@@ -207,7 +207,7 @@ _container_app = _App(None, None, None, None)
 container_app, aio_container_app = synchronize_apis(_container_app)
 assert isinstance(container_app, App)
 assert isinstance(aio_container_app, AioApp)
-__doc__container_app = """A reference to the running modal.App, accessible from within a running Modal function.
+__doc__container_app = """A reference to the running `modal.App`, accessible from within a running Modal function.
 Useful for accessing object handles for any Modal objects declared on the stub, e.g:
 
 ```python
@@ -225,7 +225,7 @@ def store_something(key, value):
 def is_local() -> bool:
     """Returns if we are currently on the machine launching/deploying a Modal app
 
-    Returns True when executed locally on the user's machine.
-    Returns False when executed from a Modal container in the cloud.
+    Returns `True` when executed locally on the user's machine.
+    Returns `False` when executed from a Modal container in the cloud.
     """
     return not _is_container_app

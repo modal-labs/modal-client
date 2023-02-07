@@ -20,7 +20,7 @@ class _Secret(Provider[_SecretHandle]):
     to the containers your functions run in. You can create and edit secrets on
     [the dashboard](/secrets), or programmatically from Python code.
 
-    See [The guide](/docs/guide/secrets) for more information.
+    See [the secrets guide page](/docs/guide/secrets) for more information.
     """
 
     def __init__(self, env_dict={}, template_type=""):

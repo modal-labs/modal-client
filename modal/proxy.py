@@ -9,6 +9,14 @@ class _ProxyHandle(Handle, type_prefix="pr"):
 
 
 class _Proxy(Provider[_ProxyHandle]):
+    """
+    Proxy objects are used to setup secure tunnel connections to a private remote address, for example
+    a database.
+
+    Currently `modal.Proxy` objects must be setup with the assistance of Modal staff. If you require a proxy
+    please contact us.
+    """
+
     pass
 
 

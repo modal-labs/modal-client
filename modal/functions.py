@@ -427,6 +427,8 @@ async def _map_invocation(
 # Wrapper type for api_pb2.FunctionStats
 @dataclass
 class FunctionStats:
+    """Simple data structure storing stats for a running function."""
+
     backlog: int
     num_active_runners: int
     num_total_runners: int
@@ -557,7 +559,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
     async def starmap(self, input_iterator, kwargs={}, order_outputs=None, return_exceptions=False):
         """Like `map` but spreads arguments over multiple function arguments
 
-        Assumes every input is a sequence (e.g. a tuple)
+        Assumes every input is a sequence (e.g. a tuple).
 
         Example:
         ```python notest
@@ -600,6 +602,9 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         return await _Invocation.create(self._object_id, args, kwargs, self._client)
 
     def call(self, *args, **kwargs):
+        """
+        Calls the function, executing it remotely with the given arguments and returning the execution's result.
+        """
         if self._is_generator:
             return self.call_generator(args, kwargs)
         else:
@@ -1037,9 +1042,9 @@ _current_input_id: Optional[str] = None
 
 
 def current_input_id() -> str:
-    """Returns the input id for the currently processed input
+    """Returns the input ID for the currently processed input.
 
-    Can only be called from Modal function (i.e. in a container context)
+    Can only be called from Modal function (i.e. in a container context).
 
     ```python
     from modal import current_input_id
