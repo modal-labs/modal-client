@@ -343,10 +343,7 @@ class _Stub:
         since they will run until the program is interrupted with `Ctrl + C` or other means.
         Any changes made to webhook handlers will show up almost immediately the next time the route is hit.
 
-        **Note**
-
-        Changes to decorator arguments (eg. `timeout`, `gpu`, `shared_volumes`) will not propogate on live updates,
-        just web handle function bodies. Stop and restart your webhook serving process to propogate these changes.
+        **Note:** live-reloading is not supported on Python 3.7. Please upgrade to Python 3.8+.
         """
         from ._watcher import AppChange, watch
 
@@ -579,19 +576,24 @@ class _Stub:
         assets. Note that regular Modal functions can also be used as CLI entrypoints,
         but unlike `local_entrypoint` Modal function are executed remotely.
 
-        E.g.
+        **Example**
+
+        ```python
         @stub.local_entrypoint
         def main():
-            some_modal_function()
+            some_modal_function.call()
+        ```
 
         You can call the entrypoint function within a Modal run context
         directly from the CLI:
-        ```
+
+        ```shell
         modal run stub_module.py
         ```
 
         If you have multiple `local_entrypoint` functions, you can qualify the name of your stub and function:
-        ```
+
+        ```shell
         modal run stub_module.py::stub.some_other_function
         ```
 
@@ -678,7 +680,7 @@ class _Stub:
 
     @decorator_with_options
     def generator(self, raw_f=None, **kwargs):
-        """Stub.generator is no longer supported. Use .function() instead."""
+        """Stub.generator is no longer supported. Use `.function()` instead."""
         deprecation_error(date(2022, 12, 1), "Stub.generator is no longer supported. Use .function() instead.")
 
     @decorator_with_options
