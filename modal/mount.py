@@ -134,24 +134,29 @@ class _Mount(Provider[_MountHandle]):
         condition: Callable[[str], bool] = lambda path: True,
         # Optional flag to toggle if subdirectories should be mounted recursively.
         recursive: bool = True,
+        _entries: List[_MountEntry] = None,  # internal - don't use
     ):
-        self._entries: List[_MountEntry] = []
-        if local_file or local_dir:
-            # TODO: add deprecation warning here for legacy API
-            if local_file is not None and local_dir is not None:
-                raise InvalidError("Cannot specify both local_file and local_dir as arguments to Mount.")
+        if _entries:
+            self._entries = _entries
+            assert local_file is None and local_dir is None
+        else:
+            self._entries: List[_MountEntry] = []
+            if local_file or local_dir:
+                # TODO: add deprecation warning here for legacy API
+                if local_file is not None and local_dir is not None:
+                    raise InvalidError("Cannot specify both local_file and local_dir as arguments to Mount.")
 
-            if local_dir:
-                remote_path = PurePosixPath(remote_dir)
-                self.add_local_dir(
-                    local_path=local_dir,
-                    remote_path=remote_path,
-                    condition=condition,
-                    recursive=recursive,
-                )
-            elif local_file:
-                remote_path = PurePosixPath(remote_dir) / Path(local_file).name
-                self.add_local_file(local_path=local_file, remote_path=remote_path)
+                if local_dir:
+                    remote_path = PurePosixPath(remote_dir)
+                    self._entries = self.add_local_dir(
+                        local_path=local_dir,
+                        remote_path=remote_path,
+                        condition=condition,
+                        recursive=recursive,
+                    )._entries
+                elif local_file:
+                    remote_path = PurePosixPath(remote_dir) / Path(local_file).name
+                    self._entries = self.add_local_file(local_path=local_file, remote_path=remote_path)._entries
 
         self._is_local = True
         rep = f"Mount({self._entries})"
@@ -176,31 +181,32 @@ class _Mount(Provider[_MountHandle]):
             remote_path = local_path.name
         remote_path = PurePosixPath("/", remote_path)
 
-        self._entries.append(
-            _MountDir(
-                local_dir=Path(local_path),
-                condition=condition,
-                remote_path=remote_path,
-                recursive=recursive,
-            )
+        return _Mount(
+            _entries=self._entries
+            + [
+                _MountDir(
+                    local_dir=Path(local_path),
+                    condition=condition,
+                    remote_path=remote_path,
+                    recursive=recursive,
+                )
+            ]
         )
-        return self
 
     def add_local_file(self, local_path: Union[str, Path], remote_path: Union[str, PurePosixPath] = None):
         local_path = Path(local_path)
         if remote_path is None:
             remote_path = local_path.name
         remote_path = PurePosixPath("/", remote_path)
-        self._entries.append(
-            _MountFile(
-                local_file=local_path,
-                remote_path=PurePosixPath(remote_path),
-            )
+        return _Mount(
+            _entries=self._entries
+            + [
+                _MountFile(
+                    local_file=local_path,
+                    remote_path=PurePosixPath(remote_path),
+                )
+            ]
         )
-        return self
-
-    def __repr__(self):
-        return f"Mount({self._description()}"
 
     def _description(self):
         local_contents = [e.description() for e in self._entries]
