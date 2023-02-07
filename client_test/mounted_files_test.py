@@ -97,7 +97,7 @@ def test_mounted_files_package(test_dir):
     print("stderr: ", stderr)
     files = set(stdout.splitlines())
 
-    assert len(files) == 10
+    assert len(files) == 12
 
     # Assert everything from `pkg_a` is in the output.
     assert any(["a.py" in f for f in files])
