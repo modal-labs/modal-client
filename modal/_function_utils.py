@@ -205,7 +205,7 @@ class FunctionInfo:
                 relpath = os.path.relpath(os.path.dirname(path), self.base_dir)
                 mounts[path] = _Mount(
                     local_file=path,
-                    remote_dir=os.path.join(ROOT_DIR, relpath),
+                    remote_dir=os.path.normpath(os.path.join(ROOT_DIR, relpath)),
                 )
         return filter_safe_mounts(mounts)
 
