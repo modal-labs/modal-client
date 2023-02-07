@@ -69,7 +69,7 @@ def filter_safe_mounts(mounts: typing.Dict[str, _Mount]):
     safe_mounts = {}
     for local_dir, mount in mounts.items():
         for entry in mount._entries:
-            if _is_modal_path(entry.path_within_mount):
+            if _is_modal_path(entry.remote_path):
                 break
         else:
             safe_mounts[local_dir] = mount

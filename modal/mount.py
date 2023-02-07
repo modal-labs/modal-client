@@ -5,7 +5,7 @@ import dataclasses
 import os
 import time
 from pathlib import Path
-from typing import Callable, Collection, List, Optional, Union
+from typing import Callable, Collection, List, Optional, Union, Tuple
 
 import aiostream
 
@@ -27,12 +27,52 @@ def client_mount_name():
 
 
 @dataclasses.dataclass
-class _MountEntry:
-    local_dir: Optional[Path]
-    local_file: Optional[Path]
-    path_within_mount: Optional[Path]
-    condition: Callable
+class _MountFile:
+    local_file: Path
+    remote_path: Path
+
+    def description(self) -> str:
+        return self.local_file.as_posix()
+
+    def get_files_to_upload(self):
+        local_file = self.local_file.expanduser()
+        if not local_file.exists():
+            raise FileNotFoundError(local_file)
+        remote_filename = self.remote_path / self.local_file.name
+        yield local_file, remote_filename
+
+
+@dataclasses.dataclass
+class _MountDir:
+    local_dir: Path
+    remote_path: Path
+    condition: Callable[[str], bool]
     recursive: bool
+
+    def description(self):
+        return self.local_dir.as_posix()
+
+    def get_files_to_upload(self):
+        local_dir = self.local_dir.expanduser()
+
+        if not local_dir.exists():
+            raise FileNotFoundError(local_dir)
+
+        if not local_dir.is_dir():
+            raise NotADirectoryError(local_dir)
+
+        if self.recursive:
+            gen = (os.path.join(root, name) for root, dirs, files in os.walk(local_dir) for name in files)
+        else:
+            gen = (dir_entry.path for dir_entry in os.scandir(local_dir) if dir_entry.is_file())
+
+        for local_filename in gen:
+            if self.condition(local_filename):
+                remote_filename = self.remote_path / Path(local_filename).relative_to(local_dir)
+                yield local_filename, remote_filename
+
+
+_MountEntry = Union[_MountFile, _MountDir]
 
 
 class _MountHandle(Handle, type_prefix="mo"):
@@ -63,7 +103,7 @@ class _Mount(Provider[_MountHandle]):
     def __init__(
         self,
         # Mount path within the container.
-        remote_dir: Union[str, Path, None] = None,
+        remote_dir: Union[str, Path] = "/",
         *,
         # Local directory to mount.
         local_dir: Optional[Union[str, Path]] = None,
@@ -83,12 +123,12 @@ class _Mount(Provider[_MountHandle]):
             if local_dir:
                 self.add_local_dir(
                     local_path=local_dir,
-                    path_within_mount=Path(remote_dir or "/"),
+                    remote_path=remote_dir,
                     condition=condition,
                     recursive=recursive,
                 )
             elif local_file:
-                self.add_local_file(local_path=local_file, path_within_mount=Path(remote_dir or "/"))
+                self.add_local_file(local_path=local_file, remote_path=remote_dir)
 
         self._is_local = True
         rep = f"Mount({self._entries})"
@@ -104,28 +144,24 @@ class _Mount(Provider[_MountHandle]):
         local_path: Union[str, Path],
         *,
         condition: Callable[[str], bool] = lambda path: True,  # Filter function for file selection
-        path_within_mount: Union[str, Path],  # Where the directory is placed within in the mount
+        remote_path: Union[str, Path],  # Where the directory is placed within in the mount
         recursive: bool = True,  # add files from subdirectories as well
     ):
         self._entries.append(
-            _MountEntry(
+            _MountDir(
                 local_dir=Path(local_path),
-                local_file=None,
                 condition=condition,
-                path_within_mount=Path(path_within_mount),
+                remote_path=Path(remote_path),
                 recursive=recursive,
             )
         )
         return self
 
-    def add_local_file(self, local_path: Union[str, Path], path_within_mount: Union[str, Path]):
+    def add_local_file(self, local_path: Union[str, Path], remote_path: Union[str, Path]):
         self._entries.append(
-            _MountEntry(
-                local_dir=None,
+            _MountFile(
                 local_file=Path(local_path),
-                condition=lambda fn: True,
-                path_within_mount=Path(path_within_mount),
-                recursive=False,
+                remote_path=Path(remote_path),
             )
         )
         return self
@@ -134,41 +170,27 @@ class _Mount(Provider[_MountHandle]):
         return f"Mount({self._description()}"
 
     def _description(self):
-        local_contents = [str(e.local_file or e.local_dir) for e in self._entries]
+        local_contents = [e.description() for e in self._entries]
         return ", ".join(local_contents)
 
     async def _get_files(self):
+        all_files: List[Tuple[Path, Path]] = []
+        for entry in self._entries:
+            all_files += list(entry.get_files_to_upload())
+
         loop = asyncio.get_event_loop()
         with concurrent.futures.ThreadPoolExecutor() as exe:
-            for entry in self._entries:
-                if entry.local_file:
-                    relpath = entry.path_within_mount / entry.local_file.name
-                    yield get_file_upload_spec(str(entry.local_file), relpath)
-                    continue
+            futs = []
+            for local_filename, remote_filename in all_files:
+                futs.append(loop.run_in_executor(exe, get_file_upload_spec, local_filename, remote_filename))
 
-                local_dir = entry.local_dir.expanduser()
-                if not local_dir.exists():
-                    raise FileNotFoundError(local_dir)
-                if not local_dir.is_dir():
-                    raise NotADirectoryError(local_dir)
-
-                futs = []
-                if entry.recursive:
-                    gen = (os.path.join(root, name) for root, dirs, files in os.walk(local_dir) for name in files)
-                else:
-                    gen = (dir_entry.path for dir_entry in os.scandir(local_dir) if dir_entry.is_file())
-
-                for filename in gen:
-                    if entry.condition(filename):
-                        mount_filename = entry.path_within_mount / Path(filename).relative_to(local_dir)
-                        futs.append(loop.run_in_executor(exe, get_file_upload_spec, filename, mount_filename))
-                logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} workers")
-                for i, fut in enumerate(asyncio.as_completed(futs)):
-                    try:
-                        yield await fut
-                    except FileNotFoundError as exc:
-                        # Can happen with temporary files (e.g. emacs will write temp files and delete them quickly)
-                        logger.info(f"Ignoring file not found: {exc}")
+            logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} workers")
+            for i, fut in enumerate(asyncio.as_completed(futs)):
+                try:
+                    yield await fut
+                except FileNotFoundError as exc:
+                    # Can happen with temporary files (e.g. emacs will write temp files and delete them quickly)
+                    logger.info(f"Ignoring file not found: {exc}")
 
     async def _load(self, resolver: Resolver):
         # Run a threadpool to compute hash values, and use concurrent coroutines to register files.
@@ -183,7 +205,9 @@ class _Mount(Provider[_MountHandle]):
 
         async def _put_file(mount_file: FileUploadSpec):
             nonlocal n_files, uploaded_hashes, total_bytes
-            resolver.set_message(f"Mounting {message_label}: Uploaded {len(uploaded_hashes)}/{n_files} inspected files")
+            resolver.set_message(
+                f"Creating mount {message_label}: Uploaded {len(uploaded_hashes)}/{n_files} inspected files"
+            )
 
             remote_filename = mount_file.mount_filename.as_posix()
             files.append(api_pb2.MountFile(filename=remote_filename, sha256_hex=mount_file.sha256_hex))
@@ -220,12 +244,12 @@ class _Mount(Provider[_MountHandle]):
         except aiostream.StreamEmpty:
             logger.warning(f"Mount of '{message_label}' is empty.")
 
-        resolver.set_message(f"Mounting {message_label}: Building mount")
+        resolver.set_message(f"Creating mount {message_label}: Building mount")
         req = api_pb2.MountBuildRequest(
             app_id=resolver.app_id, existing_mount_id=resolver.existing_object_id, files=files
         )
         resp = await retry_transient_errors(resolver.client.stub.MountBuild, req, base_delay=1)
-        resolver.set_message(f"Mounted {message_label} at {self._remote_dir}")
+        resolver.set_message(f"Created mount {message_label}")
 
         logger.debug(f"Uploaded {len(uploaded_hashes)}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
         return _MountHandle._from_id(resp.mount_id, resolver.client, None)
