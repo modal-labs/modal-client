@@ -7,15 +7,14 @@ from pathlib import Path
 from watchfiles import Change
 
 from modal._watcher import _watch_args_from_mounts
-from modal.mount import _Mount
 
 
 @pytest.mark.asyncio
 async def test__watch_args_from_mounts(monkeypatch, test_dir):
     paths, watch_filter = _watch_args_from_mounts(
-        mounts=[
-            _Mount(remote_dir="/", local_file="/x/foo.py"),
-            _Mount(remote_dir="/", local_dir="/one/two/bucklemyshoe"),
+        [
+            (None, "/x/foo.py"),
+            ("/one/two/bucklemyshoe", None),
         ]
     )
 

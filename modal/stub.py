@@ -8,7 +8,7 @@ import sys
 import warnings
 from datetime import date
 from enum import Enum
-from typing import AsyncGenerator, Callable, Collection, Dict, List, Optional, Union
+from typing import AsyncGenerator, Callable, Collection, Dict, List, Optional, Union, Tuple
 
 from rich.tree import Tree
 
@@ -93,7 +93,7 @@ class _Stub:
     _function_handles: Dict[str, _FunctionHandle]
     _web_endpoints: List[str]  # Used by the CLI
     _local_entrypoints: Dict[str, Callable]
-    _local_mounts: List[_Mount]
+    _to_watch: List[Tuple[str, str]]
     _app: Optional[_App]
 
     def __init__(
@@ -119,7 +119,7 @@ class _Stub:
         self._secrets = secrets
         self._function_handles = {}
         self._local_entrypoints = {}
-        self._local_mounts = []
+        self._to_watch = []
         self._web_endpoints = []
 
         self._app = None
@@ -553,8 +553,8 @@ class _Stub:
 
         # Track all mounts. This is needed for file watching
         for mount in mounts:
-            if mount.is_local():
-                self._local_mounts.append(mount)
+            if mount.to_watch is not None:
+                self._to_watch.append(mount.to_watch)
 
     @property
     def registered_functions(self) -> List[str]:

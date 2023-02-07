@@ -10,7 +10,6 @@ from rich.tree import Tree
 from watchfiles import Change, DefaultFilter, awatch
 from watchfiles.main import FileChange
 
-from modal.mount import _Mount
 from modal.stub import _Stub
 
 from ._output import OutputManager
@@ -84,25 +83,25 @@ def _print_watched_paths(paths: Set[Union[str, Path]], output_mgr: OutputManager
     output_mgr.print_if_visible(output_tree)
 
 
-def _watch_args_from_mounts(mounts: List[_Mount]) -> Tuple[Set[Union[str, Path]], StubFilesFilter]:
+def _watch_args_from_mounts(to_watch: List[Tuple[str, str]]) -> Tuple[Set[Union[str, Path]], StubFilesFilter]:
     paths = set()
     dir_filters: Dict[Path, Set[str]] = defaultdict(set)
-    for mount in mounts:
-        if mount._local_dir is not None:
-            paths.add(mount._local_dir)
-            dir_filters[Path(mount._local_dir)] = None
-        elif mount._local_file is not None:
-            parent = Path(mount._local_file).parent
+    for local_dir, local_file in to_watch:
+        if local_dir is not None:
+            paths.add(local_dir)
+            dir_filters[Path(local_dir)] = None
+        elif local_file is not None:
+            parent = Path(local_file).parent
             paths.add(parent)
             if dir_filters[parent] is not None:
-                dir_filters[parent].add(str(mount._local_file))
+                dir_filters[parent].add(str(local_file))
 
     watch_filter = StubFilesFilter(dir_filters=dict(dir_filters))
     return paths, watch_filter
 
 
 async def watch(stub: _Stub, output_mgr: OutputManager, timeout: Optional[float]):
-    paths, watch_filter = _watch_args_from_mounts(mounts=stub._local_mounts)
+    paths, watch_filter = _watch_args_from_mounts(stub._to_watch)
 
     _print_watched_paths(paths, output_mgr, timeout)
 

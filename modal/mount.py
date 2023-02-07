@@ -4,7 +4,7 @@ import concurrent.futures
 import os
 import time
 from pathlib import Path
-from typing import AsyncGenerator, Callable, Collection, List, Optional, Union
+from typing import AsyncGenerator, Callable, Collection, List, Optional, Tuple, Union
 
 import aiostream
 
@@ -155,14 +155,15 @@ class _Mount(Provider[_MountHandle]):
         self._remote_dir = remote_dir
         self._condition = condition
         self._recursive = recursive
-        self._is_local = True
+        self._to_watch = (self._local_dir, self._local_file)
         rep = f"Mount({self._local_file or self._local_dir})"
         super().__init__(self._load, rep)
 
-    def is_local(self):
+    @property
+    def to_watch(self) -> Optional[Tuple[str, str]]:
         # TODO(erikbern): since any remote ref bypasses the constructor,
         # we can't rely on it to be set. Let's clean this up later.
-        return getattr(self, "_is_local", False)
+        return getattr(self, "_to_watch", None)
 
     async def _load(self, resolver: Resolver):
         # Run a threadpool to compute hash values, and use concurrent coroutines to register files.
