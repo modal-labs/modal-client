@@ -119,7 +119,7 @@ class _Mount(Provider[_MountHandle]):
     async def _get_remote_files(self):
         # Used by tests
         async for file_spec in self._get_files():
-            yield os.path.join(self._remote_dir, file_spec.rel_filename)
+            yield (Path(self._remote_dir) / Path(file_spec.rel_filename)).as_posix()
 
     async def _load(self, resolver: Resolver):
         # Run a threadpool to compute hash values, and use concurrent coroutines to register files.
