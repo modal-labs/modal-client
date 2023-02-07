@@ -89,14 +89,13 @@ def _watch_args_from_mounts(mounts: List[_Mount]) -> Tuple[Set[Union[str, Path]]
     dir_filters: Dict[Path, Optional[Set[str]]] = defaultdict(set)
     for mount in mounts:
         # TODO(elias): Make this part of the mount class instead, since it uses so much internals
-        # TODO: this code seems untested?
         for entry in mount._entries:
             path, filter_file = entry.watch_entry()
             paths.add(path)
             if filter_file is None:
                 dir_filters[path] = None
             elif dir_filters[path] is not None:
-                dir_filters[path].add(filter_file)
+                dir_filters[path].add(filter_file.as_posix())
 
     watch_filter = StubFilesFilter(dir_filters=dict(dir_filters))
     return paths, watch_filter
