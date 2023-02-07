@@ -213,13 +213,11 @@ class FunctionInfo:
                 if not dirpath.as_posix().startswith(Path(self.base_dir).as_posix()):
                     continue  # TODO(elias) some kind of heuristic for how to handle things outside of the cwd?
 
-                relpath = dirpath.relative_to(self.base_dir)
+                relpath = dirpath.relative_to(Path(self.base_dir).as_posix())
+
                 mounts[path] = _Mount(
                     local_file=path,
-                    remote_dir=ROOT_DIR
-                    / PurePosixPath(
-                        relpath.as_posix()
-                    ),  # TODO(elias): check with Erik for a case where we need normpath/resolve here
+                    remote_dir=ROOT_DIR / relpath if relpath != PurePosixPath(".") else ROOT_DIR,
                 )
         return filter_safe_mounts(mounts)
 
