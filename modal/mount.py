@@ -20,6 +20,8 @@ from .config import config, logger
 from .exception import InvalidError, NotFoundError
 from .object import Handle, Provider
 
+n_concurrent_uploads = 16
+
 
 def client_mount_name():
     return f"modal-client-mount-{__version__}"
@@ -29,12 +31,14 @@ class _MountHandle(Handle, type_prefix="mo"):
     pass
 
 
-def _get_file(local_file: str) -> FileUploadSpec:
+async def _get_file(local_file: str) -> AsyncGenerator[FileUploadSpec, None]:
     relpath = os.path.basename(str(local_file))
-    return get_file_upload_spec(str(local_file), relpath)
+    yield get_file_upload_spec(str(local_file), relpath)
 
 
-async def _get_files(local_dir: str, recursive: bool, condition: Callable[[str], bool]) -> AsyncGenerator[FileUploadSpec, None]:
+async def _get_files(
+    local_dir: str, recursive: bool, condition: Callable[[str], bool]
+) -> AsyncGenerator[FileUploadSpec, None]:
     local_dir = os.path.expanduser(local_dir)
     if not os.path.exists(local_dir):
         raise FileNotFoundError(local_dir)
@@ -61,6 +65,48 @@ async def _get_files(local_dir: str, recursive: bool, condition: Callable[[str],
                 # Can happen with temporary files (e.g. emacs will write temp files and delete them quickly)
                 logger.info(f"Ignoring file not found: {exc}")
 
+
+async def _put_files(
+    resolver: Resolver, message_label: str, remote_dir: str, file_specs: AsyncGenerator[FileUploadSpec, None]
+) -> List[api_pb2.MountFile]:
+    n_files = 0
+    uploaded_hashes: set[str] = set()
+    total_bytes = 0
+
+    async def _put_file(mount_file: FileUploadSpec) -> Optional[api_pb2.MountFile]:
+        nonlocal n_files, uploaded_hashes, total_bytes
+        resolver.set_message(f"Mounting {message_label}: Uploaded {len(uploaded_hashes)}/{n_files} inspected files")
+
+        remote_filename = (Path(remote_dir) / Path(mount_file.rel_filename)).as_posix()
+        file_proto = api_pb2.MountFile(filename=remote_filename, sha256_hex=mount_file.sha256_hex)
+
+        request = api_pb2.MountPutFileRequest(sha256_hex=mount_file.sha256_hex)
+        response = await retry_transient_errors(resolver.client.stub.MountPutFile, request, base_delay=1)
+
+        n_files += 1
+        if response.exists or mount_file.sha256_hex in uploaded_hashes:
+            return
+        uploaded_hashes.add(mount_file.sha256_hex)
+        total_bytes += mount_file.size
+
+        if mount_file.use_blob:
+            logger.debug(f"Creating blob file for {mount_file.filename} ({mount_file.size} bytes)")
+            with open(mount_file.filename, "rb") as fp:
+                blob_id = await blob_upload_file(fp, resolver.client.stub)
+            logger.debug(f"Uploading blob file {mount_file.filename} as {remote_filename}")
+            request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=mount_file.sha256_hex)
+        else:
+            logger.debug(f"Uploading file {mount_file.filename} to {remote_filename} ({mount_file.size} bytes)")
+            request2 = api_pb2.MountPutFileRequest(data=mount_file.content, sha256_hex=mount_file.sha256_hex)
+        await retry_transient_errors(resolver.client.stub.MountPutFile, request2, base_delay=1)
+        return file_proto
+
+    files_stream = aiostream.stream.iterate(file_specs)
+    uploads_stream = aiostream.stream.map(files_stream, _put_file, task_limit=n_concurrent_uploads)
+    files: List[api_pb2.MountFile] = await aiostream.stream.list(uploads_stream)
+    if not files:
+        logger.warning(f"Mount of '{message_label}' is empty.")
+    return [f for f in files if f is not None]
 
 
 class _Mount(Provider[_MountHandle]):
@@ -120,57 +166,18 @@ class _Mount(Provider[_MountHandle]):
 
     async def _load(self, resolver: Resolver):
         # Run a threadpool to compute hash values, and use concurrent coroutines to register files.
-        t0 = time.time()
-        n_concurrent_uploads = 16
-
-        n_files = 0
-        uploaded_hashes: set[str] = set()
-        total_bytes = 0
-        message_label = self._local_dir or self._local_file
-
-        async def _put_file(mount_file: FileUploadSpec) -> api_pb2.MountFile:
-            nonlocal n_files, uploaded_hashes, total_bytes
-            resolver.set_message(f"Mounting {message_label}: Uploaded {len(uploaded_hashes)}/{n_files} inspected files")
-
-            remote_filename = (Path(self._remote_dir) / Path(mount_file.rel_filename)).as_posix()
-            file_proto = api_pb2.MountFile(filename=remote_filename, sha256_hex=mount_file.sha256_hex)
-
-            request = api_pb2.MountPutFileRequest(sha256_hex=mount_file.sha256_hex)
-            response = await retry_transient_errors(resolver.client.stub.MountPutFile, request, base_delay=1)
-
-            n_files += 1
-            if response.exists or mount_file.sha256_hex in uploaded_hashes:
-                return file_proto
-            uploaded_hashes.add(mount_file.sha256_hex)
-            total_bytes += mount_file.size
-
-            if mount_file.use_blob:
-                logger.debug(f"Creating blob file for {mount_file.filename} ({mount_file.size} bytes)")
-                with open(mount_file.filename, "rb") as fp:
-                    blob_id = await blob_upload_file(fp, resolver.client.stub)
-                logger.debug(f"Uploading blob file {mount_file.filename} as {remote_filename}")
-                request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=mount_file.sha256_hex)
-            else:
-                logger.debug(f"Uploading file {mount_file.filename} to {remote_filename} ({mount_file.size} bytes)")
-                request2 = api_pb2.MountPutFileRequest(data=mount_file.content, sha256_hex=mount_file.sha256_hex)
-            await retry_transient_errors(resolver.client.stub.MountPutFile, request2, base_delay=1)
-            return file_proto
-
         logger.debug(f"Uploading mount using {n_concurrent_uploads} uploads")
 
-        # Create async generator
+        # Create async generator that computes checksums of all mount files
+        files: AsyncGenerator[FileUploadSpec]
         if self._local_file:
-            files = [_get_file(self._local_file)]
+            file_specs = _get_file(self._local_file)
         else:
-            files = _get_files(self._local_dir, self._recursive, self._condition)
-        files_stream = aiostream.stream.iterate(files)
+            file_specs = _get_files(self._local_dir, self._recursive, self._condition)
 
         # Upload files
-        uploads_stream = aiostream.stream.map(files_stream, _put_file, task_limit=n_concurrent_uploads)
-        try:
-            files: List[api_pb2.MountFile] = await aiostream.stream.list(uploads_stream)
-        except aiostream.StreamEmpty:
-            logger.warning(f"Mount of '{message_label}' is empty.")
+        message_label = self._local_dir or self._local_file
+        files = await _put_files(resolver, message_label, self._remote_dir, file_specs)
 
         # Build mount
         resolver.set_message(f"Mounting {message_label}: Building mount")
@@ -180,7 +187,7 @@ class _Mount(Provider[_MountHandle]):
         resp = await retry_transient_errors(resolver.client.stub.MountBuild, req, base_delay=1)
         resolver.set_message(f"Mounted {message_label} at {self._remote_dir}")
 
-        logger.debug(f"Uploaded {len(uploaded_hashes)}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
+        # Return handle
         return _MountHandle._from_id(resp.mount_id, resolver.client, None)
 
 
