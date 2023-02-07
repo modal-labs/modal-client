@@ -47,7 +47,7 @@ class _MountFile(_MountEntry):
     remote_path: PurePosixPath
 
     def description(self) -> str:
-        return self.local_file.as_posix()
+        return str(self.local_file)
 
     def get_files_to_upload(self):
         local_file = self.local_file.expanduser()
@@ -70,7 +70,7 @@ class _MountDir(_MountEntry):
     recursive: bool
 
     def description(self):
-        return self.local_dir.as_posix()
+        return str(self.local_dir)
 
     def get_files_to_upload(self):
         local_dir = self.local_dir.expanduser()
@@ -121,6 +121,8 @@ class _Mount(Provider[_MountHandle]):
     the file's contents to skip uploading files that have been uploaded before.
     """
 
+    _entries: List[_MountEntry]
+
     def __init__(
         self,
         # Mount path within the container.
@@ -140,7 +142,7 @@ class _Mount(Provider[_MountHandle]):
             self._entries = _entries
             assert local_file is None and local_dir is None
         else:
-            self._entries: List[_MountEntry] = []
+            self._entries = []
             if local_file or local_dir:
                 # TODO: add deprecation warning here for legacy API
                 if local_file is not None and local_dir is not None:
@@ -185,7 +187,7 @@ class _Mount(Provider[_MountHandle]):
             _entries=self._entries
             + [
                 _MountDir(
-                    local_dir=Path(local_path),
+                    local_dir=local_path,
                     condition=condition,
                     remote_path=remote_path,
                     recursive=recursive,

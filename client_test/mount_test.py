@@ -1,6 +1,8 @@
 # Copyright Modal Labs 2022
 import hashlib
 import os
+from pathlib import Path
+
 import pytest
 import sys
 
@@ -82,7 +84,7 @@ def test_create_mount(servicer, client):
         sha256_hex = servicer.files_name2sha[f"/foo/{cur_filename}"]
         assert sha256_hex in servicer.files_sha2data
         assert servicer.files_sha2data[sha256_hex]["data"] == open(__file__, "rb").read()
-        assert local_dir in repr(m)
+        assert repr(Path(local_dir)) in repr(m)
 
 
 def test_create_mount_file_errors(servicer, tmpdir, client):
