@@ -318,9 +318,7 @@ def test_image_build_with_context_mount(client, servicer, tmp_path):
             assert "COPY . /dummy" in layers[expected_layer].dockerfile_commands
 
         files = {f.mount_filename: f.content for f in data_mount._get_files()}
-        assert files["data.txt"] == b"hello"
-        assert files[os.path.join("data", "sub")] == b"world"
-        assert len(files) == 2
+        assert files == {"data.txt": b"hello", "data/sub": b"world"}
 
 
 def test_image_env(client, servicer):

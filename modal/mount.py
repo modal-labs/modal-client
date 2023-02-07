@@ -38,8 +38,9 @@ class _MountFile:
         local_file = self.local_file.expanduser()
         if not local_file.exists():
             raise FileNotFoundError(local_file)
-        remote_filename = self.remote_path / self.local_file.name
-        yield local_file, remote_filename
+        mount_path = self.remote_path / self.local_file.name
+        rel_filename = mount_path.relative_to("/").as_posix()
+        yield local_file, rel_filename
 
 
 @dataclasses.dataclass
@@ -68,8 +69,9 @@ class _MountDir:
 
         for local_filename in gen:
             if self.condition(local_filename):
-                remote_filename = self.remote_path / Path(local_filename).relative_to(local_dir)
-                yield local_filename, remote_filename
+                mount_path = self.remote_path / Path(local_filename).relative_to(local_dir)
+                rel_filename = mount_path.relative_to("/").as_posix()
+                yield local_filename, rel_filename
 
 
 _MountEntry = Union[_MountFile, _MountDir]
@@ -143,10 +145,14 @@ class _Mount(Provider[_MountHandle]):
         self,
         local_path: Union[str, Path],
         *,
+        remote_path: Union[str, Path] = None,  # Where the directory is placed within in the mount
         condition: Callable[[str], bool] = lambda path: True,  # Filter function for file selection
-        remote_path: Union[str, Path],  # Where the directory is placed within in the mount
         recursive: bool = True,  # add files from subdirectories as well
     ):
+        local_path = Path(local_path)
+        if not remote_path:
+            remote_path = local_path.name
+
         self._entries.append(
             _MountDir(
                 local_dir=Path(local_path),
@@ -157,10 +163,14 @@ class _Mount(Provider[_MountHandle]):
         )
         return self
 
-    def add_local_file(self, local_path: Union[str, Path], remote_path: Union[str, Path]):
+    def add_local_file(self, local_path: Union[str, Path], remote_path: Union[str, Path] = None):
+        local_path = Path(local_path)
+        if remote_path is None:
+            remote_path = local_path.name
+
         self._entries.append(
             _MountFile(
-                local_file=Path(local_path),
+                local_file=local_path,
                 remote_path=Path(remote_path),
             )
         )
@@ -209,7 +219,7 @@ class _Mount(Provider[_MountHandle]):
                 f"Creating mount {message_label}: Uploaded {len(uploaded_hashes)}/{n_files} inspected files"
             )
 
-            remote_filename = mount_file.mount_filename.as_posix()
+            remote_filename = mount_file.mount_filename
             files.append(api_pb2.MountFile(filename=remote_filename, sha256_hex=mount_file.sha256_hex))
 
             request = api_pb2.MountPutFileRequest(sha256_hex=mount_file.sha256_hex)
