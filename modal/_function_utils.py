@@ -192,7 +192,7 @@ class FunctionInfo:
                         or not os.path.exists(path)
                     ):
                         continue
-                    remote_dir = ROOT_DIR / PurePosixPath( *m.__name__.split("."))
+                    remote_dir = ROOT_DIR / PurePosixPath(*m.__name__.split("."))
                     mounts[path] = _Mount(
                         local_dir=path,
                         remote_dir=remote_dir,
@@ -212,7 +212,10 @@ class FunctionInfo:
                 relpath = Path(os.path.relpath(os.path.dirname(path), self.base_dir))
                 mounts[path] = _Mount(
                     local_file=path,
-                    remote_dir=ROOT_DIR / PurePosixPath(relpath.as_posix()),  # TODO(elias): check with Erik for a case where we need normpath/resolve here
+                    remote_dir=ROOT_DIR
+                    / PurePosixPath(
+                        relpath.as_posix()
+                    ),  # TODO(elias): check with Erik for a case where we need normpath/resolve here
                 )
         return filter_safe_mounts(mounts)
 
