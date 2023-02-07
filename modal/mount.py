@@ -2,7 +2,6 @@
 import asyncio
 import concurrent.futures
 import os
-import time
 from pathlib import Path
 from typing import AsyncGenerator, Callable, Collection, List, Optional, Tuple, Union
 
@@ -150,9 +149,9 @@ class _Mount(Provider[_MountHandle]):
         if local_file is None and local_dir is None:
             raise InvalidError("Must provide at least one of local_file and local_dir to Mount.")
 
-        self._local_dir = local_dir
-        self._local_file = local_file
-        self._remote_dir = remote_dir
+        self._local_dir = str(local_dir) if local_dir is not None else None
+        self._local_file = str(local_file) if local_file is not None else None
+        self._remote_dir = str(remote_dir)
         self._condition = condition
         self._recursive = recursive
         self._to_watch = (self._local_dir, self._local_file)
@@ -170,7 +169,7 @@ class _Mount(Provider[_MountHandle]):
         logger.debug(f"Uploading mount using {n_concurrent_uploads} uploads")
 
         # Create async generator that computes checksums of all mount files
-        files: AsyncGenerator[FileUploadSpec]
+        file_specs: AsyncGenerator[FileUploadSpec, None]
         if self._local_file:
             file_specs = _get_file(self._local_file)
         else:
@@ -190,6 +189,11 @@ class _Mount(Provider[_MountHandle]):
 
         # Return handle
         return _MountHandle._from_id(resp.mount_id, resolver.client, None)
+
+    async def _get_files(self) -> AsyncGenerator[FileUploadSpec, None]:
+        # Used by a few test
+        async for file_spec in _get_files(self._local_dir, self._recursive, self._condition):
+            yield file_spec
 
 
 Mount, AioMount = synchronize_apis(_Mount)

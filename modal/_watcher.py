@@ -60,7 +60,7 @@ async def _sleep(timeout: float):
     yield AppChange.TIMEOUT
 
 
-async def _watch_paths(paths: Set[Union[str, Path]], watch_filter: StubFilesFilter):
+async def _watch_paths(paths: Set[Path], watch_filter: StubFilesFilter):
     try:
         async for changes in awatch(*paths, step=500, watch_filter=watch_filter):
             yield changes
@@ -69,7 +69,7 @@ async def _watch_paths(paths: Set[Union[str, Path]], watch_filter: StubFilesFilt
         pass
 
 
-def _print_watched_paths(paths: Set[Union[str, Path]], output_mgr: OutputManager, timeout: Optional[float]):
+def _print_watched_paths(paths: Set[Path], output_mgr: OutputManager, timeout: Optional[float]):
     if timeout:
         msg = f"⚡️ Serving for {timeout} seconds... hit Ctrl-C to stop!"
     else:
@@ -83,12 +83,12 @@ def _print_watched_paths(paths: Set[Union[str, Path]], output_mgr: OutputManager
     output_mgr.print_if_visible(output_tree)
 
 
-def _watch_args_from_mounts(to_watch: List[Tuple[str, str]]) -> Tuple[Set[Union[str, Path]], StubFilesFilter]:
-    paths = set()
+def _watch_args_from_mounts(to_watch: List[Tuple[str, str]]) -> Tuple[Set[Path], StubFilesFilter]:
+    paths: Set[Path] = set()
     dir_filters: Dict[Path, Set[str]] = defaultdict(set)
     for local_dir, local_file in to_watch:
         if local_dir is not None:
-            paths.add(local_dir)
+            paths.add(Path(local_dir))
             dir_filters[Path(local_dir)] = None
         elif local_file is not None:
             parent = Path(local_file).parent
