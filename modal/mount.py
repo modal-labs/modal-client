@@ -174,9 +174,7 @@ class _Mount(Provider[_MountHandle]):
         local_path = Path(local_path)
         if remote_path is None:
             remote_path = local_path.name
-        remote_path = PurePosixPath(remote_path)
-        if remote_path.is_absolute():
-            remote_path = remote_path.relative_to("/")
+        remote_path = PurePosixPath("/", remote_path)
 
         self._entries.append(
             _MountDir(
@@ -192,10 +190,7 @@ class _Mount(Provider[_MountHandle]):
         local_path = Path(local_path)
         if remote_path is None:
             remote_path = local_path.name
-        remote_path = PurePosixPath(remote_path)
-        if remote_path.is_absolute():
-            remote_path = remote_path.relative_to("/")
-
+        remote_path = PurePosixPath("/", remote_path)
         self._entries.append(
             _MountFile(
                 local_file=local_path,

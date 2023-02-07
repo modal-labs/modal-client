@@ -54,12 +54,12 @@ def package_mount_condition(filename):
 
 
 def _is_modal_path(remote_path: PurePosixPath):
-    path_prefix = remote_path.parts[:2]
+    path_prefix = remote_path.parts[:3]
     is_modal_path = path_prefix in [
-        ("root", "modal"),
-        ("root", "modal_proto"),
-        ("root", "modal_utils"),
-        ("root", "modal_version"),
+        ("/", "root", "modal"),
+        ("/", "root", "modal_proto"),
+        ("/", "root", "modal_utils"),
+        ("/", "root", "modal_version"),
     ]
     return is_modal_path
 
@@ -209,7 +209,11 @@ class FunctionInfo:
                     or not os.path.exists(path)
                 ):
                     continue
-                relpath = Path(os.path.relpath(os.path.dirname(path), self.base_dir))
+                dirpath = Path(os.path.dirname(path)).resolve()
+                if not dirpath.is_relative_to(self.base_dir):
+                    continue  # TODO(elias) some kind of heuristic for how to handle things outside of the cwd?
+
+                relpath = dirpath.relative_to(self.base_dir)
                 mounts[path] = _Mount(
                     local_file=path,
                     remote_dir=ROOT_DIR

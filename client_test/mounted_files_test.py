@@ -42,13 +42,13 @@ def test_mounted_files_script(supports_dir):
 
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
     assert files == {
-        "root/a.py",
-        "root/b/c.py",
-        "root/b/e.py",
-        "root/pkg_b/__init__.py",
-        "root/pkg_b/f.py",
-        "root/pkg_b/g/h.py",
-        "root/script.py",
+        "/root/a.py",
+        "/root/b/c.py",
+        "/root/b/e.py",
+        "/root/pkg_b/__init__.py",
+        "/root/pkg_b/f.py",
+        "/root/pkg_b/g/h.py",
+        "/root/script.py",
     }
 
 
@@ -71,13 +71,13 @@ def test_mounted_files_serialized(supports_dir):
 
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
     assert files == {
-        "root/b/c.py",
-        "root/b/e.py",
-        "root/pkg_a/a.py",
-        "root/pkg_a/serialized_fn.py",
-        "root/pkg_b/__init__.py",
-        "root/pkg_b/f.py",
-        "root/pkg_b/g/h.py",
+        "/root/b/c.py",
+        "/root/b/e.py",
+        "/root/pkg_a/a.py",
+        "/root/pkg_a/serialized_fn.py",
+        "/root/pkg_b/__init__.py",
+        "/root/pkg_b/f.py",
+        "/root/pkg_b/g/h.py",
     }
 
 
@@ -92,18 +92,18 @@ def test_mounted_files_package(supports_dir):
 
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
     assert files == {
-        "root/package.py",
-        "root/pkg_a/__init__.py",
-        "root/pkg_a/a.py",
-        "root/pkg_a/b/c.py",
-        "root/pkg_a/d.py",
-        "root/pkg_a/b/e.py",
-        "root/pkg_a/script.py",
-        "root/pkg_a/serialized_fn.py",
-        "root/pkg_a/package.py",
-        "root/pkg_b/__init__.py",
-        "root/pkg_b/f.py",
-        "root/pkg_b/g/h.py",
+        "/root/package.py",
+        "/root/pkg_a/__init__.py",
+        "/root/pkg_a/a.py",
+        "/root/pkg_a/b/c.py",
+        "/root/pkg_a/d.py",
+        "/root/pkg_a/b/e.py",
+        "/root/pkg_a/script.py",
+        "/root/pkg_a/serialized_fn.py",
+        "/root/pkg_a/package.py",
+        "/root/pkg_b/__init__.py",
+        "/root/pkg_b/f.py",
+        "/root/pkg_b/g/h.py",
     }
 
 
@@ -125,13 +125,13 @@ def test_mounted_files_sys_prefix(supports_dir, venv_path):
 
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
     assert files == {
-        "root/a.py",
-        "root/b/c.py",
-        "root/b/e.py",
-        "root/script.py",
-        "root/pkg_b/__init__.py",
-        "root/pkg_b/f.py",
-        "root/pkg_b/g/h.py",
+        "/root/a.py",
+        "/root/b/c.py",
+        "/root/b/e.py",
+        "/root/script.py",
+        "/root/pkg_b/__init__.py",
+        "/root/pkg_b/f.py",
+        "/root/pkg_b/g/h.py",
     }
 
 
@@ -150,4 +150,4 @@ def test_mounted_files_config(supports_dir):
     files = set(stdout.splitlines())
 
     # Assert just the script is there
-    assert files == {"root/script.py"}
+    assert files == {"/root/script.py"}
