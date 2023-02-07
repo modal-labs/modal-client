@@ -89,6 +89,7 @@ def _watch_args_from_mounts(mounts: List[_Mount]) -> Tuple[Set[Union[str, Path]]
     dir_filters: Dict[Path, Optional[Set[str]]] = defaultdict(set)
     for mount in mounts:
         # TODO(elias): Make this part of the mount class instead, since it uses so much internals
+        # TODO: this code seems untested?
         for entry in mount._entries:
             path, filter_file = entry.watch_entry()
             paths.add(path)
