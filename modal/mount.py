@@ -252,12 +252,16 @@ class _Mount(Provider[_MountHandle]):
             remote_filename = file_spec.mount_filename
             mount_file = api_pb2.MountFile(filename=remote_filename, sha256_hex=file_spec.sha256_hex)
 
+            if file_spec.sha256_hex in uploaded_hashes:
+                return mount_file
+
             request = api_pb2.MountPutFileRequest(sha256_hex=file_spec.sha256_hex)
             response = await retry_transient_errors(resolver.client.stub.MountPutFile, request, base_delay=1)
 
             n_files += 1
-            if response.exists or file_spec.sha256_hex in uploaded_hashes:
+            if response.exists:
                 return mount_file
+
             uploaded_hashes.add(file_spec.sha256_hex)
             total_bytes += file_spec.size
 
