@@ -440,9 +440,6 @@ class _FunctionHandle(Handle, type_prefix="fu"):
     _web_url: Optional[str]
     _function: "_Function"
 
-    def _set_mute_cancellation(self, value=True):
-        self._mute_cancellation = value
-
     def _initialize_from_proto(self, proto: Optional[Message]):
         self._progress = None
         self._is_generator = None
@@ -459,6 +456,9 @@ class _FunctionHandle(Handle, type_prefix="fu"):
             self._is_generator = proto.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
             self._web_url = proto.web_url
             self._function_name = proto.function_name
+
+    def _set_mute_cancellation(self, value: bool = True):
+        self._mute_cancellation = value
 
     def _set_output_mgr(self, output_mgr: OutputManager):
         """mdmd:hidden"""
