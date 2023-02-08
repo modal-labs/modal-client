@@ -10,7 +10,7 @@ from rich.console import Console
 from synchronicity import Interface
 
 from modal.exception import InvalidError
-from modal.functions import _Function, _FunctionHandle
+from modal.functions import _FunctionHandle
 from modal.stub import LocalEntrypoint
 from modal_utils.async_utils import synchronizer
 
@@ -103,14 +103,14 @@ def _get_click_command_for_local_entrypoint(_stub, entrypoint: LocalEntrypoint):
 
 class RunGroup(click.Group):
     def get_command(self, ctx, stub_ref):
-        _function = import_function(stub_ref, accept_local_entrypoint=True, interactive=False, base_cmd="modal run")
-        _stub = _function._stub
-        if isinstance(_function, LocalEntrypoint):
-            click_command = _get_click_command_for_local_entrypoint(_stub, _function)
+        _function_handle_or_entrypoint = import_function(
+            stub_ref, accept_local_entrypoint=True, interactive=False, base_cmd="modal run"
+        )
+        _stub = _function_handle_or_entrypoint._stub
+        if isinstance(_function_handle_or_entrypoint, LocalEntrypoint):
+            click_command = _get_click_command_for_local_entrypoint(_stub, _function_handle_or_entrypoint)
         else:
-            if isinstance(_function, _FunctionHandle):
-                _function = _function._function
-            tag = _function._info.get_tag()
+            tag = _function_handle_or_entrypoint._info.get_tag()
             click_command = _get_click_command_for_function(_stub, tag)
 
         return click_command
@@ -204,12 +204,15 @@ def shell(
     if not console.is_terminal:
         raise click.UsageError("`modal shell` can only be run from a terminal.")
 
-    _function = import_function(func_ref, accept_local_entrypoint=False, interactive=True, base_cmd="modal shell")
-    assert isinstance(_function, _Function)  # ensured by accept_local_entrypoint=False
-    _stub = _function._stub
+    _function_handle = import_function(
+        func_ref, accept_local_entrypoint=False, interactive=True, base_cmd="modal shell"
+    )
+    assert isinstance(_function_handle, _FunctionHandle)  # ensured by accept_local_entrypoint=False
+    _stub = _function_handle._stub
+    _function = _function_handle._stub[_function_handle._info.get_tag()]
     blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
 
-    if _function is None:
+    if _function_handle is None:
         blocking_stub.interactive_shell(cmd)
     else:
         blocking_stub.interactive_shell(

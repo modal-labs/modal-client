@@ -318,9 +318,12 @@ class _Image(Provider[_ImageHandle]):
         """
         Install a list of Python packages from private git repositories using pip.
 
-        This method currently supports Github only, and requires a `modal.Secret` be provided that
-        contains a `GITHUB_TOKEN` key-value pair. This token should have permissions to read the
-        provided list of private Github repositories.
+        This method currently supports Github and Gitlab only.
+
+        - **Github:** Provide a `modal.Secret` that contains a `GITHUB_TOKEN` key-value pair
+        - **Gitlab:** Provide a `modal.Secret` that contains a `GITLAB_TOKEN` key-value pair
+
+        These API tokens should have permissions to read the list of private repositories provided as arguments.
 
         We recommend using Github's ['fine-grained' access tokens](https://github.blog/2022-10-18-introducing-fine-grained-personal-access-tokens-for-github/).
         These tokens are repo-scoped, and avoid granting read permission across all of a user's private repos.
@@ -348,15 +351,19 @@ class _Image(Provider[_ImageHandle]):
                 "No secrets provided to function. Installing private packages requires tokens to be passed via modal.Secret objects."
             )
 
-        def valid_repo_ref(repo_ref) -> bool:
+        invalid_repos = []
+        install_urls = []
+        for repo_ref in repositories:
             if not isinstance(repo_ref, str):
-                return False
+                invalid_repos.append(repo_ref)
             parts = repo_ref.split("/")
-            if parts[0] != "github.com":
-                return False
-            return True
+            if parts[0] == "github.com":
+                install_urls.append(f"git+https://{git_user}:$GITHUB_TOKEN@{repo_ref}")
+            elif parts[0] == "gitlab.com":
+                install_urls.append(f"git+https://{git_user}:$GITLAB_TOKEN@{repo_ref}")
+            else:
+                invalid_repos.append(repo_ref)
 
-        invalid_repos = [r for r in repositories if not valid_repo_ref(r)]
         if invalid_repos:
             raise InvalidError(
                 f"{len(invalid_repos)} out of {len(repositories)} given repository refs are invalid. "
@@ -364,11 +371,18 @@ class _Image(Provider[_ImageHandle]):
             )
 
         secret_names = ",".join([s.app_name if hasattr(s, "app_name") else str(s) for s in secrets])  # type: ignore
-        dockerfile_commands = [
-            "FROM base",
-            f"RUN bash -c \"[[ -v GITHUB_TOKEN ]] || (echo 'GITHUB_TOKEN env var not set by provided modal.Secret(s): {secret_names}' && exit 1)\"",
-            "RUN apt-get update && apt-get install -y git",
-        ] + [f"RUN python3 -m pip install git+https://{git_user}:$GITHUB_TOKEN@{repo_ref}" for repo_ref in repositories]
+        dockerfile_commands = ["FROM base"]
+        if any(r.startswith("github") for r in repositories):
+            dockerfile_commands.append(
+                f"RUN bash -c \"[[ -v GITHUB_TOKEN ]] || (echo 'GITHUB_TOKEN env var not set by provided modal.Secret(s): {secret_names}' && exit 1)\"",
+            )
+        if any(r.startswith("gitlab") for r in repositories):
+            dockerfile_commands.append(
+                f"RUN bash -c \"[[ -v GITLAB_TOKEN ]] || (echo 'GITLAB_TOKEN env var not set by provided modal.Secret(s): {secret_names}' && exit 1)\"",
+            )
+
+        dockerfile_commands.extend(["RUN apt-get update && apt-get install -y git"])
+        dockerfile_commands.extend([f"RUN python3 -m pip install {url}" for url in install_urls])
         return self.extend(
             dockerfile_commands=dockerfile_commands,
             secrets=secrets,
@@ -488,6 +502,9 @@ class _Image(Provider[_ImageHandle]):
         context_files: dict[str, str] = {},
         secrets: Collection[_Secret] = [],
         gpu: GPU_T = None,
+        context_mount: Optional[
+            _Mount
+        ] = None,  # modal.Mount with local files to supply as build context for COPY commands
     ):
         """Extend an image with arbitrary Dockerfile-like commands."""
 
@@ -503,6 +520,7 @@ class _Image(Provider[_ImageHandle]):
             context_files=context_files,
             secrets=secrets,
             gpu_config=parse_gpu_config(gpu, warn_on_true=False),
+            context_mount=context_mount,
         )
 
     def run_commands(
@@ -663,10 +681,15 @@ class _Image(Provider[_ImageHandle]):
         )
 
     @staticmethod
-    def from_dockerfile(path: Union[str, Path]) -> "_Image":
+    def from_dockerfile(
+        path: Union[str, Path],
+        context_mount: Optional[
+            _Mount
+        ] = None,  # modal.Mount with local files to supply as build context for COPY commands
+    ) -> "_Image":
         """Build a Modal image from a local Dockerfile.
 
-        Note that the the following must be true about the image you provide:
+        Note that the following must be true about the image you provide:
 
         - Python 3.7 or above needs to be present and available as `python`.
         - `pip` needs to be installed and available as `pip`.
@@ -679,7 +702,7 @@ class _Image(Provider[_ImageHandle]):
             with open(path) as f:
                 return f.read().split("\n")
 
-        base_image = _Image(dockerfile_commands=base_dockerfile_commands)
+        base_image = _Image(dockerfile_commands=base_dockerfile_commands, context_mount=context_mount)
 
         requirements_path = _get_client_requirements_path()
 
@@ -783,14 +806,17 @@ class _Image(Provider[_ImageHandle]):
         )
         ```
         """
-        from .functions import _Function
+        from .functions import _Function, _FunctionHandle
 
         info = FunctionInfo(raw_f)
         base_mounts = [_get_client_mount()]
         for key, mount in info.get_mounts().items():
             base_mounts.append(mount)
 
+        function_handle = _FunctionHandle._new()
+
         function = _Function(
+            function_handle,
             info,
             _stub=self,
             image=self,

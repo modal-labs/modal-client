@@ -20,47 +20,47 @@ def venv_path(tmp_path):
 script_path = "pkg_a/script.py"
 
 
-def test_mounted_files_script(test_dir):
+@pytest.fixture
+def supports_dir(test_dir):
+    return test_dir / Path("supports")
+
+
+def test_mounted_files_script(supports_dir):
     p = subprocess.run(
         [sys.executable, str(script_path)],
         capture_output=True,
-        cwd=test_dir / Path("supports"),
-        env={**os.environ, "PYTHONPATH": str(test_dir / Path("supports"))},
+        cwd=supports_dir,
+        env={**os.environ, "PYTHONPATH": str(supports_dir)},
     )
-    assert p.returncode == 0
+
     stdout = p.stdout.decode("utf-8")
     stderr = p.stderr.decode("utf-8")
     print("stdout: ", stdout)
     print("stderr: ", stderr)
+    assert p.returncode == 0
     files = set(stdout.splitlines())
 
-    assert len(files) == 7
-    # Assert everything from `pkg_a` is in the output.
-    assert any(["a.py" in f for f in files])
-    assert any(["c.py" in f for f in files])
-    assert not any(["d.py" in f for f in files])
-    assert any(["e.py" in f for f in files])
-    assert any(["script.py" in f for f in files])
-
-    # Assert everything from `pkg_b` is in the output.
-    assert any(["__init__.py" in f for f in files])
-    assert any(["f.py" in f for f in files])
-    assert any(["h.py" in f for f in files])
-
-    # Assert nothing from `pkg_c` is in the output.
-    assert not any(["i.py" in f for f in files])
-    assert not any(["k.py" in f for f in files])
+    # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
+    assert files == {
+        "/root/a.py",
+        "/root/b/c.py",
+        "/root/b/e.py",
+        "/root/pkg_b/__init__.py",
+        "/root/pkg_b/f.py",
+        "/root/pkg_b/g/h.py",
+        "/root/script.py",
+    }
 
 
 serialized_fn_path = "pkg_a/serialized_fn.py"
 
 
-def test_mounted_files_serialized(test_dir):
+def test_mounted_files_serialized(supports_dir):
     p = subprocess.run(
         [sys.executable, str(serialized_fn_path)],
         capture_output=True,
-        cwd=test_dir / Path("supports"),
-        env={**os.environ, "PYTHONPATH": str(test_dir / Path("supports"))},
+        cwd=supports_dir,
+        env={**os.environ, "PYTHONPATH": str(supports_dir)},
     )
     assert p.returncode == 0
     stdout = p.stdout.decode("utf-8")
@@ -69,26 +69,20 @@ def test_mounted_files_serialized(test_dir):
     print("stderr: ", stderr)
     files = set(stdout.splitlines())
 
-    assert len(files) == 7
-    # Assert everything from `pkg_a` is in the output.
-    assert any(["a.py" in f for f in files])
-    assert any(["c.py" in f for f in files])
-    assert not any(["d.py" in f for f in files])
-    assert any(["e.py" in f for f in files])
-    assert any(["serialized_fn.py" in f for f in files])
-
-    # Assert everything from `pkg_b` is in the output.
-    assert any(["__init__.py" in f for f in files])
-    assert any(["f.py" in f for f in files])
-    assert any(["h.py" in f for f in files])
-
-    # Assert nothing from `pkg_c` is in the output.
-    assert not any(["i.py" in f for f in files])
-    assert not any(["k.py" in f for f in files])
+    # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
+    assert files == {
+        "/root/b/c.py",
+        "/root/b/e.py",
+        "/root/pkg_a/a.py",
+        "/root/pkg_a/serialized_fn.py",
+        "/root/pkg_b/__init__.py",
+        "/root/pkg_b/f.py",
+        "/root/pkg_b/g/h.py",
+    }
 
 
-def test_mounted_files_package(test_dir):
-    p = subprocess.run([sys.executable, "-m", "pkg_a.package"], cwd=test_dir / Path("supports"), capture_output=True)
+def test_mounted_files_package(supports_dir):
+    p = subprocess.run([sys.executable, "-m", "pkg_a.package"], cwd=supports_dir, capture_output=True)
     assert p.returncode == 0
     stdout = p.stdout.decode("utf-8")
     stderr = p.stderr.decode("utf-8")
@@ -96,34 +90,31 @@ def test_mounted_files_package(test_dir):
     print("stderr: ", stderr)
     files = set(stdout.splitlines())
 
-    assert len(files) == 10
-
-    # Assert everything from `pkg_a` is in the output.
-    assert any(["a.py" in f for f in files])
-    assert any(["c.py" in f for f in files])
-    assert any(["d.py" in f for f in files])
-    assert any(["e.py" in f for f in files])
-    assert any(["script.py" in f for f in files])
-    assert any(["package.py" in f for f in files])
-
-    # Assert everything from `pkg_b` is in the output.
-    assert any(["__init__.py" in f for f in files])
-    assert any(["f.py" in f for f in files])
-    assert any(["h.py" in f for f in files])
-
-    # Assert nothing from `pkg_c` is in the output.
-    assert not any(["i.py" in f for f in files])
-    assert not any(["k.py" in f for f in files])
+    # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
+    assert files == {
+        "/root/package.py",
+        "/root/pkg_a/__init__.py",
+        "/root/pkg_a/a.py",
+        "/root/pkg_a/b/c.py",
+        "/root/pkg_a/d.py",
+        "/root/pkg_a/b/e.py",
+        "/root/pkg_a/script.py",
+        "/root/pkg_a/serialized_fn.py",
+        "/root/pkg_a/package.py",
+        "/root/pkg_b/__init__.py",
+        "/root/pkg_b/f.py",
+        "/root/pkg_b/g/h.py",
+    }
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="venvs behave differently on Windows.")
-def test_mounted_files_sys_prefix(test_dir, venv_path):
+def test_mounted_files_sys_prefix(supports_dir, venv_path):
     # Run with venv activated, so it's on sys.prefix, and modal is dev-installed in the VM
     p = subprocess.run(
         [venv_path / "bin" / "python", script_path],
         capture_output=True,
-        cwd=test_dir / Path("supports"),
-        env={**os.environ, "PYTHONPATH": str(test_dir / Path("supports"))},
+        cwd=supports_dir,
+        env={**os.environ, "PYTHONPATH": str(supports_dir)},
     )
     assert p.returncode == 0
     stdout = p.stdout.decode("utf-8")
@@ -132,30 +123,24 @@ def test_mounted_files_sys_prefix(test_dir, venv_path):
     print("stderr: ", stderr)
     files = set(stdout.splitlines())
 
-    assert len(files) == 7
-    # Assert everything from `pkg_a` is in the output.
-    assert any(["a.py" in f for f in files])
-    assert any(["c.py" in f for f in files])
-    assert not any(["d.py" in f for f in files])
-    assert any(["e.py" in f for f in files])
-    assert any(["script.py" in f for f in files])
-
-    # Assert everything from `pkg_b` is in the output.
-    assert any(["__init__.py" in f for f in files])
-    assert any(["f.py" in f for f in files])
-    assert any(["h.py" in f for f in files])
-
-    # Assert nothing from `pkg_c` is in the output.
-    assert not any(["i.py" in f for f in files])
-    assert not any(["k.py" in f for f in files])
+    # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
+    assert files == {
+        "/root/a.py",
+        "/root/b/c.py",
+        "/root/b/e.py",
+        "/root/script.py",
+        "/root/pkg_b/__init__.py",
+        "/root/pkg_b/f.py",
+        "/root/pkg_b/g/h.py",
+    }
 
 
-def test_mounted_files_config(test_dir):
+def test_mounted_files_config(supports_dir):
     p = subprocess.run(
         [sys.executable, str(script_path)],
         capture_output=True,
-        cwd=test_dir / Path("supports"),
-        env={**os.environ, "PYTHONPATH": str(test_dir / Path("supports")), "MODAL_AUTOMOUNT": ""},
+        cwd=supports_dir,
+        env={**os.environ, "PYTHONPATH": str(supports_dir), "MODAL_AUTOMOUNT": ""},
     )
     assert p.returncode == 0
     stdout = p.stdout.decode("utf-8")
@@ -164,8 +149,5 @@ def test_mounted_files_config(test_dir):
     print("stderr: ", stderr)
     files = set(stdout.splitlines())
 
-    assert len(files) == 1
-    # Assert everything from `pkg_a` is in the output.
-    assert any(["script.py" in f for f in files])
-    assert not any(["a.py" in f for f in files])
-    assert not any(["f.py" in f for f in files])
+    # Assert just the script is there
+    assert files == {"/root/script.py"}

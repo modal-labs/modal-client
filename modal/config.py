@@ -105,7 +105,7 @@ _user_config = _read_user_config()
 
 
 def config_envs():
-    """List the available modal envs in the .modal.toml file"""
+    """List the available modal envs in the .modal.toml file."""
     return _user_config.keys()
 
 
@@ -118,7 +118,7 @@ def _config_active_env():
 
 
 def config_set_active_env(env: str):
-    """Set the user's active modal env by writing it to the .modal.toml file"""
+    """Set the user's active modal env by writing it to the `.modal.toml` file."""
     if env not in _user_config:
         raise KeyError(env)
 
@@ -136,7 +136,7 @@ _env = os.environ.get("MODAL_ENV", _config_active_env())
 
 class _Setting(typing.NamedTuple):
     default: typing.Any = None
-    transform: typing.Callable[[str], typing.Any] = lambda x: x
+    transform: typing.Callable[[str], typing.Any] = lambda x: x  # noqa: E731
 
 
 _SETTINGS = {

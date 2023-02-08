@@ -437,6 +437,8 @@ async def _map_invocation(
 # Wrapper type for api_pb2.FunctionStats
 @dataclass
 class FunctionStats:
+    """Simple data structure storing stats for a running function."""
+
     backlog: int
     num_active_runners: int
     num_total_runners: int
@@ -446,47 +448,36 @@ class _FunctionHandle(Handle, type_prefix="fu"):
     """Interact with a Modal Function of a live app."""
 
     _web_url: Optional[str]
-    _function: "_Function"
-
-    def _set_mute_cancellation(self, value=True):
-        self._mute_cancellation = value
 
     def _initialize_from_proto(self, proto: Optional[Message]):
         self._progress = None
         self._is_generator = None
-        self._raw_f = None
+        self._info = None
         self._web_url = None
         self._output_mgr: Optional[OutputManager] = None
         self._mute_cancellation = (
             False  # set when a user terminates the app intentionally, to prevent useless traceback spam
         )
         self._function_name = None
-        self._is_web_endpoint = None
 
         if proto is not None:
             assert isinstance(proto, api_pb2.Function)
             self._is_generator = proto.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
             self._web_url = proto.web_url
-            self._is_web_endpoint = bool(proto.web_url)
             self._function_name = proto.function_name
+
+    def _set_mute_cancellation(self, value: bool = True):
+        self._mute_cancellation = value
 
     def _set_output_mgr(self, output_mgr: OutputManager):
         """mdmd:hidden"""
         self._output_mgr = output_mgr
 
-    @property
-    def is_web_endpoint(self):
-        return self._is_web_endpoint
+    def _set_info(self, function_info: FunctionInfo):
+        self._info = function_info
 
-    def _set_is_web_endpoint(self, value: bool):
-        # Used by provider to pre-set this for not-yet created handles
-        self._is_web_endpoint = value
-
-    def _set_raw_f(self, raw_f):
-        self._raw_f = raw_f
-
-    def _set_function(self, function: "_Function"):
-        self._function = function
+    def _set_stub(self, stub):
+        self._stub = stub
 
     @property
     def web_url(self) -> str:
@@ -580,7 +571,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
     async def starmap(self, input_iterator, kwargs={}, order_outputs=None, return_exceptions=False):
         """Like `map` but spreads arguments over multiple function arguments
 
-        Assumes every input is a sequence (e.g. a tuple)
+        Assumes every input is a sequence (e.g. a tuple).
 
         Example:
         ```python notest
@@ -623,6 +614,9 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         return await _Invocation.create(self._object_id, args, kwargs, self._client)
 
     def call(self, *args, **kwargs):
+        """
+        Calls the function, executing it remotely with the given arguments and returning the execution's result.
+        """
         if self._is_generator:
             return self.call_generator(args, kwargs)
         else:
@@ -664,7 +658,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
 
     def get_raw_f(self) -> Callable:
         """Return the inner Python object wrapped by this Modal Function."""
-        return self._raw_f
+        return self._info._raw_f
 
     async def get_current_stats(self) -> FunctionStats:
         """Return a `FunctionStats` object describing the current function's queue and runner counts."""
@@ -680,28 +674,6 @@ class _FunctionHandle(Handle, type_prefix="fu"):
 FunctionHandle, AioFunctionHandle = synchronize_apis(_FunctionHandle)
 
 
-def _get_container_function(tag: str):
-    # TODO(erikbern): this is a bit if a janky solution to the problem of assigning
-    # ids to all global functions. We can't do this from the app, since the app doesn't
-    # "know" its stub and its providers. So we "steal" the objects from here just based
-    # on the tag. This is ugly but will work 99.99% of the time. I'll think of something
-    # better!
-    from .app import _container_app
-
-    if _container_app is None:
-        return None
-
-    try:
-        handle = _container_app[tag]
-    except KeyError:
-        return None
-
-    if isinstance(handle, _FunctionHandle):
-        return handle
-    else:
-        return None
-
-
 class _Function(Provider[_FunctionHandle]):
     """Functions are the basic units of serverless execution on Modal.
 
@@ -714,6 +686,7 @@ class _Function(Provider[_FunctionHandle]):
 
     def __init__(
         self,
+        function_handle: _FunctionHandle,
         function_info: FunctionInfo,
         _stub,
         image=None,
@@ -824,17 +797,9 @@ class _Function(Provider[_FunctionHandle]):
         if self._gpu:
             self._panel_items.append("GPU")
 
-        function_handle = _get_container_function(self._tag)
-        if function_handle is None:
-            function_handle = _FunctionHandle._new()
-        function_handle._initialize_from_proto(None)
-        function_handle._set_raw_f(raw_f)
-        function_handle._set_function(self)
-        function_handle._set_is_web_endpoint(webhook_config is not None)
+        self._function_handle = function_handle
 
-        self._precreated_function_handle = function_handle
-
-        rep = "Function({self._tag})"
+        rep = r"Function({self._tag})"
         super().__init__(self._load, rep)
 
     async def _load(self, resolver: Resolver):
@@ -844,7 +809,7 @@ class _Function(Provider[_FunctionHandle]):
             proxy_id = await resolver.load(self._proxy)
             # HACK: remove this once we stop using ssh tunnels for this.
             if self._image:
-                self._image = self._image.run_commands(["apt-get install -yq ssh"])
+                self._image = self._image.apt_install("autossh")
         else:
             proxy_id = None
 
@@ -983,6 +948,8 @@ class _Function(Provider[_FunctionHandle]):
                 suffix = " [grey70](label truncated)[/grey70]"
             elif response.web_url_info.has_unique_hash:
                 suffix = " [grey70](label includes conflict-avoidance hash)[/grey70]"
+            elif response.web_url_info.label_stolen:
+                suffix = " [grey70](label stolen)[/grey70]"
             else:
                 suffix = ""
             # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
@@ -993,11 +960,11 @@ class _Function(Provider[_FunctionHandle]):
             resolver.set_message(f"Created {self._tag}.")
 
         # Update the precreated function handle (todo: hack until we merge providers/handles)
-        self._precreated_function_handle._initialize_handle(resolver.client, response.function_id)
-        self._precreated_function_handle._initialize_from_proto(response.function)
+        self._function_handle._initialize_handle(resolver.client, response.function_id)
+        self._function_handle._initialize_from_proto(response.function)
 
         # Instead of returning a new object, just return the precreated one
-        return self._precreated_function_handle
+        return self._function_handle
 
     def get_panel_items(self) -> List[str]:
         return self._panel_items
@@ -1089,9 +1056,9 @@ _current_input_id: Optional[str] = None
 
 
 def current_input_id() -> str:
-    """Returns the input id for the currently processed input
+    """Returns the input ID for the currently processed input.
 
-    Can only be called from Modal function (i.e. in a container context)
+    Can only be called from Modal function (i.e. in a container context).
 
     ```python
     from modal import current_input_id

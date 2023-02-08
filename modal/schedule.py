@@ -13,6 +13,8 @@ class Cron(Schedule):
     """Cron jobs are a type of schedule, specified using the
     [Unix cron tab](https://crontab.guru/) syntax.
 
+    The alternative schedule type is the [`modal.Period`](/docs/reference/modal.Period).
+
     **Usage**
 
     ```python
@@ -27,10 +29,11 @@ class Cron(Schedule):
 
     We can specify different schedules with cron strings, for example:
 
-    ```
+    ```python
     modal.Cron("5 4 * * *")  # run at 4:05am every night
     modal.Cron("0 9 * * 4")  # runs every Thursday 9am
     ```
+
     """
 
     def __init__(self, cron_string: str) -> None:

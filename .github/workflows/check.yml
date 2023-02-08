@@ -16,8 +16,8 @@ jobs:
       - name: Check files using the black formatter
         run: black --check .
 
-  flake8:
-    name: Flake8
+  link:
+    name: Ruff linting
     runs-on: ubuntu-20.04
 
     steps:
@@ -27,7 +27,7 @@ jobs:
         with:
           version: "3.10"
 
-      - run: flake8 .
+      - run: inv lint
 
   mypy:
     name: Mypy

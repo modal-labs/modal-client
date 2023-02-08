@@ -23,13 +23,13 @@ from ._ipython import is_notebook
 from ._live_reload import MODAL_AUTORELOAD_ENV, restart_serve
 from ._output import OutputManager, step_completed, step_progress
 from ._pty import exec_cmd
-from .app import _App, container_app, is_local
+from .app import _App, _container_app, is_local
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
 from .exception import InvalidError, deprecation_error
 from .functions import _Function, _FunctionHandle
 from .gpu import GPU_T
-from .image import _Image
+from .image import _Image, _ImageHandle
 from .mount import _get_client_mount, _Mount
 from .object import Provider
 from .proxy import _Proxy
@@ -101,8 +101,10 @@ class _Stub:
     _mounts: Collection[_Mount]
     _secrets: Collection[_Secret]
     _function_handles: Dict[str, _FunctionHandle]
+    _web_endpoints: List[str]  # Used by the CLI
     _local_entrypoints: Dict[str, LocalEntrypoint]
     _local_mounts: List[_Mount]
+    _app: Optional[_App]
 
     def __init__(
         self,
@@ -128,7 +130,14 @@ class _Stub:
         self._function_handles = {}
         self._local_entrypoints = {}
         self._local_mounts = []
-        super().__init__()
+        self._web_endpoints = []
+
+        self._app = None
+        if not is_local():
+            # TODO(erikbern): in theory there could be multiple stubs defined.
+            # We should try to determine whether this is in fact the "right" one.
+            # We could probably do this by looking at the app's name.
+            self._app = _container_app
 
     @property
     def name(self) -> str:
@@ -176,41 +185,29 @@ class _Stub:
 
     def is_inside(self, image: Optional[_Image] = None) -> bool:
         """Returns if the program is currently running inside a container for this app."""
-        # TODO(erikbern): Add a client test for this function.
-        if is_local():
+        if not self._app:
             return False
+        elif image is None:
+            # stub.app is set, which means we're inside this stub (no specific image)
+            return True
 
-        if image is not None:
-            assert isinstance(image, _Image)
-            for tag, provider in self._blueprint.items():
-                if provider == image:
-                    image_handle = container_app[tag]
-                    break
-            else:
-                raise InvalidError(
-                    inspect.cleandoc(
-                        """`is_inside` only works for an image associated with an App. For instance:
-                        stub.image = DebianSlim()
-                        if stub.is_inside(stub.image):
-                        print("I'm inside!")"""
-                    )
-                )
+        # We need to look up the image handle from the image provider
+        assert isinstance(image, _Image)
+        for tag, provider in self._blueprint.items():
+            if provider == image:
+                image_handle = self._app[tag]
+                break
         else:
-            if "image" in self._blueprint:
-                image_handle = container_app["image"]
-            else:
-                # At this point in the code, we are sure that the app is running
-                # remotely, so it needs be able to load the ID of the default image.
-                # However, we cannot call `self.load(_default_image)` because it is
-                # an async function.
-                #
-                # Instead we load the image in App.init_container(), and this allows
-                # us to retrieve its object ID from cache here.
-                image_handle = container_app._load_cached(_default_image)
+            raise InvalidError(
+                inspect.cleandoc(
+                    """`is_inside` only works for an image associated with an App. For instance:
+                    stub.image = DebianSlim()
+                    if stub.is_inside(stub.image):
+                    print("I'm inside!")"""
+                )
+            )
 
-                # Check to make sure internal invariants are upheld.
-                assert image_handle is not None, "fatal: default image should be loaded in App.init_container()"
-
+        assert isinstance(image_handle, _ImageHandle)
         return image_handle._is_inside()
 
     async def _heartbeat(self, client, app_id):
@@ -356,10 +353,7 @@ class _Stub:
         since they will run until the program is interrupted with `Ctrl + C` or other means.
         Any changes made to webhook handlers will show up almost immediately the next time the route is hit.
 
-        **Note**
-
-        Changes to decorator arguments (eg. `timeout`, `gpu`, `shared_volumes`) will not propogate on live updates,
-        just web handle function bodies. Stop and restart your webhook serving process to propogate these changes.
+        **Note:** live-reloading is not supported on Python 3.7. Please upgrade to Python 3.8+.
         """
         from ._watcher import AppChange, watch
 
@@ -406,8 +400,16 @@ class _Stub:
                 async with self._run(client, output_mgr, None, mode=StubRunMode.SERVE) as app:
                     client.set_pre_stop(app.disconnect)
                     existing_app_id = app.app_id
-                    event = await event_agen.__anext__()  # wait for 1st modification before restarting
+                    event = await event_agen.__anext__()
+                    if sys.version_info.major == 3 and sys.version_info.minor <= 7:
+                        while event != AppChange.TIMEOUT:
+                            output_mgr.print_if_visible(
+                                "Live-reload skipped. This feature is unsupported below Python 3.8. Upgrade to Python 3.8+ to enable live-reloading."
+                            )
+                            event = await event_agen.__anext__()
+                        return
 
+                # live-reloading loop
                 while event != AppChange.TIMEOUT:
                     curr_proc = await restart_serve(
                         existing_app_id=app.app_id, prev_proc=curr_proc, output_mgr=output_mgr
@@ -424,7 +426,7 @@ class _Stub:
     async def deploy(
         self,
         name: str = None,  # Unique name of the deployment. Subsequent deploys with the same name overwrites previous ones. Falls back to the app name
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_ACCOUNT,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client=None,
         stdout=None,
         show_progress=None,
@@ -519,7 +521,30 @@ class _Stub:
 
         return mounts
 
-    def _add_function(self, function: _Function, mounts: List[_Mount]) -> _FunctionHandle:
+    def _get_function_handle(self, info: FunctionInfo) -> _FunctionHandle:
+        tag = info.get_tag()
+        function_handle: Optional[_FunctionHandle] = None
+        if self._app:
+            # Grab the existing function handle from the running app
+            # TODO: handle missing items, or wrong types
+            try:
+                handle = self._app[tag]
+                if isinstance(handle, _FunctionHandle):
+                    function_handle = handle
+                else:
+                    logger.warning(f"Object {tag} has wrong type {type(handle)}")
+            except KeyError:
+                logger.warning(f"Could not find app function {tag}")
+
+        if function_handle is None:
+            function_handle = _FunctionHandle._new()
+
+        function_handle._set_info(info)
+        function_handle._set_stub(self)
+        self._function_handles[tag] = function_handle
+        return function_handle
+
+    def _add_function(self, function: _Function, mounts: List[_Mount]):
         if function.tag in self._blueprint:
             old_function = self._blueprint[function.tag]
             if isinstance(old_function, _Function):
@@ -538,10 +563,6 @@ class _Stub:
             if mount.is_local():
                 self._local_mounts.append(mount)
 
-        function_handle = function._precreated_function_handle
-        self._function_handles[function.tag] = function_handle
-        return function_handle
-
     @property
     def registered_functions(self) -> Dict[str, _FunctionHandle]:
         """All modal.Function objects registered on the stub."""
@@ -555,7 +576,7 @@ class _Stub:
     @property
     def registered_web_endpoints(self) -> List[str]:
         """Names of web endpoint (ie. webhook) functions registered on the stub."""
-        return [tag for tag, handle in self._function_handles.items() if handle.is_web_endpoint]
+        return self._web_endpoints
 
     @decorator_with_options
     def local_entrypoint(self, raw_f=None, name: Optional[str] = None):
@@ -565,19 +586,24 @@ class _Stub:
         assets. Note that regular Modal functions can also be used as CLI entrypoints,
         but unlike `local_entrypoint` Modal function are executed remotely.
 
-        E.g.
+        **Example**
+
+        ```python
         @stub.local_entrypoint
         def main():
-            some_modal_function()
+            some_modal_function.call()
+        ```
 
         You can call the entrypoint function within a Modal run context
         directly from the CLI:
-        ```
+
+        ```shell
         modal run stub_module.py
         ```
 
         If you have multiple `local_entrypoint` functions, you can qualify the name of your stub and function:
-        ```
+
+        ```shell
         modal run stub_module.py::stub.some_other_function
         ```
 
@@ -617,6 +643,7 @@ class _Stub:
         if image is None:
             image = self._get_default_image()
         info = FunctionInfo(raw_f, serialized=serialized, name_override=name)
+        function_handle = self._get_function_handle(info)
         base_mounts = self._get_function_mounts(info)
         secrets = [*self._secrets, *secrets]
 
@@ -632,6 +659,7 @@ class _Stub:
             is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
 
         function = _Function(
+            function_handle,
             info,
             _stub=self,
             image=image,
@@ -658,11 +686,12 @@ class _Stub:
             cloud_provider=cloud,
         )
 
-        return self._add_function(function, [*base_mounts, *mounts])
+        self._add_function(function, [*base_mounts, *mounts])
+        return function_handle
 
     @decorator_with_options
     def generator(self, raw_f=None, **kwargs):
-        """Stub.generator is no longer supported. Use .function() instead."""
+        """Stub.generator is no longer supported. Use `.function()` instead."""
         deprecation_error(date(2022, 12, 1), "Stub.generator is no longer supported. Use .function() instead.")
 
     @decorator_with_options
@@ -713,6 +742,8 @@ class _Stub:
         if image is None:
             image = self._get_default_image()
         info = FunctionInfo(raw_f)
+        function_handle = self._get_function_handle(info)
+        self._web_endpoints.append(info.get_tag())
         base_mounts = self._get_function_mounts(info)
         secrets = [*self._secrets, *secrets]
 
@@ -722,6 +753,7 @@ class _Stub:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
 
         function = _Function(
+            function_handle,
             info,
             _stub=self,
             image=image,
@@ -748,7 +780,8 @@ class _Stub:
             keep_warm=keep_warm,
             cloud_provider=cloud,
         )
-        return self._add_function(function, [*base_mounts, *mounts])
+        self._add_function(function, [*base_mounts, *mounts])
+        return function_handle
 
     @decorator_with_options
     def asgi(
@@ -791,6 +824,8 @@ class _Stub:
         if image is None:
             image = self._get_default_image()
         info = FunctionInfo(asgi_app)
+        function_handle = self._get_function_handle(info)
+        self._web_endpoints.append(info.get_tag())
         base_mounts = self._get_function_mounts(info)
         secrets = [*self._secrets, *secrets]
 
@@ -800,6 +835,7 @@ class _Stub:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
 
         function = _Function(
+            function_handle,
             info,
             _stub=self,
             image=image,
@@ -821,7 +857,8 @@ class _Stub:
             keep_warm=keep_warm,
             cloud_provider=cloud,
         )
-        return self._add_function(function, [*base_mounts, *mounts])
+        self._add_function(function, [*base_mounts, *mounts])
+        return function_handle
 
     @decorator_with_options
     def wsgi(

@@ -2,6 +2,7 @@
 import os
 import pytest
 import sys
+from tempfile import NamedTemporaryFile
 from typing import List
 
 from modal import Image, Mount, Secret, SharedVolume, Stub, gpu
@@ -171,6 +172,7 @@ def test_image_pip_install_private_repos(servicer, client):
 
     bad_repo_refs = [
         "ecorp/private-one@1.0.0",
+        "gitspace.com/corp/private-one@1.0.0",
     ]
     for invalid_ref in bad_repo_refs:
         with pytest.raises(InvalidError):
@@ -182,15 +184,20 @@ def test_image_pip_install_private_repos(servicer, client):
 
     stub["image"] = Image.debian_slim().pip_install_private_repos(
         "github.com/corp/private-one@1.0.0",
+        "gitlab.com/corp2/private-two@0.0.2",
         git_user="erikbern",
-        secrets=[Secret({"GITHUB_TOKEN": "not-a-secret"})],
+        secrets=[Secret({"GITHUB_TOKEN": "not-a-secret"}), Secret({"GITLAB_TOKEN": "not-a-secret"})],
     )
 
     with stub.run(client=client) as running_app:
         layers = get_image_layers(running_app["image"].object_id, servicer)
-        assert len(layers[0].secret_ids) == 1
+        assert len(layers[0].secret_ids) == 2
         assert any(
             "pip install git+https://erikbern:$GITHUB_TOKEN@github.com/corp/private-one@1.0.0" in cmd
+            for cmd in layers[0].dockerfile_commands
+        )
+        assert any(
+            "pip install git+https://erikbern:$GITLAB_TOKEN@gitlab.com/corp2/private-two@0.0.2" in cmd
             for cmd in layers[0].dockerfile_commands
         )
 
@@ -296,16 +303,22 @@ def test_image_build_with_context_mount(client, servicer, tmp_path):
     data_mount = Mount(local_dir=tmp_path, remote_dir="/")
 
     stub = Stub()
-    stub["image"] = Image.debian_slim().copy(data_mount, remote_path="/dummy")
+    dockerfile = NamedTemporaryFile("w", delete=False)
+    dockerfile.write("COPY . /dummy\n")
+    dockerfile.close()
+
+    stub["copy"] = Image.debian_slim().copy(data_mount, remote_path="/dummy")
+    stub["from_dockerfile"] = Image.debian_slim().dockerfile_commands(["COPY . /dummy"], context_mount=data_mount)
+    stub["dockerfile_commands"] = Image.debian_slim().from_dockerfile(dockerfile.name, context_mount=data_mount)
 
     with stub.run(client=client) as running_app:
-        layers = get_image_layers(running_app["image"].object_id, servicer)
-        assert "COPY . /dummy" in layers[0].dockerfile_commands
-        assert layers[0].context_mount_id == "mo-123"
-        files = {f.rel_filename: f.content for f in data_mount._get_files()}
-        assert files["data.txt"] == b"hello"
-        assert files[os.path.join("data", "sub")] == b"world"
-        assert len(files) == 2
+        for (image_name, expected_layer) in [("copy", 0), ("dockerfile_commands", 1), ("from_dockerfile", 0)]:
+            layers = get_image_layers(running_app[image_name].object_id, servicer)
+            assert layers[expected_layer].context_mount_id == "mo-123", f"error in {image_name}"
+            assert "COPY . /dummy" in layers[expected_layer].dockerfile_commands
+
+        files = {f.mount_filename: f.content for f in data_mount._get_files()}
+        assert files == {"/data.txt": b"hello", "/data/sub": b"world"}
 
 
 def test_image_env(client, servicer):

@@ -122,9 +122,7 @@ def test_run(servicer, server_url_env, test_dir):
     _run(["run", stub_file.as_posix() + "::stub"])
     _run(["run", stub_file.as_posix() + "::stub.foo"])
     _run(["run", stub_file.as_posix() + "::foo"])
-
     _run(["run", stub_file.as_posix() + "::bar"], expected_exit_code=1)
-
     file_with_entrypoint = test_dir / "supports" / "app_run_tests" / "local_entrypoint.py"
     _run(["run", file_with_entrypoint.as_posix()])
     _run(["run", file_with_entrypoint.as_posix() + "::main"])

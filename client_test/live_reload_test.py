@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2023
 import asyncio
 import os
+import sys
 import pytest
 
 try:
@@ -34,6 +35,7 @@ class FakeProcess:
         pass
 
 
+@pytest.mark.skipif(sys.version_info < (3, 8), reason="live-reload requires python3.8 or higher")
 def test_file_changes_trigger_reloads(client, monkeypatch, servicer, test_dir):
     async def fake_watch(stub, output_mgr, timeout):
         yield AppChange.START

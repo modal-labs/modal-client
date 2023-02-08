@@ -1,4 +1,6 @@
 # Copyright Modal Labs 2022
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Dict, Optional, TypeVar
 
 from modal_proto import api_pb2
@@ -75,7 +77,7 @@ class _App:
         self, obj: Provider, progress: Optional[Tree] = None, existing_object_id: Optional[str] = None
     ) -> Handle:
         """Send a server request to create an object in this app, and return its ID."""
-        cached_obj = self._load_cached(obj)
+        cached_obj = self._local_uuid_to_object.get(obj.local_uuid)
         if cached_obj is not None:
             # We already created this object before, shortcut this method
             return cached_obj
@@ -101,13 +103,6 @@ class _App:
 
         self._local_uuid_to_object[obj.local_uuid] = created_obj
         return created_obj
-
-    def _load_cached(self, obj: Provider) -> Optional[Handle]:
-        """Try to load a previously-loaded object, without making network requests.
-
-        Returns `None` if the object has not been previously loaded.
-        """
-        return self._local_uuid_to_object.get(obj.local_uuid)
 
     async def _create_all_objects(self, progress: Tree, new_app_state: int):  # api_pb2.AppState.V
         """Create objects that have been defined but not created on the server."""
@@ -156,13 +151,7 @@ class _App:
     def __getattr__(self, tag: str) -> Handle:
         return self._tag_to_object[tag]
 
-    @staticmethod
-    async def _init_container(client, app_id):
-        """Used by the container to bootstrap the app and all its objects."""
-        # This is a bit of a hacky thing:
-        global _container_app, _is_container_app
-        _is_container_app = True
-        self = _container_app
+    async def _init_container(self, client: _Client, app_id: str):
         self._client = client
         self._app_id = app_id
 
@@ -172,12 +161,13 @@ class _App:
             obj = Handle._from_id(item.object_id, self._client, item.function)
             self._tag_to_object[item.tag] = obj
 
-        if "image" not in self._tag_to_object:
-            from .stub import _default_image
-
-            await self._load(_default_image)
-
-        return self
+    @staticmethod
+    async def init_container(client: _Client, app_id: str) -> _App:
+        """Used by the container to bootstrap the app and all its objects. Not intended to be called by Modal users."""
+        global _container_app, _is_container_app
+        _is_container_app = True
+        await _container_app._init_container(client, app_id)
+        return _container_app
 
     @staticmethod
     async def _init_existing(stub, client, existing_app_id):
@@ -204,8 +194,10 @@ class _App:
 
     @staticmethod
     def _reset_container():
-        global _is_container_app
+        # Just used for tests
+        global _is_container_app, _container_app
         _is_container_app = False
+        _container_app.__init__(None, None, None, None)  # type: ignore
 
 
 App, AioApp = synchronize_apis(_App)
@@ -215,7 +207,7 @@ _container_app = _App(None, None, None, None)
 container_app, aio_container_app = synchronize_apis(_container_app)
 assert isinstance(container_app, App)
 assert isinstance(aio_container_app, AioApp)
-__doc__container_app = """A reference to the running modal.App, accessible from within a running Modal function.
+__doc__container_app = """A reference to the running `modal.App`, accessible from within a running Modal function.
 Useful for accessing object handles for any Modal objects declared on the stub, e.g:
 
 ```python
@@ -233,7 +225,7 @@ def store_something(key, value):
 def is_local() -> bool:
     """Returns if we are currently on the machine launching/deploying a Modal app
 
-    Returns True when executed locally on the user's machine.
-    Returns False when executed from a Modal container in the cloud.
+    Returns `True` when executed locally on the user's machine.
+    Returns `False` when executed from a Modal container in the cloud.
     """
     return not _is_container_app

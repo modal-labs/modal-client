@@ -6,8 +6,8 @@ import sys
 import sysconfig
 import typing
 from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Type, Union
+from pathlib import Path, PurePosixPath
+from typing import Any, Callable, Dict, Optional, Type
 
 from modal_proto import api_pb2
 
@@ -16,7 +16,7 @@ from .config import config, logger
 from .exception import InvalidError
 from .mount import _Mount
 
-ROOT_DIR = "/root"
+ROOT_DIR = PurePosixPath("/root")
 
 # Expand symlinks in paths (homebrew Python paths are all symlinks).
 SYS_PREFIXES = set(
@@ -53,20 +53,27 @@ def package_mount_condition(filename):
     return os.path.splitext(filename)[1] in [".py"]
 
 
-def _is_modal_path(remote_path: Union[str, Path]):
-    parts = os.path.split(remote_path)
-    is_modal_path = parts[:2] in [
-        ("/root", "modal"),
-        ("/root", "modal_proto"),
-        ("/root", "modal_utils"),
-        ("/root", "modal_version"),
+def _is_modal_path(remote_path: PurePosixPath):
+    path_prefix = remote_path.parts[:3]
+    is_modal_path = path_prefix in [
+        ("/", "root", "modal"),
+        ("/", "root", "modal_proto"),
+        ("/", "root", "modal_utils"),
+        ("/", "root", "modal_version"),
     ]
     return is_modal_path
 
 
 def filter_safe_mounts(mounts: typing.Dict[str, _Mount]):
     # exclude mounts that would overwrite Modal
-    return {local_dir: mount for local_dir, mount in mounts.items() if not _is_modal_path(mount._remote_dir)}
+    safe_mounts = {}
+    for local_dir, mount in mounts.items():
+        for entry in mount._entries:
+            if _is_modal_path(entry.remote_path):
+                break
+        else:
+            safe_mounts[local_dir] = mount
+    return safe_mounts
 
 
 def is_global_function(function_qual_name):
@@ -102,7 +109,7 @@ class FunctionInfo:
                 raise Exception("Wasn't able to find the package directory!")
             (self.base_dir,) = base_dirs
             self.module_name = module.__spec__.name
-            self.remote_dir = os.path.join(ROOT_DIR, module.__package__.split(".")[0])
+            self.remote_dir = ROOT_DIR / PurePosixPath(module.__package__.split(".")[0])
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
             self.type = FunctionInfoType.PACKAGE
             self.serialized_function = None
@@ -185,10 +192,10 @@ class FunctionInfo:
                         or not os.path.exists(path)
                     ):
                         continue
-
+                    remote_dir = ROOT_DIR / PurePosixPath(*m.__name__.split("."))
                     mounts[path] = _Mount(
                         local_dir=path,
-                        remote_dir=os.path.join(ROOT_DIR, *m.__name__.split(".")),
+                        remote_dir=remote_dir,
                         condition=package_mount_condition,
                         recursive=True,
                     )
@@ -202,10 +209,20 @@ class FunctionInfo:
                     or not os.path.exists(path)
                 ):
                     continue
-                relpath = os.path.relpath(os.path.dirname(path), self.base_dir)
+                dirpath = PurePosixPath(Path(os.path.dirname(path)).resolve().as_posix())
+                try:
+                    relpath = dirpath.relative_to(Path(self.base_dir).resolve().as_posix())
+                except ValueError:
+                    # TODO(elias) some kind of heuristic for how to handle things outside of the cwd?
+                    continue
+
+                if relpath != PurePosixPath("."):
+                    remote_dir = ROOT_DIR / relpath
+                else:
+                    remote_dir = ROOT_DIR
                 mounts[path] = _Mount(
                     local_file=path,
-                    remote_dir=os.path.join(ROOT_DIR, relpath),
+                    remote_dir=remote_dir,
                 )
         return filter_safe_mounts(mounts)
 

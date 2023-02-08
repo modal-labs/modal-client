@@ -136,7 +136,7 @@ def choose_function_interactive(stub: _Stub, console: Console) -> str:
     return functions[int(choice)][0]
 
 
-def infer_function_or_help(_stub: _Stub, interactive: bool):
+def infer_function_or_help(_stub: _Stub, interactive: bool) -> Union[_FunctionHandle, LocalEntrypoint]:
     function_choices = list(
         (set(_stub.registered_functions.keys()) - set(_stub.registered_web_endpoints))
         | set(_stub.registered_entrypoints.keys())
@@ -168,7 +168,7 @@ Registered functions and local entrypoints on the selected stub are:
         # entrypoint is in entrypoint registry, for now
         return _stub.registered_entrypoints[function_name]
 
-    return _stub[function_name]  # functions are in blueprint
+    return _stub[function_name]._function_handle  # functions are in blueprint
 
 
 def _show_no_auto_detectable_stub(stub_ref: ImportRef) -> None:
@@ -239,7 +239,7 @@ You would run foo as [bold green]{base_cmd} app.py::foo[/bold green]"""
 
 def import_function(
     func_ref: str, base_cmd: str, accept_local_entrypoint=True, interactive=False
-) -> Union[_Function, LocalEntrypoint]:
+) -> Union[_FunctionHandle, LocalEntrypoint]:
     import_ref = parse_import_ref(func_ref)
     try:
         module = import_file_or_module(import_ref.file_or_module)
@@ -258,12 +258,12 @@ def import_function(
     if isinstance(stub_or_function, _Stub):
         # infer function or display help for how to select one
         _stub = stub_or_function
-        _function = infer_function_or_help(_stub, interactive)
-        return _function
+        _function_handle = infer_function_or_help(_stub, interactive)
+        return _function_handle
     if isinstance(stub_or_function, _FunctionHandle):
-        return stub_or_function._function
-    elif isinstance(stub_or_function, _Function):
         return stub_or_function
+    elif isinstance(stub_or_function, _Function):
+        return stub_or_function._function_handle
     elif isinstance(stub_or_function, LocalEntrypoint):
         if not accept_local_entrypoint:
             raise click.UsageError(
