@@ -9,7 +9,7 @@ import sys
 from modal import Stub, create_package_mounts
 from modal._blob_utils import LARGE_FILE_LIMIT
 from modal.aio import AioStub
-from modal.exception import NotFoundError
+from modal.exception import DeprecationError, NotFoundError
 from modal.mount import AioMount, Mount
 
 
@@ -25,7 +25,7 @@ async def test_get_files(servicer, client, tmpdir):
     files = {}
     stub = AioStub()
     async with stub.run(client=client) as running_app:
-        m = AioMount("/", local_dir=tmpdir, condition=lambda fn: fn.endswith(".py"), recursive=True)
+        m = AioMount.local_dir(tmpdir, remote_path="/", condition=lambda fn: fn.endswith(".py"), recursive=True)
         await running_app._load(m)  # TODO: is this something we want to expose?
         async for upload_spec in m._get_files():
             files[upload_spec.mount_filename] = upload_spec
@@ -60,7 +60,8 @@ def test_create_mount_legacy_constructor(servicer, client):
         def condition(fn):
             return fn.endswith(".py")
 
-        m = Mount(local_dir=local_dir, remote_dir=remote_dir, condition=condition)
+        with pytest.warns(DeprecationError):
+            m = Mount(local_dir=local_dir, remote_dir=remote_dir, condition=condition)
         obj = running_app._load(m)  # TODO: is this something we want to expose?
         assert obj.object_id == "mo-123"
         assert f"/foo/{cur_filename}" in servicer.files_name2sha
@@ -77,7 +78,7 @@ def test_create_mount(servicer, client):
         def condition(fn):
             return fn.endswith(".py")
 
-        m = Mount().add_local_dir(local_dir, remote_path="/foo", condition=condition)
+        m = Mount.local_dir(local_dir, remote_path="/foo", condition=condition)
         obj = running_app._load(m)
         assert obj.object_id == "mo-123"
         assert f"/foo/{cur_filename}" in servicer.files_name2sha
@@ -90,13 +91,13 @@ def test_create_mount(servicer, client):
 def test_create_mount_file_errors(servicer, tmpdir, client):
     stub = Stub()
     with stub.run(client=client) as running_app:
-        m = Mount(local_dir="xyz", remote_dir="/xyz")
+        m = Mount.local_dir("xyz", remote_path="/xyz")
         with pytest.raises(FileNotFoundError):
             running_app._load(m)
 
         with open(tmpdir / "abc", "w"):
             pass
-        m = Mount(local_dir=tmpdir / "abc", remote_dir="/abc")
+        m = Mount.local_dir(tmpdir / "abc", remote_path="/abc")
         with pytest.raises(NotADirectoryError):
             running_app._load(m)
 
