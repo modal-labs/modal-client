@@ -7,7 +7,7 @@ import os
 import time
 import typing
 from pathlib import Path, PurePosixPath
-from typing import Callable, Collection, List, Optional, Union, Tuple
+from typing import AsyncGenerator, Callable, Collection, List, Optional, Union, Tuple
 
 import aiostream
 
@@ -164,7 +164,7 @@ class _Mount(Provider[_MountHandle]):
         rep = f"Mount({self._entries})"
         super().__init__(self._load, rep)
 
-    def is_local(self):
+    def is_local(self) -> bool:
         """mdmd:hidden"""
         # TODO(erikbern): since any remote ref bypasses the constructor,
         # we can't rely on it to be set. Let's clean this up later.
@@ -210,11 +210,11 @@ class _Mount(Provider[_MountHandle]):
             ]
         )
 
-    def _description(self):
+    def _description(self) -> str:
         local_contents = [e.description() for e in self._entries]
         return ", ".join(local_contents)
 
-    async def _get_files(self):
+    async def _get_files(self) -> AsyncGenerator[FileUploadSpec, None]:
         all_files: List[Tuple[Path, str]] = []
         for entry in self._entries:
             all_files += list(entry.get_files_to_upload())
@@ -240,25 +240,24 @@ class _Mount(Provider[_MountHandle]):
 
         n_files = 0
         uploaded_hashes: set[str] = set()
-        files: list[api_pb2.MountFile] = []
         total_bytes = 0
         message_label = self._description()
 
-        async def _put_file(mount_file: FileUploadSpec):
+        async def _put_file(mount_file: FileUploadSpec) -> api_pb2.MountFile:
             nonlocal n_files, uploaded_hashes, total_bytes
             resolver.set_message(
                 f"Creating mount {message_label}: Uploaded {len(uploaded_hashes)}/{n_files} inspected files"
             )
 
             remote_filename = mount_file.mount_filename
-            files.append(api_pb2.MountFile(filename=remote_filename, sha256_hex=mount_file.sha256_hex))
+            mount_file = api_pb2.MountFile(filename=remote_filename, sha256_hex=mount_file.sha256_hex)
 
             request = api_pb2.MountPutFileRequest(sha256_hex=mount_file.sha256_hex)
             response = await retry_transient_errors(resolver.client.stub.MountPutFile, request, base_delay=1)
 
             n_files += 1
             if response.exists or mount_file.sha256_hex in uploaded_hashes:
-                return
+                return mount_file
             uploaded_hashes.add(mount_file.sha256_hex)
             total_bytes += mount_file.size
 
@@ -272,6 +271,7 @@ class _Mount(Provider[_MountHandle]):
                 logger.debug(f"Uploading file {mount_file.filename} to {remote_filename} ({mount_file.size} bytes)")
                 request2 = api_pb2.MountPutFileRequest(data=mount_file.content, sha256_hex=mount_file.sha256_hex)
             await retry_transient_errors(resolver.client.stub.MountPutFile, request2, base_delay=1)
+            return mount_file
 
         logger.debug(f"Uploading mount using {n_concurrent_uploads} uploads")
 
@@ -280,11 +280,11 @@ class _Mount(Provider[_MountHandle]):
 
         # Upload files
         uploads_stream = aiostream.stream.map(files_stream, _put_file, task_limit=n_concurrent_uploads)
-        try:
-            await uploads_stream
-        except aiostream.StreamEmpty:
+        files: List[api_pb2.MountFile] = await aiostream.stream.list(uploads_stream)
+        if not files:
             logger.warning(f"Mount of '{message_label}' is empty.")
 
+        # Build mounts
         resolver.set_message(f"Creating mount {message_label}: Building mount")
         req = api_pb2.MountBuildRequest(
             app_id=resolver.app_id, existing_mount_id=resolver.existing_object_id, files=files
@@ -300,12 +300,14 @@ Mount, AioMount = synchronize_apis(_Mount)
 
 
 def _create_client_mount():
+    # TODO(erikbern): make this a static method on the Mount class
     import modal
 
     # Get the base_path because it also contains `modal_utils` and `modal_proto`.
     base_path, _ = os.path.split(modal.__path__[0])
 
     # TODO(erikbern): this is incredibly dumb, but we only want to include packages that start with "modal"
+    # TODO(erikbern): merge functionality with _function_utils._is_modal_path
     prefix = os.path.join(base_path, "modal")
 
     def condition(arg):
@@ -318,6 +320,7 @@ _, aio_create_client_mount = synchronize_apis(_create_client_mount)
 
 
 def _get_client_mount():
+    # TODO(erikbern): make this a static method on the Mount class
     if config["sync_entrypoint"]:
         return _create_client_mount()
     else:
@@ -344,6 +347,7 @@ async def _create_package_mounts(module_names: Collection[str]) -> List[_Mount]:
         my_local_module.do_stuff()
     ```
     """
+    # TODO(erikbern): make this a static method on the Mount class
     from modal import is_local
 
     # Don't re-run inside container.
