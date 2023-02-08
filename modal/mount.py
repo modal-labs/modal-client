@@ -164,6 +164,9 @@ class _Mount(Provider[_MountHandle]):
         rep = f"Mount({self._entries})"
         super().__init__(self._load, rep)
 
+    def extend(self, *entries) -> "_Mount":
+        return Mount(_entries=(self._entries + entries))
+
     def is_local(self) -> bool:
         """mdmd:hidden"""
         # TODO(erikbern): since any remote ref bypasses the constructor,
@@ -177,37 +180,31 @@ class _Mount(Provider[_MountHandle]):
         remote_path: Union[str, PurePosixPath] = None,  # Where the directory is placed within in the mount
         condition: Callable[[str], bool] = lambda path: True,  # Filter function for file selection
         recursive: bool = True,  # add files from subdirectories as well
-    ):
+    ) -> "_Mount":
         local_path = Path(local_path)
         if remote_path is None:
             remote_path = local_path.name
         remote_path = PurePosixPath("/", remote_path)
 
-        return _Mount(
-            _entries=self._entries
-            + [
-                _MountDir(
-                    local_dir=local_path,
-                    condition=condition,
-                    remote_path=remote_path,
-                    recursive=recursive,
-                )
-            ]
+        return self._extend(
+            _MountDir(
+                local_dir=local_path,
+                condition=condition,
+                remote_path=remote_path,
+                recursive=recursive,
+            )
         )
 
-    def add_local_file(self, local_path: Union[str, Path], remote_path: Union[str, PurePosixPath] = None):
+    def add_local_file(self, local_path: Union[str, Path], remote_path: Union[str, PurePosixPath] = None) -> "_Mount":
         local_path = Path(local_path)
         if remote_path is None:
             remote_path = local_path.name
         remote_path = PurePosixPath("/", remote_path)
-        return _Mount(
-            _entries=self._entries
-            + [
-                _MountFile(
-                    local_file=local_path,
-                    remote_path=PurePosixPath(remote_path),
-                )
-            ]
+        return self._extend(
+            _MountFile(
+                local_file=local_path,
+                remote_path=PurePosixPath(remote_path),
+            )
         )
 
     def _description(self) -> str:
