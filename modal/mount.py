@@ -243,33 +243,33 @@ class _Mount(Provider[_MountHandle]):
         total_bytes = 0
         message_label = self._description()
 
-        async def _put_file(mount_file: FileUploadSpec) -> api_pb2.MountFile:
+        async def _put_file(file_spec: FileUploadSpec) -> api_pb2.MountFile:
             nonlocal n_files, uploaded_hashes, total_bytes
             resolver.set_message(
                 f"Creating mount {message_label}: Uploaded {len(uploaded_hashes)}/{n_files} inspected files"
             )
 
-            remote_filename = mount_file.mount_filename
-            mount_file = api_pb2.MountFile(filename=remote_filename, sha256_hex=mount_file.sha256_hex)
+            remote_filename = file_spec.mount_filename
+            mount_file = api_pb2.MountFile(filename=remote_filename, sha256_hex=file_spec.sha256_hex)
 
-            request = api_pb2.MountPutFileRequest(sha256_hex=mount_file.sha256_hex)
+            request = api_pb2.MountPutFileRequest(sha256_hex=file_spec.sha256_hex)
             response = await retry_transient_errors(resolver.client.stub.MountPutFile, request, base_delay=1)
 
             n_files += 1
-            if response.exists or mount_file.sha256_hex in uploaded_hashes:
+            if response.exists or file_spec.sha256_hex in uploaded_hashes:
                 return mount_file
-            uploaded_hashes.add(mount_file.sha256_hex)
-            total_bytes += mount_file.size
+            uploaded_hashes.add(file_spec.sha256_hex)
+            total_bytes += file_spec.size
 
-            if mount_file.use_blob:
-                logger.debug(f"Creating blob file for {mount_file.filename} ({mount_file.size} bytes)")
-                with open(mount_file.filename, "rb") as fp:
+            if file_spec.use_blob:
+                logger.debug(f"Creating blob file for {file_spec.filename} ({file_spec.size} bytes)")
+                with open(file_spec.filename, "rb") as fp:
                     blob_id = await blob_upload_file(fp, resolver.client.stub)
-                logger.debug(f"Uploading blob file {mount_file.filename} as {remote_filename}")
-                request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=mount_file.sha256_hex)
+                logger.debug(f"Uploading blob file {file_spec.filename} as {remote_filename}")
+                request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=file_spec.sha256_hex)
             else:
-                logger.debug(f"Uploading file {mount_file.filename} to {remote_filename} ({mount_file.size} bytes)")
-                request2 = api_pb2.MountPutFileRequest(data=mount_file.content, sha256_hex=mount_file.sha256_hex)
+                logger.debug(f"Uploading file {file_spec.filename} to {remote_filename} ({file_spec.size} bytes)")
+                request2 = api_pb2.MountPutFileRequest(data=file_spec.content, sha256_hex=file_spec.sha256_hex)
             await retry_transient_errors(resolver.client.stub.MountPutFile, request2, base_delay=1)
             return mount_file
 
