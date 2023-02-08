@@ -112,7 +112,7 @@ class _Mount(Provider[_MountHandle]):
     import os
     stub = modal.Stub()
 
-    @stub.function(mounts=[modal.Mount(remote_dir="/root/foo", local_dir="~/foo")])
+    @stub.function(mounts=[modal.Mount.local_dir("~/foo", remote_path="/root/foo")])
     def f():
         # `/root/foo` has the contents of `~/foo`.
         print(os.listdir("/root/foo/"))
