@@ -814,7 +814,6 @@ class _Image(Provider[_ImageHandle]):
             base_mounts.append(mount)
 
         function_handle = _FunctionHandle._new()
-        function_handle._initialize_from_proto(None)
 
         function = _Function(
             function_handle,
