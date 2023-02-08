@@ -152,10 +152,11 @@ class FunctionInfo:
                 )
             }
         elif self.type == FunctionInfoType.FILE:
+            remote_path = PurePosixPath(ROOT_DIR) / Path(self.file).name
             mounts = {
                 self.file: _Mount.local_file(
                     self.file,
-                    remote_path=ROOT_DIR,
+                    remote_path=remote_path,
                 )
             }
         elif self.type == FunctionInfoType.NOTEBOOK:
@@ -217,12 +218,12 @@ class FunctionInfo:
                     continue
 
                 if relpath != PurePosixPath("."):
-                    remote_dir = ROOT_DIR / relpath
+                    remote_path = ROOT_DIR / relpath / Path(path).name
                 else:
-                    remote_dir = ROOT_DIR
+                    remote_path = ROOT_DIR / Path(path).name
                 mounts[path] = _Mount.local_file(
                     path,
-                    remote_path=remote_dir,
+                    remote_path=remote_path,
                 )
         return filter_safe_mounts(mounts)
 
