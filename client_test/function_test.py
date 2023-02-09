@@ -152,9 +152,6 @@ def later_gen():
 async def test_generator(client, servicer):
     stub = Stub()
 
-    with pytest.raises(DeprecationError):
-        stub.generator(later_gen)
-
     later_gen_modal = stub.function(later_gen)
 
     def dummy():
