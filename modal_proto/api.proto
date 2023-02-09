@@ -836,6 +836,7 @@ message TaskLogsBatch {
   string entry_id = 5;
   bool app_done = 10;
   string function_id = 11;
+  string input_id = 12;
 }
 
 message TaskResultRequest {
