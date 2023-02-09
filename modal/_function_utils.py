@@ -144,18 +144,19 @@ class FunctionInfo:
     def get_mounts(self) -> Dict[str, _Mount]:
         if self.type == FunctionInfoType.PACKAGE:
             mounts = {
-                self.base_dir: _Mount(
-                    local_dir=self.base_dir,
-                    remote_dir=self.remote_dir,
+                self.base_dir: _Mount.from_local_dir(
+                    self.base_dir,
+                    remote_path=self.remote_dir,
                     recursive=True,
                     condition=package_mount_condition,
                 )
             }
         elif self.type == FunctionInfoType.FILE:
+            remote_path = ROOT_DIR / Path(self.file).name
             mounts = {
-                self.file: _Mount(
-                    local_file=self.file,
-                    remote_dir=ROOT_DIR,
+                self.file: _Mount.from_local_file(
+                    self.file,
+                    remote_path=remote_path,
                 )
             }
         elif self.type == FunctionInfoType.NOTEBOOK:
@@ -193,9 +194,9 @@ class FunctionInfo:
                     ):
                         continue
                     remote_dir = ROOT_DIR / PurePosixPath(*m.__name__.split("."))
-                    mounts[path] = _Mount(
-                        local_dir=path,
-                        remote_dir=remote_dir,
+                    mounts[path] = _Mount.from_local_dir(
+                        path,
+                        remote_path=remote_dir,
                         condition=package_mount_condition,
                         recursive=True,
                     )
@@ -217,12 +218,12 @@ class FunctionInfo:
                     continue
 
                 if relpath != PurePosixPath("."):
-                    remote_dir = ROOT_DIR / relpath
+                    remote_path = ROOT_DIR / relpath / Path(path).name
                 else:
-                    remote_dir = ROOT_DIR
-                mounts[path] = _Mount(
-                    local_file=path,
-                    remote_dir=remote_dir,
+                    remote_path = ROOT_DIR / Path(path).name
+                mounts[path] = _Mount.from_local_file(
+                    path,
+                    remote_path=remote_path,
                 )
         return filter_safe_mounts(mounts)
 

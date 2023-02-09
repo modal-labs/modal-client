@@ -14,8 +14,8 @@ from modal.mount import _Mount
 async def test__watch_args_from_mounts(monkeypatch, test_dir):
     paths, watch_filter = _watch_args_from_mounts(
         mounts=[
-            _Mount(remote_dir="/", local_file="/x/foo.py"),
-            _Mount(remote_dir="/", local_dir="/one/two/bucklemyshoe"),
+            _Mount.from_local_file("/x/foo.py", remote_path="/foo.py"),
+            _Mount.from_local_dir("/one/two/bucklemyshoe", remote_path="/"),
         ]
     )
 
