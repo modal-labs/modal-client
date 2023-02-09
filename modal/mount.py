@@ -112,7 +112,7 @@ class _Mount(Provider[_MountHandle]):
     import os
     stub = modal.Stub()
 
-    @stub.function(mounts=[modal.Mount.local_dir("~/foo", remote_path="/root/foo")])
+    @stub.function(mounts=[modal.Mount.from_local_dir("~/foo", remote_path="/root/foo")])
     def f():
         # `/root/foo` has the contents of `~/foo`.
         print(os.listdir("/root/foo/"))
@@ -145,7 +145,7 @@ class _Mount(Provider[_MountHandle]):
         else:
             deprecation_warning(
                 date(2023, 2, 8),
-                "The Mount constructor is deprecated. Use static factory method Mount.local_dir or Mount.local_file",
+                "The Mount constructor is deprecated. Use static factory method Mount.from_local_dir or Mount.from_local_file",
             )
             self._entries = []
             if local_file or local_dir:
@@ -155,7 +155,7 @@ class _Mount(Provider[_MountHandle]):
 
                 if local_dir:
                     remote_path = PurePosixPath(remote_dir)
-                    self._entries = self.local_dir(
+                    self._entries = self.from_local_dir(
                         local_path=local_dir,
                         remote_path=remote_path,
                         condition=condition,
@@ -163,7 +163,7 @@ class _Mount(Provider[_MountHandle]):
                     )._entries
                 elif local_file:
                     remote_path = PurePosixPath(remote_dir) / Path(local_file).name
-                    self._entries = self.local_file(local_path=local_file, remote_path=remote_path)._entries
+                    self._entries = self.from_local_file(local_path=local_file, remote_path=remote_path)._entries
 
         self._is_local = True
         rep = f"Mount({self._entries})"
@@ -201,7 +201,7 @@ class _Mount(Provider[_MountHandle]):
         )
 
     @staticmethod
-    def local_dir(
+    def from_local_dir(
         local_path: Union[str, Path],
         *,
         remote_path: Union[str, PurePosixPath, None] = None,  # Where the directory is placed within in the mount
@@ -227,7 +227,7 @@ class _Mount(Provider[_MountHandle]):
         )
 
     @staticmethod
-    def local_file(local_path: Union[str, Path], remote_path: Union[str, PurePosixPath, None] = None) -> "_Mount":
+    def from_local_file(local_path: Union[str, Path], remote_path: Union[str, PurePosixPath, None] = None) -> "_Mount":
         return _Mount(_entries=[]).add_local_file(local_path, remote_path=remote_path)
 
     def _description(self) -> str:
@@ -337,7 +337,7 @@ def _create_client_mount():
     def condition(arg):
         return module_mount_condition(arg) and arg.startswith(prefix)
 
-    return _Mount(local_dir=base_path, remote_dir="/pkg/", condition=condition, recursive=True)
+    return _Mount.from_local_dir(base_path, remote_path="/pkg/", condition=condition, recursive=True)
 
 
 _, aio_create_client_mount = synchronize_apis(_create_client_mount)
@@ -389,7 +389,7 @@ async def _create_package_mounts(module_names: Collection[str]) -> List[_Mount]:
             is_package, base_path, module_mount_condition = mount_info
             if is_package:
                 mounts.append(
-                    _Mount.local_dir(
+                    _Mount.from_local_dir(
                         base_path,
                         remote_path=f"/pkg/{module_name}",
                         condition=module_mount_condition,
@@ -399,7 +399,7 @@ async def _create_package_mounts(module_names: Collection[str]) -> List[_Mount]:
             else:
                 remote_path = PurePosixPath("/pkg") / Path(base_path).name
                 mounts.append(
-                    _Mount.local_file(
+                    _Mount.from_local_file(
                         base_path,
                         remote_path=remote_path,
                     )

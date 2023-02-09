@@ -144,7 +144,7 @@ class FunctionInfo:
     def get_mounts(self) -> Dict[str, _Mount]:
         if self.type == FunctionInfoType.PACKAGE:
             mounts = {
-                self.base_dir: _Mount.local_dir(
+                self.base_dir: _Mount.from_local_dir(
                     self.base_dir,
                     remote_path=self.remote_dir,
                     recursive=True,
@@ -154,7 +154,7 @@ class FunctionInfo:
         elif self.type == FunctionInfoType.FILE:
             remote_path = ROOT_DIR / Path(self.file).name
             mounts = {
-                self.file: _Mount.local_file(
+                self.file: _Mount.from_local_file(
                     self.file,
                     remote_path=remote_path,
                 )
@@ -194,7 +194,7 @@ class FunctionInfo:
                     ):
                         continue
                     remote_dir = ROOT_DIR / PurePosixPath(*m.__name__.split("."))
-                    mounts[path] = _Mount.local_dir(
+                    mounts[path] = _Mount.from_local_dir(
                         path,
                         remote_path=remote_dir,
                         condition=package_mount_condition,
@@ -221,7 +221,7 @@ class FunctionInfo:
                     remote_path = ROOT_DIR / relpath / Path(path).name
                 else:
                     remote_path = ROOT_DIR / Path(path).name
-                mounts[path] = _Mount.local_file(
+                mounts[path] = _Mount.from_local_file(
                     path,
                     remote_path=remote_path,
                 )

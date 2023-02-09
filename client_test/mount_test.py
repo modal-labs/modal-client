@@ -25,7 +25,7 @@ async def test_get_files(servicer, client, tmpdir):
     files = {}
     stub = AioStub()
     async with stub.run(client=client) as running_app:
-        m = AioMount.local_dir(tmpdir, remote_path="/", condition=lambda fn: fn.endswith(".py"), recursive=True)
+        m = AioMount.from_local_dir(tmpdir, remote_path="/", condition=lambda fn: fn.endswith(".py"), recursive=True)
         await running_app._load(m)  # TODO: is this something we want to expose?
         async for upload_spec in m._get_files():
             files[upload_spec.mount_filename] = upload_spec
@@ -78,7 +78,7 @@ def test_create_mount(servicer, client):
         def condition(fn):
             return fn.endswith(".py")
 
-        m = Mount.local_dir(local_dir, remote_path="/foo", condition=condition)
+        m = Mount.from_local_dir(local_dir, remote_path="/foo", condition=condition)
         obj = running_app._load(m)
         assert obj.object_id == "mo-123"
         assert f"/foo/{cur_filename}" in servicer.files_name2sha
@@ -91,13 +91,13 @@ def test_create_mount(servicer, client):
 def test_create_mount_file_errors(servicer, tmpdir, client):
     stub = Stub()
     with stub.run(client=client) as running_app:
-        m = Mount.local_dir("xyz", remote_path="/xyz")
+        m = Mount.from_local_dir("xyz", remote_path="/xyz")
         with pytest.raises(FileNotFoundError):
             running_app._load(m)
 
         with open(tmpdir / "abc", "w"):
             pass
-        m = Mount.local_dir(tmpdir / "abc", remote_path="/abc")
+        m = Mount.from_local_dir(tmpdir / "abc", remote_path="/abc")
         with pytest.raises(NotADirectoryError):
             running_app._load(m)
 
