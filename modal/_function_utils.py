@@ -152,7 +152,7 @@ class FunctionInfo:
                 )
             }
         elif self.type == FunctionInfoType.FILE:
-            remote_path = PurePosixPath(ROOT_DIR) / Path(self.file).name
+            remote_path = ROOT_DIR / Path(self.file).name
             mounts = {
                 self.file: _Mount.local_file(
                     self.file,
