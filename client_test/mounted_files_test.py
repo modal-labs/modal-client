@@ -2,9 +2,12 @@
 import os
 import platform
 import pytest
+import pytest_asyncio
 import subprocess
 import sys
 from pathlib import Path
+
+from modal._function_utils import FunctionInfo
 
 
 @pytest.fixture
@@ -25,7 +28,25 @@ def supports_dir(test_dir):
     return test_dir / Path("supports")
 
 
-def test_mounted_files_script(supports_dir):
+def f():
+    pass
+
+
+@pytest_asyncio.fixture
+async def env_mount_files():
+    # If something is installed using pip -e, it will be bundled up as a part of the environment.
+    # Those are env-specific so we ignore those as a part of the test
+    fn_info = FunctionInfo(f)
+
+    filenames = []
+    for _, mount in fn_info.get_mounts().items():
+        async for file_info in mount._get_files():
+            filenames.append(file_info.mount_filename)
+
+    return filenames
+
+
+def test_mounted_files_script(supports_dir, env_mount_files):
     p = subprocess.run(
         [sys.executable, str(script_path)],
         capture_output=True,
@@ -38,7 +59,7 @@ def test_mounted_files_script(supports_dir):
     print("stdout: ", stdout)
     print("stderr: ", stderr)
     assert p.returncode == 0
-    files = set(stdout.splitlines())
+    files = set(stdout.splitlines()).difference(env_mount_files)
 
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
     assert files == {
@@ -55,7 +76,7 @@ def test_mounted_files_script(supports_dir):
 serialized_fn_path = "pkg_a/serialized_fn.py"
 
 
-def test_mounted_files_serialized(supports_dir):
+def test_mounted_files_serialized(supports_dir, env_mount_files):
     p = subprocess.run(
         [sys.executable, str(serialized_fn_path)],
         capture_output=True,
@@ -67,7 +88,7 @@ def test_mounted_files_serialized(supports_dir):
     stderr = p.stderr.decode("utf-8")
     print("stdout: ", stdout)
     print("stderr: ", stderr)
-    files = set(stdout.splitlines())
+    files = set(stdout.splitlines()).difference(env_mount_files)
 
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
     assert files == {
@@ -81,14 +102,14 @@ def test_mounted_files_serialized(supports_dir):
     }
 
 
-def test_mounted_files_package(supports_dir):
+def test_mounted_files_package(supports_dir, env_mount_files):
     p = subprocess.run([sys.executable, "-m", "pkg_a.package"], cwd=supports_dir, capture_output=True)
     assert p.returncode == 0
     stdout = p.stdout.decode("utf-8")
     stderr = p.stderr.decode("utf-8")
     print("stdout: ", stdout)
     print("stderr: ", stderr)
-    files = set(stdout.splitlines())
+    files = set(stdout.splitlines()).difference(env_mount_files)
 
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
     assert files == {
@@ -108,7 +129,7 @@ def test_mounted_files_package(supports_dir):
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="venvs behave differently on Windows.")
-def test_mounted_files_sys_prefix(supports_dir, venv_path):
+def test_mounted_files_sys_prefix(supports_dir, venv_path, env_mount_files):
     # Run with venv activated, so it's on sys.prefix, and modal is dev-installed in the VM
     p = subprocess.run(
         [venv_path / "bin" / "python", script_path],
@@ -121,7 +142,7 @@ def test_mounted_files_sys_prefix(supports_dir, venv_path):
     stderr = p.stderr.decode("utf-8")
     print("stdout: ", stdout)
     print("stderr: ", stderr)
-    files = set(stdout.splitlines())
+    files = set(stdout.splitlines()).difference(env_mount_files)
 
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
     assert files == {
@@ -135,7 +156,7 @@ def test_mounted_files_sys_prefix(supports_dir, venv_path):
     }
 
 
-def test_mounted_files_config(supports_dir):
+def test_mounted_files_config(supports_dir, env_mount_files):
     p = subprocess.run(
         [sys.executable, str(script_path)],
         capture_output=True,
@@ -147,7 +168,7 @@ def test_mounted_files_config(supports_dir):
     stderr = p.stderr.decode("utf-8")
     print("stdout: ", stdout)
     print("stderr: ", stderr)
-    files = set(stdout.splitlines())
+    files = set(stdout.splitlines()).difference(env_mount_files)
 
     # Assert just the script is there
     assert files == {"/root/script.py"}
