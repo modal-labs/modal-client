@@ -8,6 +8,7 @@ from typing import List, Optional, Tuple
 
 import click
 import typer
+from click import UsageError
 from rich.console import Console, Group
 from rich.markdown import Markdown
 from rich.panel import Panel
@@ -153,7 +154,7 @@ Runnable functions and local entrypoints on the selected stub are:
             )
 
         if function_name is None:
-            sys.exit(err_msg)
+            raise UsageError(err_msg)
         elif function_name in _stub.registered_functions:
             click_command = _get_click_command_for_function_handle(_stub, function_name)
         else:
@@ -299,16 +300,14 @@ def shell(
     console = Console()
 
     if not console.is_terminal:
-        print("`modal shell` can only be run from a terminal.")
-        sys.exit(1)
+        raise UsageError("`modal shell` can only be run from a terminal.")
 
     _stub = synchronizer._translate_in(stub)
     functions = {tag: obj for tag, obj in _stub._blueprint.items() if isinstance(obj, _Function)}
     function_name = parsed_stub_ref.entrypoint_name
     if function_name is not None:
         if function_name not in functions:
-            print(f"Function {function_name} not found in stub.")
-            sys.exit(1)
+            raise UsageError(f"Function `{function_name}` not found in stub.")
         function = functions[function_name]
     else:
         function = choose_function(_stub, list(functions.items()), console)
