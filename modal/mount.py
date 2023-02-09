@@ -328,24 +328,19 @@ class _Mount(Provider[_MountHandle]):
 Mount, AioMount = synchronize_apis(_Mount)
 
 
-def _create_client_mount():
-    # TODO(erikbern): make this a static method on the Mount class
-    # Get the base_path because it also contains `modal_utils` etc.
-    modal = sys.modules["modal"]
-    base_path, _ = os.path.split(modal.__path__[0])
-
-    def condition(arg):
-        return module_mount_condition(arg) and os.path.split(arg)[0] in MODAL_PACKAGES
-
-    return _Mount.from_local_dir(base_path, remote_path="/pkg/", condition=condition, recursive=True)
-
-
 def _get_client_mount():
     # TODO(erikbern): make this a static method on the Mount class
-    if config["sync_entrypoint"]:
-        return _create_client_mount()
-    else:
+    if not config["sync_entrypoint"]:
         return _Mount.from_name(client_mount_name(), namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
+    else:
+        # Get the base_path because it also contains `modal_utils` etc.
+        modal = sys.modules["modal"]
+        base_path, _ = os.path.split(modal.__path__[0])
+
+        def condition(arg):
+            return module_mount_condition(arg) and os.path.split(arg)[0] in MODAL_PACKAGES
+
+        return _Mount.from_local_dir(base_path, remote_path="/pkg/", condition=condition, recursive=True)
 
 
 async def _create_package_mounts(module_names: Collection[str]) -> List[_Mount]:
