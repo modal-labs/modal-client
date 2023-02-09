@@ -14,7 +14,7 @@ from modal_proto import api_pb2
 from ._serialization import serialize
 from .config import config, logger
 from .exception import InvalidError
-from .mount import _Mount
+from .mount import _Mount, MODAL_PACKAGES
 
 ROOT_DIR = PurePosixPath("/root")
 
@@ -56,10 +56,8 @@ def package_mount_condition(filename):
 def _is_modal_path(remote_path: PurePosixPath):
     path_prefix = remote_path.parts[:3]
     is_modal_path = path_prefix in [
-        ("/", "root", "modal"),
-        ("/", "root", "modal_proto"),
-        ("/", "root", "modal_utils"),
-        ("/", "root", "modal_version"),
+        ("/", "root", package)
+        for package in MODAL_PACKAGES
     ]
     return is_modal_path
 

@@ -5,6 +5,7 @@ import concurrent.futures
 import dataclasses
 from datetime import date
 import os
+import sys
 import time
 import typing
 from pathlib import Path, PurePosixPath
@@ -23,6 +24,10 @@ from ._resolver import Resolver
 from .config import config, logger
 from .exception import InvalidError, NotFoundError, deprecation_warning
 from .object import Handle, Provider
+
+
+# TODO(erikbern): infer automatically?
+MODAL_PACKAGES = ["modal", "modal_proto", "modal_utils", "modal_version"]
 
 
 def client_mount_name():
@@ -325,17 +330,12 @@ Mount, AioMount = synchronize_apis(_Mount)
 
 def _create_client_mount():
     # TODO(erikbern): make this a static method on the Mount class
-    import modal
-
-    # Get the base_path because it also contains `modal_utils` and `modal_proto`.
+    # Get the base_path because it also contains `modal_utils` etc.
+    modal = sys.modules["modal"]
     base_path, _ = os.path.split(modal.__path__[0])
 
-    # TODO(erikbern): this is incredibly dumb, but we only want to include packages that start with "modal"
-    # TODO(erikbern): merge functionality with _function_utils._is_modal_path
-    prefix = os.path.join(base_path, "modal")
-
     def condition(arg):
-        return module_mount_condition(arg) and arg.startswith(prefix)
+        return module_mount_condition(arg) and os.path.split(arg)[0] in MODAL_PACKAGES
 
     return _Mount.from_local_dir(base_path, remote_path="/pkg/", condition=condition, recursive=True)
 
