@@ -55,10 +55,7 @@ def package_mount_condition(filename):
 
 def _is_modal_path(remote_path: PurePosixPath):
     path_prefix = remote_path.parts[:3]
-    is_modal_path = path_prefix in [
-        ("/", "root", package)
-        for package in MODAL_PACKAGES
-    ]
+    is_modal_path = path_prefix in [("/", "root", package) for package in MODAL_PACKAGES]
     return is_modal_path
 
 
