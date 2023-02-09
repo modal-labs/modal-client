@@ -124,10 +124,20 @@ P = TypeVar("P", bound="Provider")
 
 
 class Provider(Generic[H]):
-    def __init__(self, load: Callable[[Resolver], Awaitable[H]], rep: str):
+    def _init(self, load, rep):
         self._local_uuid = str(uuid.uuid4())
         self._load = load
         self._rep = rep
+
+    def __init__(self, load: Callable[[Resolver], Awaitable[H]], rep: str):
+        # TODO(erikbern): this is semi-deprecated - subclasses should use _from_loader
+        self._init(load, rep)
+
+    @classmethod
+    def _from_loader(cls, load: Callable[[Resolver], Awaitable[H]], rep: str):
+        obj = Handle.__new__(cls)
+        obj._init(load, rep)
+        return obj
 
     def __repr__(self):
         return self._rep
