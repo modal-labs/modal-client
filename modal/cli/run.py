@@ -133,7 +133,7 @@ class RunGroup(click.Group):
                 function_name = list(_stub.registered_entrypoints.keys())[0]
             elif len(function_choices) == 0:
                 if _stub.registered_web_endpoints:
-                    err_msg = "App contains only webhook functions. Use `modal serve` instead of `modal run`."
+                    err_msg = "Modal stub has only webhook functions. Use `modal serve` instead of `modal run`."
                 else:
                     err_msg = "Modal stub has no registered functions. Nothing to run."
             else:
@@ -144,14 +144,14 @@ modal run app.py::stub.my_function [...args]
 Runnable functions and local entrypoints on the selected stub are:
 {registered_functions_str}
     """
-        elif function_choices and function_name not in function_choices:
-            err_msg = f"""No function `{function_name}` could be found in the specified stub. Runnable functions and entrypoints are:
+        elif function_choices and function_name_candidate not in function_choices:
+            err_msg = f"""No function `{function_name_candidate}` could be found in the specified stub. Runnable functions and entrypoints are:
 
 {registered_functions_str}"""
         elif function_name_candidate and not function_choices:
-            err_msg = (
-                f"No function `{function_name}` could be found in the specified stub. App has zero runnable functions."
-            )
+            err_msg = f"No function `{function_name_candidate}` could be found in the specified stub. App has zero runnable functions."
+        else:
+            function_name = function_name_candidate
 
         if function_name is None:
             raise UsageError(err_msg)

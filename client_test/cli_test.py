@@ -118,14 +118,14 @@ def test_run(servicer, server_url_env, test_dir):
 
 def test_help_message_unspecified_function(servicer, server_url_env, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "stub_with_multiple_functions.py"
-    result = _run(["run", stub_file.as_posix()], expected_exit_code=1)
+    result = _run(["run", stub_file.as_posix()], expected_exit_code=2)
 
     # should suggest available functions on the stub:
     assert "foo" in result.stdout
     assert "bar" in result.stdout
 
     result = _run(
-        ["run", stub_file.as_posix(), "--help"], expected_exit_code=1
+        ["run", stub_file.as_posix(), "--help"], expected_exit_code=2
     )  # TODO: help should not return non-zero
     # help should also available functions on the stub:
     assert "foo" in result.stdout
@@ -177,7 +177,7 @@ def test_run_local_entrypoint(servicer, server_url_env, test_dir):
 
 def test_run_parse_args(servicer, server_url_env, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "cli_args.py"
-    res = _run(["run", stub_file.as_posix()], expected_exit_code=1)
+    res = _run(["run", stub_file.as_posix()], expected_exit_code=2)
     assert "You need to specify an entrypoint" in res.stdout
 
     valid_call_args = [
