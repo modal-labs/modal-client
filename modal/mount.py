@@ -340,9 +340,6 @@ def _create_client_mount():
     return _Mount.from_local_dir(base_path, remote_path="/pkg/", condition=condition, recursive=True)
 
 
-_, aio_create_client_mount = synchronize_apis(_create_client_mount)
-
-
 def _get_client_mount():
     # TODO(erikbern): make this a static method on the Mount class
     if config["sync_entrypoint"]:
