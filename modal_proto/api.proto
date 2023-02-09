@@ -211,6 +211,16 @@ message BlobCreateResponse {
   string blob_id = 2;
 }
 
+message BlobCreateMultipartRequest {
+  string content_sha256_b64 = 1;
+  repeated string part_md5_b64 = 2;
+}
+
+message BlobCreateMultipartResponse {
+  repeated string upload_urls = 3;
+  string completion_url = 4;
+}
+
 message BlobGetRequest {
   string blob_id = 1;
 }
@@ -894,6 +904,7 @@ service ModalClient {
 
   // Blobs
   rpc BlobCreate(BlobCreateRequest) returns (BlobCreateResponse);
+  rpc BlobCreateMultipart(BlobCreateMultipartRequest) returns (BlobCreateMultipartResponse);
   rpc BlobGet(BlobGetRequest) returns (BlobGetResponse);
 
   // Clients
