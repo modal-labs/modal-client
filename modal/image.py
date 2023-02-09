@@ -259,7 +259,7 @@ class _Image(Provider[_ImageHandle]):
         ```python
         static_images_dir = "./static"
         # place all static images in root of mount
-        mount = modal.Mount(local_dir=static_images_dir, remote_dir="/")
+        mount = modal.Mount.from_local_dir(static_images_dir, remote_path="/")
         # place mount's contents into /static directory of image.
         image = modal.Image.debian_slim().copy(mount, remote_path="/static")
         ```
