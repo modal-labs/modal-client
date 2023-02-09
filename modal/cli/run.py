@@ -8,6 +8,7 @@ from typing import List, Optional, Tuple
 
 import click
 import typer
+from click import UsageError
 from rich.console import Console, Group
 from rich.markdown import Markdown
 from rich.panel import Panel
@@ -122,33 +123,39 @@ class RunGroup(click.Group):
             | set(_stub.registered_entrypoints.keys())
         )
         registered_functions_str = "\n".join(sorted(function_choices))
-        function_name = parsed_stub_ref.entrypoint_name
-        if not function_name:
+        function_name_candidate = parsed_stub_ref.entrypoint_name
+        function_name = None
+        err_msg = None
+        if not function_name_candidate:
             if len(function_choices) == 1:
                 function_name = function_choices[0]
             elif len(_stub.registered_entrypoints) == 1:
                 function_name = list(_stub.registered_entrypoints.keys())[0]
+            elif len(function_choices) == 0:
+                if _stub.registered_web_endpoints:
+                    err_msg = "Modal stub has only webhook functions. Use `modal serve` instead of `modal run`."
+                else:
+                    err_msg = "Modal stub has no registered functions. Nothing to run."
             else:
-                # TODO(erikbern): better error message if there's *zero* functions / entrypoints
-                print(
-                    f"""You need to specify an entrypoint Modal function to run, e.g.
+                err_msg = f"""You need to specify an entrypoint Modal function to run, e.g.
 
 modal run app.py::stub.my_function [...args]
 
-Registered functions and local entrypoints on the selected stub are:
+Runnable functions and local entrypoints on the selected stub are:
 {registered_functions_str}
     """
-                )
-                exit(1)
-        elif function_name not in function_choices:
-            print(
-                f"""No function `{function_name}` could be found in the specified stub. Registered functions and entrypoints are:
+        elif function_choices and function_name_candidate not in function_choices:
+            err_msg = f"""No function `{function_name_candidate}` could be found in the specified stub. Runnable functions and entrypoints are:
 
 {registered_functions_str}"""
-            )
-            exit(1)
+        elif function_name_candidate and not function_choices:
+            err_msg = f"No function `{function_name_candidate}` could be found in the specified stub. App has zero runnable functions."
+        else:
+            function_name = function_name_candidate
 
-        if function_name in _stub.registered_functions:
+        if function_name is None:
+            raise UsageError(err_msg)
+        elif function_name in _stub.registered_functions:
             click_command = _get_click_command_for_function_handle(_stub, function_name)
         else:
             click_command = _get_click_command_for_local_entrypoint(_stub, function_name)
@@ -293,16 +300,14 @@ def shell(
     console = Console()
 
     if not console.is_terminal:
-        print("`modal shell` can only be run from a terminal.")
-        sys.exit(1)
+        raise UsageError("`modal shell` can only be run from a terminal.")
 
     _stub = synchronizer._translate_in(stub)
     functions = {tag: obj for tag, obj in _stub._blueprint.items() if isinstance(obj, _Function)}
     function_name = parsed_stub_ref.entrypoint_name
     if function_name is not None:
         if function_name not in functions:
-            print(f"Function {function_name} not found in stub.")
-            sys.exit(1)
+            raise UsageError(f"Function `{function_name}` not found in stub.")
         function = functions[function_name]
     else:
         function = choose_function(_stub, list(functions.items()), console)
