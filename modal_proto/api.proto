@@ -208,7 +208,7 @@ message BlobCreateRequest {
 }
 
 message MultiPartUpload {
-  repeated int64 part_lengths_bytes = 1;
+  int64 part_length_bytes = 1; // split upload based on this part length - all except the last part must have this length
   repeated string upload_urls = 2;
   string completion_url = 3;
 }
