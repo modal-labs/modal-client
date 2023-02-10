@@ -177,7 +177,7 @@ def test_nested_serve_invocation(client):
         with stub.run(client=client):
             # This nested call creates a second web endpoint!
             stub.serve(client=client)
-    assert "existing" in str(excinfo.value)
+    assert "running" in str(excinfo.value)
 
 
 def test_run_state(client, servicer):
