@@ -205,11 +205,11 @@ message BlobCreateRequest {
   // Shouldn't they belong to an app?
   string content_md5 = 1;
   string content_sha256_base64 = 2;
-  int64 content_length_bytes = 3;
+  int64 content_length = 3;
 }
 
 message MultiPartUpload {
-  int64 part_length_bytes = 1; // split upload based on this part length - all except the last part must have this length
+  int64 part_length = 1; // split upload based on this part length - all except the last part must have this length
   repeated string upload_urls = 2;
   string completion_url = 3;
 }
