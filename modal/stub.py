@@ -371,6 +371,8 @@ class _Stub:
             async with self._run(client, output_mgr, None, mode=StubRunMode.SERVE) as app:
                 client.set_pre_stop(app.disconnect)
                 existing_app_id = app.app_id
+                # Note: when the context manager exits, it closes the logs.
+                # This is intentional since we run subprocesses right after that fetch logs.
 
             curr_proc = None
             try:
