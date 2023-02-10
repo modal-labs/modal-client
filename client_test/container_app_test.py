@@ -58,13 +58,13 @@ async def test_is_inside(servicer, unix_servicer, aio_client, aio_container_clie
 
     stub = get_stub()
 
-    # No container is running
-    assert not stub.is_inside()
-    assert not stub.is_inside(image_1)
-    assert not stub.is_inside(image_2)
-
     # Run container
     async with stub.run(client=aio_client) as app:
+        # We're not inside the container (yet)
+        assert not stub.is_inside()
+        assert not stub.is_inside(image_1)
+        assert not stub.is_inside(image_2)
+
         app_id = app.app_id
         image_1_id = app["image"].object_id
         image_2_id = app["image_2"].object_id
