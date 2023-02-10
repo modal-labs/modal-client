@@ -204,7 +204,8 @@ message BlobCreateRequest {
   // TODO(erikbern): how are these garbage collected?
   // Shouldn't they belong to an app?
   string content_md5 = 1;
-  string content_length_bytes = 2;
+  string content_sha256_base64 = 2;
+  string content_length_bytes = 3;
 }
 
 message MultiPartUpload {
