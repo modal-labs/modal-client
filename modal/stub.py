@@ -228,9 +228,9 @@ class _Stub:
             post_init_state = api_pb2.APP_STATE_EPHEMERAL
 
         if existing_app_id is not None:
-            app = await _App._init_existing(self, client, existing_app_id)
+            app = await _App._init_existing(client, existing_app_id)
         else:
-            app = await _App._init_new(self, client, app_name, deploying=(mode == StubRunMode.DEPLOY), detach=detach)
+            app = await _App._init_new(client, app_name, deploying=(mode == StubRunMode.DEPLOY), detach=detach)
 
         self._app_id = app.app_id
         aborted = False
@@ -255,7 +255,7 @@ class _Stub:
                 # Create all members
                 create_progress = Tree(step_progress("Creating objects..."), guide_style="gray50")
                 with output_mgr.ctx_if_visible(output_mgr.make_live(create_progress)):
-                    await app._create_all_objects(create_progress, post_init_state)
+                    await app._create_all_objects(self._blueprint, create_progress, post_init_state)
                 create_progress.label = step_completed("Created objects.")
                 output_mgr.print_if_visible(create_progress)
 

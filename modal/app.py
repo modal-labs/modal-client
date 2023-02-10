@@ -47,7 +47,6 @@ class _App:
 
     def __init__(
         self,
-        stub,  # : _Stub,
         client: _Client,
         app_id: str,
         app_page_url: str,
@@ -55,7 +54,6 @@ class _App:
         tag_to_existing_id: Optional[Dict[str, str]] = None,
     ):
         """mdmd:hidden This is the app constructor. Users should not call this directly."""
-        self._stub = stub
         self._app_id = app_id
         self._app_page_url = app_page_url
         self._client = client
@@ -104,9 +102,9 @@ class _App:
         self._local_uuid_to_object[obj.local_uuid] = created_obj
         return created_obj
 
-    async def _create_all_objects(self, progress: Tree, new_app_state: int):  # api_pb2.AppState.V
+    async def _create_all_objects(self, blueprint: Dict[str, Provider], progress: Tree, new_app_state: int):  # api_pb2.AppState.V
         """Create objects that have been defined but not created on the server."""
-        for tag, provider in self._stub._blueprint.items():
+        for tag, provider in blueprint.items():
             existing_object_id = self._tag_to_existing_id.get(tag)
             self._tag_to_object[tag] = await self._load(provider, progress, existing_object_id)
 
@@ -170,16 +168,16 @@ class _App:
         return _container_app
 
     @staticmethod
-    async def _init_existing(stub, client, existing_app_id):
+    async def _init_existing(client, existing_app_id):
         # Get all the objects first
         obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
         obj_resp = await retry_transient_errors(client.stub.AppGetObjects, obj_req)
         app_page_url = f"https://modal.com/apps/{existing_app_id}"  # TODO (elias): this should come from the backend
         object_ids = {item.tag: item.object_id for item in obj_resp.items}
-        return _App(stub, client, existing_app_id, app_page_url, tag_to_existing_id=object_ids)
+        return _App(client, existing_app_id, app_page_url, tag_to_existing_id=object_ids)
 
     @staticmethod
-    async def _init_new(stub, client, description, detach, deploying) -> "_App":
+    async def _init_new(client, description, detach, deploying) -> "_App":
         # Start app
         # TODO(erikbern): maybe this should happen outside of this method?
         app_req = api_pb2.AppCreateRequest(
@@ -190,7 +188,7 @@ class _App:
         app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
         app_page_url = app_resp.app_logs_url
         logger.debug(f"Created new app with id {app_resp.app_id}")
-        return _App(stub, client, app_resp.app_id, app_page_url)
+        return _App(client, app_resp.app_id, app_page_url)
 
     @staticmethod
     def _reset_container():
