@@ -375,9 +375,10 @@ class _Stub:
             curr_proc = None
             try:
                 async for _ in watch(self._local_mounts, output_mgr, timeout):
-                    if sys.version_info.major == 3 and sys.version_info.minor <= 7:
-                        output_mgr.print_if_visible(
-                            "Live-reload skipped. This feature is unsupported below Python 3.8. Upgrade to Python 3.8+ to enable live-reloading."
+                    if sys.version_info <= (3, 7):
+                        warnings.warn(
+                            "Live-reload skipped. This feature is unsupported below Python 3.8."
+                            " Upgrade to Python 3.8+ to enable live-reloading."
                         )
                     else:
                         curr_proc = await restart_serve(
