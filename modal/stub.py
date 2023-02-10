@@ -322,10 +322,9 @@ class _Stub:
         """
         if not is_local():
             raise InvalidError(
-                "Can not run an app from within a container. You might need to do something like this: \n"
-                'if __name__ == "__main__":\n'
-                "    with stub.run():\n"
-                "        ...\n"
+                "Can not run an app from within a container."
+                " Are you calling stub.run() directly?"
+                " Consider using the `modal run` shell command."
             )
         if client is None:
             client = await _Client.from_env()
@@ -867,6 +866,7 @@ class _Stub:
             stub.interactive_shell(cmd="/bin/bash", image=app_image)
         ```
         """
+        # TODO(erikbern): rewrite the docstring above to point the user towards `modal shell`
         wrapped_fn = self.function(interactive=True, timeout=86400, image=image or self._get_default_image(), **kwargs)(
             exec_cmd
         )

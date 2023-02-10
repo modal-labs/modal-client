@@ -208,7 +208,7 @@ def test_missing_main_conditional(unix_servicer, event_loop):
     _run_container(unix_servicer, "modal_test_support.missing_main_conditional", "square")
 
     assert unix_servicer.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
-    assert 'if __name__ == "__main__":' in unix_servicer.task_result.traceback
+    assert "modal run" in unix_servicer.task_result.traceback
 
     exc = deserialize(unix_servicer.task_result.data, None)
     assert isinstance(exc, InvalidError)
