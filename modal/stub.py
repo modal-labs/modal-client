@@ -342,7 +342,7 @@ class _Stub:
 
         **Note:** live-reloading is not supported on Python 3.7. Please upgrade to Python 3.8+.
         """
-        from ._watcher import AppChange, watch
+        from ._watcher import watch
 
         if self._app is not None:
             raise InvalidError(
@@ -368,36 +368,34 @@ class _Stub:
             except asyncio.exceptions.CancelledError:
                 return
         else:
-            event_agen = watch(self._local_mounts, output_mgr, timeout)
-            event = await event_agen.__anext__()
-
-            curr_proc = None
-            try:
+            if sys.version_info <= (3, 7):
                 async with self._run(client, output_mgr, None, mode=StubRunMode.SERVE) as app:
                     client.set_pre_stop(app.disconnect)
                     existing_app_id = app.app_id
-                    event = await event_agen.__anext__()
-                    if sys.version_info.major == 3 and sys.version_info.minor <= 7:
-                        while event != AppChange.TIMEOUT:
-                            output_mgr.print_if_visible(
-                                "Live-reload skipped. This feature is unsupported below Python 3.8. Upgrade to Python 3.8+ to enable live-reloading."
-                            )
-                            event = await event_agen.__anext__()
-                        return
+                    async for _ in watch(self._local_mounts, output_mgr, timeout):
+                        output_mgr.print_if_visible(
+                            "Live-reload skipped. This feature is unsupported below Python 3.8."
+                            " Upgrade to Python 3.8+ to enable live-reloading."
+                        )
+            else:
+                async with self._run(client, output_mgr, None, mode=StubRunMode.SERVE) as app:
+                    client.set_pre_stop(app.disconnect)
+                    existing_app_id = app.app_id
+                    # Note: when the context manager exits, it closes the logs.
+                    # This is intentional since we run subprocesses right after that fetch logs.
 
-                # live-reloading loop
-                while event != AppChange.TIMEOUT:
-                    curr_proc = await restart_serve(
-                        existing_app_id=app.app_id, prev_proc=curr_proc, output_mgr=output_mgr
-                    )
-                    event = await event_agen.__anext__()
-            finally:
-                if curr_proc:
-                    try:
-                        curr_proc.send_signal(signal.SIGINT)
-                    except ProcessLookupError:
-                        logger.warning("Could not interrupt app serve. Supervised process already terminated.")
-                await event_agen.aclose()
+                curr_proc = None
+                try:
+                    async for _ in watch(self._local_mounts, output_mgr, timeout):
+                        curr_proc = await restart_serve(
+                            existing_app_id=app.app_id, prev_proc=curr_proc, output_mgr=output_mgr
+                        )
+                finally:
+                    if curr_proc:
+                        try:
+                            curr_proc.send_signal(signal.SIGINT)
+                        except ProcessLookupError:
+                            logger.warning("Could not interrupt app serve. Supervised process already terminated.")
 
     async def deploy(
         self,
