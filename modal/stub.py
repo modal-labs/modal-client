@@ -375,7 +375,9 @@ class _Stub:
                 curr_proc = None
                 try:
                     async for event in watch(self._local_mounts, output_mgr, timeout):
-                        if event in [AppChange.START, AppChange.TIMEOUT]:
+                        if event == AppChange.TIMEOUT:
+                            return
+                        elif event == AppChange.START:
                             continue
                         if sys.version_info.major == 3 and sys.version_info.minor <= 7:
                             output_mgr.print_if_visible(
