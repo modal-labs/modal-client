@@ -49,7 +49,7 @@ def test_file_changes_trigger_reloads(client, monkeypatch, servicer, test_dir):
 
     mock_create_subprocess_exec = AsyncMock(return_value=FakeProcess())
     monkeypatch.setattr("modal.stub.asyncio.create_subprocess_exec", mock_create_subprocess_exec)
-    monkeypatch.setattr("modal.stub.watch", fake_watch)
+    monkeypatch.setattr("modal._watcher.watch", fake_watch)
 
     stub.serve(client=client, timeout=None)
     assert mock_create_subprocess_exec.call_count == 3
