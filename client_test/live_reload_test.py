@@ -37,7 +37,7 @@ class FakeProcess:
 
 @pytest.mark.skipif(sys.version_info < (3, 8), reason="live-reload requires python3.8 or higher")
 def test_file_changes_trigger_reloads(client, monkeypatch, servicer, test_dir):
-    async def fake_watch(stub, output_mgr, timeout):
+    async def fake_watch(mounts, output_mgr, timeout):
         yield AppChange.START
         yield {(Change.modified, "fake-test-data.py")}
         yield {(Change.modified, "fake-test-data.py")}
@@ -49,7 +49,7 @@ def test_file_changes_trigger_reloads(client, monkeypatch, servicer, test_dir):
 
     mock_create_subprocess_exec = AsyncMock(return_value=FakeProcess())
     monkeypatch.setattr("modal.stub.asyncio.create_subprocess_exec", mock_create_subprocess_exec)
-    monkeypatch.setattr("modal._watcher.watch", fake_watch)
+    monkeypatch.setattr("modal.stub.watch", fake_watch)
 
     stub.serve(client=client, timeout=None)
     assert mock_create_subprocess_exec.call_count == 3

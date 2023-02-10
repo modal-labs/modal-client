@@ -11,7 +11,6 @@ from watchfiles import Change, DefaultFilter, awatch
 from watchfiles.main import FileChange
 
 from modal.mount import _Mount
-from modal.stub import _Stub
 
 from ._output import OutputManager
 
@@ -101,8 +100,8 @@ def _watch_args_from_mounts(mounts: List[_Mount]) -> Tuple[Set[Path], StubFilesF
     return paths, watch_filter
 
 
-async def watch(stub: _Stub, output_mgr: OutputManager, timeout: Optional[float]):
-    paths, watch_filter = _watch_args_from_mounts(mounts=stub._local_mounts)
+async def watch(mounts: List[_Mount], output_mgr: OutputManager, timeout: Optional[float]):
+    paths, watch_filter = _watch_args_from_mounts(mounts)
 
     _print_watched_paths(paths, output_mgr, timeout)
 
