@@ -205,7 +205,7 @@ message BlobCreateRequest {
   // Shouldn't they belong to an app?
   string content_md5 = 1;
   string content_sha256_base64 = 2;
-  string content_length_bytes = 3;
+  int64 content_length_bytes = 3;
 }
 
 message MultiPartUpload {
