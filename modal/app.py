@@ -102,7 +102,9 @@ class _App:
         self._local_uuid_to_object[obj.local_uuid] = created_obj
         return created_obj
 
-    async def _create_all_objects(self, blueprint: Dict[str, Provider], progress: Tree, new_app_state: int):  # api_pb2.AppState.V
+    async def _create_all_objects(
+        self, blueprint: Dict[str, Provider], progress: Tree, new_app_state: int
+    ):  # api_pb2.AppState.V
         """Create objects that have been defined but not created on the server."""
         for tag, provider in blueprint.items():
             existing_object_id = self._tag_to_existing_id.get(tag)

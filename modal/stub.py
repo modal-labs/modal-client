@@ -47,6 +47,14 @@ class StubRunMode(Enum):
     SERVE = "serve"
 
 
+async def _heartbeat(client, app_id):
+    request = api_pb2.AppHeartbeatRequest(app_id=app_id)
+    # TODO(erikbern): we should capture exceptions here
+    # * if request fails: destroy the client
+    # * if server says the app is gone: print a helpful warning about detaching
+    await client.stub.AppHeartbeat(request, timeout=HEARTBEAT_TIMEOUT)
+
+
 class _Stub:
     """A `Stub` is a description of how to create a Modal application.
 
@@ -198,13 +206,6 @@ class _Stub:
         assert isinstance(image_handle, _ImageHandle)
         return image_handle._is_inside()
 
-    async def _heartbeat(self, client, app_id):
-        request = api_pb2.AppHeartbeatRequest(app_id=app_id)
-        # TODO(erikbern): we should capture exceptions here
-        # * if request fails: destroy the client
-        # * if server says the app is gone: print a helpful warning about detaching
-        await client.stub.AppHeartbeat(request, timeout=HEARTBEAT_TIMEOUT)
-
     @contextlib.asynccontextmanager
     async def _run(
         self,
@@ -236,7 +237,7 @@ class _Stub:
         # Start tracking logs and yield context
         async with TaskContext(grace=config["logs_timeout"]) as tc:
             # Start heartbeats loop to keep the client alive
-            tc.infinite_loop(lambda: self._heartbeat(client, app.app_id), sleep=HEARTBEAT_INTERVAL)
+            tc.infinite_loop(lambda: _heartbeat(client, app.app_id), sleep=HEARTBEAT_INTERVAL)
 
             status_spinner = step_progress("Running app...")
             with output_mgr.ctx_if_visible(output_mgr.make_live(step_progress("Initializing..."))):
