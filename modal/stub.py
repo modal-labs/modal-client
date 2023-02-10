@@ -342,7 +342,7 @@ class _Stub:
 
         **Note:** live-reloading is not supported on Python 3.7. Please upgrade to Python 3.8+.
         """
-        from ._watcher import AppChange, watch
+        from ._watcher import watch
 
         if self._app is not None:
             raise InvalidError(
@@ -374,11 +374,7 @@ class _Stub:
 
                 curr_proc = None
                 try:
-                    async for event in watch(self._local_mounts, output_mgr, timeout):
-                        if event == AppChange.TIMEOUT:
-                            return
-                        elif event == AppChange.START:
-                            continue
+                    async for _ in watch(self._local_mounts, output_mgr, timeout):
                         if sys.version_info.major == 3 and sys.version_info.minor <= 7:
                             output_mgr.print_if_visible(
                                 "Live-reload skipped. This feature is unsupported below Python 3.8. Upgrade to Python 3.8+ to enable live-reloading."
