@@ -21,7 +21,6 @@ from ._ipython import is_notebook
 from ._live_reload import MODAL_AUTORELOAD_ENV, restart_serve
 from ._output import OutputManager, step_completed, step_progress
 from ._pty import exec_cmd, write_stdin_to_pty_stream
-from ._watcher import AppChange, watch
 from .app import _App, _container_app, is_local
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
@@ -343,6 +342,8 @@ class _Stub:
 
         **Note:** live-reloading is not supported on Python 3.7. Please upgrade to Python 3.8+.
         """
+        from ._watcher import AppChange, watch
+
         if self._app is not None:
             raise InvalidError(
                 "The stub already has an app running."
