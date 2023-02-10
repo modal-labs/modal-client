@@ -6,7 +6,6 @@ import os
 import signal
 import sys
 import warnings
-from datetime import date
 from enum import Enum
 from typing import AsyncGenerator, Callable, Collection, Dict, List, Optional, Union
 
@@ -25,7 +24,7 @@ from ._pty import exec_cmd, write_stdin_to_pty_stream
 from .app import _App, _container_app, is_local
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
-from .exception import InvalidError, deprecation_error
+from .exception import InvalidError
 from .functions import _Function, _FunctionHandle
 from .gpu import GPU_T
 from .image import _Image, _ImageHandle
@@ -676,11 +675,6 @@ class _Stub:
 
         self._add_function(function, [*base_mounts, *mounts])
         return function_handle
-
-    @decorator_with_options
-    def generator(self, raw_f=None, **kwargs):
-        """Stub.generator is no longer supported. Use `.function()` instead."""
-        deprecation_error(date(2022, 12, 1), "Stub.generator is no longer supported. Use .function() instead.")
 
     @decorator_with_options
     def webhook(
