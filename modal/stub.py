@@ -181,7 +181,9 @@ class _Stub:
 
     def is_inside(self, image: Optional[_Image] = None) -> bool:
         """Returns if the program is currently running inside a container for this app."""
-        if not self._app:
+        if self._app is None:
+            return False
+        elif self._app != _container_app:
             return False
         elif image is None:
             # stub.app is set, which means we're inside this stub (no specific image)
