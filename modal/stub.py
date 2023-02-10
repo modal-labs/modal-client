@@ -372,23 +372,23 @@ class _Stub:
                 client.set_pre_stop(app.disconnect)
                 existing_app_id = app.app_id
 
-                curr_proc = None
-                try:
-                    async for _ in watch(self._local_mounts, output_mgr, timeout):
-                        if sys.version_info.major == 3 and sys.version_info.minor <= 7:
-                            output_mgr.print_if_visible(
-                                "Live-reload skipped. This feature is unsupported below Python 3.8. Upgrade to Python 3.8+ to enable live-reloading."
-                            )
-                        else:
-                            curr_proc = await restart_serve(
-                                existing_app_id=app.app_id, prev_proc=curr_proc, output_mgr=output_mgr
-                            )
-                finally:
-                    if curr_proc:
-                        try:
-                            curr_proc.send_signal(signal.SIGINT)
-                        except ProcessLookupError:
-                            logger.warning("Could not interrupt app serve. Supervised process already terminated.")
+            curr_proc = None
+            try:
+                async for _ in watch(self._local_mounts, output_mgr, timeout):
+                    if sys.version_info.major == 3 and sys.version_info.minor <= 7:
+                        output_mgr.print_if_visible(
+                            "Live-reload skipped. This feature is unsupported below Python 3.8. Upgrade to Python 3.8+ to enable live-reloading."
+                        )
+                    else:
+                        curr_proc = await restart_serve(
+                            existing_app_id=app.app_id, prev_proc=curr_proc, output_mgr=output_mgr
+                        )
+            finally:
+                if curr_proc:
+                    try:
+                        curr_proc.send_signal(signal.SIGINT)
+                    except ProcessLookupError:
+                        logger.warning("Could not interrupt app serve. Supervised process already terminated.")
 
     async def deploy(
         self,
