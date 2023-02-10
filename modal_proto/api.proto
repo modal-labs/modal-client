@@ -204,21 +204,21 @@ message BlobCreateRequest {
   // TODO(erikbern): how are these garbage collected?
   // Shouldn't they belong to an app?
   string content_md5 = 1;
+  string content_length_bytes = 2;
+}
+
+message MultiPartUpload {
+  repeated int64 part_lengths_bytes = 1;
+  repeated string upload_urls = 2;
+  string completion_url = 3;
 }
 
 message BlobCreateResponse {
-  string upload_url = 1;
   string blob_id = 2;
-}
-
-message BlobCreateMultipartRequest {
-  string content_sha256_b64 = 1;
-  repeated string part_md5_b64 = 2;
-}
-
-message BlobCreateMultipartResponse {
-  repeated string upload_urls = 3;
-  string completion_url = 4;
+  oneof upload_type_oneof {
+    string upload_url = 1;
+    MultiPartUpload multipart = 3;
+  }
 }
 
 message BlobGetRequest {
@@ -904,7 +904,6 @@ service ModalClient {
 
   // Blobs
   rpc BlobCreate(BlobCreateRequest) returns (BlobCreateResponse);
-  rpc BlobCreateMultipart(BlobCreateMultipartRequest) returns (BlobCreateMultipartResponse);
   rpc BlobGet(BlobGetRequest) returns (BlobGetResponse);
 
   // Clients
