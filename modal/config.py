@@ -76,17 +76,10 @@ import os
 import typing
 import warnings
 
-import grpclib
-import sentry_sdk
 import toml
-from sentry_sdk.integrations.atexit import AtexitIntegration
-from sentry_sdk.integrations.logging import LoggingIntegration
 
-import modal
-import modal_utils
 
 from ._traceback import setup_rich_traceback
-from .exception import AuthError, InvalidError, VersionError
 
 # Locate config file and read it
 
@@ -150,7 +143,6 @@ _SETTINGS = {
     "logs_timeout": _Setting(10, float),
     "image_python_version": _Setting(),
     "image_id": _Setting(),
-    "sentry_dsn": _Setting("https://1343216d5d8e443f9f43896ecab24fd3@o1108641.ingest.sentry.io/6255134"),
     "serve_timeout": _Setting(transform=float),
     "automount": _Setting(True, transform=lambda x: x not in ("", "0")),
     "tracing_enabled": _Setting(False, transform=lambda x: x not in ("", "0")),
@@ -215,69 +207,6 @@ def _write_user_config(user_config):
     with open(user_config_path, "w") as f:
         toml.dump(user_config, f)
 
-
-# Initialize sentry
-
-# Needed to silence "Sentry is attempting to send..." message
-def _sentry_exit_callback(pending, timeout):
-    pass
-
-
-#  Don't ignore errors originating from gRPC.
-MODAL_PACKAGE_PATHS = [*modal.__path__, *modal_utils.__path__, *grpclib.__path__]
-FILTERED_ERROR_TYPES = [InvalidError, AuthError, VersionError]
-FILTERED_FUNCTIONS = ["_process_result"]
-
-
-def _filter_exceptions(event, hint):
-    """Filter out exceptions not originating from Modal, and also user errors."""
-
-    try:
-        source = event.get("exception") or event.get("threads")
-        if source is None:
-            # Ignore events without a stacktrace.
-            return None
-
-        last_frame = source["values"][0]["stacktrace"]["frames"][-1]
-        exc_origin_function: str = last_frame["function"]
-        exc_origin_path: str = last_frame["abs_path"]
-
-        if exc_origin_function in FILTERED_FUNCTIONS:
-            return None
-
-        if not any([exc_origin_path.startswith(p) for p in MODAL_PACKAGE_PATHS]):
-            return None
-    except KeyError:
-        pass
-
-    return event
-
-
-if config["sentry_dsn"] and "localhost" not in config["server_url"]:
-    # Check if already initialized.
-    if sentry_sdk.Hub.current.client:
-        logger.debug("Skipping Sentry initialization, because Hub already exists.")
-    else:
-        logger.debug("Initializing Sentry with sample rate 1.")
-        sentry_logging = LoggingIntegration(
-            level=logging.DEBUG,  # Capture debug and above as breadcrumbs
-            event_level=logging.ERROR,  # Send errors as events
-        )
-        sentry_sdk.init(
-            # Sentry DSN for the client project; not secret.
-            config["sentry_dsn"],
-            auto_enabling_integrations=False,
-            before_send=_filter_exceptions,
-            ignore_errors=FILTERED_ERROR_TYPES,  # type: ignore
-            integrations=[AtexitIntegration(callback=_sentry_exit_callback), sentry_logging],
-            traces_sample_rate=1,
-        )  # type: ignore
-
-        sentry_sdk.set_tag("token_id", config["token_id"])
-        sentry_sdk.set_tag("task_id", config["task_id"])
-        sentry_sdk.set_user(
-            {"token_id": config["token_id"], "client_version": modal.__version__, "task_id": config["task_id"]}
-        )
 
 # Make sure all deprecation warnings are shown
 # See https://docs.python.org/3/library/warnings.html#overriding-the-default-filter
