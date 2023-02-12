@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2023
 import pytest
 
-from modal.aio import AioQueue, AioStub, aio_lookup
+from modal.aio import AioFunction, AioQueue, AioStub, aio_lookup
 from modal.exception import DeprecationError, NotFoundError
 
 
@@ -31,7 +31,7 @@ async def test_lookup_function(servicer, aio_client):
     stub.function(square)
     await stub.deploy("my-function", client=aio_client)
 
-    f = await AioQueue.lookup("my-function", client=aio_client)
+    f = await AioFunction.lookup("my-function", client=aio_client)
     assert f.object_id == "fu-1"
 
     # Make sure we can call this function
@@ -45,7 +45,7 @@ async def test_webhook_lookup(servicer, aio_client):
     stub.webhook(square, method="POST")
     await stub.deploy("my-webhook", client=aio_client)
 
-    f = await AioQueue.lookup("my-webhook", client=aio_client)
+    f = await AioFunction.lookup("my-webhook", client=aio_client)
     assert f.web_url
 
 
