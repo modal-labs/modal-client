@@ -6,7 +6,7 @@ The async interfaces are mostly mirrors of the blocking ones, with the `Aio` or 
 
 from .app import AioApp, aio_container_app
 from .dict import AioDict
-from .functions import AioFunctionHandle
+from .functions import AioFunction, AioFunctionHandle
 from .image import AioImage
 from .mount import AioMount
 from .object import aio_lookup
@@ -17,6 +17,7 @@ from .stub import AioStub
 __all__ = [
     "AioApp",
     "AioDict",
+    "AioFunction",
     "AioImage",
     "AioMount",
     "AioQueue",
