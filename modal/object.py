@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
+from datetime import date
 import uuid
-from typing import Awaitable, Callable, Generic, Optional, Type, TypeVar, cast
+from typing import Awaitable, Callable, Generic, Optional, Type, TypeVar
 
 from google.protobuf.message import Message
 
@@ -10,7 +11,7 @@ from modal_utils.async_utils import synchronize_apis
 from ._object_meta import ObjectMeta
 from ._resolver import Resolver
 from .client import _Client
-from .exception import InvalidError, NotFoundError
+from .exception import InvalidError, NotFoundError, deprecation_warning
 
 H = TypeVar("H", bound="Handle")
 
@@ -100,21 +101,10 @@ async def _lookup(
     namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
     client: Optional[_Client] = None,
 ) -> Handle:
-    """
-    General purpose method to retrieve Modal objects such as
-    functions, shared volumes, and secrets.
-
-    ```python notest
-    import modal
-
-    square = modal.lookup("my-shared-app", "square")
-    assert square.call(3) == 9
-
-    vol = modal.lookup("my-shared-volume")
-    for chunk in vol.read_file("my_db_dump.csv"):
-        ...
-    ```
-    """
+    deprecation_warning(
+        date(2023, 2, 11),
+        "modal.lookup is deprecated. Use corresponding class methods instead," " e.g. modal.Secret.lookup, etc.",
+    )
     return await Handle.from_app(app_name, tag, namespace, client)
 
 
@@ -138,6 +128,12 @@ class Provider(Generic[H]):
         obj = Handle.__new__(cls)
         obj._init(load, rep)
         return obj
+
+    @classmethod
+    def get_handle_cls(cls):
+        (base,) = cls.__orig_bases__  # type: ignore
+        (handle_cls,) = base.__args__
+        return handle_cls
 
     def __repr__(self):
         return self._rep
@@ -173,8 +169,9 @@ class Provider(Generic[H]):
 
             _stub = _Stub(label, _object=self)
             await _stub.deploy(client=resolver.client)
-            handle = await Handle.from_app(label, client=resolver.client)
-            return cast(H, handle)
+            handle_cls = cls.get_handle_cls()
+            handle: H = await handle_cls.from_app(label, client=resolver.client)
+            return handle
 
         # Create a class of type cls, but use the base constructor
         cls = type(self)
@@ -203,8 +200,9 @@ class Provider(Generic[H]):
         """
 
         async def _load_remote(resolver: Resolver) -> H:
-            handle = await Handle.from_app(app_name, tag, namespace, resolver.client)
-            return cast(H, handle)
+            handle_cls = cls.get_handle_cls()
+            handle: H = await handle_cls.from_app(app_name, tag, namespace, client=resolver.client)
+            return handle
 
         # Create a class of type cls, but use the base constructor
         # TODO(erikbern): No Provider subclass should override __init__
@@ -212,3 +210,27 @@ class Provider(Generic[H]):
         rep = f"Ref({app_name})"
         Provider.__init__(obj, _load_remote, rep)
         return obj
+
+    @classmethod
+    async def lookup(
+        cls: Type[P],
+        app_name: str,
+        tag: Optional[str] = None,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        client: Optional[_Client] = None,
+    ) -> H:
+        """
+        General purpose method to retrieve Modal objects such as
+        functions, shared volumes, and secrets.
+        ```python notest
+        import modal
+        square = modal.Function.lookup("my-shared-app", "square")
+        assert square(3) == 9
+        vol = modal.SharedVolume.lookup("my-shared-volume")
+        for chunk in vol.read_file("my_db_dump.csv"):
+            ...
+        ```
+        """
+        handle_cls = cls.get_handle_cls()
+        handle: H = await handle_cls.from_app(app_name, tag, namespace, client)
+        return handle
