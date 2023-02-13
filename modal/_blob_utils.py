@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import dataclasses
+import hashlib
 import io
 import os
 from typing import AsyncIterator, BinaryIO, Optional, Union, List
@@ -33,8 +34,9 @@ async def _upload_to_s3_url(
     upload_url,
     payload: Union[bytes, BinaryIO, Payload],
     content_md5_b64: Optional[str] = None,
-    content_type: Optional[str] = "application/octet-stream",
+    content_type: Optional[str] = "application/octet-stream",  # set to None to force omission of ContentType header
 ) -> str:
+    """Returns etag of s3 object which is a md5 hex checksum of the uploaded content"""
     async with http_client_with_tls(timeout=None) as session:
         headers = {}
         if content_md5_b64 and use_md5(upload_url):
@@ -65,7 +67,24 @@ async def _upload_to_s3_url(
                 except Exception:
                     text = "<no body>"
                 raise ExecutionError(f"Put to url failed with status {resp.status}: {text}")
-            return resp.headers["ETag"]
+
+            # client side ETag checksum verification
+            # the s3 ETag of a single part upload is a quoted md5 hex of the uploaded content
+            etag = resp.headers["ETag"].strip()
+            if etag.startswith(("W/", "w/")):  # see https://www.rfc-editor.org/rfc/rfc7232#section-2.3
+                etag = etag[2:]
+            if etag[0] == '"' and etag[-1] == '"':
+                etag = etag[1:-1]
+            remote_md5 = etag
+
+            if isinstance(payload, BytesIOSegmentPayload):
+                local_md5_hex = payload.md5_checksum().hexdigest()
+                if local_md5_hex != remote_md5:
+                    raise ExecutionError(
+                        f"Local data and remote data checksum mismatch ({local_md5_hex} vs {remote_md5})"
+                    )
+
+            return remote_md5
 
 
 async def perform_multipart_upload(
@@ -73,7 +92,6 @@ async def perform_multipart_upload(
     *,
     content_length: int,
     max_part_size: int,
-    content_sha256_b64: str,
     part_urls: List[str],
     completion_url: str,
 ):
@@ -81,6 +99,7 @@ async def perform_multipart_upload(
     file_read_lock = asyncio.Lock()
     file_offset = 0
     num_bytes_left = content_length
+
     for part_number, part_url in enumerate(part_urls, start=1):
         part_length_bytes = min(num_bytes_left, max_part_size)
         part_payload = BytesIOSegmentPayload(
@@ -90,27 +109,34 @@ async def perform_multipart_upload(
         num_bytes_left -= part_length_bytes
         file_offset += part_length_bytes
 
-    e_tags = await asyncio.gather(*upload_coros)
+    part_etags = await asyncio.gather(*upload_coros)
 
     # The body of the complete_multipart_upload command needs some data in xml format:
     completion_body = "<CompleteMultipartUpload>\n"
-    for part_number, e_tag in enumerate(e_tags, 1):
-        completion_body += (
-            "  <Part>\n" f"    <PartNumber>{part_number}</PartNumber>\n" f"    <ETag>{e_tag}</ETag>\n" "  </Part>\n"
-        )
+    for part_number, etag in enumerate(part_etags, 1):
+        completion_body += f"""<Part>\n<PartNumber>{part_number}</PartNumber>\n<ETag>"{etag}"</ETag>\n</Part>\n"""
     completion_body += "</CompleteMultipartUpload>"
 
-    headers = {"x-amz-checksum-sha256": content_sha256_b64}
+    # etag of combined object should be md5 hex of concatendated md5 *bytes* from parts + `-{num_parts}`
+    bin_hash_parts = [bytes.fromhex(etag) for etag in part_etags]
+
+    expected_multipart_etag = hashlib.md5(b"".join(bin_hash_parts)).hexdigest() + f"-{len(part_etags)}"
     async with http_client_with_tls(timeout=None) as session:
         resp = await session.post(
-            completion_url, data=completion_body.encode("ascii"), headers=headers, skip_auto_headers=["content-type"]
+            completion_url, data=completion_body.encode("ascii"), skip_auto_headers=["content-type"]
         )
         if resp.status != 200:
             try:
                 msg = await resp.text()
             except Exception:
                 msg = "<no body>"
-            raise Exception(f"Error when finishing upload: {resp.status}\n{msg}")
+            raise ExecutionError(f"Error when completing multipart upload: {resp.status}\n{msg}")
+        else:
+            response_body = await resp.text()
+            if expected_multipart_etag not in response_body:
+                raise ExecutionError(
+                    f"Hash mismatch on multipart upload assembly: {expected_multipart_etag} not in {response_body}"
+                )
 
 
 class BytesIOSegmentPayload(BytesIOPayload):
@@ -120,6 +146,7 @@ class BytesIOSegmentPayload(BytesIOPayload):
     * read limit using remaining_bytes, in order to split files across streams
     * read lock to prevent file object seeks by concurrent parts
     * larger read chunk (to prevent excessive read contention between parts)
+    * calculates an md5 for the segment
 
     Feels like this should be in some standard lib...
     """
@@ -130,7 +157,7 @@ class BytesIOSegmentPayload(BytesIOPayload):
         read_lock: asyncio.Lock,
         segment_start: int,
         segment_length: int,
-        chunk_size: int = 2**24,
+        chunk_size: int = 2**24,  # read ~16MiB chunks by default
     ):
         # not thread safe constructor!
         super().__init__(bytes_io)
@@ -145,10 +172,14 @@ class BytesIOSegmentPayload(BytesIOPayload):
         self.read_lock = read_lock
         self.num_bytes_read = 0
         self.chunk_size = chunk_size
+        self._md5_checksum = hashlib.md5()
 
     @property
     def size(self) -> int:
         return self.segment_length
+
+    def md5_checksum(self):
+        return self._md5_checksum
 
     async def write(self, writer: AbstractStreamWriter):
         loop = asyncio.get_event_loop()
@@ -159,11 +190,13 @@ class BytesIOSegmentPayload(BytesIOPayload):
                 pos = self._value.tell()
                 read_start = self.initial_seek_pos + self.segment_start + self.num_bytes_read
                 self._value.seek(read_start)
-                num_bytes = min(self.chunk_size, self.remaining_bytes())  # read ~16MiB chunks
+                num_bytes = min(self.chunk_size, self.remaining_bytes())
                 chunk = await loop.run_in_executor(None, self._value.read, num_bytes)
-                self.num_bytes_read += len(chunk)
                 self._value.seek(pos)
-                return chunk
+
+            await loop.run_in_executor(None, self._md5_checksum.update, chunk)
+            self.num_bytes_read += len(chunk)
+            return chunk
 
         chunk = await safe_read()
         while chunk and self.remaining_bytes() > 0:
@@ -199,12 +232,16 @@ async def _blob_upload(upload_hashes: UploadHashes, payload: Union[bytes, Binary
             payload,
             content_length=get_content_length(payload),
             max_part_size=resp.multipart.part_length,
-            content_sha256_b64=upload_hashes.sha256_base64,
             part_urls=resp.multipart.upload_urls,
             completion_url=resp.multipart.completion_url,
         )
     else:
-        await _upload_to_s3_url(target, payload, content_md5_b64=upload_hashes.md5_base64)
+        await _upload_to_s3_url(
+            target,
+            payload,
+            # for single part uploads, we use md5 checksums
+            content_md5_b64=upload_hashes.md5_base64,
+        )
 
     return blob_id
 
