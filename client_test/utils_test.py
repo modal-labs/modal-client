@@ -2,7 +2,6 @@
 import asyncio
 import hashlib
 import io
-import random
 
 import pytest
 
@@ -73,7 +72,7 @@ async def test_file_segment_payloads():
 
 @pytest.mark.asyncio
 async def test_file_segment_payloads_concurrency():
-    data = io.BytesIO(random.randbytes(1024 * 1024))  # 1 MiB
+    data = io.BytesIO((b"123" * 1024 * 350)[: 1024 * 1024])  # 1 MiB
     lock = asyncio.Lock()
 
     class DummyOutput:  # AbstractStreamWriter
