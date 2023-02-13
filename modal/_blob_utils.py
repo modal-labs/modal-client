@@ -1,16 +1,21 @@
 # Copyright Modal Labs 2022
 import asyncio
 import dataclasses
+import hashlib
 import io
 import os
-from typing import AsyncIterator, BinaryIO, Optional, Union
+from contextlib import contextmanager
+from typing import AsyncIterator, BinaryIO, Optional, Union, List
+from urllib.parse import urlparse
+
+from aiohttp import BytesIOPayload
+from aiohttp.abc import AbstractStreamWriter
 
 from modal.exception import ExecutionError
 from modal_proto import api_pb2
 from modal_utils.async_utils import retry
-from modal_utils.blob_utils import use_md5
 from modal_utils.grpc_utils import retry_transient_errors
-from modal_utils.hash_utils import get_md5_base64, get_sha256_hex
+from modal_utils.hash_utils import get_sha256_hex, get_upload_hashes, UploadHashes
 from modal_utils.http_utils import http_client_with_tls
 from modal_utils.logger import logger
 
@@ -25,39 +30,231 @@ LARGE_FILE_LIMIT = 1024 * 1024  # 1MB
 BLOB_MAX_PARALLELISM = 10
 
 
+class BytesIOSegmentPayload(BytesIOPayload):
+    """Modified bytes payload for concurrent sends of chunks from the same file
+
+    Adds:
+    * read limit using remaining_bytes, in order to split files across streams
+    * read lock to prevent file object seeks by concurrent parts
+    * larger read chunk (to prevent excessive read contention between parts)
+    * calculates an md5 for the segment
+
+    Feels like this should be in some standard lib...
+    """
+
+    def __init__(
+        self,
+        bytes_io: BinaryIO,
+        read_lock: asyncio.Lock,
+        segment_start: int,
+        segment_length: int,
+        chunk_size: int = 2**24,  # read ~16MiB chunks by default
+    ):
+        # not thread safe constructor!
+        super().__init__(bytes_io)
+        self.initial_seek_pos = bytes_io.tell()
+        self.segment_start = segment_start
+        self.segment_length = segment_length
+        # seek to start of file segment we are interested in, in order to make .size() evaluate correctly
+        self._value.seek(self.initial_seek_pos + segment_start)
+        assert self.segment_length <= super().size
+        self.read_lock = read_lock
+        self.chunk_size = chunk_size
+        self.reset_state()
+
+    def reset_state(self):
+        self._md5_checksum = hashlib.md5()
+        self.num_bytes_read = 0
+        self._value.seek(self.initial_seek_pos)
+
+    @contextmanager
+    def reset_on_error(self):
+        try:
+            yield
+        finally:
+            self.reset_state()
+
+    @property
+    def size(self) -> int:
+        return self.segment_length
+
+    def md5_checksum(self):
+        return self._md5_checksum
+
+    async def write(self, writer: AbstractStreamWriter):
+        loop = asyncio.get_event_loop()
+
+        async def safe_read():
+            # concurrency safe reading from same file object
+            async with self.read_lock:
+                pos = self._value.tell()
+                read_start = self.initial_seek_pos + self.segment_start + self.num_bytes_read
+                self._value.seek(read_start)
+                num_bytes = min(self.chunk_size, self.remaining_bytes())
+                chunk = await loop.run_in_executor(None, self._value.read, num_bytes)
+                self._value.seek(pos)
+
+            await loop.run_in_executor(None, self._md5_checksum.update, chunk)
+            self.num_bytes_read += len(chunk)
+            return chunk
+
+        chunk = await safe_read()
+        while chunk and self.remaining_bytes() > 0:
+            await writer.write(chunk)
+            chunk = await safe_read()
+        if chunk:
+            await writer.write(chunk)
+
+    def remaining_bytes(self):
+        return self.segment_length - self.num_bytes_read
+
+
 @retry(n_attempts=5, base_delay=0.5, timeout=None)
-async def _upload_to_url(upload_url: str, content_md5: str, payload: Union[bytes, BinaryIO]) -> None:
+async def _upload_to_s3_url(
+    upload_url,
+    payload: BytesIOSegmentPayload,
+    content_md5_b64: Optional[str] = None,
+    content_type: Optional[str] = "application/octet-stream",  # set to None to force omission of ContentType header
+) -> str:
+    """Returns etag of s3 object which is a md5 hex checksum of the uploaded content"""
+    with payload.reset_on_error():  # ensure retries read the same data
+        async with http_client_with_tls(timeout=None) as session:
+            headers = {}
+            if content_md5_b64 and use_md5(upload_url):
+                headers["Content-MD5"] = content_md5_b64
+            if content_type:
+                headers["Content-Type"] = content_type
+
+            async with session.put(
+                upload_url,
+                data=payload,
+                headers=headers,
+                skip_auto_headers=["content-type"] if content_type is None else [],
+            ) as resp:
+                # S3 signal to slow down request rate.
+                if resp.status == 503:
+                    logger.warning("Received SlowDown signal from S3, sleeping for 1 second before retrying.")
+                    await asyncio.sleep(1)
+
+                if resp.status != 200:
+                    try:
+                        text = await resp.text()
+                    except Exception:
+                        text = "<no body>"
+                    raise ExecutionError(f"Put to url {upload_url} failed with status {resp.status}: {text}")
+
+                # client side ETag checksum verification
+                # the s3 ETag of a single part upload is a quoted md5 hex of the uploaded content
+                etag = resp.headers["ETag"].strip()
+                if etag.startswith(("W/", "w/")):  # see https://www.rfc-editor.org/rfc/rfc7232#section-2.3
+                    etag = etag[2:]
+                if etag[0] == '"' and etag[-1] == '"':
+                    etag = etag[1:-1]
+                remote_md5 = etag
+
+                local_md5_hex = payload.md5_checksum().hexdigest()
+                if local_md5_hex != remote_md5:
+                    raise ExecutionError(
+                        f"Local data and remote data checksum mismatch ({local_md5_hex} vs {remote_md5})"
+                    )
+
+                return remote_md5
+
+
+async def perform_multipart_upload(
+    data_file: BinaryIO,
+    *,
+    content_length: int,
+    max_part_size: int,
+    part_urls: List[str],
+    completion_url: str,
+):
+    upload_coros = []
+    file_read_lock = asyncio.Lock()
+    file_offset = 0
+    num_bytes_left = content_length
+
+    for part_number, part_url in enumerate(part_urls, start=1):
+        part_length_bytes = min(num_bytes_left, max_part_size)
+        part_payload = BytesIOSegmentPayload(
+            data_file, file_read_lock, segment_start=file_offset, segment_length=part_length_bytes
+        )
+        upload_coros.append(_upload_to_s3_url(part_url, payload=part_payload, content_type=None))
+        num_bytes_left -= part_length_bytes
+        file_offset += part_length_bytes
+
+    part_etags = await asyncio.gather(*upload_coros)
+
+    # The body of the complete_multipart_upload command needs some data in xml format:
+    completion_body = "<CompleteMultipartUpload>\n"
+    for part_number, etag in enumerate(part_etags, 1):
+        completion_body += f"""<Part>\n<PartNumber>{part_number}</PartNumber>\n<ETag>"{etag}"</ETag>\n</Part>\n"""
+    completion_body += "</CompleteMultipartUpload>"
+
+    # etag of combined object should be md5 hex of concatendated md5 *bytes* from parts + `-{num_parts}`
+    bin_hash_parts = [bytes.fromhex(etag) for etag in part_etags]
+
+    expected_multipart_etag = hashlib.md5(b"".join(bin_hash_parts)).hexdigest() + f"-{len(part_etags)}"
     async with http_client_with_tls(timeout=None) as session:
-        headers = {"content-type": "application/octet-stream"}
-
-        if use_md5(upload_url):
-            headers["Content-MD5"] = content_md5
-
-        wrapped_payload: Union[bytes, BinaryIO]
-        if isinstance(payload, bytes) and len(payload) > 100_000:
-            wrapped_payload = io.BytesIO(payload)
+        resp = await session.post(
+            completion_url, data=completion_body.encode("ascii"), skip_auto_headers=["content-type"]
+        )
+        if resp.status != 200:
+            try:
+                msg = await resp.text()
+            except Exception:
+                msg = "<no body>"
+            raise ExecutionError(f"Error when completing multipart upload: {resp.status}\n{msg}")
         else:
-            wrapped_payload = payload
-
-        async with session.put(upload_url, data=wrapped_payload, headers=headers) as resp:
-            # S3 signal to slow down request rate.
-            if resp.status == 503:
-                logger.warning("Received SlowDown signal from S3, sleeping for 1 second before retrying.")
-                await asyncio.sleep(1)
-
-            if resp.status != 200:
-                text = await resp.text()
-                raise ExecutionError(f"Put to url failed with status {resp.status}: {text}")
+            response_body = await resp.text()
+            if expected_multipart_etag not in response_body:
+                raise ExecutionError(
+                    f"Hash mismatch on multipart upload assembly: {expected_multipart_etag} not in {response_body}"
+                )
 
 
-async def _blob_upload(content_md5: str, payload: Union[bytes, BinaryIO], stub) -> str:
-    req = api_pb2.BlobCreateRequest(content_md5=content_md5)
+def get_content_length(data: BinaryIO):
+    # *Remaining* length of file from current seek position
+    pos = data.tell()
+    data.seek(0, os.SEEK_END)
+    content_length = data.tell()
+    data.seek(pos)
+    return content_length - pos
+
+
+async def _blob_upload(upload_hashes: UploadHashes, data: Union[bytes, BinaryIO], stub) -> str:
+    if isinstance(data, bytes):
+        data = io.BytesIO(data)
+
+    content_length = get_content_length(data)
+
+    req = api_pb2.BlobCreateRequest(
+        content_md5=upload_hashes.md5_base64,
+        content_sha256_base64=upload_hashes.sha256_base64,
+        content_length=content_length,
+    )
     resp = await retry_transient_errors(stub.BlobCreate, req)
 
     blob_id = resp.blob_id
     target = resp.upload_url
 
-    await _upload_to_url(target, content_md5, payload)
+    if resp.WhichOneof("upload_type_oneof") == "multipart":
+        await perform_multipart_upload(
+            data,
+            content_length=content_length,
+            max_part_size=resp.multipart.part_length,
+            part_urls=resp.multipart.upload_urls,
+            completion_url=resp.multipart.completion_url,
+        )
+    else:
+        lock = asyncio.Lock()  # not strictly necessary here
+        payload = BytesIOSegmentPayload(data, lock, segment_start=0, segment_length=content_length)
+        await _upload_to_s3_url(
+            target,
+            payload,
+            # for single part uploads, we use server side md5 checksums
+            content_md5_b64=upload_hashes.md5_base64,
+        )
 
     return blob_id
 
@@ -66,14 +263,13 @@ async def blob_upload(payload: bytes, stub) -> str:
     if isinstance(payload, str):
         logger.warning("Blob uploading string, not bytes - auto-encoding as utf8")
         payload = payload.encode("utf8")
-    content_md5 = get_md5_base64(payload)
-    return await _blob_upload(content_md5, payload, stub)
+    upload_hashes = get_upload_hashes(payload)
+    return await _blob_upload(upload_hashes, payload, stub)
 
 
 async def blob_upload_file(file_obj: BinaryIO, stub) -> str:
-    content_md5 = get_md5_base64(file_obj)
-    file_obj.seek(0)
-    return await _blob_upload(content_md5, file_obj, stub)
+    upload_hashes = get_upload_hashes(file_obj)
+    return await _blob_upload(upload_hashes, file_obj, stub)
 
 
 @retry(n_attempts=5, base_delay=0.1, timeout=None)
@@ -145,3 +341,18 @@ def get_file_upload_spec(filename: str, mount_filename: str) -> FileUploadSpec:
     return FileUploadSpec(
         filename, mount_filename, use_blob=use_blob, content=content, sha256_hex=sha256_hex, size=size
     )
+
+
+def use_md5(url: str) -> bool:
+    """This takes an upload URL in S3 and returns whether we should attach a checksum.
+
+    It's only a workaround for missing functionality in moto.
+    https://github.com/spulec/moto/issues/816
+    """
+    host = urlparse(url).netloc.split(":")[0]
+    if host.endswith(".amazonaws.com"):
+        return True
+    elif host in ["127.0.0.1", "localhost", "172.19.0.1"]:
+        return False
+    else:
+        raise Exception(f"Unknown S3 host: {host}")
