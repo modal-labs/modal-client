@@ -7,6 +7,7 @@ import hashlib
 import inspect
 import os
 from collections import defaultdict
+from typing import Dict
 
 import pytest
 import shutil
@@ -487,7 +488,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 @pytest_asyncio.fixture
 async def blob_server():
     blobs = {}
-    blob_parts = defaultdict(dict)
+    blob_parts: Dict[str, Dict[int, bytes]] = defaultdict(dict)
 
     async def upload(request):
         blob_id = request.query["blob_id"]

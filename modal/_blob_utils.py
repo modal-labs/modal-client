@@ -222,11 +222,11 @@ def get_content_length(data: BinaryIO):
     return content_length - pos
 
 
-async def _blob_upload(upload_hashes: UploadHashes, payload: Union[bytes, BinaryIO], stub) -> str:
-    if isinstance(payload, bytes):
-        payload = io.BytesIO(payload)
+async def _blob_upload(upload_hashes: UploadHashes, data: Union[bytes, BinaryIO], stub) -> str:
+    if isinstance(data, bytes):
+        data = io.BytesIO(data)
 
-    content_length = get_content_length(payload)
+    content_length = get_content_length(data)
 
     req = api_pb2.BlobCreateRequest(
         content_md5=upload_hashes.md5_base64,
@@ -240,15 +240,15 @@ async def _blob_upload(upload_hashes: UploadHashes, payload: Union[bytes, Binary
 
     if resp.WhichOneof("upload_type_oneof") == "multipart":
         await perform_multipart_upload(
-            payload,
-            content_length=get_content_length(payload),
+            data,
+            content_length=content_length,
             max_part_size=resp.multipart.part_length,
             part_urls=resp.multipart.upload_urls,
             completion_url=resp.multipart.completion_url,
         )
     else:
         lock = asyncio.Lock()  # not strictly necessary here
-        payload = BytesIOSegmentPayload(payload, lock, segment_start=payload.tell(), segment_length=content_length)
+        payload = BytesIOSegmentPayload(data, lock, segment_start=0, segment_length=content_length)
         await _upload_to_s3_url(
             target,
             payload,

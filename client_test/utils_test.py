@@ -1,13 +1,13 @@
 # Copyright Modal Labs 2022
 import asyncio
+import hashlib
 import io
 import random
 
 import pytest
 
+from modal._blob_utils import BytesIOSegmentPayload
 from modal_utils.app_utils import is_valid_app_name, is_valid_subdomain_label
-from modal_utils.blob_utils import BytesIOSegmentPayload
-from modal_utils.hash_utils import get_multipart_upload_hash, Part, get_md5_base64, get_sha256_hex, get_sha256_base64
 
 
 def test_subdomain_label():
@@ -24,21 +24,6 @@ def test_app_name():
     assert is_valid_app_name("a" * 64)
     assert not is_valid_app_name("hello world")
     assert not is_valid_app_name("a" * 65)
-
-
-@pytest.mark.asyncio
-async def test_multihash():
-    data_bytes = random.randbytes(25000)
-    data_io = io.BytesIO(data_bytes)
-    res = await get_multipart_upload_hash(data_io, max_part_size=10000)
-
-    assert res.parts == [
-        Part(0, 8192, get_md5_base64(data_bytes[:8192])),
-        Part(8192, 8192, get_md5_base64(data_bytes[8192 : 8192 * 2])),
-        Part(8192 * 2, 25000 - 8192 * 2, get_md5_base64(data_bytes[8192 * 2 :])),
-    ]
-    assert res.sha256_hex == get_sha256_hex(data_bytes)
-    assert res.sha256_b64 == get_sha256_base64(data_bytes)
 
 
 @pytest.mark.asyncio
@@ -59,10 +44,31 @@ async def test_file_segment_payloads():
     p2 = BytesIOSegmentPayload(data, lock, 3, 3)
 
     # "out of order" writes
-    await p2.write(out2)  # noqa
-    await p1.write(out1)  # noqa
+    await p2.write(out2)  # type: ignore
+    await p1.write(out1)  # type: ignore
     assert out1.value == b"abc"
     assert out2.value == b"123"
+    assert p1.md5_checksum().digest() == hashlib.md5(b"abc").digest()
+    assert p2.md5_checksum().digest() == hashlib.md5(b"123").digest()
+
+    assert data.read() == b"abc123"
+    data.seek(0)
+
+    # test reset_on_error
+    all_data = BytesIOSegmentPayload(data, lock, 0, 6)
+
+    class DummyExc(Exception):
+        pass
+
+    try:
+        with all_data.reset_on_error():
+            await all_data.write(DummyOutput())  # type: ignore
+    except DummyExc:
+        pass
+
+    out = DummyOutput()
+    await all_data.write(out)  # type: ignore
+    assert out.value == b"abc123"
 
 
 @pytest.mark.asyncio
@@ -81,5 +87,5 @@ async def test_file_segment_payloads_concurrency():
     out2 = DummyOutput()
     p1 = BytesIOSegmentPayload(data, lock, 0, len(data.getvalue()) // 2, chunk_size=100 * 1024)  # 100 KiB chunks
     p2 = BytesIOSegmentPayload(data, lock, len(data.getvalue()) // 2, len(data.getvalue()) // 2, chunk_size=100 * 1024)
-    await asyncio.gather(p2.write(out2), p1.write(out1))  # noqa
+    await asyncio.gather(p2.write(out2), p1.write(out1))  # type: ignore
     assert out1.value + out2.value == data.getvalue()
