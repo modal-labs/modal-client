@@ -4,10 +4,11 @@ import dataclasses
 import hashlib
 import io
 import os
+from contextlib import contextmanager
 from typing import AsyncIterator, BinaryIO, Optional, Union, List
 from urllib.parse import urlparse
 
-from aiohttp import Payload, BytesIOPayload
+from aiohttp import BytesIOPayload
 from aiohttp.abc import AbstractStreamWriter
 
 from modal.exception import ExecutionError
@@ -29,62 +30,135 @@ LARGE_FILE_LIMIT = 1024 * 1024  # 1MB
 BLOB_MAX_PARALLELISM = 10
 
 
+class BytesIOSegmentPayload(BytesIOPayload):
+    """Modified bytes payload for concurrent sends of chunks from the same file
+
+    Adds:
+    * read limit using remaining_bytes, in order to split files across streams
+    * read lock to prevent file object seeks by concurrent parts
+    * larger read chunk (to prevent excessive read contention between parts)
+    * calculates an md5 for the segment
+
+    Feels like this should be in some standard lib...
+    """
+
+    def __init__(
+        self,
+        bytes_io: BinaryIO,
+        read_lock: asyncio.Lock,
+        segment_start: int,
+        segment_length: int,
+        chunk_size: int = 2**24,  # read ~16MiB chunks by default
+    ):
+        # not thread safe constructor!
+        super().__init__(bytes_io)
+        self.initial_seek_pos = bytes_io.tell()
+        self.segment_start = segment_start
+        self.segment_length = segment_length
+        # seek to start of file segment we are interested in, in order to make .size() evaluate correctly
+        self._value.seek(self.initial_seek_pos + segment_start)
+        assert self.segment_length <= super().size
+        self.read_lock = read_lock
+        self.chunk_size = chunk_size
+        self.reset_state()
+
+    def reset_state(self):
+        self._md5_checksum = hashlib.md5()
+        self.num_bytes_read = 0
+        self._value.seek(self.initial_seek_pos)
+
+    @contextmanager
+    def reset_on_error(self):
+        try:
+            yield
+        finally:
+            self.reset_state()
+
+    @property
+    def size(self) -> int:
+        return self.segment_length
+
+    def md5_checksum(self):
+        return self._md5_checksum
+
+    async def write(self, writer: AbstractStreamWriter):
+        loop = asyncio.get_event_loop()
+
+        async def safe_read():
+            # concurrency safe reading from same file object
+            async with self.read_lock:
+                pos = self._value.tell()
+                read_start = self.initial_seek_pos + self.segment_start + self.num_bytes_read
+                self._value.seek(read_start)
+                num_bytes = min(self.chunk_size, self.remaining_bytes())
+                chunk = await loop.run_in_executor(None, self._value.read, num_bytes)
+                self._value.seek(pos)
+
+            await loop.run_in_executor(None, self._md5_checksum.update, chunk)
+            self.num_bytes_read += len(chunk)
+            return chunk
+
+        chunk = await safe_read()
+        while chunk and self.remaining_bytes() > 0:
+            await writer.write(chunk)
+            chunk = await safe_read()
+        if chunk:
+            await writer.write(chunk)
+
+    def remaining_bytes(self):
+        return self.segment_length - self.num_bytes_read
+
+
 @retry(n_attempts=5, base_delay=0.5, timeout=None)
 async def _upload_to_s3_url(
     upload_url,
-    payload: Union[bytes, BinaryIO, Payload],
+    payload: BytesIOSegmentPayload,
     content_md5_b64: Optional[str] = None,
     content_type: Optional[str] = "application/octet-stream",  # set to None to force omission of ContentType header
 ) -> str:
     """Returns etag of s3 object which is a md5 hex checksum of the uploaded content"""
-    async with http_client_with_tls(timeout=None) as session:
-        headers = {}
-        if content_md5_b64 and use_md5(upload_url):
-            headers["Content-MD5"] = content_md5_b64
-        if content_type:
-            headers["Content-Type"] = content_type
+    with payload.reset_on_error():  # ensure retries read the same data
+        async with http_client_with_tls(timeout=None) as session:
+            headers = {}
+            if content_md5_b64 and use_md5(upload_url):
+                headers["Content-MD5"] = content_md5_b64
+            if content_type:
+                headers["Content-Type"] = content_type
 
-        wrapped_payload: Union[bytes, BinaryIO, Payload]
-        if isinstance(payload, bytes) and len(payload) > 100_000:
-            wrapped_payload = io.BytesIO(payload)
-        else:
-            wrapped_payload = payload
+            async with session.put(
+                upload_url,
+                data=payload,
+                headers=headers,
+                skip_auto_headers=["content-type"] if content_type is None else [],
+            ) as resp:
+                # S3 signal to slow down request rate.
+                if resp.status == 503:
+                    logger.warning("Received SlowDown signal from S3, sleeping for 1 second before retrying.")
+                    await asyncio.sleep(1)
 
-        async with session.put(
-            upload_url,
-            data=wrapped_payload,
-            headers=headers,
-            skip_auto_headers=["content-type"] if content_type is None else [],
-        ) as resp:
-            # S3 signal to slow down request rate.
-            if resp.status == 503:
-                logger.warning("Received SlowDown signal from S3, sleeping for 1 second before retrying.")
-                await asyncio.sleep(1)
+                if resp.status != 200:
+                    try:
+                        text = await resp.text()
+                    except Exception:
+                        text = "<no body>"
+                    raise ExecutionError(f"Put to url {upload_url} failed with status {resp.status}: {text}")
 
-            if resp.status != 200:
-                try:
-                    text = await resp.text()
-                except Exception:
-                    text = "<no body>"
-                raise ExecutionError(f"Put to url failed with status {resp.status}: {text}")
+                # client side ETag checksum verification
+                # the s3 ETag of a single part upload is a quoted md5 hex of the uploaded content
+                etag = resp.headers["ETag"].strip()
+                if etag.startswith(("W/", "w/")):  # see https://www.rfc-editor.org/rfc/rfc7232#section-2.3
+                    etag = etag[2:]
+                if etag[0] == '"' and etag[-1] == '"':
+                    etag = etag[1:-1]
+                remote_md5 = etag
 
-            # client side ETag checksum verification
-            # the s3 ETag of a single part upload is a quoted md5 hex of the uploaded content
-            etag = resp.headers["ETag"].strip()
-            if etag.startswith(("W/", "w/")):  # see https://www.rfc-editor.org/rfc/rfc7232#section-2.3
-                etag = etag[2:]
-            if etag[0] == '"' and etag[-1] == '"':
-                etag = etag[1:-1]
-            remote_md5 = etag
-
-            if isinstance(payload, BytesIOSegmentPayload):
                 local_md5_hex = payload.md5_checksum().hexdigest()
                 if local_md5_hex != remote_md5:
                     raise ExecutionError(
                         f"Local data and remote data checksum mismatch ({local_md5_hex} vs {remote_md5})"
                     )
 
-            return remote_md5
+                return remote_md5
 
 
 async def perform_multipart_upload(
@@ -139,76 +213,6 @@ async def perform_multipart_upload(
                 )
 
 
-class BytesIOSegmentPayload(BytesIOPayload):
-    """Modified bytes payload for concurrent sends of chunks from the same file
-
-    Adds:
-    * read limit using remaining_bytes, in order to split files across streams
-    * read lock to prevent file object seeks by concurrent parts
-    * larger read chunk (to prevent excessive read contention between parts)
-    * calculates an md5 for the segment
-
-    Feels like this should be in some standard lib...
-    """
-
-    def __init__(
-        self,
-        bytes_io: BinaryIO,
-        read_lock: asyncio.Lock,
-        segment_start: int,
-        segment_length: int,
-        chunk_size: int = 2**24,  # read ~16MiB chunks by default
-    ):
-        # not thread safe constructor!
-        super().__init__(bytes_io)
-        self.initial_seek_pos = bytes_io.tell()
-        self.segment_start = segment_start
-        self.segment_length = segment_length
-        # seek to start of file segment we are interested in, in order to make .size() evaluate correctly
-        self._value.seek(self.initial_seek_pos + segment_start)
-        assert self.segment_length <= super().size
-        # reset position in file, in case someone else uses the same file object after this constructor
-        self._value.seek(self.initial_seek_pos)
-        self.read_lock = read_lock
-        self.num_bytes_read = 0
-        self.chunk_size = chunk_size
-        self._md5_checksum = hashlib.md5()
-
-    @property
-    def size(self) -> int:
-        return self.segment_length
-
-    def md5_checksum(self):
-        return self._md5_checksum
-
-    async def write(self, writer: AbstractStreamWriter):
-        loop = asyncio.get_event_loop()
-
-        async def safe_read():
-            # concurrency safe reading from same file object
-            async with self.read_lock:
-                pos = self._value.tell()
-                read_start = self.initial_seek_pos + self.segment_start + self.num_bytes_read
-                self._value.seek(read_start)
-                num_bytes = min(self.chunk_size, self.remaining_bytes())
-                chunk = await loop.run_in_executor(None, self._value.read, num_bytes)
-                self._value.seek(pos)
-
-            await loop.run_in_executor(None, self._md5_checksum.update, chunk)
-            self.num_bytes_read += len(chunk)
-            return chunk
-
-        chunk = await safe_read()
-        while chunk and self.remaining_bytes() > 0:
-            await writer.write(chunk)
-            chunk = await safe_read()
-        if chunk:
-            await writer.write(chunk)
-
-    def remaining_bytes(self):
-        return self.segment_length - self.num_bytes_read
-
-
 def get_content_length(data: BinaryIO):
     # *Remaining* length of file from current seek position
     pos = data.tell()
@@ -219,8 +223,15 @@ def get_content_length(data: BinaryIO):
 
 
 async def _blob_upload(upload_hashes: UploadHashes, payload: Union[bytes, BinaryIO], stub) -> str:
+    if isinstance(payload, bytes):
+        payload = io.BytesIO(payload)
+
+    content_length = get_content_length(payload)
+
     req = api_pb2.BlobCreateRequest(
-        content_md5=upload_hashes.md5_base64, content_sha256_base64=upload_hashes.sha256_base64
+        content_md5=upload_hashes.md5_base64,
+        content_sha256_base64=upload_hashes.sha256_base64,
+        content_length=content_length,
     )
     resp = await retry_transient_errors(stub.BlobCreate, req)
 
@@ -236,10 +247,12 @@ async def _blob_upload(upload_hashes: UploadHashes, payload: Union[bytes, Binary
             completion_url=resp.multipart.completion_url,
         )
     else:
+        lock = asyncio.Lock()  # not strictly necessary here
+        payload = BytesIOSegmentPayload(payload, lock, segment_start=payload.tell(), segment_length=content_length)
         await _upload_to_s3_url(
             target,
             payload,
-            # for single part uploads, we use md5 checksums
+            # for single part uploads, we use server side md5 checksums
             content_md5_b64=upload_hashes.md5_base64,
         )
 
