@@ -34,6 +34,12 @@ async def test_lookup_function(servicer, aio_client):
     f = await AioFunction.lookup("my-function", client=aio_client)
     assert f.object_id == "fu-1"
 
+    # Call it using two arguments
+    f = await AioFunction.lookup("my-function", "square", client=aio_client)
+    assert f.object_id == "fu-1"
+    with pytest.raises(NotFoundError):
+        f = await AioFunction.lookup("my-function", "cube", client=aio_client)
+
     # Make sure we can call this function
     assert await f.call(2, 4) == 20
     assert [r async for r in f.map([5, 2], [4, 3])] == [41, 13]
