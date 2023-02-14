@@ -157,7 +157,10 @@ async def _glob_download(
             output_path = local_destination / entry.path
             if output_path.exists():
                 if overwrite:
-                    shutil.rmtree(output_path)
+                    if entry.type == api_pb2.SharedVolumeListFilesEntry.FILE:
+                        os.remove(output_path)
+                    else:
+                        shutil.rmtree(output_path)
                 else:
                     raise CliError(
                         f"Output path '{output_path}' already exists. Use --force to overwrite the output directory"
