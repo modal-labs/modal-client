@@ -63,7 +63,7 @@ class Handle(metaclass=ObjectMeta):
             object_cls = ObjectMeta.prefix_to_type[prefix]
 
         # Instantiate object and return
-        obj = cls._new()
+        obj = object_cls._new()
         obj._initialize_handle(client, object_id)
         obj._initialize_from_proto(proto)
         return obj
