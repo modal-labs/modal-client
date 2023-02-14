@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
 import inspect
-import json
 import os
 import platform
 import time
@@ -317,27 +316,18 @@ async def _map_invocation(
 
     async def pump_inputs():
         nonlocal have_all_inputs
-        lats = []
-        sent_inputs = 0
         async for items in queue_batch_iterator(input_queue, MAP_INVOCATION_CHUNK_SIZE):
             request = api_pb2.FunctionPutInputsRequest(
                 function_id=function_id, inputs=items, function_call_id=function_call_id
             )
-            sent_inputs += len(items)
-            t0 = time.monotonic()
             resp = await retry_transient_errors(
                 client.stub.FunctionPutInputs,
                 request,
                 max_retries=None,
             )
-            lat = time.monotonic() - t0
-            lats.append(lat)
-            print("Sent", sent_inputs, lat)
             for input in resp.inputs:
                 pending_outputs[input.input_id] = 0  # 0 is the first expected gen_index
 
-        with open("lats.json", "w") as f:
-            json.dump(lats, f)
         have_all_inputs = True
         yield
 
