@@ -31,7 +31,7 @@ class Handle(metaclass=ObjectMeta):
         self._object_id = None
 
     @classmethod
-    def _new(cls: type[H]) -> H:
+    def _new(cls: Type[H]) -> H:
         obj = Handle.__new__(cls)
         obj._init()
         obj._initialize_from_proto(None)
@@ -46,7 +46,7 @@ class Handle(metaclass=ObjectMeta):
         pass  # default implementation
 
     @classmethod
-    def _from_id(cls: type[H], object_id: str, client: _Client, proto: Optional[Message]) -> H:
+    def _from_id(cls: Type[H], object_id: str, client: _Client, proto: Optional[Message]) -> H:
         if cls._type_prefix is not None:
             # This is called directly on a subclass, e.g. Secret.from_id
             if not object_id.startswith(cls._type_prefix):
@@ -69,7 +69,7 @@ class Handle(metaclass=ObjectMeta):
         return obj
 
     @classmethod
-    async def from_id(cls: type[H], object_id: str, client: Optional[_Client] = None) -> H:
+    async def from_id(cls: Type[H], object_id: str, client: Optional[_Client] = None) -> H:
         # This is used in a few examples to construct FunctionCall objects
         # TODO(erikbern): doesn't use _initialize_from_proto - let's use AppLookupObjectRequest?
         # TODO(erikbern): this should probably be on the provider?
