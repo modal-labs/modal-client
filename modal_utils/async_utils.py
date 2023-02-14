@@ -301,6 +301,9 @@ def warn_if_generator_is_not_consumed(gen_f):
     return f_wrapped
 
 
+_shutdown_tasks = []
+
+
 def on_shutdown(coro):
     # hook into event loop shutdown when all active tasks get cancelled
     async def wrapper():
@@ -310,7 +313,7 @@ def on_shutdown(coro):
             await coro
             raise
 
-    asyncio.create_task(wrapper())
+    _shutdown_tasks.append(asyncio.create_task(wrapper()))
 
 
 T = TypeVar("T")
