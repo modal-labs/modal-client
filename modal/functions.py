@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import inspect
+import json
 import os
 import platform
 import time
@@ -16,6 +17,7 @@ from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.exceptions import UserCodeException
 
+from modal import _pty
 from modal_proto import api_pb2
 from modal_utils.async_utils import (
     queue_batch_iterator,
@@ -34,7 +36,6 @@ from ._call_graph import InputInfo, reconstruct_call_graph
 from ._function_utils import FunctionInfo, LocalFunctionError, load_function_from_module
 from ._location import CloudProvider, parse_cloud_provider
 from ._output import OutputManager
-from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._traceback import append_modal_tb
@@ -316,18 +317,27 @@ async def _map_invocation(
 
     async def pump_inputs():
         nonlocal have_all_inputs
+        lats = []
+        sent_inputs = 0
         async for items in queue_batch_iterator(input_queue, MAP_INVOCATION_CHUNK_SIZE):
             request = api_pb2.FunctionPutInputsRequest(
                 function_id=function_id, inputs=items, function_call_id=function_call_id
             )
+            sent_inputs += len(items)
+            t0 = time.monotonic()
             resp = await retry_transient_errors(
                 client.stub.FunctionPutInputs,
                 request,
                 max_retries=None,
             )
+            lat = time.monotonic() - t0
+            lats.append(lat)
+            print("Sent", sent_inputs, lat)
             for input in resp.inputs:
                 pending_outputs[input.input_id] = 0  # 0 is the first expected gen_index
 
+        with open("lats.json", "w") as f:
+            json.dump(lats, f)
         have_all_inputs = True
         yield
 
@@ -438,12 +448,12 @@ class _FunctionHandle(Handle, type_prefix="fu"):
     """Interact with a Modal Function of a live app."""
 
     _web_url: Optional[str]
-    _function: "_Function"
+    _info: Optional[FunctionInfo]
 
     def _initialize_from_proto(self, proto: Optional[Message]):
         self._progress = None
         self._is_generator = None
-        self._raw_f = None
+        self._info = None
         self._web_url = None
         self._output_mgr: Optional[OutputManager] = None
         self._mute_cancellation = (
@@ -464,8 +474,14 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         """mdmd:hidden"""
         self._output_mgr = output_mgr
 
-    def _set_raw_f(self, raw_f):
-        self._raw_f = raw_f
+    def _set_info(self, function_info: FunctionInfo):
+        self._info = function_info
+
+    def _set_stub(self, stub):
+        self._stub = stub
+
+    def _get_function(self) -> "_Function":
+        return self._stub[self._info.get_tag()]
 
     @property
     def web_url(self) -> str:
@@ -646,7 +662,10 @@ class _FunctionHandle(Handle, type_prefix="fu"):
 
     def get_raw_f(self) -> Callable:
         """Return the inner Python object wrapped by this Modal Function."""
-        return self._raw_f
+        if not self._info:
+            raise AttributeError("_info has not been set on this FunctionHandle and not available in this context")
+
+        return self._info.raw_f
 
     async def get_current_stats(self) -> FunctionStats:
         """Return a `FunctionStats` object describing the current function's queue and runner counts."""
@@ -676,6 +695,7 @@ class _Function(Provider[_FunctionHandle]):
         self,
         function_handle: _FunctionHandle,
         function_info: FunctionInfo,
+        _stub,
         image=None,
         secret: Optional[_Secret] = None,
         secrets: Collection[_Secret] = (),
@@ -703,6 +723,7 @@ class _Function(Provider[_FunctionHandle]):
     ) -> None:
         """mdmd:hidden"""
         raw_f = function_info.raw_f
+        self._stub = _stub
         assert callable(raw_f)
         self._info = FunctionInfo(raw_f, serialized, name_override=name)
         if schedule is not None:
@@ -856,7 +877,7 @@ class _Function(Provider[_FunctionHandle]):
         milli_cpu = int(1000 * self._cpu) if self._cpu is not None else None
 
         if self._interactive:
-            pty_info = get_pty_info()
+            pty_info = _pty.get_pty_info()
             if self._concurrency_limit and self._concurrency_limit > 1:
                 warnings.warn(
                     "Interactive functions require `concurrency_limit=1`. The concurrency limit will be overridden."

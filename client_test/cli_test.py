@@ -4,6 +4,8 @@ import pytest
 import sys
 import traceback
 import unittest.mock
+from contextlib import asynccontextmanager
+from unittest import mock
 
 import click
 import click.testing
@@ -44,6 +46,7 @@ def _run(args, expected_exit_code=0):
     if res.exit_code != expected_exit_code:
         print("stdout:", repr(res.stdout))
         traceback.print_tb(res.exc_info[2])
+        print(res.exception, file=sys.stderr)
         assert res.exit_code == expected_exit_code
     return res
 
@@ -85,7 +88,9 @@ def test_aio_app_deploy_success(servicer, mock_dir, set_env_client):
 
 def test_app_deploy_no_such_module():
     res = _run(["deploy", "does_not_exist.py"], 1)
-    assert "No such file or directory" in res.stdout
+    assert "No such file or directory" in str(res.exception)
+    res = _run(["deploy", "does.not.exist"], 1)
+    assert "No module named 'does'" in str(res.exception)
 
 
 def test_secret_list(servicer, set_env_client):
@@ -114,6 +119,14 @@ def test_app_token_new(servicer, server_url_env):
 def test_run(servicer, server_url_env, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
     _run(["run", stub_file.as_posix()])
+    _run(["run", stub_file.as_posix() + "::stub"])
+    _run(["run", stub_file.as_posix() + "::stub.foo"])
+    _run(["run", stub_file.as_posix() + "::foo"])
+    _run(["run", stub_file.as_posix() + "::bar"], expected_exit_code=1)
+    file_with_entrypoint = test_dir / "supports" / "app_run_tests" / "local_entrypoint.py"
+    _run(["run", file_with_entrypoint.as_posix()])
+    _run(["run", file_with_entrypoint.as_posix() + "::main"])
+    _run(["run", file_with_entrypoint.as_posix() + "::stub.main"])
 
 
 def test_help_message_unspecified_function(servicer, server_url_env, test_dir):
@@ -132,12 +145,6 @@ def test_help_message_unspecified_function(servicer, server_url_env, test_dir):
     assert "bar" in result.stdout
 
 
-def test_help_message_when_using_function_as_stub(servicer, server_url_env, test_dir):
-    stub_file = test_dir / "supports" / "app_run_tests" / "stub_with_multiple_functions.py"
-    result = _run(["run", stub_file.as_posix() + "::foo"], expected_exit_code=1)
-    assert "Expected to find a stub variable named foo" in result.stdout
-
-
 def test_run_detach(servicer, server_url_env, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
     _run(["run", "--detach", stub_file.as_posix()])
@@ -152,9 +159,13 @@ def test_deploy(servicer, server_url_env, test_dir):
 
 def test_run_custom_stub(servicer, server_url_env, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "custom_stub.py"
-    res = _run(["run", stub_file.as_posix(), "foo"], expected_exit_code=1)
-    assert "stub variable" in res.stdout  # error output
+    res = _run(["run", stub_file.as_posix() + "::stub"], expected_exit_code=1)
+    assert "Could not find" in res.stdout
+    res = _run(["run", stub_file.as_posix() + "::stub.foo"], expected_exit_code=1)
+    assert "Could not find" in res.stdout
+
     _run(["run", stub_file.as_posix() + "::my_stub.foo"])
+    _run(["run", stub_file.as_posix() + "::foo"])
 
 
 def test_run_aiostub(servicer, server_url_env, test_dir):
@@ -178,7 +189,7 @@ def test_run_local_entrypoint(servicer, server_url_env, test_dir):
 def test_run_parse_args(servicer, server_url_env, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "cli_args.py"
     res = _run(["run", stub_file.as_posix()], expected_exit_code=2)
-    assert "You need to specify an entrypoint" in res.stdout
+    assert "You need to specify a Modal function or local entrypoint to run" in res.stdout
 
     valid_call_args = [
         (
@@ -190,12 +201,12 @@ def test_run_parse_args(servicer, server_url_env, test_dir):
             ],
             "the day is 31",
         ),
-        (["run", f"{stub_file.as_posix()}::.dt_arg", "--dt=2022-10-31"], "the day is 31"),
-        (["run", f"{stub_file.as_posix()}::.int_arg", "--i=200"], "200"),
-        (["run", f"{stub_file.as_posix()}::.default_arg"], "10"),
-        (["run", f"{stub_file.as_posix()}::.unannotated_arg", "--i=2022-10-31"], "'2022-10-31'"),
+        (["run", f"{stub_file.as_posix()}::dt_arg", "--dt=2022-10-31"], "the day is 31"),
+        (["run", f"{stub_file.as_posix()}::int_arg", "--i=200"], "200"),
+        (["run", f"{stub_file.as_posix()}::default_arg"], "10"),
+        (["run", f"{stub_file.as_posix()}::unannotated_arg", "--i=2022-10-31"], "'2022-10-31'"),
         # TODO: fix class references
-        # (["run", f"{stub_file.as_posix()}::.ALifecycle.some_method", "--i=hello"], "'hello'")
+        # (["run", f"{stub_file.as_posix()}::ALifecycle.some_method", "--i=hello"], "'hello'"),
     ]
     for args, expected in valid_call_args:
         res = _run(args)
@@ -229,3 +240,35 @@ def test_no_user_code_in_synchronicity_deploy(servicer, server_url_env, test_dir
 def test_serve(servicer, server_url_env, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "webhook.py"
     _run(["serve", stub_file.as_posix(), "--timeout", "3"])
+
+
+def test_shell(servicer, server_url_env, test_dir):
+    stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
+
+    def mock_get_pty_info() -> api_pb2.PTYInfo:
+        rows, cols = (64, 128)
+        return api_pb2.PTYInfo(
+            enabled=True,
+            winsz_rows=rows,
+            winsz_cols=cols,
+            env_term=os.environ.get("TERM"),
+            env_colorterm=os.environ.get("COLORTERM"),
+            env_term_program=os.environ.get("TERM_PROGRAM"),
+        )
+
+    @asynccontextmanager
+    async def noop_async_context_manager(*args, **kwargs):
+        yield
+
+    ran_cmd = None
+
+    @servicer.function_body
+    def dummy_exec(cmd: str):
+        nonlocal ran_cmd
+        ran_cmd = cmd
+
+    with mock.patch("rich.console.Console.is_terminal", True), mock.patch(
+        "modal._pty.get_pty_info", mock_get_pty_info
+    ), mock.patch("modal._pty.write_stdin_to_pty_stream", noop_async_context_manager):
+        _run(["shell", stub_file.as_posix() + "::foo"])
+    assert ran_cmd == "/bin/bash"
