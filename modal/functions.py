@@ -448,6 +448,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
     """Interact with a Modal Function of a live app."""
 
     _web_url: Optional[str]
+    _info: Optional[FunctionInfo]
 
     def _initialize_from_proto(self, proto: Optional[Message]):
         self._progress = None
@@ -478,6 +479,9 @@ class _FunctionHandle(Handle, type_prefix="fu"):
 
     def _set_stub(self, stub):
         self._stub = stub
+
+    def _get_function(self) -> "_Function":
+        return self._stub[self._info.get_tag()]
 
     @property
     def web_url(self) -> str:
@@ -658,7 +662,10 @@ class _FunctionHandle(Handle, type_prefix="fu"):
 
     def get_raw_f(self) -> Callable:
         """Return the inner Python object wrapped by this Modal Function."""
-        return self._info._raw_f
+        if not self._info:
+            raise AttributeError("_info has not been set on this FunctionHandle and not available in this context")
+
+        return self._info.raw_f
 
     async def get_current_stats(self) -> FunctionStats:
         """Return a `FunctionStats` object describing the current function's queue and runner counts."""

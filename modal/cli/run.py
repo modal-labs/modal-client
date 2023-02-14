@@ -209,7 +209,7 @@ def shell(
     )
     assert isinstance(_function_handle, _FunctionHandle)  # ensured by accept_local_entrypoint=False
     _stub = _function_handle._stub
-    _function = _function_handle._stub[_function_handle._info.get_tag()]
+    _function = _function_handle._get_function()
     blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
 
     if _function_handle is None:
