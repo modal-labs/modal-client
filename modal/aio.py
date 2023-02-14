@@ -12,6 +12,7 @@ from .mount import AioMount
 from .object import aio_lookup
 from .queue import AioQueue
 from .secret import AioSecret
+from .shared_volume import AioSharedVolume
 from .stub import AioStub
 
 __all__ = [
@@ -22,6 +23,7 @@ __all__ = [
     "AioMount",
     "AioQueue",
     "AioSecret",
+    "AioSharedVolume",
     "AioStub",
     "AioFunctionHandle",
     "aio_container_app",
