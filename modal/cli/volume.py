@@ -20,7 +20,6 @@ from typer import Typer
 
 import modal
 from modal._location import display_location, parse_cloud_provider
-from modal.aio import aio_lookup
 from modal.client import AioClient
 from modal.shared_volume import AioSharedVolumeHandle, _SharedVolumeHandle
 from modal_proto import api_pb2
@@ -76,7 +75,9 @@ def create(name: str, cloud: str = typer.Option("aws", help="Cloud provider to c
 
 
 async def volume_from_name(deployment_name) -> _SharedVolumeHandle:
-    shared_volume = await aio_lookup(deployment_name)
+    from modal.aio import AioSharedVolume
+
+    shared_volume = await AioSharedVolume.lookup(deployment_name)
     if not isinstance(shared_volume, AioSharedVolumeHandle):
         raise Exception("The specified app entity is not a shared volume")
     return shared_volume
