@@ -956,6 +956,7 @@ service ModalClient {
   rpc SharedVolumeCreate(SharedVolumeCreateRequest) returns (SharedVolumeCreateResponse);
   rpc SharedVolumeList(google.protobuf.Empty) returns (SharedVolumeListResponse);
   rpc SharedVolumeListFiles(SharedVolumeListFilesRequest) returns (SharedVolumeListFilesResponse);
+  rpc SharedVolumeListFilesStream(SharedVolumeListFilesRequest) returns (stream SharedVolumeListFilesResponse);
   rpc SharedVolumePutFile(SharedVolumePutFileRequest) returns (google.protobuf.Empty);
   rpc SharedVolumeGetFile(SharedVolumeGetFileRequest) returns (SharedVolumeGetFileResponse);
   rpc SharedVolumeRemoveFile(SharedVolumeRemoveFileRequest) returns (google.protobuf.Empty);
