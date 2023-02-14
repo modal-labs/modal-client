@@ -243,6 +243,7 @@ def shell(
     modal shell hello_world.py --cmd=python \n
     ```\n
     """
+    assert not stub_ref.endswith("modal.py"), "Stub can't be named modal.py"
     parsed_stub_ref = parse_stub_ref(stub_ref)
     try:
         stub = import_stub(parsed_stub_ref)
