@@ -23,6 +23,8 @@ class Handle(metaclass=ObjectMeta):
     well as distributed data structures like Queues or Dicts.
     """
 
+    _type_prefix: str
+
     def __init__(self):
         raise Exception("__init__ disallowed, use proper classmethods")
 
@@ -101,7 +103,8 @@ class Handle(metaclass=ObjectMeta):
         if not response.object_id:
             raise NotFoundError(response.error_message)
         proto = response.function  # TODO: handle different object types
-        return Handle._from_id(response.object_id, client, proto)
+        handle: H = cls._from_id(response.object_id, client, proto)
+        return handle
 
 
 async def _lookup(
