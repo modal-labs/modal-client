@@ -4,7 +4,7 @@ from typing import AsyncIterator, BinaryIO, List, Optional
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
-from modal_utils.grpc_utils import retry_transient_errors
+from modal_utils.grpc_utils import retry_transient_errors, unary_stream
 from modal_utils.hash_utils import get_sha256_hex
 
 from ._blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
@@ -64,6 +64,18 @@ class _SharedVolumeHandle(Handle, type_prefix="sv"):
             async for data in blob_iter(response.data_blob_id, self._client.stub):
                 yield data
 
+    async def iterdir(self, path: str) -> AsyncIterator[api_pb2.SharedVolumeListFilesEntry]:
+        """Iterate over all files in a directory in the shared volume.
+
+        * Passing a directory path lists all files in the directory (names are relative to the directory)
+        * Passing a file path returns a list containing only that file's listing description
+        * Passing a glob path (including at least one * or ** sequence) returns all files matching that glob path (using absolute paths)
+        """
+        req = api_pb2.SharedVolumeListFilesRequest(shared_volume_id=self._object_id, path=path)
+        async for batch in unary_stream(self._client.stub.SharedVolumeListFilesStream, req):
+            for entry in batch.entries:
+                yield entry
+
     async def listdir(self, path: str) -> List[api_pb2.SharedVolumeListFilesEntry]:
         """List all files in a directory in the shared volume.
 
@@ -71,9 +83,10 @@ class _SharedVolumeHandle(Handle, type_prefix="sv"):
         * Passing a file path returns a list containing only that file's listing description
         * Passing a glob path (including at least one * or ** sequence) returns all files matching that glob path (using absolute paths)
         """
-        req = api_pb2.SharedVolumeListFilesRequest(shared_volume_id=self._object_id, path=path)
-        response = await retry_transient_errors(self._client.stub.SharedVolumeListFiles, req)
-        return list(response.entries)
+        entries = []
+        async for entry in self.iterdir(path):
+            entries.append(entry)
+        return entries
 
     async def remove_file(self, path: str, recursive=False):
         """Remove a file in a shared volume."""
