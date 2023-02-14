@@ -98,6 +98,7 @@ class Handle(metaclass=ObjectMeta):
             app_name=app_name,
             object_tag=tag,
             namespace=namespace,
+            object_entity=cls._type_prefix,
         )
         response = await client.stub.AppLookupObject(request)
         if not response.object_id:
