@@ -106,8 +106,8 @@ class _Image(Provider[_ImageHandle]):
     such as `modal.Image.debian_slim`, `modal.Image.from_dockerhub`, or `modal.Image.conda`.
     """
 
-    def __init__(
-        self,
+    @staticmethod
+    def _from_args(
         base_images={},
         context_files={},
         dockerfile_commands: Union[list[str], Callable[[], list[str]]] = [],
@@ -225,7 +225,7 @@ class _Image(Provider[_ImageHandle]):
             return _ImageHandle._from_id(image_id, resolver.client, None)
 
         rep = f"Image({dockerfile_commands})"
-        super().__init__(_load, rep)
+        return _Image._from_loader(_load, rep)
 
     def extend(self, **kwargs) -> "_Image":
         """Extend an image (named "base") with additional options or commands.
@@ -247,7 +247,7 @@ class _Image(Provider[_ImageHandle]):
         ```
         """
 
-        return _Image(base_images={"base": self}, **kwargs)
+        return _Image._from_args(base_images={"base": self}, **kwargs)
 
     def copy(self, mount: _Mount, remote_path: Union[str, Path] = "."):
         """Copy the entire contents of a `modal.Mount` into an image.
@@ -259,7 +259,7 @@ class _Image(Provider[_ImageHandle]):
         ```python
         static_images_dir = "./static"
         # place all static images in root of mount
-        mount = modal.Mount(local_dir=static_images_dir, remote_dir="/")
+        mount = modal.Mount.from_local_dir(static_images_dir, remote_path="/")
         # place mount's contents into /static directory of image.
         image = modal.Image.debian_slim().copy(mount, remote_path="/static")
         ```
@@ -586,7 +586,7 @@ class _Image(Provider[_ImageHandle]):
             "&& python -m pip install -r /modal_requirements.txt",
         ]
 
-        return _Image(
+        return _Image._from_args(
             dockerfile_commands=dockerfile_commands,
             context_files={"/modal_requirements.txt": requirements_path},
         ).dockerfile_commands(
@@ -674,7 +674,7 @@ class _Image(Provider[_ImageHandle]):
             "RUN python -m pip install -r /modal_requirements.txt",
         ]
 
-        return _Image(
+        return _Image._from_args(
             dockerfile_commands=dockerfile_commands,
             context_files={"/modal_requirements.txt": requirements_path},
             **kwargs,
@@ -702,7 +702,7 @@ class _Image(Provider[_ImageHandle]):
             with open(path) as f:
                 return f.read().split("\n")
 
-        base_image = _Image(dockerfile_commands=base_dockerfile_commands, context_mount=context_mount)
+        base_image = _Image._from_args(dockerfile_commands=base_dockerfile_commands, context_mount=context_mount)
 
         requirements_path = _get_client_requirements_path()
 
@@ -736,7 +736,7 @@ class _Image(Provider[_ImageHandle]):
             "RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections",
         ]
 
-        return _Image(
+        return _Image._from_args(
             dockerfile_commands=dockerfile_commands,
             context_files={"/modal_requirements.txt": requirements_path},
         )

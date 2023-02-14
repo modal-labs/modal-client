@@ -10,11 +10,11 @@ from rich.console import Console
 from synchronicity import Interface
 
 from modal.exception import InvalidError
-from modal.functions import _FunctionHandle
 from modal.stub import LocalEntrypoint
 from modal_utils.async_utils import synchronizer
 
 from .import_refs import import_function, import_stub
+from ..functions import _FunctionHandle
 
 run_cli = typer.Typer(name="run")
 
@@ -102,9 +102,9 @@ def _get_click_command_for_local_entrypoint(_stub, entrypoint: LocalEntrypoint):
 
 
 class RunGroup(click.Group):
-    def get_command(self, ctx, stub_ref):
+    def get_command(self, ctx, func_ref):
         _function_handle_or_entrypoint = import_function(
-            stub_ref, accept_local_entrypoint=True, interactive=False, base_cmd="modal run"
+            func_ref, accept_local_entrypoint=True, interactive=False, base_cmd="modal run"
         )
         _stub = _function_handle_or_entrypoint._stub
         if isinstance(_function_handle_or_entrypoint, LocalEntrypoint):

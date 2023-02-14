@@ -136,21 +136,29 @@ def choose_function_interactive(stub: _Stub, console: Console) -> str:
     return functions[int(choice)][0]
 
 
-def infer_function_or_help(_stub: _Stub, interactive: bool) -> Union[_FunctionHandle, LocalEntrypoint]:
-    function_choices = list(
-        (set(_stub.registered_functions.keys()) - set(_stub.registered_web_endpoints))
-        | set(_stub.registered_entrypoints.keys())
-    )
-    registered_functions_str = "\n".join(sorted(function_choices))
-    # TODO(erikbern): better error message if there's *zero* functions / entrypoints
-    if len(_stub.registered_entrypoints) == 1:
+def infer_function_or_help(
+    _stub: _Stub, interactive: bool, accept_local_entrypoint: bool
+) -> Union[_FunctionHandle, LocalEntrypoint]:
+    function_choices = set(_stub.registered_functions.keys()) - set(_stub.registered_web_endpoints)
+    if accept_local_entrypoint:
+        function_choices |= set(_stub.registered_entrypoints.keys())
+
+    sorted_function_choices = sorted(function_choices)
+    registered_functions_str = "\n".join(sorted_function_choices)
+    if accept_local_entrypoint and len(_stub.registered_entrypoints) == 1:
         # if there is a single local_entrypoint, use that regardless of
         # other functions on the stub
         function_name = list(_stub.registered_entrypoints.keys())[0]
         print(f"Using local_entrypoint {function_name}")
     elif len(function_choices) == 1:
-        function_name = function_choices[0]
+        function_name = sorted_function_choices[0]
         print(f"Using function {function_name}")
+    elif len(function_choices) == 0:
+        if _stub.registered_web_endpoints:
+            err_msg = "Modal stub has only webhook functions. Use `modal serve` instead of `modal run`."
+        else:
+            err_msg = "Modal stub has no registered functions. Nothing to run."
+        raise click.UsageError(err_msg)
     elif interactive:
         console = Console()
         function_name = choose_function_interactive(_stub, console)
@@ -258,7 +266,7 @@ def import_function(
     if isinstance(stub_or_function, _Stub):
         # infer function or display help for how to select one
         _stub = stub_or_function
-        _function_handle = infer_function_or_help(_stub, interactive)
+        _function_handle = infer_function_or_help(_stub, interactive, accept_local_entrypoint)
         return _function_handle
     if isinstance(stub_or_function, _FunctionHandle):
         return stub_or_function

@@ -22,7 +22,6 @@ from grpclib import GRPCError, Status
 from grpclib.client import Channel, UnaryStreamMethod
 from grpclib.exceptions import StreamTerminatedError
 from grpclib.protocol import H2Protocol
-from sentry_sdk import capture_exception
 
 from .logger import logger
 
@@ -244,8 +243,6 @@ async def retry_transient_errors(
 
             print("Retry!")
             n_retries += 1
-            if not (isinstance(exc, GRPCError) and exc.status in ignore_errors):
-                capture_exception(exc)
 
             await asyncio.sleep(delay)
             delay = min(delay * delay_factor, max_delay)

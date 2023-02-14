@@ -204,11 +204,22 @@ message BlobCreateRequest {
   // TODO(erikbern): how are these garbage collected?
   // Shouldn't they belong to an app?
   string content_md5 = 1;
+  string content_sha256_base64 = 2;
+  int64 content_length = 3;
+}
+
+message MultiPartUpload {
+  int64 part_length = 1; // split upload based on this part length - all except the last part must have this length
+  repeated string upload_urls = 2;
+  string completion_url = 3;
 }
 
 message BlobCreateResponse {
-  string upload_url = 1;
   string blob_id = 2;
+  oneof upload_type_oneof {
+    string upload_url = 1;
+    MultiPartUpload multipart = 3;
+  }
 }
 
 message BlobGetRequest {
@@ -836,6 +847,7 @@ message TaskLogsBatch {
   string entry_id = 5;
   bool app_done = 10;
   string function_id = 11;
+  string input_id = 12;
 }
 
 message TaskResultRequest {

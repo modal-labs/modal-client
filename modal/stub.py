@@ -6,7 +6,6 @@ import os
 import signal
 import sys
 import warnings
-from datetime import date
 from enum import Enum
 from typing import AsyncGenerator, Collection, Dict, List, Optional, Union
 
@@ -26,7 +25,7 @@ from ._pty import exec_cmd
 from .app import _App, _container_app, is_local
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
-from .exception import InvalidError, deprecation_error
+from .exception import InvalidError
 from .functions import _Function, _FunctionHandle
 from .gpu import GPU_T
 from .image import _Image, _ImageHandle
@@ -56,6 +55,14 @@ class LocalEntrypoint:
 
     def __call__(self, *args, **kwargs):
         return self.raw_f(*args, **kwargs)
+
+
+async def _heartbeat(client, app_id):
+    request = api_pb2.AppHeartbeatRequest(app_id=app_id)
+    # TODO(erikbern): we should capture exceptions here
+    # * if request fails: destroy the client
+    # * if server says the app is gone: print a helpful warning about detaching
+    await client.stub.AppHeartbeat(request, timeout=HEARTBEAT_TIMEOUT)
 
 
 class _Stub:
@@ -121,7 +128,6 @@ class _Stub:
             self._description = name
         else:
             self._description = self._infer_app_desc()
-        self._app_id = None
         self._blueprint = blueprint
         self._client_mount = None
         self._function_mounts = {}
@@ -185,7 +191,9 @@ class _Stub:
 
     def is_inside(self, image: Optional[_Image] = None) -> bool:
         """Returns if the program is currently running inside a container for this app."""
-        if not self._app:
+        if self._app is None:
+            return False
+        elif self._app != _container_app:
             return False
         elif image is None:
             # stub.app is set, which means we're inside this stub (no specific image)
@@ -210,13 +218,6 @@ class _Stub:
         assert isinstance(image_handle, _ImageHandle)
         return image_handle._is_inside()
 
-    async def _heartbeat(self, client, app_id):
-        request = api_pb2.AppHeartbeatRequest(app_id=app_id)
-        # TODO(erikbern): we should capture exceptions here
-        # * if request fails: destroy the client
-        # * if server says the app is gone: print a helpful warning about detaching
-        await client.stub.AppHeartbeat(request, timeout=HEARTBEAT_TIMEOUT)
-
     @contextlib.asynccontextmanager
     async def _run(
         self,
@@ -239,22 +240,21 @@ class _Stub:
             post_init_state = api_pb2.APP_STATE_EPHEMERAL
 
         if existing_app_id is not None:
-            app = await _App._init_existing(self, client, existing_app_id)
+            app = await _App._init_existing(client, existing_app_id)
         else:
-            app = await _App._init_new(self, client, app_name, deploying=(mode == StubRunMode.DEPLOY), detach=detach)
+            app = await _App._init_new(client, app_name, deploying=(mode == StubRunMode.DEPLOY), detach=detach)
+        self._app = app
 
-        self._app_id = app.app_id
         aborted = False
         # Start tracking logs and yield context
         async with TaskContext(grace=config["logs_timeout"]) as tc:
             # Start heartbeats loop to keep the client alive
-            tc.infinite_loop(lambda: self._heartbeat(client, self._app_id), sleep=HEARTBEAT_INTERVAL)
+            tc.infinite_loop(lambda: _heartbeat(client, app.app_id), sleep=HEARTBEAT_INTERVAL)
 
             status_spinner = step_progress("Running app...")
             with output_mgr.ctx_if_visible(output_mgr.make_live(step_progress("Initializing..."))):
-                app_id = app.app_id
                 logs_loop = tc.create_task(
-                    output_mgr.get_logs_loop(app_id, client, status_spinner, last_log_entry_id or "")
+                    output_mgr.get_logs_loop(app.app_id, client, status_spinner, last_log_entry_id or "")
                 )
             if MODAL_AUTORELOAD_ENV not in os.environ:
                 initialized_msg = (
@@ -266,7 +266,7 @@ class _Stub:
                 # Create all members
                 create_progress = Tree(step_progress("Creating objects..."), guide_style="gray50")
                 with output_mgr.ctx_if_visible(output_mgr.make_live(create_progress)):
-                    await app._create_all_objects(create_progress, post_init_state)
+                    await app._create_all_objects(self._blueprint, create_progress, post_init_state)
                 create_progress.label = step_completed("Created objects.")
                 output_mgr.print_if_visible(create_progress)
 
@@ -319,7 +319,7 @@ class _Stub:
                 output_mgr.print_if_visible(step_completed("App aborted."))
         elif mode != StubRunMode.SERVE:
             output_mgr.print_if_visible(step_completed("App completed."))
-        self._app_id = None
+        self._app = None
 
     @contextlib.asynccontextmanager
     async def run(self, client=None, stdout=None, show_progress=None, detach=False) -> AsyncGenerator[_App, None]:
@@ -333,10 +333,9 @@ class _Stub:
         """
         if not is_local():
             raise InvalidError(
-                "Can not run an app from within a container. You might need to do something like this: \n"
-                'if __name__ == "__main__":\n'
-                "    with stub.run():\n"
-                "        ...\n"
+                "Can not run an app from within a container."
+                " Are you calling stub.run() directly?"
+                " Consider using the `modal run` shell command."
             )
         if client is None:
             client = await _Client.from_env()
@@ -355,24 +354,13 @@ class _Stub:
 
         **Note:** live-reloading is not supported on Python 3.7. Please upgrade to Python 3.8+.
         """
-        from ._watcher import AppChange, watch
+        from ._watcher import watch
 
-        if not is_local():
+        if self._app is not None:
             raise InvalidError(
-                "Can not run an app from within a container. You might need to do something like this: \n"
-                'if __name__ == "__main__":\n'
-                "    stub.serve()\n"
-            )
-
-        if self._app_id is not None:
-            raise InvalidError(
-                f"Found existing app '{self._app_id}'. You may have nested stub.serve() inside a running app like this:\n"
-                'if __name__ == "__main__":\n'
-                "    with stub.run():\n"
-                "        stub.serve() # ❌\n\n"
-                "You might need to do something like this: \n"
-                'if __name__ == "__main__":\n'
-                "    stub.serve()\n"
+                "The stub already has an app running."
+                " Are you calling stub.serve() directly?"
+                " Consider using the `modal serve` shell command."
             )
 
         if client is None:
@@ -392,36 +380,34 @@ class _Stub:
             except asyncio.exceptions.CancelledError:
                 return
         else:
-            event_agen = watch(self, output_mgr, timeout)
-            event = await event_agen.__anext__()
-
-            curr_proc = None
-            try:
+            if sys.version_info <= (3, 7):
                 async with self._run(client, output_mgr, None, mode=StubRunMode.SERVE) as app:
                     client.set_pre_stop(app.disconnect)
                     existing_app_id = app.app_id
-                    event = await event_agen.__anext__()
-                    if sys.version_info.major == 3 and sys.version_info.minor <= 7:
-                        while event != AppChange.TIMEOUT:
-                            output_mgr.print_if_visible(
-                                "Live-reload skipped. This feature is unsupported below Python 3.8. Upgrade to Python 3.8+ to enable live-reloading."
-                            )
-                            event = await event_agen.__anext__()
-                        return
+                    async for _ in watch(self._local_mounts, output_mgr, timeout):
+                        output_mgr.print_if_visible(
+                            "Live-reload skipped. This feature is unsupported below Python 3.8."
+                            " Upgrade to Python 3.8+ to enable live-reloading."
+                        )
+            else:
+                async with self._run(client, output_mgr, None, mode=StubRunMode.SERVE) as app:
+                    client.set_pre_stop(app.disconnect)
+                    existing_app_id = app.app_id
+                    # Note: when the context manager exits, it closes the logs.
+                    # This is intentional since we run subprocesses right after that fetch logs.
 
-                # live-reloading loop
-                while event != AppChange.TIMEOUT:
-                    curr_proc = await restart_serve(
-                        existing_app_id=app.app_id, prev_proc=curr_proc, output_mgr=output_mgr
-                    )
-                    event = await event_agen.__anext__()
-            finally:
-                if curr_proc:
-                    try:
-                        curr_proc.send_signal(signal.SIGINT)
-                    except ProcessLookupError:
-                        logger.warning("Could not interrupt app serve. Supervised process already terminated.")
-                await event_agen.aclose()
+                curr_proc = None
+                try:
+                    async for _ in watch(self._local_mounts, output_mgr, timeout):
+                        curr_proc = await restart_serve(
+                            existing_app_id=app.app_id, prev_proc=curr_proc, output_mgr=output_mgr
+                        )
+                finally:
+                    if curr_proc:
+                        try:
+                            curr_proc.send_signal(signal.SIGINT)
+                        except ProcessLookupError:
+                            logger.warning("Could not interrupt app serve. Supervised process already terminated.")
 
     async def deploy(
         self,
@@ -690,11 +676,6 @@ class _Stub:
         return function_handle
 
     @decorator_with_options
-    def generator(self, raw_f=None, **kwargs):
-        """Stub.generator is no longer supported. Use `.function()` instead."""
-        deprecation_error(date(2022, 12, 1), "Stub.generator is no longer supported. Use .function() instead.")
-
-    @decorator_with_options
     def webhook(
         self,
         raw_f,
@@ -900,6 +881,7 @@ class _Stub:
             stub.interactive_shell(cmd="/bin/bash", image=app_image)
         ```
         """
+        # TODO(erikbern): rewrite the docstring above to point the user towards `modal shell`
         wrapped_fn = self.function(interactive=True, timeout=86400, image=image or self._get_default_image(), **kwargs)(
             exec_cmd
         )

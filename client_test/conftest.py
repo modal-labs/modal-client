@@ -3,8 +3,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import inspect
 import os
+from collections import defaultdict
+from typing import Dict
+
 import pytest
 import shutil
 import sys
@@ -83,6 +87,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.image_build_function_ids = {}
         self.fail_blob_create = []
         self.blob_create_metadata = None
+        self.blob_multipart_threshold = 10_000_000
 
         self.app_functions = {}
         self.fcidx = 0
@@ -181,12 +186,31 @@ class MockClientServicer(api_grpc.ModalClientBase):
     ### Blob
 
     async def BlobCreate(self, stream):
-        await stream.recv_message()
+        req = await stream.recv_message()
         # This is used to test retry_transient_errors, see grpc_utils_test.py
         self.blob_create_metadata = stream.metadata
         if len(self.fail_blob_create) > 0:
             status_code = self.fail_blob_create.pop()
             raise GRPCError(status_code, "foobar")
+        elif req.content_length > self.blob_multipart_threshold:
+            self.n_blobs += 1
+            blob_id = f"bl-{self.n_blobs}"
+            num_parts = (req.content_length + self.blob_multipart_threshold - 1) // self.blob_multipart_threshold
+            upload_urls = []
+            for part_number in range(num_parts):
+                upload_url = f"{self.blob_host}/upload?blob_id={blob_id}&part_number={part_number}"
+                upload_urls.append(upload_url)
+
+            await stream.send_message(
+                api_pb2.BlobCreateResponse(
+                    blob_id=blob_id,
+                    multipart=api_pb2.MultiPartUpload(
+                        part_length=self.blob_multipart_threshold,
+                        upload_urls=upload_urls,
+                        completion_url=f"{self.blob_host}/complete_multipart?blob_id={blob_id}",
+                    ),
+                )
+            )
         else:
             self.n_blobs += 1
             blob_id = f"bl-{self.n_blobs}"
@@ -464,14 +488,36 @@ class MockClientServicer(api_grpc.ModalClientBase):
 @pytest_asyncio.fixture
 async def blob_server():
     blobs = {}
+    blob_parts: Dict[str, Dict[int, bytes]] = defaultdict(dict)
 
     async def upload(request):
         blob_id = request.query["blob_id"]
         content = await request.content.read()
         if content == b"FAILURE":
             return aiohttp.web.Response(status=500)
+        content_md5 = hashlib.md5(content).hexdigest()
+        etag = f'"{content_md5}"'
+        if "part_number" in request.query:
+            part_number = int(request.query["part_number"])
+            blob_parts[blob_id][part_number] = content
+        else:
+            blobs[blob_id] = content
+        return aiohttp.web.Response(text="Hello, world", headers={"ETag": etag})
+
+    async def complete_multipart(request):
+        blob_id = request.query["blob_id"]
+        blob_nums = range(min(blob_parts[blob_id].keys()), max(blob_parts[blob_id].keys()) + 1)
+        content = b""
+        part_hashes = b""
+        for num in blob_nums:
+            part_content = blob_parts[blob_id][num]
+            content += part_content
+            part_hashes += hashlib.md5(part_content).digest()
+
+        content_md5 = hashlib.md5(part_hashes).hexdigest()
+        etag = f'"{content_md5}-{len(blob_parts[blob_id])}"'
         blobs[blob_id] = content
-        return aiohttp.web.Response(text="Hello, world")
+        return aiohttp.web.Response(text=f"<etag>{etag}</etag>")
 
     async def download(request):
         blob_id = request.query["blob_id"]
@@ -482,6 +528,7 @@ async def blob_server():
     app = aiohttp.web.Application()
     app.add_routes([aiohttp.web.put("/upload", upload)])
     app.add_routes([aiohttp.web.get("/download", download)])
+    app.add_routes([aiohttp.web.post("/complete_multipart", complete_multipart)])
 
     async with run_temporary_http_server(app) as host:
         yield host, blobs

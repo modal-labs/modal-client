@@ -1,32 +1,19 @@
 # Copyright Modal Labs 2022
 import asyncio
 from collections import defaultdict
-from enum import IntEnum
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple, Union
+from typing import AsyncGenerator, Dict, List, Optional, Set, Tuple
 
 from aiostream import stream
 from rich.tree import Tree
 from watchfiles import Change, DefaultFilter, awatch
-from watchfiles.main import FileChange
 
 from modal.mount import _Mount
-from modal.stub import _Stub
 
 from ._output import OutputManager
 
 
-class AppChange(IntEnum):
-    """
-    Enum representing the type of a change in the Modal stub serving state.
-    """
-
-    START = 1
-    TIMEOUT = 2
-
-
-FileChangeset = Set[FileChange]
-ChangeEvent = Union[AppChange, FileChangeset, None]
+_TIMEOUT_SENTINEL = object()
 
 
 class StubFilesFilter(DefaultFilter):
@@ -58,7 +45,7 @@ class StubFilesFilter(DefaultFilter):
 
 async def _sleep(timeout: float):
     await asyncio.sleep(timeout)
-    yield AppChange.TIMEOUT
+    yield _TIMEOUT_SENTINEL
 
 
 async def _watch_paths(paths: Set[Path], watch_filter: StubFilesFilter):
@@ -101,14 +88,17 @@ def _watch_args_from_mounts(mounts: List[_Mount]) -> Tuple[Set[Path], StubFilesF
     return paths, watch_filter
 
 
-async def watch(stub: _Stub, output_mgr: OutputManager, timeout: Optional[float]):
-    paths, watch_filter = _watch_args_from_mounts(mounts=stub._local_mounts)
+async def watch(
+    mounts: List[_Mount], output_mgr: OutputManager, timeout: Optional[float]
+) -> AsyncGenerator[None, None]:
+    paths, watch_filter = _watch_args_from_mounts(mounts)
 
     _print_watched_paths(paths, output_mgr, timeout)
-
-    yield AppChange.START
 
     timeout_agen = [] if timeout is None else [_sleep(timeout)]
     async with stream.merge(_watch_paths(paths, watch_filter), *timeout_agen).stream() as streamer:
         async for event in streamer:
-            yield event
+            if event == _TIMEOUT_SENTINEL:
+                return
+            else:
+                yield

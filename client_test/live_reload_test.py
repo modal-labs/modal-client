@@ -15,11 +15,8 @@ except ImportError:
             return super(AsyncMock, self).__call__(*args, **kwargs)  # type: ignore
 
 
-from watchfiles import Change
-
 from modal import Stub
 from modal._live_reload import MODAL_AUTORELOAD_ENV
-from modal._watcher import AppChange
 from modal.aio import AioStub
 
 
@@ -37,12 +34,9 @@ class FakeProcess:
 
 @pytest.mark.skipif(sys.version_info < (3, 8), reason="live-reload requires python3.8 or higher")
 def test_file_changes_trigger_reloads(client, monkeypatch, servicer, test_dir):
-    async def fake_watch(stub, output_mgr, timeout):
-        yield AppChange.START
-        yield {(Change.modified, "fake-test-data.py")}
-        yield {(Change.modified, "fake-test-data.py")}
-        yield {(Change.added, "another-file.py")}
-        yield AppChange.TIMEOUT
+    async def fake_watch(mounts, output_mgr, timeout):
+        for i in range(3):
+            yield
 
     stub = Stub()
     stub.webhook(dummy)
@@ -58,8 +52,9 @@ def test_file_changes_trigger_reloads(client, monkeypatch, servicer, test_dir):
 @pytest.mark.asyncio
 async def test_reloadable_serve_ignores_file_changes(client, monkeypatch, servicer, test_dir):
     async def fake_watch(stub, output_mgr, timeout):
-        yield AppChange.START
-        yield AppChange.TIMEOUT
+        # Iterator that never yields
+        if False:
+            yield
 
     stub = AioStub()
     stub.webhook(dummy)

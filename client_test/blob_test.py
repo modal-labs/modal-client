@@ -36,3 +36,11 @@ async def test_blob_large(servicer, blob_server, aio_client):
     data = b"*" * 10_000_000
     blob_id = await aio_blob_upload(data, aio_client.stub)
     assert await aio_blob_download(blob_id, aio_client.stub) == data
+
+
+@pytest.mark.asyncio
+async def test_blob_multipart(servicer, blob_server, aio_client):
+    servicer.blob_multipart_threshold = 2_000_000
+    data = b"*" * 10_000_020
+    blob_id = await aio_blob_upload(data, aio_client.stub)
+    assert await aio_blob_download(blob_id, aio_client.stub) == data
