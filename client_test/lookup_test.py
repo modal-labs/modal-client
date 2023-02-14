@@ -55,6 +55,7 @@ async def test_deprecated(servicer, aio_client):
     stub["q_1"] = AioQueue()
     await stub.deploy("my-queue", client=aio_client)
 
+    servicer.enforce_object_entity = False
     with pytest.warns(DeprecationError):
         q = await aio_lookup("my-queue", client=aio_client)
     assert q.object_id == "qu-1"
