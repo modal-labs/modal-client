@@ -2,25 +2,19 @@
 import asyncio
 import datetime
 import inspect
-import sys
-import traceback
-from typing import List, Optional, Tuple
+from typing import Optional
 
 import click
 import typer
-from click import UsageError
-from rich.console import Console, Group
-from rich.markdown import Markdown
-from rich.panel import Panel
-from rich.prompt import Prompt
+from rich.console import Console
 from synchronicity import Interface
 
-from modal.cli.app import _show_stub_ref_failure_help
 from modal.exception import InvalidError
-from modal.functions import _Function
-from modal.stub import _Stub
+from modal.stub import LocalEntrypoint
 from modal_utils.async_utils import synchronizer
-from modal_utils.package_utils import NoSuchStub, import_stub, parse_stub_ref
+
+from .import_refs import import_function, import_stub
+from ..functions import _FunctionHandle
 
 run_cli = typer.Typer(name="run")
 
@@ -68,23 +62,26 @@ def _add_click_options(func, signature: inspect.Signature):
     return func
 
 
-def _get_click_command_for_function_handle(_stub, function_tag: str):
+def _get_click_command_for_function(_stub, function_tag):
     blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
-    raw_func = _stub._blueprint[function_tag]._info.raw_f
+
+    _function = _stub[function_tag]
+    raw_func = _function._info.raw_f
 
     @click.pass_context
     def f(ctx, *args, **kwargs):
         with blocking_stub.run(detach=ctx.obj["detach"]) as app:
-            function_handle = getattr(app, function_tag)
-            function_handle.call(*args, **kwargs)
+            _function_handle = app[function_tag]
+            _function_handle.call(*args, **kwargs)
 
+    # TODO: handle `self` when raw_func is an unbound method (e.g. method on lifecycle class)
     with_click_options = _add_click_options(f, inspect.signature(raw_func))
     return click.command(with_click_options)
 
 
-def _get_click_command_for_local_entrypoint(_stub, entrypoint_name: str):
+def _get_click_command_for_local_entrypoint(_stub, entrypoint: LocalEntrypoint):
     blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
-    func = _stub._local_entrypoints[entrypoint_name]
+    func = entrypoint.raw_f
     isasync = inspect.iscoroutinefunction(func)
 
     @click.pass_context
@@ -105,82 +102,45 @@ def _get_click_command_for_local_entrypoint(_stub, entrypoint_name: str):
 
 
 class RunGroup(click.Group):
-    def get_command(self, ctx, stub_ref):
-        parsed_stub_ref = parse_stub_ref(stub_ref)
-        try:
-            stub = import_stub(parsed_stub_ref)
-        except NoSuchStub:
-            _show_stub_ref_failure_help(parsed_stub_ref)
-            sys.exit(1)
-        except Exception:
-            traceback.print_exc()
-            sys.exit(1)
-
-        _stub = synchronizer._translate_in(stub)
-
-        function_choices = list(
-            (set(_stub.registered_functions) - set(_stub.registered_web_endpoints))
-            | set(_stub.registered_entrypoints.keys())
+    def get_command(self, ctx, func_ref):
+        _function_handle_or_entrypoint = import_function(
+            func_ref, accept_local_entrypoint=True, interactive=False, base_cmd="modal run"
         )
-        registered_functions_str = "\n".join(sorted(function_choices))
-        function_name_candidate = parsed_stub_ref.entrypoint_name
-        function_name = None
-        err_msg = None
-        if not function_name_candidate:
-            if len(function_choices) == 1:
-                function_name = function_choices[0]
-            elif len(_stub.registered_entrypoints) == 1:
-                function_name = list(_stub.registered_entrypoints.keys())[0]
-            elif len(function_choices) == 0:
-                if _stub.registered_web_endpoints:
-                    err_msg = "Modal stub has only webhook functions. Use `modal serve` instead of `modal run`."
-                else:
-                    err_msg = "Modal stub has no registered functions. Nothing to run."
-            else:
-                err_msg = f"""You need to specify an entrypoint Modal function to run, e.g.
-
-modal run app.py::stub.my_function [...args]
-
-Runnable functions and local entrypoints on the selected stub are:
-{registered_functions_str}
-    """
-        elif function_choices and function_name_candidate not in function_choices:
-            err_msg = f"""No function `{function_name_candidate}` could be found in the specified stub. Runnable functions and entrypoints are:
-
-{registered_functions_str}"""
-        elif function_name_candidate and not function_choices:
-            err_msg = f"No function `{function_name_candidate}` could be found in the specified stub. App has zero runnable functions."
+        _stub = _function_handle_or_entrypoint._stub
+        if isinstance(_function_handle_or_entrypoint, LocalEntrypoint):
+            click_command = _get_click_command_for_local_entrypoint(_stub, _function_handle_or_entrypoint)
         else:
-            function_name = function_name_candidate
-
-        if function_name is None:
-            raise UsageError(err_msg)
-        elif function_name in _stub.registered_functions:
-            click_command = _get_click_command_for_function_handle(_stub, function_name)
-        else:
-            click_command = _get_click_command_for_local_entrypoint(_stub, function_name)
+            tag = _function_handle_or_entrypoint._info.get_tag()
+            click_command = _get_click_command_for_function(_stub, tag)
 
         return click_command
 
 
 @click.group(
     cls=RunGroup,
-    subcommand_metavar="STUB_REF",
+    subcommand_metavar="FUNC_REF",
     help="""Run a Modal function or local entrypoint
 
-STUB_REF should be of the format:
+FUNC_REF should be of the format:
 
-`{file or module}[::[{stub name}].{function name}]`
+`{file or module}::{function name}`
+
+Alternatively you can refer to the function via the stub:
+
+`{file or module}::{stub variable name}.{function name}`
 
 Examples:
-To run the hello_world function (or local entrypoint) of stub `stub` in my_app.py:
+To run the hello_world function (or local entrypoint) in my_app.py:
 
- > modal run my_app.py::stub.hello_world
+ > modal run my_app.py::hello_world
 
 If your module only has a single stub called `stub` and your stub has a single local entrypoint (or single function), you can omit the stub/function part:
 
+ > modal run my_app.py
 
- > modal run my_project.my_app
+Instead of pointing to a file, you can also use the Python module path to a a file:
+
+> modal run my_project.my_app
 
 """,
 )
@@ -195,82 +155,35 @@ def deploy(
     stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
     name: str = typer.Option(None, help="Name of the deployment."),
 ):
-    parsed_stub_ref = parse_stub_ref(stub_ref)
-    try:
-        stub = import_stub(parsed_stub_ref)
-    except NoSuchStub:
-        _show_stub_ref_failure_help(parsed_stub_ref)
-        sys.exit(1)
-    except Exception:
-        traceback.print_exc()
-        sys.exit(1)
+    _stub = import_stub(stub_ref)
 
     if name is None:
-        name = stub.name
+        name = _stub.name
 
-    res = stub.deploy(name=name)
-    if inspect.iscoroutine(res):
-        asyncio.run(res)
-
-
-def make_function_panel(idx: int, tag: str, function: _Function, stub: _Stub) -> Panel:
-    items = [f"- {i}" for i in function.get_panel_items()]
-    return Panel(
-        Markdown("\n".join(items)),
-        title=f"[bright_magenta]{idx}. [/bright_magenta][bold]{tag}[/bold]",
-        title_align="left",
-    )
-
-
-def choose_function(stub: _Stub, functions: List[Tuple[str, _Function]], console: Console):
-    if len(functions) == 0:
-        return None
-    elif len(functions) == 1:
-        return functions[0][1]
-
-    function_panels = [make_function_panel(idx, tag, obj, stub) for idx, (tag, obj) in enumerate(functions)]
-
-    renderable = Panel(Group(*function_panels))
-    console.print(renderable)
-
-    choice = Prompt.ask(
-        "[yellow] Pick a function definition to create a corresponding shell: [/yellow]",
-        choices=[str(i) for i in range(len(functions))],
-        default="0",
-        show_default=False,
-    )
-
-    return functions[int(choice)][1]
+    blocking_stub = synchronizer._translate_out(_stub, interface=Interface.BLOCKING)
+    blocking_stub.deploy(name=name)
 
 
 def serve(
     stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
     timeout: Optional[float] = None,
 ):
-    """Run an web endpoint(s) associated with a Modal stub and hot-reload code.
+    """Run a web endpoint(s) associated with a Modal stub and hot-reload code.
     **Examples:**\n
     \n
     ```bash\n
     modal serve hello_world.py
     ```\n
     """
-    parsed_stub_ref = parse_stub_ref(stub_ref)
-    try:
-        stub = import_stub(parsed_stub_ref)
-    except NoSuchStub:
-        _show_stub_ref_failure_help(parsed_stub_ref)
-        sys.exit(1)
-    except Exception:
-        traceback.print_exc()
-        sys.exit(1)
-
-    _stub = synchronizer._translate_in(stub)
+    _stub = import_stub(stub_ref)
     blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
     blocking_stub.serve(timeout=timeout)
 
 
 def shell(
-    stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
+    func_ref: str = typer.Argument(
+        ..., help="Path to a Python file with a Stub or Modal function whose container to run.", metavar="FUNC_REF"
+    ),
     cmd: str = typer.Option(default="/bin/bash", help="Command to run inside the Modal image."),
 ):
     """Run an interactive shell inside a Modal image.\n
@@ -278,7 +191,7 @@ def shell(
     \n
     - Start a bash shell using the spec for `my_function` in your stub:\n
     ```bash\n
-    modal shell hello_world.py::stub.my_function \n
+    modal shell hello_world.py::my_function \n
     ```\n
     Note that you can select the function interactively if you omit the function name.\n
     \n
@@ -287,42 +200,26 @@ def shell(
     modal shell hello_world.py --cmd=python \n
     ```\n
     """
-    parsed_stub_ref = parse_stub_ref(stub_ref)
-    try:
-        stub = import_stub(parsed_stub_ref)
-    except NoSuchStub:
-        _show_stub_ref_failure_help(parsed_stub_ref)
-        sys.exit(1)
-    except Exception:
-        traceback.print_exc()
-        sys.exit(1)
-
     console = Console()
-
     if not console.is_terminal:
-        raise UsageError("`modal shell` can only be run from a terminal.")
+        raise click.UsageError("`modal shell` can only be run from a terminal.")
 
-    _stub = synchronizer._translate_in(stub)
-    functions = {tag: obj for tag, obj in _stub._blueprint.items() if isinstance(obj, _Function)}
-    function_name = parsed_stub_ref.entrypoint_name
-    if function_name is not None:
-        if function_name not in functions:
-            raise UsageError(f"Function `{function_name}` not found in stub.")
-        function = functions[function_name]
-    else:
-        function = choose_function(_stub, list(functions.items()), console)
+    _function_handle = import_function(
+        func_ref, accept_local_entrypoint=False, interactive=True, base_cmd="modal shell"
+    )
+    assert isinstance(_function_handle, _FunctionHandle)  # ensured by accept_local_entrypoint=False
+    _stub = _function_handle._stub
+    _function = _function_handle._get_function()
+    blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
 
-    if function is None:
-        res = stub.interactive_shell(cmd)
+    if _function_handle is None:
+        blocking_stub.interactive_shell(cmd)
     else:
-        res = stub.interactive_shell(
+        blocking_stub.interactive_shell(
             cmd,
-            mounts=function._mounts,
-            shared_volumes=function._shared_volumes,
-            image=function._image,
-            secrets=function._secrets,
-            gpu=function._gpu,
+            mounts=_function._mounts,
+            shared_volumes=_function._shared_volumes,
+            image=_function._image,
+            secrets=_function._secrets,
+            gpu=_function._gpu,
         )
-
-    if inspect.iscoroutine(res):
-        asyncio.run(res)
