@@ -107,6 +107,7 @@ message AppDeployRequest {
   string app_id = 1;
   DeploymentNamespace namespace = 2;
   string name = 3;
+  string object_entity = 4;
 }
 
 message AppDeployResponse {
