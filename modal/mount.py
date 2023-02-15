@@ -294,7 +294,7 @@ class _Mount(Provider[_MountHandle]):
             else:
                 logger.debug(f"Uploading file {file_spec.filename} to {remote_filename} ({file_spec.size} bytes)")
                 request2 = api_pb2.MountPutFileRequest(data=file_spec.content, sha256_hex=file_spec.sha256_hex)
-            await retry_transient_errors(resolver.client.stub.MountPutFile, request2, base_delay=1)
+            await retry_transient_errors(resolver.client.stub.MountPutFile, request2, base_delay=1, max_retries=20)
             return mount_file
 
         logger.debug(f"Uploading mount using {n_concurrent_uploads} uploads")
