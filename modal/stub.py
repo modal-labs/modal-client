@@ -416,6 +416,7 @@ class _Stub:
         client=None,
         stdout=None,
         show_progress=None,
+        object_entity="ap",
     ):
         """Deploy an app and export its objects persistently.
 
@@ -475,6 +476,7 @@ class _Stub:
                 app_id=app._app_id,
                 name=name,
                 namespace=namespace,
+                object_entity=object_entity,
             )
             deploy_response = await client.stub.AppDeploy(deploy_req)
         output_mgr.print_if_visible(f"\nView Deployment: [magenta]{deploy_response.url}[/magenta]")
