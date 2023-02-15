@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import os
-from typing import AsyncIterator, BinaryIO, List, Optional
+from pathlib import Path, PurePosixPath
+from typing import AsyncIterator, BinaryIO, List, Optional, Union
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
@@ -51,7 +52,7 @@ class _SharedVolumeHandle(Handle, type_prefix="sv"):
         else:
             data = fp.read()
             req = api_pb2.SharedVolumePutFileRequest(shared_volume_id=self._object_id, path=remote_path, data=data)
-        await retry_transient_errors(self._client.stub.SharedVolumePutFile, req)
+        await retry_transient_errors(self._client.stub.SharedVolumePutFile, req, max_retries=20)
         return data_size  # might be better if this is returned from the server
 
     async def read_file(self, path: str) -> AsyncIterator[bytes]:
@@ -63,6 +64,18 @@ class _SharedVolumeHandle(Handle, type_prefix="sv"):
         else:
             async for data in blob_iter(response.data_blob_id, self._client.stub):
                 yield data
+
+    async def add_local_file(
+        self, local_path: Union[Path, str], remote_path: Optional[str, PurePosixPath, None] = None
+    ):
+        local_path = Path(local_path)
+        if remote_path is None:
+            remote_path = PurePosixPath("/", local_path.name).as_posix()
+        else:
+            remote_path = PurePosixPath(remote_path).as_posix()
+
+        with local_path.open("rb") as local_file:
+            await self.write_file(remote_path, local_file)
 
     async def listdir(self, path: str) -> List[api_pb2.SharedVolumeListFilesEntry]:
         """List all files in a directory in the shared volume.
