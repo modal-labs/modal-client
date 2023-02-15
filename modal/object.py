@@ -259,3 +259,27 @@ class Provider(Generic[H]):
         handle_cls = cls.get_handle_cls()
         handle: H = await handle_cls.from_app(app_name, tag, namespace, client)
         return handle
+
+    @classmethod
+    async def _exists(
+        cls: Type[P],
+        app_name: str,
+        tag: Optional[str] = None,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        client: Optional[_Client] = None,
+    ) -> bool:
+        """mdmd:hidden
+
+        Internal for now - will make this "public" later.
+        """
+        if client is None:
+            client = await _Client.from_env()
+        handle_cls = cls.get_handle_cls()
+        request = api_pb2.AppLookupObjectRequest(
+            app_name=app_name,
+            object_tag=tag,
+            namespace=namespace,
+            object_entity=handle_cls._type_prefix,
+        )
+        response = await client.stub.AppLookupObject(request)
+        return bool(response.object_id)
