@@ -108,6 +108,7 @@ class FunctionInfo:
                 logger.info(f"Base dirs: {base_dirs}")
                 raise Exception("Wasn't able to find the package directory!")
             elif len(base_dirs) > 1:
+                # Base_dirs should all be prefixes of each other since they all contain `module_file`.
                 base_dirs.sort(key=lambda x: len(x))
 
             self.base_dir = base_dirs[0]
