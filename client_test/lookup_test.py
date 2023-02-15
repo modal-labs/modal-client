@@ -65,3 +65,10 @@ async def test_deprecated(servicer, aio_client):
     with pytest.warns(DeprecationError):
         q = await aio_lookup("my-queue", client=aio_client)
     assert q.object_id == "qu-1"
+
+
+@pytest.mark.asyncio
+async def test_deploy_exists(servicer, aio_client):
+    assert not await AioQueue._exists("my-queue", client=aio_client)
+    await AioQueue()._deploy("my-queue", client=aio_client)
+    assert await AioQueue._exists("my-queue", client=aio_client)
