@@ -96,18 +96,22 @@ class FunctionInfo:
             # Get the package path
             # Note: __import__ always returns the top-level package.
             module_file = os.path.abspath(module.__file__)
-            package_paths = [os.path.abspath(p) for p in __import__(module.__package__).__path__]
+            package_paths = set([os.path.abspath(p) for p in __import__(module.__package__).__path__])
             # There might be multiple package paths in some weird cases
             base_dirs = [
                 base_dir for base_dir in package_paths if os.path.commonpath((base_dir, module_file)) == base_dir
             ]
 
-            if len(base_dirs) != 1:
+            if not base_dirs:
                 logger.info(f"Module files: {module_file}")
                 logger.info(f"Package paths: {package_paths}")
                 logger.info(f"Base dirs: {base_dirs}")
                 raise Exception("Wasn't able to find the package directory!")
-            (self.base_dir,) = base_dirs
+            elif len(base_dirs) > 1:
+                # Base_dirs should all be prefixes of each other since they all contain `module_file`.
+                base_dirs.sort(key=lambda x: len(x))
+
+            self.base_dir = base_dirs[0]
             self.module_name = module.__spec__.name
             self.remote_dir = ROOT_DIR / PurePosixPath(module.__package__.split(".")[0])
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
