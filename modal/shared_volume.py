@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import asyncio
 import os
 from pathlib import Path, PurePosixPath
 from typing import AsyncIterator, BinaryIO, List, Optional, Union
@@ -21,7 +22,7 @@ class _SharedVolumeHandle(Handle, type_prefix="sv"):
 
     Also see the CLI methods for accessing shared volumes:
 
-    ```modal volume --help```
+    ```modal volume --help
 
     A SharedVolumeHandle *can* however be useful for some local scripting scenarios, e.g.:
 
@@ -66,7 +67,7 @@ class _SharedVolumeHandle(Handle, type_prefix="sv"):
                 yield data
 
     async def add_local_file(
-        self, local_path: Union[Path, str], remote_path: Optional[str, PurePosixPath, None] = None
+        self, local_path: Union[Path, str], remote_path: Optional[Union[str, PurePosixPath, None]] = None
     ):
         local_path = Path(local_path)
         if remote_path is None:
@@ -76,6 +77,35 @@ class _SharedVolumeHandle(Handle, type_prefix="sv"):
 
         with local_path.open("rb") as local_file:
             await self.write_file(remote_path, local_file)
+
+    async def add_local_dir(
+        self,
+        local_path: Union[Path, str],
+        remote_path: Optional[Union[str, PurePosixPath, None]] = None,
+        concurrency=20,
+    ):
+        local_path = Path(local_path)
+        if remote_path is None:
+            remote_path = PurePosixPath("/", local_path.name).as_posix()
+        else:
+            remote_path = PurePosixPath(remote_path).as_posix()
+
+        assert local_path.is_dir()
+
+        def gen_transfers():
+            for subpath in local_path.rglob("*"):
+                if subpath.is_dir():
+                    continue
+                relpath_str = subpath.relative_to(local_path).as_posix()
+                yield self.add_local_file(subpath, PurePosixPath(remote_path, relpath_str))
+
+        sem = asyncio.Semaphore(concurrency)
+
+        async def limited_task(coro):
+            async with sem:
+                return await coro
+
+        await asyncio.gather(*(limited_task(t) for t in gen_transfers()), return_exceptions=True)
 
     async def listdir(self, path: str) -> List[api_pb2.SharedVolumeListFilesEntry]:
         """List all files in a directory in the shared volume.

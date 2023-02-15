@@ -13,6 +13,7 @@ from .object import aio_lookup
 from .queue import AioQueue
 from .secret import AioSecret
 from .stub import AioStub
+from .shared_volume import AioSharedVolume
 
 __all__ = [
     "AioApp",
@@ -23,6 +24,7 @@ __all__ = [
     "AioQueue",
     "AioSecret",
     "AioStub",
+    "AioSharedVolume",
     "AioFunctionHandle",
     "aio_container_app",
     "aio_lookup",
