@@ -416,7 +416,7 @@ class _Stub:
         client=None,
         stdout=None,
         show_progress=None,
-        object_entity=None,
+        object_entity="ap",
     ):
         """Deploy an app and export its objects persistently.
 
