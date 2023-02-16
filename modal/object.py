@@ -155,7 +155,9 @@ class Provider(Generic[H]):
     def local_uuid(self):
         return self._local_uuid
 
-    async def _deploy(self, label: str, client: Optional[_Client] = None) -> H:
+    async def _deploy(
+        self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, client: Optional[_Client] = None
+    ) -> H:
         """mdmd:hidden
 
         Note 1: this uses the single-object app method, which we're planning to get rid of later
@@ -169,11 +171,11 @@ class Provider(Generic[H]):
         handle_cls = self.get_handle_cls()
         object_entity = handle_cls._type_prefix
         _stub = _Stub(label, _object=self)
-        await _stub.deploy(client=client, object_entity=object_entity)
+        await _stub.deploy(namespace=namespace, client=client, object_entity=object_entity)
         handle: H = await handle_cls.from_app(label, client=client)
         return handle
 
-    def persist(self, label: str):
+    def persist(self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE):
         """Deploy a Modal app containing this object. This object can then be imported from other apps using
         the returned reference, or by calling `modal.SharedVolume.from_name(label)` (or the equivalent method
         on respective class).
@@ -196,7 +198,7 @@ class Provider(Generic[H]):
         """
 
         async def _load_persisted(resolver: Resolver) -> H:
-            return await self._deploy(label, resolver.client)
+            return await self._deploy(label, namespace, resolver.client)
 
         # Create a class of type cls, but use the base constructor
         cls = type(self)

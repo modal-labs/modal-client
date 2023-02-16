@@ -145,7 +145,7 @@ class _Client:
             elif exc.status == Status.UNAUTHENTICATED:
                 raise AuthError(exc.message)
             else:
-                exc_string = await _grpc_exc_string(exc, "ClientCreate", self.server_url, CLIENT_CREATE_TOTAL_TIMEOUT)
+                exc_string = await _grpc_exc_string(exc, "ClientHello", self.server_url, CLIENT_CREATE_TOTAL_TIMEOUT)
                 raise ConnectionError(exc_string)
         except (OSError, asyncio.TimeoutError) as exc:
             raise ConnectionError(str(exc))
