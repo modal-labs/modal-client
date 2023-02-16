@@ -728,7 +728,7 @@ class _Image(Provider[_ImageHandle]):
 
         dockerfile_commands = _Image._registry_setup_commands(tag, setup_commands)
 
-        return _Image(
+        return _Image._from_args(
             dockerfile_commands=dockerfile_commands,
             context_files={"/modal_requirements.txt": requirements_path},
             registry_type=api_pb2.RegistryType.ECR,
