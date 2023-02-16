@@ -118,8 +118,8 @@ class _Image(Provider[_ImageHandle]):
         gpu_config: api_pb2.GPUConfig = api_pb2.GPUConfig(),
         build_function=None,
         context_mount: Optional[_Mount] = None,
-        registry_type:Optional[api_pb2.RegistryType] = None,
-        registry_params:Optional[_RegistryParams] = None,
+        registry_type: Optional[api_pb2.RegistryType] = None,
+        registry_params: Optional[_RegistryParams] = None,
     ):
         if ref and (base_images or dockerfile_commands or context_files):
             raise InvalidError("No other arguments can be provided when initializing an image from a ref.")
@@ -160,7 +160,8 @@ class _Image(Provider[_ImageHandle]):
                     docker_tag=docker_tag,
                     image_id=image_id,
                     registry_type=registry_type,
-                    registry_params=_registry_params)
+                    registry_params=_registry_params,
+                )
                 for docker_tag, image_id in zip(base_images.keys(), base_image_ids)
             ]
 
@@ -649,7 +650,7 @@ class _Image(Provider[_ImageHandle]):
         return self.extend(dockerfile_commands=dockerfile_commands, context_files=context_files)
 
     @staticmethod
-    def _registry_setup_commands(tag: str, setup_commands:list[str]) -> list[str]:
+    def _registry_setup_commands(tag: str, setup_commands: list[str]) -> list[str]:
         """mdmd:hidden"""
         return [
             f"FROM {tag}",
@@ -684,7 +685,7 @@ class _Image(Provider[_ImageHandle]):
         ```
         """
         requirements_path = _get_client_requirements_path()
- 
+
         dockerfile_commands = _Image._registry_setup_commands(tag, setup_commands)
 
         return _Image._from_args(
@@ -702,7 +703,7 @@ class _Image(Provider[_ImageHandle]):
         Container Registry (ECR). You will need to pass a `modal.Secret` containing
         an AWS key (`AWS_ACCESS_KEY_ID`) and secret (`AWS_SECRET_ACCESS_KEY`)
         with permissions to access the target ECR registry.
-        
+
         Refer to ["Private repository policies"](https://docs.aws.amazon.com/AmazonECR/latest/userguide/repository-policies.html)
         for details about IAM configuration.
 
@@ -911,17 +912,16 @@ class _Image(Provider[_ImageHandle]):
 
 class _RegistryParams:
     """mdmd:hidden"""
-    def __init__(self, secret:Optional[_Secret] = None):
+
+    def __init__(self, secret: Optional[_Secret] = None):
         self.secret = secret
-    
-    async def resolve(self, resolver:Resolver) -> api_pb2.RegistryParams:
+
+    async def resolve(self, resolver: Resolver) -> api_pb2.RegistryParams:
         if not self.secret:
             return api_pb2.RegistryParams()
 
-        return api_pb2.RegistryParams(
-            secret_id=await 
-            _resolve_secret(resolver, self.secret)
-        )
+        return api_pb2.RegistryParams(secret_id=await _resolve_secret(resolver, self.secret))
+
 
 synchronize_apis(_ImageHandle)
 Image, AioImage = synchronize_apis(_Image)

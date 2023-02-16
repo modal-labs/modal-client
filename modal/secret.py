@@ -39,7 +39,7 @@ class _Secret(Provider[_SecretHandle]):
         super().__init__(_load, rep)
 
 
-async def _resolve_secret(resolver: Resolver, secret:_Secret) -> str:
+async def _resolve_secret(resolver: Resolver, secret: _Secret) -> str:
     """mdmd:hidden"""
     try:
         secret_id = await resolver.load(secret)
