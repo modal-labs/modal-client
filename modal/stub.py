@@ -671,7 +671,7 @@ class _Stub:
             interactive=interactive,
             keep_warm=keep_warm,
             name=name,
-            cloud_provider=cloud,
+            cloud=cloud,
         )
 
         self._add_function(function, [*base_mounts, *mounts])
@@ -761,7 +761,7 @@ class _Stub:
             container_idle_timeout=container_idle_timeout,
             timeout=timeout,
             keep_warm=keep_warm,
-            cloud_provider=cloud,
+            cloud=cloud,
         )
         self._add_function(function, [*base_mounts, *mounts])
         return function_handle
@@ -838,7 +838,7 @@ class _Stub:
             container_idle_timeout=container_idle_timeout,
             timeout=timeout,
             keep_warm=keep_warm,
-            cloud_provider=cloud,
+            cloud=cloud,
         )
         self._add_function(function, [*base_mounts, *mounts])
         return function_handle
