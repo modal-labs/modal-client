@@ -46,7 +46,7 @@ def test_file_changes_trigger_reloads(client, monkeypatch, servicer, test_dir):
     monkeypatch.setattr("modal._watcher.watch", fake_watch)
 
     stub.serve(client=client, timeout=None)
-    assert mock_create_subprocess_exec.call_count == 3
+    assert mock_create_subprocess_exec.call_count == 4  # 1 + number of file changes
 
 
 @pytest.mark.asyncio
