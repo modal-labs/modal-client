@@ -157,11 +157,6 @@ class _Image(Provider[_ImageHandle]):
                 image_id = await resolver.load(ref)
                 return _ImageHandle._from_id(image_id, resolver.client, None)
 
-            # Resolve private registry secrets.
-            _registry_params = registry_params
-            if registry_type in {api_pb2.RegistryType.ECR}:
-                _registry_params = await registry_params.resolve(resolver)
-
             # Recursively build base images
             base_image_ids: list[str] = []
             for image in base_images.values():
@@ -171,7 +166,8 @@ class _Image(Provider[_ImageHandle]):
                     docker_tag=docker_tag,
                     image_id=image_id,
                     registry_type=registry_type,
-                    registry_params=_registry_params,
+                    # Resolve private registry secrets.
+                    registry_params=await registry_params.resolve(resolver),
                 )
                 for docker_tag, image_id in zip(base_images.keys(), base_image_ids)
             ]
