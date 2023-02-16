@@ -383,19 +383,13 @@ class _Stub:
             if sys.version_info <= (3, 7):
                 async with self._run(client, output_mgr, None, mode=StubRunMode.SERVE) as app:
                     client.set_pre_stop(app.disconnect)
-                    existing_app_id = app.app_id
                     async for _ in watch(self._local_mounts, output_mgr, timeout):
                         output_mgr.print_if_visible(
                             "Live-reload skipped. This feature is unsupported below Python 3.8."
                             " Upgrade to Python 3.8+ to enable live-reloading."
                         )
             else:
-                async with self._run(client, output_mgr, None, mode=StubRunMode.SERVE) as app:
-                    client.set_pre_stop(app.disconnect)
-                    existing_app_id = app.app_id
-                    # Note: when the context manager exits, it closes the logs.
-                    # This is intentional since we run subprocesses right after that fetch logs.
-
+                app = await _App._init_new(client, self.description, deploying=False, detach=False)
                 curr_proc = None
                 try:
                     async for _ in watch(self._local_mounts, output_mgr, timeout):

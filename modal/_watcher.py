@@ -96,7 +96,12 @@ async def watch(
     _print_watched_paths(paths, output_mgr, timeout)
 
     timeout_agen = [] if timeout is None else [_sleep(timeout)]
-    async with stream.merge(_watch_paths(paths, watch_filter), *timeout_agen).stream() as streamer:
+    _STARTING_SENTINEL = object()
+
+    async def startup_gen():
+        yield _STARTING_SENTINEL
+
+    async with stream.merge(startup_gen(), _watch_paths(paths, watch_filter), *timeout_agen).stream() as streamer:
         async for event in streamer:
             if event == _TIMEOUT_SENTINEL:
                 return
