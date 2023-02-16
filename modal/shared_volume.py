@@ -94,19 +94,19 @@ class _SharedVolumeHandle(Handle, type_prefix="sv"):
         local_path: Union[Path, str],
         remote_path: Optional[Union[str, PurePosixPath, None]] = None,
     ):
-        local_path = Path(local_path)
+        _local_path = Path(local_path)
         if remote_path is None:
-            remote_path = PurePosixPath("/", local_path.name).as_posix()
+            remote_path = PurePosixPath("/", _local_path.name).as_posix()
         else:
             remote_path = PurePosixPath(remote_path).as_posix()
 
-        assert local_path.is_dir()
+        assert _local_path.is_dir()
 
         def gen_transfers():
-            for subpath in local_path.rglob("*"):
+            for subpath in _local_path.rglob("*"):
                 if subpath.is_dir():
                     continue
-                relpath_str = subpath.relative_to(local_path).as_posix()
+                relpath_str = subpath.relative_to(_local_path).as_posix()
                 yield self.add_local_file(subpath, PurePosixPath(remote_path, relpath_str))
 
         await ConcurrencyPool(20).run_coros(gen_transfers(), return_exceptions=True)
