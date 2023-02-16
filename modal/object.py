@@ -172,7 +172,7 @@ class Provider(Generic[H]):
         object_entity = handle_cls._type_prefix
         _stub = _Stub(label, _object=self)
         await _stub.deploy(namespace=namespace, client=client, object_entity=object_entity)
-        handle: H = await handle_cls.from_app(label, client=client)
+        handle: H = await handle_cls.from_app(label, namespace=namespace, client=client)
         return handle
 
     def persist(self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE):
