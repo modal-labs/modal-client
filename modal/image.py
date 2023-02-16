@@ -829,7 +829,7 @@ class _Image(Provider[_ImageHandle]):
             memory=memory,
             timeout=timeout,
             cpu=cpu,
-            cloud_provider=cloud,
+            cloud=cloud,
         )
         return self.extend(build_function=function)
 
