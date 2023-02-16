@@ -6,4 +6,4 @@ stub = modal.Stub()
 
 @stub.function
 def foo():
-    pass
+    print("foo")

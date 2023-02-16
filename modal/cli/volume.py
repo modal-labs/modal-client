@@ -20,9 +20,8 @@ from typer import Typer
 
 import modal
 from modal._location import display_location, parse_cloud_provider
-from modal.aio import aio_lookup
 from modal.client import AioClient
-from modal.shared_volume import AioSharedVolumeHandle, _SharedVolumeHandle
+from modal.shared_volume import AioSharedVolumeHandle, _SharedVolumeHandle, AioSharedVolume
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
 
@@ -76,7 +75,7 @@ def create(name: str, cloud: str = typer.Option("aws", help="Cloud provider to c
 
 
 async def volume_from_name(deployment_name) -> _SharedVolumeHandle:
-    shared_volume = await aio_lookup(deployment_name)
+    shared_volume = await AioSharedVolume.lookup(deployment_name)
     if not isinstance(shared_volume, AioSharedVolumeHandle):
         raise Exception("The specified app entity is not a shared volume")
     return shared_volume
@@ -152,16 +151,22 @@ async def _glob_download(
 ):
     q: asyncio.Queue[Tuple[Optional[Path], Optional[api_pb2.SharedVolumeListFilesEntry]]] = asyncio.Queue()
 
-    for entry in await volume.listdir(remote_glob_path):
-        output_path = local_destination / entry.path
-        if output_path.exists():
-            if overwrite:
-                shutil.rmtree(output_path)
-            else:
-                raise CliError(
-                    f"Output path '{output_path}' already exists. Use --force to overwrite the output directory"
-                )
-        await q.put((output_path, entry))
+    async def producer():
+        async for entry in volume.iterdir(remote_glob_path):
+            output_path = local_destination / entry.path
+            if output_path.exists():
+                if overwrite:
+                    if entry.type == api_pb2.SharedVolumeListFilesEntry.FILE:
+                        os.remove(output_path)
+                    else:
+                        shutil.rmtree(output_path)
+                else:
+                    raise CliError(
+                        f"Output path '{output_path}' already exists. Use --force to overwrite the output directory"
+                    )
+            await q.put((output_path, entry))
+        for _ in range(10):
+            await q.put((None, None))
 
     async def consumer():
         while 1:
@@ -181,9 +186,9 @@ async def _glob_download(
                 q.task_done()
 
     tasks = []
+    tasks.append(asyncio.create_task(producer()))
     for _ in range(10):
         tasks.append(asyncio.create_task(consumer()))
-        await q.put((None, None))
 
     await asyncio.gather(*tasks)
 

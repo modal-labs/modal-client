@@ -101,6 +101,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.cleared_function_calls = set()
 
+        self.enforce_object_entity = True
+
         @self.function_body
         def default_function_body(*args, **kwargs):
             return sum(arg**2 for arg in args) + sum(value**2 for key, value in kwargs.items())
@@ -174,6 +176,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 object_id = app_objects.get(request.object_tag)
             else:
                 (object_id,) = list(app_objects.values())
+        if self.enforce_object_entity:
+            assert request.object_entity
+            if object_id is not None:
+                assert object_id.startswith(request.object_entity)
         function = self.app_functions.get(object_id)
         await stream.send_message(api_pb2.AppLookupObjectResponse(object_id=object_id, function=function))
 

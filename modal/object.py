@@ -23,6 +23,8 @@ class Handle(metaclass=ObjectMeta):
     well as distributed data structures like Queues or Dicts.
     """
 
+    _type_prefix: str
+
     def __init__(self):
         raise Exception("__init__ disallowed, use proper classmethods")
 
@@ -31,7 +33,7 @@ class Handle(metaclass=ObjectMeta):
         self._object_id = None
 
     @classmethod
-    def _new(cls):
+    def _new(cls: Type[H]) -> H:
         obj = Handle.__new__(cls)
         obj._init()
         obj._initialize_from_proto(None)
@@ -45,22 +47,31 @@ class Handle(metaclass=ObjectMeta):
     def _initialize_from_proto(self, proto: Optional[Message]):
         pass  # default implementation
 
-    @staticmethod
-    def _from_id(object_id: str, client: _Client, proto: Optional[Message]):
-        parts = object_id.split("-")
-        if len(parts) != 2:
-            raise InvalidError(f"Object id {object_id} has no dash in it")
-        prefix = parts[0]
-        if prefix not in ObjectMeta.prefix_to_type:
-            raise InvalidError(f"Object prefix {prefix} does not correspond to a type")
-        object_cls = ObjectMeta.prefix_to_type[prefix]
+    @classmethod
+    def _from_id(cls: Type[H], object_id: str, client: _Client, proto: Optional[Message]) -> H:
+        if cls._type_prefix is not None:
+            # This is called directly on a subclass, e.g. Secret.from_id
+            if not object_id.startswith(cls._type_prefix):
+                raise InvalidError(f"Object {object_id} does not start with {cls._type_prefix}")
+            object_cls = cls
+        else:
+            # This is called on the base class, e.g. Handle.from_id
+            parts = object_id.split("-")
+            if len(parts) != 2:
+                raise InvalidError(f"Object id {object_id} has no dash in it")
+            prefix = parts[0]
+            if prefix not in ObjectMeta.prefix_to_type:
+                raise InvalidError(f"Object prefix {prefix} does not correspond to a type")
+            object_cls = ObjectMeta.prefix_to_type[prefix]
+
+        # Instantiate object and return
         obj = object_cls._new()
         obj._initialize_handle(client, object_id)
         obj._initialize_from_proto(proto)
         return obj
 
     @classmethod
-    async def from_id(cls, object_id: str, client: Optional[_Client] = None):
+    async def from_id(cls: Type[H], object_id: str, client: Optional[_Client] = None) -> H:
         # This is used in a few examples to construct FunctionCall objects
         # TODO(erikbern): doesn't use _initialize_from_proto - let's use AppLookupObjectRequest?
         # TODO(erikbern): this should probably be on the provider?
@@ -69,7 +80,7 @@ class Handle(metaclass=ObjectMeta):
         return cls._from_id(object_id, client, None)
 
     @property
-    def object_id(self):
+    def object_id(self) -> str:
         return self._object_id
 
     @classmethod
@@ -87,12 +98,14 @@ class Handle(metaclass=ObjectMeta):
             app_name=app_name,
             object_tag=tag,
             namespace=namespace,
+            object_entity=cls._type_prefix,
         )
         response = await client.stub.AppLookupObject(request)
         if not response.object_id:
             raise NotFoundError(response.error_message)
         proto = response.function  # TODO: handle different object types
-        return Handle._from_id(response.object_id, client, proto)
+        handle: H = cls._from_id(response.object_id, client, proto)
+        return handle
 
 
 async def _lookup(
@@ -142,6 +155,24 @@ class Provider(Generic[H]):
     def local_uuid(self):
         return self._local_uuid
 
+    async def _deploy(self, label: str, client: Optional[_Client] = None) -> H:
+        """mdmd:hidden
+
+        Note 1: this uses the single-object app method, which we're planning to get rid of later
+        Note 2: still considering this an "internal" method, but we'll make it "official" later
+        """
+        from .stub import _Stub
+
+        if client is None:
+            client = await _Client.from_env()
+
+        handle_cls = self.get_handle_cls()
+        object_entity = handle_cls._type_prefix
+        _stub = _Stub(label, _object=self)
+        await _stub.deploy(client=client, object_entity=object_entity)
+        handle: H = await handle_cls.from_app(label, client=client)
+        return handle
+
     def persist(self, label: str):
         """Deploy a Modal app containing this object. This object can then be imported from other apps using
         the returned reference, or by calling `modal.SharedVolume.from_name(label)` (or the equivalent method
@@ -165,13 +196,7 @@ class Provider(Generic[H]):
         """
 
         async def _load_persisted(resolver: Resolver) -> H:
-            from .stub import _Stub
-
-            _stub = _Stub(label, _object=self)
-            await _stub.deploy(client=resolver.client)
-            handle_cls = cls.get_handle_cls()
-            handle: H = await handle_cls.from_app(label, client=resolver.client)
-            return handle
+            return await self._deploy(label, resolver.client)
 
         # Create a class of type cls, but use the base constructor
         cls = type(self)
@@ -234,3 +259,27 @@ class Provider(Generic[H]):
         handle_cls = cls.get_handle_cls()
         handle: H = await handle_cls.from_app(app_name, tag, namespace, client)
         return handle
+
+    @classmethod
+    async def _exists(
+        cls: Type[P],
+        app_name: str,
+        tag: Optional[str] = None,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        client: Optional[_Client] = None,
+    ) -> bool:
+        """mdmd:hidden
+
+        Internal for now - will make this "public" later.
+        """
+        if client is None:
+            client = await _Client.from_env()
+        handle_cls = cls.get_handle_cls()
+        request = api_pb2.AppLookupObjectRequest(
+            app_name=app_name,
+            object_tag=tag,
+            namespace=namespace,
+            object_entity=handle_cls._type_prefix,
+        )
+        response = await client.stub.AppLookupObject(request)
+        return bool(response.object_id)

@@ -107,6 +107,7 @@ message AppDeployRequest {
   string app_id = 1;
   DeploymentNamespace namespace = 2;
   string name = 3;
+  string object_entity = 4;
 }
 
 message AppDeployResponse {
@@ -170,6 +171,7 @@ message AppLookupObjectRequest {
   string app_name = 3;
   string object_tag = 4;
   string object_id = 5;
+  string object_entity = 6;
 }
 
 message AppLookupObjectResponse {
@@ -956,6 +958,7 @@ service ModalClient {
   rpc SharedVolumeCreate(SharedVolumeCreateRequest) returns (SharedVolumeCreateResponse);
   rpc SharedVolumeList(google.protobuf.Empty) returns (SharedVolumeListResponse);
   rpc SharedVolumeListFiles(SharedVolumeListFilesRequest) returns (SharedVolumeListFilesResponse);
+  rpc SharedVolumeListFilesStream(SharedVolumeListFilesRequest) returns (stream SharedVolumeListFilesResponse);
   rpc SharedVolumePutFile(SharedVolumePutFileRequest) returns (google.protobuf.Empty);
   rpc SharedVolumeGetFile(SharedVolumeGetFileRequest) returns (SharedVolumeGetFileResponse);
   rpc SharedVolumeRemoveFile(SharedVolumeRemoveFileRequest) returns (google.protobuf.Empty);

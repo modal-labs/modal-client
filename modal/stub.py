@@ -7,7 +7,7 @@ import signal
 import sys
 import warnings
 from enum import Enum
-from typing import AsyncGenerator, Callable, Collection, Dict, List, Optional, Union
+from typing import AsyncGenerator, Collection, Dict, List, Optional, Union
 
 from rich.tree import Tree
 
@@ -16,11 +16,12 @@ from modal_utils.app_utils import is_valid_app_name
 from modal_utils.async_utils import TaskContext, synchronize_apis
 from modal_utils.decorator_utils import decorator_with_options
 
+from . import _pty
 from ._function_utils import FunctionInfo
 from ._ipython import is_notebook
 from ._live_reload import MODAL_AUTORELOAD_ENV, restart_serve
 from ._output import OutputManager, step_completed, step_progress
-from ._pty import exec_cmd, write_stdin_to_pty_stream
+from ._pty import exec_cmd
 from .app import _App, _container_app, is_local
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
@@ -45,6 +46,15 @@ class StubRunMode(Enum):
     DEPLOY = "deploy"
     DETACH = "detach"
     SERVE = "serve"
+
+
+class LocalEntrypoint:
+    def __init__(self, raw_f, stub):
+        self.raw_f = raw_f
+        self._stub = stub
+
+    def __call__(self, *args, **kwargs):
+        return self.raw_f(*args, **kwargs)
 
 
 async def _heartbeat(client, app_id):
@@ -99,7 +109,7 @@ class _Stub:
     _secrets: Collection[_Secret]
     _function_handles: Dict[str, _FunctionHandle]
     _web_endpoints: List[str]  # Used by the CLI
-    _local_entrypoints: Dict[str, Callable]
+    _local_entrypoints: Dict[str, LocalEntrypoint]
     _local_mounts: List[_Mount]
     _app: Optional[_App]
 
@@ -156,7 +166,7 @@ class _Stub:
         return " ".join(args)
 
     def __getitem__(self, tag: str):
-        # Deprecated?
+        # Deprecated? Note: this is currently the only way to refer to lifecycled methods on the stub, since they have . in the tag
         return self._blueprint[tag]
 
     def __setitem__(self, tag: str, obj: Provider):
@@ -273,7 +283,7 @@ class _Stub:
 
                 if self._pty_input_stream:
                     output_mgr._visible_progress = False
-                    async with write_stdin_to_pty_stream(app._pty_input_stream):
+                    async with _pty.write_stdin_to_pty_stream(app._pty_input_stream):
                         yield app
                     output_mgr._visible_progress = True
                 else:
@@ -406,6 +416,7 @@ class _Stub:
         client=None,
         stdout=None,
         show_progress=None,
+        object_entity="ap",
     ):
         """Deploy an app and export its objects persistently.
 
@@ -465,6 +476,7 @@ class _Stub:
                 app_id=app._app_id,
                 name=name,
                 namespace=namespace,
+                object_entity=object_entity,
             )
             deploy_response = await client.stub.AppDeploy(deploy_req)
         output_mgr.print_if_visible(f"\nView Deployment: [magenta]{deploy_response.url}[/magenta]")
@@ -515,7 +527,8 @@ class _Stub:
         if function_handle is None:
             function_handle = _FunctionHandle._new()
 
-        function_handle._set_raw_f(info.raw_f)
+        function_handle._set_info(info)
+        function_handle._set_stub(self)
         self._function_handles[tag] = function_handle
         return function_handle
 
@@ -539,13 +552,13 @@ class _Stub:
                 self._local_mounts.append(mount)
 
     @property
-    def registered_functions(self) -> List[str]:
-        """Names of modal.Function objects registered on the stub."""
-        return list(self._function_handles.keys())
+    def registered_functions(self) -> Dict[str, _FunctionHandle]:
+        """All modal.Function objects registered on the stub."""
+        return self._function_handles
 
     @property
-    def registered_entrypoints(self) -> Dict[str, Callable]:
-        """Names of local CLI entrypoints registered on the stub."""
+    def registered_entrypoints(self) -> Dict[str, LocalEntrypoint]:
+        """All local CLI entrypoints registered on the stub."""
         return self._local_entrypoints
 
     @property
@@ -584,8 +597,8 @@ class _Stub:
 
         """
         info = FunctionInfo(raw_f, False, name_override=name)
-        self._local_entrypoints[info.get_tag()] = raw_f
-        return raw_f
+        entrypoint = self._local_entrypoints[info.get_tag()] = LocalEntrypoint(raw_f, self)
+        return entrypoint
 
     @decorator_with_options
     def function(
@@ -636,6 +649,7 @@ class _Stub:
         function = _Function(
             function_handle,
             info,
+            _stub=self,
             image=image,
             secret=secret,
             secrets=secrets,
@@ -724,6 +738,7 @@ class _Stub:
         function = _Function(
             function_handle,
             info,
+            _stub=self,
             image=image,
             secret=secret,
             secrets=secrets,
@@ -805,6 +820,7 @@ class _Stub:
         function = _Function(
             function_handle,
             info,
+            _stub=self,
             image=image,
             secret=secret,
             secrets=secrets,
