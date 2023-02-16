@@ -94,20 +94,20 @@ async def test_shared_volume_handle_dir(client, tmp_path, servicer):
 
 
 @pytest.mark.asyncio
-@mock.patch("modal.shared_volume.LARGE_FILE_LIMIT", 10)
 async def test_shared_volume_handle_big_file(client, tmp_path, servicer, blob_server, *args):
-    stub = modal.aio.AioStub()
-    stub.vol = modal.aio.AioSharedVolume()
-    local_file_path = tmp_path / "bigfile"
-    local_file_path.write_text("hello world, this is a lot of text")
+    with mock.patch("modal.shared_volume.LARGE_FILE_LIMIT", 10):
+        stub = modal.aio.AioStub()
+        stub.vol = modal.aio.AioSharedVolume()
+        local_file_path = tmp_path / "bigfile"
+        local_file_path.write_text("hello world, this is a lot of text")
 
-    async with stub.run(client=client) as app:
-        handle = app.vol
-        await handle.add_local_file(local_file_path)
+        async with stub.run(client=client) as app:
+            handle = app.vol
+            await handle.add_local_file(local_file_path)
 
-    assert servicer.shared_volume_files[handle.object_id].keys() == {"/bigfile"}
-    assert servicer.shared_volume_files[handle.object_id]["/bigfile"].data == b""
-    assert servicer.shared_volume_files[handle.object_id]["/bigfile"].data_blob_id == "bl-1"
+        assert servicer.shared_volume_files[handle.object_id].keys() == {"/bigfile"}
+        assert servicer.shared_volume_files[handle.object_id]["/bigfile"].data == b""
+        assert servicer.shared_volume_files[handle.object_id]["/bigfile"].data_blob_id == "bl-1"
 
-    _, blobs = blob_server
-    assert blobs["bl-1"] == b"hello world, this is a lot of text"
+        _, blobs = blob_server
+        assert blobs["bl-1"] == b"hello world, this is a lot of text"
