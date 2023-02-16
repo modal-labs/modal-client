@@ -21,7 +21,7 @@ from ._tracing import inject_tracing_context
 from .config import config, logger
 from .exception import AuthError, ConnectionError, DeprecationError, VersionError
 
-HEARTBEAT_INTERVAL = 15.0
+HEARTBEAT_INTERVAL = config.get("heartbeat_interval")
 HEARTBEAT_TIMEOUT = 10.1
 CLIENT_CREATE_ATTEMPT_TIMEOUT = 4.0
 CLIENT_CREATE_TOTAL_TIMEOUT = 15.0
