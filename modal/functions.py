@@ -50,7 +50,7 @@ from .proxy import _Proxy
 from .rate_limit import RateLimit
 from .retries import Retries
 from .schedule import Schedule
-from .secret import _Secret
+from .secret import _Secret, _resolve_secret
 from .shared_volume import _SharedVolume
 
 
@@ -817,15 +817,7 @@ class _Function(Provider[_FunctionHandle]):
             image_id = None  # Happens if it's a notebook function
         secret_ids = []
         for secret in self._secrets:
-            try:
-                secret_id = await resolver.load(secret)
-            except NotFoundError as ex:
-                if isinstance(secret, _Secret):
-                    msg = f"Secret {secret} was not found"
-                else:
-                    msg = str(ex)
-                msg += ". You can add secrets to your account at https://modal.com/secrets"
-                raise NotFoundError(msg)
+            secret_id = await _resolve_secret(resolver, secret)
             secret_ids.append(secret_id)
 
         mount_ids = []

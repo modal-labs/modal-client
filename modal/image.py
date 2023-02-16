@@ -13,6 +13,8 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 from modal_utils.grpc_utils import retry_transient_errors
 
+from google.protobuf.struct_pb2 import NullValue
+
 from . import is_local
 from ._function_utils import FunctionInfo
 from ._resolver import Resolver
@@ -21,7 +23,7 @@ from .exception import InvalidError, NotFoundError, RemoteError
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _get_client_mount, _Mount
 from .object import Handle, Provider
-from .secret import _Secret
+from .secret import _Secret, _resolve_secret
 from .shared_volume import _SharedVolume
 
 
@@ -116,6 +118,8 @@ class _Image(Provider[_ImageHandle]):
         gpu_config: api_pb2.GPUConfig = api_pb2.GPUConfig(),
         build_function=None,
         context_mount: Optional[_Mount] = None,
+        registry_type:Optional[api_pb2.RegistryType] = None,
+        registry_params:Optional[_RegistryParams] = None,
     ):
         if ref and (base_images or dockerfile_commands or context_files):
             raise InvalidError("No other arguments can be provided when initializing an image from a ref.")
@@ -142,23 +146,27 @@ class _Image(Provider[_ImageHandle]):
                 image_id = await resolver.load(ref)
                 return _ImageHandle._from_id(image_id, resolver.client, None)
 
+            # Resolve private registry secrets.
+            _registry_params = registry_params
+            if registry_params is not None:
+                _registry_params = await registry_params.resolve(resolver)
+
             # Recursively build base images
             base_image_ids: list[str] = []
             for image in base_images.values():
                 base_image_ids.append(await resolver.load(image))
             base_images_pb2s = [
-                api_pb2.BaseImage(docker_tag=docker_tag, image_id=image_id)
+                api_pb2.BaseImage(
+                    docker_tag=docker_tag,
+                    image_id=image_id,
+                    registry_type=registry_type,
+                    registry_params=_registry_params)
                 for docker_tag, image_id in zip(base_images.keys(), base_image_ids)
             ]
 
             secret_ids = []
             for secret in secrets:
-                try:
-                    secret_id = await resolver.load(secret)
-                except NotFoundError as ex:
-                    raise NotFoundError(
-                        str(ex) + "\n" + "You can add secrets to your account at https://modal.com/secrets"
-                    )
+                secret_id = await _resolve_secret(resolver, secret)
                 secret_ids.append(secret_id)
 
             context_file_pb2s = []
@@ -641,6 +649,17 @@ class _Image(Provider[_ImageHandle]):
         return self.extend(dockerfile_commands=dockerfile_commands, context_files=context_files)
 
     @staticmethod
+    def _registry_setup_commands(tag: str, setup_commands:list[str]) -> list[str]:
+        """mdmd:hidden"""
+        return [
+            f"FROM {tag}",
+            *(f"RUN {cmd}" for cmd in setup_commands),
+            "COPY /modal_requirements.txt /modal_requirements.txt",
+            "RUN python -m pip install --upgrade pip",
+            "RUN python -m pip install -r /modal_requirements.txt",
+        ]
+
+    @staticmethod
     def from_dockerhub(tag: str, setup_commands: list[str] = [], **kwargs) -> "_Image":
         """
         Build a Modal image from a pre-existing image on Docker Hub.
@@ -665,18 +684,56 @@ class _Image(Provider[_ImageHandle]):
         ```
         """
         requirements_path = _get_client_requirements_path()
-
-        dockerfile_commands = [
-            f"FROM {tag}",
-            *(f"RUN {cmd}" for cmd in setup_commands),
-            "COPY /modal_requirements.txt /modal_requirements.txt",
-            "RUN python -m pip install --upgrade pip",
-            "RUN python -m pip install -r /modal_requirements.txt",
-        ]
+ 
+        dockerfile_commands = _Image._registry_setup_commands(tag, setup_commands)
 
         return _Image._from_args(
             dockerfile_commands=dockerfile_commands,
             context_files={"/modal_requirements.txt": requirements_path},
+            registry_type=api_pb2.RegistryType.DOCKERHUB,
+            registry_params=_RegistryParams(),
+            **kwargs,
+        )
+
+    @staticmethod
+    def from_ecr(tag: str, secret=_Secret, setup_commands: list[str] = [], **kwargs) -> "_Image":
+        """
+        Build a Modal image from a pre-existing image on a private AWS Elastic
+        Container Registry (ECR). You will need to pass a `modal.Secret` containing
+        an AWS key (`AWS_ACCESS_KEY_ID`) and secret (`AWS_SECRET_ACCESS_KEY`)
+        with permissions to access the target ECR registry.
+        
+        Refer to ["Private repository policies"](https://docs.aws.amazon.com/AmazonECR/latest/userguide/repository-policies.html)
+        for details about IAM configuration.
+
+        The same assumptions hold from `from_dockerhub`:
+
+        - Python 3.7 or above is present, and is available as `python`.
+        - `pip` is installed correctly.
+        - The image is built for the `linux/amd64` platform.
+
+        You can use the `setup_commands` argument to run any
+        commands in the image before Modal is installed.
+        This might be useful if Python or pip is not installed.
+
+        **Example**
+
+        ```python
+        modal.Image.from_ecr(
+          "000000000000.dkr.ecr.us-east-1.amazonaws.com/my-private-registry",
+          setup_commands=["apt-get update", "apt-get install -y python3-pip"]
+        )
+        ```
+        """
+        requirements_path = _get_client_requirements_path()
+
+        dockerfile_commands = _Image._registry_setup_commands(tag, setup_commands)
+
+        return _Image(
+            dockerfile_commands=dockerfile_commands,
+            context_files={"/modal_requirements.txt": requirements_path},
+            registry_type=api_pb2.RegistryType.ECR,
+            registry_params=_RegistryParams(secret),
             **kwargs,
         )
 
@@ -851,6 +908,20 @@ class _Image(Provider[_ImageHandle]):
             dockerfile_commands=["FROM base"] + [f"ENV {key}={shlex.quote(val)}" for (key, val) in vars.items()]
         )
 
+
+class _RegistryParams:
+    """mdmd:hidden"""
+    def __init__(self, secret:Optional[_Secret] = None):
+        self.secret = secret
+    
+    async def resolve(self, resolver:Resolver) -> api_pb2.RegistryParams:
+        if not self.secret:
+            return api_pb2.RegistryParams()
+
+        return api_pb2.RegistryParams(
+            secret_id=await 
+            _resolve_secret(resolver, self.secret)
+        )
 
 synchronize_apis(_ImageHandle)
 Image, AioImage = synchronize_apis(_Image)
