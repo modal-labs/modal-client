@@ -85,10 +85,6 @@ def test_cloud_provider_selection(client, servicer):
     with pytest.raises(InvalidError):
         stub.function(dummy, cloud="foo")
 
-    # Cannot select cloud provider without A100.
-    with pytest.raises(InvalidError):
-        stub.function(dummy, cloud="gcp")
-
 
 A100_GPU_MEMORY_MAPPING = {0: api_pb2.GPU_TYPE_A100, 20: api_pb2.GPU_TYPE_A100_20G, 40: api_pb2.GPU_TYPE_A100}
 

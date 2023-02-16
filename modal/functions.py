@@ -33,7 +33,7 @@ from ._blob_utils import (
 )
 from ._call_graph import InputInfo, reconstruct_call_graph
 from ._function_utils import FunctionInfo, LocalFunctionError, load_function_from_module
-from ._location import CloudProvider, parse_cloud_provider
+from ._location import parse_cloud_provider
 from ._output import OutputManager
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
@@ -783,8 +783,6 @@ class _Function(Provider[_FunctionHandle]):
         self._gpu_config = parse_gpu_config(gpu)
         if cloud_provider:
             self._cloud_provider = parse_cloud_provider(cloud_provider)
-            if self._cloud_provider != CloudProvider.AWS and self._gpu_config.type != api_pb2.GPU_TYPE_A100:
-                raise InvalidError("Cloud selection only supported for functions running with A100 GPUs.")
         else:
             self._cloud_provider = None
 
