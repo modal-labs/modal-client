@@ -709,7 +709,7 @@ class _Function(Provider[_FunctionHandle]):
         keep_warm: Union[bool, int] = False,
         interactive: bool = False,
         name: Optional[str] = None,
-        cloud_provider: Optional[str] = None,
+        cloud: Optional[str] = None,
     ) -> None:
         """mdmd:hidden"""
         raw_f = function_info.raw_f
@@ -781,8 +781,9 @@ class _Function(Provider[_FunctionHandle]):
         self._interactive = interactive
         self._tag = self._info.get_tag()
         self._gpu_config = parse_gpu_config(gpu)
-        if cloud_provider:
-            self._cloud_provider = parse_cloud_provider(cloud_provider)
+        self._cloud = cloud
+        if cloud:
+            self._cloud_provider = parse_cloud_provider(cloud)
         else:
             self._cloud_provider = None
 
