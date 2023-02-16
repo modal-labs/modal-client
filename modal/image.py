@@ -13,8 +13,6 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 from modal_utils.grpc_utils import retry_transient_errors
 
-from google.protobuf.struct_pb2 import NullValue
-
 from . import is_local
 from ._function_utils import FunctionInfo
 from ._resolver import Resolver

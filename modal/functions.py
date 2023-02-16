@@ -39,7 +39,7 @@ from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._traceback import append_modal_tb
 from .client import _Client
-from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError
+from .exception import ExecutionError, InvalidError, RemoteError
 from .exception import TimeoutError as _TimeoutError
 from .exception import deprecation_error
 from .gpu import GPU_T, parse_gpu_config
