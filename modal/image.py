@@ -99,6 +99,19 @@ class _ImageHandle(Handle, type_prefix="im"):
         return self.object_id == env_image_id
 
 
+class _RegistryParams:
+    """mdmd:hidden"""
+
+    def __init__(self, secret: Optional[_Secret] = None):
+        self.secret = secret
+
+    async def resolve(self, resolver: Resolver) -> api_pb2.RegistryParams:
+        if not self.secret:
+            return api_pb2.RegistryParams()
+
+        return api_pb2.RegistryParams(secret_id=await _resolve_secret(resolver, self.secret))
+
+
 class _Image(Provider[_ImageHandle]):
     """Base class for container images to run functions in.
 
@@ -116,8 +129,8 @@ class _Image(Provider[_ImageHandle]):
         gpu_config: api_pb2.GPUConfig = api_pb2.GPUConfig(),
         build_function=None,
         context_mount: Optional[_Mount] = None,
-        registry_type: Optional[api_pb2.RegistryType] = None,
-        registry_params: Optional[_RegistryParams] = None,
+        registry_type: api_pb2.RegistryType.V = api_pb2.RegistryType.DOCKERHUB,
+        registry_params: _RegistryParams = _RegistryParams(),
     ):
         if ref and (base_images or dockerfile_commands or context_files):
             raise InvalidError("No other arguments can be provided when initializing an image from a ref.")
@@ -145,8 +158,7 @@ class _Image(Provider[_ImageHandle]):
                 return _ImageHandle._from_id(image_id, resolver.client, None)
 
             # Resolve private registry secrets.
-            _registry_params = registry_params
-            if registry_params is not None:
+            if registry_type in {api_pb2.RegistryType.ECR}:
                 _registry_params = await registry_params.resolve(resolver)
 
             # Recursively build base images
@@ -906,19 +918,6 @@ class _Image(Provider[_ImageHandle]):
         return self.extend(
             dockerfile_commands=["FROM base"] + [f"ENV {key}={shlex.quote(val)}" for (key, val) in vars.items()]
         )
-
-
-class _RegistryParams:
-    """mdmd:hidden"""
-
-    def __init__(self, secret: Optional[_Secret] = None):
-        self.secret = secret
-
-    async def resolve(self, resolver: Resolver) -> api_pb2.RegistryParams:
-        if not self.secret:
-            return api_pb2.RegistryParams()
-
-        return api_pb2.RegistryParams(secret_id=await _resolve_secret(resolver, self.secret))
 
 
 synchronize_apis(_ImageHandle)
