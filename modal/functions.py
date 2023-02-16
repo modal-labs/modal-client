@@ -42,7 +42,7 @@ from .client import _Client
 from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError
 from .exception import TimeoutError as _TimeoutError
 from .exception import deprecation_error
-from .gpu import GPU_T, parse_gpu_config
+from .gpu import GPU_T, parse_gpu_config, display_gpu_config
 from .image import _Image
 from .mount import _Mount
 from .object import Handle, Provider
@@ -788,10 +788,18 @@ class _Function(Provider[_FunctionHandle]):
             self._cloud_provider = None
 
         self._panel_items = [
-            str(i) for i in [*self._mounts, self._image, *self._secrets, *self._shared_volumes.values()]
+            str(i)
+            for i in [
+                *self._mounts,
+                self._image,
+                *self._secrets,
+                *self._shared_volumes.values(),
+            ]
         ]
-        if self._gpu:
-            self._panel_items.append("GPU")
+        if gpu:
+            self._panel_items.append(display_gpu_config(gpu))
+        if cloud:
+            self._panel_items.append(f"Cloud({cloud.upper()})")
 
         self._function_handle = function_handle
 
