@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2022
 import os
-import pytest
 import sys
 import traceback
 import unittest.mock
@@ -9,6 +8,7 @@ from unittest import mock
 
 import click
 import click.testing
+import pytest
 import pytest_asyncio
 
 from modal.cli.entry_point import entrypoint_cli

@@ -388,8 +388,8 @@ class _Stub:
                 " This can hopefully be fixed in a future version of Modal."
             elif sys.version_info[:2] <= (3, 7):
                 unsupported_msg = (
-                  "Live-reload skipped. This feature is unsupported below Python 3.8."
-                  " Upgrade to Python 3.8+ to enable live-reloading."
+                    "Live-reload skipped. This feature is unsupported below Python 3.8."
+                    " Upgrade to Python 3.8+ to enable live-reloading."
                 )
 
             if unsupported_msg:
