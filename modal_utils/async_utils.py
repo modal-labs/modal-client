@@ -4,6 +4,7 @@ import concurrent.futures
 import functools
 import inspect
 import time
+import typing
 from typing import Any, Awaitable, Callable, List, Optional, Set, TypeVar
 from typing_extensions import ParamSpec
 
@@ -329,3 +330,15 @@ def asyncify(f: Callable[P, T]) -> Callable[P, Awaitable[T]]:
         return loop.run_in_executor(None, functools.partial(f, *args, **kwargs))
 
     return wrapper
+
+
+class ConcurrencyPool:
+    def __init__(self, concurrency_limit: int):
+        self.semaphore = asyncio.Semaphore(concurrency_limit)
+
+    async def run_coros(self, coros: typing.Iterable[typing.Coroutine], return_exceptions=False):
+        async def blocking_wrapper(coro):
+            async with self.semaphore:
+                return await coro
+
+        return await asyncio.gather(*coros, return_exceptions=return_exceptions)

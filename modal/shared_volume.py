@@ -1,11 +1,10 @@
 # Copyright Modal Labs 2022
-import asyncio
 import os
 from pathlib import Path, PurePosixPath
 from typing import AsyncIterator, BinaryIO, List, Optional, Union
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_apis
+from modal_utils.async_utils import synchronize_apis, ConcurrencyPool
 from modal_utils.grpc_utils import retry_transient_errors, unary_stream
 from modal_utils.hash_utils import get_sha256_hex
 
@@ -94,7 +93,6 @@ class _SharedVolumeHandle(Handle, type_prefix="sv"):
         self,
         local_path: Union[Path, str],
         remote_path: Optional[Union[str, PurePosixPath, None]] = None,
-        concurrency=20,
     ):
         local_path = Path(local_path)
         if remote_path is None:
@@ -111,13 +109,7 @@ class _SharedVolumeHandle(Handle, type_prefix="sv"):
                 relpath_str = subpath.relative_to(local_path).as_posix()
                 yield self.add_local_file(subpath, PurePosixPath(remote_path, relpath_str))
 
-        sem = asyncio.Semaphore(concurrency)
-
-        async def limited_task(coro):
-            async with sem:
-                return await coro
-
-        await asyncio.gather(*(limited_task(t) for t in gen_transfers()), return_exceptions=True)
+        await ConcurrencyPool(20).run_coros(gen_transfers(), return_exceptions=True)
 
     async def listdir(self, path: str) -> List[api_pb2.SharedVolumeListFilesEntry]:
         """List all files in a directory in the shared volume.
