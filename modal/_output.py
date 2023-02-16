@@ -381,7 +381,11 @@ class OutputManager:
             try:
                 await _get_logs()
             except asyncio.CancelledError:
-                logger.debug("Logging cancelled")
+                # TODO: this should come from the backend maybe
+                app_logs_url = f"https://modal.com/logs/{app_id}"
+                self.print_if_visible(
+                    f"[red]Timed out waiting for logs. [grey70]View logs at [underline]{app_logs_url}[/underline] for remaining output.[/grey70]"
+                )
                 raise
             except (GRPCError, StreamTerminatedError) as exc:
                 if isinstance(exc, GRPCError):
