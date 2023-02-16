@@ -222,4 +222,5 @@ def shell(
             image=_function._image,
             secrets=_function._secrets,
             gpu=_function._gpu,
+            cloud=_function._cloud,
         )
