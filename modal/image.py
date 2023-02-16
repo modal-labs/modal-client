@@ -158,6 +158,7 @@ class _Image(Provider[_ImageHandle]):
                 return _ImageHandle._from_id(image_id, resolver.client, None)
 
             # Resolve private registry secrets.
+            _registry_params = registry_params
             if registry_type in {api_pb2.RegistryType.ECR}:
                 _registry_params = await registry_params.resolve(resolver)
 
