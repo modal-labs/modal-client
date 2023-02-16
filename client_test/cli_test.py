@@ -43,7 +43,6 @@ async def set_env_client(aio_client):
 def _run(args, expected_exit_code=0):
     runner = click.testing.CliRunner()
     cli_command = [sys.executable, "-m", "modal.cli.entry_point", *args]
-
     with mock.patch("modal._live_reload.get_restart_cli_command", return_value=cli_command):
         res = runner.invoke(entrypoint_cli, args)
         if res.exit_code != expected_exit_code:
@@ -239,14 +238,15 @@ def test_no_user_code_in_synchronicity_deploy(servicer, server_url_env, test_dir
     assert pytest._did_load_main_thread_assertion
 
 
-@mock.patch("modal.client.HEARTBEAT_INTERVAL", 1)
 def test_serve(servicer, server_url_env, test_dir):
-    os.environ["MODAL_HEARTBEAT_INTERVAL"] = "1"  # propagate to child processes
-    stub_file = test_dir / "supports" / "app_run_tests" / "webhook.py"
-    _run(["serve", stub_file.as_posix(), "--timeout", "3"], expected_exit_code=0)
-    apps = list(servicer.app_heartbeats.keys())
-    assert len(apps) == 1
-    assert servicer.app_heartbeats[apps[0]] >= 2
+    with mock.patch("modal.stub.HEARTBEAT_INTERVAL", 1):
+        os.environ["MODAL_HEARTBEAT_INTERVAL"] = "1"  # propagate to child processes
+        stub_file = test_dir / "supports" / "app_run_tests" / "webhook.py"
+        res = _run(["serve", stub_file.as_posix(), "--timeout", "3"], expected_exit_code=0)
+        print(res.stdout)
+        apps = list(servicer.app_heartbeats.keys())
+        assert len(apps) == 1
+        assert servicer.app_heartbeats[apps[0]] >= 2
 
 
 def test_shell(servicer, server_url_env, test_dir):
