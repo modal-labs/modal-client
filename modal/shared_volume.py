@@ -83,10 +83,7 @@ class _SharedVolumeHandle(Handle, type_prefix="sv"):
         * Passing a file path returns a list containing only that file's listing description
         * Passing a glob path (including at least one * or ** sequence) returns all files matching that glob path (using absolute paths)
         """
-        entries = []
-        async for entry in self.iterdir(path):
-            entries.append(entry)
-        return entries
+        return [entry async for entry in self.iterdir(path)]
 
     async def remove_file(self, path: str, recursive=False):
         """Remove a file in a shared volume."""

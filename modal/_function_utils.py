@@ -109,7 +109,7 @@ class FunctionInfo:
                 raise Exception("Wasn't able to find the package directory!")
             elif len(base_dirs) > 1:
                 # Base_dirs should all be prefixes of each other since they all contain `module_file`.
-                base_dirs.sort(key=lambda x: len(x))
+                base_dirs.sort(key=len)
 
             self.base_dir = base_dirs[0]
             self.module_name = module.__spec__.name
