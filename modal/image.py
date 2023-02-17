@@ -563,8 +563,6 @@ class _Image(Provider[_ImageHandle]):
             "&& rm -rf /tmp/miniconda.sh",
             # Biggest and most stable community-led Conda channel.
             "RUN conda config --add channels conda-forge \\ ",
-            # "Strict channel priority can dramatically speed up conda operations and also reduce package incompatibility problems."
-            "&& conda config --set channel_priority strict \\ ",
             # softlinking can put conda in a broken state, surfacing error on uninstall like:
             # `No such device or address: '/usr/local/lib/libz.so' -> '/usr/local/lib/libz.so.c~'`
             "&& conda config --set allow_softlinks false \\ ",
