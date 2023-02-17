@@ -639,6 +639,7 @@ message MountPutFileRequest {
 
 message MountPutFileResponse {
   bool exists = 2;
+  bool transfer_complete = 3;
 }
 
 message ProxyInfo {
