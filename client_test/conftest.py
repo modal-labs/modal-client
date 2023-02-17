@@ -6,21 +6,20 @@ import contextlib
 import hashlib
 import inspect
 import os
-from collections import defaultdict
-from typing import Dict
-
-import pytest
 import shutil
 import sys
 import tempfile
 import traceback
+from collections import defaultdict
 from pathlib import Path
+from typing import Dict
 
 import aiohttp.web
 import aiohttp.web_runner
 import cloudpickle
 import grpclib.server
 import pkg_resources
+import pytest
 import pytest_asyncio
 from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
@@ -83,7 +82,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.task_result = None
 
-        self.shared_volume_files = []
+        self.shared_volume_files: Dict[str, Dict[str, api_pb2.SharedVolumePutFileRequest]] = defaultdict(dict)
         self.images = {}
         self.image_build_function_ids = {}
         self.fail_blob_create = []
@@ -472,6 +471,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def SharedVolumeCreate(self, stream):
         await stream.recv_message()
         await stream.send_message(api_pb2.SharedVolumeCreateResponse(shared_volume_id="sv-123"))
+
+    async def SharedVolumePutFile(self, stream):
+        req = await stream.recv_message()
+        self.shared_volume_files[req.shared_volume_id][req.path] = req
+        await stream.send_message(Empty())
 
     ### Task
 
