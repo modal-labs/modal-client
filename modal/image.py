@@ -549,7 +549,7 @@ class _Image(Provider[_ImageHandle]):
         requirements_path = _get_client_requirements_path()
         # Doesn't use the official continuumio/miniconda3 image as a base. That image has maintenance
         # issues (https://github.com/ContinuumIO/docker-images/issues) and building our own is more flexible.
-        conda_install_script = "https://repo.anaconda.com/miniconda/Miniconda3-4.7.12-Linux-x86_64.sh"
+        conda_install_script = "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh"
         dockerfile_commands = [
             "FROM debian:bullseye",  # the -slim images lack files required by Conda.
             # Temporarily add utility packages for conda installation.
