@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2023
 import asyncio
 import os
+import platform
 import sys
 import pytest
 
@@ -33,6 +34,7 @@ class FakeProcess:
 
 
 @pytest.mark.skipif(sys.version_info < (3, 8), reason="live-reload requires python3.8 or higher")
+@pytest.mark.skipif(platform.system() == "Windows", reason="live-reload not supported on windows")
 def test_file_changes_trigger_reloads(client, monkeypatch, servicer, test_dir):
     async def fake_watch(mounts, output_mgr, timeout):
         for i in range(3):
@@ -46,7 +48,7 @@ def test_file_changes_trigger_reloads(client, monkeypatch, servicer, test_dir):
     monkeypatch.setattr("modal._watcher.watch", fake_watch)
 
     stub.serve(client=client, timeout=None)
-    assert mock_create_subprocess_exec.call_count == 3
+    assert mock_create_subprocess_exec.call_count == 4  # 1 + number of file changes
 
 
 @pytest.mark.asyncio

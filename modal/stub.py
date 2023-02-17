@@ -3,12 +3,14 @@ import asyncio
 import contextlib
 import inspect
 import os
+import platform
 import signal
 import sys
 import warnings
 from enum import Enum
 from typing import AsyncGenerator, Collection, Dict, List, Optional, Union
 
+from aiostream import stream
 from rich.tree import Tree
 
 from modal_proto import api_pb2
@@ -380,25 +382,31 @@ class _Stub:
             except asyncio.exceptions.CancelledError:
                 return
         else:
-            if sys.version_info <= (3, 7):
-                async with self._run(client, output_mgr, None, mode=StubRunMode.SERVE) as app:
-                    client.set_pre_stop(app.disconnect)
-                    existing_app_id = app.app_id
-                    async for _ in watch(self._local_mounts, output_mgr, timeout):
-                        output_mgr.print_if_visible(
-                            "Live-reload skipped. This feature is unsupported below Python 3.8."
-                            " Upgrade to Python 3.8+ to enable live-reloading."
-                        )
-            else:
-                async with self._run(client, output_mgr, None, mode=StubRunMode.SERVE) as app:
-                    client.set_pre_stop(app.disconnect)
-                    existing_app_id = app.app_id
-                    # Note: when the context manager exits, it closes the logs.
-                    # This is intentional since we run subprocesses right after that fetch logs.
+            unsupported_msg = None
+            if platform.system() == "Windows":
+                unsupported_msg = "Live-reload skipped. This feature is currently unsupported on Windows"
+                " This can hopefully be fixed in a future version of Modal."
+            elif sys.version_info < (3, 8):
+                unsupported_msg = (
+                    "Live-reload skipped. This feature is unsupported below Python 3.8."
+                    " Upgrade to Python 3.8+ to enable live-reloading."
+                )
 
-                curr_proc = None
-                try:
+            if unsupported_msg:
+                async with self._run(client, output_mgr, None, mode=StubRunMode.SERVE) as app:
+                    client.set_pre_stop(app.disconnect)
                     async for _ in watch(self._local_mounts, output_mgr, timeout):
+                        output_mgr.print_if_visible(unsupported_msg)
+            else:
+                app = await _App._init_new(client, self.description, deploying=False, detach=False)
+                curr_proc = None
+                _STARTING_SENTINEL = object()
+
+                async def startup_gen():
+                    yield _STARTING_SENTINEL
+
+                try:
+                    async for _ in stream.merge(startup_gen(), watch(self._local_mounts, output_mgr, timeout)):
                         curr_proc = await restart_serve(
                             existing_app_id=app.app_id, prev_proc=curr_proc, output_mgr=output_mgr
                         )
