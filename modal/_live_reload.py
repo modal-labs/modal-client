@@ -10,6 +10,10 @@ from ._output import OutputManager
 MODAL_AUTORELOAD_ENV = "MODAL_AUTORELOAD_SERVE"
 
 
+def get_restart_cli_command():
+    return [sys.executable, *_get_child_arguments()]
+
+
 async def restart_serve(existing_app_id: str, prev_proc: Process, output_mgr: OutputManager) -> Process:
     if prev_proc:
         try:
@@ -18,8 +22,7 @@ async def restart_serve(existing_app_id: str, prev_proc: Process, output_mgr: Ou
             output_mgr.print_if_visible("[yellow]⚡️ Previous serving app process crashed.[/yellow]")
     env = {**os.environ, **{MODAL_AUTORELOAD_ENV: existing_app_id}}
     return await asyncio.create_subprocess_exec(
-        sys.executable,
-        *_get_child_arguments(),
+        *get_restart_cli_command(),
         env=env,
     )
 

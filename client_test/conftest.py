@@ -44,6 +44,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     def __init__(self, blob_host, blobs):
         self.app_state = {}
+        self.app_heartbeats: Dict[str, int] = defaultdict(int)
         self.n_blobs = 0
         self.blob_host = blob_host
         self.blobs = blobs  # shared dict
@@ -188,8 +189,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(api_pb2.AppLookupObjectResponse(object_id=object_id, function=function))
 
     async def AppHeartbeat(self, stream):
-        request: api_pb2.ClientHeartbeatRequest = await stream.recv_message()
+        request: api_pb2.AppHeartbeatRequest = await stream.recv_message()
         self.requests.append(request)
+        self.app_heartbeats[request.app_id] += 1
         await stream.send_message(Empty())
 
     ### Blob
