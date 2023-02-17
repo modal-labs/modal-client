@@ -180,7 +180,7 @@ class Provider(Generic[H]):
         handle_cls = self.get_handle_cls()
         object_entity = handle_cls._type_prefix
         _stub = _Stub(label, _object=self)
-        await _stub.deploy(namespace=namespace, client=client, object_entity=object_entity)
+        await _stub.deploy(namespace=namespace, client=client, object_entity=object_entity, show_progress=False)
         handle: H = await handle_cls.from_app(label, namespace=namespace, client=client)
         return handle
 
