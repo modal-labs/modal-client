@@ -52,7 +52,7 @@ class _SharedVolumeHandle(Handle, type_prefix="sv"):
         else:
             data = fp.read()
             req = api_pb2.SharedVolumePutFileRequest(shared_volume_id=self._object_id, path=remote_path, data=data)
-        await retry_transient_errors(self._client.stub.SharedVolumePutFile, req, max_retries=20)
+        await retry_transient_errors(self._client.stub.SharedVolumePutFile, req)
         return data_size  # might be better if this is returned from the server
 
     async def read_file(self, path: str) -> AsyncIterator[bytes]:
