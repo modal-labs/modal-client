@@ -4,6 +4,7 @@ import uuid
 from typing import Awaitable, Callable, Generic, Optional, Type, TypeVar
 
 from google.protobuf.message import Message
+from grpclib import GRPCError, Status
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
@@ -100,9 +101,17 @@ class Handle(metaclass=ObjectMeta):
             namespace=namespace,
             object_entity=cls._type_prefix,
         )
-        response = await client.stub.AppLookupObject(request)
-        if not response.object_id:
-            raise NotFoundError(response.error_message)
+        try:
+            response = await client.stub.AppLookupObject(request)
+            if not response.object_id:
+                # Legacy error message: remove soon
+                raise NotFoundError(response.error_message)
+        except GRPCError as exc:
+            if exc.status == Status.NOT_FOUND:
+                raise NotFoundError(exc.message)
+            else:
+                raise
+
         proto = response.function  # TODO: handle different object types
         handle: H = cls._from_id(response.object_id, client, proto)
         return handle
@@ -283,5 +292,11 @@ class Provider(Generic[H]):
             namespace=namespace,
             object_entity=handle_cls._type_prefix,
         )
-        response = await client.stub.AppLookupObject(request)
-        return bool(response.object_id)
+        try:
+            response = await client.stub.AppLookupObject(request)
+            return bool(response.object_id)  # old code path - change to `return True` shortly
+        except GRPCError as exc:
+            if exc.status == Status.NOT_FOUND:
+                return False
+            else:
+                raise
