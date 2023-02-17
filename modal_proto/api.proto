@@ -197,9 +197,20 @@ message AppHeartbeatRequest {
   string app_id = 1;
 }
 
+enum RegistryType {
+  DOCKERHUB = 0;
+  ECR = 1;
+}
+
+message RegistryParams {
+  string secret_id = 1;
+}
+
 message BaseImage {
   string image_id = 1;
   string docker_tag = 2;
+  RegistryType registry_type = 3;
+  RegistryParams registry_params = 4;
 }
 
 message BlobCreateRequest {

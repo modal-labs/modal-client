@@ -247,6 +247,23 @@ def test_dockerhub_install(servicer, client):
         assert any("apt-get update" in cmd for cmd in layers[0].dockerfile_commands)
 
 
+def test_ecr_install(servicer, client):
+    image_tag = "000000000000.dkr.ecr.us-east-1.amazonaws.com/my-private-registry:latest"
+    stub = Stub(
+        image=Image.from_ecr(
+            image_tag,
+            setup_commands=["apt-get update"],
+            secret=Secret({"AWS_ACCESS_KEY_ID": "", "AWS_SECRET_ACCESS_KEY": ""}),
+        )
+    )
+
+    with stub.run(client=client) as running_app:
+        layers = get_image_layers(running_app["image"].object_id, servicer)
+
+        assert any(f"FROM {image_tag}" in cmd for cmd in layers[0].dockerfile_commands)
+        assert any("apt-get update" in cmd for cmd in layers[0].dockerfile_commands)
+
+
 def run_f():
     print("foo!")
 
