@@ -236,7 +236,6 @@ async def _blob_upload(upload_hashes: UploadHashes, data: Union[bytes, BinaryIO]
     resp = await retry_transient_errors(stub.BlobCreate, req)
 
     blob_id = resp.blob_id
-    target = resp.upload_url
 
     if resp.WhichOneof("upload_type_oneof") == "multipart":
         await perform_multipart_upload(
@@ -250,7 +249,7 @@ async def _blob_upload(upload_hashes: UploadHashes, data: Union[bytes, BinaryIO]
         lock = asyncio.Lock()  # not strictly necessary here
         payload = BytesIOSegmentPayload(data, lock, segment_start=0, segment_length=content_length)
         await _upload_to_s3_url(
-            target,
+            resp.upload_url,
             payload,
             # for single part uploads, we use server side md5 checksums
             content_md5_b64=upload_hashes.md5_base64,

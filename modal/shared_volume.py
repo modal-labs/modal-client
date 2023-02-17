@@ -1,9 +1,10 @@
 # Copyright Modal Labs 2022
 import os
-from typing import AsyncIterator, BinaryIO, List, Optional
+from pathlib import Path, PurePosixPath
+from typing import AsyncIterator, BinaryIO, List, Optional, Union
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_apis
+from modal_utils.async_utils import synchronize_apis, ConcurrencyPool
 from modal_utils.grpc_utils import retry_transient_errors, unary_stream
 from modal_utils.hash_utils import get_sha256_hex
 
@@ -20,7 +21,7 @@ class _SharedVolumeHandle(Handle, type_prefix="sv"):
 
     Also see the CLI methods for accessing shared volumes:
 
-    ```modal volume --help```
+    ```modal volume --help
 
     A SharedVolumeHandle *can* however be useful for some local scripting scenarios, e.g.:
 
@@ -75,6 +76,40 @@ class _SharedVolumeHandle(Handle, type_prefix="sv"):
         async for batch in unary_stream(self._client.stub.SharedVolumeListFilesStream, req):
             for entry in batch.entries:
                 yield entry
+
+    async def add_local_file(
+        self, local_path: Union[Path, str], remote_path: Optional[Union[str, PurePosixPath, None]] = None
+    ):
+        local_path = Path(local_path)
+        if remote_path is None:
+            remote_path = PurePosixPath("/", local_path.name).as_posix()
+        else:
+            remote_path = PurePosixPath(remote_path).as_posix()
+
+        with local_path.open("rb") as local_file:
+            await self.write_file(remote_path, local_file)
+
+    async def add_local_dir(
+        self,
+        local_path: Union[Path, str],
+        remote_path: Optional[Union[str, PurePosixPath, None]] = None,
+    ):
+        _local_path = Path(local_path)
+        if remote_path is None:
+            remote_path = PurePosixPath("/", _local_path.name).as_posix()
+        else:
+            remote_path = PurePosixPath(remote_path).as_posix()
+
+        assert _local_path.is_dir()
+
+        def gen_transfers():
+            for subpath in _local_path.rglob("*"):
+                if subpath.is_dir():
+                    continue
+                relpath_str = subpath.relative_to(_local_path).as_posix()
+                yield self.add_local_file(subpath, PurePosixPath(remote_path, relpath_str))
+
+        await ConcurrencyPool(20).run_coros(gen_transfers(), return_exceptions=True)
 
     async def listdir(self, path: str) -> List[api_pb2.SharedVolumeListFilesEntry]:
         """List all files in a directory in the shared volume.
