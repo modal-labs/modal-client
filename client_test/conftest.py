@@ -171,12 +171,15 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.AppLookupObjectRequest = await stream.recv_message()
         object_id = None
         app_id = self.deployed_apps.get(request.app_name)
-        if app_id is not None:
-            app_objects = self.app_objects[app_id]
-            if request.object_tag:
-                object_id = app_objects.get(request.object_tag)
-            else:
-                (object_id,) = list(app_objects.values())
+        if app_id is None:
+            raise GRPCError(Status.NOT_FOUND, f"can't find app {request.app_name}")
+        app_objects = self.app_objects[app_id]
+        if request.object_tag:
+            object_id = app_objects.get(request.object_tag)
+            if object_id is None:
+                raise GRPCError(Status.NOT_FOUND, f"can't find object {request.object_tag}")
+        else:
+            (object_id,) = list(app_objects.values())
         if self.enforce_object_entity:
             assert request.object_entity
             if object_id is not None:
