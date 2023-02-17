@@ -152,7 +152,7 @@ class _Image(Provider[_ImageHandle]):
         if context_mount is not None and not isinstance(context_mount, _Mount):
             raise InvalidError(f"Context mount {context_mount!r} must be a modal.Mount object")
 
-        async def _load(resolver: Resolver):
+        async def _load(resolver: Resolver, existing_object_id: str):
             if ref:
                 image_id = await resolver.load(ref)
                 return _ImageHandle._from_id(image_id, resolver.client, None)
@@ -215,7 +215,7 @@ class _Image(Provider[_ImageHandle]):
             req = api_pb2.ImageGetOrCreateRequest(
                 app_id=resolver.app_id,
                 image=image_definition,
-                existing_image_id=resolver.existing_object_id,  # TODO: ignored
+                existing_image_id=existing_object_id,  # TODO: ignored
                 build_function_id=build_function_id,
             )
             resp = await resolver.client.stub.ImageGetOrCreate(req)

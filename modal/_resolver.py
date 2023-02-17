@@ -17,7 +17,7 @@ class Resolver:
     _spinner: Optional[Spinner]
     _step_node: Optional[Tree]
 
-    def __init__(self, app, progress: Optional[Tree], client, app_id: str, existing_object_id: Optional[str]):
+    def __init__(self, app, progress: Optional[Tree], client, app_id: str):
         self._app = app
         self._progress = progress
         self._last_message = None
@@ -27,7 +27,6 @@ class Resolver:
         # Accessible by objects
         self.client = client
         self.app_id = app_id
-        self.existing_object_id = existing_object_id
 
     async def load(self, obj) -> str:
         # assert isinstance(obj, Provider)

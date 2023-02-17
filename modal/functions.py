@@ -806,7 +806,7 @@ class _Function(Provider[_FunctionHandle]):
         rep = r"Function({self._tag})"
         super().__init__(self._load, rep)
 
-    async def _load(self, resolver: Resolver):
+    async def _load(self, resolver: Resolver, existing_object_id: str):
         resolver.set_message(f"Creating {self._tag}...")
 
         if self._proxy:
@@ -929,7 +929,7 @@ class _Function(Provider[_FunctionHandle]):
             app_id=resolver.app_id,
             function=function_definition,
             schedule=self._schedule.proto_message if self._schedule is not None else None,
-            existing_function_id=resolver.existing_object_id,
+            existing_function_id=existing_object_id,
         )
         try:
             response = await resolver.client.stub.FunctionCreate(request)

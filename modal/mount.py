@@ -253,7 +253,7 @@ class _Mount(Provider[_MountHandle]):
                     # Can happen with temporary files (e.g. emacs will write temp files and delete them quickly)
                     logger.info(f"Ignoring file not found: {exc}")
 
-    async def _load(self, resolver: Resolver):
+    async def _load(self, resolver: Resolver, existing_object_id: str):
         # Run a threadpool to compute hash values, and use concurrent coroutines to register files.
         t0 = time.time()
         n_concurrent_uploads = 16
@@ -311,7 +311,7 @@ class _Mount(Provider[_MountHandle]):
         # Build mounts
         resolver.set_message(f"Creating mount {message_label}: Building mount")
         req = api_pb2.MountBuildRequest(
-            app_id=resolver.app_id, existing_mount_id=resolver.existing_object_id, files=files
+            app_id=resolver.app_id, existing_mount_id=existing_object_id, files=files
         )
         resp = await retry_transient_errors(resolver.client.stub.MountBuild, req, base_delay=1)
         resolver.set_message(f"Created mount {message_label}")
