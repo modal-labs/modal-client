@@ -728,7 +728,8 @@ class _Image(Provider[_ImageHandle]):
 
         ```python
         modal.Image.from_ecr(
-          "000000000000.dkr.ecr.us-east-1.amazonaws.com/my-private-registry",
+          "000000000000.dkr.ecr.us-east-1.amazonaws.com/my-private-registry:my-version",
+          secret=modal.Secret.from_name("aws"),
           setup_commands=["apt-get update", "apt-get install -y python3-pip"]
         )
         ```
