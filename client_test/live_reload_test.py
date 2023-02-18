@@ -37,6 +37,7 @@ class FakeProcess:
 @pytest.mark.skipif(platform.system() == "Windows", reason="live-reload not supported on windows")
 def test_file_changes_trigger_reloads(client, monkeypatch, servicer, test_dir):
     async def fake_watch(mounts, output_mgr, timeout):
+        yield  # dummy at the beginning
         for i in range(3):
             yield
 
