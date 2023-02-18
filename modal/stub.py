@@ -400,13 +400,8 @@ class _Stub:
             else:
                 app = await _App._init_new(client, self.description, deploying=False, detach=False)
                 curr_proc = None
-                _STARTING_SENTINEL = object()
-
-                async def startup_gen():
-                    yield _STARTING_SENTINEL
-
                 try:
-                    async for _ in stream.merge(startup_gen(), watch(self._local_mounts, output_mgr, timeout)):
+                    async for _ in watch(self._local_mounts, output_mgr, timeout):
                         curr_proc = await restart_serve(
                             existing_app_id=app.app_id, prev_proc=curr_proc, output_mgr=output_mgr
                         )
