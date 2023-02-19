@@ -157,14 +157,15 @@ class _SharedVolume(Provider[_SharedVolumeHandle]):
         """Construct a new shared volume, which is empty by default."""
 
         async def _load(resolver: Resolver, existing_object_id: str) -> _SharedVolumeHandle:
+            status_row = resolver.add_status_row()
             if existing_object_id:
                 # Volume already exists; do nothing.
                 return _SharedVolumeHandle._from_id(existing_object_id, resolver.client, None)
 
-            resolver.set_message("Creating shared volume...")
+            status_row.message("Creating shared volume...")
             req = api_pb2.SharedVolumeCreateRequest(app_id=resolver.app_id, cloud_provider=cloud_provider)
             resp = await retry_transient_errors(resolver.client.stub.SharedVolumeCreate, req)
-            resolver.set_message("Created shared volume.")
+            status_row.finish("Created shared volume.")
             return _SharedVolumeHandle._from_id(resp.shared_volume_id, resolver.client, None)
 
         rep = "SharedVolume()"

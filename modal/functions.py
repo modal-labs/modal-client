@@ -807,7 +807,8 @@ class _Function(Provider[_FunctionHandle]):
         super().__init__(self._load, rep)
 
     async def _load(self, resolver: Resolver, existing_object_id: str):
-        resolver.set_message(f"Creating {self._tag}...")
+        status_row = resolver.add_status_row()
+        status_row.message(f"Creating {self._tag}...")
 
         if self._proxy:
             proxy_id = await resolver.load(self._proxy)
@@ -949,11 +950,11 @@ class _Function(Provider[_FunctionHandle]):
             else:
                 suffix = ""
             # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
-            resolver.set_message(
+            status_row.finish(
                 f"Created {self._tag} => [magenta underline]{response.web_url}[/magenta underline]{suffix}"
             )
         else:
-            resolver.set_message(f"Created {self._tag}.")
+            status_row.finish(f"Created {self._tag}.")
 
         # Update the precreated function handle (todo: hack until we merge providers/handles)
         self._function_handle._initialize_handle(resolver.client, response.function_id)
