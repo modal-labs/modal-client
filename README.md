@@ -8,7 +8,7 @@ cloud compute from Python scripts on your local computer!
 See the [Modal documentation](http://modal.com/docs) for Python, with examples
 of how to use the library. You need a Modal account to use this library. **We
 are currently in private beta**, and you can get a beta testing invite at
-[modal.com](https://modal.com/).
+[modal.com](https://modal.com).
 
 ## Installation
 
