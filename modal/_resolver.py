@@ -12,6 +12,7 @@ else:
 class StatusRow:
     def __init__(self, progress):
         from ._output import step_progress  # Lazy import to only import `rich` when necessary.
+
         self._spinner = None
         self._step_node = None
         if progress is not None:

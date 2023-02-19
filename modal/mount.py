@@ -311,9 +311,7 @@ class _Mount(Provider[_MountHandle]):
 
         # Build mounts
         status_row.message(f"Creating mount {message_label}: Building mount")
-        req = api_pb2.MountBuildRequest(
-            app_id=resolver.app_id, existing_mount_id=existing_object_id, files=files
-        )
+        req = api_pb2.MountBuildRequest(app_id=resolver.app_id, existing_mount_id=existing_object_id, files=files)
         resp = await retry_transient_errors(resolver.client.stub.MountBuild, req, base_delay=1)
         status_row.finish(f"Created mount {message_label}")
 
