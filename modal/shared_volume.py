@@ -95,10 +95,15 @@ class _SharedVolume(Provider[_SharedVolumeHandle]):
     ```python
     import modal
 
+    volume = modal.SharedVolume()
     stub = modal.Stub()
 
-    @stub.function(shared_volumes={"/root/foo": modal.SharedVolume()})
+    @stub.function(shared_volumes={"/root/foo": volume})
     def f():
+        pass
+
+    @stub.function(shared_volumes={"/root/goo": volume})
+    def g():
         pass
     ```
 
