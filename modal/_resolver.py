@@ -62,7 +62,21 @@ class _Resolver:
         if cached_obj is not None:
             # We already created this object before, shortcut this method
             return cached_obj
+
         created_obj = await obj._load(self, existing_object_id)
+
+        if existing_object_id is not None and created_obj.object_id != existing_object_id:
+            # TODO(erikbern): this is a very ugly fix to a problem that's on the server side.
+            # Unlike every other object, images are not assigned random ids, but rather an
+            # id given by the hash of its contents. This means we can't _force_ an image to
+            # have a particular id. The better solution is probably to separate "images"
+            # from "image definitions" or something like that, but that's a big project.
+            if not existing_object_id.startswith("im-"):
+                raise Exception(
+                    f"Tried creating an object using existing id {existing_object_id}"
+                    f" but it has id {created_obj.object_id}"
+                )
+
         self._local_uuid_to_object[obj.local_uuid] = created_obj
         return created_obj
 

@@ -79,17 +79,6 @@ class _App:
         for tag, provider in blueprint.items():
             existing_object_id = self._tag_to_existing_id.get(tag)
             created_obj = await self._resolver.load(provider, existing_object_id)
-            if existing_object_id is not None and created_obj.object_id != existing_object_id:
-                # TODO(erikbern): this is a very ugly fix to a problem that's on the server side.
-                # Unlike every other object, images are not assigned random ids, but rather an
-                # id given by the hash of its contents. This means we can't _force_ an image to
-                # have a particular id. The better solution is probably to separate "images"
-                # from "image definitions" or something like that, but that's a big project.
-                if not existing_object_id.startswith("im-"):
-                    raise Exception(
-                        f"Tried creating an object using existing id {existing_object_id}"
-                        f" but it has id {created_obj.object_id}"
-                    )
             self._tag_to_object[tag] = created_obj
 
         # Create the app (and send a list of all tagged obs)
