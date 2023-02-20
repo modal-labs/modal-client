@@ -12,7 +12,7 @@ from modal_utils.async_utils import synchronize_apis
 
 
 class StatusRow:
-    def __init__(self, progress):
+    def __init__(self, progress: Optional[Tree]):
         from ._output import step_progress  # Lazy import to only import `rich` when necessary.
 
         self._spinner = None
