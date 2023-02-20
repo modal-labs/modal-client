@@ -12,6 +12,7 @@ from typing import AsyncGenerator, Callable, Collection, List, Optional, Union, 
 
 import aiostream
 
+import modal.exception
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 from modal_utils.grpc_utils import retry_transient_errors
@@ -23,6 +24,9 @@ from ._resolver import Resolver
 from .config import config, logger
 from .exception import InvalidError, NotFoundError, deprecation_warning
 from .object import Handle, Provider
+
+
+MOUNT_PUT_FILE_CLIENT_TIMEOUT = 10 * 60  # 10 min max for transferring files
 
 
 def client_mount_name():
@@ -294,8 +298,14 @@ class _Mount(Provider[_MountHandle]):
             else:
                 logger.debug(f"Uploading file {file_spec.filename} to {remote_filename} ({file_spec.size} bytes)")
                 request2 = api_pb2.MountPutFileRequest(data=file_spec.content, sha256_hex=file_spec.sha256_hex)
-            await retry_transient_errors(resolver.client.stub.MountPutFile, request2, base_delay=1)
-            return mount_file
+
+            start_time = time.monotonic()
+            while time.monotonic() - start_time < MOUNT_PUT_FILE_CLIENT_TIMEOUT:
+                response = await retry_transient_errors(resolver.client.stub.MountPutFile, request2, base_delay=1)
+                if response.exists:
+                    return mount_file
+
+            raise modal.exception.TimeoutError(f"Mounting of {file_spec.filename} timed out")
 
         logger.debug(f"Uploading mount using {n_concurrent_uploads} uploads")
 
