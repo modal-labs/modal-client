@@ -92,8 +92,18 @@ class LineBufferedOutput(io.StringIO):
         # e.g. re.split("(+)", "a+b") returns ["a", "+", "b"].
         # This means that chunks is guaranteed to be odd in length.
 
-        self._callback("".join(chunks[:-2]))
-        self._buf = "".join(chunks[-2:])
+        completed_lines = "".join(chunks[:-1])
+        remainder = chunks[-1]
+
+        # Partially completed lines end with a carriage return. Append a newline so that they
+        # are not overwritten by the `rich.Live`, then go back to the beginning of the line after.
+        if completed_lines.endswith("\r"):
+            completed_lines = completed_lines[:-1] + "\n"
+            # Prepend cursor up + carriage return.
+            remainder = "\x1b[1A\r" + remainder
+
+        self._callback(completed_lines)
+        self._buf = remainder
 
     def flush(self):
         pass
@@ -138,9 +148,6 @@ class OutputManager:
         is placed in a `rich.Group` to allow for dynamic additions later."""
         self._function_progress = None
         # Add an extra line so the status bar doesn't overlap with progress bars in the last line of output.
-        # TODO: Progress bars on the last line still gets wiped when the `rich.Live` triggers an update. There
-        # should be some way to have `rich.Live` start rendering in the line after the console, but that might
-        # require knowledge of how many characters were printed to `console`.
         self._current_render_group = Group("", renderable)
         return Live(self._current_render_group, console=self._console, transient=True, refresh_per_second=10)
 
