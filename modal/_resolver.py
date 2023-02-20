@@ -9,6 +9,7 @@ else:
     Tree = TypeVar("Tree")
 
 from modal_utils.async_utils import synchronize_apis
+from modal.exception import ExecutionError
 
 
 class StatusRow:
@@ -50,7 +51,9 @@ class _Resolver:
         self._app_id = app_id
 
     @property
-    def app_id(self):
+    def app_id(self) -> str:
+        if self._app_id is None:
+            raise ExecutionError("Resolver has no app")
         return self._app_id
 
     @property
