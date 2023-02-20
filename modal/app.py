@@ -7,7 +7,7 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 from modal_utils.grpc_utils import retry_transient_errors
 
-from ._resolver import Resolver
+from ._resolver import _Resolver
 from .client import _Client
 from .config import logger
 from .object import Handle, Provider
@@ -58,6 +58,7 @@ class _App:
         self._client = client
         self._tag_to_object = tag_to_object or {}
         self._tag_to_existing_id = tag_to_existing_id or {}
+        self._resolver = None
 
     @property
     def client(self) -> _Client:
@@ -73,10 +74,10 @@ class _App:
         self, blueprint: Dict[str, Provider], progress: Tree, new_app_state: int
     ):  # api_pb2.AppState.V
         """Create objects that have been defined but not created on the server."""
-        resolver = Resolver(progress, self._client, self.app_id)
+        self._resolver = _Resolver(progress, self._client, self.app_id)
         for tag, provider in blueprint.items():
             existing_object_id = self._tag_to_existing_id.get(tag)
-            created_obj = await resolver.load(provider, existing_object_id)
+            created_obj = await self._resolver.load(provider, existing_object_id)
             if existing_object_id is not None and created_obj.object_id != existing_object_id:
                 # TODO(erikbern): this is a very ugly fix to a problem that's on the server side.
                 # Unlike every other object, images are not assigned random ids, but rather an
@@ -95,7 +96,7 @@ class _App:
         # We just delete them from the app, but the actual objects will stay around
         indexed_object_ids = {tag: obj.object_id for tag, obj in self._tag_to_object.items()}
         unindexed_object_ids = list(
-            set(obj.object_id for obj in resolver._local_uuid_to_object.values())
+            set(obj.object_id for obj in self._resolver._local_uuid_to_object.values())
             - set(obj.object_id for obj in self._tag_to_object.values())
         )
         req_set = api_pb2.AppSetObjectsRequest(
@@ -106,6 +107,10 @@ class _App:
         )
         await retry_transient_errors(self._client.stub.AppSetObjects, req_set)
         return self._tag_to_object
+
+    async def _load(self, provider: Provider):
+        # Only used by tests. Remove?
+        return await self._resolver.load(provider)
 
     async def disconnect(self):
         """Tell the server the client has disconnected for this app. Terminates all running tasks

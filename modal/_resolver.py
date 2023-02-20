@@ -8,6 +8,8 @@ else:
     Spinner = TypeVar("Spinner")
     Tree = TypeVar("Tree")
 
+from modal_utils.async_utils import synchronize_apis
+
 
 class StatusRow:
     def __init__(self, progress):
@@ -33,7 +35,7 @@ class StatusRow:
             self._step_node.label = step_completed(message, is_substep=True)
 
 
-class Resolver:
+class _Resolver:
     # Unfortunately we can't use type annotations much in this file,
     # since that leads to circular dependencies
     _progress: Optional[Tree]
@@ -43,8 +45,16 @@ class Resolver:
         self._local_uuid_to_object = {}
 
         # Accessible by objects
-        self.client = client
-        self.app_id = app_id
+        self._client = client
+        self._app_id = app_id
+
+    @property
+    def app_id(self):
+        return self._app_id
+
+    @property
+    def client(self):
+        return self._client
 
     async def load(self, obj, existing_object_id: Optional[str] = None):
         cached_obj = self._local_uuid_to_object.get(obj.local_uuid)
@@ -57,3 +67,6 @@ class Resolver:
 
     def add_status_row(self) -> StatusRow:
         return StatusRow(self._progress)
+
+
+Resolver, AioResolver = synchronize_apis(_Resolver)

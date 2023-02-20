@@ -8,13 +8,14 @@ import sys
 
 from modal import Stub, create_package_mounts
 from modal._blob_utils import LARGE_FILE_LIMIT
+from modal._resolver import AioResolver, Resolver
 from modal.aio import AioStub
 from modal.exception import DeprecationError, NotFoundError
 from modal.mount import AioMount, Mount
 
 
 @pytest.mark.asyncio
-async def test_get_files(servicer, client, tmpdir):
+async def test_get_files(servicer, aio_client, tmpdir):
     small_content = b"# not much here"
     large_content = b"a" * (LARGE_FILE_LIMIT + 1)
 
@@ -23,83 +24,84 @@ async def test_get_files(servicer, client, tmpdir):
     tmpdir.join("fluff").write("hello")
 
     files = {}
-    stub = AioStub()
-    async with stub.run(client=client) as running_app:
-        m = AioMount.from_local_dir(tmpdir, remote_path="/", condition=lambda fn: fn.endswith(".py"), recursive=True)
-        await running_app._load(m)  # TODO: is this something we want to expose?
-        async for upload_spec in m._get_files():
-            files[upload_spec.mount_filename] = upload_spec
+    m = AioMount.from_local_dir(tmpdir, remote_path="/", condition=lambda fn: fn.endswith(".py"), recursive=True)
+    async for upload_spec in m._get_files():
+        files[upload_spec.mount_filename] = upload_spec
 
-        assert "/small.py" in files
-        assert "/large.py" in files
-        assert "/fluff" not in files
-        assert files["/small.py"].use_blob is False
-        assert files["/small.py"].content == small_content
-        assert files["/small.py"].sha256_hex == hashlib.sha256(small_content).hexdigest()
+    assert "/small.py" in files
+    assert "/large.py" in files
+    assert "/fluff" not in files
+    assert files["/small.py"].use_blob is False
+    assert files["/small.py"].content == small_content
+    assert files["/small.py"].sha256_hex == hashlib.sha256(small_content).hexdigest()
 
-        assert files["/large.py"].use_blob is True
-        assert files["/large.py"].content is None
-        assert files["/large.py"].sha256_hex == hashlib.sha256(large_content).hexdigest()
-        blob_id = max(servicer.blobs.keys())  # last uploaded one
-        assert len(servicer.blobs[blob_id]) == len(large_content)
-        assert servicer.blobs[blob_id] == large_content
+    assert files["/large.py"].use_blob is True
+    assert files["/large.py"].content is None
+    assert files["/large.py"].sha256_hex == hashlib.sha256(large_content).hexdigest()
 
-        assert servicer.files_sha2data[files["/large.py"].sha256_hex] == {"data": b"", "data_blob_id": blob_id}
-        assert servicer.files_sha2data[files["/small.py"].sha256_hex] == {
-            "data": small_content,
-            "data_blob_id": "",
-        }
+    resolver = AioResolver(None, aio_client, None)
+    await m._load(resolver, None)
+    blob_id = max(servicer.blobs.keys())  # last uploaded one
+    assert len(servicer.blobs[blob_id]) == len(large_content)
+    assert servicer.blobs[blob_id] == large_content
+
+    assert servicer.files_sha2data[files["/large.py"].sha256_hex] == {"data": b"", "data_blob_id": blob_id}
+    assert servicer.files_sha2data[files["/small.py"].sha256_hex] == {
+        "data": small_content,
+        "data_blob_id": "",
+    }
 
 
 def test_create_mount_legacy_constructor(servicer, client):
-    stub = Stub()
-    with stub.run(client=client) as running_app:
-        local_dir, cur_filename = os.path.split(__file__)
-        remote_dir = "/foo"
+    local_dir, cur_filename = os.path.split(__file__)
+    remote_dir = "/foo"
 
-        def condition(fn):
-            return fn.endswith(".py")
+    def condition(fn):
+        return fn.endswith(".py")
 
-        with pytest.warns(DeprecationError):
-            m = Mount(local_dir=local_dir, remote_dir=remote_dir, condition=condition)
-        obj = running_app._load(m)  # TODO: is this something we want to expose?
-        assert obj.object_id == "mo-123"
-        assert f"/foo/{cur_filename}" in servicer.files_name2sha
-        sha256_hex = servicer.files_name2sha[f"/foo/{cur_filename}"]
-        assert sha256_hex in servicer.files_sha2data
-        assert servicer.files_sha2data[sha256_hex]["data"] == open(__file__, "rb").read()
+    with pytest.warns(DeprecationError):
+        m = Mount(local_dir=local_dir, remote_dir=remote_dir, condition=condition)
+
+    resolver = Resolver(None, client, None)
+    obj = m._load(resolver, None)
+
+    assert obj.object_id == "mo-123"
+    assert f"/foo/{cur_filename}" in servicer.files_name2sha
+    sha256_hex = servicer.files_name2sha[f"/foo/{cur_filename}"]
+    assert sha256_hex in servicer.files_sha2data
+    assert servicer.files_sha2data[sha256_hex]["data"] == open(__file__, "rb").read()
 
 
 def test_create_mount(servicer, client):
-    stub = Stub()
-    with stub.run(client=client) as running_app:
-        local_dir, cur_filename = os.path.split(__file__)
+    local_dir, cur_filename = os.path.split(__file__)
 
-        def condition(fn):
-            return fn.endswith(".py")
+    def condition(fn):
+        return fn.endswith(".py")
 
-        m = Mount.from_local_dir(local_dir, remote_path="/foo", condition=condition)
-        obj = running_app._load(m)
-        assert obj.object_id == "mo-123"
-        assert f"/foo/{cur_filename}" in servicer.files_name2sha
-        sha256_hex = servicer.files_name2sha[f"/foo/{cur_filename}"]
-        assert sha256_hex in servicer.files_sha2data
-        assert servicer.files_sha2data[sha256_hex]["data"] == open(__file__, "rb").read()
-        assert repr(Path(local_dir)) in repr(m)
+    m = Mount.from_local_dir(local_dir, remote_path="/foo", condition=condition)
+
+    resolver = Resolver(None, client, None)
+    obj = m._load(resolver, None)
+
+    assert obj.object_id == "mo-123"
+    assert f"/foo/{cur_filename}" in servicer.files_name2sha
+    sha256_hex = servicer.files_name2sha[f"/foo/{cur_filename}"]
+    assert sha256_hex in servicer.files_sha2data
+    assert servicer.files_sha2data[sha256_hex]["data"] == open(__file__, "rb").read()
+    assert repr(Path(local_dir)) in repr(m)
 
 
 def test_create_mount_file_errors(servicer, tmpdir, client):
-    stub = Stub()
-    with stub.run(client=client) as running_app:
-        m = Mount.from_local_dir("xyz", remote_path="/xyz")
-        with pytest.raises(FileNotFoundError):
-            running_app._load(m)
+    resolver = Resolver(None, client, None)
+    m = Mount.from_local_dir("xyz", remote_path="/xyz")
+    with pytest.raises(FileNotFoundError):
+        m._load(resolver, None)
 
-        with open(tmpdir / "abc", "w"):
-            pass
-        m = Mount.from_local_dir(tmpdir / "abc", remote_path="/abc")
-        with pytest.raises(NotADirectoryError):
-            running_app._load(m)
+    with open(tmpdir / "abc", "w"):
+        pass
+    m = Mount.from_local_dir(tmpdir / "abc", remote_path="/abc")
+    with pytest.raises(NotADirectoryError):
+        m._load(resolver, None)
 
 
 def dummy():
