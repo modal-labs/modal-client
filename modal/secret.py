@@ -42,7 +42,7 @@ class _Secret(Provider[_SecretHandle]):
 async def _resolve_secret(resolver: Resolver, secret: _Secret) -> str:
     """mdmd:hidden"""
     try:
-        secret_id = await resolver.load(secret)
+        secret_id = (await resolver.load(secret)).object_id
     except NotFoundError as ex:
         if isinstance(secret, _Secret):
             msg = f"Secret {secret} was not found"

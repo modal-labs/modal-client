@@ -811,7 +811,7 @@ class _Function(Provider[_FunctionHandle]):
         status_row.message(f"Creating {self._tag}...")
 
         if self._proxy:
-            proxy_id = await resolver.load(self._proxy)
+            proxy_id = (await resolver.load(self._proxy)).object_id
             # HACK: remove this once we stop using ssh tunnels for this.
             if self._image:
                 self._image = self._image.apt_install("autossh")
@@ -822,7 +822,7 @@ class _Function(Provider[_FunctionHandle]):
         if self._image is not None:
             if not isinstance(self._image, _Image):
                 raise InvalidError(f"Expected modal.Image object. Got {type(self._image)}.")
-            image_id = await resolver.load(self._image)
+            image_id = (await resolver.load(self._image)).object_id
         else:
             image_id = None  # Happens if it's a notebook function
         secret_ids = []
@@ -832,7 +832,7 @@ class _Function(Provider[_FunctionHandle]):
 
         mount_ids = []
         for mount in [*self._base_mounts, *self._mounts]:
-            mount_ids.append(await resolver.load(mount))
+            mount_ids.append((await resolver.load(mount)).object_id)
 
         if not isinstance(self._shared_volumes, dict):
             raise InvalidError("shared_volumes must be a dict[str, SharedVolume] where the keys are paths")
@@ -851,7 +851,9 @@ class _Function(Provider[_FunctionHandle]):
                 raise InvalidError(f"Shared volume {abs_path} cannot be mounted at /tmp.")
 
             shared_volume_mounts.append(
-                api_pb2.SharedVolumeMount(mount_path=path, shared_volume_id=await resolver.load(shared_volume))
+                api_pb2.SharedVolumeMount(
+                    mount_path=path, shared_volume_id=(await resolver.load(shared_volume)).object_id
+                )
             )
 
         if self._is_generator:

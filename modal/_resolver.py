@@ -46,11 +46,11 @@ class Resolver:
         self.client = client
         self.app_id = app_id
 
-    async def load(self, obj) -> str:
+    async def load(self, obj):
         # assert isinstance(obj, Provider)
         created_obj = await self._app._load(obj, progress=self._progress)
         # assert isinstance(created_obj, Handle)
-        return created_obj.object_id
+        return created_obj
 
     def add_status_row(self) -> StatusRow:
         return StatusRow(self._progress)
