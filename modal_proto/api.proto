@@ -202,15 +202,15 @@ enum RegistryType {
   ECR = 1;
 }
 
-message RegistryParams {
-  string secret_id = 1;
+message ImageRegistryConfig {
+  RegistryType registry_type = 1;
+  string secret_id = 2;
 }
 
 message BaseImage {
   string image_id = 1;
   string docker_tag = 2;
-  RegistryType registry_type = 3;
-  RegistryParams registry_params = 4;
+  // fields 3 and 4 are deprecated
 }
 
 message BlobCreateRequest {
@@ -598,6 +598,7 @@ message Image {
   string build_function_def = 14;
   string context_mount_id = 15;
   GPUConfig gpu_config = 16;
+  ImageRegistryConfig image_registry_config = 17;
 }
 
 message ImageContextFile {

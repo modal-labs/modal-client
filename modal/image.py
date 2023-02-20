@@ -99,17 +99,22 @@ class _ImageHandle(Handle, type_prefix="im"):
         return self.object_id == env_image_id
 
 
-class _RegistryParams:
+class _ImageRegistryConfig:
     """mdmd:hidden"""
 
-    def __init__(self, secret: Optional[_Secret] = None):
+    def __init__(
+        self, registry_type: api_pb2.RegistryType = api_pb2.RegistryType.DOCKERHUB, secret: Optional[_Secret] = None
+    ):
+        self.registry_type = registry_type
         self.secret = secret
 
-    async def resolve(self, resolver: Resolver) -> api_pb2.RegistryParams:
+    async def resolve(self, resolver: Resolver) -> api_pb2.ImageRegistryConfig:
         if not self.secret:
-            return api_pb2.RegistryParams()
+            return api_pb2.ImageRegistryConfig(registry_type=self.registry_type)
 
-        return api_pb2.RegistryParams(secret_id=await _resolve_secret(resolver, self.secret))
+        return api_pb2.ImageRegistryConfig(
+            registry_type=self.registry_type, secret_id=await _resolve_secret(resolver, self.secret)
+        )
 
 
 class _Image(Provider[_ImageHandle]):
@@ -129,8 +134,7 @@ class _Image(Provider[_ImageHandle]):
         gpu_config: api_pb2.GPUConfig = api_pb2.GPUConfig(),
         build_function=None,
         context_mount: Optional[_Mount] = None,
-        registry_type: api_pb2.RegistryType.V = api_pb2.RegistryType.DOCKERHUB,
-        registry_params: _RegistryParams = _RegistryParams(),
+        image_registry_config: _ImageRegistryConfig = _ImageRegistryConfig(),
     ):
         if ref and (base_images or dockerfile_commands or context_files):
             raise InvalidError("No other arguments can be provided when initializing an image from a ref.")
@@ -165,9 +169,6 @@ class _Image(Provider[_ImageHandle]):
                 api_pb2.BaseImage(
                     docker_tag=docker_tag,
                     image_id=image_id,
-                    registry_type=registry_type,
-                    # Resolve private registry secrets.
-                    registry_params=await registry_params.resolve(resolver),
                 )
                 for docker_tag, image_id in zip(base_images.keys(), base_image_ids)
             ]
@@ -210,6 +211,9 @@ class _Image(Provider[_ImageHandle]):
                 build_function_def=build_function_def,
                 context_mount_id=context_mount_id,
                 gpu_config=gpu_config,  # Note: as of 2023-01-27, server ignores this
+                image_registry_config=await image_registry_config.resolve(
+                    resolver
+                ),  # Resolves private registry secret.
             )
 
             req = api_pb2.ImageGetOrCreateRequest(
@@ -696,8 +700,6 @@ class _Image(Provider[_ImageHandle]):
         return _Image._from_args(
             dockerfile_commands=dockerfile_commands,
             context_files={"/modal_requirements.txt": requirements_path},
-            registry_type=api_pb2.RegistryType.DOCKERHUB,
-            registry_params=_RegistryParams(),
             **kwargs,
         )
 
@@ -739,8 +741,7 @@ class _Image(Provider[_ImageHandle]):
         return _Image._from_args(
             dockerfile_commands=dockerfile_commands,
             context_files={"/modal_requirements.txt": requirements_path},
-            registry_type=api_pb2.RegistryType.ECR,
-            registry_params=_RegistryParams(secret),
+            image_registry_config=_ImageRegistryConfig(api_pb2.RegistryType.ECR, secret),
             **kwargs,
         )
 
