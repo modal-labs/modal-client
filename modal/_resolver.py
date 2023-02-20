@@ -1,4 +1,4 @@
-# Copyright Modal Labs 2023
+ # Copyright Modal Labs 2023
 from typing import TYPE_CHECKING, Optional, TypeVar
 
 if TYPE_CHECKING:
@@ -48,7 +48,7 @@ class Resolver:
 
     async def load(self, obj):
         # assert isinstance(obj, Provider)
-        created_obj = await self._app._load(obj, progress=self._progress)
+        created_obj = await self._app._load(self, obj, progress=self._progress)
         # assert isinstance(created_obj, Handle)
         return created_obj
 

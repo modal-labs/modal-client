@@ -72,15 +72,13 @@ class _App:
         return self._app_id
 
     async def _load(
-        self, obj: Provider, progress: Optional[Tree] = None, existing_object_id: Optional[str] = None
+        self, resolver: Resolver, obj: Provider, progress: Optional[Tree] = None, existing_object_id: Optional[str] = None
     ) -> Handle:
         """Send a server request to create an object in this app, and return its ID."""
         cached_obj = self._local_uuid_to_object.get(obj.local_uuid)
         if cached_obj is not None:
             # We already created this object before, shortcut this method
             return cached_obj
-
-        resolver = Resolver(self, progress, self._client, self.app_id)
 
         # Create object
         created_obj = await obj._load(resolver, existing_object_id)
@@ -104,9 +102,10 @@ class _App:
         self, blueprint: Dict[str, Provider], progress: Tree, new_app_state: int
     ):  # api_pb2.AppState.V
         """Create objects that have been defined but not created on the server."""
+        resolver = Resolver(self, progress, self._client, self.app_id)
         for tag, provider in blueprint.items():
             existing_object_id = self._tag_to_existing_id.get(tag)
-            self._tag_to_object[tag] = await self._load(provider, progress, existing_object_id)
+            self._tag_to_object[tag] = await self._load(resolver, provider, progress, existing_object_id)
 
         # Create the app (and send a list of all tagged obs)
         # TODO(erikbern): we should delete objects from a previous version that are no longer needed
