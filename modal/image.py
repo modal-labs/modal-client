@@ -103,7 +103,7 @@ class _ImageRegistryConfig:
     """mdmd:hidden"""
 
     def __init__(
-        self, registry_type: api_pb2.RegistryType = api_pb2.RegistryType.DOCKERHUB, secret: Optional[_Secret] = None
+        self, registry_type: api_pb2.RegistryType.V = api_pb2.RegistryType.DOCKERHUB, secret: Optional[_Secret] = None
     ):
         self.registry_type = registry_type
         self.secret = secret
