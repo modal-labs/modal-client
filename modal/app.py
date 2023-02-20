@@ -43,6 +43,7 @@ class _App:
     _tag_to_existing_id: Dict[str, str]
     _client: _Client
     _app_id: str
+    _resolver: Optional[_Resolver]
 
     def __init__(
         self,

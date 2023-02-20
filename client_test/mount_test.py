@@ -9,7 +9,6 @@ import sys
 from modal import Stub, create_package_mounts
 from modal._blob_utils import LARGE_FILE_LIMIT
 from modal._resolver import AioResolver, Resolver
-from modal.aio import AioStub
 from modal.exception import DeprecationError, NotFoundError
 from modal.mount import AioMount, Mount
 

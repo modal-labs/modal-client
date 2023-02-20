@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2023
-from typing import TYPE_CHECKING, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, Dict, Optional, TypeVar
 
 if TYPE_CHECKING:
     from rich.spinner import Spinner
@@ -39,6 +39,7 @@ class _Resolver:
     # Unfortunately we can't use type annotations much in this file,
     # since that leads to circular dependencies
     _progress: Optional[Tree]
+    _local_uuid_to_object: Dict[str, Any]
 
     def __init__(self, progress: Optional[Tree], client, app_id: Optional[str] = None):
         self._progress = progress
