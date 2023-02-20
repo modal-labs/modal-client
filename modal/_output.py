@@ -91,12 +91,21 @@ class LineBufferedOutput(io.StringIO):
         # re.split("(<exp>)") returns the matched groups, and also the separators.
         # e.g. re.split("(+)", "a+b") returns ["a", "+", "b"].
         # This means that chunks is guaranteed to be odd in length.
-        for i in range(int(len(chunks) / 2)):
-            # piece together chunk back with separator.
-            line = chunks[2 * i] + chunks[2 * i + 1]
-            self._callback(line)
 
-        self._buf = chunks[-1]
+        completed_lines = "".join(chunks[:-1])
+        remainder = chunks[-1]
+
+        # Partially completed lines end with a carriage return. Append a newline so that they
+        # are not overwritten by the `rich.Live` and prefix the inverse operation to the remaining
+        # buffer. Note that this is not perfect -- when stdout and stderr are interleaved, the results
+        # can have unexpected spacing.
+        if completed_lines.endswith("\r"):
+            completed_lines = completed_lines[:-1] + "\n"
+            # Prepend cursor up + carriage return.
+            remainder = "\x1b[1A\r" + remainder
+
+        self._callback(completed_lines)
+        self._buf = remainder
 
     def flush(self):
         pass
