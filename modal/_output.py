@@ -96,7 +96,9 @@ class LineBufferedOutput(io.StringIO):
         remainder = chunks[-1]
 
         # Partially completed lines end with a carriage return. Append a newline so that they
-        # are not overwritten by the `rich.Live`, then go back to the beginning of the line after.
+        # are not overwritten by the `rich.Live` and prefix the inverse operation to the remaining
+        # buffer. Note that this is not perfect -- when stdout and stderr are interleaved, the results
+        # can have unexpected spacing.
         if completed_lines.endswith("\r"):
             completed_lines = completed_lines[:-1] + "\n"
             # Prepend cursor up + carriage return.
@@ -147,8 +149,7 @@ class OutputManager:
         """Creates a customized `rich.Live` instance with the given renderable. The renderable
         is placed in a `rich.Group` to allow for dynamic additions later."""
         self._function_progress = None
-        # Add an extra line so the status bar doesn't overlap with progress bars in the last line of output.
-        self._current_render_group = Group("", renderable)
+        self._current_render_group = Group(renderable)
         return Live(self._current_render_group, console=self._console, transient=True, refresh_per_second=10)
 
     @property
