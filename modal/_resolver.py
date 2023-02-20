@@ -1,4 +1,4 @@
- # Copyright Modal Labs 2023
+# Copyright Modal Labs 2023
 from typing import TYPE_CHECKING, Optional, TypeVar
 
 if TYPE_CHECKING:
@@ -41,15 +41,19 @@ class Resolver:
     def __init__(self, app, progress: Optional[Tree], client, app_id: str):
         self._app = app
         self._progress = progress
+        self._local_uuid_to_object = {}
 
         # Accessible by objects
         self.client = client
         self.app_id = app_id
 
-    async def load(self, obj):
-        # assert isinstance(obj, Provider)
-        created_obj = await self._app._load(self, obj, progress=self._progress)
-        # assert isinstance(created_obj, Handle)
+    async def load(self, obj, existing_object_id: Optional[str] = None):
+        cached_obj = self._local_uuid_to_object.get(obj.local_uuid)
+        if cached_obj is not None:
+            # We already created this object before, shortcut this method
+            return cached_obj
+        created_obj = await obj._load(self, existing_object_id)
+        self._local_uuid_to_object[obj.local_uuid] = created_obj
         return created_obj
 
     def add_status_row(self) -> StatusRow:
