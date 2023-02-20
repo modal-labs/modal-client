@@ -26,7 +26,7 @@ from .exception import InvalidError, NotFoundError, deprecation_warning
 from .object import Handle, Provider
 
 
-MOUNT_PUT_FILE_TIMEOUT_SECONDS = 10 * 60  # 10 min max for transferring files
+MOUNT_PUT_FILE_CLIENT_TIMEOUT = 10 * 60  # 10 min max for transferring files
 
 
 def client_mount_name():
@@ -300,7 +300,7 @@ class _Mount(Provider[_MountHandle]):
                 request2 = api_pb2.MountPutFileRequest(data=file_spec.content, sha256_hex=file_spec.sha256_hex)
 
             start_time = time.monotonic()
-            while time.monotonic() - start_time < MOUNT_PUT_FILE_TIMEOUT_SECONDS:
+            while time.monotonic() - start_time < MOUNT_PUT_FILE_CLIENT_TIMEOUT:
                 response = await retry_transient_errors(resolver.client.stub.MountPutFile, request2, base_delay=1)
                 if response.exists:
                     return mount_file
