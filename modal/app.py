@@ -73,7 +73,7 @@ class _App:
         self, blueprint: Dict[str, Provider], progress: Tree, new_app_state: int
     ):  # api_pb2.AppState.V
         """Create objects that have been defined but not created on the server."""
-        resolver = Resolver(self, progress, self._client, self.app_id)
+        resolver = Resolver(progress, self._client, self.app_id)
         for tag, provider in blueprint.items():
             existing_object_id = self._tag_to_existing_id.get(tag)
             created_obj = await resolver.load(provider, existing_object_id)

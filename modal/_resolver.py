@@ -38,8 +38,7 @@ class Resolver:
     # since that leads to circular dependencies
     _progress: Optional[Tree]
 
-    def __init__(self, app, progress: Optional[Tree], client, app_id: str):
-        self._app = app
+    def __init__(self, progress: Optional[Tree], client, app_id: Optional[str] = None):
         self._progress = progress
         self._local_uuid_to_object = {}
 
