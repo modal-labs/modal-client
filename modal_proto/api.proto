@@ -417,7 +417,7 @@ message FunctionGetInputsItem {
   string input_id = 1;
   FunctionInput input = 2;
   bool kill_switch = 3;
-  string function_call_id = 4;
+  reserved 4; // previously used
 }
 
 message FunctionGetInputsRequest {
@@ -541,6 +541,10 @@ message FunctionCallCallGraphInfo {
 message FunctionGetCallGraphResponse {
   repeated InputCallGraphInfo inputs = 1;
   repeated FunctionCallCallGraphInfo function_calls = 2;
+}
+
+message FunctionCallCancelRequest {
+  string function_call_id = 1;
 }
 
 message FunctionGetCurrentStatsRequest {
@@ -946,6 +950,7 @@ service ModalClient {
   rpc FunctionGetInputs(FunctionGetInputsRequest) returns (FunctionGetInputsResponse);  // For containers to request next call
   rpc FunctionGetOutputs(FunctionGetOutputsRequest) returns (FunctionGetOutputsResponse);  // Returns the next result(s) for an entire function call (FunctionMap)
   rpc FunctionGetCallGraph(FunctionGetCallGraphRequest) returns (FunctionGetCallGraphResponse);
+  rpc FunctionCallCancel(FunctionCallCancelRequest) returns (google.protobuf.Empty);
   rpc FunctionGetCurrentStats(FunctionGetCurrentStatsRequest) returns (FunctionStats);
 
   // Images
