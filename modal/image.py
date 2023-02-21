@@ -704,7 +704,7 @@ class _Image(Provider[_ImageHandle]):
         )
 
     @staticmethod
-    def from_ecr(tag: str, secret=_Secret, setup_commands: list[str] = [], **kwargs) -> "_Image":
+    def from_aws_ecr(tag: str, secret: Optional[_Secret] = None, setup_commands: list[str] = [], **kwargs) -> "_Image":
         """
         Build a Modal image from a pre-existing image on a private AWS Elastic
         Container Registry (ECR). You will need to pass a `modal.Secret` containing
@@ -727,7 +727,7 @@ class _Image(Provider[_ImageHandle]):
         **Example**
 
         ```python
-        modal.Image.from_ecr(
+        modal.Image.from_aws_ecr(
           "000000000000.dkr.ecr.us-east-1.amazonaws.com/my-private-registry:my-version",
           secret=modal.Secret.from_name("aws"),
           setup_commands=["apt-get update", "apt-get install -y python3-pip"]

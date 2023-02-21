@@ -250,7 +250,7 @@ def test_dockerhub_install(servicer, client):
 def test_ecr_install(servicer, client):
     image_tag = "000000000000.dkr.ecr.us-east-1.amazonaws.com/my-private-registry:latest"
     stub = Stub(
-        image=Image.from_ecr(
+        image=Image.from_aws_ecr(
             image_tag,
             setup_commands=["apt-get update"],
             secret=Secret({"AWS_ACCESS_KEY_ID": "", "AWS_SECRET_ACCESS_KEY": ""}),
