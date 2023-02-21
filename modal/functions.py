@@ -273,7 +273,6 @@ class _Invocation:
 
 MAP_INVOCATION_CHUNK_SIZE = 100
 
-
 async def _map_invocation(
     function_id: str,
     input_stream: AsyncIterable,
@@ -292,7 +291,10 @@ async def _map_invocation(
     have_all_inputs = False
     num_inputs = 0
     num_outputs = 0
-    pending_outputs = {}  # map input_id -> next expected gen_index value
+    # Map input_id -> next expected gen_index value, or -1 if complete
+    # Could contain keys which are not yet in the pending_inputs set
+    pending_outputs = {}
+    completed_outputs = set()
 
     input_queue: asyncio.Queue = asyncio.Queue()
 
@@ -325,8 +327,8 @@ async def _map_invocation(
                 request,
                 max_retries=None,
             )
-            for input in resp.inputs:
-                pending_outputs[input.input_id] = 0  # 0 is the first expected gen_index
+            for item in resp.inputs:
+                pending_outputs.setdefault(item.input_id, 0)
 
         have_all_inputs = True
         yield
@@ -334,7 +336,7 @@ async def _map_invocation(
     async def get_all_outputs():
         nonlocal num_inputs, num_outputs, have_all_inputs
         last_entry_id = "0-0"
-        while not have_all_inputs or pending_outputs:
+        while not have_all_inputs or len(pending_outputs) > len(completed_outputs):
             request = api_pb2.FunctionGetOutputsRequest(
                 function_call_id=function_call_id,
                 timeout=55,
@@ -348,22 +350,18 @@ async def _map_invocation(
             )
             last_entry_id = response.last_entry_id
             for item in response.outputs:
-                if item.input_id not in pending_outputs or item.gen_index < pending_outputs[item.input_id]:
+                pending_outputs.setdefault(item.input_id, 0)
+                if item.input_id in completed_outputs or item.gen_index < pending_outputs[item.input_id]:
                     # this means the output has already been processed and is likely received due
                     # to a duplicate output enqueue on the server
                     continue
 
-                if is_generator:
-                    if item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
-                        del pending_outputs[item.input_id]
-                        num_outputs += 1
-                    else:
-                        assert pending_outputs[item.input_id] == item.gen_index
-                        pending_outputs[item.input_id] += 1
-                        yield item
+                if is_generator and item.result.gen_status != api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
+                    assert pending_outputs[item.input_id] == item.gen_index
+                    yield item
                 else:
+                    completed_outputs.add(item.input_id)
                     num_outputs += 1
-                    del pending_outputs[item.input_id]
                     yield item
 
     async def get_all_outputs_and_clean_up():
