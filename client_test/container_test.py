@@ -26,9 +26,7 @@ def _get_inputs(args=((42,), {})) -> list[api_pb2.FunctionGetInputsResponse]:
     input_pb = api_pb2.FunctionInput(args=serialize(args))
 
     return [
-        api_pb2.FunctionGetInputsResponse(
-            inputs=[api_pb2.FunctionGetInputsItem(input_id="in-xyz", function_call_id="fu-zyx", input=input_pb)]
-        ),
+        api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(input_id="in-xyz", input=input_pb)]),
         api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(kill_switch=True)]),
     ]
 
