@@ -51,6 +51,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.done = False
         self.rate_limit_sleep_duration = None
         self.fail_get_inputs = False
+        self.slow_put_inputs = False
         self.container_inputs = []
         self.container_outputs = []
         self.queue = []
@@ -68,6 +69,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             "ap-c": {"": "im-456"},
             "ap-proxy": {"": "pr-123"},
         }
+        self.n_inputs = 0
         self.n_queues = 0
         self.files_name2sha = {}
         self.files_sha2data = {}
@@ -330,9 +332,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
         function_calls = self.client_calls.setdefault(request.function_call_id, [])
         for item in request.inputs:
             args, kwargs = cloudpickle.loads(item.input.args) if item.input.args else ((), {})
-            input_id = f"in-{len(function_calls)}"
+            input_id = f"in-{self.n_inputs}"
+            self.n_inputs += 1
             response_items.append(api_pb2.FunctionPutInputsResponseItem(input_id=input_id, idx=item.idx))
             function_calls.append(((item.idx, input_id), (args, kwargs)))
+        if self.slow_put_inputs:
+            await asyncio.sleep(0.001)
         await stream.send_message(api_pb2.FunctionPutInputsResponse(inputs=response_items))
 
     async def FunctionGetOutputs(self, stream):

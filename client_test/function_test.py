@@ -31,7 +31,11 @@ def test_run_function(client, servicer):
         assert len(servicer.cleared_function_calls) == 1
 
 
-def test_map(client, servicer):
+@pytest.mark.parametrize("slow_put_inputs", [False, True])
+@pytest.mark.timeout(120)
+def test_map(client, servicer, slow_put_inputs):
+    servicer.slow_put_inputs = slow_put_inputs
+
     stub = Stub()
     dummy_modal = stub.function(dummy)
 

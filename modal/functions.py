@@ -8,7 +8,7 @@ import warnings
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Any, AsyncIterable, Callable, Collection, Dict, List, Optional, Union
+from typing import Any, AsyncIterable, Callable, Collection, Dict, List, Optional, Set, Union
 
 import cloudpickle
 from aiostream import pipe, stream
@@ -273,6 +273,7 @@ class _Invocation:
 
 MAP_INVOCATION_CHUNK_SIZE = 100
 
+
 async def _map_invocation(
     function_id: str,
     input_stream: AsyncIterable,
@@ -293,8 +294,8 @@ async def _map_invocation(
     num_outputs = 0
     # Map input_id -> next expected gen_index value, or -1 if complete
     # Could contain keys which are not yet in the pending_inputs set
-    pending_outputs = {}
-    completed_outputs = set()
+    pending_outputs: Dict[str, int] = {}
+    completed_outputs: Set[str] = set()
 
     input_queue: asyncio.Queue = asyncio.Queue()
 
