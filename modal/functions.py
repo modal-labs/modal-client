@@ -355,9 +355,14 @@ async def _map_invocation(
                     # to a duplicate output enqueue on the server
                     continue
 
-                if is_generator and item.result.gen_status != api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
-                    assert pending_outputs[item.input_id] == item.gen_index
-                    yield item
+                if is_generator:
+                    if item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
+                        completed_outputs.add(item.input_id)
+                        num_outputs += 1
+                    else:
+                        assert pending_outputs[item.input_id] == item.gen_index
+                        pending_outputs[item.input_id] += 1
+                        yield item
                 else:
                     completed_outputs.add(item.input_id)
                     num_outputs += 1
