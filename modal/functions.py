@@ -292,10 +292,8 @@ async def _map_invocation(
     have_all_inputs = False
     num_inputs = 0
     num_outputs = 0
-    # Map input_id -> next expected gen_index value, or -1 if complete
-    # Could contain keys which are not yet in the pending_inputs set
-    pending_outputs: Dict[str, int] = {}
-    completed_outputs: Set[str] = set()
+    pending_outputs: Dict[str, int] = {}  # Map input_id -> next expected gen_index value
+    completed_outputs: Set[str] = set()  # Set of input_ids whose outputs are complete (expecting no more values)
 
     input_queue: asyncio.Queue = asyncio.Queue()
 
