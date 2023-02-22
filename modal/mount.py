@@ -257,7 +257,7 @@ class _Mount(Provider[_MountHandle]):
                     # Can happen with temporary files (e.g. emacs will write temp files and delete them quickly)
                     logger.info(f"Ignoring file not found: {exc}")
 
-    async def _load(self, resolver: Resolver):
+    async def _load(self, resolver: Resolver, existing_object_id: str):
         # Run a threadpool to compute hash values, and use concurrent coroutines to register files.
         t0 = time.time()
         n_concurrent_uploads = 16
@@ -266,10 +266,11 @@ class _Mount(Provider[_MountHandle]):
         uploaded_hashes: set[str] = set()
         total_bytes = 0
         message_label = self._description()
+        status_row = resolver.add_status_row()
 
         async def _put_file(file_spec: FileUploadSpec) -> api_pb2.MountFile:
             nonlocal n_files, uploaded_hashes, total_bytes
-            resolver.set_message(
+            status_row.message(
                 f"Creating mount {message_label}: Uploaded {len(uploaded_hashes)}/{n_files} inspected files"
             )
 
@@ -319,12 +320,10 @@ class _Mount(Provider[_MountHandle]):
             logger.warning(f"Mount of '{message_label}' is empty.")
 
         # Build mounts
-        resolver.set_message(f"Creating mount {message_label}: Building mount")
-        req = api_pb2.MountBuildRequest(
-            app_id=resolver.app_id, existing_mount_id=resolver.existing_object_id, files=files
-        )
+        status_row.message(f"Creating mount {message_label}: Building mount")
+        req = api_pb2.MountBuildRequest(app_id=resolver.app_id, existing_mount_id=existing_object_id, files=files)
         resp = await retry_transient_errors(resolver.client.stub.MountBuild, req, base_delay=1)
-        resolver.set_message(f"Created mount {message_label}")
+        status_row.finish(f"Created mount {message_label}")
 
         logger.debug(f"Uploaded {len(uploaded_hashes)}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
         return _MountHandle._from_id(resp.mount_id, resolver.client, None)

@@ -25,12 +25,12 @@ class _Secret(Provider[_SecretHandle]):
     """
 
     def __init__(self, env_dict={}, template_type=""):
-        async def _load(resolver: Resolver) -> _SecretHandle:
+        async def _load(resolver: Resolver, existing_object_id: str) -> _SecretHandle:
             req = api_pb2.SecretCreateRequest(
                 app_id=resolver.app_id,
                 env_dict=env_dict,
                 template_type=template_type,
-                existing_secret_id=resolver.existing_object_id,
+                existing_secret_id=existing_object_id,
             )
             resp = await resolver.client.stub.SecretCreate(req)
             return _SecretHandle._from_id(resp.secret_id, resolver.client, None)
@@ -42,7 +42,7 @@ class _Secret(Provider[_SecretHandle]):
 async def _resolve_secret(resolver: Resolver, secret: _Secret) -> str:
     """mdmd:hidden"""
     try:
-        secret_id = await resolver.load(secret)
+        secret_id = (await resolver.load(secret)).object_id
     except NotFoundError as ex:
         if isinstance(secret, _Secret):
             msg = f"Secret {secret} was not found"

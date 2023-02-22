@@ -808,11 +808,12 @@ class _Function(Provider[_FunctionHandle]):
         rep = r"Function({self._tag})"
         super().__init__(self._load, rep)
 
-    async def _load(self, resolver: Resolver):
-        resolver.set_message(f"Creating {self._tag}...")
+    async def _load(self, resolver: Resolver, existing_object_id: str):
+        status_row = resolver.add_status_row()
+        status_row.message(f"Creating {self._tag}...")
 
         if self._proxy:
-            proxy_id = await resolver.load(self._proxy)
+            proxy_id = (await resolver.load(self._proxy)).object_id
             # HACK: remove this once we stop using ssh tunnels for this.
             if self._image:
                 self._image = self._image.apt_install("autossh")
@@ -823,7 +824,7 @@ class _Function(Provider[_FunctionHandle]):
         if self._image is not None:
             if not isinstance(self._image, _Image):
                 raise InvalidError(f"Expected modal.Image object. Got {type(self._image)}.")
-            image_id = await resolver.load(self._image)
+            image_id = (await resolver.load(self._image)).object_id
         else:
             image_id = None  # Happens if it's a notebook function
         secret_ids = []
@@ -833,7 +834,7 @@ class _Function(Provider[_FunctionHandle]):
 
         mount_ids = []
         for mount in [*self._base_mounts, *self._mounts]:
-            mount_ids.append(await resolver.load(mount))
+            mount_ids.append((await resolver.load(mount)).object_id)
 
         if not isinstance(self._shared_volumes, dict):
             raise InvalidError("shared_volumes must be a dict[str, SharedVolume] where the keys are paths")
@@ -852,7 +853,9 @@ class _Function(Provider[_FunctionHandle]):
                 raise InvalidError(f"Shared volume {abs_path} cannot be mounted at /tmp.")
 
             shared_volume_mounts.append(
-                api_pb2.SharedVolumeMount(mount_path=path, shared_volume_id=await resolver.load(shared_volume))
+                api_pb2.SharedVolumeMount(
+                    mount_path=path, shared_volume_id=(await resolver.load(shared_volume)).object_id
+                )
             )
 
         if self._is_generator:
@@ -931,7 +934,7 @@ class _Function(Provider[_FunctionHandle]):
             app_id=resolver.app_id,
             function=function_definition,
             schedule=self._schedule.proto_message if self._schedule is not None else None,
-            existing_function_id=resolver.existing_object_id,
+            existing_function_id=existing_object_id,
         )
         try:
             response = await resolver.client.stub.FunctionCreate(request)
@@ -951,11 +954,11 @@ class _Function(Provider[_FunctionHandle]):
             else:
                 suffix = ""
             # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
-            resolver.set_message(
+            status_row.finish(
                 f"Created {self._tag} => [magenta underline]{response.web_url}[/magenta underline]{suffix}"
             )
         else:
-            resolver.set_message(f"Created {self._tag}.")
+            status_row.finish(f"Created {self._tag}.")
 
         # Update the precreated function handle (todo: hack until we merge providers/handles)
         self._function_handle._initialize_handle(resolver.client, response.function_id)
