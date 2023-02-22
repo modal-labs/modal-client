@@ -5,6 +5,7 @@ import os
 import platform
 import time
 import warnings
+from asyncio import CancelledError
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
@@ -153,10 +154,10 @@ class _OutputValue:
 class _Invocation:
     """Internal client representation of a single-input call to a Modal Function or Generator"""
 
-    def __init__(self, stub, function_call_id, client=None):
-        self.stub = stub
+    def __init__(self, api_stub, function_call_id, client=None):
+        self.api_stub = api_stub
         self.client = client  # Used by the deserializer.
-        self.function_call_id = function_call_id  # TODO: remove and use only input_id
+        self.function_call_id = function_call_id
 
     @staticmethod
     async def create(function_id, args, kwargs, client):
@@ -204,7 +205,7 @@ class _Invocation:
                 clear_on_success=clear_on_success,
             )
             response = await retry_transient_errors(
-                self.stub.FunctionGetOutputs,
+                self.api_stub.FunctionGetOutputs,
                 request,
             )
             if len(response.outputs) > 0:
@@ -220,9 +221,16 @@ class _Invocation:
 
     async def run_function(self):
         # waits indefinitely for a single result for the function, and clear the outputs buffer after
-        result = (await stream.list(self.pop_function_call_outputs(timeout=None, clear_on_success=True)))[0]
+        try:
+            result = (await stream.list(self.pop_function_call_outputs(timeout=None, clear_on_success=True)))[0]
+        except RuntimeError as exc:
+            if "cannot schedule new futures after shutdown" in str(exc):
+                # TODO(elias) could we shut down the api channel pool prior to shutting down
+                #  the event loop to prevent these errors in the first place?
+                raise CancelledError("event loop closed")  # this is caught and potentially ignored by `call_function`
+
         assert not result.gen_status
-        return await _process_result(result, self.stub, self.client)
+        return await _process_result(result, self.api_stub, self.client)
 
     async def poll_function(self, timeout: Optional[float] = None):
         # waits up to timeout for a result from a function
@@ -236,7 +244,7 @@ class _Invocation:
         if len(results) == 0:
             raise TimeoutError()
 
-        return await _process_result(results[0], self.stub, self.client)
+        return await _process_result(results[0], self.api_stub, self.client)
 
     async def run_generator(self):
         last_entry_id = "0-0"
@@ -250,7 +258,7 @@ class _Invocation:
                     clear_on_success=False,  # there could be more results
                 )
                 response = await retry_transient_errors(
-                    self.stub.FunctionGetOutputs,
+                    self.api_stub.FunctionGetOutputs,
                     request,
                 )
                 if len(response.outputs) > 0:
@@ -259,7 +267,7 @@ class _Invocation:
                         if item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
                             completed = True
                             break
-                        yield await _process_result(item.result, self.stub, self.client)
+                        yield await _process_result(item.result, self.api_stub, self.client)
         finally:
             # "ack" that we have all outputs we are interested in and let backend clear results
             request = api_pb2.FunctionGetOutputsRequest(
@@ -268,7 +276,7 @@ class _Invocation:
                 last_entry_id="0-0",
                 clear_on_success=True,
             )
-            await self.stub.FunctionGetOutputs(request)
+            await self.api_stub.FunctionGetOutputs(request)
 
 
 MAP_INVOCATION_CHUNK_SIZE = 100
