@@ -33,7 +33,7 @@ from .image import _Image, _ImageHandle
 from .mount import _get_client_mount, _Mount
 from .object import Provider
 from .proxy import _Proxy
-from .queue import _Queue
+from .queue import _Queue, _QueueHandle
 from .rate_limit import RateLimit
 from .schedule import Schedule
 from .secret import _Secret
@@ -284,7 +284,9 @@ class _Stub:
 
                 if self._pty_input_stream:
                     output_mgr._visible_progress = False
-                    async with _pty.write_stdin_to_pty_stream(app._pty_input_stream):
+                    handle = app._pty_input_stream
+                    assert isinstance(handle, _QueueHandle)
+                    async with _pty.write_stdin_to_pty_stream(handle):
                         yield app
                     output_mgr._visible_progress = True
                 else:
