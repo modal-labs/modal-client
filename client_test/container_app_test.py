@@ -103,20 +103,18 @@ async def test_is_inside_default_image(servicer, unix_servicer, aio_client, aio_
 
     assert not stub.is_inside()
 
-    async with stub.run(client=aio_client) as app:
-        from modal.stub import _default_image
+    from modal.stub import _default_image
 
-        default_image_handle = await app._load(_default_image)
-        default_image_id = default_image_handle.object_id
-        app_id = app.app_id
+    default_image_handle, app_id = await AioApp._create_one_object(aio_client, _default_image)
+    default_image_id = default_image_handle.object_id
 
-        # Copy the app objects to the container servicer
-        unix_servicer.app_objects[app_id] = servicer.app_objects[app_id]
+    # Copy the app objects to the container servicer
+    unix_servicer.app_objects[app_id] = servicer.app_objects[app_id]
 
-        await AioApp.init_container(aio_container_client, app_id)
+    await AioApp.init_container(aio_container_client, app_id)
 
-        # Create a new stub (TODO: tie it to the previous stub through name or similar)
-        stub = AioStub()
+    # Create a new stub (TODO: tie it to the previous stub through name or similar)
+    stub = AioStub()
 
-        with mock.patch.dict(os.environ, {"MODAL_IMAGE_ID": default_image_id}):
-            assert stub.is_inside()
+    with mock.patch.dict(os.environ, {"MODAL_IMAGE_ID": default_image_id}):
+        assert stub.is_inside()

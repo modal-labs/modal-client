@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2023
-from typing import TYPE_CHECKING, Any, Dict, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypeVar
 
 if TYPE_CHECKING:
     from rich.spinner import Spinner
@@ -85,6 +85,9 @@ class _Resolver:
 
     def add_status_row(self) -> StatusRow:
         return StatusRow(self._progress)
+
+    def objects(self) -> List:
+        return list(self._local_uuid_to_object.values())
 
 
 Resolver, AioResolver = synchronize_apis(_Resolver)

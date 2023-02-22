@@ -6,9 +6,9 @@ from pathlib import Path
 import pytest
 import sys
 
-from modal import Stub, create_package_mounts
+from modal import App, Stub, create_package_mounts
 from modal._blob_utils import LARGE_FILE_LIMIT
-from modal._resolver import AioResolver, Resolver
+from modal.aio import AioApp
 from modal.exception import DeprecationError, NotFoundError
 from modal.mount import AioMount, Mount
 
@@ -38,8 +38,7 @@ async def test_get_files(servicer, aio_client, tmpdir):
     assert files["/large.py"].content is None
     assert files["/large.py"].sha256_hex == hashlib.sha256(large_content).hexdigest()
 
-    resolver = AioResolver(None, aio_client, None)
-    await m._load(resolver, None)
+    await AioApp._create_one_object(aio_client, m)
     blob_id = max(servicer.blobs.keys())  # last uploaded one
     assert len(servicer.blobs[blob_id]) == len(large_content)
     assert servicer.blobs[blob_id] == large_content
@@ -61,8 +60,7 @@ def test_create_mount_legacy_constructor(servicer, client):
     with pytest.warns(DeprecationError):
         m = Mount(local_dir=local_dir, remote_dir=remote_dir, condition=condition)
 
-    resolver = Resolver(None, client, None)
-    obj = m._load(resolver, None)
+    obj, _ = App._create_one_object(client, m)
 
     assert obj.object_id == "mo-123"
     assert f"/foo/{cur_filename}" in servicer.files_name2sha
@@ -79,8 +77,7 @@ def test_create_mount(servicer, client):
 
     m = Mount.from_local_dir(local_dir, remote_path="/foo", condition=condition)
 
-    resolver = Resolver(None, client, None)
-    obj = m._load(resolver, None)
+    obj, _ = App._create_one_object(client, m)
 
     assert obj.object_id == "mo-123"
     assert f"/foo/{cur_filename}" in servicer.files_name2sha
@@ -91,16 +88,15 @@ def test_create_mount(servicer, client):
 
 
 def test_create_mount_file_errors(servicer, tmpdir, client):
-    resolver = Resolver(None, client, None)
     m = Mount.from_local_dir("xyz", remote_path="/xyz")
     with pytest.raises(FileNotFoundError):
-        m._load(resolver, None)
+        App._create_one_object(client, m)
 
     with open(tmpdir / "abc", "w"):
         pass
     m = Mount.from_local_dir(tmpdir / "abc", remote_path="/abc")
     with pytest.raises(NotADirectoryError):
-        m._load(resolver, None)
+        App._create_one_object(client, m)
 
 
 def dummy():

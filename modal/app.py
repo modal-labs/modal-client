@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict, Optional, TypeVar
+from typing import TYPE_CHECKING, Dict, Optional, Tuple, TypeVar
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
@@ -59,7 +59,6 @@ class _App:
         self._client = client
         self._tag_to_object = tag_to_object or {}
         self._tag_to_existing_id = tag_to_existing_id or {}
-        self._resolver = None
 
     @property
     def client(self) -> _Client:
@@ -75,10 +74,10 @@ class _App:
         self, blueprint: Dict[str, Provider], progress: Tree, new_app_state: int
     ):  # api_pb2.AppState.V
         """Create objects that have been defined but not created on the server."""
-        self._resolver = _Resolver(progress, self._client, self.app_id)
+        resolver = _Resolver(progress, self._client, self.app_id)
         for tag, provider in blueprint.items():
             existing_object_id = self._tag_to_existing_id.get(tag)
-            created_obj = await self._resolver.load(provider, existing_object_id)
+            created_obj = await resolver.load(provider, existing_object_id)
             self._tag_to_object[tag] = created_obj
 
         # Create the app (and send a list of all tagged obs)
@@ -86,21 +85,16 @@ class _App:
         # We just delete them from the app, but the actual objects will stay around
         indexed_object_ids = {tag: obj.object_id for tag, obj in self._tag_to_object.items()}
         unindexed_object_ids = list(
-            set(obj.object_id for obj in self._resolver._local_uuid_to_object.values())
+            set(obj.object_id for obj in resolver.objects())
             - set(obj.object_id for obj in self._tag_to_object.values())
         )
         req_set = api_pb2.AppSetObjectsRequest(
             app_id=self._app_id,
             indexed_object_ids=indexed_object_ids,
             unindexed_object_ids=unindexed_object_ids,
-            new_app_state=new_app_state,  # type: ignore
         )
         await retry_transient_errors(self._client.stub.AppSetObjects, req_set)
         return self._tag_to_object
-
-    async def _load(self, provider: Provider):
-        # Only used by tests. Remove?
-        return await self._resolver.load(provider)
 
     async def disconnect(self):
         """Tell the server the client has disconnected for this app. Terminates all running tasks
@@ -145,7 +139,7 @@ class _App:
         return _container_app
 
     @staticmethod
-    async def _init_existing(client, existing_app_id):
+    async def _init_existing(client: _Client, existing_app_id: str) -> _App:
         # Get all the objects first
         obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
         obj_resp = await retry_transient_errors(client.stub.AppGetObjects, obj_req)
@@ -154,7 +148,7 @@ class _App:
         return _App(client, existing_app_id, app_page_url, tag_to_existing_id=object_ids)
 
     @staticmethod
-    async def _init_new(client, description, detach, deploying) -> "_App":
+    async def _init_new(client: _Client, description: Optional[str], detach: bool, deploying: bool) -> _App:
         # Start app
         # TODO(erikbern): maybe this should happen outside of this method?
         app_req = api_pb2.AppCreateRequest(
@@ -167,6 +161,25 @@ class _App:
         logger.debug(f"Created new app with id {app_resp.app_id}")
         return _App(client, app_resp.app_id, app_page_url)
 
+    @staticmethod
+    async def _create_one_object(client: _Client, provider: Provider) -> Tuple[Handle, str]:
+        # TODO(erikbern): This will be turned into something for deploying single objects
+        app_req = api_pb2.AppCreateRequest()
+        app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
+        app_id = app_resp.app_id
+        resolver = _Resolver(None, client, app_id)
+        handle = await resolver.load(provider)
+        indexed_object_ids = {"_object": handle.object_id}
+        unindexed_object_ids = [obj.object_id for obj in resolver.objects() if obj is not handle]
+        req_set = api_pb2.AppSetObjectsRequest(
+            app_id=app_id,
+            indexed_object_ids=indexed_object_ids,
+            unindexed_object_ids=unindexed_object_ids,
+        )
+        await retry_transient_errors(client.stub.AppSetObjects, req_set)
+
+        return (handle, app_resp.app_id)
+    
     @staticmethod
     def _reset_container():
         # Just used for tests
