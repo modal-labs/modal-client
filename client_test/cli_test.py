@@ -16,6 +16,7 @@ import click.testing
 import pytest
 import pytest_asyncio
 
+from client_test.supports.skip import skip_windows
 from modal.cli.entry_point import entrypoint_cli
 from modal.client import Client
 from modal_proto import api_pb2
@@ -286,6 +287,7 @@ def test_shell(servicer, server_url_env, test_dir):
     assert ran_cmd == "/bin/bash"
 
 
+@skip_windows
 def test_run_interrupt(servicer, server_url_env, test_dir):
     rel_stub_file = Path("supports", "app_run_tests", "default_stub.py")
 
