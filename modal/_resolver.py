@@ -8,7 +8,6 @@ else:
     Spinner = TypeVar("Spinner")
     Tree = TypeVar("Tree")
 
-from modal_utils.async_utils import synchronize_apis
 from modal.exception import ExecutionError
 
 
@@ -36,7 +35,7 @@ class StatusRow:
             self._step_node.label = step_completed(message, is_substep=True)
 
 
-class _Resolver:
+class Resolver:
     # Unfortunately we can't use type annotations much in this file,
     # since that leads to circular dependencies
     _progress: Optional[Tree]
@@ -88,6 +87,3 @@ class _Resolver:
 
     def objects(self) -> List:
         return list(self._local_uuid_to_object.values())
-
-
-Resolver, AioResolver = synchronize_apis(_Resolver)

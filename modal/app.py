@@ -7,7 +7,7 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 from modal_utils.grpc_utils import retry_transient_errors
 
-from ._resolver import _Resolver
+from ._resolver import Resolver
 from .client import _Client
 from .config import logger
 from .object import Handle, Provider
@@ -43,7 +43,7 @@ class _App:
     _tag_to_existing_id: Dict[str, str]
     _client: _Client
     _app_id: str
-    _resolver: Optional[_Resolver]
+    _resolver: Optional[Resolver]
 
     def __init__(
         self,
@@ -74,7 +74,7 @@ class _App:
         self, blueprint: Dict[str, Provider], progress: Tree, new_app_state: int
     ):  # api_pb2.AppState.V
         """Create objects that have been defined but not created on the server."""
-        resolver = _Resolver(progress, self._client, self.app_id)
+        resolver = Resolver(progress, self._client, self.app_id)
         for tag, provider in blueprint.items():
             existing_object_id = self._tag_to_existing_id.get(tag)
             created_obj = await resolver.load(provider, existing_object_id)
@@ -167,7 +167,7 @@ class _App:
         app_req = api_pb2.AppCreateRequest()
         app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
         app_id = app_resp.app_id
-        resolver = _Resolver(None, client, app_id)
+        resolver = Resolver(None, client, app_id)
         handle = await resolver.load(provider)
         indexed_object_ids = {"_object": handle.object_id}
         unindexed_object_ids = [obj.object_id for obj in resolver.objects() if obj is not handle]
@@ -179,7 +179,7 @@ class _App:
         await retry_transient_errors(client.stub.AppSetObjects, req_set)
 
         return (handle, app_resp.app_id)
-    
+
     @staticmethod
     def _reset_container():
         # Just used for tests
