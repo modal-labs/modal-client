@@ -136,17 +136,17 @@ P = TypeVar("P", bound="Provider")
 
 
 class Provider(Generic[H]):
-    def _init(self, load, rep):
+    def _init(self, load: Callable[[Resolver, str], Awaitable[H]], rep: str):
         self._local_uuid = str(uuid.uuid4())
         self._load = load
         self._rep = rep
 
-    def __init__(self, load: Callable[[Resolver], Awaitable[H]], rep: str):
+    def __init__(self, load: Callable[[Resolver, str], Awaitable[H]], rep: str):
         # TODO(erikbern): this is semi-deprecated - subclasses should use _from_loader
         self._init(load, rep)
 
     @classmethod
-    def _from_loader(cls, load: Callable[[Resolver], Awaitable[H]], rep: str):
+    def _from_loader(cls, load: Callable[[Resolver, str], Awaitable[H]], rep: str):
         obj = Handle.__new__(cls)
         obj._init(load, rep)
         return obj
@@ -206,7 +206,7 @@ class Provider(Generic[H]):
 
         """
 
-        async def _load_persisted(resolver: Resolver) -> H:
+        async def _load_persisted(resolver: Resolver, existing_object_id: str) -> H:
             return await self._deploy(label, namespace, resolver.client)
 
         # Create a class of type cls, but use the base constructor
@@ -235,7 +235,7 @@ class Provider(Generic[H]):
         ```
         """
 
-        async def _load_remote(resolver: Resolver) -> H:
+        async def _load_remote(resolver: Resolver, existing_object_id: str) -> H:
             handle_cls = cls.get_handle_cls()
             handle: H = await handle_cls.from_app(app_name, tag, namespace, client=resolver.client)
             return handle

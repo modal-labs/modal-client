@@ -156,15 +156,15 @@ class _Image(Provider[_ImageHandle]):
         if context_mount is not None and not isinstance(context_mount, _Mount):
             raise InvalidError(f"Context mount {context_mount!r} must be a modal.Mount object")
 
-        async def _load(resolver: Resolver):
+        async def _load(resolver: Resolver, existing_object_id: str):
             if ref:
-                image_id = await resolver.load(ref)
+                image_id = (await resolver.load(ref)).object_id
                 return _ImageHandle._from_id(image_id, resolver.client, None)
 
             # Recursively build base images
             base_image_ids: list[str] = []
             for image in base_images.values():
-                base_image_ids.append(await resolver.load(image))
+                base_image_ids.append((await resolver.load(image)).object_id)
             base_images_pb2s = [
                 api_pb2.BaseImage(
                     docker_tag=docker_tag,
@@ -185,7 +185,7 @@ class _Image(Provider[_ImageHandle]):
 
             if build_function:
                 build_function_def = build_function.get_build_def()
-                build_function_id = await resolver.load(build_function)
+                build_function_id = (await resolver.load(build_function)).object_id
             else:
                 build_function_def = None
                 build_function_id = None
@@ -198,7 +198,7 @@ class _Image(Provider[_ImageHandle]):
                 dockerfile_commands_list = dockerfile_commands
 
             if context_mount:
-                context_mount_id = await resolver.load(context_mount)
+                context_mount_id = (await resolver.load(context_mount)).object_id
             else:
                 context_mount_id = None
 
@@ -219,7 +219,7 @@ class _Image(Provider[_ImageHandle]):
             req = api_pb2.ImageGetOrCreateRequest(
                 app_id=resolver.app_id,
                 image=image_definition,
-                existing_image_id=resolver.existing_object_id,  # TODO: ignored
+                existing_image_id=existing_object_id,  # TODO: ignored
                 build_function_id=build_function_id,
             )
             resp = await resolver.client.stub.ImageGetOrCreate(req)
