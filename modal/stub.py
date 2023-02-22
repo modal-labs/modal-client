@@ -721,8 +721,8 @@ class _Stub:
         run for longer and return results to the caller on completion.
 
         The two `wait_for_response` modes for webhooks are as follows:
-        * wait_for_response=True - tries to fulfill the request on the original URL, but returns a 302 rediect after ~150s to a result url (original url with an added __modal_function_id=... query parameter)
-        * wait_for_response=False - immediately returns a 202 ACCEPTED response with a json payload: `{"result_url": "..."}` containing the result "redirect" url from above (which in turn redirects to itself every 150s)
+        * `wait_for_response=True` - tries to fulfill the request on the original URL, but returns a 302 redirect after ~150s to a result URL (original URL with an added `__modal_function_id=...` query parameter)
+        * `wait_for_response=False` - immediately returns a 202 ACCEPTED response with a JSON payload: `{"result_url": "..."}` containing the result "redirect" URL from above (which in turn redirects to itself every ~150s)
         """
         if image is None:
             image = self._get_default_image()
