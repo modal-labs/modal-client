@@ -1,9 +1,14 @@
 # Copyright Modal Labs 2022
+import asyncio
 import os
+import signal
+import subprocess
 import sys
+import time
 import traceback
 import unittest.mock
 from contextlib import asynccontextmanager
+from pathlib import Path
 from unittest import mock
 
 import click
@@ -279,3 +284,29 @@ def test_shell(servicer, server_url_env, test_dir):
     ), mock.patch("modal._pty.write_stdin_to_pty_stream", noop_async_context_manager):
         _run(["shell", stub_file.as_posix() + "::foo"])
     assert ran_cmd == "/bin/bash"
+
+
+def test_run_interrupt(servicer, server_url_env, test_dir):
+    rel_stub_file = Path("supports", "app_run_tests", "default_stub.py")
+
+    @servicer.function_body
+    async def slow_func():
+        await asyncio.sleep(10)
+
+    t0 = time.monotonic()
+    process = subprocess.Popen(
+        [sys.executable, "-m", "modal.cli.entry_point", "run", rel_stub_file.as_posix()],
+        env={"MODAL_SERVER_URL": server_url_env},
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        cwd=test_dir,
+    )
+    time.sleep(1)
+    process.send_signal(signal.SIGINT)
+    output_bytes, _ = process.communicate()
+    t1 = time.monotonic()
+    assert t1 - t0 < 2
+    output_str = output_bytes.decode("utf-8")
+    assert "Disconnecting from Modal - This will terminate your Modal app in a few seconds." in output_str
+    assert "Traceback" not in output_str
+    assert process.returncode == 0
