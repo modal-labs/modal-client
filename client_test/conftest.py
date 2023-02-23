@@ -587,7 +587,7 @@ async def servicer_factory(blob_server):
 async def servicer(servicer_factory):
     port = find_free_port()
     async with servicer_factory(host="0.0.0.0", port=port) as servicer:
-        servicer.remote_addr = f"http://localhost:{port}"
+        servicer.remote_addr = f"http://127.0.0.1:{port}"
         yield servicer
 
 
