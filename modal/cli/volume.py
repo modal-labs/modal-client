@@ -146,7 +146,7 @@ async def put(
         with Live(spinner, console=console):
             written_bytes = await volume.add_local_file(local_path, remote_path)
         console.print(
-            step_completed(f"Uploaded file '{local_path}' to '{remote_path} ({written_bytes} bytes written)'")
+            step_completed(f"Uploaded file '{local_path}' to '{remote_path}' ({written_bytes} bytes written)")
         )
 
 
