@@ -21,7 +21,7 @@ from .exception import InvalidError, NotFoundError, RemoteError
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _get_client_mount, _Mount
 from .object import Handle, Provider
-from .secret import _Secret, _resolve_secret
+from .secret import _Secret
 from .shared_volume import _SharedVolume
 
 
@@ -113,7 +113,7 @@ class _ImageRegistryConfig:
             return api_pb2.ImageRegistryConfig(registry_type=self.registry_type)
 
         return api_pb2.ImageRegistryConfig(
-            registry_type=self.registry_type, secret_id=await _resolve_secret(resolver, self.secret)
+            registry_type=self.registry_type, secret_id=(await resolver.load(self.secret)).object_id
         )
 
 
@@ -175,7 +175,7 @@ class _Image(Provider[_ImageHandle]):
 
             secret_ids = []
             for secret in secrets:
-                secret_id = await _resolve_secret(resolver, secret)
+                secret_id = (await resolver.load(secret)).object_id
                 secret_ids.append(secret_id)
 
             context_file_pb2s = []
