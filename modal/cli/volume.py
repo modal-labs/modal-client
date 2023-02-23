@@ -14,12 +14,14 @@ from click import UsageError
 from google.protobuf import empty_pb2
 from grpclib import GRPCError, Status
 from rich.console import Console
+from rich.live import Live
 from rich.syntax import Syntax
 from rich.table import Table
 from typer import Typer
 
 import modal
 from modal._location import display_location, parse_cloud_provider
+from modal._output import step_progress, step_completed
 from modal.client import AioClient
 from modal.shared_volume import AioSharedVolumeHandle, _SharedVolumeHandle, AioSharedVolume
 from modal_proto import api_pb2
@@ -68,7 +70,7 @@ def create(name: str, cloud: str = typer.Option("aws", help="Cloud provider to c
     volume = modal.SharedVolume(cloud_provider=cloud_provider)
     volume._deploy(name)
     console = Console()
-    console.print(f"Created volume '{name}' in {display_location(cloud_provider)}. \n\nUsage:\n")
+    console.print(f"Created volume '{name}' in {display_location(cloud_provider)}. \n\nCode example:\n")
     usage = Syntax(gen_usage_code(name), "python")
     console.print(usage)
 
@@ -129,15 +131,23 @@ async def put(
     volume = await volume_from_name(volume_name)
     if remote_path.endswith("/"):
         remote_path = remote_path + os.path.basename(local_path)
+    console = Console()
 
     if Path(local_path).is_dir():
-        raise UsageError("Directory uploads are currently not supported")
+        spinner = step_progress(f"Uploading directory '{local_path}' to '{remote_path}'...")
+        with Live(spinner, console=console):
+            await volume.add_local_dir(local_path, remote_path)
+        console.print(step_completed(f"Uploaded directory '{local_path}' to '{remote_path}'"))
+
     elif "*" in local_path:
         raise UsageError("Glob uploads are currently not supported")
     else:
-        with Path(local_path).open("rb") as fd:
-            written_bytes = await volume.write_file(remote_path, fd)
-        print(f"Wrote {written_bytes} bytes to remote file {remote_path}", file=sys.stderr)
+        spinner = step_progress(f"Uploading file '{local_path}' to '{remote_path}'...")
+        with Live(spinner, console=console):
+            written_bytes = await volume.add_local_file(local_path, remote_path)
+        console.print(
+            step_completed(f"Uploaded file '{local_path}' to '{remote_path}' ({written_bytes} bytes written)")
+        )
 
 
 class CliError(Exception):

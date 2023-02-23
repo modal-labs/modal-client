@@ -32,7 +32,7 @@ class _SharedVolumeHandle(Handle, type_prefix="sv"):
     ```
     """
 
-    async def write_file(self, remote_path: str, fp: BinaryIO):
+    async def write_file(self, remote_path: str, fp: BinaryIO) -> int:
         """Write from a file object to a path on the shared volume, atomically.
 
         Will create any needed parent directories automatically.
@@ -87,7 +87,7 @@ class _SharedVolumeHandle(Handle, type_prefix="sv"):
             remote_path = PurePosixPath(remote_path).as_posix()
 
         with local_path.open("rb") as local_file:
-            await self.write_file(remote_path, local_file)
+            return await self.write_file(remote_path, local_file)
 
     async def add_local_dir(
         self,
