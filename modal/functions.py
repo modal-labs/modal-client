@@ -6,7 +6,7 @@ import platform
 import time
 import warnings
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import timedelta
 from pathlib import Path
 from typing import Any, AsyncIterable, Callable, Collection, Dict, List, Optional, Set, Union
 
@@ -41,7 +41,6 @@ from ._traceback import append_modal_tb
 from .client import _Client
 from .exception import ExecutionError, InvalidError, RemoteError
 from .exception import TimeoutError as _TimeoutError
-from .exception import deprecation_error
 from .gpu import GPU_T, parse_gpu_config, display_gpu_config
 from .image import _Image
 from .mount import _Mount
@@ -442,7 +441,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
     _web_url: Optional[str]
     _info: Optional[FunctionInfo]
 
-    def _initialize_from_proto(self, proto: Optional[Message]):
+    def _initialize_from_empty(self):
         self._progress = None
         self._is_generator = None
         self._info = None
@@ -453,11 +452,11 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         )
         self._function_name = None
 
-        if proto is not None:
-            assert isinstance(proto, api_pb2.Function)
-            self._is_generator = proto.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
-            self._web_url = proto.web_url
-            self._function_name = proto.function_name
+    def _initialize_from_proto(self, proto: Message):
+        assert isinstance(proto, api_pb2.Function)
+        self._is_generator = proto.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
+        self._web_url = proto.web_url
+        self._function_name = proto.function_name
 
     def _set_mute_cancellation(self, value: bool = True):
         self._mute_cancellation = value
@@ -467,6 +466,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         self._output_mgr = output_mgr
 
     def _set_info(self, function_info: FunctionInfo):
+        print("setting info of", self)
         self._info = function_info
 
     def _set_stub(self, stub):
@@ -619,18 +619,12 @@ class _FunctionHandle(Handle, type_prefix="fu"):
             return self.call_function(args, kwargs)
 
     def __call__(self, *args, **kwargs):
-        deprecation_error(
-            date(2022, 12, 5),
-            "Calling a function directly is no longer possible. Use f.call(...) instead."
-            " In a future version of Modal, f(...) will be used to call a function in the same process.",
-        )
+        if not self._info:
+            raise AttributeError(
+                "The definition for this function is missing so it is not possible to invoke it locally"
+            )
 
-    async def enqueue(self, *args, **kwargs):
-        """**Deprecated.** Use `.spawn()` instead when possible.
-
-        Calls the function with the given arguments, without waiting for the results.
-        """
-        deprecation_error(None, "Function.enqueue is deprecated, use .spawn() instead")
+        return self._info.raw_f(*args, **kwargs)
 
     async def spawn(self, *args, **kwargs) -> Optional["_FunctionCall"]:
         """Calls the function with the given arguments, without waiting for the results.
@@ -647,10 +641,6 @@ class _FunctionHandle(Handle, type_prefix="fu"):
 
         invocation = await self.call_function_nowait(args, kwargs)
         return _FunctionCall._from_id(invocation.function_call_id, invocation.client, None)
-
-    async def submit(self, *args, **kwargs):
-        """**Deprecated.** Use `.spawn()` instead."""
-        deprecation_error(date(2022, 12, 5), "Function.submit is no longer supported. Use .spawn() instead")
 
     def get_raw_f(self) -> Callable:
         """Return the inner Python object wrapped by this Modal Function."""
