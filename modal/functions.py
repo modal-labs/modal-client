@@ -38,6 +38,7 @@ from ._output import OutputManager
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._traceback import append_modal_tb
+from .config import logger
 from .client import _Client
 from .exception import ExecutionError, InvalidError, RemoteError
 from .exception import TimeoutError as _TimeoutError
@@ -328,6 +329,9 @@ async def _map_invocation(
             )
             for item in resp.inputs:
                 pending_outputs.setdefault(item.input_id, 0)
+            logger.debug(
+                f"Successfully pushed {len(items)} inputs to server. Num queued inputs awaiting push is {input_queue.qsize()}."
+            )
 
         have_all_inputs = True
         yield
