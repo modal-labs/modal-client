@@ -7,7 +7,7 @@ import cloudpickle
 from synchronicity.exceptions import UserCodeException
 
 from modal import Proxy, Stub
-from modal.exception import DeprecationError, InvalidError
+from modal.exception import InvalidError
 from modal.functions import Function, FunctionCall, gather
 from modal.stub import AioStub
 from modal_proto import api_pb2
