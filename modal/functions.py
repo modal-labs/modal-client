@@ -6,7 +6,6 @@ import platform
 import time
 import warnings
 from dataclasses import dataclass
-from datetime import timedelta
 from pathlib import Path
 from typing import Any, AsyncIterable, Callable, Collection, Dict, List, Optional, Set, Union
 
@@ -741,13 +740,13 @@ class _Function(Provider[_FunctionHandle]):
 
             # TODO(Jonathon): Right now we can only support a maximum delay of 60 seconds
             # b/c tasks can finish as early as after MIN_CONTAINER_IDLE_TIMEOUT seconds
-            if not (timedelta(seconds=1) < retry_policy.max_delay <= timedelta(seconds=60)):
+            if not (1 < retry_policy.max_delay.total_seconds() <= 60):
                 raise InvalidError(
                     f"Invalid max_delay argument: {repr(retry_policy.max_delay)}. Must be between 1-60 seconds."
                 )
 
             # initial_delay should be bounded by max_delay, but this is an extra defensive check.
-            if not (timedelta(seconds=0) < retry_policy.initial_delay <= timedelta(seconds=60)):
+            if not (0 < retry_policy.initial_delay.total_seconds() <= 60):
                 raise InvalidError(
                     f"Invalid initial_delay argument: {repr(retry_policy.initial_delay)}. Must be between 0-60 seconds."
                 )
