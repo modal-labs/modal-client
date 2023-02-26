@@ -106,6 +106,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.enforce_object_entity = True
 
+        self.app_set_objects_count = 0
+
         @self.function_body
         def default_function_body(*args, **kwargs):
             return sum(arg**2 for arg in args) + sum(value**2 for key, value in kwargs.items())
@@ -155,6 +157,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def AppSetObjects(self, stream):
         request: api_pb2.AppSetObjectsRequest = await stream.recv_message()
         self.app_objects[request.app_id] = dict(request.indexed_object_ids)
+        self.app_set_objects_count += 1
         if request.new_app_state:
             self.app_state[request.app_id] = request.new_app_state
         await stream.send_message(Empty())
@@ -619,7 +622,7 @@ async def aio_container_client(unix_servicer):
 
 
 @pytest_asyncio.fixture(scope="function")
-async def server_url_env(servicer, monkeypatch, set_env_client):
+async def server_url_env(servicer, monkeypatch):
     monkeypatch.setenv("MODAL_SERVER_URL", servicer.remote_addr)
     yield
 

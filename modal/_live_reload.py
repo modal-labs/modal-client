@@ -67,4 +67,4 @@ async def _run_serve_loop(stub_ref: str, timeout: Optional[float] = None, stdout
                 curr_proc.terminate()
 
 
-run_serve_loop, _ = synchronize_apis(_run_serve_loop)
+run_serve_loop, aio_run_serve_loop = synchronize_apis(_run_serve_loop)
