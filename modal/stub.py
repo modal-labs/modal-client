@@ -3,8 +3,6 @@ import asyncio
 import contextlib
 import inspect
 import os
-import platform
-import signal
 import sys
 import warnings
 from enum import Enum
@@ -20,7 +18,6 @@ from modal_utils.decorator_utils import decorator_with_options
 from . import _pty
 from ._function_utils import FunctionInfo
 from ._ipython import is_notebook
-from ._live_reload import MODAL_AUTORELOAD_ENV, restart_serve
 from ._output import OutputManager, step_completed, step_progress
 from ._pty import exec_cmd
 from .app import _App, _container_app, is_local
@@ -231,7 +228,7 @@ class _Stub:
         existing_app_id: Optional[str],
         last_log_entry_id: Optional[str] = None,
         name: Optional[str] = None,
-        mode: StubRunMode = StubRunMode.RUN,
+        mode: StubRunMode = StubRunMode.RUN,        
     ) -> AsyncGenerator[_App, None]:
         app_name = name if name is not None else self.description
         detach = mode == StubRunMode.DETACH
@@ -261,7 +258,7 @@ class _Stub:
                 logs_loop = tc.create_task(
                     output_mgr.get_logs_loop(app.app_id, client, status_spinner, last_log_entry_id or "")
                 )
-            if MODAL_AUTORELOAD_ENV not in os.environ:
+            if mode != StubRunMode.SERVE:
                 initialized_msg = (
                     f"Initialized. [grey70]View app at [underline]{app._app_page_url}[/underline][/grey70]"
                 )
@@ -351,18 +348,11 @@ class _Stub:
         async with self._run(client, output_mgr, existing_app_id=None, mode=mode) as app:
             yield app
 
-    async def serve(self, client=None, stdout=None, show_progress=None, timeout=None) -> None:
-        """Run an app until the program is interrupted. Modal watches source files
-        and mounts for the app, and live updates the app when any changes are detected.
+    async def serve(self, client=None, stdout=None, show_progress=None, timeout=None, existing_app_id: Optional[str] = None) -> None:
+        """Run an app until the program is interrupted.
 
-        This function is useful for developing and testing cron schedules, job queues, and webhooks,
-        since they will run until the program is interrupted with `Ctrl + C` or other means.
-        Any changes made to webhook handlers will show up almost immediately the next time the route is hit.
-
-        **Note:** live-reloading is not supported on Python 3.7. Please upgrade to Python 3.8+.
+        Does not in itself handle live-reloading: see _live_reload.py for that.
         """
-        from ._watcher import watch
-
         if self._app is not None:
             raise InvalidError(
                 "The stub already has an app running."
@@ -376,46 +366,13 @@ class _Stub:
         if timeout is None:
             timeout = config["serve_timeout"]
 
+        if timeout is None:
+            timeout = 1e10
+
         output_mgr = OutputManager(stdout, show_progress)
+        async with self._run(client, output_mgr, mode=StubRunMode.SERVE, existing_app_id=existing_app_id) as app:
+            await asyncio.sleep(timeout)
 
-        if MODAL_AUTORELOAD_ENV in os.environ:
-            existing_app_id = os.environ[MODAL_AUTORELOAD_ENV]
-            output_mgr.print_if_visible(f"⚡️ Updating app {existing_app_id}...")
-            try:
-                async with self._run(client, output_mgr, existing_app_id, mode=StubRunMode.SERVE) as app:
-                    await asyncio.sleep(1e10)  # never awake except for exceptions
-            except asyncio.exceptions.CancelledError:
-                return
-        else:
-            unsupported_msg = None
-            if platform.system() == "Windows":
-                unsupported_msg = "Live-reload skipped. This feature is currently unsupported on Windows"
-                " This can hopefully be fixed in a future version of Modal."
-            elif sys.version_info < (3, 8):
-                unsupported_msg = (
-                    "Live-reload skipped. This feature is unsupported below Python 3.8."
-                    " Upgrade to Python 3.8+ to enable live-reloading."
-                )
-
-            if unsupported_msg:
-                async with self._run(client, output_mgr, None, mode=StubRunMode.SERVE) as app:
-                    client.set_pre_stop(app.disconnect)
-                    async for _ in watch(self._local_mounts, output_mgr, timeout):
-                        output_mgr.print_if_visible(unsupported_msg)
-            else:
-                app = await _App._init_new(client, self.description, deploying=False, detach=False)
-                curr_proc = None
-                try:
-                    async for _ in watch(self._local_mounts, output_mgr, timeout):
-                        curr_proc = await restart_serve(
-                            existing_app_id=app.app_id, prev_proc=curr_proc, output_mgr=output_mgr
-                        )
-                finally:
-                    if curr_proc:
-                        try:
-                            curr_proc.send_signal(signal.SIGINT)
-                        except ProcessLookupError:
-                            logger.warning("Could not interrupt app serve. Supervised process already terminated.")
 
     async def deploy(
         self,
