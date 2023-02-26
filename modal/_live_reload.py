@@ -1,10 +1,7 @@
 # Copyright Modal Labs 2023
-import asyncio
-import os
 import multiprocessing
-from pathlib import Path
+from multiprocessing.context import SpawnProcess
 import platform
-import signal
 import sys
 from typing import Optional
 
@@ -26,8 +23,8 @@ def _run_serve(stub_ref: str, existing_app_id: str):
     blocking_stub.serve(existing_app_id=existing_app_id)
 
 
-def restart_serve(stub_ref: str, existing_app_id: str, prev_proc: multiprocessing.Process) -> multiprocessing.Process:
-    if prev_proc:
+def restart_serve(stub_ref: str, existing_app_id: str, prev_proc: Optional[SpawnProcess]) -> SpawnProcess:
+    if prev_proc is not None:
         prev_proc.terminate()
     ctx = multiprocessing.get_context("spawn")  # Needed to reload the interpreter
     p = ctx.Process(target=_run_serve, args=(stub_ref, existing_app_id))

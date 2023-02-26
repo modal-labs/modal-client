@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2023
 import asyncio
-import os
 import platform
 import sys
 import pytest

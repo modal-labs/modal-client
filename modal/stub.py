@@ -372,7 +372,7 @@ class _Stub:
             timeout = 1e10
 
         output_mgr = OutputManager(stdout, show_progress)
-        async with self._run(client, output_mgr, mode=StubRunMode.SERVE, existing_app_id=existing_app_id) as app:
+        async with self._run(client, output_mgr, mode=StubRunMode.SERVE, existing_app_id=existing_app_id):
             await asyncio.sleep(timeout)
 
     async def deploy(
