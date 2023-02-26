@@ -18,6 +18,7 @@ from .app import _App
 from .cli.import_refs import import_stub
 from .client import _Client
 
+
 def _run_serve(stub_ref: str, existing_app_id: str):
     # subprocess entrypoint
     _stub = import_stub(stub_ref)
@@ -53,7 +54,7 @@ async def _run_serve_loop(stub_ref: str, timeout: Optional[float] = None, stdout
 
     if unsupported_msg:
         output_mgr.print_if_visible(unsupported_msg)
-        await stub.serve(timeout=timeout)        
+        await stub.serve(timeout=timeout)
 
     else:
         app = await _App._init_new(client, stub.description, deploying=False, detach=False)

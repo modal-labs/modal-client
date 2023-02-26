@@ -228,7 +228,7 @@ class _Stub:
         existing_app_id: Optional[str],
         last_log_entry_id: Optional[str] = None,
         name: Optional[str] = None,
-        mode: StubRunMode = StubRunMode.RUN,        
+        mode: StubRunMode = StubRunMode.RUN,
     ) -> AsyncGenerator[_App, None]:
         app_name = name if name is not None else self.description
         detach = mode == StubRunMode.DETACH
@@ -348,7 +348,9 @@ class _Stub:
         async with self._run(client, output_mgr, existing_app_id=None, mode=mode) as app:
             yield app
 
-    async def serve(self, client=None, stdout=None, show_progress=None, timeout=None, existing_app_id: Optional[str] = None) -> None:
+    async def serve(
+        self, client=None, stdout=None, show_progress=None, timeout=None, existing_app_id: Optional[str] = None
+    ) -> None:
         """Run an app until the program is interrupted.
 
         Does not in itself handle live-reloading: see _live_reload.py for that.
@@ -372,7 +374,6 @@ class _Stub:
         output_mgr = OutputManager(stdout, show_progress)
         async with self._run(client, output_mgr, mode=StubRunMode.SERVE, existing_app_id=existing_app_id) as app:
             await asyncio.sleep(timeout)
-
 
     async def deploy(
         self,
