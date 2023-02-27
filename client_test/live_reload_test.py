@@ -13,9 +13,9 @@ def test_file_changes_trigger_reloads(client, monkeypatch, test_dir, server_url_
     async def fake_watch(mounts, output_mgr, timeout):
         yield  # dummy at the beginning
         for i in range(3):
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(1.5)
             yield
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(1.5)
 
     monkeypatch.setattr("modal._live_reload.watch", fake_watch)
 
