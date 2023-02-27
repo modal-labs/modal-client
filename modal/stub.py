@@ -358,7 +358,7 @@ class _Stub:
         existing_app_id: Optional[str] = None,
         is_ready: Optional[Event] = None,
     ) -> None:
-        """Run an app until the program is interrupted.
+        """Run an app until the program is interrupted. For development.
 
         Does not in itself handle live-reloading: see _live_reload.py for that.
         This is primarily the entrypoint for the subprocesses spawned by the live reloading,
