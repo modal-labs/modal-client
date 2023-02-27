@@ -38,13 +38,16 @@ async def _restart_serve(stub_ref: str, existing_app_id: str, timeout: float = 5
 async def _terminate(proc: Optional[SpawnProcess], output_mgr: OutputManager, timeout: float = 5.0):
     if proc is None:
         return
-    proc.terminate()
-    await asyncify(proc.join)(timeout)
-    if proc.exitcode is not None:
-        output_mgr.print_if_visible(f"Serve process {proc.pid} terminated")
-    else:
-        output_mgr.print_if_visible(f"[red]Serve process {proc.pid} didn't terminate after {timeout}s, killing it")
-        proc.kill()
+    try:
+        proc.terminate()
+        await asyncify(proc.join)(timeout)
+        if proc.exitcode is not None:
+            output_mgr.print_if_visible(f"Serve process {proc.pid} terminated")
+        else:
+            output_mgr.print_if_visible(f"[red]Serve process {proc.pid} didn't terminate after {timeout}s, killing it")
+            proc.kill()
+    except ProcessLookupError:
+        output_mgr.print_if_visible(f"Serve process {proc.pid} disappeared during termination")
 
 
 async def _run_serve_loop(
