@@ -28,14 +28,12 @@ def test_file_changes_trigger_reloads(test_dir, server_url_env, servicer):
 @skip_old_py("live-reload requires python3.8 or higher", (3, 8))
 @skip_windows("live-reload not supported on windows")
 @pytest.mark.asyncio
-async def test_reloadable_serve_ignores_file_changes(test_dir, server_url_env, servicer):
+async def test_no_change(test_dir, server_url_env, servicer):
     async def fake_watch():
         # Iterator that never yields
         if False:
             yield
 
-    # The app should not react to AppChange.TIMEOUT, and instead need
-    # the wait_for to cancel it.
     stub_file = str(test_dir / "supports" / "app_run_tests" / "default_stub.py")
     await aio_run_serve_loop(stub_file, _watcher=fake_watch())
     assert servicer.app_set_objects_count == 0
