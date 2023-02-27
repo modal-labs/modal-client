@@ -48,7 +48,6 @@ from .image import _Image
 from .mount import _Mount
 from .object import Handle, Provider
 from .proxy import _Proxy
-from .rate_limit import RateLimit
 from .retries import Retries
 from .schedule import Schedule
 from .secret import _Secret
@@ -698,7 +697,6 @@ class _Function(Provider[_FunctionHandle]):
         schedule: Optional[Schedule] = None,
         is_generator=False,
         gpu: GPU_T = None,
-        rate_limit: Optional[RateLimit] = None,
         # TODO: maybe break this out into a separate decorator for notebooks.
         serialized: bool = False,
         base_mounts: Collection[_Mount] = (),
@@ -771,7 +769,6 @@ class _Function(Provider[_FunctionHandle]):
         self._gpu = gpu
         self._schedule = schedule
         self._is_generator = is_generator
-        self._rate_limit = rate_limit
         self._base_mounts = base_mounts
         self._mounts = mounts
         self._shared_volumes = shared_volumes
@@ -867,7 +864,6 @@ class _Function(Provider[_FunctionHandle]):
         else:
             function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
 
-        rate_limit = self._rate_limit._to_proto() if self._rate_limit else None
         retry_policy = self._retry_policy._to_proto() if self._retry_policy else None
 
         if self._cpu is not None and self._cpu < 0.0:
@@ -922,7 +918,6 @@ class _Function(Provider[_FunctionHandle]):
             class_serialized=class_serialized,
             function_type=function_type,
             resources=api_pb2.Resources(milli_cpu=milli_cpu, gpu_config=self._gpu_config, memory_mb=self._memory),
-            rate_limit=rate_limit,
             webhook_config=self._webhook_config,
             shared_volume_mounts=shared_volume_mounts,
             proxy_id=proxy_id,

@@ -10,7 +10,6 @@ from .mount import Mount, create_package_mounts
 from .object import lookup
 from .proxy import Proxy
 from .queue import Queue
-from .rate_limit import RateLimit
 from .retries import Retries
 from .schedule import Cron, Period
 from .secret import Secret
@@ -30,7 +29,6 @@ __all__ = [
     "Period",
     "Proxy",
     "Queue",
-    "RateLimit",
     "Retries",
     "Secret",
     "SharedVolume",

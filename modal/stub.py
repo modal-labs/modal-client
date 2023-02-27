@@ -34,7 +34,6 @@ from .mount import _get_client_mount, _Mount
 from .object import Provider
 from .proxy import _Proxy
 from .queue import _Queue, _QueueHandle
-from .rate_limit import RateLimit
 from .schedule import Schedule
 from .secret import _Secret
 from .shared_volume import _SharedVolume
@@ -614,7 +613,6 @@ class _Stub:
         secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
         secrets: Collection[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
-        rate_limit: Optional[RateLimit] = None,  # Optional RateLimit for the function
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Collection[_Mount] = (),
         shared_volumes: Dict[str, _SharedVolume] = {},
@@ -660,7 +658,6 @@ class _Stub:
             schedule=schedule,
             is_generator=is_generator,
             gpu=gpu,
-            rate_limit=rate_limit,
             serialized=serialized,
             base_mounts=base_mounts,
             mounts=mounts,
