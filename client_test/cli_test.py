@@ -111,12 +111,12 @@ def test_secret_create(servicer, set_env_client):
     assert servicer.created_secrets == 1
 
 
-def test_app_token_new(servicer, server_url_env):
+def test_app_token_new(servicer, set_env_client, server_url_env):
     with unittest.mock.patch("webbrowser.open_new_tab", lambda url: False):
         _run(["token", "new", "--env", "_test"])
 
 
-def test_run(servicer, server_url_env, test_dir):
+def test_run(servicer, set_env_client, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
     _run(["run", stub_file.as_posix()])
     _run(["run", stub_file.as_posix() + "::stub"])
@@ -129,7 +129,7 @@ def test_run(servicer, server_url_env, test_dir):
     _run(["run", file_with_entrypoint.as_posix() + "::stub.main"])
 
 
-def test_help_message_unspecified_function(servicer, server_url_env, test_dir):
+def test_help_message_unspecified_function(servicer, set_env_client, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "stub_with_multiple_functions.py"
     result = _run(["run", stub_file.as_posix()], expected_exit_code=2)
 
@@ -145,19 +145,19 @@ def test_help_message_unspecified_function(servicer, server_url_env, test_dir):
     assert "bar" in result.stdout
 
 
-def test_run_detach(servicer, server_url_env, test_dir):
+def test_run_detach(servicer, set_env_client, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
     _run(["run", "--detach", stub_file.as_posix()])
     assert servicer.app_state == {"ap-1": api_pb2.APP_STATE_DETACHED}
 
 
-def test_deploy(servicer, server_url_env, test_dir):
+def test_deploy(servicer, set_env_client, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
     _run(["deploy", "--name=deployment_name", stub_file.as_posix()])
     assert servicer.app_state == {"ap-1": api_pb2.APP_STATE_DEPLOYED}
 
 
-def test_run_custom_stub(servicer, server_url_env, test_dir):
+def test_run_custom_stub(servicer, set_env_client, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "custom_stub.py"
     res = _run(["run", stub_file.as_posix() + "::stub"], expected_exit_code=1)
     assert "Could not find" in res.stdout
@@ -168,13 +168,13 @@ def test_run_custom_stub(servicer, server_url_env, test_dir):
     _run(["run", stub_file.as_posix() + "::foo"])
 
 
-def test_run_aiostub(servicer, server_url_env, test_dir):
+def test_run_aiostub(servicer, set_env_client, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "async_stub.py"
     _run(["run", stub_file.as_posix()])
     assert len(servicer.client_calls) == 1
 
 
-def test_run_local_entrypoint(servicer, server_url_env, test_dir):
+def test_run_local_entrypoint(servicer, set_env_client, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "local_entrypoint.py"
 
     res = _run(["run", stub_file.as_posix() + "::stub.main"])  # explicit name
@@ -186,7 +186,7 @@ def test_run_local_entrypoint(servicer, server_url_env, test_dir):
     assert len(servicer.client_calls) == 4
 
 
-def test_run_parse_args(servicer, server_url_env, test_dir):
+def test_run_parse_args(servicer, set_env_client, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "cli_args.py"
     res = _run(["run", stub_file.as_posix()], expected_exit_code=2)
     assert "You need to specify a Modal function or local entrypoint to run" in res.stdout
@@ -223,20 +223,20 @@ def fresh_main_thread_assertion_module(test_dir):
     yield test_dir / "supports" / "app_run_tests" / "main_thread_assertion.py"
 
 
-def test_no_user_code_in_synchronicity_run(servicer, server_url_env, test_dir, fresh_main_thread_assertion_module):
+def test_no_user_code_in_synchronicity_run(servicer, set_env_client, test_dir, fresh_main_thread_assertion_module):
     pytest._did_load_main_thread_assertion = False
     _run(["run", fresh_main_thread_assertion_module.as_posix()])
     assert pytest._did_load_main_thread_assertion
     print()
 
 
-def test_no_user_code_in_synchronicity_deploy(servicer, server_url_env, test_dir, fresh_main_thread_assertion_module):
+def test_no_user_code_in_synchronicity_deploy(servicer, set_env_client, test_dir, fresh_main_thread_assertion_module):
     pytest._did_load_main_thread_assertion = False
     _run(["deploy", "--name", "foo", fresh_main_thread_assertion_module.as_posix()])
     assert pytest._did_load_main_thread_assertion
 
 
-def test_serve(servicer, server_url_env, test_dir):
+def test_serve(servicer, set_env_client, test_dir):
     with mock.patch("modal.stub.HEARTBEAT_INTERVAL", 1):
         os.environ["MODAL_HEARTBEAT_INTERVAL"] = "1"  # propagate to child processes
         stub_file = test_dir / "supports" / "app_run_tests" / "webhook.py"
@@ -247,7 +247,7 @@ def test_serve(servicer, server_url_env, test_dir):
         assert servicer.app_heartbeats[apps[0]] >= 2
 
 
-def test_shell(servicer, server_url_env, test_dir):
+def test_shell(servicer, set_env_client, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
 
     def mock_get_pty_info() -> api_pb2.PTYInfo:
