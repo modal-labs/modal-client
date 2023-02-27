@@ -1,9 +1,10 @@
 # Copyright Modal Labs 2023
+import io
 import multiprocessing
 from multiprocessing.context import SpawnProcess
 import platform
 import sys
-from typing import Optional
+from typing import AsyncGenerator, Optional
 
 from synchronicity import Interface
 
@@ -33,7 +34,13 @@ def restart_serve(stub_ref: str, existing_app_id: str, prev_proc: Optional[Spawn
     return p
 
 
-async def _run_serve_loop(stub_ref: str, timeout: Optional[float] = None, stdout=None, show_progress=True):
+async def _run_serve_loop(
+    stub_ref: str,
+    timeout: Optional[float] = None,
+    stdout: Optional[io.TextIOWrapper] = None,
+    show_progress: bool = True,
+    _watcher: Optional[AsyncGenerator[None, None]] = None,
+):
     stub = import_stub(stub_ref)
 
     unsupported_msg = None
@@ -50,16 +57,21 @@ async def _run_serve_loop(stub_ref: str, timeout: Optional[float] = None, stdout
 
     output_mgr = OutputManager(stdout, show_progress)
 
+    if _watcher is not None:
+        watcher = _watcher  # Only used by tests
+    else:
+        watcher = watch(stub._local_mounts, output_mgr, timeout)
+
     if unsupported_msg:
         async with stub._run(client, output_mgr, None, mode=StubRunMode.SERVE) as app:
             client.set_pre_stop(app.disconnect)
-            async for _ in watch(stub._local_mounts, output_mgr, timeout):
+            async for _ in watcher:
                 output_mgr.print_if_visible(unsupported_msg)
     else:
         app = await _App._init_new(client, stub.description, deploying=False, detach=False)
         curr_proc = None
         try:
-            async for _ in watch(stub._local_mounts, output_mgr, timeout):
+            async for _ in watcher:
                 curr_proc = restart_serve(stub_ref, existing_app_id=app.app_id, prev_proc=curr_proc)
         finally:
             if curr_proc:
