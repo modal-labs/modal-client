@@ -354,6 +354,11 @@ class _Stub:
         """Run an app until the program is interrupted.
 
         Does not in itself handle live-reloading: see _live_reload.py for that.
+        This is primarily the entrypoint for the subprocesses spawned by the live reloading,
+        and not meant to be used directly. Historically, users would call stub.serve()
+        directly, and stub.serve() would handle the live-reloading previously.
+
+        Today, for live-reloading, use the CLI command `modal serve`.
         """
         if self._app is not None:
             raise InvalidError(
@@ -371,9 +376,13 @@ class _Stub:
         if timeout is None:
             timeout = 1e10
 
-        output_mgr = OutputManager(stdout, show_progress)
-        async with self._run(client, output_mgr, mode=StubRunMode.SERVE, existing_app_id=existing_app_id):
-            await asyncio.sleep(timeout)
+        try:
+            output_mgr = OutputManager(stdout, show_progress)
+            async with self._run(client, output_mgr, mode=StubRunMode.SERVE, existing_app_id=existing_app_id):
+                await asyncio.sleep(timeout)
+        except asyncio.exceptions.CancelledError:
+            # Stopped by parent process
+            return
 
     async def deploy(
         self,
