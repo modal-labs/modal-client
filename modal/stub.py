@@ -151,6 +151,11 @@ class _Stub:
         return self._name
 
     @property
+    def app(self) -> Optional[_App]:
+        """Reference to the currently running app, if any."""
+        return self._app
+
+    @property
     def description(self) -> str:
         """The Stub's `name`, if available, or a fallback descriptive identifier."""
         return self._description
