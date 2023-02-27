@@ -7,7 +7,7 @@ import cloudpickle
 from synchronicity.exceptions import UserCodeException
 
 from modal import Proxy, Stub
-from modal.exception import DeprecationError, InvalidError
+from modal.exception import InvalidError
 from modal.functions import Function, FunctionCall, gather
 from modal.stub import AioStub
 from modal_proto import api_pb2
@@ -16,8 +16,8 @@ stub = Stub()
 
 
 @stub.function()
-def foo():
-    pass  # not actually used in test (servicer returns sum of square of all args)
+def foo(p, q):
+    return p + q + 11  # not actually used in test (servicer returns sum of square of all args)
 
 
 def dummy():
@@ -29,6 +29,13 @@ def test_run_function(client, servicer):
     with stub.run(client=client):
         assert foo.call(2, 4) == 20
         assert len(servicer.cleared_function_calls) == 1
+
+
+def test_call_function_locally(client, servicer):
+    assert foo(22, 44) == 77  # call it locally
+    with stub.run(client=client):
+        assert foo.call(2, 4) == 20
+        assert foo(22, 55) == 88
 
 
 @pytest.mark.parametrize("slow_put_inputs", [False, True])
@@ -118,9 +125,6 @@ def test_function_future(client, servicer):
         servicer.function_is_running = False
         assert future.get(0.01) == "hello"
         assert future.object_id not in servicer.cleared_function_calls
-
-        with pytest.raises(DeprecationError):
-            later_modal.submit()
 
         future = later_modal.spawn()
 
