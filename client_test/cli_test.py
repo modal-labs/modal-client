@@ -42,15 +42,13 @@ async def set_env_client(aio_client):
 
 def _run(args, expected_exit_code=0):
     runner = click.testing.CliRunner()
-    cli_command = [sys.executable, "-m", "modal.cli.entry_point", *args]
-    with mock.patch("modal._live_reload.get_restart_cli_command", return_value=cli_command):
-        res = runner.invoke(entrypoint_cli, args)
-        if res.exit_code != expected_exit_code:
-            print("stdout:", repr(res.stdout))
-            traceback.print_tb(res.exc_info[2])
-            print(res.exception, file=sys.stderr)
-            assert res.exit_code == expected_exit_code
-        return res
+    res = runner.invoke(entrypoint_cli, args)
+    if res.exit_code != expected_exit_code:
+        print("stdout:", repr(res.stdout))
+        traceback.print_tb(res.exc_info[2])
+        print(res.exception, file=sys.stderr)
+        assert res.exit_code == expected_exit_code
+    return res
 
 
 def test_app_deploy_success(servicer, mock_dir, set_env_client):
