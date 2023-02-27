@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2023
-import asyncio
 import pytest
 
 from modal._live_reload import aio_run_serve_loop, run_serve_loop
@@ -19,9 +18,7 @@ def test_file_changes_trigger_reloads(test_dir, server_url_env, servicer):
     async def fake_watch():
         yield  # dummy at the beginning
         for i in range(3):
-            await asyncio.sleep(1.5)
             yield
-        await asyncio.sleep(1.5)
 
     stub_file = str(test_dir / "supports" / "app_run_tests" / "default_stub.py")
     run_serve_loop(stub_file, _watcher=fake_watch())

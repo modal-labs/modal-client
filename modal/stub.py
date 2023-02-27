@@ -2,6 +2,7 @@
 import asyncio
 import contextlib
 import inspect
+from multiprocessing.synchronize import Event
 import os
 import sys
 import warnings
@@ -349,7 +350,13 @@ class _Stub:
             yield app
 
     async def serve(
-        self, client=None, stdout=None, show_progress=None, timeout=None, existing_app_id: Optional[str] = None
+        self,
+        client=None,
+        stdout=None,
+        show_progress=None,
+        timeout=None,
+        existing_app_id: Optional[str] = None,
+        is_ready: Optional[Event] = None,
     ) -> None:
         """Run an app until the program is interrupted.
 
@@ -379,6 +386,8 @@ class _Stub:
         try:
             output_mgr = OutputManager(stdout, show_progress)
             async with self._run(client, output_mgr, mode=StubRunMode.SERVE, existing_app_id=existing_app_id):
+                if is_ready is not None:
+                    is_ready.set()  # Used to communicate to the parent process
                 await asyncio.sleep(timeout)
         except asyncio.exceptions.CancelledError:
             # Stopped by parent process

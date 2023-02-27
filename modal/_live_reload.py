@@ -2,13 +2,14 @@
 import io
 import multiprocessing
 from multiprocessing.context import SpawnProcess
+from multiprocessing.synchronize import Event
 import platform
 import sys
 from typing import AsyncGenerator, Optional
 
 from synchronicity import Interface
 
-from modal_utils.async_utils import synchronize_apis, synchronizer
+from modal_utils.async_utils import asyncify, synchronize_apis, synchronizer
 
 from ._output import OutputManager
 from ._watcher import watch
@@ -18,20 +19,32 @@ from .client import _Client
 from .stub import StubRunMode
 
 
-def _run_serve(stub_ref: str, existing_app_id: str):
+def _run_serve(stub_ref: str, existing_app_id: str, is_ready: Event):
     # subprocess entrypoint
     _stub = import_stub(stub_ref)
     blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
-    blocking_stub.serve(existing_app_id=existing_app_id)
+    blocking_stub.serve(existing_app_id=existing_app_id, is_ready=is_ready)
 
 
-def restart_serve(stub_ref: str, existing_app_id: str, prev_proc: Optional[SpawnProcess]) -> SpawnProcess:
-    if prev_proc is not None:
-        prev_proc.terminate()
+async def _restart_serve(stub_ref: str, existing_app_id: str, timeout: float = 5.0) -> SpawnProcess:
     ctx = multiprocessing.get_context("spawn")  # Needed to reload the interpreter
-    p = ctx.Process(target=_run_serve, args=(stub_ref, existing_app_id))
+    is_ready = ctx.Event()
+    p = ctx.Process(target=_run_serve, args=(stub_ref, existing_app_id, is_ready))
     p.start()
+    await asyncify(is_ready.wait)(timeout)
     return p
+
+
+async def _terminate(proc: Optional[SpawnProcess], output_mgr: OutputManager, timeout: float = 5.0):
+    if proc is None:
+        return
+    proc.terminate()
+    await asyncify(proc.join)(timeout)
+    if proc.exitcode is not None:
+        output_mgr.print_if_visible(f"Serve process {proc.pid} terminated")
+    else:
+        output_mgr.print_if_visible(f"[red]Serve process {proc.pid} didn't terminate after {timeout}s, killing it")
+        proc.kill()
 
 
 async def _run_serve_loop(
@@ -72,10 +85,10 @@ async def _run_serve_loop(
         curr_proc = None
         try:
             async for _ in watcher:
-                curr_proc = restart_serve(stub_ref, existing_app_id=app.app_id, prev_proc=curr_proc)
+                await _terminate(curr_proc, output_mgr)
+                curr_proc = await _restart_serve(stub_ref, existing_app_id=app.app_id)
         finally:
-            if curr_proc:
-                curr_proc.terminate()
+            await _terminate(curr_proc, output_mgr)
 
 
 run_serve_loop, aio_run_serve_loop = synchronize_apis(_run_serve_loop)
