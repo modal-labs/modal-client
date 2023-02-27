@@ -14,6 +14,7 @@ from ._watcher import watch
 from .app import _App
 from .cli.import_refs import import_stub
 from .client import _Client
+from .stub import StubRunMode
 
 
 def _run_serve(stub_ref: str, existing_app_id: str):
@@ -50,9 +51,10 @@ async def _run_serve_loop(stub_ref: str, timeout: Optional[float] = None, stdout
     output_mgr = OutputManager(stdout, show_progress)
 
     if unsupported_msg:
-        output_mgr.print_if_visible(unsupported_msg)
-        await stub.serve(timeout=timeout)
-
+        async with stub._run(client, output_mgr, None, mode=StubRunMode.SERVE) as app:
+            client.set_pre_stop(app.disconnect)
+            async for _ in watch(stub._local_mounts, output_mgr, timeout):
+                output_mgr.print_if_visible(unsupported_msg)
     else:
         app = await _App._init_new(client, stub.description, deploying=False, detach=False)
         curr_proc = None
