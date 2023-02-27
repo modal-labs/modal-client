@@ -236,7 +236,7 @@ def test_no_user_code_in_synchronicity_deploy(servicer, set_env_client, test_dir
     assert pytest._did_load_main_thread_assertion
 
 
-def test_serve(servicer, set_env_client, test_dir):
+def test_serve(servicer, set_env_client, server_url_env, test_dir):
     with mock.patch("modal.stub.HEARTBEAT_INTERVAL", 1):
         os.environ["MODAL_HEARTBEAT_INTERVAL"] = "1"  # propagate to child processes
         stub_file = test_dir / "supports" / "app_run_tests" / "webhook.py"
