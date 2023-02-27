@@ -15,7 +15,7 @@ from modal.client import Client
 from modal.exception import InvalidError
 from modal_proto import api_pb2
 
-from .supports.skip import skip_windows
+from .supports.skip import skip_windows_unix_socket
 
 EXTRA_TOLERANCE_DELAY = 1.0
 FUNCTION_CALL_ID = "fc-123"
@@ -88,7 +88,7 @@ def _run_container(
         return client, items
 
 
-@skip_windows
+@skip_windows_unix_socket
 def test_success(unix_servicer, event_loop):
     t0 = time.time()
     client, items = _run_container(unix_servicer, "modal_test_support.functions", "square")
@@ -98,7 +98,7 @@ def test_success(unix_servicer, event_loop):
     assert items[0].result.data == serialize(42**2)
 
 
-@skip_windows
+@skip_windows_unix_socket
 def test_generator_success(unix_servicer, event_loop):
     client, items = _run_container(
         unix_servicer, "modal_test_support.functions", "gen_n", function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR
@@ -120,7 +120,7 @@ def test_generator_success(unix_servicer, event_loop):
     assert last_result.data == b""  # no data in generator complete marker result
 
 
-@skip_windows
+@skip_windows_unix_socket
 def test_generator_failure(unix_servicer, event_loop):
     inputs = _get_inputs(((10, 5), {}))
     client, items = _run_container(
@@ -147,7 +147,7 @@ def test_generator_failure(unix_servicer, event_loop):
     assert data.args == ("bad",)
 
 
-@skip_windows
+@skip_windows_unix_socket
 def test_async(unix_servicer):
     t0 = time.time()
     client, items = _run_container(unix_servicer, "modal_test_support.functions", "square_async")
@@ -157,7 +157,7 @@ def test_async(unix_servicer):
     assert items[0].result.data == serialize(42**2)
 
 
-@skip_windows
+@skip_windows_unix_socket
 def test_failure(unix_servicer):
     client, items = _run_container(unix_servicer, "modal_test_support.functions", "raises")
     assert len(items) == 1
@@ -166,7 +166,7 @@ def test_failure(unix_servicer):
     assert "Traceback" in items[0].result.traceback
 
 
-@skip_windows
+@skip_windows_unix_socket
 def test_raises_base_exception(unix_servicer):
     client, items = _run_container(unix_servicer, "modal_test_support.functions", "raises_sysexit")
     assert len(items) == 1
@@ -174,13 +174,13 @@ def test_raises_base_exception(unix_servicer):
     assert items[0].result.exception == "SystemExit(1)"
 
 
-@skip_windows
+@skip_windows_unix_socket
 def test_keyboardinterrupt(unix_servicer):
     with pytest.raises(KeyboardInterrupt):
         _run_container(unix_servicer, "modal_test_support.functions", "raises_keyboardinterrupt")
 
 
-@skip_windows
+@skip_windows_unix_socket
 def test_rate_limited(unix_servicer, event_loop):
     t0 = time.time()
     unix_servicer.rate_limit_sleep_duration = 0.25
@@ -191,7 +191,7 @@ def test_rate_limited(unix_servicer, event_loop):
     assert items[0].result.data == serialize(42**2)
 
 
-@skip_windows
+@skip_windows_unix_socket
 def test_grpc_failure(unix_servicer, event_loop):
     # An error in "Modal code" should cause the entire container to fail
     with pytest.raises(GRPCError):
@@ -201,7 +201,7 @@ def test_grpc_failure(unix_servicer, event_loop):
     # assert "GRPCError" in unix_servicer.task_result.exception
 
 
-@skip_windows
+@skip_windows_unix_socket
 def test_missing_main_conditional(unix_servicer, event_loop):
     _run_container(unix_servicer, "modal_test_support.missing_main_conditional", "square")
 
@@ -212,7 +212,7 @@ def test_missing_main_conditional(unix_servicer, event_loop):
     assert isinstance(exc, InvalidError)
 
 
-@skip_windows
+@skip_windows_unix_socket
 def test_startup_failure(unix_servicer, event_loop):
     _run_container(unix_servicer, "modal_test_support.startup_failure", "f")
 
@@ -222,7 +222,7 @@ def test_startup_failure(unix_servicer, event_loop):
     assert isinstance(exc, ImportError)
 
 
-@skip_windows
+@skip_windows_unix_socket
 def test_class_scoped_function(unix_servicer, event_loop):
     client, items = _run_container(unix_servicer, "modal_test_support.functions", "Cube.f")
     assert len(items) == 1
@@ -234,7 +234,7 @@ def test_class_scoped_function(unix_servicer, event_loop):
     assert Cube._events == ["init", "enter", "call", "exit"]
 
 
-@skip_windows
+@skip_windows_unix_socket
 def test_class_scoped_function_async(unix_servicer, event_loop):
     client, items = _run_container(unix_servicer, "modal_test_support.functions", "CubeAsync.f")
     assert len(items) == 1
@@ -246,7 +246,7 @@ def test_class_scoped_function_async(unix_servicer, event_loop):
     assert CubeAsync._events == ["init", "enter", "call", "exit"]
 
 
-@skip_windows
+@skip_windows_unix_socket
 def test_create_package_mounts_inside_container(unix_servicer, event_loop):
     """`create_package_mounts` shouldn't actually run inside the container, because it's possible
     that there are modules that were present locally for the user that didn't get mounted into
@@ -257,7 +257,7 @@ def test_create_package_mounts_inside_container(unix_servicer, event_loop):
     assert items[0].result.data == serialize(0)
 
 
-@skip_windows
+@skip_windows_unix_socket
 def test_webhook(unix_servicer, event_loop):
     scope = {
         "method": "GET",
@@ -299,7 +299,7 @@ def test_webhook(unix_servicer, event_loop):
     assert items[2].result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE
 
 
-@skip_windows
+@skip_windows_unix_socket
 def test_webhook_lifecycle(unix_servicer, event_loop):
     scope = {
         "method": "GET",
@@ -326,7 +326,7 @@ def test_webhook_lifecycle(unix_servicer, event_loop):
     assert json.loads(second_message["body"]) == {"hello": "space"}
 
 
-@skip_windows
+@skip_windows_unix_socket
 def test_serialized_function(unix_servicer, event_loop):
     def triple(x):
         return 3 * x
@@ -343,7 +343,7 @@ def test_serialized_function(unix_servicer, event_loop):
     assert items[0].result.data == serialize(3 * 42)
 
 
-@skip_windows
+@skip_windows_unix_socket
 def test_webhook_serialized(unix_servicer, event_loop):
     scope = {
         "method": "GET",
@@ -378,7 +378,7 @@ def test_webhook_serialized(unix_servicer, event_loop):
     assert second_message["body"] == b'"Hello, space"'  # Note: JSON-encoded
 
 
-@skip_windows
+@skip_windows_unix_socket
 def test_function_returning_generator(unix_servicer, event_loop):
     client, items = _run_container(
         unix_servicer,
@@ -391,7 +391,7 @@ def test_function_returning_generator(unix_servicer, event_loop):
     assert items[-1].result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE
 
 
-@skip_windows
+@skip_windows_unix_socket
 def test_asgi(unix_servicer, event_loop):
     scope = {
         "method": "GET",
@@ -433,7 +433,7 @@ def test_asgi(unix_servicer, event_loop):
     assert items[2].result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE
 
 
-@skip_windows
+@skip_windows_unix_socket
 def test_container_heartbeats(unix_servicer, event_loop):
     client, items = _run_container(unix_servicer, "modal_test_support.functions", "square")
     assert any(isinstance(request, api_pb2.ContainerHeartbeatRequest) for request in unix_servicer.requests)

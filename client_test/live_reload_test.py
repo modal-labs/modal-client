@@ -1,14 +1,13 @@
 # Copyright Modal Labs 2023
 import asyncio
-import platform
-import sys
 import pytest
 
 from modal._live_reload import aio_run_serve_loop, run_serve_loop
+from .supports.skip import skip_old_py, skip_windows
 
 
-@pytest.mark.skipif(sys.version_info < (3, 8), reason="live-reload requires python3.8 or higher")
-@pytest.mark.skipif(platform.system() == "Windows", reason="live-reload not supported on windows")
+@skip_old_py("live-reload requires python3.8 or higher", (3, 8))
+@skip_windows("live-reload not supported on windows")
 def test_file_changes_trigger_reloads(client, monkeypatch, test_dir, server_url_env, servicer):
     async def fake_watch(mounts, output_mgr, timeout):
         yield  # dummy at the beginning
@@ -25,6 +24,8 @@ def test_file_changes_trigger_reloads(client, monkeypatch, test_dir, server_url_
     assert servicer.app_set_objects_count == 4  # 1 + number of file changes
 
 
+@skip_old_py("live-reload requires python3.8 or higher", (3, 8))
+@skip_windows("live-reload not supported on windows")
 @pytest.mark.asyncio
 async def test_reloadable_serve_ignores_file_changes(client, monkeypatch, test_dir, server_url_env, servicer):
     async def fake_watch(stub, output_mgr, timeout):
