@@ -354,16 +354,16 @@ def test_panel(client, servicer):
     assert function.get_panel_items() == [repr(image)]
 
 
-dummy_stub = Stub()
+lc_stub = Stub()
 
 
-@dummy_stub.function
+@lc_stub.function
 def f(x):
     return x**2
 
 
 class Class:
-    @dummy_stub.function
+    @lc_stub.function
     def f(self, x):
         return x**2
 
@@ -371,3 +371,8 @@ class Class:
 def test_raw_call():
     assert f(111) == 12321
     assert Class().f(1111) == 1234321
+
+
+def test_method_call(client):
+    with lc_stub.run(client=client):
+        assert Class().f.call(111) == 12321
