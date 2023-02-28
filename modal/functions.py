@@ -453,6 +453,8 @@ class _FunctionHandle(Handle, type_prefix="fu"):
             False  # set when a user terminates the app intentionally, to prevent useless traceback spam
         )
         self._function_name = None
+        self._stub = None
+        self._self_obj = None
 
     def _initialize_from_proto(self, proto: Message):
         assert isinstance(proto, api_pb2.Function)
@@ -460,18 +462,17 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         self._web_url = proto.web_url
         self._function_name = proto.function_name
 
+    def _initialize_from_local(self, stub, info: FunctionInfo, self_obj=None):
+        self._stub = stub
+        self._info = info
+        self._self_obj = self_obj
+
     def _set_mute_cancellation(self, value: bool = True):
         self._mute_cancellation = value
 
     def _set_output_mgr(self, output_mgr: OutputManager):
         """mdmd:hidden"""
         self._output_mgr = output_mgr
-
-    def _set_info(self, function_info: FunctionInfo):
-        self._info = function_info
-
-    def _set_stub(self, stub):
-        self._stub = stub
 
     def _get_function(self) -> "_Function":
         return self._stub[self._info.get_tag()]
@@ -625,7 +626,12 @@ class _FunctionHandle(Handle, type_prefix="fu"):
                 "The definition for this function is missing so it is not possible to invoke it locally"
             )
 
-        return self._info.raw_f(*args, **kwargs)
+        if self._self_obj:
+            # This is a method on a class, so bind the self to the function
+            fun = self._info.raw_f.__get__(self._self_obj)
+        else:
+            fun = self._info.raw_f
+        return fun(*args, **kwargs)
 
     async def spawn(self, *args, **kwargs) -> Optional["_FunctionCall"]:
         """Calls the function with the given arguments, without waiting for the results.
@@ -659,6 +665,12 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         return FunctionStats(
             backlog=resp.backlog, num_active_runners=resp.num_active_tasks, num_total_runners=resp.num_total_tasks
         )
+
+    def __get__(self, obj, objtype=None) -> "_FunctionHandle":
+        # This is needed to bind "self" to methods for direct __call__
+        function_handle = _FunctionHandle._new()
+        function_handle._initialize_from_local(self._stub, self._info, obj)
+        return function_handle
 
 
 FunctionHandle, AioFunctionHandle = synchronize_apis(_FunctionHandle)

@@ -535,8 +535,7 @@ class _Stub:
         if function_handle is None:
             function_handle = _FunctionHandle._new()
 
-        function_handle._set_info(info)
-        function_handle._set_stub(self)
+        function_handle._initialize_from_local(self, info)
         self._function_handles[tag] = function_handle
         return function_handle
 

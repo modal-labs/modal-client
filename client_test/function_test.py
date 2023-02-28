@@ -352,3 +352,22 @@ def test_panel(client, servicer):
     assert isinstance(function, Function)
     image = stub._get_default_image()
     assert function.get_panel_items() == [repr(image)]
+
+
+dummy_stub = Stub()
+
+
+@dummy_stub.function
+def f(x):
+    return x**2
+
+
+class Class:
+    @dummy_stub.function
+    def f(self, x):
+        return x**2
+
+
+def test_raw_call():
+    assert f(111) == 12321
+    assert Class().f(1111) == 1234321
