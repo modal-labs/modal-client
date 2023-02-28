@@ -414,7 +414,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         )
 
     async def FunctionCallCancel(self, stream):
-        req = stream.recv_message()
+        req = await stream.recv_message()
         self.cancelled_calls.append(req.function_call_id)
         await stream.send_message(Empty())
 
