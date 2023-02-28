@@ -627,6 +627,11 @@ async def server_url_env(servicer, monkeypatch):
     yield
 
 
+@pytest_asyncio.fixture(scope="function", autouse=True)
+async def reset_default_client():
+    AioClient.set_env_client(None)
+
+
 @pytest.fixture(name="mock_dir", scope="session")
 def mock_dir_factory():
     """Sets up a temp dir with content as specified in a nested dict

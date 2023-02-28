@@ -16,7 +16,6 @@ async def test_live_reload(test_dir, server_url_env, servicer):
 @skip_windows("live-reload not supported on windows")
 def test_file_changes_trigger_reloads(test_dir, server_url_env, servicer):
     async def fake_watch():
-        yield  # dummy at the beginning
         for i in range(3):
             yield
 
@@ -36,4 +35,4 @@ async def test_no_change(test_dir, server_url_env, servicer):
 
     stub_file = str(test_dir / "supports" / "app_run_tests" / "default_stub.py")
     await aio_run_serve_loop(stub_file, _watcher=fake_watch())
-    assert servicer.app_set_objects_count == 0
+    assert servicer.app_set_objects_count == 1  # Should create the initial app once

@@ -13,7 +13,6 @@ from modal_utils.async_utils import asyncify, synchronize_apis, synchronizer
 
 from ._output import OutputManager
 from ._watcher import watch
-from .app import _App
 from .cli.import_refs import import_stub
 from .client import _Client
 from .stub import StubRunMode
@@ -32,6 +31,8 @@ async def _restart_serve(stub_ref: str, existing_app_id: str, timeout: float = 5
     p = ctx.Process(target=_run_serve, args=(stub_ref, existing_app_id, is_ready))
     p.start()
     await asyncify(is_ready.wait)(timeout)
+    # TODO(erikbern): we don't fail if the above times out, but that's somewhat intentional, since
+    # the child process might build a huge image or similar
     return p
 
 
@@ -84,12 +85,15 @@ async def _run_serve_loop(
             async for _ in watcher:
                 output_mgr.print_if_visible(unsupported_msg)
     else:
-        app = await _App._init_new(client, stub.description, deploying=False, detach=False)
+        # Run the object creation loop one time first, to make sure all images etc get built
+        async with stub._run(client, output_mgr, None, mode=StubRunMode.SERVE) as app:
+            client.set_pre_stop(app.disconnect)
+            existing_app_id = app.app_id
         curr_proc = None
         try:
             async for _ in watcher:
                 await _terminate(curr_proc, output_mgr)
-                curr_proc = await _restart_serve(stub_ref, existing_app_id=app.app_id)
+                curr_proc = await _restart_serve(stub_ref, existing_app_id=existing_app_id)
         finally:
             await _terminate(curr_proc, output_mgr)
 
