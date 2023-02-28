@@ -2,6 +2,7 @@
 import asyncio
 import datetime
 import inspect
+import sys
 from typing import Optional
 
 import click
@@ -19,6 +20,9 @@ from ..functions import _FunctionHandle
 
 run_cli = typer.Typer(name="run")
 
+# Used to set Modal cleaner app descriptions which don't include modal CLI parts, only
+# user code parts.
+modal_cli_app_desc: str = None
 
 # Why do we need to support both types and the strings? Because something weird with
 # how __annotations__ works in Python (which inspect.signature uses). See #220.
@@ -104,6 +108,14 @@ def _get_click_command_for_local_entrypoint(_stub, entrypoint: LocalEntrypoint):
 
 class RunGroup(click.Group):
     def get_command(self, ctx, func_ref):
+        global modal_cli_app_desc
+        # If possible, consider the `func_ref` argument the start of the app's args. Everything
+        # before it Modal CLI cruft (eg. `modal run --timeout 1.0`).
+        try:
+            func_ref_arg_idx = sys.argv.index(func_ref)
+            modal_cli_app_desc = " ".join(sys.argv[func_ref_arg_idx:])
+        except ValueError:
+            modal_cli_app_desc = " ".join(sys.argv)
         _function_handle_or_entrypoint = import_function(
             func_ref, accept_local_entrypoint=True, interactive=False, base_cmd="modal run"
         )

@@ -165,6 +165,10 @@ class _Stub:
             # be really long an not very helpful
             return "Notebook"  # TODO: use actual name of notebook
 
+        from modal.cli import run
+
+        if run.modal_cli_app_desc:
+            return run.modal_cli_app_desc
         script_filename = os.path.split(sys.argv[0])[-1]
         args = [script_filename] + sys.argv[1:]
         return " ".join(args)

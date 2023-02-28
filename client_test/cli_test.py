@@ -42,13 +42,14 @@ async def set_env_client(aio_client):
 
 def _run(args, expected_exit_code=0):
     runner = click.testing.CliRunner()
-    res = runner.invoke(entrypoint_cli, args)
-    if res.exit_code != expected_exit_code:
-        print("stdout:", repr(res.stdout))
-        traceback.print_tb(res.exc_info[2])
-        print(res.exception, file=sys.stderr)
-        assert res.exit_code == expected_exit_code
-    return res
+    with mock.patch.object(sys, "argv", args):
+        res = runner.invoke(entrypoint_cli, args)
+        if res.exit_code != expected_exit_code:
+            print("stdout:", repr(res.stdout))
+            traceback.print_tb(res.exc_info[2])
+            print(res.exception, file=sys.stderr)
+            assert res.exit_code == expected_exit_code
+        return res
 
 
 def test_app_deploy_success(servicer, mock_dir, set_env_client):
@@ -271,3 +272,15 @@ def test_shell(servicer, set_env_client, test_dir):
     ), mock.patch("modal._pty.write_stdin_to_pty_stream", noop_async_context_manager):
         _run(["shell", stub_file.as_posix() + "::foo"])
     assert ran_cmd == "/bin/bash"
+
+
+def test_app_descriptions(servicer, server_url_env, test_dir):
+    stub_file = test_dir / "supports" / "app_run_tests" / "prints_desc_stub.py"
+    result = _run(["run", "--detach", stub_file.as_posix() + "::stub.foo"])
+
+    assert "prints_desc_stub.py::stub.foo" in result.stdout
+    assert "run --detach " not in result.stdout
+
+    result = _run(["serve", "--timeout", "0.0", stub_file.as_posix()])
+    assert "prints_desc_stub.py" in result.stdout
+    assert "serve --timeout 0.0 " not in result.stdout
