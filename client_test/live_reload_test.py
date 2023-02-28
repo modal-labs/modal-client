@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2023
 import pytest
+from unittest import mock
 
 from modal._live_reload import aio_run_serve_loop, run_serve_loop
 from .supports.skip import skip_old_py, skip_windows
@@ -24,8 +25,6 @@ def test_file_changes_trigger_reloads(test_dir, server_url_env, servicer):
     assert servicer.app_set_objects_count == 4  # 1 + number of file changes
 
 
-@skip_old_py("live-reload requires python3.8 or higher", (3, 8))
-@skip_windows("live-reload not supported on windows")
 @pytest.mark.asyncio
 async def test_no_change(test_dir, server_url_env, servicer):
     async def fake_watch():
@@ -36,3 +35,14 @@ async def test_no_change(test_dir, server_url_env, servicer):
     stub_file = str(test_dir / "supports" / "app_run_tests" / "default_stub.py")
     await aio_run_serve_loop(stub_file, _watcher=fake_watch())
     assert servicer.app_set_objects_count == 1  # Should create the initial app once
+
+
+@pytest.mark.asyncio
+async def test_heartbeats(test_dir, server_url_env, servicer):
+    with mock.patch("modal.stub.HEARTBEAT_INTERVAL", 1):
+        stub_file = str(test_dir / "supports" / "app_run_tests" / "default_stub.py")
+        await aio_run_serve_loop(stub_file, timeout=3.5)
+
+    apps = list(servicer.app_heartbeats.keys())
+    assert len(apps) == 1
+    assert servicer.app_heartbeats[apps[0]] == 3

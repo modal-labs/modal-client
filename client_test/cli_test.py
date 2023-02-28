@@ -237,14 +237,8 @@ def test_no_user_code_in_synchronicity_deploy(servicer, set_env_client, test_dir
 
 
 def test_serve(servicer, set_env_client, server_url_env, test_dir):
-    with mock.patch("modal.stub.HEARTBEAT_INTERVAL", 1):
-        os.environ["MODAL_HEARTBEAT_INTERVAL"] = "1"  # propagate to child processes
-        stub_file = test_dir / "supports" / "app_run_tests" / "webhook.py"
-        res = _run(["serve", stub_file.as_posix(), "--timeout", "3"], expected_exit_code=0)
-        print(res.stdout)
-        apps = list(servicer.app_heartbeats.keys())
-        assert len(apps) == 1
-        assert servicer.app_heartbeats[apps[0]] >= 2
+    stub_file = test_dir / "supports" / "app_run_tests" / "webhook.py"
+    _run(["serve", stub_file.as_posix(), "--timeout", "3"], expected_exit_code=0)
 
 
 def test_shell(servicer, set_env_client, test_dir):
