@@ -15,14 +15,13 @@ from ._output import OutputManager
 from ._watcher import watch
 from .cli.import_refs import import_stub
 from .client import _Client
-from .stub import StubRunMode
 
 
 def _run_serve(stub_ref: str, existing_app_id: str, is_ready: Event):
     # subprocess entrypoint
     _stub = import_stub(stub_ref)
     blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
-    blocking_stub.serve(existing_app_id=existing_app_id, is_ready=is_ready)
+    blocking_stub._serve_update(existing_app_id, is_ready)
 
 
 async def _restart_serve(stub_ref: str, existing_app_id: str, timeout: float = 5.0) -> SpawnProcess:
@@ -48,7 +47,7 @@ async def _terminate(proc: Optional[SpawnProcess], output_mgr: OutputManager, ti
             output_mgr.print_if_visible(f"[red]Serve process {proc.pid} didn't terminate after {timeout}s, killing it")
             proc.kill()
     except ProcessLookupError:
-        output_mgr.print_if_visible(f"Serve process {proc.pid} disappeared during termination")
+        pass  # Child process already finished
 
 
 async def _run_serve_loop(
@@ -80,22 +79,23 @@ async def _run_serve_loop(
         watcher = watch(stub._local_mounts, output_mgr, timeout)
 
     if unsupported_msg:
-        async with stub._run(client, output_mgr, None, mode=StubRunMode.SERVE) as app:
+        async with stub._run(client, output_mgr, None) as app:
             client.set_pre_stop(app.disconnect)
             async for _ in watcher:
                 output_mgr.print_if_visible(unsupported_msg)
     else:
         # Run the object creation loop one time first, to make sure all images etc get built
-        async with stub._run(client, output_mgr, None, mode=StubRunMode.SERVE) as app:
+        # This also handles the logs and the heartbeats
+        async with stub._run(client, output_mgr, None) as app:
             client.set_pre_stop(app.disconnect)
             existing_app_id = app.app_id
-        curr_proc = None
-        try:
-            async for _ in watcher:
+            curr_proc = None
+            try:
+                async for _ in watcher:
+                    await _terminate(curr_proc, output_mgr)
+                    curr_proc = await _restart_serve(stub_ref, existing_app_id=existing_app_id)
+            finally:
                 await _terminate(curr_proc, output_mgr)
-                curr_proc = await _restart_serve(stub_ref, existing_app_id=existing_app_id)
-        finally:
-            await _terminate(curr_proc, output_mgr)
 
 
 run_serve_loop, aio_run_serve_loop = synchronize_apis(_run_serve_loop)

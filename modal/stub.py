@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import contextlib
+from datetime import date
 import inspect
 from multiprocessing.synchronize import Event
 import os
@@ -24,7 +25,7 @@ from ._pty import exec_cmd
 from .app import _App, _container_app, is_local
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
-from .exception import InvalidError
+from .exception import InvalidError, deprecation_warning
 from .functions import _Function, _FunctionHandle
 from .gpu import GPU_T
 from .image import _Image, _ImageHandle
@@ -43,7 +44,7 @@ class StubRunMode(Enum):
     RUN = "run"
     DEPLOY = "deploy"
     DETACH = "detach"
-    SERVE = "serve"
+    SERVE_CHILD = "serve_child"
 
 
 class LocalEntrypoint:
@@ -251,19 +252,20 @@ class _Stub:
         aborted = False
         # Start tracking logs and yield context
         async with TaskContext(grace=config["logs_timeout"]) as tc:
-            # Start heartbeats loop to keep the client alive
-            tc.infinite_loop(lambda: _heartbeat(client, app.app_id), sleep=HEARTBEAT_INTERVAL)
+            if mode != StubRunMode.SERVE_CHILD:
+                # Start heartbeats loop to keep the client alive
+                tc.infinite_loop(lambda: _heartbeat(client, app.app_id), sleep=HEARTBEAT_INTERVAL)
 
             status_spinner = step_progress("Running app...")
             with output_mgr.ctx_if_visible(output_mgr.make_live(step_progress("Initializing..."))):
-                logs_loop = tc.create_task(
-                    output_mgr.get_logs_loop(app.app_id, client, status_spinner, last_log_entry_id or "")
-                )
-            if mode != StubRunMode.SERVE:
-                initialized_msg = (
-                    f"Initialized. [grey70]View app at [underline]{app._app_page_url}[/underline][/grey70]"
-                )
-                output_mgr.print_if_visible(step_completed(initialized_msg))
+                if mode != StubRunMode.SERVE_CHILD:
+                    logs_loop = tc.create_task(
+                        output_mgr.get_logs_loop(app.app_id, client, status_spinner, last_log_entry_id or "")
+                    )
+                    initialized_msg = (
+                        f"Initialized. [grey70]View app at [underline]{app._app_page_url}[/underline][/grey70]"
+                    )
+                    output_mgr.print_if_visible(step_completed(initialized_msg))
 
             try:
                 # Create all members
@@ -306,10 +308,7 @@ class _Stub:
                 else:
                     print("Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n")
             finally:
-                if mode == StubRunMode.SERVE:
-                    # Cancel logs loop since we're going to start another one.
-                    logs_loop.cancel()
-                else:
+                if mode != StubRunMode.SERVE_CHILD:
                     await app.disconnect()
 
         if mode == StubRunMode.DEPLOY:
@@ -322,8 +321,10 @@ class _Stub:
                 )
             else:
                 output_mgr.print_if_visible(step_completed("App aborted."))
-        elif mode != StubRunMode.SERVE:
+        elif mode != StubRunMode.SERVE_CHILD:
             output_mgr.print_if_visible(step_completed("App completed."))
+        else:
+            output_mgr.print_if_visible(step_completed("App update."))
         self._app = None
 
     @contextlib.asynccontextmanager
@@ -349,6 +350,21 @@ class _Stub:
         async with self._run(client, output_mgr, existing_app_id=None, mode=mode) as app:
             yield app
 
+    async def _serve_update(
+        self,
+        existing_app_id: str,
+        is_ready: Event,
+    ) -> None:
+        # Used by child process to redeploy an app
+        client = await _Client.from_env()
+        try:
+            output_mgr = OutputManager(None, None)
+            async with self._run(client, output_mgr, mode=StubRunMode.SERVE_CHILD, existing_app_id=existing_app_id):
+                is_ready.set()  # Used to communicate to the parent process
+        except asyncio.exceptions.CancelledError:
+            # Stopped by parent process
+            pass
+
     async def serve(
         self,
         client=None,
@@ -356,17 +372,12 @@ class _Stub:
         show_progress=None,
         timeout=None,
         existing_app_id: Optional[str] = None,
-        is_ready: Optional[Event] = None,
     ) -> None:
-        """Run an app until the program is interrupted. For development.
-
-        Does not in itself handle live-reloading: see _live_reload.py for that.
-        This is primarily the entrypoint for the subprocesses spawned by the live reloading,
-        and not meant to be used directly. Historically, users would call stub.serve()
-        directly, and stub.serve() would handle the live-reloading previously.
-
-        Today, for live-reloading, use the CLI command `modal serve`.
-        """
+        """Run an app until the program is interrupted."""
+        deprecation_warning(
+            date(2023, 2, 28),
+            "stub.serve() is deprecated. Use the `modal serve` CLI command instead",
+        )
         if self._app is not None:
             raise InvalidError(
                 "The stub already has an app running."
@@ -383,15 +394,9 @@ class _Stub:
         if timeout is None:
             timeout = 1e10
 
-        try:
-            output_mgr = OutputManager(stdout, show_progress)
-            async with self._run(client, output_mgr, mode=StubRunMode.SERVE, existing_app_id=existing_app_id):
-                if is_ready is not None:
-                    is_ready.set()  # Used to communicate to the parent process
-                await asyncio.sleep(timeout)
-        except asyncio.exceptions.CancelledError:
-            # Stopped by parent process
-            return
+        output_mgr = OutputManager(stdout, show_progress)
+        async with self._run(client, output_mgr, mode=StubRunMode.RUN, existing_app_id=existing_app_id):
+            await asyncio.sleep(timeout)
 
     async def deploy(
         self,

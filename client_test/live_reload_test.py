@@ -45,4 +45,4 @@ async def test_heartbeats(test_dir, server_url_env, servicer):
 
     apps = list(servicer.app_heartbeats.keys())
     assert len(apps) == 1
-    assert servicer.app_heartbeats[apps[0]] == 3
+    assert servicer.app_heartbeats[apps[0]] == 4  # 0s, 1s, 2s, 3s
