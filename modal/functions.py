@@ -468,7 +468,6 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         self._output_mgr = output_mgr
 
     def _set_info(self, function_info: FunctionInfo):
-        print("setting info of", self)
         self._info = function_info
 
     def _set_stub(self, stub):
