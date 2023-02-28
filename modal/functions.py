@@ -462,10 +462,9 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         self._web_url = proto.web_url
         self._function_name = proto.function_name
 
-    def _initialize_from_local(self, stub, info: FunctionInfo, self_obj=None):
+    def _initialize_from_local(self, stub, info: FunctionInfo):
         self._stub = stub
         self._info = info
-        self._self_obj = self_obj
 
     def _set_mute_cancellation(self, value: bool = True):
         self._mute_cancellation = value
@@ -668,9 +667,10 @@ class _FunctionHandle(Handle, type_prefix="fu"):
 
     def __get__(self, obj, objtype=None) -> "_FunctionHandle":
         # This is needed to bind "self" to methods for direct __call__
-        function_handle = _FunctionHandle._new()
-        function_handle._initialize_from_local(self._stub, self._info, obj)
-        return function_handle
+        self._self_obj = obj
+        # TODO(erikbern): we're mutating self directly here, as opposed to returning a different _FunctionHandle
+        # We should fix this in the future since it probably precludes using classmethods/staticmethods
+        return self
 
 
 FunctionHandle, AioFunctionHandle = synchronize_apis(_FunctionHandle)
