@@ -231,25 +231,18 @@ class _Stub:
         last_log_entry_id: Optional[str] = None,
         name: Optional[str] = None,
         mode: StubRunMode = StubRunMode.RUN,
+        post_init_state: int = api_pb2.APP_STATE_EPHEMERAL,
     ) -> AsyncGenerator[_App, None]:
         app_name = name if name is not None else self.description
-        detach = mode == StubRunMode.DETACH
-        if mode == StubRunMode.DETACH:
-            post_init_state = api_pb2.APP_STATE_DETACHED
-        elif mode == StubRunMode.DEPLOY:
-            post_init_state = (
-                api_pb2.APP_STATE_UNSPECIFIED
-            )  # don't change the app state - deploy state is set by AppDeploy
-        else:
-            post_init_state = api_pb2.APP_STATE_EPHEMERAL
 
         if existing_app_id is not None:
             app = await _App._init_existing(client, existing_app_id)
         else:
-            app = await _App._init_new(client, app_name, deploying=(mode == StubRunMode.DEPLOY), detach=detach)
+            app = await _App._init_new(
+                client, app_name, deploying=(mode == StubRunMode.DEPLOY), detach=(mode == StubRunMode.DETACH)
+            )
         self._app = app
 
-        aborted = False
         # Start tracking logs and yield context
         async with TaskContext(grace=config["logs_timeout"]) as tc:
             if mode != StubRunMode.SERVE_CHILD:
@@ -298,33 +291,25 @@ class _Stub:
                     with output_mgr.ctx_if_visible(output_mgr.make_live(status_spinner)):
                         yield app
             except KeyboardInterrupt:
-                aborted = True
                 # mute cancellation errors on all function handles to prevent exception spam
                 for tag, obj in self._function_handles.items():
                     obj._set_mute_cancellation(True)
 
-                if detach:
+                if mode == StubRunMode.DETACH:
+                    output_mgr.print_if_visible(step_completed("Shutting down Modal client."))
+                    output_mgr.print_if_visible(
+                        f"""The detached app keeps running. You can track its progress at: [magenta]{app.log_url()}[/magenta]"""
+                    )
                     logs_loop.cancel()
                 else:
-                    print("Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n")
+                    output_mgr.print_if_visible(step_completed("App aborted."))
+                    output_mgr.print_if_visible(
+                        "Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n"
+                    )
             finally:
                 if mode != StubRunMode.SERVE_CHILD:
                     await app.disconnect()
 
-        if mode == StubRunMode.DEPLOY:
-            output_mgr.print_if_visible(step_completed("App deployed! 🎉"))
-        elif aborted:
-            if detach:
-                output_mgr.print_if_visible(step_completed("Shutting down Modal client."))
-                output_mgr.print_if_visible(
-                    f"""The detached app keeps running. You can track its progress at: [magenta]{app.log_url()}[/magenta]"""
-                )
-            else:
-                output_mgr.print_if_visible(step_completed("App aborted."))
-        elif mode != StubRunMode.SERVE_CHILD:
-            output_mgr.print_if_visible(step_completed("App completed."))
-        else:
-            output_mgr.print_if_visible(step_completed("App update."))
         self._app = None
 
     @contextlib.asynccontextmanager
@@ -347,8 +332,12 @@ class _Stub:
             client = await _Client.from_env()
         output_mgr = OutputManager(stdout, show_progress)
         mode = StubRunMode.DETACH if detach else StubRunMode.RUN
-        async with self._run(client, output_mgr, existing_app_id=None, mode=mode) as app:
+        post_init_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
+        async with self._run(
+            client, output_mgr, existing_app_id=None, mode=mode, post_init_state=post_init_state
+        ) as app:
             yield app
+        output_mgr.print_if_visible(step_completed("App completed."))
 
     async def _serve_update(
         self,
@@ -361,6 +350,7 @@ class _Stub:
             output_mgr = OutputManager(None, None)
             async with self._run(client, output_mgr, mode=StubRunMode.SERVE_CHILD, existing_app_id=existing_app_id):
                 is_ready.set()  # Used to communicate to the parent process
+            output_mgr.print_if_visible(step_completed("App update."))
         except asyncio.exceptions.CancelledError:
             # Stopped by parent process
             pass
@@ -371,7 +361,6 @@ class _Stub:
         stdout=None,
         show_progress=None,
         timeout=None,
-        existing_app_id: Optional[str] = None,
     ) -> None:
         """Run an app until the program is interrupted."""
         deprecation_warning(
@@ -395,7 +384,7 @@ class _Stub:
             timeout = 1e10
 
         output_mgr = OutputManager(stdout, show_progress)
-        async with self._run(client, output_mgr, mode=StubRunMode.RUN, existing_app_id=existing_app_id):
+        async with self._run(client, output_mgr, mode=StubRunMode.RUN, existing_app_id=None):
             await asyncio.sleep(timeout)
 
     async def deploy(
@@ -456,10 +445,19 @@ class _Stub:
         existing_app_id = app_resp.app_id or None
         last_log_entry_id = app_resp.last_log_entry_id
 
+        # Don't change the app state - deploy state is set by AppDeploy
+        post_init_state = api_pb2.APP_STATE_UNSPECIFIED
+
         # The `_run` method contains the logic for starting and running an app
         output_mgr = OutputManager(stdout, show_progress)
         async with self._run(
-            client, output_mgr, existing_app_id, last_log_entry_id, name=name, mode=StubRunMode.DEPLOY
+            client,
+            output_mgr,
+            existing_app_id,
+            last_log_entry_id,
+            name=name,
+            mode=StubRunMode.DEPLOY,
+            post_init_state=post_init_state,
         ) as app:
             deploy_req = api_pb2.AppDeployRequest(
                 app_id=app._app_id,
@@ -468,6 +466,7 @@ class _Stub:
                 object_entity=object_entity,
             )
             deploy_response = await client.stub.AppDeploy(deploy_req)
+        output_mgr.print_if_visible(step_completed("App deployed! 🎉"))
         output_mgr.print_if_visible(f"\nView Deployment: [magenta]{deploy_response.url}[/magenta]")
         return app
 
