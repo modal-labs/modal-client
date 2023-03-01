@@ -234,12 +234,11 @@ class _Stub:
         post_init_state: int = api_pb2.APP_STATE_EPHEMERAL,
     ) -> AsyncGenerator[_App, None]:
         app_name = name if name is not None else self.description
-        detach = mode == StubRunMode.DETACH
 
         if existing_app_id is not None:
             app = await _App._init_existing(client, existing_app_id)
         else:
-            app = await _App._init_new(client, app_name, deploying=(mode == StubRunMode.DEPLOY), detach=detach)
+            app = await _App._init_new(client, app_name, deploying=(mode == StubRunMode.DEPLOY), detach=(mode == StubRunMode.DETACH))
         self._app = app
 
         aborted = False
@@ -296,7 +295,7 @@ class _Stub:
                 for tag, obj in self._function_handles.items():
                     obj._set_mute_cancellation(True)
 
-                if detach:
+                if mode == StubRunMode.DETACH:
                     logs_loop.cancel()
                 else:
                     print("Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n")
@@ -307,7 +306,7 @@ class _Stub:
         if mode == StubRunMode.DEPLOY:
             output_mgr.print_if_visible(step_completed("App deployed! 🎉"))
         elif aborted:
-            if detach:
+            if mode == StubRunMode.DETACH:
                 output_mgr.print_if_visible(step_completed("Shutting down Modal client."))
                 output_mgr.print_if_visible(
                     f"""The detached app keeps running. You can track its progress at: [magenta]{app.log_url()}[/magenta]"""
