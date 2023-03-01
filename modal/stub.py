@@ -355,7 +355,7 @@ class _Stub:
         existing_app_id: str,
         is_ready: Event,
     ) -> None:
-        # Used by child process to redeploy an app
+        # Used by child process to reinitialize a served app
         client = await _Client.from_env()
         try:
             output_mgr = OutputManager(None, None)

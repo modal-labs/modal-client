@@ -28,7 +28,7 @@ def test_file_changes_trigger_reloads(test_dir, server_url_env, servicer):
 @pytest.mark.asyncio
 async def test_no_change(test_dir, server_url_env, servicer):
     async def fake_watch():
-        # Iterator that never yields
+        # Iterator that returns immediately, yielding nothing
         if False:
             yield
 
