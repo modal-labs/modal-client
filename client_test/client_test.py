@@ -8,7 +8,7 @@ from modal.client import AioClient, Client
 from modal.exception import AuthError, ConnectionError, VersionError
 from modal_proto import api_pb2
 
-from .supports.skip import skip_windows
+from .supports.skip import skip_windows_unix_socket
 
 TEST_TIMEOUT = 4.0  # align this with the container client timeout in client.py
 
@@ -21,7 +21,7 @@ async def test_client(servicer, client):
 
 
 @pytest.mark.asyncio
-@skip_windows
+@skip_windows_unix_socket
 async def test_container_client(unix_servicer, aio_container_client):
     assert len(unix_servicer.requests) == 1  # no heartbeat, just ClientHello
     assert isinstance(unix_servicer.requests[0], Empty)
@@ -39,7 +39,7 @@ async def test_client_dns_failure():
 
 @pytest.mark.asyncio
 @pytest.mark.timeout(TEST_TIMEOUT)
-@skip_windows
+@skip_windows_unix_socket
 async def test_client_connection_failure():
     with pytest.raises(ConnectionError) as excinfo:
         async with AioClient("https://localhost:443", api_pb2.CLIENT_TYPE_CONTAINER, None):
@@ -49,7 +49,7 @@ async def test_client_connection_failure():
 
 @pytest.mark.asyncio
 @pytest.mark.timeout(TEST_TIMEOUT)
-@skip_windows
+@skip_windows_unix_socket
 async def test_client_connection_failure_unix_socket():
     with pytest.raises(ConnectionError) as excinfo:
         async with AioClient("unix:/tmp/xyz.txt", api_pb2.CLIENT_TYPE_CONTAINER, None):
@@ -59,7 +59,7 @@ async def test_client_connection_failure_unix_socket():
 
 @pytest.mark.asyncio
 @pytest.mark.timeout(TEST_TIMEOUT)
-@skip_windows
+@skip_windows_unix_socket
 async def test_client_connection_timeout(unix_servicer, monkeypatch):
     monkeypatch.setattr("modal.client.CLIENT_CREATE_ATTEMPT_TIMEOUT", 1.0)
     monkeypatch.setattr("modal.client.CLIENT_CREATE_TOTAL_TIMEOUT", 3.0)

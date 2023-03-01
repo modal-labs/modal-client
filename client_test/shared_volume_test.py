@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-import platform
 from unittest import mock
 
 import pytest
@@ -7,6 +6,8 @@ import pytest
 import modal
 import modal.aio
 from modal.exception import InvalidError
+
+from .supports.skip import skip_windows
 
 
 def dummy():
@@ -24,7 +25,7 @@ def test_shared_volume_files(client, test_dir, servicer):
         dummy_modal.call()
 
 
-@pytest.mark.skipif(platform.system() == "Windows", reason="TODO: implement client-side path check on Windows.")
+@skip_windows("TODO: implement client-side path check on Windows.")
 def test_shared_volume_bad_paths(client, test_dir, servicer):
     stub = modal.Stub()
 

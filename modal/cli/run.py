@@ -9,6 +9,7 @@ import typer
 from rich.console import Console
 from synchronicity import Interface
 
+from modal._live_reload import run_serve_loop
 from modal.exception import InvalidError
 from modal.stub import LocalEntrypoint
 from modal_utils.async_utils import synchronizer
@@ -175,9 +176,7 @@ def serve(
     modal serve hello_world.py
     ```\n
     """
-    _stub = import_stub(stub_ref)
-    blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
-    blocking_stub.serve(timeout=timeout)
+    run_serve_loop(stub_ref, timeout)
 
 
 def shell(

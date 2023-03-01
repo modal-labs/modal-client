@@ -131,6 +131,9 @@ def test_function_future(client, servicer):
         servicer.function_is_running = True
         assert future.object_id == "fc-2"
 
+        future.cancel()
+        assert "fc-2" in servicer.cancelled_calls
+
         assert future.object_id not in servicer.cleared_function_calls
 
 
@@ -354,16 +357,16 @@ def test_panel(client, servicer):
     assert function.get_panel_items() == [repr(image)]
 
 
-dummy_stub = Stub()
+lc_stub = Stub()
 
 
-@dummy_stub.function
+@lc_stub.function
 def f(x):
     return x**2
 
 
 class Class:
-    @dummy_stub.function
+    @lc_stub.function
     def f(self, x):
         return x**2
 
@@ -371,3 +374,8 @@ class Class:
 def test_raw_call():
     assert f(111) == 12321
     assert Class().f(1111) == 1234321
+
+
+def test_method_call(client):
+    with lc_stub.run(client=client):
+        assert Class().f.call(111) == 12321

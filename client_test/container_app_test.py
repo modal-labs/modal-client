@@ -5,7 +5,7 @@ from unittest import mock
 
 from modal.aio import AioApp, AioFunctionHandle, AioImage, AioStub, aio_container_app
 
-from .supports.skip import skip_windows
+from .supports.skip import skip_windows_unix_socket
 
 
 def my_f_1(x):
@@ -16,7 +16,7 @@ def my_f_2(x):
     pass
 
 
-@skip_windows
+@skip_windows_unix_socket
 @pytest.mark.asyncio
 async def test_container_function_initialization(unix_servicer, aio_container_client):
     unix_servicer.app_objects["ap-123"] = {
@@ -47,7 +47,7 @@ async def test_container_function_initialization(unix_servicer, aio_container_cl
     assert await my_f_2_container.call(42) == 1764
 
 
-@skip_windows
+@skip_windows_unix_socket
 @pytest.mark.asyncio
 async def test_is_inside(servicer, unix_servicer, aio_client, aio_container_client):
     image_1 = AioImage.debian_slim().pip_install(["abc"])
@@ -95,7 +95,7 @@ def f():
     pass
 
 
-@skip_windows
+@skip_windows_unix_socket
 @pytest.mark.asyncio
 async def test_is_inside_default_image(servicer, unix_servicer, aio_client, aio_container_client):
     stub = AioStub()

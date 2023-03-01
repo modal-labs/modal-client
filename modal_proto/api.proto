@@ -547,6 +547,45 @@ message FunctionCallCancelRequest {
   string function_call_id = 1;
 }
 
+message FunctionCallListRequest {
+  string function_id = 1;
+}
+
+message InputInfo {
+  string input_id = 1;
+  int32 idx = 2;
+  string task_id = 3;
+  double started_at = 4;
+  double finished_at = 5;
+  double task_startup_time = 6;
+  bool task_first_input = 7;
+}
+
+message InputCategoryInfo {
+  int32 total = 1;
+  repeated InputInfo latest = 2;
+}
+
+message FunctionCallInfo {
+  string function_call_id = 1;
+  int32 idx = 2;
+  reserved 3, 4, 5; // old fields
+  double created_at = 6; // when the call was created
+  double scheduled_at = 7; // if cron job, when run was scheduled
+  reserved 8, 9, 10, 11;  // old fields
+  InputCategoryInfo pending_inputs = 12;
+  InputCategoryInfo failed_inputs = 13;
+  InputCategoryInfo succeeded_inputs = 14;
+  InputCategoryInfo timeout_inputs = 15;
+  InputCategoryInfo cancelled_inputs = 16;
+  int32 total_inputs = 17;
+}
+
+message FunctionCallListResponse {
+  repeated FunctionCallInfo function_calls = 1;
+}
+
+
 message FunctionGetCurrentStatsRequest {
   string function_id = 1; 
 }
@@ -952,6 +991,7 @@ service ModalClient {
   rpc FunctionGetOutputs(FunctionGetOutputsRequest) returns (FunctionGetOutputsResponse);  // Returns the next result(s) for an entire function call (FunctionMap)
   rpc FunctionGetCallGraph(FunctionGetCallGraphRequest) returns (FunctionGetCallGraphResponse);
   rpc FunctionCallCancel(FunctionCallCancelRequest) returns (google.protobuf.Empty);
+  rpc FunctionCallList(FunctionCallListRequest) returns (FunctionCallListResponse);
   rpc FunctionGetCurrentStats(FunctionGetCurrentStatsRequest) returns (FunctionStats);
 
   // Images

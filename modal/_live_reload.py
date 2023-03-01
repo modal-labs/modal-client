@@ -1,98 +1,107 @@
 # Copyright Modal Labs 2023
 import asyncio
-import os
+import io
+import multiprocessing
+from multiprocessing.context import SpawnProcess
+from multiprocessing.synchronize import Event
+import platform
 import sys
-from asyncio.subprocess import Process
-from pathlib import Path
+from typing import AsyncGenerator, Optional
+
+from synchronicity import Interface
+
+from modal_utils.async_utils import asyncify, synchronize_apis, synchronizer
 
 from ._output import OutputManager
-
-MODAL_AUTORELOAD_ENV = "MODAL_AUTORELOAD_SERVE"
-
-
-def get_restart_cli_command():
-    return [sys.executable, *_get_child_arguments()]
+from ._watcher import watch
+from .cli.import_refs import import_stub
+from .client import _Client
 
 
-async def restart_serve(existing_app_id: str, prev_proc: Process, output_mgr: OutputManager) -> Process:
-    if prev_proc:
-        try:
-            prev_proc.terminate()
-        except ProcessLookupError:
-            output_mgr.print_if_visible("[yellow]⚡️ Previous serving app process crashed.[/yellow]")
-    env = {**os.environ, **{MODAL_AUTORELOAD_ENV: existing_app_id}}
-    return await asyncio.create_subprocess_exec(
-        *get_restart_cli_command(),
-        env=env,
-    )
+def _run_serve(stub_ref: str, existing_app_id: str, is_ready: Event):
+    # subprocess entrypoint
+    _stub = import_stub(stub_ref)
+    blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
+    blocking_stub._serve_update(existing_app_id, is_ready)
 
 
-def _get_child_arguments():
-    """
-    Return the executable. This contains a workaround for Windows if the
-    executable is reported to not have the .exe extension which can cause bugs
-    on reloading.
+async def _restart_serve(stub_ref: str, existing_app_id: str, timeout: float = 5.0) -> SpawnProcess:
+    ctx = multiprocessing.get_context("spawn")  # Needed to reload the interpreter
+    is_ready = ctx.Event()
+    p = ctx.Process(target=_run_serve, args=(stub_ref, existing_app_id, is_ready))
+    p.start()
+    await asyncify(is_ready.wait)(timeout)
+    # TODO(erikbern): we don't fail if the above times out, but that's somewhat intentional, since
+    # the child process might build a huge image or similar
+    return p
 
-    ---
 
-    Copyright (c) Django Software Foundation and individual contributors.
-    All rights reserved.
-
-    Redistribution and use in source and binary forms, with or without modification,
-    are permitted provided that the following conditions are met:
-
-        1. Redistributions of source code must retain the above copyright notice,
-        this list of conditions and the following disclaimer.
-
-        2. Redistributions in binary form must reproduce the above copyright
-        notice, this list of conditions and the following disclaimer in the
-        documentation and/or other materials provided with the distribution.
-
-        3. Neither the name of Django nor the names of its contributors may be used
-        to endorse or promote products derived from this software without
-        specific prior written permission.
-
-    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
-    ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-    WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-    DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
-    ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-    (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-    LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
-    ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-    (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-    """
-    import __main__
-
-    py_script = Path(sys.argv[0])
-
-    args = ["-W%s" % o for o in sys.warnoptions]
-    if sys.implementation.name == "cpython":
-        args.extend(f"-X{key}" if value is True else f"-X{key}={value}" for key, value in sys._xoptions.items())
-    # __spec__ is set when the server was started with the `-m` option,
-    # see https://docs.python.org/3/reference/import.html#main-spec
-    # __spec__ may not exist, e.g. when running in a Conda env.
-    if getattr(__main__, "__spec__", None) is not None:
-        spec = __main__.__spec__
-        if (spec.name == "__main__" or spec.name.endswith(".__main__")) and spec.parent:
-            name = spec.parent
+async def _terminate(proc: Optional[SpawnProcess], output_mgr: OutputManager, timeout: float = 5.0):
+    if proc is None:
+        return
+    try:
+        proc.terminate()
+        await asyncify(proc.join)(timeout)
+        if proc.exitcode is not None:
+            output_mgr.print_if_visible(f"Serve process {proc.pid} terminated")
         else:
-            name = spec.name
-        args += ["-m", name]
-        args += sys.argv[1:]
-    elif not py_script.exists():
-        # sys.argv[0] may not exist for several reasons on Windows.
-        # It may exist with a .exe extension or have a -script.py suffix.
-        exe_entrypoint = py_script.with_suffix(".exe")
-        if exe_entrypoint.exists():
-            # Should be executed directly, ignoring sys.executable.
-            return [exe_entrypoint, *sys.argv[1:]]
-        script_entrypoint = py_script.with_name("%s-script.py" % py_script.name)
-        if script_entrypoint.exists():
-            # Should be executed as usual.
-            return [*args, script_entrypoint, *sys.argv[1:]]
-        raise RuntimeError("Script %s does not exist." % py_script)
+            output_mgr.print_if_visible(
+                f"[red]Serve process {proc.pid} didn't terminate after {timeout}s, killing it[/red]"
+            )
+            proc.kill()
+    except ProcessLookupError:
+        pass  # Child process already finished
+
+
+async def _run_serve_loop(
+    stub_ref: str,
+    timeout: Optional[float] = None,
+    stdout: Optional[io.TextIOWrapper] = None,
+    show_progress: bool = True,
+    _watcher: Optional[AsyncGenerator[None, None]] = None,  # for testing
+    _app_q: Optional[asyncio.Queue] = None,  # for testing
+):
+    stub = import_stub(stub_ref)
+
+    unsupported_msg = None
+    if platform.system() == "Windows":
+        unsupported_msg = "Live-reload skipped. This feature is currently unsupported on Windows"
+        " This can hopefully be fixed in a future version of Modal."
+    elif sys.version_info < (3, 8):
+        unsupported_msg = (
+            "Live-reload skipped. This feature is unsupported below Python 3.8."
+            " Upgrade to Python 3.8+ to enable live-reloading."
+        )
+
+    client = await _Client.from_env()
+
+    output_mgr = OutputManager(stdout, show_progress)
+
+    if _watcher is not None:
+        watcher = _watcher  # Only used by tests
     else:
-        args += sys.argv
-    return args
+        watcher = watch(stub._local_mounts, output_mgr, timeout)
+
+    if unsupported_msg:
+        async with stub._run(client, output_mgr, None) as app:
+            client.set_pre_stop(app.disconnect)
+            async for _ in watcher:
+                output_mgr.print_if_visible(unsupported_msg)
+    else:
+        # Run the object creation loop one time first, to make sure all images etc get built
+        # This also handles the logs and the heartbeats
+        async with stub._run(client, output_mgr, None) as app:
+            if _app_q:
+                await _app_q.put(app)
+            client.set_pre_stop(app.disconnect)
+            existing_app_id = app.app_id
+            curr_proc = None
+            try:
+                async for _ in watcher:
+                    await _terminate(curr_proc, output_mgr)
+                    curr_proc = await _restart_serve(stub_ref, existing_app_id=existing_app_id)
+            finally:
+                await _terminate(curr_proc, output_mgr)
+
+
+run_serve_loop, aio_run_serve_loop = synchronize_apis(_run_serve_loop)

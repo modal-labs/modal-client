@@ -149,10 +149,8 @@ def infer_function_or_help(
         # if there is a single local_entrypoint, use that regardless of
         # other functions on the stub
         function_name = list(_stub.registered_entrypoints.keys())[0]
-        print(f"Using local_entrypoint {function_name}")
     elif len(function_choices) == 1:
         function_name = sorted_function_choices[0]
-        print(f"Using function {function_name}")
     elif len(function_choices) == 0:
         if _stub.registered_web_endpoints:
             err_msg = "Modal stub has only webhook functions. Use `modal serve` instead of `modal run`."

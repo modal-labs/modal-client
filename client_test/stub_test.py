@@ -10,7 +10,7 @@ from grpclib import GRPCError, Status
 import modal.app
 from modal import Stub
 from modal.aio import AioDict, AioQueue, AioStub
-from modal.exception import InvalidError
+from modal.exception import DeprecationError, InvalidError
 from modal_proto import api_pb2
 from modal_test_support import module_1, module_2
 
@@ -152,7 +152,8 @@ def test_serve(client):
     stub = Stub()
 
     stub.wsgi(dummy)
-    stub.serve(client=client, timeout=1)
+    with pytest.warns(DeprecationError):
+        stub.serve(client=client, timeout=1)
 
 
 @skip_in_github
@@ -160,7 +161,8 @@ def test_serve_teardown(client, servicer):
     stub = Stub()
     with modal.client.Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
         stub.wsgi(dummy)
-        stub.serve(client=client, timeout=1)
+        with pytest.warns(DeprecationError):
+            stub.serve(client=client, timeout=1)
 
     disconnect_reqs = [s for s in servicer.requests if isinstance(s, api_pb2.AppClientDisconnectRequest)]
     assert len(disconnect_reqs) == 1
@@ -176,7 +178,8 @@ def test_nested_serve_invocation(client):
     with pytest.raises(InvalidError) as excinfo:
         with stub.run(client=client):
             # This nested call creates a second web endpoint!
-            stub.serve(client=client)
+            with pytest.warns(DeprecationError):
+                stub.serve(client=client)
     assert "running" in str(excinfo.value)
 
 
