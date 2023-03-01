@@ -271,17 +271,8 @@ class _Stub:
                 if mode == StubRunMode.DEPLOY:
                     logs_loop.cancel()
 
-                if self._pty_input_stream:
-                    output_mgr._visible_progress = False
-                    handle = app._pty_input_stream
-                    assert isinstance(handle, _QueueHandle)
-                    async with _pty.write_stdin_to_pty_stream(handle):
-                        yield
-                    output_mgr._visible_progress = True
-                else:
-                    # Yield to context
-                    with output_mgr.ctx_if_visible(output_mgr.make_live(status_spinner)):
-                        yield
+                # Yield to context
+                yield app
             except KeyboardInterrupt:
                 # mute cancellation errors on all function handles to prevent exception spam
                 for tag, obj in self._function_handles.items():
@@ -328,7 +319,16 @@ class _Stub:
         app = await _App._init_new(client, self.description, detach=detach, deploying=False)
         status_spinner = step_progress("Running app...")
         async with self._run(client, output_mgr, app, mode=mode, post_init_state=post_init_state, status_spinner=status_spinner):
-            yield app
+            if self._pty_input_stream:
+                output_mgr._visible_progress = False
+                handle = app._pty_input_stream
+                assert isinstance(handle, _QueueHandle)
+                async with _pty.write_stdin_to_pty_stream(handle):
+                    yield app
+                output_mgr._visible_progress = True
+            else:
+                with output_mgr.ctx_if_visible(output_mgr.make_live(status_spinner)):
+                    yield app
         output_mgr.print_if_visible(step_completed("App completed."))
 
     async def _serve_update(
