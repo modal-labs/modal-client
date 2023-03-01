@@ -291,22 +291,21 @@ class _Stub:
                     with output_mgr.ctx_if_visible(output_mgr.make_live(status_spinner)):
                         yield app
             except KeyboardInterrupt:
-                if mode == StubRunMode.DETACH:
-                    output_mgr.print_if_visible(step_completed("Shutting down Modal client."))
-                    output_mgr.print_if_visible(
-                        f"""The detached app keeps running. You can track its progress at: [magenta]{app.log_url()}[/magenta]"""
-                    )
-                else:
-                    output_mgr.print_if_visible(step_completed("App aborted."))
-
                 # mute cancellation errors on all function handles to prevent exception spam
                 for tag, obj in self._function_handles.items():
                     obj._set_mute_cancellation(True)
 
                 if mode == StubRunMode.DETACH:
+                    output_mgr.print_if_visible(step_completed("Shutting down Modal client."))
+                    output_mgr.print_if_visible(
+                        f"""The detached app keeps running. You can track its progress at: [magenta]{app.log_url()}[/magenta]"""
+                    )
                     logs_loop.cancel()
                 else:
-                    print("Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n")
+                    output_mgr.print_if_visible(step_completed("App aborted."))
+                    output_mgr.print_if_visible(
+                        "Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n"
+                    )
             finally:
                 if mode != StubRunMode.SERVE_CHILD:
                     await app.disconnect()
