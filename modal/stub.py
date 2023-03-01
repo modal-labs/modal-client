@@ -231,7 +231,7 @@ class _Stub:
         last_log_entry_id: Optional[str] = None,
         mode: StubRunMode = StubRunMode.RUN,
         post_init_state: int = api_pb2.APP_STATE_EPHEMERAL,
-    ) -> AsyncGenerator[_App, None]:
+    ) -> AsyncGenerator[None, None]:
         self._app = app
 
         # Start tracking logs and yield context
@@ -275,12 +275,12 @@ class _Stub:
                     handle = app._pty_input_stream
                     assert isinstance(handle, _QueueHandle)
                     async with _pty.write_stdin_to_pty_stream(handle):
-                        yield app
+                        yield
                     output_mgr._visible_progress = True
                 else:
                     # Yield to context
                     with output_mgr.ctx_if_visible(output_mgr.make_live(status_spinner)):
-                        yield app
+                        yield
             except KeyboardInterrupt:
                 # mute cancellation errors on all function handles to prevent exception spam
                 for tag, obj in self._function_handles.items():
@@ -325,7 +325,7 @@ class _Stub:
         mode = StubRunMode.DETACH if detach else StubRunMode.RUN
         post_init_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
         app = await _App._init_new(client, self.description, detach=detach, deploying=False)
-        async with self._run(client, output_mgr, app, mode=mode, post_init_state=post_init_state) as app:
+        async with self._run(client, output_mgr, app, mode=mode, post_init_state=post_init_state):
             yield app
         output_mgr.print_if_visible(step_completed("App completed."))
 
@@ -455,7 +455,7 @@ class _Stub:
             last_log_entry_id,
             mode=StubRunMode.DEPLOY,
             post_init_state=post_init_state,
-        ) as app:
+        ):
             deploy_req = api_pb2.AppDeployRequest(
                 app_id=app._app_id,
                 name=name,
