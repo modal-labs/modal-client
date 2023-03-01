@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2022
 import os
-import platform
 import pytest
 import pytest_asyncio
 import subprocess
@@ -8,6 +7,8 @@ import sys
 from pathlib import Path
 
 from modal._function_utils import FunctionInfo
+
+from .supports.skip import skip_windows
 
 
 @pytest.fixture
@@ -128,7 +129,7 @@ def test_mounted_files_package(supports_dir, env_mount_files):
     }
 
 
-@pytest.mark.skipif(platform.system() == "Windows", reason="venvs behave differently on Windows.")
+@skip_windows("venvs behave differently on Windows.")
 def test_mounted_files_sys_prefix(supports_dir, venv_path, env_mount_files):
     # Run with venv activated, so it's on sys.prefix, and modal is dev-installed in the VM
     p = subprocess.run(

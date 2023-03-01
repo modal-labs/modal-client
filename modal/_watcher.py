@@ -98,7 +98,6 @@ async def watch(
     timeout_agen = [] if timeout is None else [_sleep(timeout)]
 
     async with stream.merge(_watch_paths(paths, watch_filter), *timeout_agen).stream() as streamer:
-        yield  # yield dummy on startup
         async for event in streamer:
             if event == _TIMEOUT_SENTINEL:
                 return
