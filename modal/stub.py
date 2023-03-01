@@ -367,7 +367,6 @@ class _Stub:
         stdout=None,
         show_progress=None,
         timeout=None,
-        existing_app_id: Optional[str] = None,
     ) -> None:
         """Run an app until the program is interrupted."""
         deprecation_warning(
@@ -391,7 +390,7 @@ class _Stub:
             timeout = 1e10
 
         output_mgr = OutputManager(stdout, show_progress)
-        async with self._run(client, output_mgr, mode=StubRunMode.RUN, existing_app_id=existing_app_id):
+        async with self._run(client, output_mgr, mode=StubRunMode.RUN, existing_app_id=None):
             await asyncio.sleep(timeout)
 
     async def deploy(
