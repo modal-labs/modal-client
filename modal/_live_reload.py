@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2023
+import asyncio
 import io
 import multiprocessing
 from multiprocessing.context import SpawnProcess
@@ -57,7 +58,8 @@ async def _run_serve_loop(
     timeout: Optional[float] = None,
     stdout: Optional[io.TextIOWrapper] = None,
     show_progress: bool = True,
-    _watcher: Optional[AsyncGenerator[None, None]] = None,
+    _watcher: Optional[AsyncGenerator[None, None]] = None,  # for testing
+    _app_q: Optional[asyncio.Queue] = None,  # for testing
 ):
     stub = import_stub(stub_ref)
 
@@ -89,6 +91,8 @@ async def _run_serve_loop(
         # Run the object creation loop one time first, to make sure all images etc get built
         # This also handles the logs and the heartbeats
         async with stub._run(client, output_mgr, None) as app:
+            if _app_q:
+                await _app_q.put(app)
             client.set_pre_stop(app.disconnect)
             existing_app_id = app.app_id
             curr_proc = None
