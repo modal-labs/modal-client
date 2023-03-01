@@ -233,11 +233,10 @@ class _Stub:
         mode: StubRunMode = StubRunMode.RUN,
         post_init_state: int = api_pb2.APP_STATE_EPHEMERAL,
     ) -> AsyncGenerator[_App, None]:
-        app_name = name if name is not None else self.description
-
         if existing_app_id is not None:
             app = await _App._init_existing(client, existing_app_id)
         else:
+            app_name = name if name is not None else self.description
             app = await _App._init_new(
                 client, app_name, deploying=(mode == StubRunMode.DEPLOY), detach=(mode == StubRunMode.DETACH)
             )
