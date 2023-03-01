@@ -1,6 +1,12 @@
 # Copyright Modal Labs 2022
 from __future__ import annotations
+
+import base64
 import json
+import os
+import signal
+import subprocess
+
 import pytest
 import sys
 import time
@@ -24,11 +30,65 @@ SLEEP_DELAY = 0.1
 
 def _get_inputs(args=((42,), {})) -> list[api_pb2.FunctionGetInputsResponse]:
     input_pb = api_pb2.FunctionInput(args=serialize(args))
-
     return [
         api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(input_id="in-xyz", input=input_pb)]),
         api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(kill_switch=True)]),
     ]
+
+
+def _get_multi_inputs(args: list[tuple[tuple, dict]] = []) -> list[api_pb2.FunctionGetInputsResponse]:
+    responses = []
+    for input_n, input_args in enumerate(args):
+        resp = api_pb2.FunctionGetInputsResponse(
+            inputs=[
+                api_pb2.FunctionGetInputsItem(
+                    input_id=f"in-{input_n}", input=api_pb2.FunctionInput(args=serialize(input_args))
+                )
+            ]
+        )
+        responses.append(resp)
+
+    return responses + [api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(kill_switch=True)])]
+
+
+def _container_args(
+    module_name,
+    function_name,
+    function_type=api_pb2.Function.FUNCTION_TYPE_FUNCTION,
+    webhook_type=api_pb2.WEBHOOK_TYPE_UNSPECIFIED,
+    definition_type=api_pb2.Function.DEFINITION_TYPE_FILE,
+):
+    if webhook_type:
+        webhook_config = api_pb2.WebhookConfig(
+            type=webhook_type,
+            method="GET",
+            wait_for_response=True,
+        )
+        function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
+    else:
+        webhook_config = None
+
+    function_def = api_pb2.Function(
+        module_name=module_name,
+        function_name=function_name,
+        function_type=function_type,
+        webhook_config=webhook_config,
+        definition_type=definition_type,
+    )
+
+    return api_pb2.ContainerArguments(
+        task_id="ta-123",
+        function_id="fu-123",
+        app_id="ap-123",
+        function_def=function_def,
+    )
+
+
+def _flatten_outputs(outputs) -> list[api_pb2.FunctionPutOutputsItem]:
+    items: list[api_pb2.FunctionPutOutputsItem] = []
+    for req in outputs:
+        items += list(req.outputs)
+    return items
 
 
 def _run_container(
@@ -48,31 +108,7 @@ def _run_container(
             servicer.container_inputs = inputs
         servicer.fail_get_inputs = fail_get_inputs
 
-        if webhook_type:
-            webhook_config = api_pb2.WebhookConfig(
-                type=webhook_type,
-                method="GET",
-                wait_for_response=True,
-            )
-            function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
-        else:
-            webhook_config = None
-
-        function_def = api_pb2.Function(
-            module_name=module_name,
-            function_name=function_name,
-            function_type=function_type,
-            webhook_config=webhook_config,
-            definition_type=definition_type,
-        )
-
-        # Note that main is a synchronous function, so we need to run it in a separate thread
-        container_args = api_pb2.ContainerArguments(
-            task_id="ta-123",
-            function_id="fu-123",
-            app_id="se-123",
-            function_def=function_def,
-        )
+        container_args = _container_args(module_name, function_name, function_type, webhook_type, definition_type)
 
         try:
             main(container_args, client)
@@ -81,10 +117,7 @@ def _run_container(
             pass
 
         # Flatten outputs
-        items: list[api_pb2.FunctionPutOutputsItem] = []
-        for req in servicer.container_outputs:
-            items += list(req.outputs)
-
+        items = _flatten_outputs(servicer.container_outputs)
         return client, items
 
 
@@ -437,3 +470,40 @@ def test_asgi(unix_servicer, event_loop):
 def test_container_heartbeats(unix_servicer, event_loop):
     client, items = _run_container(unix_servicer, "modal_test_support.functions", "square")
     assert any(isinstance(request, api_pb2.ContainerHeartbeatRequest) for request in unix_servicer.requests)
+
+
+@skip_windows
+def test_sigusr1_aborts_current_input(servicer, server_url_env):
+    container_args = _container_args("modal_test_support.functions", "delay")
+    encoded_container_args = base64.b64encode(container_args.SerializeToString())
+    servicer.container_inputs = _get_multi_inputs([((1,), {}), ((0.01,), {})])  # sleep 1s on first input, 0 on second
+    container_process = subprocess.Popen(
+        [sys.executable, "-m", "modal._container_entrypoint", encoded_container_args], env=os.environ
+    )
+    servicer.called_function_get_inputs.wait(timeout=1)
+    time.sleep(0.05)  # let the container get the input
+    container_process.send_signal(signal.SIGUSR1)
+    time.sleep(0.1)  # let the container handle the exception and remaining input
+    items = _flatten_outputs(servicer.container_outputs)
+    assert len(items) == 1
+    data = deserialize(items[0].result.data, client=None)
+    assert data == 0.01
+
+
+@skip_windows
+def test_sigusr1_aborts_current_input_async(servicer, server_url_env):
+    container_args = _container_args("modal_test_support.functions", "delay_async")
+    encoded_container_args = base64.b64encode(container_args.SerializeToString())
+    servicer.container_inputs = _get_multi_inputs([((1,), {}), ((0.01,), {})])  # sleep 1s on first input, 0 on second
+    container_process = subprocess.Popen(
+        [sys.executable, "-m", "modal._container_entrypoint", encoded_container_args], env=os.environ
+    )
+    servicer.called_function_get_inputs.wait(timeout=1)
+    time.sleep(0.05)  # let the container get the input
+    container_process.send_signal(signal.SIGUSR1)
+    time.sleep(0.1)  # let the container handle the exception and remaining input
+    items = _flatten_outputs(servicer.container_outputs)
+    assert len(items) == 1
+    data = deserialize(items[0].result.data, client=None)
+    assert data == 0.01
+    container_process.terminate()

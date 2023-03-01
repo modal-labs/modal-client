@@ -76,6 +76,9 @@ def get_is_async(function):
         raise RuntimeError(f"Function {function} is a strange type {type(function)}")
 
 
+INPUT_CANCELLATION_MESSAGE = "skip-input"
+
+
 def run_with_signal_handler(coro):
     """Execute coro in an event loop, with a signal handler that cancels
     the task in the case of SIGINT or SIGTERM. Prevents stray cancellation errors
@@ -85,6 +88,7 @@ def run_with_signal_handler(coro):
     task = asyncio.ensure_future(coro, loop=loop)
     for s in [signal.SIGINT, signal.SIGTERM]:
         loop.add_signal_handler(s, task.cancel)
+    loop.add_signal_handler(signal.SIGUSR1, task.cancel, INPUT_CANCELLATION_MESSAGE)
     try:
         result = loop.run_until_complete(task)
     finally:
@@ -294,6 +298,7 @@ class _FunctionIOManager:
         try:
             yield
         except KeyboardInterrupt:
+            # Sigint/KeyboardInterrupt = task killed by worker
             raise
         except BaseException as exc:
             # Since this is on a different thread, sys.exc_info() can't find the exception in the stack.
@@ -323,8 +328,16 @@ class _FunctionIOManager:
                 set_span_tag("input_id", input_id)
                 yield
         except KeyboardInterrupt:
+            # task killed by worker
             raise
+        except InputCancellation:
+            # just skip creating any output for this input and keep going with the next instead
+            # it should have been marked as cancelled already so no need to send a result
+            return
         except BaseException as exc:
+            if isinstance(exc, asyncio.CancelledError) and str(exc) == INPUT_CANCELLATION_MESSAGE:
+                # for async functions, InputCancellation is represented by CancelledError with the INPUT_CANCELLATION_MESSAGE message
+                return
             # print exception so it's logged
             traceback.print_exc()
             serialized_tb, tb_line_cache = self.serialize_traceback(exc)
@@ -381,6 +394,11 @@ def call_function_sync(
     fun: Callable,
     is_generator: bool,
 ):
+    def cancel_input_signal_handler(signum, stackframe):
+        raise InputCancellation("input was cancelled by user")
+
+    signal.signal(signal.SIGUSR1, cancel_input_signal_handler)
+
     # If this function is on a class, instantiate it and enter it
     if obj is not None:
         if hasattr(obj, "__enter__"):
@@ -514,6 +532,12 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> tuple[A
         return obj, fun, is_async
 
 
+class InputCancellation(BaseException):
+    # Making this a BaseException to prevent users from catching it
+    # in normal cases
+    pass
+
+
 def main(container_args: api_pb2.ContainerArguments, client: Client):
     # TODO: if there's an exception in this scope (in particular when we import code dynamically),
     # we could catch that exception and set it properly serialized to the client. Right now the
@@ -526,7 +550,6 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     function_io_manager, aio_function_io_manager = synchronize_apis(_function_io_manager)
 
     function_io_manager.initialize_app()
-
     with function_io_manager.heartbeats():
         is_generator = function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
 

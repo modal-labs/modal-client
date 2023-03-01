@@ -9,6 +9,7 @@ import os
 import shutil
 import sys
 import tempfile
+import threading
 import traceback
 from collections import defaultdict
 from pathlib import Path
@@ -54,6 +55,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.slow_put_inputs = False
         self.container_inputs = []
         self.container_outputs = []
+        self.called_function_get_inputs = threading.Event()
         self.queue = []
         self.deployed_apps = {
             client_mount_name(): "ap-x",
@@ -285,6 +287,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def FunctionGetInputs(self, stream):
         request: api_pb2.FunctionGetInputsRequest = await stream.recv_message()
         assert request.function_id
+
         if self.fail_get_inputs:
             raise GRPCError(Status.INTERNAL)
         elif self.rate_limit_sleep_duration is not None:
@@ -296,6 +299,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
             await stream.send_message(api_pb2.FunctionGetInputsResponse(inputs=[]))
         else:
             await stream.send_message(self.container_inputs.pop(0))
+
+        self.called_function_get_inputs.set()  # can be used to wait for first input fetching in tests
 
     async def FunctionPutOutputs(self, stream):
         request: api_pb2.FunctionPutOutputsRequest = await stream.recv_message()
@@ -616,6 +621,15 @@ async def client(servicer):
 async def aio_container_client(unix_servicer):
     async with AioClient(unix_servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         yield client
+
+
+@pytest_asyncio.fixture
+async def set_env_client(aio_client):
+    try:
+        Client.set_env_client(aio_client)
+        yield
+    finally:
+        Client.set_env_client(None)
 
 
 @pytest_asyncio.fixture(scope="function")

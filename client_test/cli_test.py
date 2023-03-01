@@ -9,10 +9,8 @@ from unittest import mock
 import click
 import click.testing
 import pytest
-import pytest_asyncio
 
 from modal.cli.entry_point import entrypoint_cli
-from modal.client import Client
 from modal_proto import api_pb2
 
 dummy_app_file = """
@@ -29,15 +27,6 @@ assert mod.stub == stub
 """
 
 dummy_other_module_file = "x = 42"
-
-
-@pytest_asyncio.fixture
-async def set_env_client(aio_client):
-    try:
-        Client.set_env_client(aio_client)
-        yield
-    finally:
-        Client.set_env_client(None)
 
 
 def _run(args, expected_exit_code=0):
