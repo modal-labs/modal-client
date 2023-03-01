@@ -231,17 +231,10 @@ class _Stub:
         last_log_entry_id: Optional[str] = None,
         name: Optional[str] = None,
         mode: StubRunMode = StubRunMode.RUN,
+        post_init_state: int = api_pb2.APP_STATE_EPHEMERAL,
     ) -> AsyncGenerator[_App, None]:
         app_name = name if name is not None else self.description
         detach = mode == StubRunMode.DETACH
-        if mode == StubRunMode.DETACH:
-            post_init_state = api_pb2.APP_STATE_DETACHED
-        elif mode == StubRunMode.DEPLOY:
-            post_init_state = (
-                api_pb2.APP_STATE_UNSPECIFIED
-            )  # don't change the app state - deploy state is set by AppDeploy
-        else:
-            post_init_state = api_pb2.APP_STATE_EPHEMERAL
 
         if existing_app_id is not None:
             app = await _App._init_existing(client, existing_app_id)
@@ -347,7 +340,10 @@ class _Stub:
             client = await _Client.from_env()
         output_mgr = OutputManager(stdout, show_progress)
         mode = StubRunMode.DETACH if detach else StubRunMode.RUN
-        async with self._run(client, output_mgr, existing_app_id=None, mode=mode) as app:
+        post_init_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
+        async with self._run(
+            client, output_mgr, existing_app_id=None, mode=mode, post_init_state=post_init_state
+        ) as app:
             yield app
 
     async def _serve_update(
@@ -456,10 +452,19 @@ class _Stub:
         existing_app_id = app_resp.app_id or None
         last_log_entry_id = app_resp.last_log_entry_id
 
+        # Don't change the app state - deploy state is set by AppDeploy
+        post_init_state = api_pb2.APP_STATE_UNSPECIFIED
+
         # The `_run` method contains the logic for starting and running an app
         output_mgr = OutputManager(stdout, show_progress)
         async with self._run(
-            client, output_mgr, existing_app_id, last_log_entry_id, name=name, mode=StubRunMode.DEPLOY
+            client,
+            output_mgr,
+            existing_app_id,
+            last_log_entry_id,
+            name=name,
+            mode=StubRunMode.DEPLOY,
+            post_init_state=post_init_state,
         ) as app:
             deploy_req = api_pb2.AppDeployRequest(
                 app_id=app._app_id,
