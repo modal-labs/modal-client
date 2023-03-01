@@ -318,7 +318,9 @@ class _Stub:
         post_init_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
         app = await _App._init_new(client, self.description, detach=detach, deploying=False)
         status_spinner = step_progress("Running app...")
-        async with self._run(client, output_mgr, app, mode=mode, post_init_state=post_init_state, status_spinner=status_spinner):
+        async with self._run(
+            client, output_mgr, app, mode=mode, post_init_state=post_init_state, status_spinner=status_spinner
+        ):
             if self._pty_input_stream:
                 output_mgr._visible_progress = False
                 handle = app._pty_input_stream
