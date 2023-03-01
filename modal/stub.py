@@ -10,6 +10,7 @@ import warnings
 from enum import Enum
 from typing import AsyncGenerator, Collection, Dict, List, Optional, Union
 
+from rich.spinner import Spinner
 from rich.tree import Tree
 
 from modal_proto import api_pb2
@@ -231,6 +232,7 @@ class _Stub:
         last_log_entry_id: Optional[str] = None,
         mode: StubRunMode = StubRunMode.RUN,
         post_init_state: int = api_pb2.APP_STATE_EPHEMERAL,
+        status_spinner: Optional[Spinner] = None,
     ) -> AsyncGenerator[None, None]:
         self._app = app
 
@@ -240,7 +242,6 @@ class _Stub:
                 # Start heartbeats loop to keep the client alive
                 tc.infinite_loop(lambda: _heartbeat(client, app.app_id), sleep=HEARTBEAT_INTERVAL)
 
-            status_spinner = step_progress("Running app...")
             with output_mgr.ctx_if_visible(output_mgr.make_live(step_progress("Initializing..."))):
                 if mode != StubRunMode.SERVE_CHILD:
                     logs_loop = tc.create_task(
@@ -325,7 +326,8 @@ class _Stub:
         mode = StubRunMode.DETACH if detach else StubRunMode.RUN
         post_init_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
         app = await _App._init_new(client, self.description, detach=detach, deploying=False)
-        async with self._run(client, output_mgr, app, mode=mode, post_init_state=post_init_state):
+        status_spinner = step_progress("Running app...")
+        async with self._run(client, output_mgr, app, mode=mode, post_init_state=post_init_state, status_spinner=status_spinner):
             yield app
         output_mgr.print_if_visible(step_completed("App completed."))
 
@@ -339,7 +341,8 @@ class _Stub:
         try:
             output_mgr = OutputManager(None, None)
             app = await _App._init_existing(client, existing_app_id)
-            async with self._run(client, output_mgr, app, mode=StubRunMode.SERVE_CHILD):
+            status_spinner = step_progress("Updating app...")
+            async with self._run(client, output_mgr, app, mode=StubRunMode.SERVE_CHILD, status_spinner=status_spinner):
                 is_ready.set()  # Used to communicate to the parent process
             output_mgr.print_if_visible(step_completed("App update."))
         except asyncio.exceptions.CancelledError:
@@ -376,7 +379,8 @@ class _Stub:
 
         output_mgr = OutputManager(stdout, show_progress)
         app = await _App._init_new(client, self.description, detach=False, deploying=False)
-        async with self._run(client, output_mgr, app, mode=StubRunMode.RUN):
+        status_spinner = step_progress("Serving app...")
+        async with self._run(client, output_mgr, app, mode=StubRunMode.RUN, status_spinner=status_spinner):
             await asyncio.sleep(timeout)
 
     async def deploy(
@@ -448,6 +452,7 @@ class _Stub:
 
         # The `_run` method contains the logic for starting and running an app
         output_mgr = OutputManager(stdout, show_progress)
+        status_spinner = step_progress("Deploying app...")
         async with self._run(
             client,
             output_mgr,
@@ -455,6 +460,7 @@ class _Stub:
             last_log_entry_id,
             mode=StubRunMode.DEPLOY,
             post_init_state=post_init_state,
+            status_spinner=status_spinner,
         ):
             deploy_req = api_pb2.AppDeployRequest(
                 app_id=app._app_id,
