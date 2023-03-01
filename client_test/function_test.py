@@ -131,6 +131,9 @@ def test_function_future(client, servicer):
         servicer.function_is_running = True
         assert future.object_id == "fc-2"
 
+        future.cancel()
+        assert "fc-2" in servicer.cancelled_calls
+
         assert future.object_id not in servicer.cleared_function_calls
 
 
