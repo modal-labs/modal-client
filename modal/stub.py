@@ -243,7 +243,6 @@ class _Stub:
             )
         self._app = app
 
-        aborted = False
         # Start tracking logs and yield context
         async with TaskContext(grace=config["logs_timeout"]) as tc:
             if mode != StubRunMode.SERVE_CHILD:
