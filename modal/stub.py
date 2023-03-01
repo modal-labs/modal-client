@@ -238,7 +238,9 @@ class _Stub:
         if existing_app_id is not None:
             app = await _App._init_existing(client, existing_app_id)
         else:
-            app = await _App._init_new(client, app_name, deploying=(mode == StubRunMode.DEPLOY), detach=(mode == StubRunMode.DETACH))
+            app = await _App._init_new(
+                client, app_name, deploying=(mode == StubRunMode.DEPLOY), detach=(mode == StubRunMode.DETACH)
+            )
         self._app = app
 
         aborted = False
