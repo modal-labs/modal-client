@@ -227,19 +227,11 @@ class _Stub:
         self,
         client,
         output_mgr: OutputManager,
-        existing_app_id: Optional[str],
+        app: _App,
         last_log_entry_id: Optional[str] = None,
-        name: Optional[str] = None,
         mode: StubRunMode = StubRunMode.RUN,
         post_init_state: int = api_pb2.APP_STATE_EPHEMERAL,
     ) -> AsyncGenerator[_App, None]:
-        if existing_app_id is not None:
-            app = await _App._init_existing(client, existing_app_id)
-        else:
-            app_name = name if name is not None else self.description
-            app = await _App._init_new(
-                client, app_name, deploying=(mode == StubRunMode.DEPLOY), detach=(mode == StubRunMode.DETACH)
-            )
         self._app = app
 
         # Start tracking logs and yield context
@@ -332,9 +324,8 @@ class _Stub:
         output_mgr = OutputManager(stdout, show_progress)
         mode = StubRunMode.DETACH if detach else StubRunMode.RUN
         post_init_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
-        async with self._run(
-            client, output_mgr, existing_app_id=None, mode=mode, post_init_state=post_init_state
-        ) as app:
+        app = await _App._init_new(client, self.description, detach=detach, deploying=False)
+        async with self._run(client, output_mgr, app, mode=mode, post_init_state=post_init_state) as app:
             yield app
         output_mgr.print_if_visible(step_completed("App completed."))
 
@@ -347,7 +338,8 @@ class _Stub:
         client = await _Client.from_env()
         try:
             output_mgr = OutputManager(None, None)
-            async with self._run(client, output_mgr, mode=StubRunMode.SERVE_CHILD, existing_app_id=existing_app_id):
+            app = await _App._init_existing(client, existing_app_id)
+            async with self._run(client, output_mgr, app, mode=StubRunMode.SERVE_CHILD):
                 is_ready.set()  # Used to communicate to the parent process
             output_mgr.print_if_visible(step_completed("App update."))
         except asyncio.exceptions.CancelledError:
@@ -383,7 +375,8 @@ class _Stub:
             timeout = 1e10
 
         output_mgr = OutputManager(stdout, show_progress)
-        async with self._run(client, output_mgr, mode=StubRunMode.RUN, existing_app_id=None):
+        app = await _App._init_new(client, self.description, detach=False, deploying=False)
+        async with self._run(client, output_mgr, app, mode=StubRunMode.RUN):
             await asyncio.sleep(timeout)
 
     async def deploy(
@@ -444,6 +437,12 @@ class _Stub:
         existing_app_id = app_resp.app_id or None
         last_log_entry_id = app_resp.last_log_entry_id
 
+        # Grab the app
+        if existing_app_id is not None:
+            app = await _App._init_existing(client, existing_app_id)
+        else:
+            app = await _App._init_new(client, name, detach=False, deploying=True)
+
         # Don't change the app state - deploy state is set by AppDeploy
         post_init_state = api_pb2.APP_STATE_UNSPECIFIED
 
@@ -452,9 +451,8 @@ class _Stub:
         async with self._run(
             client,
             output_mgr,
-            existing_app_id,
+            app,
             last_log_entry_id,
-            name=name,
             mode=StubRunMode.DEPLOY,
             post_init_state=post_init_state,
         ) as app:
