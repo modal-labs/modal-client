@@ -1003,6 +1003,7 @@ class _FunctionCall(Handle, type_prefix="fc"):
     """
 
     def _invocation(self):
+        assert self._client
         return _Invocation(self._client.stub, self.object_id, self._client)
 
     async def get(self, timeout: Optional[float] = None):
@@ -1017,9 +1018,15 @@ class _FunctionCall(Handle, type_prefix="fc"):
         """Returns a nested dictionary structure representing the call graph from a given root
         call ID, along with the status of execution for each node.
         """
+        assert self._client and self._client.stub
         request = api_pb2.FunctionGetCallGraphRequest(function_call_id=self.object_id)
         response = await retry_transient_errors(self._client.stub.FunctionGetCallGraph, request)
         return reconstruct_call_graph(response)
+
+    async def cancel(self):
+        request = api_pb2.FunctionCallCancelRequest(function_call_id=self.object_id)
+        assert self._client and self._client.stub
+        await self._client.stub.FunctionCallCancel(request)
 
 
 FunctionCall, AioFunctionCall = synchronize_apis(_FunctionCall)

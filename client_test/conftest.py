@@ -105,6 +105,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.cleared_function_calls = set()
 
         self.enforce_object_entity = True
+        self.cancelled_calls = []
 
         self.app_client_disconnect_count = 0
         self.app_get_logs_initial_count = 0
@@ -424,6 +425,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 class_serialized=self.class_serialized,
             )
         )
+
+    async def FunctionCallCancel(self, stream):
+        req = await stream.recv_message()
+        self.cancelled_calls.append(req.function_call_id)
+        await stream.send_message(Empty())
 
     ### Image
 
