@@ -290,7 +290,14 @@ class _Stub:
                     with output_mgr.ctx_if_visible(output_mgr.make_live(status_spinner)):
                         yield app
             except KeyboardInterrupt:
-                aborted = True
+                if mode == StubRunMode.DETACH:
+                    output_mgr.print_if_visible(step_completed("Shutting down Modal client."))
+                    output_mgr.print_if_visible(
+                        f"""The detached app keeps running. You can track its progress at: [magenta]{app.log_url()}[/magenta]"""
+                    )
+                else:
+                    output_mgr.print_if_visible(step_completed("App aborted."))
+
                 # mute cancellation errors on all function handles to prevent exception spam
                 for tag, obj in self._function_handles.items():
                     obj._set_mute_cancellation(True)
@@ -303,20 +310,6 @@ class _Stub:
                 if mode != StubRunMode.SERVE_CHILD:
                     await app.disconnect()
 
-        if mode == StubRunMode.DEPLOY:
-            output_mgr.print_if_visible(step_completed("App deployed! 🎉"))
-        elif aborted:
-            if mode == StubRunMode.DETACH:
-                output_mgr.print_if_visible(step_completed("Shutting down Modal client."))
-                output_mgr.print_if_visible(
-                    f"""The detached app keeps running. You can track its progress at: [magenta]{app.log_url()}[/magenta]"""
-                )
-            else:
-                output_mgr.print_if_visible(step_completed("App aborted."))
-        elif mode != StubRunMode.SERVE_CHILD:
-            output_mgr.print_if_visible(step_completed("App completed."))
-        else:
-            output_mgr.print_if_visible(step_completed("App update."))
         self._app = None
 
     @contextlib.asynccontextmanager
@@ -344,6 +337,7 @@ class _Stub:
             client, output_mgr, existing_app_id=None, mode=mode, post_init_state=post_init_state
         ) as app:
             yield app
+        output_mgr.print_if_visible(step_completed("App completed."))
 
     async def _serve_update(
         self,
@@ -356,6 +350,7 @@ class _Stub:
             output_mgr = OutputManager(None, None)
             async with self._run(client, output_mgr, mode=StubRunMode.SERVE_CHILD, existing_app_id=existing_app_id):
                 is_ready.set()  # Used to communicate to the parent process
+            output_mgr.print_if_visible(step_completed("App update."))
         except asyncio.exceptions.CancelledError:
             # Stopped by parent process
             pass
@@ -471,6 +466,7 @@ class _Stub:
                 object_entity=object_entity,
             )
             deploy_response = await client.stub.AppDeploy(deploy_req)
+        output_mgr.print_if_visible(step_completed("App deployed! 🎉"))
         output_mgr.print_if_visible(f"\nView Deployment: [magenta]{deploy_response.url}[/magenta]")
         return app
 
