@@ -106,6 +106,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.enforce_object_entity = True
 
+        self.app_client_disconnect_count = 0
+        self.app_get_logs_initial_count = 0
         self.app_set_objects_count = 0
 
         @self.function_body
@@ -137,11 +139,19 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.AppClientDisconnectRequest = await stream.recv_message()
         self.requests.append(request)
         self.done = True
+        self.app_client_disconnect_count += 1
         await stream.send_message(Empty())
 
     async def AppGetLogs(self, stream):
-        await stream.recv_message()
+        request: api_pb2.AppGetLogsRequest = await stream.recv_message()
+        if not request.last_entry_id:
+            # Just count initial requests
+            self.app_get_logs_initial_count += 1
+            last_entry_id = "1"
+        else:
+            last_entry_id = str(int(request.last_entry_id) + 1)
         await asyncio.sleep(0.1)
+        await stream.send_message(api_pb2.TaskLogsBatch(entry_id=last_entry_id))
         if self.done:
             await stream.send_message(api_pb2.TaskLogsBatch(app_done=True))
 
