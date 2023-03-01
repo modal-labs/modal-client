@@ -272,7 +272,7 @@ class _Stub:
                     logs_loop.cancel()
 
                 # Yield to context
-                yield app
+                yield
             except KeyboardInterrupt:
                 # mute cancellation errors on all function handles to prevent exception spam
                 for tag, obj in self._function_handles.items():
