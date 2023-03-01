@@ -121,7 +121,7 @@ class OutputManager:
     _console: Console
     _task_states: Dict[str, int]
 
-    def __init__(self, stdout, show_progress: Optional[bool]):
+    def __init__(self, stdout: io.TextIOWrapper, show_progress: Optional[bool]):
         self.stdout = stdout or sys.stdout
         if show_progress is None:
             self._visible_progress = self.stdout.isatty() or is_notebook(self.stdout)

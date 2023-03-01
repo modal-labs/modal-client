@@ -1,75 +1,54 @@
 # Copyright Modal Labs 2023
-import asyncio
-import os
-import platform
-import sys
 import pytest
+from unittest import mock
 
-try:
-    from unittest.mock import AsyncMock
-except ImportError:
-    # Support Python 3.7
-    from unittest.mock import MagicMock
-
-    class AsyncMock(MagicMock):  # type: ignore
-        async def __call__(self, *args, **kwargs):
-            return super(AsyncMock, self).__call__(*args, **kwargs)  # type: ignore
-
-
-from modal import Stub
-from modal._live_reload import MODAL_AUTORELOAD_ENV
-from modal.aio import AioStub
-
-
-def dummy():
-    pass
-
-
-class FakeProcess:
-    def send_signal(self, signal):
-        pass
-
-    def terminate(self):
-        pass
-
-
-@pytest.mark.skipif(sys.version_info < (3, 8), reason="live-reload requires python3.8 or higher")
-@pytest.mark.skipif(platform.system() == "Windows", reason="live-reload not supported on windows")
-def test_file_changes_trigger_reloads(client, monkeypatch, servicer, test_dir):
-    async def fake_watch(mounts, output_mgr, timeout):
-        yield  # dummy at the beginning
-        for i in range(3):
-            yield
-
-    stub = Stub()
-    stub.webhook(dummy)
-
-    mock_create_subprocess_exec = AsyncMock(return_value=FakeProcess())
-    monkeypatch.setattr("modal.stub.asyncio.create_subprocess_exec", mock_create_subprocess_exec)
-    monkeypatch.setattr("modal._watcher.watch", fake_watch)
-
-    stub.serve(client=client, timeout=None)
-    assert mock_create_subprocess_exec.call_count == 4  # 1 + number of file changes
+from modal._live_reload import aio_run_serve_loop, run_serve_loop
+from .supports.skip import skip_old_py, skip_windows
 
 
 @pytest.mark.asyncio
-async def test_reloadable_serve_ignores_file_changes(client, monkeypatch, servicer, test_dir):
-    async def fake_watch(stub, output_mgr, timeout):
-        # Iterator that never yields
+async def test_live_reload(test_dir, server_url_env, servicer):
+    stub_file = str(test_dir / "supports" / "app_run_tests" / "default_stub.py")
+    await aio_run_serve_loop(stub_file, timeout=3.0)
+    assert servicer.app_set_objects_count == 1
+    assert servicer.app_client_disconnect_count == 1
+    assert servicer.app_get_logs_initial_count == 1
+
+
+@skip_old_py("live-reload requires python3.8 or higher", (3, 8))
+@skip_windows("live-reload not supported on windows")
+def test_file_changes_trigger_reloads(test_dir, server_url_env, servicer):
+    async def fake_watch():
+        for i in range(3):
+            yield
+
+    stub_file = str(test_dir / "supports" / "app_run_tests" / "default_stub.py")
+    run_serve_loop(stub_file, _watcher=fake_watch())
+    assert servicer.app_set_objects_count == 4  # 1 + number of file changes
+    assert servicer.app_client_disconnect_count == 1
+    assert servicer.app_get_logs_initial_count == 1
+
+
+@pytest.mark.asyncio
+async def test_no_change(test_dir, server_url_env, servicer):
+    async def fake_watch():
+        # Iterator that returns immediately, yielding nothing
         if False:
             yield
 
-    stub = AioStub()
-    stub.webhook(dummy)
+    stub_file = str(test_dir / "supports" / "app_run_tests" / "default_stub.py")
+    await aio_run_serve_loop(stub_file, _watcher=fake_watch())
+    assert servicer.app_set_objects_count == 1  # Should create the initial app once
+    assert servicer.app_client_disconnect_count == 1
+    assert servicer.app_get_logs_initial_count == 1
 
-    mock_create_subprocess_exec = AsyncMock(return_value=FakeProcess())
-    monkeypatch.setattr("modal.stub.asyncio.create_subprocess_exec", mock_create_subprocess_exec)
-    monkeypatch.setattr("modal._watcher.watch", fake_watch)
 
-    # The app should not react to AppChange.TIMEOUT, and instead need
-    # the wait_for to cancel it.
-    monkeypatch.setattr(os, "environ", {MODAL_AUTORELOAD_ENV: "ap-12345"})
-    with pytest.raises(asyncio.TimeoutError):
-        await asyncio.wait_for(stub.serve(client=client), timeout=1.0)
+@pytest.mark.asyncio
+async def test_heartbeats(test_dir, server_url_env, servicer):
+    with mock.patch("modal.stub.HEARTBEAT_INTERVAL", 1):
+        stub_file = str(test_dir / "supports" / "app_run_tests" / "default_stub.py")
+        await aio_run_serve_loop(stub_file, timeout=3.5)
 
-    assert mock_create_subprocess_exec.call_count == 0
+    apps = list(servicer.app_heartbeats.keys())
+    assert len(apps) == 1
+    assert servicer.app_heartbeats[apps[0]] == 4  # 0s, 1s, 2s, 3s
