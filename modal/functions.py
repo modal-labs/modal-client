@@ -179,7 +179,6 @@ class _Invocation:
         inputs_response: api_pb2.FunctionPutInputsResponse = await retry_transient_errors(
             client.stub.FunctionPutInputs,
             request_put,
-            max_retries=None,
         )
         processed_inputs = inputs_response.inputs
         if not processed_inputs:
