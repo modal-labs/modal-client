@@ -21,7 +21,7 @@ from modal.client import Client
 from modal.exception import InvalidError
 from modal_proto import api_pb2
 
-from .supports.skip import skip_windows_unix_socket
+from .supports.skip import skip_windows_unix_socket, skip_windows
 
 EXTRA_TOLERANCE_DELAY = 1.0
 FUNCTION_CALL_ID = "fc-123"
@@ -472,7 +472,7 @@ def test_container_heartbeats(unix_servicer, event_loop):
     assert any(isinstance(request, api_pb2.ContainerHeartbeatRequest) for request in unix_servicer.requests)
 
 
-@skip_windows
+@skip_windows("signals not supported on windows")
 def test_sigusr1_aborts_current_input(servicer, server_url_env):
     container_args = _container_args("modal_test_support.functions", "delay")
     encoded_container_args = base64.b64encode(container_args.SerializeToString())
@@ -490,7 +490,7 @@ def test_sigusr1_aborts_current_input(servicer, server_url_env):
     assert data == 0.01
 
 
-@skip_windows
+@skip_windows("signals not supported on windows")
 def test_sigusr1_aborts_current_input_async(servicer, server_url_env):
     container_args = _container_args("modal_test_support.functions", "delay_async")
     encoded_container_args = base64.b64encode(container_args.SerializeToString())
