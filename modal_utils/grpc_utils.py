@@ -122,6 +122,7 @@ _RecvType = TypeVar("_RecvType")
 RETRYABLE_GRPC_STATUS_CODES = [
     Status.DEADLINE_EXCEEDED,
     Status.UNAVAILABLE,
+    Status.CANCELLED,
     Status.INTERNAL,
 ]
 
