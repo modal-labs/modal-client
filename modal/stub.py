@@ -229,10 +229,10 @@ class _Stub:
         client,
         output_mgr: OutputManager,
         app: _App,
+        status_spinner: Spinner,
         last_log_entry_id: Optional[str] = None,
         mode: StubRunMode = StubRunMode.RUN,
         post_init_state: int = api_pb2.APP_STATE_EPHEMERAL,
-        status_spinner: Optional[Spinner] = None,
     ) -> AsyncGenerator[None, None]:
         self._app = app
 
@@ -459,7 +459,7 @@ class _Stub:
             client,
             output_mgr,
             app,
-            last_log_entry_id,
+            last_log_entry_id=last_log_entry_id,
             mode=StubRunMode.DEPLOY,
             post_init_state=post_init_state,
             status_spinner=status_spinner,
