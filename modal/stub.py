@@ -45,7 +45,6 @@ class StubRunMode(Enum):
     RUN = "run"
     DEPLOY = "deploy"
     DETACH = "detach"
-    SERVE_CHILD = "serve_child"
 
 
 class LocalEntrypoint:
@@ -238,19 +237,17 @@ class _Stub:
 
         # Start tracking logs and yield context
         async with TaskContext(grace=config["logs_timeout"]) as tc:
-            if mode != StubRunMode.SERVE_CHILD:
-                # Start heartbeats loop to keep the client alive
-                tc.infinite_loop(lambda: _heartbeat(client, app.app_id), sleep=HEARTBEAT_INTERVAL)
+            # Start heartbeats loop to keep the client alive
+            tc.infinite_loop(lambda: _heartbeat(client, app.app_id), sleep=HEARTBEAT_INTERVAL)
 
             with output_mgr.ctx_if_visible(output_mgr.make_live(step_progress("Initializing..."))):
-                if mode != StubRunMode.SERVE_CHILD:
-                    logs_loop = tc.create_task(
-                        output_mgr.get_logs_loop(app.app_id, client, status_spinner, last_log_entry_id or "")
-                    )
-                    initialized_msg = (
-                        f"Initialized. [grey70]View app at [underline]{app._app_page_url}[/underline][/grey70]"
-                    )
-                    output_mgr.print_if_visible(step_completed(initialized_msg))
+                logs_loop = tc.create_task(
+                    output_mgr.get_logs_loop(app.app_id, client, status_spinner, last_log_entry_id or "")
+                )
+                initialized_msg = (
+                    f"Initialized. [grey70]View app at [underline]{app._app_page_url}[/underline][/grey70]"
+                )
+                output_mgr.print_if_visible(step_completed(initialized_msg))
 
             try:
                 # Create all members
@@ -290,8 +287,7 @@ class _Stub:
                         "Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n"
                     )
             finally:
-                if mode != StubRunMode.SERVE_CHILD:
-                    await app.disconnect()
+                await app.disconnect()
 
         self._app = None
 
@@ -343,10 +339,15 @@ class _Stub:
         try:
             output_mgr = OutputManager(None, None)
             app = await _App._init_existing(client, existing_app_id)
-            status_spinner = step_progress("Updating app...")
-            async with self._run(client, output_mgr, app, mode=StubRunMode.SERVE_CHILD, status_spinner=status_spinner):
-                is_ready.set()  # Used to communicate to the parent process
-            output_mgr.print_if_visible(step_completed("App update."))
+
+            # Create objects
+            create_progress = Tree(step_progress("Creating objects..."), guide_style="gray50")
+            with output_mgr.ctx_if_visible(output_mgr.make_live(create_progress)):
+                await app._create_all_objects(self._blueprint, create_progress, api_pb2.APP_STATE_UNSPECIFIED)
+            create_progress.label = step_completed("Created objects.")
+
+            # Communicate to the parent process
+            is_ready.set()
         except asyncio.exceptions.CancelledError:
             # Stopped by parent process
             pass
