@@ -6,6 +6,7 @@ import json
 import os
 import signal
 import subprocess
+import threading
 
 import pytest
 import sys
@@ -483,7 +484,9 @@ def test_sigusr1_aborts_current_input(servicer, server_url_env):
     servicer.called_function_get_inputs.wait(timeout=1)
     time.sleep(0.05)  # let the container get the input
     container_process.send_signal(signal.SIGUSR1)
-    time.sleep(0.1)  # let the container handle the exception and remaining input
+    servicer.called_function_get_inputs = threading.Event()  # new event to wait for
+    servicer.called_function_get_inputs.wait(timeout=1)
+    time.sleep(0.1)  # let the container handle the remaining input
     items = _flatten_outputs(servicer.container_outputs)
     assert len(items) == 1
     data = deserialize(items[0].result.data, client=None)
@@ -501,7 +504,9 @@ def test_sigusr1_aborts_current_input_async(servicer, server_url_env):
     servicer.called_function_get_inputs.wait(timeout=1)
     time.sleep(0.05)  # let the container get the input
     container_process.send_signal(signal.SIGUSR1)
-    time.sleep(0.1)  # let the container handle the exception and remaining input
+    servicer.called_function_get_inputs = threading.Event()  # new event to wait for
+    servicer.called_function_get_inputs.wait(timeout=1)
+    time.sleep(0.1)  # let the container handle the remaining input
     items = _flatten_outputs(servicer.container_outputs)
     assert len(items) == 1
     data = deserialize(items[0].result.data, client=None)
