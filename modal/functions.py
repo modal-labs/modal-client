@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, AsyncIterable, Callable, Collection, Dict, List, Optional, Set, Union
 
 import cloudpickle
+from datetime import date
 from aiostream import pipe, stream
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
@@ -39,7 +40,7 @@ from ._serialization import deserialize, serialize
 from ._traceback import append_modal_tb
 from .config import logger
 from .client import _Client
-from .exception import ExecutionError, InvalidError, RemoteError
+from .exception import ExecutionError, InvalidError, RemoteError, deprecation_warning
 from .exception import TimeoutError as _TimeoutError
 from .gpu import GPU_T, parse_gpu_config, display_gpu_config
 from .image import _Image
@@ -709,7 +710,7 @@ class _Function(Provider[_FunctionHandle]):
         concurrency_limit: Optional[int] = None,
         container_idle_timeout: Optional[int] = None,
         cpu: Optional[float] = None,
-        keep_warm: Union[bool, int] = False,
+        keep_warm: Union[bool, int, None] = None,
         interactive: bool = False,
         name: Optional[str] = None,
         cloud: Optional[str] = None,
@@ -901,6 +902,10 @@ class _Function(Provider[_FunctionHandle]):
                 class_serialized = cloudpickle.dumps(cls)
 
         if self._keep_warm is True:
+            deprecation_warning(
+                date(2023, 3, 3),
+                "Setting `keep_warm=True` is deprecated. Pass an explicit warm pool size instead, e.g. `keep_warm=2`.",
+            )
             warm_pool_size = 2
         else:
             warm_pool_size = self._keep_warm or 0
