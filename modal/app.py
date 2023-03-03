@@ -169,7 +169,7 @@ class _App:
         app_req = api_pb2.AppCreateRequest()
         app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
         app_id = app_resp.app_id
-        resolver = Resolver(None, client, app_id)
+        resolver = Resolver(None, None, client, app_id)
         handle = await resolver.load(provider)
         indexed_object_ids = {"_object": handle.object_id}
         unindexed_object_ids = [obj.object_id for obj in resolver.objects() if obj is not handle]

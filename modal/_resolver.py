@@ -88,7 +88,7 @@ class Resolver:
     def add_status_row(self) -> StatusRow:
         return StatusRow(self._progress)
 
-    def get_console(self) -> Console:
+    def get_console(self) -> Optional[Console]:
         return self._console
 
     def objects(self) -> List:

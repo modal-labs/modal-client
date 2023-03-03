@@ -243,7 +243,8 @@ class _Image(Provider[_ImageHandle]):
                     if response.entry_id:
                         last_entry_id = response.entry_id
                     for task_log in response.task_logs:
-                        stream.write(task_log.data)
+                        if console is not None:
+                            stream.write(task_log.data)
 
             # Handle up to n exceptions while fetching logs
             retry_count = 0
