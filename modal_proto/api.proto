@@ -676,10 +676,9 @@ message ImageJoinStreamingRequest {
 }
 
 message ImageJoinStreamingResponse {
-  oneof result_oneof {
-    GenericResult result = 1;
-    TaskLogsBatch logs_batch = 2;
-  }
+  GenericResult result = 1;
+  repeated TaskLogs task_logs = 2;
+  string entry_id = 3;
 }
 
 message MountBuildRequest {
