@@ -667,6 +667,10 @@ message ImageJoinRequest {
 }
 
 message ImageJoinResponse {
+  GenericResult result = 1;
+}
+
+message ImageJoinStreamingResponse {
   oneof result_oneof {
     GenericResult result = 1;
     TaskLogsBatch logs_batch = 2;
@@ -1002,7 +1006,7 @@ service ModalClient {
   // Images
   rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);
   rpc ImageJoin(ImageJoinRequest) returns (ImageJoinResponse);  // Deprecated
-  rpc ImageJoinStreaming(ImageJoinRequest) returns (stream ImageJoinResponse);  // New
+  rpc ImageJoinStreaming(ImageJoinRequest) returns (stream ImageJoinStreamingResponse);  // New
 
   // Mounts
   rpc MountPutFile(MountPutFileRequest) returns (MountPutFileResponse);
