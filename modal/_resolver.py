@@ -2,9 +2,11 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypeVar
 
 if TYPE_CHECKING:
+    from rich.console import Console
     from rich.spinner import Spinner
     from rich.tree import Tree
 else:
+    Console = TypeVar("Console")
     Spinner = TypeVar("Spinner")
     Tree = TypeVar("Tree")
 
@@ -41,8 +43,9 @@ class Resolver:
     _progress: Optional[Tree]
     _local_uuid_to_object: Dict[str, Any]
 
-    def __init__(self, progress: Optional[Tree], client, app_id: Optional[str] = None):
+    def __init__(self, progress: Optional[Tree], console: Optional[Console], client, app_id: Optional[str] = None):
         self._progress = progress
+        self._console = console
         self._local_uuid_to_object = {}
 
         # Accessible by objects
@@ -84,6 +87,9 @@ class Resolver:
 
     def add_status_row(self) -> StatusRow:
         return StatusRow(self._progress)
+
+    def get_console(self) -> Console:
+        return self._console
 
     def objects(self) -> List:
         return list(self._local_uuid_to_object.values())

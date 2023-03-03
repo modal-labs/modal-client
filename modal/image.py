@@ -16,6 +16,7 @@ from modal_utils.grpc_utils import unary_stream, RETRYABLE_GRPC_STATUS_CODES
 
 from . import is_local
 from ._function_utils import FunctionInfo
+from ._output import LineBufferedOutput
 from ._resolver import Resolver
 from .config import config, logger
 from .exception import InvalidError, NotFoundError, RemoteError
@@ -229,6 +230,8 @@ class _Image(Provider[_ImageHandle]):
             logger.debug("Waiting for image %s" % image_id)
             last_entry_id: Optional[str] = None
             result: Optional[api_pb2.GenericResult] = None
+            console = resolver.get_console()
+            stream = LineBufferedOutput(lambda data: console.out(data, style="yellow", end=""))
 
             async def join():
                 nonlocal last_entry_id, result
@@ -240,8 +243,7 @@ class _Image(Provider[_ImageHandle]):
                     if response.entry_id:
                         last_entry_id = response.entry_id
                     for task_log in response.task_logs:
-                        # TODO(erikbern): flesh this out in a sec
-                        print(task_log)
+                        stream.write(task_log.data)
 
             # Handle up to n exceptions while fetching logs
             retry_count = 0

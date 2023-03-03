@@ -13,8 +13,10 @@ from .config import logger
 from .object import Handle, Provider
 
 if TYPE_CHECKING:
+    from rich.console import Console
     from rich.tree import Tree
 else:
+    Console = TypeVar("Console")
     Tree = TypeVar("Tree")
 
 
@@ -71,10 +73,10 @@ class _App:
         return self._app_id
 
     async def _create_all_objects(
-        self, blueprint: Dict[str, Provider], progress: Tree, new_app_state: int
+        self, blueprint: Dict[str, Provider], progress: Tree, console: Console, new_app_state: int
     ):  # api_pb2.AppState.V
         """Create objects that have been defined but not created on the server."""
-        resolver = Resolver(progress, self._client, self.app_id)
+        resolver = Resolver(progress, console, self._client, self.app_id)
         for tag, provider in blueprint.items():
             existing_object_id = self._tag_to_existing_id.get(tag)
             created_obj = await resolver.load(provider, existing_object_id)
