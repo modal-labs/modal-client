@@ -128,7 +128,10 @@ class OutputManager:
         else:
             self._visible_progress = show_progress
 
-        self._console = Console(file=stdout, highlight=False)
+        if self._visible_progress:
+            self._console = Console(file=stdout, highlight=False)
+        else:
+            self._console = Console(quiet=True)
         self._task_states = {}
         self._task_progress_items: dict[tuple[str, int], TaskID] = {}
         self._current_render_group: Optional[Group] = None
@@ -144,6 +147,9 @@ class OutputManager:
         if self._visible_progress:
             return context_mgr
         return contextlib.nullcontext()
+
+    def get_console(self):
+        return self._console
 
     def make_live(self, renderable: RenderableType) -> Live:
         """Creates a customized `rich.Live` instance with the given renderable. The renderable
@@ -326,6 +332,9 @@ class OutputManager:
                     logger.debug("App logs are done")
                     last_log_batch_entry_id = None
                     return
+                elif log_batch.image_id:
+                    # Ignore image logs - these still exist for old clients
+                    pass
                 else:
                     if log_batch.entry_id != "":
                         # log_batch entry_id is empty for fd="server" messages from AppGetLogs
