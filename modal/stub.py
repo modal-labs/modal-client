@@ -516,7 +516,9 @@ class _Stub:
                 else:
                     logger.warning(f"Object {tag} has wrong type {type(handle)}")
             except KeyError:
-                logger.warning(f"Could not find app function {tag}")
+                logger.warning(
+                    f"Could not find Modal function '{tag}' in app '{self.description}'. '{tag}' may still be invoked as local function: {tag}()"
+                )
 
         if function_handle is None:
             function_handle = _FunctionHandle._new()
