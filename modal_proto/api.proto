@@ -663,10 +663,14 @@ message ImageGetOrCreateResponse {
 message ImageJoinRequest {
   string image_id = 1;
   float timeout = 2;
+  string last_entry_id = 3;
 }
 
 message ImageJoinResponse {
-  GenericResult result = 1;
+  oneof result_oneof {
+    GenericResult result = 1;
+    TaskLogsBatch logs_batch = 2;
+  }
 }
 
 message MountBuildRequest {
@@ -997,7 +1001,8 @@ service ModalClient {
 
   // Images
   rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);
-  rpc ImageJoin(ImageJoinRequest) returns (ImageJoinResponse);
+  rpc ImageJoin(ImageJoinRequest) returns (ImageJoinResponse);  // Deprecated
+  rpc ImageJoinStreaming(ImageJoinRequest) returns (stream ImageJoinResponse);  // New
 
   // Mounts
   rpc MountPutFile(MountPutFileRequest) returns (MountPutFileResponse);
