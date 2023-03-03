@@ -238,7 +238,7 @@ class _Image(Provider[_ImageHandle]):
 
                 request = api_pb2.ImageJoinStreamingRequest(image_id=image_id, timeout=55, last_entry_id=last_entry_id)
                 async for response in unary_stream(resolver.client.stub.ImageJoinStreaming, request):
-                    if response.result:
+                    if response.result.status:
                         result = response.result
                     if response.entry_id:
                         last_entry_id = response.entry_id
