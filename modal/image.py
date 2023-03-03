@@ -11,7 +11,7 @@ import toml
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
-from modal_utils.grpc_utils import retry_transient_errors
+from modal_utils.grpc_utils import unary_stream
 
 from . import is_local
 from ._function_utils import FunctionInfo
@@ -226,21 +226,27 @@ class _Image(Provider[_ImageHandle]):
             image_id = resp.image_id
 
             logger.debug("Waiting for image %s" % image_id)
-            while True:
-                request = api_pb2.ImageJoinRequest(image_id=image_id, timeout=55)
-                response = await retry_transient_errors(resolver.client.stub.ImageJoin, request)
-                if not response.result.status:
-                    continue
-                elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
-                    raise RemoteError(response.result.exception)
-                elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
-                    raise RemoteError("Image build terminated due to external shut-down. Please try again.")
-                elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
-                    raise RemoteError("Image build timed out. Please try again with a larger `timeout` parameter.")
-                elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
-                    break
-                else:
-                    raise RemoteError("Unknown status %s!" % response.result.status)
+            last_entry_id: Optional[str] = None
+            result: Optional[api_pb2.GenericResult] = None
+            while result is None:
+                request = api_pb2.ImageJoinStreamingRequest(image_id=image_id, timeout=55, last_entry_id=last_entry_id)
+                async for response in unary_stream(resolver.client.stub.ImageJoinStreaming, request):
+                    if response.result:
+                        result = response.result
+                    for task_log in response.task_logs:
+                        # TODO(erikbern): flesh this out in a sec
+                        print(task_log)
+
+            if result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
+                raise RemoteError(result.exception)
+            elif result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
+                raise RemoteError("Image build terminated due to external shut-down. Please try again.")
+            elif result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
+                raise RemoteError("Image build timed out. Please try again with a larger `timeout` parameter.")
+            elif result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
+                pass
+            else:
+                raise RemoteError("Unknown status %s!" % result.status)
 
             return _ImageHandle._from_id(image_id, resolver.client, None)
 
