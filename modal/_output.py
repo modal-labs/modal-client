@@ -326,6 +326,9 @@ class OutputManager:
                     logger.debug("App logs are done")
                     last_log_batch_entry_id = None
                     return
+                elif log_batch.image_id:
+                    # Ignore image logs - these still exist for old clients
+                    pass
                 else:
                     if log_batch.entry_id != "":
                         # log_batch entry_id is empty for fd="server" messages from AppGetLogs
