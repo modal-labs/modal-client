@@ -159,11 +159,14 @@ class _App:
 
     @staticmethod
     async def _create_one_object(client: _Client, provider: Provider) -> Tuple[Handle, str]:
+        from ._output import OutputManager
+
         # TODO(erikbern): This will be turned into something for deploying single objects
         app_req = api_pb2.AppCreateRequest()
         app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
         app_id = app_resp.app_id
-        resolver = Resolver(None, None, client, app_id)
+        null_output_mgr = OutputManager(None, False)
+        resolver = Resolver(null_output_mgr, client, app_id)
         handle = await resolver.load(provider)
         indexed_object_ids = {"_object": handle.object_id}
         unindexed_object_ids = [obj.object_id for obj in resolver.objects() if obj is not handle]

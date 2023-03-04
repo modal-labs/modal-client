@@ -339,9 +339,7 @@ class _Stub:
             # Create objects
             create_progress = Tree(step_progress("Creating objects..."), guide_style="gray50")
             with output_mgr.ctx_if_visible(output_mgr.make_live(create_progress)):
-                await app._create_all_objects(
-                    self._blueprint, create_progress, output_mgr.get_console(), api_pb2.APP_STATE_UNSPECIFIED
-                )
+                await app._create_all_objects(self._blueprint, output_mgr, api_pb2.APP_STATE_UNSPECIFIED)
             create_progress.label = step_completed("Created objects.")
 
             # Communicate to the parent process
