@@ -380,56 +380,57 @@ class OutputManager:
         with self.ctx_if_visible(self.make_live(self._status_spinner)):
             yield
 
-    async def get_logs_loop(self, app_id: str, client: _Client, last_log_batch_entry_id: str):
-        async def _get_logs():
-            nonlocal last_log_batch_entry_id
 
-            request = api_pb2.AppGetLogsRequest(
-                app_id=app_id,
-                timeout=55,
-                last_entry_id=last_log_batch_entry_id,
+async def get_logs_loop(app_id: str, client: _Client, last_log_batch_entry_id: str, output_mgr: OutputManager):
+    async def _get_logs():
+        nonlocal last_log_batch_entry_id
+
+        request = api_pb2.AppGetLogsRequest(
+            app_id=app_id,
+            timeout=55,
+            last_entry_id=last_log_batch_entry_id,
+        )
+        log_batch: api_pb2.TaskLogsBatch
+        async for log_batch in unary_stream(client.stub.AppGetLogs, request):
+            if log_batch.app_done:
+                logger.debug("App logs are done")
+                last_log_batch_entry_id = None
+                return
+            else:
+                if log_batch.entry_id != "":
+                    # log_batch entry_id is empty for fd="server" messages from AppGetLogs
+                    last_log_batch_entry_id = log_batch.entry_id
+
+                for log in log_batch.items:
+                    await output_mgr.put_log(log_batch, log)
+
+        output_mgr.flush_lines()
+
+    while True:
+        try:
+            await _get_logs()
+        except asyncio.CancelledError:
+            # TODO: this should come from the backend maybe
+            app_logs_url = f"https://modal.com/logs/{app_id}"
+            output_mgr.print_if_visible(
+                f"[red]Timed out waiting for logs. [grey70]View logs at [underline]{app_logs_url}[/underline] for remaining output.[/grey70]"
             )
-            log_batch: api_pb2.TaskLogsBatch
-            async for log_batch in unary_stream(client.stub.AppGetLogs, request):
-                if log_batch.app_done:
-                    logger.debug("App logs are done")
-                    last_log_batch_entry_id = None
-                    return
-                else:
-                    if log_batch.entry_id != "":
-                        # log_batch entry_id is empty for fd="server" messages from AppGetLogs
-                        last_log_batch_entry_id = log_batch.entry_id
-
-                    for log in log_batch.items:
-                        await self.put_log(log_batch, log)
-
-            self.flush_lines()
-
-        while True:
-            try:
-                await _get_logs()
-            except asyncio.CancelledError:
-                # TODO: this should come from the backend maybe
-                app_logs_url = f"https://modal.com/logs/{app_id}"
-                self.print_if_visible(
-                    f"[red]Timed out waiting for logs. [grey70]View logs at [underline]{app_logs_url}[/underline] for remaining output.[/grey70]"
-                )
-                raise
-            except (GRPCError, StreamTerminatedError) as exc:
-                if isinstance(exc, GRPCError):
-                    if exc.status in RETRYABLE_GRPC_STATUS_CODES:
-                        # Try again if we had a temporary connection drop,
-                        # for example if computer went to sleep.
-                        logger.debug("Log fetching timed out. Retrying ...")
-                        continue
-                elif isinstance(exc, StreamTerminatedError):
-                    logger.debug("Stream closed. Retrying ...")
+            raise
+        except (GRPCError, StreamTerminatedError) as exc:
+            if isinstance(exc, GRPCError):
+                if exc.status in RETRYABLE_GRPC_STATUS_CODES:
+                    # Try again if we had a temporary connection drop,
+                    # for example if computer went to sleep.
+                    logger.debug("Log fetching timed out. Retrying ...")
                     continue
-                raise
-            except Exception as exc:
-                logger.exception(f"Failed to fetch logs: {exc}")
-                await asyncio.sleep(1)
+            elif isinstance(exc, StreamTerminatedError):
+                logger.debug("Stream closed. Retrying ...")
+                continue
+            raise
+        except Exception as exc:
+            logger.exception(f"Failed to fetch logs: {exc}")
+            await asyncio.sleep(1)
 
-            if last_log_batch_entry_id is None:
-                break
-        logger.debug("Logging exited gracefully")
+        if last_log_batch_entry_id is None:
+            break
+    logger.debug("Logging exited gracefully")
