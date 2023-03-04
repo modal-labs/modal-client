@@ -10,7 +10,6 @@ import warnings
 from enum import Enum
 from typing import AsyncGenerator, Collection, Dict, List, Optional, Union
 
-from rich.spinner import Spinner
 from rich.tree import Tree
 
 from modal_proto import api_pb2
