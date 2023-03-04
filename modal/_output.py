@@ -128,7 +128,9 @@ class OutputManager:
     _line_buffers: Dict[int, LineBufferedOutput]
     _status_spinner: Spinner
 
-    def __init__(self, stdout: io.TextIOWrapper, show_progress: Optional[bool], status_spinner_text: str = "Running app..."):
+    def __init__(
+        self, stdout: io.TextIOWrapper, show_progress: Optional[bool], status_spinner_text: str = "Running app..."
+    ):
         self.stdout = stdout or sys.stdout
         if show_progress is None:
             self._visible_progress = self.stdout.isatty() or is_notebook(self.stdout)

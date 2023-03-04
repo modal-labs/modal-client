@@ -240,9 +240,7 @@ class _Stub:
             tc.infinite_loop(lambda: _heartbeat(client, app.app_id), sleep=HEARTBEAT_INTERVAL)
 
             with output_mgr.ctx_if_visible(output_mgr.make_live(step_progress("Initializing..."))):
-                logs_loop = tc.create_task(
-                    get_logs_loop(app.app_id, client, last_log_entry_id or "", output_mgr)
-                )
+                logs_loop = tc.create_task(get_logs_loop(app.app_id, client, last_log_entry_id or "", output_mgr))
                 initialized_msg = (
                     f"Initialized. [grey70]View app at [underline]{app._app_page_url}[/underline][/grey70]"
                 )
@@ -313,9 +311,7 @@ class _Stub:
         mode = StubRunMode.DETACH if detach else StubRunMode.RUN
         post_init_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
         app = await _App._init_new(client, self.description, detach=detach, deploying=False)
-        async with self._run(
-            client, output_mgr, app, mode=mode, post_init_state=post_init_state
-        ):
+        async with self._run(client, output_mgr, app, mode=mode, post_init_state=post_init_state):
             if self._pty_input_stream:
                 output_mgr._visible_progress = False
                 handle = app._pty_input_stream
