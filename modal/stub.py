@@ -228,7 +228,6 @@ class _Stub:
         client,
         output_mgr: OutputManager,
         app: _App,
-        status_spinner: Spinner,
         last_log_entry_id: Optional[str] = None,
         mode: StubRunMode = StubRunMode.RUN,
         post_init_state: int = api_pb2.APP_STATE_EPHEMERAL,
@@ -242,7 +241,7 @@ class _Stub:
 
             with output_mgr.ctx_if_visible(output_mgr.make_live(step_progress("Initializing..."))):
                 logs_loop = tc.create_task(
-                    output_mgr.get_logs_loop(app.app_id, client, status_spinner, last_log_entry_id or "")
+                    output_mgr.get_logs_loop(app.app_id, client, last_log_entry_id or "")
                 )
                 initialized_msg = (
                     f"Initialized. [grey70]View app at [underline]{app._app_page_url}[/underline][/grey70]"
@@ -269,7 +268,8 @@ class _Stub:
                     logs_loop.cancel()
 
                 # Yield to context
-                yield
+                with output_mgr.show_status_spinner():
+                    yield
             except KeyboardInterrupt:
                 # mute cancellation errors on all function handles to prevent exception spam
                 for tag, obj in self._function_handles.items():
@@ -309,13 +309,12 @@ class _Stub:
             )
         if client is None:
             client = await _Client.from_env()
-        output_mgr = OutputManager(stdout, show_progress)
+        output_mgr = OutputManager(stdout, show_progress, "Running app...")
         mode = StubRunMode.DETACH if detach else StubRunMode.RUN
         post_init_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
         app = await _App._init_new(client, self.description, detach=detach, deploying=False)
-        status_spinner = step_progress("Running app...")
         async with self._run(
-            client, output_mgr, app, mode=mode, post_init_state=post_init_state, status_spinner=status_spinner
+            client, output_mgr, app, mode=mode, post_init_state=post_init_state
         ):
             if self._pty_input_stream:
                 output_mgr._visible_progress = False
@@ -325,8 +324,8 @@ class _Stub:
                     yield app
                 output_mgr._visible_progress = True
             else:
-                with output_mgr.ctx_if_visible(output_mgr.make_live(status_spinner)):
-                    yield app
+                yield app
+
         output_mgr.print_if_visible(step_completed("App completed."))
 
     async def _serve_update(
@@ -380,10 +379,9 @@ class _Stub:
         if timeout is None:
             timeout = 1e10
 
-        output_mgr = OutputManager(stdout, show_progress)
+        output_mgr = OutputManager(stdout, show_progress, "Serving app...")
         app = await _App._init_new(client, self.description, detach=False, deploying=False)
-        status_spinner = step_progress("Serving app...")
-        async with self._run(client, output_mgr, app, mode=StubRunMode.RUN, status_spinner=status_spinner):
+        async with self._run(client, output_mgr, app, mode=StubRunMode.RUN):
             await asyncio.sleep(timeout)
 
     async def deploy(
@@ -455,7 +453,6 @@ class _Stub:
 
         # The `_run` method contains the logic for starting and running an app
         output_mgr = OutputManager(stdout, show_progress)
-        status_spinner = step_progress("Deploying app...")
         async with self._run(
             client,
             output_mgr,
@@ -463,7 +460,6 @@ class _Stub:
             last_log_entry_id=last_log_entry_id,
             mode=StubRunMode.DEPLOY,
             post_init_state=post_init_state,
-            status_spinner=status_spinner,
         ):
             deploy_req = api_pb2.AppDeployRequest(
                 app_id=app._app_id,

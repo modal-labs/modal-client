@@ -126,8 +126,9 @@ class OutputManager:
     _function_queueing_progress: Optional[Progress]
     _snapshot_progress: Optional[Progress]
     _line_buffers: Dict[int, LineBufferedOutput]
+    _status_spinner: Spinner
 
-    def __init__(self, stdout: io.TextIOWrapper, show_progress: Optional[bool]):
+    def __init__(self, stdout: io.TextIOWrapper, show_progress: Optional[bool], status_spinner_text: str = "Running app..."):
         self.stdout = stdout or sys.stdout
         if show_progress is None:
             self._visible_progress = self.stdout.isatty() or is_notebook(self.stdout)
@@ -142,6 +143,7 @@ class OutputManager:
         self._function_queueing_progress = None
         self._snapshot_progress = None
         self._line_buffers = {}
+        self._status_spinner = step_progress(status_spinner_text)
 
     def print_if_visible(self, renderable) -> None:
         if self._visible_progress:
@@ -317,7 +319,7 @@ class OutputManager:
             progress_task_id = self.function_queueing_progress.add_task(task_desc, start=True, total=None)
             self._task_progress_items[task_key] = progress_task_id
 
-    async def put_log(self, log_batch: api_pb2.TaskLogsBatch, log: api_pb2.TaskLogs, status_spinner):
+    async def put_log(self, log_batch: api_pb2.TaskLogsBatch, log: api_pb2.TaskLogs):
         if log.task_state:
             if log.task_state == api_pb2.TASK_STATE_WORKER_ASSIGNED:
                 # Close function's queueing progress bar (if it exists)
@@ -330,7 +332,7 @@ class OutputManager:
                     description=None,
                 )
             message = self._update_task_state(log_batch.task_id, log.task_state)
-            step_progress_update(status_spinner, message)
+            step_progress_update(self._status_spinner, message)
         if log.task_progress.len or log.task_progress.pos:
             self._update_task_progress(
                 task_id=log_batch.task_id,
@@ -370,11 +372,15 @@ class OutputManager:
                 self.stdout.flush()
 
     def flush_lines(self):
-        # TODO(erikbern): where to put this one?
         for stream in self._line_buffers.values():
             stream.finalize()
 
-    async def get_logs_loop(self, app_id: str, client: _Client, status_spinner: Spinner, last_log_batch_entry_id: str):
+    @contextlib.contextmanager
+    def show_status_spinner(self):
+        with self.ctx_if_visible(self.make_live(self._status_spinner)):
+            yield
+
+    async def get_logs_loop(self, app_id: str, client: _Client, last_log_batch_entry_id: str):
         async def _get_logs():
             nonlocal last_log_batch_entry_id
 
@@ -395,7 +401,7 @@ class OutputManager:
                         last_log_batch_entry_id = log_batch.entry_id
 
                     for log in log_batch.items:
-                        await self.put_log(log_batch, log, status_spinner)
+                        await self.put_log(log_batch, log)
 
             self.flush_lines()
 
