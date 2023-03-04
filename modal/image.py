@@ -7,16 +7,14 @@ import sys
 from pathlib import Path
 from typing import Any, Callable, Collection, Dict, List, Optional, Union
 
-from grpclib.exceptions import GRPCError, StreamTerminatedError
 import toml
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
-from modal_utils.grpc_utils import unary_stream, RETRYABLE_GRPC_STATUS_CODES
+from modal_utils.grpc_utils import retry_transient_errors
 
 from . import is_local
 from ._function_utils import FunctionInfo
-from ._output import LineBufferedOutput
 from ._resolver import Resolver
 from .config import config, logger
 from .exception import InvalidError, NotFoundError, RemoteError
@@ -228,46 +226,21 @@ class _Image(Provider[_ImageHandle]):
             image_id = resp.image_id
 
             logger.debug("Waiting for image %s" % image_id)
-            last_entry_id: Optional[str] = None
-            result: Optional[api_pb2.GenericResult] = None
-            console = resolver.get_console()
-            stream = LineBufferedOutput(lambda data: console.out(data, style="yellow", end=""))
-
-            async def join():
-                nonlocal last_entry_id, result
-
-                request = api_pb2.ImageJoinStreamingRequest(image_id=image_id, timeout=55, last_entry_id=last_entry_id)
-                async for response in unary_stream(resolver.client.stub.ImageJoinStreaming, request):
-                    if response.result.status:
-                        result = response.result
-                    if response.entry_id:
-                        last_entry_id = response.entry_id
-                    for task_log in response.task_logs:
-                        if console is not None:
-                            stream.write(task_log.data)
-
-            # Handle up to n exceptions while fetching logs
-            retry_count = 0
-            while result is None:
-                try:
-                    await join()
-                except (StreamTerminatedError, GRPCError) as exc:
-                    if isinstance(exc, GRPCError) and exc.status not in RETRYABLE_GRPC_STATUS_CODES:
-                        raise exc
-                    retry_count += 1
-                    if retry_count >= 3:
-                        raise exc
-
-            if result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
-                raise RemoteError(result.exception)
-            elif result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
-                raise RemoteError("Image build terminated due to external shut-down. Please try again.")
-            elif result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
-                raise RemoteError("Image build timed out. Please try again with a larger `timeout` parameter.")
-            elif result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
-                pass
-            else:
-                raise RemoteError("Unknown status %s!" % result.status)
+            while True:
+                request = api_pb2.ImageJoinRequest(image_id=image_id, timeout=55)
+                response = await retry_transient_errors(resolver.client.stub.ImageJoin, request)
+                if not response.result.status:
+                    continue
+                elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
+                    raise RemoteError(response.result.exception)
+                elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
+                    raise RemoteError("Image build terminated due to external shut-down. Please try again.")
+                elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
+                    raise RemoteError("Image build timed out. Please try again with a larger `timeout` parameter.")
+                elif response.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
+                    break
+                else:
+                    raise RemoteError("Unknown status %s!" % response.result.status)
 
             return _ImageHandle._from_id(image_id, resolver.client, None)
 
