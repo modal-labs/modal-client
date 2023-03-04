@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2023
+import contextlib
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypeVar
 
 if TYPE_CHECKING:
@@ -14,7 +15,7 @@ from modal.exception import ExecutionError
 
 
 class StatusRow:
-    def __init__(self, progress: Optional[Tree]):
+    def __init__(self, progress: Tree):
         from ._output import step_progress  # Lazy import to only import `rich` when necessary.
 
         self._spinner = None
@@ -40,13 +41,16 @@ class StatusRow:
 class Resolver:
     # Unfortunately we can't use type annotations much in this file,
     # since that leads to circular dependencies
-    _progress: Optional[Tree]
+    _progress: Tree
     _local_uuid_to_object: Dict[str, Any]
 
-    def __init__(self, progress: Optional[Tree], console: Optional[Console], client, app_id: Optional[str] = None):
-        self._progress = progress
-        self._console = console
+    def __init__(self, output_mgr, client, app_id: Optional[str] = None):
+        from ._output import step_progress
+        from rich.tree import Tree
+
+        self._output_mgr = output_mgr
         self._local_uuid_to_object = {}
+        self._progress = Tree(step_progress("Creating objects..."), guide_style="gray50")
 
         # Accessible by objects
         self._client = client
@@ -85,11 +89,19 @@ class Resolver:
         self._local_uuid_to_object[obj.local_uuid] = created_obj
         return created_obj
 
+    @contextlib.contextmanager
+    def display_progress(self):
+        from ._output import step_completed
+        with self._output_mgr.ctx_if_visible(self._output_mgr.make_live(self._progress)):
+            yield
+        self._progress.label = step_completed("Created objects.")
+        self._output_mgr.print_if_visible(self._progress)
+
     def add_status_row(self) -> StatusRow:
         return StatusRow(self._progress)
 
-    def get_console(self) -> Optional[Console]:
-        return self._console
+    def get_console(self) -> Console:
+        return self._output_mgr._console
 
     def objects(self) -> List:
         return list(self._local_uuid_to_object.values())

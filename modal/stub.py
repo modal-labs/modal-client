@@ -251,13 +251,7 @@ class _Stub:
 
             try:
                 # Create all members
-                create_progress = Tree(step_progress("Creating objects..."), guide_style="gray50")
-                with output_mgr.ctx_if_visible(output_mgr.make_live(create_progress)):
-                    await app._create_all_objects(
-                        self._blueprint, create_progress, output_mgr.get_console(), post_init_state
-                    )
-                create_progress.label = step_completed("Created objects.")
-                output_mgr.print_if_visible(create_progress)
+                await app._create_all_objects(self._blueprint, output_mgr, post_init_state)
 
                 # Update all functions client-side to have the output mgr
                 for tag, obj in self._function_handles.items():

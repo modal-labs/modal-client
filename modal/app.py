@@ -12,13 +12,6 @@ from .client import _Client
 from .config import logger
 from .object import Handle, Provider
 
-if TYPE_CHECKING:
-    from rich.console import Console
-    from rich.tree import Tree
-else:
-    Console = TypeVar("Console")
-    Tree = TypeVar("Tree")
-
 
 class _App:
     """Apps are the user representation of an actively running Modal process.
@@ -73,14 +66,15 @@ class _App:
         return self._app_id
 
     async def _create_all_objects(
-        self, blueprint: Dict[str, Provider], progress: Tree, console: Console, new_app_state: int
+        self, blueprint: Dict[str, Provider], output_mgr: OutputManager, new_app_state: int
     ):  # api_pb2.AppState.V
         """Create objects that have been defined but not created on the server."""
-        resolver = Resolver(progress, console, self._client, self.app_id)
-        for tag, provider in blueprint.items():
-            existing_object_id = self._tag_to_existing_id.get(tag)
-            created_obj = await resolver.load(provider, existing_object_id)
-            self._tag_to_object[tag] = created_obj
+        resolver = Resolver(output_mgr, self._client, self.app_id)
+        with resolver.display_progress():
+            for tag, provider in blueprint.items():
+                existing_object_id = self._tag_to_existing_id.get(tag)
+                created_obj = await resolver.load(provider, existing_object_id)
+                self._tag_to_object[tag] = created_obj
 
         # Create the app (and send a list of all tagged obs)
         # TODO(erikbern): we should delete objects from a previous version that are no longer needed
