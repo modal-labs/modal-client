@@ -232,9 +232,10 @@ class _Image(Provider[_ImageHandle]):
             result: Optional[api_pb2.GenericResult] = None
             console = resolver.get_console()
             stream = LineBufferedOutput(lambda data: console.out(data, style="yellow", end=""))
+            progress: Callable[[float], None] = None
 
             async def join():
-                nonlocal last_entry_id, result
+                nonlocal last_entry_id, result, progress
 
                 request = api_pb2.ImageJoinStreamingRequest(image_id=image_id, timeout=55, last_entry_id=last_entry_id)
                 async for response in unary_stream(resolver.client.stub.ImageJoinStreaming, request):
@@ -243,8 +244,12 @@ class _Image(Provider[_ImageHandle]):
                     if response.entry_id:
                         last_entry_id = response.entry_id
                     for task_log in response.task_logs:
-                        if console is not None:
+                        if task_log.data:
                             stream.write(task_log.data)
+                        elif task_log.task_progress.len or task_log.task_progress.pos:
+                            if progress is None:
+                                progress = resolver.add_progress("Snapshotting image", task_log.task_progress.len)
+                            progress(task_log.task_progress.pos)
 
             # Handle up to n exceptions while fetching logs
             retry_count = 0

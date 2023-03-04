@@ -137,7 +137,6 @@ class OutputManager:
         self._current_render_group: Optional[Group] = None
         self._function_progress: Optional[Progress] = None
         self._function_queueing_progress: Optional[Progress] = None
-        self._snapshot_progress: Optional[Progress] = None
 
     def print_if_visible(self, renderable) -> None:
         if self._visible_progress:
@@ -173,24 +172,6 @@ class OutputManager:
             if self._current_render_group:
                 self._current_render_group.renderables.append(Panel(self._function_progress, style="gray50"))
         return self._function_progress
-
-    @property
-    def snapshot_progress(self) -> Progress:
-        """Creates a `rich.Progress` instance with custom columns for image snapshot progress,
-        and adds it to the current render group."""
-        if not self._snapshot_progress:
-            self._snapshot_progress = Progress(
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                DownloadColumn(),
-                TimeElapsedColumn(),
-                console=self._console,
-                transient=True,
-            )
-            if self._current_render_group:
-                # Appear above function progress renderables.
-                self._current_render_group.renderables.insert(0, self._snapshot_progress)
-        return self._snapshot_progress
 
     @property
     def function_queueing_progress(self) -> Progress:
@@ -266,9 +247,7 @@ class OutputManager:
         total: int,
         description: Optional[str],
     ) -> None:
-        if progress_type == api_pb2.IMAGE_SNAPSHOT_UPLOAD:
-            self._update_snapshot_progress(task_id=task_id, completed=completed, total=total, description=description)
-        elif progress_type == api_pb2.FUNCTION_QUEUED:
+        if progress_type == api_pb2.FUNCTION_QUEUED:
             self._update_queueing_progress(
                 function_id=function_id,
                 completed=completed,
@@ -277,24 +256,6 @@ class OutputManager:
             )
         else:  # Ensure forward-compatible with new types.
             logger.debug(f"Received unrecognized progress type: {progress_type}")
-
-    def _update_snapshot_progress(
-        self, *, task_id: str, completed: int, total: int, description: Optional[str]
-    ) -> None:
-        task_key = (task_id, api_pb2.IMAGE_SNAPSHOT_UPLOAD)
-        if task_key in self._task_progress_items:
-            progress_task_id = self._task_progress_items[task_key]
-        else:
-            progress_task_id = self.snapshot_progress.add_task("[yellow]Uploading image snapshot…", total=total)
-            self._task_progress_items[task_key] = progress_task_id
-
-        try:
-            self.snapshot_progress.update(progress_task_id, completed=completed, total=total)
-            if completed == total:
-                self.snapshot_progress.remove_task(progress_task_id)
-        except KeyError:
-            # Rich throws a KeyError if the task has already been removed.
-            pass
 
     def _update_queueing_progress(
         self, *, function_id: str, completed: int, total: Optional[int], description: Optional[str]

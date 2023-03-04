@@ -1,13 +1,15 @@
 # Copyright Modal Labs 2023
 import contextlib
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, TypeVar
 
 if TYPE_CHECKING:
     from rich.console import Console
+    from rich.progress import Progress
     from rich.spinner import Spinner
     from rich.tree import Tree
 else:
     Console = TypeVar("Console")
+    Progress = TypeVar("Progress")
     Spinner = TypeVar("Spinner")
     Tree = TypeVar("Tree")
 
@@ -92,6 +94,7 @@ class Resolver:
     @contextlib.contextmanager
     def display_progress(self):
         from ._output import step_completed
+
         with self._output_mgr.ctx_if_visible(self._output_mgr.make_live(self._progress)):
             yield
         self._progress.label = step_completed("Created objects.")
@@ -105,3 +108,26 @@ class Resolver:
 
     def objects(self) -> List:
         return list(self._local_uuid_to_object.values())
+
+    def add_progress(self, description: str, total: float) -> Callable[[float], None]:
+        """Creates a `rich.Progress` instance with custom columns for image snapshot progress."""
+        from rich.progress import Progress, TextColumn, BarColumn, DownloadColumn, TimeElapsedColumn
+
+        progress = Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            DownloadColumn(),
+            TimeElapsedColumn(),
+            console=self._output_mgr._console,
+            transient=True,
+        )
+        self._progress.add(progress)
+        task_id = progress.add_task(f"[yellow]{description}", total=total)
+
+        def update(completed: float):
+            if completed < total:
+                progress.update(task_id, completed=completed)
+            else:
+                progress.remove_task(task_id)
+
+        return update
