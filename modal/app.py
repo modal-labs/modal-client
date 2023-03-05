@@ -71,14 +71,15 @@ class _App:
         return self._app_id
 
     async def _create_all_objects(
-        self, blueprint: Dict[str, Provider], progress: Tree, new_app_state: int
+        self, blueprint: Dict[str, Provider], output_mgr: "OutputMgr", new_app_state: int
     ):  # api_pb2.AppState.V
         """Create objects that have been defined but not created on the server."""
-        resolver = Resolver(progress, self._client, self.app_id)
-        for tag, provider in blueprint.items():
-            existing_object_id = self._tag_to_existing_id.get(tag)
-            created_obj = await resolver.load(provider, existing_object_id)
-            self._tag_to_object[tag] = created_obj
+        resolver = Resolver(output_mgr, self._client, self.app_id)
+        with resolver.display():
+            for tag, provider in blueprint.items():
+                existing_object_id = self._tag_to_existing_id.get(tag)
+                created_obj = await resolver.load(provider, existing_object_id)
+                self._tag_to_object[tag] = created_obj
 
         # Create the app (and send a list of all tagged obs)
         # TODO(erikbern): we should delete objects from a previous version that are no longer needed

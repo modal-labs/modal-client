@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2023
+import contextlib
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypeVar
 
 if TYPE_CHECKING:
@@ -38,12 +39,16 @@ class StatusRow:
 class Resolver:
     # Unfortunately we can't use type annotations much in this file,
     # since that leads to circular dependencies
-    _progress: Optional[Tree]
+    _tree: Tree
     _local_uuid_to_object: Dict[str, Any]
 
-    def __init__(self, progress: Optional[Tree], client, app_id: Optional[str] = None):
-        self._progress = progress
+    def __init__(self, output_mgr: "OutputManager", client, app_id: Optional[str] = None):
+        from ._output import step_progress
+        from rich.tree import Tree
+
+        self._output_mgr = output_mgr
         self._local_uuid_to_object = {}
+        self._tree = Tree(step_progress("Creating objects..."), guide_style="gray50")
 
         # Accessible by objects
         self._client = client
@@ -82,8 +87,17 @@ class Resolver:
         self._local_uuid_to_object[obj.local_uuid] = created_obj
         return created_obj
 
+    @contextlib.contextmanager
+    def display(self):
+        from ._output import step_completed
+
+        with self._output_mgr.ctx_if_visible(self._output_mgr.make_live(self._tree)):
+            yield
+        self._tree.label = step_completed("Created objects.")
+        self._output_mgr.print_if_visible(self._tree)
+
     def add_status_row(self) -> StatusRow:
-        return StatusRow(self._progress)
+        return StatusRow(self._tree)
 
     def objects(self) -> List:
         return list(self._local_uuid_to_object.values())
