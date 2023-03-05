@@ -271,3 +271,9 @@ def test_shell(servicer, set_env_client, test_dir):
     ), mock.patch("modal._pty.write_stdin_to_pty_stream", noop_async_context_manager):
         _run(["shell", stub_file.as_posix() + "::foo"])
     assert ran_cmd == "/bin/bash"
+
+
+def test_logs(servicer, server_url_env):
+    servicer.done = True
+    res = _run(["app", "logs", "ap-123"], expected_exit_code=0)
+    assert res.stdout == "hello, world\n"  # from servicer mock
