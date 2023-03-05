@@ -126,7 +126,7 @@ class _Stub:
         if name is not None:
             self._description = name
         else:
-            self._description = self._infer_app_desc()
+            self._description = None
         self._blueprint = blueprint
         self._client_mount = None
         self._function_mounts = {}
@@ -157,7 +157,7 @@ class _Stub:
     @property
     def description(self) -> str:
         """The Stub's `name`, if available, or a fallback descriptive identifier."""
-        return self._description
+        return self._description or self._infer_app_desc()
 
     def _infer_app_desc(self):
         if is_notebook():
@@ -165,10 +165,6 @@ class _Stub:
             # be really long an not very helpful
             return "Notebook"  # TODO: use actual name of notebook
 
-        from modal.cli import run
-
-        if run.modal_cli_app_desc:
-            return run.modal_cli_app_desc
         script_filename = os.path.split(sys.argv[0])[-1]
         args = [script_filename] + sys.argv[1:]
         return " ".join(args)

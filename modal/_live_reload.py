@@ -54,6 +54,16 @@ async def _terminate(proc: Optional[SpawnProcess], output_mgr: OutputManager, ti
         pass  # Child process already finished
 
 
+def _get_clean_stub_description(stub_ref: str) -> str:
+    # If possible, consider the 'ref' argument the start of the app's args. Everything
+    # before it Modal CLI cruft (eg. `modal serve --timeout 1.0`).
+    try:
+        func_ref_arg_idx = sys.argv.index(stub_ref)
+        return " ".join(sys.argv[func_ref_arg_idx:])
+    except ValueError:
+        return " ".join(sys.argv)
+
+
 async def _run_serve_loop(
     stub_ref: str,
     timeout: Optional[float] = None,
@@ -63,6 +73,8 @@ async def _run_serve_loop(
     _app_q: Optional[asyncio.Queue] = None,  # for testing
 ):
     stub = import_stub(stub_ref)
+    if stub._description is None:
+        stub._description = _get_clean_stub_description(stub_ref)
 
     unsupported_msg = None
     if platform.system() == "Windows":

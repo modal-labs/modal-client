@@ -276,11 +276,19 @@ def test_shell(servicer, set_env_client, test_dir):
 
 def test_app_descriptions(servicer, server_url_env, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "prints_desc_stub.py"
-    result = _run(["run", "--detach", stub_file.as_posix() + "::stub.foo"])
+    _run(["run", "--detach", stub_file.as_posix() + "::stub.foo"])
 
-    assert "prints_desc_stub.py::stub.foo" in result.stdout
-    assert "run --detach " not in result.stdout
+    create_reqs = [s for s in servicer.requests if isinstance(s, api_pb2.AppCreateRequest)]
+    assert len(create_reqs) == 1
+    assert create_reqs[0].detach
+    description = create_reqs[0].description
+    assert "prints_desc_stub.py::stub.foo" in description
+    assert "run --detach " not in description
 
-    result = _run(["serve", "--timeout", "0.0", stub_file.as_posix()])
-    assert "prints_desc_stub.py" in result.stdout
-    assert "serve --timeout 0.0 " not in result.stdout
+    _run(["serve", "--timeout", "0.0", stub_file.as_posix()])
+    create_reqs = [s for s in servicer.requests if isinstance(s, api_pb2.AppCreateRequest)]
+    assert len(create_reqs) == 2
+    description = create_reqs[1].description
+    assert "prints_desc_stub.py" in description
+    assert "serve" not in description
+    assert "--timeout 0.0" not in description

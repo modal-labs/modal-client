@@ -67,6 +67,16 @@ def _add_click_options(func, signature: inspect.Signature):
     return func
 
 
+def _get_clean_stub_description(func_ref: str) -> str:
+    # If possible, consider the 'ref' argument the start of the app's args. Everything
+    # before it Modal CLI cruft (eg. `modal run --detach`).
+    try:
+        func_ref_arg_idx = sys.argv.index(func_ref)
+        return " ".join(sys.argv[func_ref_arg_idx:])
+    except ValueError:
+        return " ".join(sys.argv)
+
+
 def _get_click_command_for_function(_stub, function_tag):
     blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
 
@@ -108,18 +118,12 @@ def _get_click_command_for_local_entrypoint(_stub, entrypoint: LocalEntrypoint):
 
 class RunGroup(click.Group):
     def get_command(self, ctx, func_ref):
-        global modal_cli_app_desc
-        # If possible, consider the `func_ref` argument the start of the app's args. Everything
-        # before it Modal CLI cruft (eg. `modal run --timeout 1.0`).
-        try:
-            func_ref_arg_idx = sys.argv.index(func_ref)
-            modal_cli_app_desc = " ".join(sys.argv[func_ref_arg_idx:])
-        except ValueError:
-            modal_cli_app_desc = " ".join(sys.argv)
         _function_handle_or_entrypoint = import_function(
             func_ref, accept_local_entrypoint=True, interactive=False, base_cmd="modal run"
         )
         _stub = _function_handle_or_entrypoint._stub
+        if _stub._description is None:
+            _stub._description = _get_clean_stub_description(func_ref)
         if isinstance(_function_handle_or_entrypoint, LocalEntrypoint):
             click_command = _get_click_command_for_local_entrypoint(_stub, _function_handle_or_entrypoint)
         else:
