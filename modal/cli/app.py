@@ -7,9 +7,8 @@ from google.protobuf import empty_pb2
 from grpclib import GRPCError, Status
 from rich.console import Console
 from rich.table import Table
-from rich.tree import Tree
 
-from modal._output import OutputManager, step_progress
+from modal._output import OutputManager, get_logs_loop
 from modal.cli.utils import timestamp_to_local
 from modal.client import AioClient
 from modal_proto import api_pb2
@@ -87,13 +86,10 @@ def app_logs(app_id: str):
     @synchronizer
     async def sync_command():
         aio_client = await AioClient.from_env()
-        output_manager = OutputManager(None, None)
-        tree = Tree(step_progress(f"Tailing logs for {app_id}"), guide_style="gray50")
-        status_spinner = step_progress()
-        tree.add(tree)
+        output_mgr = OutputManager(None, None, "Tailing logs for {app_id}")
         try:
-            with output_manager.ctx_if_visible(output_manager.make_live(status_spinner)):
-                await output_manager.get_logs_loop(app_id, aio_client, status_spinner, "")
+            with output_mgr.show_status_spinner():
+                await get_logs_loop(app_id, aio_client, "", output_mgr)
         except asyncio.CancelledError:
             pass
 
