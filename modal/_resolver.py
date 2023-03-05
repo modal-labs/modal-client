@@ -42,7 +42,7 @@ class Resolver:
     _tree: Tree
     _local_uuid_to_object: Dict[str, Any]
 
-    def __init__(self, output_mgr: "OutputManager", client, app_id: Optional[str] = None):
+    def __init__(self, output_mgr, client, app_id: Optional[str] = None):
         from ._output import step_progress
         from rich.tree import Tree
 

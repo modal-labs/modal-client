@@ -10,8 +10,6 @@ import warnings
 from enum import Enum
 from typing import AsyncGenerator, Collection, Dict, List, Optional, Union
 
-from rich.tree import Tree
-
 from modal_proto import api_pb2
 from modal_utils.app_utils import is_valid_app_name
 from modal_utils.async_utils import TaskContext, synchronize_apis

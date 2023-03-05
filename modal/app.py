@@ -71,7 +71,7 @@ class _App:
         return self._app_id
 
     async def _create_all_objects(
-        self, blueprint: Dict[str, Provider], output_mgr: "OutputMgr", new_app_state: int
+        self, blueprint: Dict[str, Provider], output_mgr, new_app_state: int
     ):  # api_pb2.AppState.V
         """Create objects that have been defined but not created on the server."""
         resolver = Resolver(output_mgr, self._client, self.app_id)
