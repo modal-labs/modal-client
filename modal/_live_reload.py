@@ -12,7 +12,7 @@ from synchronicity import Interface
 
 from modal_utils.async_utils import asyncify, synchronize_apis, synchronizer
 
-from ._output import OutputManager, step_progress
+from ._output import OutputManager
 from ._watcher import watch
 from .app import _App
 from .cli.import_refs import import_stub
@@ -76,7 +76,7 @@ async def _run_serve_loop(
 
     client = await _Client.from_env()
 
-    output_mgr = OutputManager(stdout, show_progress)
+    output_mgr = OutputManager(stdout, show_progress, "Running app...")
 
     if _watcher is not None:
         watcher = _watcher  # Only used by tests
@@ -84,17 +84,16 @@ async def _run_serve_loop(
         watcher = watch(stub._local_mounts, output_mgr, timeout)
 
     app = await _App._init_new(client, stub.description, detach=False, deploying=False)
-    status_spinner = step_progress("Running app...")
 
     if unsupported_msg:
-        async with stub._run(client, output_mgr, app, status_spinner=status_spinner):
+        async with stub._run(client, output_mgr, app):
             client.set_pre_stop(app.disconnect)
             async for _ in watcher:
                 output_mgr.print_if_visible(unsupported_msg)
     else:
         # Run the object creation loop one time first, to make sure all images etc get built
         # This also handles the logs and the heartbeats
-        async with stub._run(client, output_mgr, app, status_spinner=status_spinner):
+        async with stub._run(client, output_mgr, app):
             if _app_q:
                 await _app_q.put(app)
             client.set_pre_stop(app.disconnect)
