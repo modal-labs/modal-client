@@ -240,11 +240,11 @@ class _Image(Provider[_ImageHandle]):
                     if response.result.status:
                         result = response.result
                     for task_log in response.task_logs:
-                        await resolver.console_write(
-                            task_log,
-                            task_id=image_id,  # TODO(erikbern): ugly... fix
-                            function_id=None,  # TODO(erikbern): also ugly
-                        )
+                        if task_log.task_progress.progress_type:
+                            assert task_logs.task_progress.progress_type == api_pb2.IMAGE_SNAPSHOT_UPLOAD
+                            await resolver.image_snapshot_update(image_id, task_log.task_progress)
+                        elif task_log.data:
+                            await resolver.console_write(task_log)
                 resolver.console_flush()
 
             # Handle up to n exceptions while fetching logs

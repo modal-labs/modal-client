@@ -265,8 +265,12 @@ class OutputManager:
         # Set the new message
         step_progress_update(self._status_spinner, message)
 
-    def update_snapshot_progress(self, *, task_id: str, completed: int, total: int, description: Optional[str]) -> None:
-        task_key = (task_id, api_pb2.IMAGE_SNAPSHOT_UPLOAD)
+    def update_snapshot_progress(self, *, image_id: str, task_progress: api_pb2.TaskProgress) -> None:
+        completed = task_progress.pos
+        total = task_progress.len
+        description = task_progress.description
+
+        task_key = (image_id, api_pb2.IMAGE_SNAPSHOT_UPLOAD)
         if task_key in self._task_progress_items:
             progress_task_id = self._task_progress_items[task_key]
         else:
@@ -350,14 +354,7 @@ async def get_app_logs_loop(app_id: str, client: _Client, last_log_batch_entry_i
                     function_id=log_batch.function_id, completed=1, total=1, description=None
                 )
         elif log.task_progress.len or log.task_progress.pos:
-            if log.task_progress.progress_type == api_pb2.IMAGE_SNAPSHOT_UPLOAD:
-                output_mgr.update_snapshot_progress(
-                    task_id=log_batch.task_id,
-                    completed=log.task_progress.pos,
-                    total=log.task_progress.len,
-                    description=log.task_progress.description,
-                )
-            elif log.task_progress.progress_type == api_pb2.FUNCTION_QUEUED:
+            if log.task_progress.progress_type == api_pb2.FUNCTION_QUEUED:
                 output_mgr.update_queueing_progress(
                     function_id=log_batch.function_id,
                     completed=log.task_progress.pos,
@@ -385,6 +382,7 @@ async def get_app_logs_loop(app_id: str, client: _Client, last_log_batch_entry_i
             if log_batch.app_done:
                 logger.debug("App logs are done")
                 last_log_batch_entry_id = None
+                break
             elif log_batch.image_id:
                 # Ignore image logs - these still exist for old clients
                 # New clients get them through ImageJoinStreaming (see image.py)
@@ -422,4 +420,5 @@ async def get_app_logs_loop(app_id: str, client: _Client, last_log_batch_entry_i
 
         if last_log_batch_entry_id is None:
             break
+
     logger.debug("Logging exited gracefully")

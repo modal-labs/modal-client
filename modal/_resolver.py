@@ -104,8 +104,11 @@ class Resolver:
     def add_status_row(self) -> StatusRow:
         return StatusRow(self._tree)
 
-    async def console_write(self, log: api_pb2.TaskLogs, task_id: Optional[str], function_id: Optional[str]):
-        await self._output_mgr.put_log(log, task_id, function_id)
+    async def console_write(self, log: api_pb2.TaskLogs):
+        await self._output_mgr.put_log_content(log)
 
     def console_flush(self):
         self._output_mgr.flush_lines()
+
+    def image_snapshot_update(self, image_id: str, task_progress: api_pb2.TaskProgress):
+        self._output_mgr.update_snapshot_progress(image_id, task_progress)
