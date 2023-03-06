@@ -151,8 +151,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
             last_entry_id = "1"
         else:
             last_entry_id = str(int(request.last_entry_id) + 1)
-        await asyncio.sleep(0.1)
-        log = api_pb2.TaskLogs(data="hello, world\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT)
+        await asyncio.sleep(0.5)
+        log = api_pb2.TaskLogs(data=f"hello, world ({last_entry_id})\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT)
         await stream.send_message(api_pb2.TaskLogsBatch(entry_id=last_entry_id, items=[log]))
         if self.done:
             await stream.send_message(api_pb2.TaskLogsBatch(app_done=True))

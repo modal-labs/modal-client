@@ -10,8 +10,6 @@ import warnings
 from enum import Enum
 from typing import AsyncGenerator, Collection, Dict, List, Optional, Union
 
-from rich.tree import Tree
-
 from modal_proto import api_pb2
 from modal_utils.app_utils import is_valid_app_name
 from modal_utils.async_utils import TaskContext, synchronize_apis
@@ -247,11 +245,7 @@ class _Stub:
 
             try:
                 # Create all members
-                create_progress = Tree(step_progress("Creating objects..."), guide_style="gray50")
-                with output_mgr.ctx_if_visible(output_mgr.make_live(create_progress)):
-                    await app._create_all_objects(self._blueprint, create_progress, post_init_state)
-                create_progress.label = step_completed("Created objects.")
-                output_mgr.print_if_visible(create_progress)
+                await app._create_all_objects(self._blueprint, output_mgr, post_init_state)
 
                 # Update all functions client-side to have the output mgr
                 for tag, obj in self._function_handles.items():
@@ -335,10 +329,7 @@ class _Stub:
             app = await _App._init_existing(client, existing_app_id)
 
             # Create objects
-            create_progress = Tree(step_progress("Creating objects..."), guide_style="gray50")
-            with output_mgr.ctx_if_visible(output_mgr.make_live(create_progress)):
-                await app._create_all_objects(self._blueprint, create_progress, api_pb2.APP_STATE_UNSPECIFIED)
-            create_progress.label = step_completed("Created objects.")
+            await app._create_all_objects(self._blueprint, output_mgr, api_pb2.APP_STATE_UNSPECIFIED)
 
             # Communicate to the parent process
             is_ready.set()
