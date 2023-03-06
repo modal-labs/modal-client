@@ -18,7 +18,7 @@ from modal_utils.decorator_utils import decorator_with_options
 from . import _pty
 from ._function_utils import FunctionInfo
 from ._ipython import is_notebook
-from ._output import OutputManager, step_completed, step_progress, get_logs_loop
+from ._output import OutputManager, step_completed, step_progress, get_app_logs_loop
 from ._pty import exec_cmd
 from .app import _App, _container_app, is_local
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
@@ -237,7 +237,7 @@ class _Stub:
             tc.infinite_loop(lambda: _heartbeat(client, app.app_id), sleep=HEARTBEAT_INTERVAL)
 
             with output_mgr.ctx_if_visible(output_mgr.make_live(step_progress("Initializing..."))):
-                logs_loop = tc.create_task(get_logs_loop(app.app_id, client, last_log_entry_id or "", output_mgr))
+                logs_loop = tc.create_task(get_app_logs_loop(app.app_id, client, last_log_entry_id or "", output_mgr))
                 initialized_msg = (
                     f"Initialized. [grey70]View app at [underline]{app._app_page_url}[/underline][/grey70]"
                 )
