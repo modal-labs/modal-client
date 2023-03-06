@@ -236,8 +236,8 @@ class OutputManager:
 
         self._console.out(data, style=style, end="")
 
-    def _update_task_state(self, task_id: str, state: int) -> str:
-        """Updates the state of a task, returning the new task status string."""
+    def update_task_state(self, task_id: str, state: int):
+        """Updates the state of a task, sets the new task status string."""
         self._task_states[task_id] = state
 
         all_states = self._task_states.values()
@@ -250,19 +250,22 @@ class OutputManager:
         if api_pb2.TASK_STATE_ACTIVE in states_set or api_pb2.TASK_STATE_IDLE in states_set:
             tasks_running = tasks_at_state(api_pb2.TASK_STATE_ACTIVE)
             tasks_not_completed = len(self._task_states) - tasks_at_state(api_pb2.TASK_STATE_COMPLETED)
-            return f"Running ({tasks_running}/{tasks_not_completed} containers active)..."
+            message = f"Running ({tasks_running}/{tasks_not_completed} containers active)..."
         elif api_pb2.TASK_STATE_LOADING_IMAGE in states_set:
             tasks_loading = tasks_at_state(api_pb2.TASK_STATE_LOADING_IMAGE)
-            return f"Loading images ({tasks_loading} containers initializing)..."
+            message = f"Loading images ({tasks_loading} containers initializing)..."
         elif api_pb2.TASK_STATE_WORKER_ASSIGNED in states_set:
-            return "Worker assigned..."
+            message = "Worker assigned..."
         elif api_pb2.TASK_STATE_COMPLETED in states_set:
             tasks_completed = tasks_at_state(api_pb2.TASK_STATE_COMPLETED)
-            return f"Running ({tasks_completed} containers finished)..."
+            message = f"Running ({tasks_completed} containers finished)..."
         else:
-            return "Running..."
+            message = "Running..."
 
-    def _update_task_progress(
+        # Set the new message
+        step_progress_update(self._status_spinner, message)
+
+    def update_task_progress(
         self,
         *,
         task_id: Optional[str],
@@ -322,57 +325,34 @@ class OutputManager:
             progress_task_id = self.function_queueing_progress.add_task(task_desc, start=True, total=None)
             self._task_progress_items[task_key] = progress_task_id
 
-    async def put_log(self, log_batch: api_pb2.TaskLogsBatch, log: api_pb2.TaskLogs):
-        if log.task_state:
-            if log.task_state == api_pb2.TASK_STATE_WORKER_ASSIGNED:
-                # Close function's queueing progress bar (if it exists)
-                self._update_task_progress(
-                    task_id=log_batch.task_id,
-                    function_id=log_batch.function_id,
-                    progress_type=api_pb2.FUNCTION_QUEUED,
-                    completed=1,
-                    total=1,
-                    description=None,
-                )
-            message = self._update_task_state(log_batch.task_id, log.task_state)
-            step_progress_update(self._status_spinner, message)
-        if log.task_progress.len or log.task_progress.pos:
-            self._update_task_progress(
-                task_id=log_batch.task_id,
-                function_id=log_batch.function_id,
-                progress_type=log.task_progress.progress_type,
-                completed=log.task_progress.pos or 0,
-                total=log.task_progress.len or 0,
-                description=log.task_progress.description,
-            )
-        elif log.data:
-            if self._visible_progress:
-                stream = self._line_buffers.get(log.file_descriptor)
-                if stream is None:
-                    stream = LineBufferedOutput(functools.partial(self._print_log, log.file_descriptor))
-                    self._line_buffers[log.file_descriptor] = stream
-                stream.write(log.data)
-            elif hasattr(self.stdout, "buffer"):
-                # If we're not showing progress, there's no need to buffer lines,
-                # because the progress spinner can't interfere with output.
+    async def put_log_content(self, log: api_pb2.TaskLogs):
+        if self._visible_progress:
+            stream = self._line_buffers.get(log.file_descriptor)
+            if stream is None:
+                stream = LineBufferedOutput(functools.partial(self._print_log, log.file_descriptor))
+                self._line_buffers[log.file_descriptor] = stream
+            stream.write(log.data)
+        elif hasattr(self.stdout, "buffer"):
+            # If we're not showing progress, there's no need to buffer lines,
+            # because the progress spinner can't interfere with output.
 
-                data = log.data.encode("utf-8")
-                written = 0
-                n_retries = 0
-                while written < len(data):
-                    try:
-                        written += self.stdout.buffer.write(data[written:])
-                        self.stdout.flush()
-                    except BlockingIOError:
-                        if n_retries >= 5:
-                            raise
-                        n_retries += 1
-                        await asyncio.sleep(0.1)
-            else:
-                # `stdout` isn't always buffered (e.g. %%capture in Jupyter notebooks redirects it to
-                # io.StringIO).
-                self.stdout.write(log.data)
-                self.stdout.flush()
+            data = log.data.encode("utf-8")
+            written = 0
+            n_retries = 0
+            while written < len(data):
+                try:
+                    written += self.stdout.buffer.write(data[written:])
+                    self.stdout.flush()
+                except BlockingIOError:
+                    if n_retries >= 5:
+                        raise
+                    n_retries += 1
+                    await asyncio.sleep(0.1)
+        else:
+            # `stdout` isn't always buffered (e.g. %%capture in Jupyter notebooks redirects it to
+            # io.StringIO).
+            self.stdout.write(log.data)
+            self.stdout.flush()
 
     def flush_lines(self):
         for stream in self._line_buffers.values():
@@ -384,7 +364,32 @@ class OutputManager:
             yield
 
 
-async def get_logs_loop(app_id: str, client: _Client, last_log_batch_entry_id: str, output_mgr: OutputManager):
+async def get_app_logs_loop(app_id: str, client: _Client, last_log_batch_entry_id: str, output_mgr: OutputManager):
+    async def _put_log(log_batch: api_pb2.TaskLogsBatch, log: api_pb2.TaskLogs):
+        if log.task_state:
+            output_mgr.update_task_state(log_batch.task_id, log.task_state)
+            if log.task_state == api_pb2.TASK_STATE_WORKER_ASSIGNED:
+                # Close function's queueing progress bar (if it exists)
+                output_mgr.update_task_progress(
+                    task_id=log_batch.task_id,
+                    function_id=log_batch.function_id,
+                    progress_type=api_pb2.FUNCTION_QUEUED,
+                    completed=1,
+                    total=1,
+                    description=None,
+                )
+        elif log.task_progress.len or log.task_progress.pos:
+            output_mgr.update_task_progress(
+                task_id=log_batch.task_id,
+                function_id=log_batch.function_id,
+                progress_type=log.task_progress.progress_type,
+                completed=log.task_progress.pos or 0,
+                total=log.task_progress.len or 0,
+                description=log.task_progress.description,
+            )
+        elif log.data:
+            await output_mgr.put_log_content(log)
+
     async def _get_logs():
         nonlocal last_log_batch_entry_id
 
@@ -395,17 +400,15 @@ async def get_logs_loop(app_id: str, client: _Client, last_log_batch_entry_id: s
         )
         log_batch: api_pb2.TaskLogsBatch
         async for log_batch in unary_stream(client.stub.AppGetLogs, request):
+            if log_batch.entry_id:
+                # log_batch entry_id is empty for fd="server" messages from AppGetLogs
+                last_log_batch_entry_id = log_batch.entry_id
             if log_batch.app_done:
                 logger.debug("App logs are done")
                 last_log_batch_entry_id = None
                 return
-            else:
-                if log_batch.entry_id != "":
-                    # log_batch entry_id is empty for fd="server" messages from AppGetLogs
-                    last_log_batch_entry_id = log_batch.entry_id
-
-                for log in log_batch.items:
-                    await output_mgr.put_log(log_batch, log)
+            for log in log_batch.items:
+                await _put_log(log_batch, log)
 
         output_mgr.flush_lines()
 
