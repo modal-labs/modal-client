@@ -8,7 +8,7 @@ from grpclib import GRPCError, Status
 from rich.console import Console
 from rich.table import Table
 
-from modal._output import OutputManager, get_logs_loop
+from modal._output import OutputManager, get_app_logs_loop
 from modal.cli.utils import timestamp_to_local
 from modal.client import AioClient
 from modal_proto import api_pb2
@@ -89,7 +89,7 @@ def app_logs(app_id: str):
         output_mgr = OutputManager(None, None, "Tailing logs for {app_id}")
         try:
             with output_mgr.show_status_spinner():
-                await get_logs_loop(app_id, aio_client, "", output_mgr)
+                await get_app_logs_loop(app_id, aio_client, "", output_mgr)
         except asyncio.CancelledError:
             pass
 
