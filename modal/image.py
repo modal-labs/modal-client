@@ -240,9 +240,9 @@ class _Image(Provider[_ImageHandle]):
                     if response.result.status:
                         result = response.result
                     for task_log in response.task_logs:
-                        if task_log.task_progress.progress_type:
-                            assert task_logs.task_progress.progress_type == api_pb2.IMAGE_SNAPSHOT_UPLOAD
-                            await resolver.image_snapshot_update(image_id, task_log.task_progress)
+                        if task_log.task_progress.pos or task_log.task_progress.len:
+                            assert task_log.task_progress.progress_type == api_pb2.IMAGE_SNAPSHOT_UPLOAD
+                            resolver.image_snapshot_update(image_id, task_log.task_progress)
                         elif task_log.data:
                             await resolver.console_write(task_log)
                 resolver.console_flush()

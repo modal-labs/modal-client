@@ -265,7 +265,7 @@ class OutputManager:
         # Set the new message
         step_progress_update(self._status_spinner, message)
 
-    def update_snapshot_progress(self, *, image_id: str, task_progress: api_pb2.TaskProgress) -> None:
+    def update_snapshot_progress(self, image_id: str, task_progress: api_pb2.TaskProgress) -> None:
         completed = task_progress.pos
         total = task_progress.len
         description = task_progress.description
