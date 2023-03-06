@@ -2,6 +2,8 @@
 import contextlib
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypeVar
 
+from modal_proto import api_pb2
+
 if TYPE_CHECKING:
     from rich.spinner import Spinner
     from rich.tree import Tree
@@ -87,6 +89,9 @@ class Resolver:
         self._local_uuid_to_object[obj.local_uuid] = created_obj
         return created_obj
 
+    def objects(self) -> List:
+        return list(self._local_uuid_to_object.values())
+
     @contextlib.contextmanager
     def display(self):
         from ._output import step_completed
@@ -99,5 +104,8 @@ class Resolver:
     def add_status_row(self) -> StatusRow:
         return StatusRow(self._tree)
 
-    def objects(self) -> List:
-        return list(self._local_uuid_to_object.values())
+    async def console_write(self, log: api_pb2.TaskLogs, task_id: Optional[str], function_id: Optional[str]):
+        await self._output_mgr.put_log(log, task_id, function_id)
+
+    def console_flush(self):
+        self._output_mgr.flush_lines()

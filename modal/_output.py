@@ -385,9 +385,13 @@ async def get_app_logs_loop(app_id: str, client: _Client, last_log_batch_entry_i
             if log_batch.app_done:
                 logger.debug("App logs are done")
                 last_log_batch_entry_id = None
-                return
-            for log in log_batch.items:
-                await _put_log(log_batch, log)
+            elif log_batch.image_id:
+                # Ignore image logs - these still exist for old clients
+                # New clients get them through ImageJoinStreaming (see image.py)
+                pass
+            else:
+                for log in log_batch.items:
+                    await _put_log(log_batch, log)
 
         output_mgr.flush_lines()
 
