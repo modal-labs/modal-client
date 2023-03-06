@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+from __future__ import annotations
 import asyncio
 import contextlib
 import functools
@@ -7,7 +8,7 @@ import platform
 import re
 import sys
 from datetime import timedelta
-from typing import Callable, Dict, Optional
+from typing import Callable, Optional
 
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 from rich.console import Console, Group, RenderableType
@@ -119,9 +120,18 @@ class LineBufferedOutput(io.StringIO):
 class OutputManager:
     _visible_progress: bool
     _console: Console
-    _task_states: Dict[str, int]
+    _task_states: dict[str, int]
+    _task_progress_items: dict[tuple[str, int], TaskID]
+    _current_render_group: Optional[Group]
+    _function_progress: Optional[Progress]
+    _function_queueing_progress: Optional[Progress]
+    _snapshot_progress: Optional[Progress]
+    _line_buffers: dict[int, LineBufferedOutput]
+    _status_spinner: Spinner
 
-    def __init__(self, stdout: io.TextIOWrapper, show_progress: Optional[bool]):
+    def __init__(
+        self, stdout: io.TextIOWrapper, show_progress: Optional[bool], status_spinner_text: str = "Running app..."
+    ):
         self.stdout = stdout or sys.stdout
         if show_progress is None:
             self._visible_progress = self.stdout.isatty() or is_notebook(self.stdout)
@@ -130,11 +140,13 @@ class OutputManager:
 
         self._console = Console(file=stdout, highlight=False)
         self._task_states = {}
-        self._task_progress_items: dict[tuple[str, int], TaskID] = {}
-        self._current_render_group: Optional[Group] = None
-        self._function_progress: Optional[Progress] = None
-        self._function_queueing_progress: Optional[Progress] = None
-        self._snapshot_progress: Optional[Progress] = None
+        self._task_progress_items = {}
+        self._current_render_group = None
+        self._function_progress = None
+        self._function_queueing_progress = None
+        self._snapshot_progress = None
+        self._line_buffers = {}
+        self._status_spinner = step_progress(status_spinner_text)
 
     def print_if_visible(self, renderable) -> None:
         if self._visible_progress:
@@ -310,107 +322,118 @@ class OutputManager:
             progress_task_id = self.function_queueing_progress.add_task(task_desc, start=True, total=None)
             self._task_progress_items[task_key] = progress_task_id
 
-    async def get_logs_loop(self, app_id: str, client: _Client, status_spinner: Spinner, last_log_batch_entry_id: str):
-        async def _get_logs():
-            nonlocal last_log_batch_entry_id
-
-            request = api_pb2.AppGetLogsRequest(
-                app_id=app_id,
-                timeout=55,
-                last_entry_id=last_log_batch_entry_id,
-            )
-            log_batch: api_pb2.TaskLogsBatch
-            line_buffers: Dict[int, LineBufferedOutput] = {}
-            async for log_batch in unary_stream(client.stub.AppGetLogs, request):
-                if log_batch.app_done:
-                    logger.debug("App logs are done")
-                    last_log_batch_entry_id = None
-                    return
-                else:
-                    if log_batch.entry_id != "":
-                        # log_batch entry_id is empty for fd="server" messages from AppGetLogs
-                        last_log_batch_entry_id = log_batch.entry_id
-
-                    for log in log_batch.items:
-                        if log.task_state:
-                            if log.task_state == api_pb2.TASK_STATE_WORKER_ASSIGNED:
-                                # Close function's queueing progress bar (if it exists)
-                                self._update_task_progress(
-                                    task_id=log_batch.task_id,
-                                    function_id=log_batch.function_id,
-                                    progress_type=api_pb2.FUNCTION_QUEUED,
-                                    completed=1,
-                                    total=1,
-                                    description=None,
-                                )
-                            message = self._update_task_state(log_batch.task_id, log.task_state)
-                            step_progress_update(status_spinner, message)
-                        if log.task_progress.len or log.task_progress.pos:
-                            self._update_task_progress(
-                                task_id=log_batch.task_id,
-                                function_id=log_batch.function_id,
-                                progress_type=log.task_progress.progress_type,
-                                completed=log.task_progress.pos or 0,
-                                total=log.task_progress.len or 0,
-                                description=log.task_progress.description,
-                            )
-                        elif log.data:
-                            if self._visible_progress:
-                                stream = line_buffers.get(log.file_descriptor)
-                                if stream is None:
-                                    stream = LineBufferedOutput(functools.partial(self._print_log, log.file_descriptor))
-                                    line_buffers[log.file_descriptor] = stream
-                                stream.write(log.data)
-                            elif hasattr(self.stdout, "buffer"):
-                                # If we're not showing progress, there's no need to buffer lines,
-                                # because the progress spinner can't interfere with output.
-
-                                data = log.data.encode("utf-8")
-                                written = 0
-                                n_retries = 0
-                                while written < len(data):
-                                    try:
-                                        written += self.stdout.buffer.write(data[written:])
-                                        self.stdout.flush()
-                                    except BlockingIOError:
-                                        if n_retries >= 5:
-                                            raise
-                                        n_retries += 1
-                                        await asyncio.sleep(0.1)
-                            else:
-                                # `stdout` isn't always buffered (e.g. %%capture in Jupyter notebooks redirects it to
-                                # io.StringIO).
-                                self.stdout.write(log.data)
-                                self.stdout.flush()
-
-            for stream in line_buffers.values():
-                stream.finalize()
-
-        while True:
-            try:
-                await _get_logs()
-            except asyncio.CancelledError:
-                # TODO: this should come from the backend maybe
-                app_logs_url = f"https://modal.com/logs/{app_id}"
-                self.print_if_visible(
-                    f"[red]Timed out waiting for logs. [grey70]View logs at [underline]{app_logs_url}[/underline] for remaining output.[/grey70]"
+    async def put_log(self, log_batch: api_pb2.TaskLogsBatch, log: api_pb2.TaskLogs):
+        if log.task_state:
+            if log.task_state == api_pb2.TASK_STATE_WORKER_ASSIGNED:
+                # Close function's queueing progress bar (if it exists)
+                self._update_task_progress(
+                    task_id=log_batch.task_id,
+                    function_id=log_batch.function_id,
+                    progress_type=api_pb2.FUNCTION_QUEUED,
+                    completed=1,
+                    total=1,
+                    description=None,
                 )
-                raise
-            except (GRPCError, StreamTerminatedError) as exc:
-                if isinstance(exc, GRPCError):
-                    if exc.status in RETRYABLE_GRPC_STATUS_CODES:
-                        # Try again if we had a temporary connection drop,
-                        # for example if computer went to sleep.
-                        logger.debug("Log fetching timed out. Retrying ...")
-                        continue
-                elif isinstance(exc, StreamTerminatedError):
-                    logger.debug("Stream closed. Retrying ...")
-                    continue
-                raise
-            except Exception as exc:
-                logger.exception(f"Failed to fetch logs: {exc}")
-                await asyncio.sleep(1)
+            message = self._update_task_state(log_batch.task_id, log.task_state)
+            step_progress_update(self._status_spinner, message)
+        if log.task_progress.len or log.task_progress.pos:
+            self._update_task_progress(
+                task_id=log_batch.task_id,
+                function_id=log_batch.function_id,
+                progress_type=log.task_progress.progress_type,
+                completed=log.task_progress.pos or 0,
+                total=log.task_progress.len or 0,
+                description=log.task_progress.description,
+            )
+        elif log.data:
+            if self._visible_progress:
+                stream = self._line_buffers.get(log.file_descriptor)
+                if stream is None:
+                    stream = LineBufferedOutput(functools.partial(self._print_log, log.file_descriptor))
+                    self._line_buffers[log.file_descriptor] = stream
+                stream.write(log.data)
+            elif hasattr(self.stdout, "buffer"):
+                # If we're not showing progress, there's no need to buffer lines,
+                # because the progress spinner can't interfere with output.
 
-            if last_log_batch_entry_id is None:
-                break
-        logger.debug("Logging exited gracefully")
+                data = log.data.encode("utf-8")
+                written = 0
+                n_retries = 0
+                while written < len(data):
+                    try:
+                        written += self.stdout.buffer.write(data[written:])
+                        self.stdout.flush()
+                    except BlockingIOError:
+                        if n_retries >= 5:
+                            raise
+                        n_retries += 1
+                        await asyncio.sleep(0.1)
+            else:
+                # `stdout` isn't always buffered (e.g. %%capture in Jupyter notebooks redirects it to
+                # io.StringIO).
+                self.stdout.write(log.data)
+                self.stdout.flush()
+
+    def flush_lines(self):
+        for stream in self._line_buffers.values():
+            stream.finalize()
+
+    @contextlib.contextmanager
+    def show_status_spinner(self):
+        with self.ctx_if_visible(self.make_live(self._status_spinner)):
+            yield
+
+
+async def get_logs_loop(app_id: str, client: _Client, last_log_batch_entry_id: str, output_mgr: OutputManager):
+    async def _get_logs():
+        nonlocal last_log_batch_entry_id
+
+        request = api_pb2.AppGetLogsRequest(
+            app_id=app_id,
+            timeout=55,
+            last_entry_id=last_log_batch_entry_id,
+        )
+        log_batch: api_pb2.TaskLogsBatch
+        async for log_batch in unary_stream(client.stub.AppGetLogs, request):
+            if log_batch.app_done:
+                logger.debug("App logs are done")
+                last_log_batch_entry_id = None
+                return
+            else:
+                if log_batch.entry_id != "":
+                    # log_batch entry_id is empty for fd="server" messages from AppGetLogs
+                    last_log_batch_entry_id = log_batch.entry_id
+
+                for log in log_batch.items:
+                    await output_mgr.put_log(log_batch, log)
+
+        output_mgr.flush_lines()
+
+    while True:
+        try:
+            await _get_logs()
+        except asyncio.CancelledError:
+            # TODO: this should come from the backend maybe
+            app_logs_url = f"https://modal.com/logs/{app_id}"
+            output_mgr.print_if_visible(
+                f"[red]Timed out waiting for logs. [grey70]View logs at [underline]{app_logs_url}[/underline] for remaining output.[/grey70]"
+            )
+            raise
+        except (GRPCError, StreamTerminatedError) as exc:
+            if isinstance(exc, GRPCError):
+                if exc.status in RETRYABLE_GRPC_STATUS_CODES:
+                    # Try again if we had a temporary connection drop,
+                    # for example if computer went to sleep.
+                    logger.debug("Log fetching timed out. Retrying ...")
+                    continue
+            elif isinstance(exc, StreamTerminatedError):
+                logger.debug("Stream closed. Retrying ...")
+                continue
+            raise
+        except Exception as exc:
+            logger.exception(f"Failed to fetch logs: {exc}")
+            await asyncio.sleep(1)
+
+        if last_log_batch_entry_id is None:
+            break
+    logger.debug("Logging exited gracefully")
