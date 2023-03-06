@@ -265,31 +265,7 @@ class OutputManager:
         # Set the new message
         step_progress_update(self._status_spinner, message)
 
-    def update_task_progress(
-        self,
-        *,
-        task_id: Optional[str],
-        function_id: Optional[str],
-        progress_type,
-        completed: int,
-        total: int,
-        description: Optional[str],
-    ) -> None:
-        if progress_type == api_pb2.IMAGE_SNAPSHOT_UPLOAD:
-            self._update_snapshot_progress(task_id=task_id, completed=completed, total=total, description=description)
-        elif progress_type == api_pb2.FUNCTION_QUEUED:
-            self._update_queueing_progress(
-                function_id=function_id,
-                completed=completed,
-                total=None if total == 0 else total,
-                description=description,
-            )
-        else:  # Ensure forward-compatible with new types.
-            logger.debug(f"Received unrecognized progress type: {progress_type}")
-
-    def _update_snapshot_progress(
-        self, *, task_id: str, completed: int, total: int, description: Optional[str]
-    ) -> None:
+    def update_snapshot_progress(self, *, task_id: str, completed: int, total: int, description: Optional[str]) -> None:
         task_key = (task_id, api_pb2.IMAGE_SNAPSHOT_UPLOAD)
         if task_key in self._task_progress_items:
             progress_task_id = self._task_progress_items[task_key]
@@ -305,7 +281,7 @@ class OutputManager:
             # Rich throws a KeyError if the task has already been removed.
             pass
 
-    def _update_queueing_progress(
+    def update_queueing_progress(
         self, *, function_id: str, completed: int, total: Optional[int], description: Optional[str]
     ) -> None:
         """Handle queueing updates, ignoring completion updates for functions that have no queue progress bar."""
@@ -370,23 +346,26 @@ async def get_app_logs_loop(app_id: str, client: _Client, last_log_batch_entry_i
             output_mgr.update_task_state(log_batch.task_id, log.task_state)
             if log.task_state == api_pb2.TASK_STATE_WORKER_ASSIGNED:
                 # Close function's queueing progress bar (if it exists)
-                output_mgr.update_task_progress(
-                    task_id=log_batch.task_id,
-                    function_id=log_batch.function_id,
-                    progress_type=api_pb2.FUNCTION_QUEUED,
-                    completed=1,
-                    total=1,
-                    description=None,
+                output_mgr.update_queueing_progress(
+                    function_id=log_batch.function_id, completed=1, total=1, description=None
                 )
         elif log.task_progress.len or log.task_progress.pos:
-            output_mgr.update_task_progress(
-                task_id=log_batch.task_id,
-                function_id=log_batch.function_id,
-                progress_type=log.task_progress.progress_type,
-                completed=log.task_progress.pos or 0,
-                total=log.task_progress.len or 0,
-                description=log.task_progress.description,
-            )
+            if log.task_progress.progress_type == api_pb2.IMAGE_SNAPSHOT_UPLOAD:
+                output_mgr.update_snapshot_progress(
+                    task_id=log_batch.task_id,
+                    completed=log.task_progress.pos,
+                    total=log.task_progress.len,
+                    description=log.task_progress.description,
+                )
+            elif log.task_progress.progress_type == api_pb2.FUNCTION_QUEUED:
+                output_mgr.update_queueing_progress(
+                    function_id=log_batch.function_id,
+                    completed=log.task_progress.pos,
+                    total=log.task_progress.len,
+                    description=log.task_progress.description,
+                )
+            else:  # Ensure forward-compatible with new types.
+                logger.debug(f"Received unrecognized progress type: {log.task_progress.progress_type}")
         elif log.data:
             await output_mgr.put_log_content(log)
 
