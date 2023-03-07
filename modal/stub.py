@@ -111,7 +111,7 @@ class _Stub:
 
     def __init__(
         self,
-        name: str = None,
+        name: Optional[str] = None,
         *,
         mounts: Collection[_Mount] = [],
         secrets: Collection[_Secret] = [],
@@ -120,10 +120,7 @@ class _Stub:
         """Construct a new app stub, optionally with default mounts."""
 
         self._name = name
-        if name is not None:
-            self._description = name
-        else:
-            self._description = None
+        self._description = name
         self._blueprint = blueprint
         self._client_mount = None
         self._function_mounts = {}

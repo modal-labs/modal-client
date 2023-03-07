@@ -20,10 +20,6 @@ from ..functions import _FunctionHandle
 
 run_cli = typer.Typer(name="run")
 
-# Used to set Modal cleaner app descriptions which don't include modal CLI parts, only
-# user code parts.
-modal_cli_app_desc: str = None
-
 # Why do we need to support both types and the strings? Because something weird with
 # how __annotations__ works in Python (which inspect.signature uses). See #220.
 option_parsers = {
