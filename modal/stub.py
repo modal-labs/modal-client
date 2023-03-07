@@ -224,7 +224,6 @@ class _Stub:
         client,
         output_mgr: OutputManager,
         app: _App,
-        last_log_entry_id: Optional[str] = None,
         mode: StubRunMode = StubRunMode.RUN,
         post_init_state: int = api_pb2.APP_STATE_EPHEMERAL,
     ) -> AsyncGenerator[None, None]:
@@ -235,7 +234,7 @@ class _Stub:
             tc.infinite_loop(lambda: _heartbeat(client, app.app_id), sleep=HEARTBEAT_INTERVAL)
 
             # Start logs loop
-            logs_loop = tc.create_task(get_app_logs_loop(app.app_id, client, last_log_entry_id or "", output_mgr))
+            logs_loop = tc.create_task(get_app_logs_loop(app.app_id, client, output_mgr))
 
             try:
                 # Create all members
@@ -413,7 +412,6 @@ class _Stub:
         app_req = api_pb2.AppGetByDeploymentNameRequest(name=name, namespace=namespace)
         app_resp = await client.stub.AppGetByDeploymentName(app_req)
         existing_app_id = app_resp.app_id or None
-        last_log_entry_id = app_resp.last_log_entry_id
 
         # Grab the app
         if existing_app_id is not None:

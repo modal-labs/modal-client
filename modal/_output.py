@@ -344,7 +344,9 @@ class OutputManager:
             yield
 
 
-async def get_app_logs_loop(app_id: str, client: _Client, last_log_batch_entry_id: str, output_mgr: OutputManager):
+async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputManager):
+    last_log_batch_entry_id = ""
+
     async def _put_log(log_batch: api_pb2.TaskLogsBatch, log: api_pb2.TaskLogs):
         if log.task_state:
             output_mgr.update_task_state(log_batch.task_id, log.task_state)
