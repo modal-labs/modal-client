@@ -219,7 +219,7 @@ class _Stub:
         return image_handle._is_inside()
 
     @contextlib.asynccontextmanager
-    async def _run(
+    async def _run_ephemeral(
         self,
         client,
         output_mgr: OutputManager,
@@ -290,7 +290,7 @@ class _Stub:
         mode = StubRunMode.DETACH if detach else StubRunMode.RUN
         post_init_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
         app = await _App._init_new(client, self.description, detach=detach, deploying=False)
-        async with self._run(client, output_mgr, app, mode=mode, post_init_state=post_init_state):
+        async with self._run_ephemeral(client, output_mgr, app, mode=mode, post_init_state=post_init_state):
             if self._pty_input_stream:
                 output_mgr._visible_progress = False
                 handle = app._pty_input_stream
@@ -353,7 +353,7 @@ class _Stub:
 
         output_mgr = OutputManager(stdout, show_progress, "Serving app...")
         app = await _App._init_new(client, self.description, detach=False, deploying=False)
-        async with self._run(client, output_mgr, app, mode=StubRunMode.RUN):
+        async with self._run_ephemeral(client, output_mgr, app, mode=StubRunMode.RUN):
             await asyncio.sleep(timeout)
 
     async def deploy(
