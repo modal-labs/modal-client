@@ -2,6 +2,8 @@
 import contextlib
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypeVar
 
+from modal_proto import api_pb2
+
 if TYPE_CHECKING:
     from rich.spinner import Spinner
     from rich.tree import Tree
@@ -87,17 +89,32 @@ class Resolver:
         self._local_uuid_to_object[obj.local_uuid] = created_obj
         return created_obj
 
+    def objects(self) -> List:
+        return list(self._local_uuid_to_object.values())
+
     @contextlib.contextmanager
     def display(self):
         from ._output import step_completed
 
-        with self._output_mgr.ctx_if_visible(self._output_mgr.make_live(self._tree)):
+        if self._output_mgr is None:
             yield
-        self._tree.label = step_completed("Created objects.")
-        self._output_mgr.print_if_visible(self._tree)
+        else:
+            with self._output_mgr.ctx_if_visible(self._output_mgr.make_live(self._tree)):
+                yield
+            self._tree.label = step_completed("Created objects.")
+            self._output_mgr.print_if_visible(self._tree)
 
     def add_status_row(self) -> StatusRow:
         return StatusRow(self._tree)
 
-    def objects(self) -> List:
-        return list(self._local_uuid_to_object.values())
+    async def console_write(self, log: api_pb2.TaskLogs):
+        if self._output_mgr is not None:
+            await self._output_mgr.put_log_content(log)
+
+    def console_flush(self):
+        if self._output_mgr is not None:
+            self._output_mgr.flush_lines()
+
+    def image_snapshot_update(self, image_id: str, task_progress: api_pb2.TaskProgress):
+        if self._output_mgr is not None:
+            self._output_mgr.update_snapshot_progress(image_id, task_progress)

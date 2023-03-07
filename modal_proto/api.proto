@@ -899,8 +899,8 @@ message TaskLogs {
 }
 
 enum ProgressType {
-  IMAGE_SNAPSHOT_UPLOAD = 0;
-  FUNCTION_QUEUED = 1;
+  IMAGE_SNAPSHOT_UPLOAD = 0;  // TODO(erikbern): shouldn't be zero, and needs prefix
+  FUNCTION_QUEUED = 1;  // TODO(erikbern): needs_prefix
 }
 
 message TaskProgress {

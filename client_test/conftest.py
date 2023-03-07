@@ -441,10 +441,19 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.image_build_function_ids[idx] = request.build_function_id
         await stream.send_message(api_pb2.ImageGetOrCreateResponse(image_id=f"im-{idx}"))
 
-    async def ImageJoin(self, stream):
+    async def ImageJoinStreaming(self, stream):
         await stream.recv_message()
+        task_log_1 = api_pb2.TaskLogs(data="hello, world\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_INFO)
+        task_log_2 = api_pb2.TaskLogs(
+            task_progress=api_pb2.TaskProgress(
+                len=1, pos=0, progress_type=api_pb2.IMAGE_SNAPSHOT_UPLOAD, description="xyz"
+            )
+        )
+        await stream.send_message(api_pb2.ImageJoinStreamingResponse(task_logs=[task_log_1, task_log_2]))
         await stream.send_message(
-            api_pb2.ImageJoinResponse(result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS))
+            api_pb2.ImageJoinStreamingResponse(
+                result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
+            )
         )
 
     ### Mount
