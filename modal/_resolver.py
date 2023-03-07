@@ -96,7 +96,7 @@ class Resolver:
     def display(self):
         from ._output import step_completed
 
-        if self._output_mgr is not None:
+        if self._output_mgr is None:
             yield
         else:
             with self._output_mgr.ctx_if_visible(self._output_mgr.make_live(self._tree)):
