@@ -14,7 +14,6 @@ from modal_utils.async_utils import asyncify, synchronize_apis, synchronizer
 
 from ._output import OutputManager
 from ._watcher import watch
-from .app import _App
 from .cli.import_refs import import_stub
 from .client import _Client
 
