@@ -89,7 +89,7 @@ def app_logs(app_id: str):
         output_mgr = OutputManager(None, None, "Tailing logs for {app_id}")
         try:
             with output_mgr.show_status_spinner():
-                await get_app_logs_loop(app_id, aio_client, "", output_mgr)
+                await get_app_logs_loop(app_id, aio_client, output_mgr)
         except asyncio.CancelledError:
             pass
 

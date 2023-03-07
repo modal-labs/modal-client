@@ -86,14 +86,14 @@ async def _run_serve_loop(
     app = await _App._init_new(client, stub.description, detach=False, deploying=False)
 
     if unsupported_msg:
-        async with stub._run(client, output_mgr, app):
+        async with stub._run_ephemeral(client, output_mgr, app):
             client.set_pre_stop(app.disconnect)
             async for _ in watcher:
                 output_mgr.print_if_visible(unsupported_msg)
     else:
         # Run the object creation loop one time first, to make sure all images etc get built
         # This also handles the logs and the heartbeats
-        async with stub._run(client, output_mgr, app):
+        async with stub._run_ephemeral(client, output_mgr, app):
             if _app_q:
                 await _app_q.put(app)
             client.set_pre_stop(app.disconnect)
