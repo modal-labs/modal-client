@@ -12,7 +12,7 @@ from .exception import InvalidError, deprecation_warning
 class _GPUConfig:
     type: "api_pb2.GPUType.V"
     count: int
-    memory: int
+    memory: int = 0
 
     def _to_proto(self) -> api_pb2.GPUConfig:
         """Convert this GPU config to an internal protobuf representation."""
@@ -49,16 +49,16 @@ class A100(_GPUConfig):
 
 
 class A10G(_GPUConfig):
-    def __init__(self, *, count: int = 1, memory: int = 0):
-        super().__init__(api_pb2.GPU_TYPE_A10G, count, memory)
+    def __init__(self, *, count: int = 1):
+        super().__init__(api_pb2.GPU_TYPE_A10G, count)
 
     def __repr__(self):
         return f"GPU(A10G, count={self.count})"
 
 
 class Any(_GPUConfig):
-    def __init__(self, *, count: int = 1, memory: int = 0):
-        super().__init__(api_pb2.GPU_TYPE_ANY, count, memory)
+    def __init__(self, *, count: int = 1):
+        super().__init__(api_pb2.GPU_TYPE_ANY, count)
 
     def __repr__(self):
         return f"GPU(Any, count={self.count})"
@@ -92,6 +92,7 @@ def _parse_gpu_config(value: GPU_T, warn_on_true: bool = True) -> Optional[_GPUC
 
 
 def parse_gpu_config(value: GPU_T, warn_on_true: bool = True) -> api_pb2.GPUConfig:
+    """mdmd:hidden"""
     gpu_config = _parse_gpu_config(value, warn_on_true)
     if gpu_config is None:
         return api_pb2.GPUConfig()
@@ -99,4 +100,5 @@ def parse_gpu_config(value: GPU_T, warn_on_true: bool = True) -> api_pb2.GPUConf
 
 
 def display_gpu_config(value: GPU_T) -> str:
+    """mdmd:hidden"""
     return repr(_parse_gpu_config(value, False))
