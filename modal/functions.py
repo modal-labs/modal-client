@@ -319,6 +319,9 @@ async def _map_invocation(
             request = api_pb2.FunctionPutInputsRequest(
                 function_id=function_id, inputs=items, function_call_id=function_call_id
             )
+            logger.debug(
+                f"Pushing {len(items)} inputs to server. Num queued inputs awaiting push is {input_queue.qsize()}."
+            )
             resp = await retry_transient_errors(
                 client.stub.FunctionPutInputs,
                 request,
