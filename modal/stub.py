@@ -18,7 +18,7 @@ from modal_utils.decorator_utils import decorator_with_options
 from . import _pty
 from ._function_utils import FunctionInfo
 from ._ipython import is_notebook
-from ._output import OutputManager, step_completed, step_progress, get_app_logs_loop
+from ._output import OutputManager, step_completed, get_app_logs_loop
 from ._pty import exec_cmd
 from .app import _App, _container_app, is_local
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
@@ -40,7 +40,6 @@ _default_image = _Image.debian_slim()
 
 class StubRunMode(Enum):
     RUN = "run"
-    DEPLOY = "deploy"
     DETACH = "detach"
 
 
@@ -231,17 +230,12 @@ class _Stub:
     ) -> AsyncGenerator[None, None]:
         self._app = app
 
-        # Start tracking logs and yield context
         async with TaskContext(grace=config["logs_timeout"]) as tc:
             # Start heartbeats loop to keep the client alive
             tc.infinite_loop(lambda: _heartbeat(client, app.app_id), sleep=HEARTBEAT_INTERVAL)
 
-            with output_mgr.ctx_if_visible(output_mgr.make_live(step_progress("Initializing..."))):
-                logs_loop = tc.create_task(get_app_logs_loop(app.app_id, client, last_log_entry_id or "", output_mgr))
-                initialized_msg = (
-                    f"Initialized. [grey70]View app at [underline]{app._app_page_url}[/underline][/grey70]"
-                )
-                output_mgr.print_if_visible(step_completed(initialized_msg))
+            # Start logs loop
+            logs_loop = tc.create_task(get_app_logs_loop(app.app_id, client, last_log_entry_id or "", output_mgr))
 
             try:
                 # Create all members
@@ -250,13 +244,6 @@ class _Stub:
                 # Update all functions client-side to have the output mgr
                 for tag, obj in self._function_handles.items():
                     obj._set_output_mgr(output_mgr)
-
-                # Cancel logs loop after creating objects for a deployment.
-                # TODO: we can get rid of this once we have 1) a way to separate builder
-                # logs from runner logs and 2) a termination signal that's sent after object
-                # creation is complete, that is also triggered on exceptions (`app.disconnect()`)
-                if mode == StubRunMode.DEPLOY:
-                    logs_loop.cancel()
 
                 # Yield to context
                 with output_mgr.show_status_spinner():
@@ -434,19 +421,18 @@ class _Stub:
         else:
             app = await _App._init_new(client, name, detach=False, deploying=True)
 
-        # Don't change the app state - deploy state is set by AppDeploy
-        post_init_state = api_pb2.APP_STATE_UNSPECIFIED
-
-        # The `_run` method contains the logic for starting and running an app
         output_mgr = OutputManager(stdout, show_progress)
-        async with self._run(
-            client,
-            output_mgr,
-            app,
-            last_log_entry_id=last_log_entry_id,
-            mode=StubRunMode.DEPLOY,
-            post_init_state=post_init_state,
-        ):
+
+        async with TaskContext(0) as tc:
+            # Start heartbeats loop to keep the client alive
+            tc.infinite_loop(lambda: _heartbeat(client, app.app_id), sleep=HEARTBEAT_INTERVAL)
+
+            # Don't change the app state - deploy state is set by AppDeploy
+            post_init_state = api_pb2.APP_STATE_UNSPECIFIED
+
+            # Create all members
+            await app._create_all_objects(self._blueprint, output_mgr, post_init_state)
+
             deploy_req = api_pb2.AppDeployRequest(
                 app_id=app._app_id,
                 name=name,
@@ -454,6 +440,7 @@ class _Stub:
                 object_entity=object_entity,
             )
             deploy_response = await client.stub.AppDeploy(deploy_req)
+
         output_mgr.print_if_visible(step_completed("App deployed! 🎉"))
         output_mgr.print_if_visible(f"\nView Deployment: [magenta]{deploy_response.url}[/magenta]")
         return app
