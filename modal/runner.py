@@ -161,13 +161,9 @@ async def deploy_stub(
         # Create all members
         await app._create_all_objects(stub._blueprint, output_mgr, post_init_state)
 
-        deploy_req = api_pb2.AppDeployRequest(
-            app_id=app._app_id,
-            name=name,
-            namespace=namespace,
-            object_entity=object_entity,
-        )
-        deploy_response = await retry_transient_errors(client.stub.AppDeploy, deploy_req)
+        # Deploy app
+        url = await app.deploy(name, namespace, object_entity)
+
     output_mgr.print_if_visible(step_completed("App deployed! 🎉"))
-    output_mgr.print_if_visible(f"\nView Deployment: [magenta]{deploy_response.url}[/magenta]")
+    output_mgr.print_if_visible(f"\nView Deployment: [magenta]{url}[/magenta]")
     return app

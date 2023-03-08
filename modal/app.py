@@ -189,6 +189,16 @@ class _App:
 
         return handle
 
+    async def deploy(self, name: str, namespace: int, object_entity: str) -> str:
+        deploy_req = api_pb2.AppDeployRequest(
+            app_id=self.app_id,
+            name=name,
+            namespace=namespace,
+            object_entity=object_entity,
+        )
+        deploy_response = await retry_transient_errors(self._client.stub.AppDeploy, deploy_req)
+        return deploy_response.url
+
     @staticmethod
     def _reset_container():
         # Just used for tests
