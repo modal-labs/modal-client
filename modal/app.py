@@ -163,6 +163,19 @@ class _App:
         return _App(client, app_resp.app_id, app_page_url)
 
     @staticmethod
+    async def _init_from_name(client: _Client, name: str, namespace: int):
+        # Look up any existing deployment
+        app_req = api_pb2.AppGetByDeploymentNameRequest(name=name, namespace=namespace)
+        app_resp = await retry_transient_errors(client.stub.AppGetByDeploymentName, app_req)
+        existing_app_id = app_resp.app_id or None
+
+        # Grab the app
+        if existing_app_id is not None:
+            return await _App._init_existing(client, existing_app_id)
+        else:
+            return await _App._init_new(client, name, detach=False, deploying=True)
+
+    @staticmethod
     async def _create_one_object(client: _Client, provider: Provider) -> Tuple[Handle, str]:
         # TODO(erikbern): This will be turned into something for deploying single objects
         app_req = api_pb2.AppCreateRequest()

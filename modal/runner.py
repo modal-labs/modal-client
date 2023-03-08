@@ -147,16 +147,7 @@ async def deploy_stub(
     if client is None:
         client = await _Client.from_env()
 
-    # Look up any existing deployment
-    app_req = api_pb2.AppGetByDeploymentNameRequest(name=name, namespace=namespace)
-    app_resp = await retry_transient_errors(client.stub.AppGetByDeploymentName, app_req)
-    existing_app_id = app_resp.app_id or None
-
-    # Grab the app
-    if existing_app_id is not None:
-        app = await _App._init_existing(client, existing_app_id)
-    else:
-        app = await _App._init_new(client, name, detach=False, deploying=True)
+    app = await _App._init_from_name(client, name, namespace)
 
     output_mgr = OutputManager(stdout, show_progress)
 
