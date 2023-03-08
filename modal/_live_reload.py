@@ -22,7 +22,7 @@ def _run_serve(stub_ref: str, existing_app_id: str, is_ready: Event):
     # subprocess entrypoint
     _stub = import_stub(stub_ref)
     blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
-    blocking_stub._serve_update(existing_app_id, is_ready)
+    blocking_stub.serve_update(existing_app_id, is_ready)
 
 
 async def _restart_serve(stub_ref: str, existing_app_id: str, timeout: float = 5.0) -> SpawnProcess:
