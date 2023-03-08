@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-from __future__ import annotations
 import asyncio
 import contextlib
 from multiprocessing.synchronize import Event
@@ -29,7 +28,7 @@ async def _heartbeat(client, app_id):
 
 @contextlib.asynccontextmanager
 async def run_stub(
-    stub: _Stub,
+    stub,
     client: Optional[_Client] = None,
     stdout=None,
     show_progress: Optional[bool] = None,
@@ -97,7 +96,7 @@ async def run_stub(
 
 
 async def serve_update(
-    stub: _Stub,
+    stub,
     existing_app_id: str,
     is_ready: Event,
 ) -> None:
@@ -118,7 +117,7 @@ async def serve_update(
 
 
 async def deploy_stub(
-    stub: _Stub,
+    stub,
     name: str = None,
     namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
     client=None,
