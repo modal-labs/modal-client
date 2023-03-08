@@ -16,6 +16,7 @@ import modal
 from modal.cli.utils import timestamp_to_local
 from modal.client import Client, _Client
 from modal_utils.async_utils import synchronizer
+from modal_utils.grpc_utils import retry_transient_errors
 
 secret_cli = typer.Typer(name="secret", help="Manage secrets.", no_args_is_help=True)
 
@@ -24,7 +25,7 @@ secret_cli = typer.Typer(name="secret", help="Manage secrets.", no_args_is_help=
 @synchronizer
 async def list():
     client = await _Client.from_env()
-    response = await client.stub.SecretList(empty_pb2.Empty())
+    response = await retry_transient_errors(client.stub.SecretList, empty_pb2.Empty())
     table = Table()
     table.add_column("Name")
     table.add_column("Created at", justify="right")
