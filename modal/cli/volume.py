@@ -26,6 +26,7 @@ from modal.client import AioClient
 from modal.shared_volume import AioSharedVolumeHandle, _SharedVolumeHandle, AioSharedVolume
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
+from modal_utils.grpc_utils import retry_transient_errors
 
 FileType = api_pb2.SharedVolumeListFilesEntry.FileType
 
@@ -36,7 +37,7 @@ volume_cli = Typer(name="volume", help="Read and edit shared volumes.", no_args_
 @synchronizer
 async def list():
     client = await AioClient.from_env()
-    response = await client.stub.SharedVolumeList(empty_pb2.Empty())
+    response = await retry_transient_errors(client.stub.SharedVolumeList, empty_pb2.Empty())
     if sys.stdout.isatty():
         table = Table(title="Shared Volumes")
         table.add_column("Name")

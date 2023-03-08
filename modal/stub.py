@@ -13,6 +13,7 @@ from typing import AsyncGenerator, Collection, Dict, List, Optional, Union
 from modal_proto import api_pb2
 from modal_utils.app_utils import is_valid_app_name
 from modal_utils.async_utils import TaskContext, synchronize_apis
+from modal_utils.grpc_utils import retry_transient_errors
 from modal_utils.decorator_utils import decorator_with_options
 
 from . import _pty
@@ -57,7 +58,7 @@ async def _heartbeat(client, app_id):
     # TODO(erikbern): we should capture exceptions here
     # * if request fails: destroy the client
     # * if server says the app is gone: print a helpful warning about detaching
-    await client.stub.AppHeartbeat(request, timeout=HEARTBEAT_TIMEOUT)
+    await retry_transient_errors(client.stub.AppHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT)
 
 
 class _Stub:
@@ -405,7 +406,7 @@ class _Stub:
 
         # Look up any existing deployment
         app_req = api_pb2.AppGetByDeploymentNameRequest(name=name, namespace=namespace)
-        app_resp = await client.stub.AppGetByDeploymentName(app_req)
+        app_resp = await retry_transient_errors(client.stub.AppGetByDeploymentName, app_req)
         existing_app_id = app_resp.app_id or None
 
         # Grab the app
@@ -432,8 +433,7 @@ class _Stub:
                 namespace=namespace,
                 object_entity=object_entity,
             )
-            deploy_response = await client.stub.AppDeploy(deploy_req)
-
+            deploy_response = await retry_transient_errors(client.stub.AppDeploy, deploy_req)
         output_mgr.print_if_visible(step_completed("App deployed! 🎉"))
         output_mgr.print_if_visible(f"\nView Deployment: [magenta]{deploy_response.url}[/magenta]")
         return app
