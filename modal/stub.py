@@ -7,7 +7,6 @@ from multiprocessing.synchronize import Event
 import os
 import sys
 import warnings
-from enum import Enum
 from typing import AsyncGenerator, Collection, Dict, List, Optional, Union
 
 from modal_proto import api_pb2
@@ -37,11 +36,6 @@ from .secret import _Secret
 from .shared_volume import _SharedVolume
 
 _default_image = _Image.debian_slim()
-
-
-class StubRunMode(Enum):
-    RUN = "run"
-    DETACH = "detach"
 
 
 class LocalEntrypoint:
@@ -220,54 +214,12 @@ class _Stub:
         return image_handle._is_inside()
 
     @contextlib.asynccontextmanager
-    async def _run_ephemeral(
-        self,
-        client,
-        output_mgr: OutputManager,
-        app: _App,
-        mode: StubRunMode = StubRunMode.RUN,
-        post_init_state: int = api_pb2.APP_STATE_EPHEMERAL,
-    ) -> AsyncGenerator[None, None]:
+    async def _set_app(self, app: _App) -> AsyncGenerator[None, None]:
         self._app = app
-
-        async with TaskContext(grace=config["logs_timeout"]) as tc:
-            # Start heartbeats loop to keep the client alive
-            tc.infinite_loop(lambda: _heartbeat(client, app.app_id), sleep=HEARTBEAT_INTERVAL)
-
-            # Start logs loop
-            logs_loop = tc.create_task(get_app_logs_loop(app.app_id, client, output_mgr))
-
-            try:
-                # Create all members
-                await app._create_all_objects(self._blueprint, output_mgr, post_init_state)
-
-                # Update all functions client-side to have the output mgr
-                for tag, obj in self._function_handles.items():
-                    obj._set_output_mgr(output_mgr)
-
-                # Yield to context
-                with output_mgr.show_status_spinner():
-                    yield
-            except KeyboardInterrupt:
-                # mute cancellation errors on all function handles to prevent exception spam
-                for tag, obj in self._function_handles.items():
-                    obj._set_mute_cancellation(True)
-
-                if mode == StubRunMode.DETACH:
-                    output_mgr.print_if_visible(step_completed("Shutting down Modal client."))
-                    output_mgr.print_if_visible(
-                        f"""The detached app keeps running. You can track its progress at: [magenta]{app.log_url()}[/magenta]"""
-                    )
-                    logs_loop.cancel()
-                else:
-                    output_mgr.print_if_visible(step_completed("App aborted."))
-                    output_mgr.print_if_visible(
-                        "Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n"
-                    )
-            finally:
-                await app.disconnect()
-
-        self._app = None
+        try:
+            yield
+        finally:
+            self._app = None
 
     @contextlib.asynccontextmanager
     async def run(
@@ -295,19 +247,52 @@ class _Stub:
         if client is None:
             client = await _Client.from_env()
         output_mgr = OutputManager(stdout, show_progress, "Running app...")
-        mode = StubRunMode.DETACH if detach else StubRunMode.RUN
         post_init_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
         app = await _App._init_new(client, self.description, detach=detach, deploying=False)
-        async with self._run_ephemeral(client, output_mgr, app, mode=mode, post_init_state=post_init_state):
-            if self._pty_input_stream:
-                output_mgr._visible_progress = False
-                handle = app._pty_input_stream
-                assert isinstance(handle, _QueueHandle)
-                async with _pty.write_stdin_to_pty_stream(handle):
-                    yield app
-                output_mgr._visible_progress = True
-            else:
-                yield app
+        async with self._set_app(app), TaskContext(grace=config["logs_timeout"]) as tc:
+            # Start heartbeats loop to keep the client alive
+            tc.infinite_loop(lambda: _heartbeat(client, app.app_id), sleep=HEARTBEAT_INTERVAL)
+
+            # Start logs loop
+            logs_loop = tc.create_task(get_app_logs_loop(app.app_id, client, output_mgr))
+
+            try:
+                # Create all members
+                await app._create_all_objects(self._blueprint, output_mgr, post_init_state)
+
+                # Update all functions client-side to have the output mgr
+                for tag, obj in self._function_handles.items():
+                    obj._set_output_mgr(output_mgr)
+
+                # Yield to context
+                with output_mgr.show_status_spinner():
+                    if self._pty_input_stream:
+                        output_mgr._visible_progress = False
+                        handle = app._pty_input_stream
+                        assert isinstance(handle, _QueueHandle)
+                        async with _pty.write_stdin_to_pty_stream(handle):
+                            yield app
+                        output_mgr._visible_progress = True
+                    else:
+                        yield app
+            except KeyboardInterrupt:
+                # mute cancellation errors on all function handles to prevent exception spam
+                for tag, obj in self._function_handles.items():
+                    obj._set_mute_cancellation(True)
+
+                if detach:
+                    output_mgr.print_if_visible(step_completed("Shutting down Modal client."))
+                    output_mgr.print_if_visible(
+                        f"""The detached app keeps running. You can track its progress at: [magenta]{app.log_url()}[/magenta]"""
+                    )
+                    logs_loop.cancel()
+                else:
+                    output_mgr.print_if_visible(step_completed("App aborted."))
+                    output_mgr.print_if_visible(
+                        "Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n"
+                    )
+            finally:
+                await app.disconnect()
 
         output_mgr.print_if_visible(step_completed("App completed."))
 
