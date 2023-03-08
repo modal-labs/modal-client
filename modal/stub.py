@@ -269,7 +269,14 @@ class _Stub:
         self._app = None
 
     @contextlib.asynccontextmanager
-    async def run(self, client=None, stdout=None, show_progress=None, detach=False) -> AsyncGenerator[_App, None]:
+    async def run(
+        self,
+        client: Optional[_Client] = None,
+        stdout=None,
+        show_progress: Optional[bool] = None,
+        detach: bool = False,
+        output_mgr: Optional[OutputManager] = None,
+    ) -> AsyncGenerator[_App, None]:
         """Context manager that runs an app on Modal.
 
         Use this as the main entry point for your Modal application. All calls
@@ -303,6 +310,27 @@ class _Stub:
 
         output_mgr.print_if_visible(step_completed("App completed."))
 
+    async def serve(
+        self,
+        client: Optional[_Client] = None,
+        stdout=None,
+        show_progress: Optional[bool] = None,
+        timeout: float = 1e10,
+    ) -> None:
+        """Run an app until the program is interrupted."""
+        deprecation_warning(
+            date(2023, 2, 28),
+            "stub.serve() is deprecated. Use the `modal serve` CLI command instead",
+        )
+        if self._app is not None:
+            raise InvalidError(
+                "The stub already has an app running."
+                " Are you calling stub.serve() directly?"
+                " Consider using the `modal serve` shell command."
+            )
+        async with self.run(client=client, stdout=stdout, show_progress=show_progress):
+            await asyncio.sleep(timeout)
+
     async def _serve_update(
         self,
         existing_app_id: str,
@@ -322,39 +350,6 @@ class _Stub:
         except asyncio.exceptions.CancelledError:
             # Stopped by parent process
             pass
-
-    async def serve(
-        self,
-        client=None,
-        stdout=None,
-        show_progress=None,
-        timeout=None,
-    ) -> None:
-        """Run an app until the program is interrupted."""
-        deprecation_warning(
-            date(2023, 2, 28),
-            "stub.serve() is deprecated. Use the `modal serve` CLI command instead",
-        )
-        if self._app is not None:
-            raise InvalidError(
-                "The stub already has an app running."
-                " Are you calling stub.serve() directly?"
-                " Consider using the `modal serve` shell command."
-            )
-
-        if client is None:
-            client = await _Client.from_env()
-
-        if timeout is None:
-            timeout = config["serve_timeout"]
-
-        if timeout is None:
-            timeout = 1e10
-
-        output_mgr = OutputManager(stdout, show_progress, "Serving app...")
-        app = await _App._init_new(client, self.description, detach=False, deploying=False)
-        async with self._run_ephemeral(client, output_mgr, app, mode=StubRunMode.RUN):
-            await asyncio.sleep(timeout)
 
     async def deploy(
         self,
