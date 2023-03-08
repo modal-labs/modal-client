@@ -8,6 +8,8 @@ from grpclib import GRPCError, Status
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
+from modal_utils.grpc_utils import retry_transient_errors
+
 
 from ._object_meta import ObjectMeta
 from ._resolver import Resolver
@@ -105,7 +107,7 @@ class Handle(metaclass=ObjectMeta):
             object_entity=cls._type_prefix,
         )
         try:
-            response = await client.stub.AppLookupObject(request)
+            response = await retry_transient_errors(client.stub.AppLookupObject, request)
             if not response.object_id:
                 # Legacy error message: remove soon
                 raise NotFoundError(response.error_message)
@@ -296,7 +298,7 @@ class Provider(Generic[H]):
             object_entity=handle_cls._type_prefix,
         )
         try:
-            response = await client.stub.AppLookupObject(request)
+            response = await retry_transient_errors(client.stub.AppLookupObject, request)
             return bool(response.object_id)  # old code path - change to `return True` shortly
         except GRPCError as exc:
             if exc.status == Status.NOT_FOUND:
