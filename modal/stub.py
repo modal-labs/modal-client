@@ -219,6 +219,14 @@ class _Stub:
         return image_handle._is_inside()
 
     @contextlib.asynccontextmanager
+    async def _set_app(self, app: _App) -> AsyncGenerator[None, None]:
+        self._app = app
+        try:
+            yield
+        finally:
+            self._app = None
+
+    @contextlib.asynccontextmanager
     async def _run_ephemeral(
         self,
         client,
@@ -227,8 +235,6 @@ class _Stub:
         mode: StubRunMode = StubRunMode.RUN,
         post_init_state: int = api_pb2.APP_STATE_EPHEMERAL,
     ) -> AsyncGenerator[None, None]:
-        self._app = app
-
         async with TaskContext(grace=config["logs_timeout"]) as tc:
             # Start heartbeats loop to keep the client alive
             tc.infinite_loop(lambda: _heartbeat(client, app.app_id), sleep=HEARTBEAT_INTERVAL)
@@ -266,8 +272,6 @@ class _Stub:
             finally:
                 await app.disconnect()
 
-        self._app = None
-
     @contextlib.asynccontextmanager
     async def run(
         self,
@@ -297,16 +301,17 @@ class _Stub:
         mode = StubRunMode.DETACH if detach else StubRunMode.RUN
         post_init_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
         app = await _App._init_new(client, self.description, detach=detach, deploying=False)
-        async with self._run_ephemeral(client, output_mgr, app, mode=mode, post_init_state=post_init_state):
-            if self._pty_input_stream:
-                output_mgr._visible_progress = False
-                handle = app._pty_input_stream
-                assert isinstance(handle, _QueueHandle)
-                async with _pty.write_stdin_to_pty_stream(handle):
+        async with self._set_app(app):
+            async with self._run_ephemeral(client, output_mgr, app, mode=mode, post_init_state=post_init_state):
+                if self._pty_input_stream:
+                    output_mgr._visible_progress = False
+                    handle = app._pty_input_stream
+                    assert isinstance(handle, _QueueHandle)
+                    async with _pty.write_stdin_to_pty_stream(handle):
+                        yield app
+                    output_mgr._visible_progress = True
+                else:
                     yield app
-                output_mgr._visible_progress = True
-            else:
-                yield app
 
         output_mgr.print_if_visible(step_completed("App completed."))
 
