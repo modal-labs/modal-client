@@ -162,6 +162,7 @@ async def deploy_stub(
         await app._create_all_objects(stub._blueprint, output_mgr, post_init_state)
 
         # Deploy app
+        # TODO(erikbern): not needed if the app already existed
         url = await app.deploy(name, namespace, object_entity)
 
     output_mgr.print_if_visible(step_completed("App deployed! 🎉"))
