@@ -246,7 +246,8 @@ class _Stub:
             )
         if client is None:
             client = await _Client.from_env()
-        output_mgr = OutputManager(stdout, show_progress, "Running app...")
+        if output_mgr is None:
+            output_mgr = OutputManager(stdout, show_progress, "Running app...")
         post_init_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
         app = await _App._init_new(client, self.description, detach=detach, deploying=False)
         async with self._set_app(app), TaskContext(grace=config["logs_timeout"]) as tc:
