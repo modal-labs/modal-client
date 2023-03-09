@@ -2,6 +2,7 @@
 import asyncio
 import datetime
 import inspect
+import sys
 from typing import Optional
 
 import click
@@ -18,7 +19,6 @@ from .import_refs import import_function, import_stub
 from ..functions import _FunctionHandle
 
 run_cli = typer.Typer(name="run")
-
 
 # Why do we need to support both types and the strings? Because something weird with
 # how __annotations__ works in Python (which inspect.signature uses). See #220.
@@ -61,6 +61,16 @@ def _add_click_options(func, signature: inspect.Signature):
 
         click.option(cli_name, **kwargs)(func)
     return func
+
+
+def _get_clean_stub_description(func_ref: str) -> str:
+    # If possible, consider the 'ref' argument the start of the app's args. Everything
+    # before it Modal CLI cruft (eg. `modal run --detach`).
+    try:
+        func_ref_arg_idx = sys.argv.index(func_ref)
+        return " ".join(sys.argv[func_ref_arg_idx:])
+    except ValueError:
+        return " ".join(sys.argv)
 
 
 def _get_click_command_for_function(_stub, function_tag):
@@ -108,6 +118,8 @@ class RunGroup(click.Group):
             func_ref, accept_local_entrypoint=True, interactive=False, base_cmd="modal run"
         )
         _stub = _function_handle_or_entrypoint._stub
+        if _stub._description is None:
+            _stub._description = _get_clean_stub_description(func_ref)
         if isinstance(_function_handle_or_entrypoint, LocalEntrypoint):
             click_command = _get_click_command_for_local_entrypoint(_stub, _function_handle_or_entrypoint)
         else:
