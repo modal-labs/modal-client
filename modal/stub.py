@@ -95,7 +95,7 @@ class _Stub:
 
     def __init__(
         self,
-        name: str = None,
+        name: Optional[str] = None,
         *,
         mounts: Collection[_Mount] = [],
         secrets: Collection[_Secret] = [],
@@ -104,10 +104,7 @@ class _Stub:
         """Construct a new app stub, optionally with default mounts."""
 
         self._name = name
-        if name is not None:
-            self._description = name
-        else:
-            self._description = self._infer_app_desc()
+        self._description = name
         self._blueprint = blueprint
         self._client_mount = None
         self._function_mounts = {}
@@ -138,7 +135,7 @@ class _Stub:
     @property
     def description(self) -> str:
         """The Stub's `name`, if available, or a fallback descriptive identifier."""
-        return self._description
+        return self._description or self._infer_app_desc()
 
     def _infer_app_desc(self):
         if is_notebook():

@@ -42,13 +42,14 @@ async def set_env_client(aio_client):
 
 def _run(args, expected_exit_code=0):
     runner = click.testing.CliRunner()
-    res = runner.invoke(entrypoint_cli, args)
-    if res.exit_code != expected_exit_code:
-        print("stdout:", repr(res.stdout))
-        traceback.print_tb(res.exc_info[2])
-        print(res.exception, file=sys.stderr)
-        assert res.exit_code == expected_exit_code
-    return res
+    with mock.patch.object(sys, "argv", args):
+        res = runner.invoke(entrypoint_cli, args)
+        if res.exit_code != expected_exit_code:
+            print("stdout:", repr(res.stdout))
+            traceback.print_tb(res.exc_info[2])
+            print(res.exception, file=sys.stderr)
+            assert res.exit_code == expected_exit_code
+        return res
 
 
 def test_app_deploy_success(servicer, mock_dir, set_env_client):
@@ -271,6 +272,26 @@ def test_shell(servicer, set_env_client, test_dir):
     ), mock.patch("modal._pty.write_stdin_to_pty_stream", noop_async_context_manager):
         _run(["shell", stub_file.as_posix() + "::foo"])
     assert ran_cmd == "/bin/bash"
+
+
+def test_app_descriptions(servicer, server_url_env, test_dir):
+    stub_file = test_dir / "supports" / "app_run_tests" / "prints_desc_stub.py"
+    _run(["run", "--detach", stub_file.as_posix() + "::stub.foo"])
+
+    create_reqs = [s for s in servicer.requests if isinstance(s, api_pb2.AppCreateRequest)]
+    assert len(create_reqs) == 1
+    assert create_reqs[0].detach
+    description = create_reqs[0].description
+    assert "prints_desc_stub.py::stub.foo" in description
+    assert "run --detach " not in description
+
+    _run(["serve", "--timeout", "0.0", stub_file.as_posix()])
+    create_reqs = [s for s in servicer.requests if isinstance(s, api_pb2.AppCreateRequest)]
+    assert len(create_reqs) == 2
+    description = create_reqs[1].description
+    assert "prints_desc_stub.py" in description
+    assert "serve" not in description
+    assert "--timeout 0.0" not in description
 
 
 def test_logs(servicer, server_url_env):
