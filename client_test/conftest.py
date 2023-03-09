@@ -475,9 +475,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
     ### Queue
 
     async def QueueCreate(self, stream):
-        await stream.recv_message()
-        self.n_queues += 1
-        await stream.send_message(api_pb2.QueueCreateResponse(queue_id=f"qu-{self.n_queues}"))
+        request: api_pb2.QueueCreateRequest = await stream.recv_message()
+        if request.existing_queue_id:
+            queue_id = request.existing_queue_id
+        else:
+            self.n_queues += 1
+            queue_id = f"qu-{self.n_queues}"
+        await stream.send_message(api_pb2.QueueCreateResponse(queue_id=queue_id))
 
     async def QueuePut(self, stream):
         request: api_pb2.QueuePutRequest = await stream.recv_message()

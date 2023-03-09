@@ -178,8 +178,9 @@ class _App:
             return await _App._init_new(client, name, detach=False, deploying=True)
 
     async def create_one_object(self, provider: Provider) -> Handle:
+        existing_object_id: Optional[str] = self._tag_to_existing_id.get("_object")
         resolver = Resolver(None, self._client, self.app_id)
-        handle = await resolver.load(provider)
+        handle = await resolver.load(provider, existing_object_id)
         indexed_object_ids = {"_object": handle.object_id}
         unindexed_object_ids = [obj.object_id for obj in resolver.objects() if obj is not handle]
         req_set = api_pb2.AppSetObjectsRequest(
