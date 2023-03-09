@@ -527,9 +527,10 @@ class _Stub:
     def local_entrypoint(self, raw_f=None, name: Optional[str] = None):
         """Decorate a function to be used as a CLI entrypoint for a Modal App.
 
-        These functions can be used to do initialization of apps using local
-        assets. Note that regular Modal functions can also be used as CLI entrypoints,
-        but unlike `local_entrypoint` Modal function are executed remotely.
+        These functions can be used to define code that runs locally to set up the app,
+        and act as an entrypoint to start Modal functions from. Note that regular
+        Modal functions can also be used as CLI entrypoints, but unlike `local_entrypoint`,
+        those functions are executed remotely directly.
 
         **Example**
 
@@ -539,18 +540,36 @@ class _Stub:
             some_modal_function.call()
         ```
 
-        You can call the entrypoint function within a Modal run context
-        directly from the CLI:
+        You can call the function using `modal run` directly from the CLI:
 
         ```shell
         modal run stub_module.py
         ```
+
+        Note that an explicit [`stub.run()`](/docs/reference/modal.Stub#run) is not needed, as an
+        [app](/docs/guide/apps#apps-vs-stubs) is automatically creatd for you.
+
+        **Multiple Entrypoints**
 
         If you have multiple `local_entrypoint` functions, you can qualify the name of your stub and function:
 
         ```shell
         modal run stub_module.py::stub.some_other_function
         ```
+
+        **Parsing Arguments**
+
+        If your entrypoint function take arguments with primitive types, `modal run` automatically parses them as
+        CLI options. For example, the following function can be called with `modal run stub_module.py --foo 1 --bar "hello"`:
+
+        ```python
+        @stub.local_entrypoint
+        def main(foo: int, bar: str):
+            some_modal_function.call(foo, bar)
+        ```
+
+        Currently, `str`, `int`, `float`, `bool`, and `datetime.datetime` are supported. Use `modal run stub_module.py --help` for more
+        information on usage.
 
         """
         info = FunctionInfo(raw_f, False, name_override=name)
