@@ -63,15 +63,15 @@ async def run_stub(
                 obj._set_output_mgr(output_mgr)
 
             # Yield to context
-            with output_mgr.show_status_spinner():
-                if stub._pty_input_stream:
-                    output_mgr._visible_progress = False
-                    handle = app._pty_input_stream
-                    assert isinstance(handle, _QueueHandle)
-                    async with _pty.write_stdin_to_pty_stream(handle):
-                        yield app
-                    output_mgr._visible_progress = True
-                else:
+            if stub._pty_input_stream:
+                output_mgr._visible_progress = False
+                handle = app._pty_input_stream
+                assert isinstance(handle, _QueueHandle)
+                async with _pty.write_stdin_to_pty_stream(handle):
+                    yield app
+                output_mgr._visible_progress = True
+            else:
+                with output_mgr.show_status_spinner():
                     yield app
         except KeyboardInterrupt:
             # mute cancellation errors on all function handles to prevent exception spam
