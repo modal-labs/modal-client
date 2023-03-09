@@ -74,3 +74,10 @@ async def test_deploy_exists(servicer, aio_client):
     assert await AioQueue._exists("my-queue", client=aio_client)
     h2 = await AioQueue().lookup("my-queue", client=aio_client)
     assert h1.object_id == h2.object_id
+
+
+@pytest.mark.asyncio
+async def test_deploy_retain_id(servicer, aio_client):
+    h1 = await AioQueue()._deploy("my-queue", client=aio_client)
+    h2 = await AioQueue()._deploy("my-queue", client=aio_client)
+    assert h1.object_id == h2.object_id
