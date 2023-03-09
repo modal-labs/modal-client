@@ -149,7 +149,9 @@ class _App:
         return _App(client, existing_app_id, app_page_url, tag_to_existing_id=object_ids)
 
     @staticmethod
-    async def _init_new(client: _Client, description: Optional[str] = None, detach: bool = False, deploying: bool = False) -> _App:
+    async def _init_new(
+        client: _Client, description: Optional[str] = None, detach: bool = False, deploying: bool = False
+    ) -> _App:
         # Start app
         # TODO(erikbern): maybe this should happen outside of this method?
         app_req = api_pb2.AppCreateRequest(
@@ -163,7 +165,7 @@ class _App:
         return _App(client, app_resp.app_id, app_page_url)
 
     @staticmethod
-    async def _init_from_name(client: _Client, name: str, namespace: int):
+    async def _init_from_name(client: _Client, name: str, namespace):
         # Look up any existing deployment
         app_req = api_pb2.AppGetByDeploymentNameRequest(name=name, namespace=namespace)
         app_resp = await retry_transient_errors(client.stub.AppGetByDeploymentName, app_req)
@@ -189,7 +191,7 @@ class _App:
 
         return handle
 
-    async def deploy(self, name: str, namespace: int, object_entity: str) -> str:
+    async def deploy(self, name: str, namespace, object_entity: str) -> str:
         deploy_req = api_pb2.AppDeployRequest(
             app_id=self.app_id,
             name=name,
