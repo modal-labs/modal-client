@@ -8,6 +8,8 @@ from grpclib import GRPCError, Status
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
+from modal_utils.grpc_utils import retry_transient_errors
+
 
 from ._object_meta import ObjectMeta
 from ._resolver import Resolver
@@ -105,7 +107,7 @@ class Handle(metaclass=ObjectMeta):
             object_entity=cls._type_prefix,
         )
         try:
-            response = await client.stub.AppLookupObject(request)
+            response = await retry_transient_errors(client.stub.AppLookupObject, request)
             if not response.object_id:
                 # Legacy error message: remove soon
                 raise NotFoundError(response.error_message)
@@ -175,16 +177,16 @@ class Provider(Generic[H]):
         Note 1: this uses the single-object app method, which we're planning to get rid of later
         Note 2: still considering this an "internal" method, but we'll make it "official" later
         """
-        from .stub import _Stub
+        from .app import _App
 
         if client is None:
             client = await _Client.from_env()
 
         handle_cls = self.get_handle_cls()
         object_entity = handle_cls._type_prefix
-        _stub = _Stub(label, _object=self)
-        await _stub.deploy(namespace=namespace, client=client, object_entity=object_entity, show_progress=False)
-        handle: H = await handle_cls.from_app(label, namespace=namespace, client=client)
+        app = await _App._init_from_name(client, label, namespace)
+        handle = await app.create_one_object(self)
+        await app.deploy(label, namespace, object_entity)  # TODO(erikbern): not needed if the app already existed
         return handle
 
     def persist(self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE):
@@ -296,7 +298,7 @@ class Provider(Generic[H]):
             object_entity=handle_cls._type_prefix,
         )
         try:
-            response = await client.stub.AppLookupObject(request)
+            response = await retry_transient_errors(client.stub.AppLookupObject, request)
             return bool(response.object_id)  # old code path - change to `return True` shortly
         except GRPCError as exc:
             if exc.status == Status.NOT_FOUND:

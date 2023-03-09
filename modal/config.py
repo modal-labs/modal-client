@@ -143,7 +143,6 @@ _SETTINGS = {
     "logs_timeout": _Setting(10, float),
     "image_python_version": _Setting(),
     "image_id": _Setting(),
-    "serve_timeout": _Setting(transform=float),
     "automount": _Setting(True, transform=lambda x: x not in ("", "0")),
     "tracing_enabled": _Setting(False, transform=lambda x: x not in ("", "0")),
     "profiling_enabled": _Setting(False, transform=lambda x: x not in ("", "0")),

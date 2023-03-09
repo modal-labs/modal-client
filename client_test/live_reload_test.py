@@ -49,7 +49,7 @@ async def test_no_change(test_dir, server_url_env, servicer):
 
 @pytest.mark.asyncio
 async def test_heartbeats(test_dir, server_url_env, servicer):
-    with mock.patch("modal.stub.HEARTBEAT_INTERVAL", 1):
+    with mock.patch("modal.runner.HEARTBEAT_INTERVAL", 1):
         stub_file = str(test_dir / "supports" / "app_run_tests" / "webhook.py")
         await aio_run_serve_loop(stub_file, timeout=3.5)
 

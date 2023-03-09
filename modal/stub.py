@@ -7,22 +7,19 @@ from multiprocessing.synchronize import Event
 import os
 import sys
 import warnings
-from enum import Enum
 from typing import AsyncGenerator, Collection, Dict, List, Optional, Union
 
 from modal_proto import api_pb2
-from modal_utils.app_utils import is_valid_app_name
-from modal_utils.async_utils import TaskContext, synchronize_apis
+from modal_utils.async_utils import synchronize_apis
 from modal_utils.decorator_utils import decorator_with_options
 
-from . import _pty
 from ._function_utils import FunctionInfo
 from ._ipython import is_notebook
-from ._output import OutputManager, step_completed, step_progress, get_app_logs_loop
+from ._output import OutputManager
 from ._pty import exec_cmd
 from .app import _App, _container_app, is_local
-from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
-from .config import config, logger
+from .client import _Client
+from .config import logger
 from .exception import InvalidError, deprecation_warning
 from .functions import _Function, _FunctionHandle
 from .gpu import GPU_T
@@ -30,18 +27,13 @@ from .image import _Image, _ImageHandle
 from .mount import _get_client_mount, _Mount
 from .object import Provider
 from .proxy import _Proxy
-from .queue import _Queue, _QueueHandle
+from .queue import _Queue
+from .runner import run_stub, deploy_stub, serve_update
 from .schedule import Schedule
 from .secret import _Secret
 from .shared_volume import _SharedVolume
 
 _default_image = _Image.debian_slim()
-
-
-class StubRunMode(Enum):
-    RUN = "run"
-    DEPLOY = "deploy"
-    DETACH = "detach"
 
 
 class LocalEntrypoint:
@@ -51,14 +43,6 @@ class LocalEntrypoint:
 
     def __call__(self, *args, **kwargs):
         return self.raw_f(*args, **kwargs)
-
-
-async def _heartbeat(client, app_id):
-    request = api_pb2.AppHeartbeatRequest(app_id=app_id)
-    # TODO(erikbern): we should capture exceptions here
-    # * if request fails: destroy the client
-    # * if server says the app is gone: print a helpful warning about detaching
-    await client.stub.AppHeartbeat(request, timeout=HEARTBEAT_TIMEOUT)
 
 
 class _Stub:
@@ -217,70 +201,22 @@ class _Stub:
         return image_handle._is_inside()
 
     @contextlib.asynccontextmanager
-    async def _run(
-        self,
-        client,
-        output_mgr: OutputManager,
-        app: _App,
-        last_log_entry_id: Optional[str] = None,
-        mode: StubRunMode = StubRunMode.RUN,
-        post_init_state: int = api_pb2.APP_STATE_EPHEMERAL,
-    ) -> AsyncGenerator[None, None]:
+    async def _set_app(self, app: _App) -> AsyncGenerator[None, None]:
         self._app = app
-
-        # Start tracking logs and yield context
-        async with TaskContext(grace=config["logs_timeout"]) as tc:
-            # Start heartbeats loop to keep the client alive
-            tc.infinite_loop(lambda: _heartbeat(client, app.app_id), sleep=HEARTBEAT_INTERVAL)
-
-            with output_mgr.ctx_if_visible(output_mgr.make_live(step_progress("Initializing..."))):
-                logs_loop = tc.create_task(get_app_logs_loop(app.app_id, client, last_log_entry_id or "", output_mgr))
-                initialized_msg = (
-                    f"Initialized. [grey70]View app at [underline]{app._app_page_url}[/underline][/grey70]"
-                )
-                output_mgr.print_if_visible(step_completed(initialized_msg))
-
-            try:
-                # Create all members
-                await app._create_all_objects(self._blueprint, output_mgr, post_init_state)
-
-                # Update all functions client-side to have the output mgr
-                for tag, obj in self._function_handles.items():
-                    obj._set_output_mgr(output_mgr)
-
-                # Cancel logs loop after creating objects for a deployment.
-                # TODO: we can get rid of this once we have 1) a way to separate builder
-                # logs from runner logs and 2) a termination signal that's sent after object
-                # creation is complete, that is also triggered on exceptions (`app.disconnect()`)
-                if mode == StubRunMode.DEPLOY:
-                    logs_loop.cancel()
-
-                # Yield to context
-                with output_mgr.show_status_spinner():
-                    yield
-            except KeyboardInterrupt:
-                # mute cancellation errors on all function handles to prevent exception spam
-                for tag, obj in self._function_handles.items():
-                    obj._set_mute_cancellation(True)
-
-                if mode == StubRunMode.DETACH:
-                    output_mgr.print_if_visible(step_completed("Shutting down Modal client."))
-                    output_mgr.print_if_visible(
-                        f"""The detached app keeps running. You can track its progress at: [magenta]{app.log_url()}[/magenta]"""
-                    )
-                    logs_loop.cancel()
-                else:
-                    output_mgr.print_if_visible(step_completed("App aborted."))
-                    output_mgr.print_if_visible(
-                        "Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n"
-                    )
-            finally:
-                await app.disconnect()
-
-        self._app = None
+        try:
+            yield
+        finally:
+            self._app = None
 
     @contextlib.asynccontextmanager
-    async def run(self, client=None, stdout=None, show_progress=None, detach=False) -> AsyncGenerator[_App, None]:
+    async def run(
+        self,
+        client: Optional[_Client] = None,
+        stdout=None,
+        show_progress: Optional[bool] = None,
+        detach: bool = False,
+        output_mgr: Optional[OutputManager] = None,
+    ) -> AsyncGenerator[_App, None]:
         """Context manager that runs an app on Modal.
 
         Use this as the main entry point for your Modal application. All calls
@@ -289,57 +225,15 @@ class _Stub:
 
         See the documentation for the [`App`](modal.App) class for more details.
         """
-        if not is_local():
-            raise InvalidError(
-                "Can not run an app from within a container."
-                " Are you calling stub.run() directly?"
-                " Consider using the `modal run` shell command."
-            )
-        if client is None:
-            client = await _Client.from_env()
-        output_mgr = OutputManager(stdout, show_progress, "Running app...")
-        mode = StubRunMode.DETACH if detach else StubRunMode.RUN
-        post_init_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
-        app = await _App._init_new(client, self.description, detach=detach, deploying=False)
-        async with self._run(client, output_mgr, app, mode=mode, post_init_state=post_init_state):
-            if self._pty_input_stream:
-                output_mgr._visible_progress = False
-                handle = app._pty_input_stream
-                assert isinstance(handle, _QueueHandle)
-                async with _pty.write_stdin_to_pty_stream(handle):
-                    yield app
-                output_mgr._visible_progress = True
-            else:
-                yield app
-
-        output_mgr.print_if_visible(step_completed("App completed."))
-
-    async def _serve_update(
-        self,
-        existing_app_id: str,
-        is_ready: Event,
-    ) -> None:
-        # Used by child process to reinitialize a served app
-        client = await _Client.from_env()
-        try:
-            output_mgr = OutputManager(None, None)
-            app = await _App._init_existing(client, existing_app_id)
-
-            # Create objects
-            await app._create_all_objects(self._blueprint, output_mgr, api_pb2.APP_STATE_UNSPECIFIED)
-
-            # Communicate to the parent process
-            is_ready.set()
-        except asyncio.exceptions.CancelledError:
-            # Stopped by parent process
-            pass
+        async with run_stub(self, client, stdout, show_progress, detach, output_mgr) as app:
+            yield app
 
     async def serve(
         self,
-        client=None,
+        client: Optional[_Client] = None,
         stdout=None,
-        show_progress=None,
-        timeout=None,
+        show_progress: Optional[bool] = None,
+        timeout: float = 1e10,
     ) -> None:
         """Run an app until the program is interrupted."""
         deprecation_warning(
@@ -352,20 +246,15 @@ class _Stub:
                 " Are you calling stub.serve() directly?"
                 " Consider using the `modal serve` shell command."
             )
-
-        if client is None:
-            client = await _Client.from_env()
-
-        if timeout is None:
-            timeout = config["serve_timeout"]
-
-        if timeout is None:
-            timeout = 1e10
-
-        output_mgr = OutputManager(stdout, show_progress, "Serving app...")
-        app = await _App._init_new(client, self.description, detach=False, deploying=False)
-        async with self._run(client, output_mgr, app, mode=StubRunMode.RUN):
+        async with run_stub(self, client=client, stdout=stdout, show_progress=show_progress):
             await asyncio.sleep(timeout)
+
+    async def serve_update(
+        self,
+        existing_app_id: str,
+        is_ready: Event,
+    ) -> None:
+        await serve_update(self, existing_app_id, is_ready)
 
     async def deploy(
         self,
@@ -375,7 +264,7 @@ class _Stub:
         stdout=None,
         show_progress=None,
         object_entity="ap",
-    ):
+    ) -> _App:
         """Deploy an app and export its objects persistently.
 
         Typically, using the command-line tool `modal deploy <module or script>`
@@ -397,63 +286,7 @@ class _Stub:
         * Allows for certain kinds of these objects, _deployment objects_, to be
           referred to and used by other apps.
         """
-        if not is_local():
-            raise InvalidError("Cannot run a deploy from within a container.")
-        if name is None:
-            name = self.name
-        if name is None:
-            raise InvalidError(
-                "You need to either supply an explicit deployment name to the deploy command, or have a name set on the app.\n"
-                "\n"
-                "Examples:\n"
-                'stub.deploy("some_name")\n\n'
-                "or\n"
-                'stub = Stub("some-name")'
-            )
-
-        if not is_valid_app_name(name):
-            raise InvalidError(
-                f"Invalid app name {name}. App names may only contain alphanumeric characters, dashes, periods, and underscores, and must be less than 64 characters in length. "
-            )
-
-        if client is None:
-            client = await _Client.from_env()
-
-        # Look up any existing deployment
-        app_req = api_pb2.AppGetByDeploymentNameRequest(name=name, namespace=namespace)
-        app_resp = await client.stub.AppGetByDeploymentName(app_req)
-        existing_app_id = app_resp.app_id or None
-        last_log_entry_id = app_resp.last_log_entry_id
-
-        # Grab the app
-        if existing_app_id is not None:
-            app = await _App._init_existing(client, existing_app_id)
-        else:
-            app = await _App._init_new(client, name, detach=False, deploying=True)
-
-        # Don't change the app state - deploy state is set by AppDeploy
-        post_init_state = api_pb2.APP_STATE_UNSPECIFIED
-
-        # The `_run` method contains the logic for starting and running an app
-        output_mgr = OutputManager(stdout, show_progress)
-        async with self._run(
-            client,
-            output_mgr,
-            app,
-            last_log_entry_id=last_log_entry_id,
-            mode=StubRunMode.DEPLOY,
-            post_init_state=post_init_state,
-        ):
-            deploy_req = api_pb2.AppDeployRequest(
-                app_id=app._app_id,
-                name=name,
-                namespace=namespace,
-                object_entity=object_entity,
-            )
-            deploy_response = await client.stub.AppDeploy(deploy_req)
-        output_mgr.print_if_visible(step_completed("App deployed! 🎉"))
-        output_mgr.print_if_visible(f"\nView Deployment: [magenta]{deploy_response.url}[/magenta]")
-        return app
+        return await deploy_stub(self, name, namespace, client, stdout, show_progress, object_entity)
 
     def _get_default_image(self):
         if "image" in self._blueprint:

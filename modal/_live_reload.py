@@ -14,7 +14,6 @@ from modal_utils.async_utils import asyncify, synchronize_apis, synchronizer
 
 from ._output import OutputManager
 from ._watcher import watch
-from .app import _App
 from .cli.import_refs import import_stub
 from .client import _Client
 
@@ -23,7 +22,7 @@ def _run_serve(stub_ref: str, existing_app_id: str, is_ready: Event):
     # subprocess entrypoint
     _stub = import_stub(stub_ref)
     blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
-    blocking_stub._serve_update(existing_app_id, is_ready)
+    blocking_stub.serve_update(existing_app_id, is_ready)
 
 
 async def _restart_serve(stub_ref: str, existing_app_id: str, timeout: float = 5.0) -> SpawnProcess:
@@ -95,17 +94,15 @@ async def _run_serve_loop(
     else:
         watcher = watch(stub._local_mounts, output_mgr, timeout)
 
-    app = await _App._init_new(client, stub.description, detach=False, deploying=False)
-
     if unsupported_msg:
-        async with stub._run(client, output_mgr, app):
+        async with stub.run(client=client, output_mgr=output_mgr) as app:
             client.set_pre_stop(app.disconnect)
             async for _ in watcher:
                 output_mgr.print_if_visible(unsupported_msg)
     else:
         # Run the object creation loop one time first, to make sure all images etc get built
         # This also handles the logs and the heartbeats
-        async with stub._run(client, output_mgr, app):
+        async with stub.run(client=client, output_mgr=output_mgr) as app:
             if _app_q:
                 await _app_q.put(app)
             client.set_pre_stop(app.disconnect)

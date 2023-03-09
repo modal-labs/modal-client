@@ -384,7 +384,7 @@ async def _map_invocation(
                 last_entry_id="0-0",
                 clear_on_success=True,
             )
-            await client.stub.FunctionGetOutputs(request)
+            await retry_transient_errors(client.stub.FunctionGetOutputs, request)
 
     async def fetch_output(item):
         try:

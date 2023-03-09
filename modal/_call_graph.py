@@ -10,8 +10,10 @@ class InputStatus(IntEnum):
     PENDING = 0
     SUCCESS = api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     FAILURE = api_pb2.GenericResult.GENERIC_STATUS_FAILURE
+    TERMINATED = api_pb2.GenericResult.GENERIC_STATUS_TERMINATED
     TIMEOUT = api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT
 
+    @classmethod
     def _missing_(cls, value):
         return cls.PENDING
 
