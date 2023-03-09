@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict, Optional, TypeVar
+from typing import TYPE_CHECKING, Dict, Optional, Tuple, TypeVar
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
@@ -149,9 +149,7 @@ class _App:
         return _App(client, existing_app_id, app_page_url, tag_to_existing_id=object_ids)
 
     @staticmethod
-    async def _init_new(
-        client: _Client, description: Optional[str] = None, detach: bool = False, deploying: bool = False
-    ) -> _App:
+    async def _init_new(client: _Client, description: Optional[str], detach: bool, deploying: bool) -> _App:
         # Start app
         # TODO(erikbern): maybe this should happen outside of this method?
         app_req = api_pb2.AppCreateRequest(
@@ -165,41 +163,23 @@ class _App:
         return _App(client, app_resp.app_id, app_page_url)
 
     @staticmethod
-    async def _init_from_name(client: _Client, name: str, namespace):
-        # Look up any existing deployment
-        app_req = api_pb2.AppGetByDeploymentNameRequest(name=name, namespace=namespace)
-        app_resp = await retry_transient_errors(client.stub.AppGetByDeploymentName, app_req)
-        existing_app_id = app_resp.app_id or None
-
-        # Grab the app
-        if existing_app_id is not None:
-            return await _App._init_existing(client, existing_app_id)
-        else:
-            return await _App._init_new(client, name, detach=False, deploying=True)
-
-    async def create_one_object(self, provider: Provider) -> Handle:
-        resolver = Resolver(None, self._client, self.app_id)
+    async def _create_one_object(client: _Client, provider: Provider) -> Tuple[Handle, str]:
+        # TODO(erikbern): This will be turned into something for deploying single objects
+        app_req = api_pb2.AppCreateRequest()
+        app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
+        app_id = app_resp.app_id
+        resolver = Resolver(None, client, app_id)
         handle = await resolver.load(provider)
         indexed_object_ids = {"_object": handle.object_id}
         unindexed_object_ids = [obj.object_id for obj in resolver.objects() if obj is not handle]
         req_set = api_pb2.AppSetObjectsRequest(
-            app_id=self.app_id,
+            app_id=app_id,
             indexed_object_ids=indexed_object_ids,
             unindexed_object_ids=unindexed_object_ids,
         )
-        await retry_transient_errors(self._client.stub.AppSetObjects, req_set)
+        await retry_transient_errors(client.stub.AppSetObjects, req_set)
 
-        return handle
-
-    async def deploy(self, name: str, namespace, object_entity: str) -> str:
-        deploy_req = api_pb2.AppDeployRequest(
-            app_id=self.app_id,
-            name=name,
-            namespace=namespace,
-            object_entity=object_entity,
-        )
-        deploy_response = await retry_transient_errors(self._client.stub.AppDeploy, deploy_req)
-        return deploy_response.url
+        return (handle, app_resp.app_id)
 
     @staticmethod
     def _reset_container():
