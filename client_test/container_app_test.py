@@ -105,9 +105,7 @@ async def test_is_inside_default_image(servicer, unix_servicer, aio_client, aio_
 
     from modal.stub import _default_image
 
-    app = await AioApp._init_new(aio_client)
-    app_id = app.app_id
-    default_image_handle = await app.create_one_object(_default_image)
+    default_image_handle, app_id = await AioApp._create_one_object(aio_client, _default_image)
     default_image_id = default_image_handle.object_id
 
     # Copy the app objects to the container servicer
