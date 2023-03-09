@@ -147,16 +147,7 @@ async def deploy_stub(
     if client is None:
         client = await _Client.from_env()
 
-    # Look up any existing deployment
-    app_req = api_pb2.AppGetByDeploymentNameRequest(name=name, namespace=namespace)
-    app_resp = await retry_transient_errors(client.stub.AppGetByDeploymentName, app_req)
-    existing_app_id = app_resp.app_id or None
-
-    # Grab the app
-    if existing_app_id is not None:
-        app = await _App._init_existing(client, existing_app_id)
-    else:
-        app = await _App._init_new(client, name, detach=False, deploying=True)
+    app = await _App._init_from_name(client, name, namespace)
 
     output_mgr = OutputManager(stdout, show_progress)
 
@@ -170,13 +161,10 @@ async def deploy_stub(
         # Create all members
         await app._create_all_objects(stub._blueprint, output_mgr, post_init_state)
 
-        deploy_req = api_pb2.AppDeployRequest(
-            app_id=app._app_id,
-            name=name,
-            namespace=namespace,
-            object_entity=object_entity,
-        )
-        deploy_response = await retry_transient_errors(client.stub.AppDeploy, deploy_req)
+        # Deploy app
+        # TODO(erikbern): not needed if the app already existed
+        url = await app.deploy(name, namespace, object_entity)
+
     output_mgr.print_if_visible(step_completed("App deployed! 🎉"))
-    output_mgr.print_if_visible(f"\nView Deployment: [magenta]{deploy_response.url}[/magenta]")
+    output_mgr.print_if_visible(f"\nView Deployment: [magenta]{url}[/magenta]")
     return app
