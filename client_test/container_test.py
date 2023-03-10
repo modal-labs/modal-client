@@ -7,6 +7,7 @@ import pytest
 import subprocess
 import sys
 import time
+from typing import List
 
 from grpclib.exceptions import GRPCError
 
@@ -458,7 +459,7 @@ def test_cli(unix_servicer, event_loop):
         app_id="se-123",
         function_def=function_def,
     )
-    data_base64 = base64.b64encode(container_args.SerializeToString())
+    data_base64: str = base64.b64encode(container_args.SerializeToString()).decode("ascii")
 
     # Inputs that will be consumed by the container
     unix_servicer.container_inputs = _get_inputs()
@@ -469,7 +470,7 @@ def test_cli(unix_servicer, event_loop):
         "PYTHONUTF8": "1",  # For windows
     }
     lib_dir = pathlib.Path(__file__).parent.parent
-    args = [sys.executable, "-m", "modal._container_entrypoint", data_base64]
+    args: List[str] = [sys.executable, "-m", "modal._container_entrypoint", data_base64]
     ret = subprocess.run(args, cwd=lib_dir, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout = ret.stdout.decode()
     stderr = ret.stderr.decode()
