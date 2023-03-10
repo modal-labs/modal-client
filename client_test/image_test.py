@@ -155,7 +155,7 @@ def test_image_pip_install_pyproject_with_optionals(servicer, client):
 
         print(layers[0].dockerfile_commands)
         assert any(
-            "pip install 'banana >=1.2.0' 'potato >=0.1.0' 'linting-tool >=0.0.0' 'pytest >=1.2.0'" in cmd
+            "pip install 'banana >=1.2.0' 'linting-tool >=0.0.0' 'potato >=0.1.0' 'pytest >=1.2.0'" in cmd
             for cmd in layers[0].dockerfile_commands
         )
         assert not (any("'mkdocs >=1.4.2'" in cmd for cmd in layers[0].dockerfile_commands))
