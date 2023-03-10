@@ -5,6 +5,7 @@ import traceback
 import unittest.mock
 from contextlib import asynccontextmanager
 from unittest import mock
+from typing import List, Optional
 
 import click
 import click.testing
@@ -40,16 +41,18 @@ async def set_env_client(aio_client):
         Client.set_env_client(None)
 
 
-def _run(args, expected_exit_code=0):
-    runner = click.testing.CliRunner()
+def _run(args: List[str], expected_exit_code: int = 0, expected_stderr: Optional[str] = ""):
+    runner = click.testing.CliRunner(mix_stderr=False)
     with mock.patch.object(sys, "argv", args):
         res = runner.invoke(entrypoint_cli, args)
-        if res.exit_code != expected_exit_code:
-            print("stdout:", repr(res.stdout))
-            traceback.print_tb(res.exc_info[2])
-            print(res.exception, file=sys.stderr)
-            assert res.exit_code == expected_exit_code
-        return res
+    if res.exit_code != expected_exit_code:
+        print("stdout:", repr(res.stdout))
+        traceback.print_tb(res.exc_info[2])
+        print(res.exception, file=sys.stderr)
+        assert res.exit_code == expected_exit_code
+    if expected_stderr is not None:
+        assert res.stderr == expected_stderr
+    return res
 
 
 def test_app_deploy_success(servicer, mock_dir, set_env_client):
@@ -106,7 +109,7 @@ def test_secret_list(servicer, set_env_client):
 
 def test_secret_create(servicer, set_env_client):
     # fail without any keys
-    _run(["secret", "create", "foo"], 2)
+    _run(["secret", "create", "foo"], 2, None)
 
     _run(["secret", "create", "foo", "bar=baz"])
     assert servicer.created_secrets == 1
@@ -123,7 +126,7 @@ def test_run(servicer, set_env_client, test_dir):
     _run(["run", stub_file.as_posix() + "::stub"])
     _run(["run", stub_file.as_posix() + "::stub.foo"])
     _run(["run", stub_file.as_posix() + "::foo"])
-    _run(["run", stub_file.as_posix() + "::bar"], expected_exit_code=1)
+    _run(["run", stub_file.as_posix() + "::bar"], expected_exit_code=1, expected_stderr=None)
     file_with_entrypoint = test_dir / "supports" / "app_run_tests" / "local_entrypoint.py"
     _run(["run", file_with_entrypoint.as_posix()])
     _run(["run", file_with_entrypoint.as_posix() + "::main"])
@@ -132,18 +135,18 @@ def test_run(servicer, set_env_client, test_dir):
 
 def test_help_message_unspecified_function(servicer, set_env_client, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "stub_with_multiple_functions.py"
-    result = _run(["run", stub_file.as_posix()], expected_exit_code=2)
+    result = _run(["run", stub_file.as_posix()], expected_exit_code=2, expected_stderr=None)
 
     # should suggest available functions on the stub:
-    assert "foo" in result.stdout
-    assert "bar" in result.stdout
+    assert "foo" in result.stderr
+    assert "bar" in result.stderr
 
     result = _run(
-        ["run", stub_file.as_posix(), "--help"], expected_exit_code=2
+        ["run", stub_file.as_posix(), "--help"], expected_exit_code=2, expected_stderr=None
     )  # TODO: help should not return non-zero
     # help should also available functions on the stub:
-    assert "foo" in result.stdout
-    assert "bar" in result.stdout
+    assert "foo" in result.stderr
+    assert "bar" in result.stderr
 
 
 def test_run_detach(servicer, set_env_client, test_dir):
@@ -160,10 +163,10 @@ def test_deploy(servicer, set_env_client, test_dir):
 
 def test_run_custom_stub(servicer, set_env_client, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "custom_stub.py"
-    res = _run(["run", stub_file.as_posix() + "::stub"], expected_exit_code=1)
-    assert "Could not find" in res.stdout
-    res = _run(["run", stub_file.as_posix() + "::stub.foo"], expected_exit_code=1)
-    assert "Could not find" in res.stdout
+    res = _run(["run", stub_file.as_posix() + "::stub"], expected_exit_code=1, expected_stderr=None)
+    assert "Could not find" in res.stderr
+    res = _run(["run", stub_file.as_posix() + "::stub.foo"], expected_exit_code=1, expected_stderr=None)
+    assert "Could not find" in res.stderr
 
     _run(["run", stub_file.as_posix() + "::my_stub.foo"])
     _run(["run", stub_file.as_posix() + "::foo"])
@@ -189,8 +192,8 @@ def test_run_local_entrypoint(servicer, set_env_client, test_dir):
 
 def test_run_parse_args(servicer, set_env_client, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "cli_args.py"
-    res = _run(["run", stub_file.as_posix()], expected_exit_code=2)
-    assert "You need to specify a Modal function or local entrypoint to run" in res.stdout
+    res = _run(["run", stub_file.as_posix()], expected_exit_code=2, expected_stderr=None)
+    assert "You need to specify a Modal function or local entrypoint to run" in res.stderr
 
     valid_call_args = [
         (
