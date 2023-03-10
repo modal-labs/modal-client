@@ -24,7 +24,8 @@ def _cli(args, server_url, extra_env={}, check=True) -> Tuple[int, str, str]:
 
 
 def test_run_e2e(servicer):
-    _cli(["-m", "modal_test_support.script"], servicer.remote_addr)
+    _, _, err = _cli(["-m", "modal_test_support.script"], servicer.remote_addr)
+    assert err == ""
 
 
 def test_run_profiler(servicer):
