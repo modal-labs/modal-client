@@ -422,8 +422,8 @@ class _Stub:
         information on usage.
 
         """
-        info = FunctionInfo(raw_f, False, name_override=name)
-        entrypoint = self._local_entrypoints[info.get_tag()] = LocalEntrypoint(raw_f, self)
+        tag = name if name is not None else raw_f.__qualname__
+        entrypoint = self._local_entrypoints[tag] = LocalEntrypoint(raw_f, self)
         return entrypoint
 
     @decorator_with_options
