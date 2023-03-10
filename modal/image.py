@@ -345,7 +345,7 @@ class _Image(Provider[_ImageHandle]):
         extra_args = " ".join(flag + " " + shlex.quote(value) for flag, value in flags if value is not None)
         if pre:
             extra_args += " --pre"
-        package_args = " ".join(shlex.quote(pkg) for pkg in pkgs)
+        package_args = " ".join(shlex.quote(pkg) for pkg in sorted(pkgs))
 
         dockerfile_commands = [
             "FROM base",
