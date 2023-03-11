@@ -397,7 +397,7 @@ class _Stub:
         ```
 
         Note that an explicit [`stub.run()`](/docs/reference/modal.Stub#run) is not needed, as an
-        [app](/docs/guide/apps#apps-vs-stubs) is automatically creatd for you.
+        [app](/docs/guide/apps) is automatically creatd for you.
 
         **Multiple Entrypoints**
 
