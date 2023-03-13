@@ -132,34 +132,39 @@ class RunGroup(click.Group):
 @click.group(
     cls=RunGroup,
     subcommand_metavar="FUNC_REF",
-    help="""Run a Modal function or local entrypoint
-
-FUNC_REF should be of the format:
-
-`{file or module}::{function name}`
-
-Alternatively you can refer to the function via the stub:
-
-`{file or module}::{stub variable name}.{function name}`
-
-Examples:
-To run the hello_world function (or local entrypoint) in my_app.py:
-
- > modal run my_app.py::hello_world
-
-If your module only has a single stub called `stub` and your stub has a single local entrypoint (or single function), you can omit the stub/function part:
-
- > modal run my_app.py
-
-Instead of pointing to a file, you can also use the Python module path to a a file:
-
-> modal run my_project.my_app
-
-""",
 )
 @click.option("--detach", is_flag=True, help="Don't stop the app if the local process dies or disconnects.")
 @click.pass_context
 def run(ctx, detach):
+    """Run a Modal function or local entrypoint
+
+    `FUNC_REF` should be of the format `{file or module}::{function name}`.
+    Alternatively, you can refer to the function via the stub:
+
+    `{file or module}::{stub variable name}.{function name}`
+
+    **Examples:**
+
+    To run the hello_world function (or local entrypoint) in my_app.py:
+
+    ```bash
+    modal run my_app.py::hello_world
+    ```
+
+    If your module only has a single stub called `stub` and your stub has a
+    single local entrypoint (or single function), you can omit the stub and
+    function parts:
+
+    ```bash
+    modal run my_app.py
+    ```
+
+    Instead of pointing to a file, you can also use the Python module path:
+
+    ```bash
+    modal run my_project.my_app
+    ```
+    """
     ctx.ensure_object(dict)
     ctx.obj["detach"] = detach  # if subcommand would be a click command...
 
@@ -182,11 +187,12 @@ def serve(
     timeout: Optional[float] = None,
 ):
     """Run a web endpoint(s) associated with a Modal stub and hot-reload code.
-    **Examples:**\n
-    \n
-    ```bash\n
+
+    **Examples:**
+
+    ```bash
     modal serve hello_world.py
-    ```\n
+    ```
     """
     run_serve_loop(stub_ref, timeout)
 
@@ -197,19 +203,23 @@ def shell(
     ),
     cmd: str = typer.Option(default="/bin/bash", help="Command to run inside the Modal image."),
 ):
-    """Run an interactive shell inside a Modal image.\n
-    **Examples:**\n
-    \n
-    - Start a bash shell using the spec for `my_function` in your stub:\n
-    ```bash\n
-    modal shell hello_world.py::my_function \n
-    ```\n
-    Note that you can select the function interactively if you omit the function name.\n
-    \n
-    - Start a `python` shell: \n
-    ```bash\n
-    modal shell hello_world.py --cmd=python \n
-    ```\n
+    """Run an interactive shell inside a Modal image.
+
+    **Examples:**
+
+    Start a bash shell using the spec for `my_function` in your stub:
+
+    ```bash
+    modal shell hello_world.py::my_function
+    ```
+
+    Note that you can select the function interactively if you omit the function name.
+
+    Start a `python` shell:
+
+    ```bash
+    modal shell hello_world.py --cmd=python
+    ```
     """
     console = Console()
     if not console.is_terminal:
