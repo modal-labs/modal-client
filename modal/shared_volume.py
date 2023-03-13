@@ -1,8 +1,10 @@
 # Copyright Modal Labs 2022
 import os
+import time
 from pathlib import Path, PurePosixPath
 from typing import AsyncIterator, BinaryIO, List, Optional, Union
 
+import modal
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis, ConcurrencyPool
 from modal_utils.grpc_utils import retry_transient_errors, unary_stream
@@ -11,6 +13,10 @@ from modal_utils.hash_utils import get_sha256_hex
 from ._blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
 from ._resolver import Resolver
 from .object import Handle, Provider
+
+SHARED_VOLUME_PUT_FILE_CLIENT_TIMEOUT = (
+    10 * 60
+)  # 10 min max for transferring files (does not include upload time to s3)
 
 
 class _SharedVolumeHandle(Handle, type_prefix="sv"):
@@ -49,12 +55,26 @@ class _SharedVolumeHandle(Handle, type_prefix="sv"):
         if data_size > LARGE_FILE_LIMIT:
             blob_id = await blob_upload_file(fp, self._client.stub)
             req = api_pb2.SharedVolumePutFileRequest(
-                shared_volume_id=self._object_id, path=remote_path, data_blob_id=blob_id, sha256_hex=sha_hash
+                shared_volume_id=self._object_id,
+                path=remote_path,
+                data_blob_id=blob_id,
+                sha256_hex=sha_hash,
+                resumable=True,
             )
         else:
             data = fp.read()
-            req = api_pb2.SharedVolumePutFileRequest(shared_volume_id=self._object_id, path=remote_path, data=data)
-        await retry_transient_errors(self._client.stub.SharedVolumePutFile, req)
+            req = api_pb2.SharedVolumePutFileRequest(
+                shared_volume_id=self._object_id, path=remote_path, data=data, resumable=True
+            )
+
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < SHARED_VOLUME_PUT_FILE_CLIENT_TIMEOUT:
+            response = await retry_transient_errors(self._client.stub.SharedVolumePutFile, req)
+            if response.exists:
+                break
+        else:
+            raise modal.exception.TimeoutError(f"Uploading of {remote_path} timed out")
+
         return data_size  # might be better if this is returned from the server
 
     async def read_file(self, path: str) -> AsyncIterator[bytes]:
