@@ -14,14 +14,16 @@ from .object import Handle, Provider
 
 
 class _SharedVolumeHandle(Handle, type_prefix="sv"):
-    """A handle to a Modal SharedVolume
+    """Handle to a `SharedVolume` object.
 
     Should typically not be used directly in a Modal function,
     and instead referenced through the file system, see `modal.SharedVolume`.
 
     Also see the CLI methods for accessing shared volumes:
 
-    ```modal volume --help
+    ```bash
+    modal volume --help
+    ```
 
     A SharedVolumeHandle *can* however be useful for some local scripting scenarios, e.g.:
 
