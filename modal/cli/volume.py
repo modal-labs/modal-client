@@ -206,15 +206,17 @@ async def _glob_download(
 @volume_cli.command(name="get")
 @synchronizer
 async def get(volume_name: str, remote_path: str, local_destination: str = typer.Argument("."), force: bool = False):
-    """Download a file from a shared volume.\n
-    Specifying a glob pattern (using any `*` or `**` patterns) as the `remote_path` will download all matching *files*, preserving
-    the source directory structure for the matched files.\n
-    \n
-    For example, to download an entire shared volume into `dump_volume`:\n
+    """Download a file from a shared volume.
 
-    ```bash\n
-    modal volume get <volume-name> "**" dump_volume\n
-    ```\n
+    Specifying a glob pattern (using any `*` or `**` patterns) as the `remote_path` will download all matching *files*, preserving
+    the source directory structure for the matched files.
+
+    For example, to download an entire shared volume into `dump_volume`:
+
+    ```bash
+    modal volume get <volume-name> "**" dump_volume
+    ```
+
     Use "-" (a hyphen) as LOCAL_DESTINATION to write contents of file to stdout (only for non-glob paths).
     """
     destination = Path(local_destination)
