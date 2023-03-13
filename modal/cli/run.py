@@ -132,34 +132,39 @@ class RunGroup(click.Group):
 @click.group(
     cls=RunGroup,
     subcommand_metavar="FUNC_REF",
-    help="""Run a Modal function or local entrypoint
-
-FUNC_REF should be of the format:
-
-`{file or module}::{function name}`
-
-Alternatively you can refer to the function via the stub:
-
-`{file or module}::{stub variable name}.{function name}`
-
-Examples:
-To run the hello_world function (or local entrypoint) in my_app.py:
-
- > modal run my_app.py::hello_world
-
-If your module only has a single stub called `stub` and your stub has a single local entrypoint (or single function), you can omit the stub/function part:
-
- > modal run my_app.py
-
-Instead of pointing to a file, you can also use the Python module path to a a file:
-
-> modal run my_project.my_app
-
-""",
 )
 @click.option("--detach", is_flag=True, help="Don't stop the app if the local process dies or disconnects.")
 @click.pass_context
 def run(ctx, detach):
+    """Run a Modal function or local entrypoint
+
+    `FUNC_REF` should be of the format `{file or module}::{function name}`.
+    Alternatively, you can refer to the function via the stub:
+
+    `{file or module}::{stub variable name}.{function name}`
+
+    **Examples:**
+
+    To run the hello_world function (or local entrypoint) in my_app.py:
+
+    ```bash
+    modal run my_app.py::hello_world
+    ```
+
+    If your module only has a single stub called `stub` and your stub has a
+    single local entrypoint (or single function), you can omit the stub and
+    function parts:
+
+    ```bash
+    modal run my_app.py
+    ```
+
+    Instead of pointing to a file, you can also use the Python module path:
+
+    ```bash
+    modal run my_project.my_app
+    ```
+    """
     ctx.ensure_object(dict)
     ctx.obj["detach"] = detach  # if subcommand would be a click command...
 
