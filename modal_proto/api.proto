@@ -848,6 +848,11 @@ message SharedVolumePutFileRequest {
     bytes data = 4;
     string data_blob_id = 5;
   }
+  bool resumable = 6;  // remove when required client version >= 47
+}
+
+message SharedVolumePutFileResponse {
+  bool exists = 1;
 }
 
 message SharedVolumeGetFileRequest {
@@ -1030,7 +1035,7 @@ service ModalClient {
   rpc SharedVolumeList(google.protobuf.Empty) returns (SharedVolumeListResponse);
   rpc SharedVolumeListFiles(SharedVolumeListFilesRequest) returns (SharedVolumeListFilesResponse);
   rpc SharedVolumeListFilesStream(SharedVolumeListFilesRequest) returns (stream SharedVolumeListFilesResponse);
-  rpc SharedVolumePutFile(SharedVolumePutFileRequest) returns (google.protobuf.Empty);
+  rpc SharedVolumePutFile(SharedVolumePutFileRequest) returns (SharedVolumePutFileResponse);
   rpc SharedVolumeGetFile(SharedVolumeGetFileRequest) returns (SharedVolumeGetFileResponse);
   rpc SharedVolumeRemoveFile(SharedVolumeRemoveFileRequest) returns (google.protobuf.Empty);
 
