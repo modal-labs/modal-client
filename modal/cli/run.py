@@ -182,11 +182,12 @@ def serve(
     timeout: Optional[float] = None,
 ):
     """Run a web endpoint(s) associated with a Modal stub and hot-reload code.
-    **Examples:**\n
-    \n
-    ```bash\n
+
+    **Examples:**
+
+    ```bash
     modal serve hello_world.py
-    ```\n
+    ```
     """
     run_serve_loop(stub_ref, timeout)
 
@@ -197,19 +198,23 @@ def shell(
     ),
     cmd: str = typer.Option(default="/bin/bash", help="Command to run inside the Modal image."),
 ):
-    """Run an interactive shell inside a Modal image.\n
-    **Examples:**\n
-    \n
-    - Start a bash shell using the spec for `my_function` in your stub:\n
-    ```bash\n
-    modal shell hello_world.py::my_function \n
-    ```\n
-    Note that you can select the function interactively if you omit the function name.\n
-    \n
-    - Start a `python` shell: \n
-    ```bash\n
-    modal shell hello_world.py --cmd=python \n
-    ```\n
+    """Run an interactive shell inside a Modal image.
+
+    **Examples:**
+
+    Start a bash shell using the spec for `my_function` in your stub:
+
+    ```bash
+    modal shell hello_world.py::my_function
+    ```
+
+    Note that you can select the function interactively if you omit the function name.
+
+    Start a `python` shell:
+
+    ```bash
+    modal shell hello_world.py --cmd=python
+    ```
     """
     console = Console()
     if not console.is_terminal:
