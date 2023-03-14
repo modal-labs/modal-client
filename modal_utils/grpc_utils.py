@@ -3,6 +3,7 @@ import asyncio
 import contextlib
 import socket
 import time
+import platform
 import urllib.parse
 import uuid
 from typing import (
@@ -28,7 +29,12 @@ from modal_version import __version__
 from .logger import logger
 
 # Monkey patches grpclib to have a Modal User Agent header.
-grpclib.client.USER_AGENT: str = f"modal-client/{__version__}"
+grpclib.client.USER_AGENT: str = "modal-client/{version} ({sys}; {py}/{py_ver})'".format(
+    version=__version__,
+    sys=platform.system(),
+    py=platform.python_implementation(),
+    py_ver=platform.python_version(),
+).lower()
 
 
 class Subchannel:
