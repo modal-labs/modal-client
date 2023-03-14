@@ -33,6 +33,8 @@ class ImportRef:
 def parse_import_ref(object_ref: str) -> ImportRef:
     if object_ref.find("::") > 1:
         file_or_module, object_path = object_ref.split("::", 1)
+    elif object_ref.find(":") > 1:
+        raise modal.exception.InvalidError(f"Invalid object reference: {object_ref}. Did you mean '::' instead of ':'?")
     else:
         file_or_module, object_path = object_ref, None
 
@@ -50,7 +52,7 @@ def import_file_or_module(file_or_module: str):
     if "" not in sys.path:
         # This seems to happen when running from a CLI
         sys.path.insert(0, "")
-    if ".py" in file_or_module:
+    if file_or_module.endswith(".py"):
         # walk to the closest python package in the path and add that to the path
         # before importing, in case of imports etc. of other modules in that package
         # are needed
@@ -71,6 +73,7 @@ def import_file_or_module(file_or_module: str):
 
         # Import the module - see https://docs.python.org/3/library/importlib.html#importing-a-source-file-directly
         spec = importlib.util.spec_from_file_location(module_name, file_or_module)
+        print("importing", spec, module_name, file_or_module)
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
         spec.loader.exec_module(module)
