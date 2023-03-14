@@ -7,7 +7,7 @@ from multiprocessing.synchronize import Event
 import os
 import sys
 import warnings
-from typing import AsyncGenerator, Collection, Dict, List, Optional, Union
+from typing import AsyncGenerator, Collection, Dict, List, Optional, Union, Any
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
@@ -105,6 +105,10 @@ class _Stub:
 
         self._name = name
         self._description = name
+
+        for k, v in blueprint.items():
+            self._validate_blueprint_value(k, v)
+
         self._blueprint = blueprint
         self._client_mount = None
         self._function_mounts = {}
@@ -137,6 +141,10 @@ class _Stub:
         """The Stub's `name`, if available, or a fallback descriptive identifier."""
         return self._description or self._infer_app_desc()
 
+    def _validate_blueprint_value(self, key: str, value: Any):
+        if not isinstance(value, Provider):
+            raise InvalidError(f"Stub attribute {key} with value {value} is not a valid Modal object")
+
     def _infer_app_desc(self):
         if is_notebook():
             # when running from a notebook the sys.argv for the kernel will
@@ -152,6 +160,7 @@ class _Stub:
         return self._blueprint[tag]
 
     def __setitem__(self, tag: str, obj: Provider):
+        self._validate_blueprint_value(tag, obj)
         # Deprecated ?
         self._blueprint[tag] = obj
 
@@ -169,6 +178,7 @@ class _Stub:
         if tag in self.__annotations__:
             object.__setattr__(self, tag, obj)
         else:
+            self._validate_blueprint_value(tag, obj)
             self._blueprint[tag] = obj
 
     def is_inside(self, image: Optional[_Image] = None) -> bool:

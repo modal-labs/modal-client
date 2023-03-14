@@ -40,6 +40,23 @@ async def test_attrs(servicer, aio_client):
         assert await app.q.get() == "baz"
 
 
+@pytest.mark.asyncio
+async def test_stub_type_validation(servicer, aio_client):
+    with pytest.raises(InvalidError) as excinfo:
+        stub = AioStub(
+            foo=4242,
+        )
+
+    assert "4242" in str(excinfo.value)
+
+    stub = AioStub()
+
+    with pytest.raises(InvalidError) as excinfo:
+        stub.bar = 4242
+
+    assert "4242" in str(excinfo.value)
+
+
 def square(x):
     return x**2
 
