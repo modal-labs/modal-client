@@ -751,6 +751,7 @@ class _Function(_Provider[_FunctionHandle]):
         interactive: bool = False,
         name: Optional[str] = None,
         cloud: Optional[str] = None,
+        _cls: Optional[type] = None,
     ) -> None:
         """mdmd:hidden"""
         raw_f = function_info.raw_f
@@ -823,6 +824,7 @@ class _Function(_Provider[_FunctionHandle]):
         self._tag = self._info.get_tag()
         self._gpu_config = parse_gpu_config(gpu)
         self._cloud = cloud
+        self._cls = _cls
         if cloud:
             self._cloud_provider = parse_cloud_provider(cloud)
         else:
@@ -929,14 +931,18 @@ class _Function(_Provider[_FunctionHandle]):
             function_serialized = self._info.serialized_function
             mod = inspect.getmodule(self._raw_f)
 
-            try:
-                cls, _ = load_function_from_module(mod, self._raw_f.__qualname__)
-            except LocalFunctionError:
-                # if a serialized function is defined within a function scope
-                # we can't load it from the module and detect its parent class
-                # TODO: fix this somehow... maybe put the decorator on the
-                #       class instead for entrypoint classes
-                cls = None
+            if self._cls is not None:
+                cls = self._cls
+            else:
+                # This is probably the case of a function in global scope,
+                # but it *might* be a function decorated on a class.
+                # We should probably deprecate it, since it's a messy case
+                try:
+                    cls, _ = load_function_from_module(mod, self._raw_f.__qualname__)
+                except LocalFunctionError:
+                    # if a serialized function is defined within a function scope
+                    # we can't load it from the module and detect its parent class
+                    cls = None
 
             if cls:
                 class_serialized = cloudpickle.dumps(cls)
@@ -1132,3 +1138,15 @@ def current_input_id() -> str:
 def _set_current_input_id(input_id: Optional[str]):
     global _current_input_id
     _current_input_id = input_id
+
+
+def class_decorator(cls: type, method_decorator):
+    new_dict = {}
+    for k, v in cls.__dict__.items():
+        if callable(v):
+            new_dict[k] = method_decorator(v)
+        else:
+            new_dict[k] = v
+
+    new_cls = type.__new__(type, cls.__name__, cls.__bases__, new_dict)
+    return new_cls

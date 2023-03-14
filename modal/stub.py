@@ -25,7 +25,7 @@ from .app import _App, _container_app, is_local
 from .client import _Client
 from .config import logger
 from .exception import InvalidError, deprecation_warning
-from .functions import _Function, _FunctionHandle
+from .functions import _Function, _FunctionHandle, class_decorator
 from .gpu import GPU_T
 from .image import _Image, _ImageHandle
 from .mount import _get_client_mount, _Mount
@@ -572,6 +572,7 @@ class _Stub:
         name: Optional[str] = None,  # Sets the Modal name of the function within the stub
         is_generator: Optional[bool] = None,  # If not set, it's inferred from the function signature
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
+        _cls: Optional[type] = None,  # Used for methods only
     ) -> Union[
         _FunctionHandle, Callable[[Callable[..., Any]], _FunctionHandle]
     ]:  # Function object - callable as a regular function within a Modal app
@@ -642,6 +643,7 @@ class _Stub:
             name=name,
             cloud=cloud,
             webhook_config=webhook_config,
+            _cls=_cls,
         )
 
         self._add_function(function, [*base_mounts, *mounts])
@@ -856,6 +858,19 @@ class _Stub:
 
         async with self.run():
             await wrapped_fn.call(cmd)
+
+    @decorator_with_options
+    def service(self, cls, **kwargs):
+        # TOOD(erikbern): include all the docstring from stub.function
+
+        # All methods to know what class they are on
+        kwargs.update(_cls=cls)
+
+        # Use the function decorator as a helper
+        # TODO(erikbern): don't call "external" interface
+        function_decorator = self.function(**kwargs)
+
+        return class_decorator(cls, function_decorator)
 
 
 Stub, AioStub = synchronize_apis(_Stub)
