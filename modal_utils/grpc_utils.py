@@ -3,6 +3,7 @@ import asyncio
 import contextlib
 import socket
 import time
+import platform
 import urllib.parse
 import uuid
 from typing import (
@@ -18,12 +19,22 @@ from typing import (
 )
 
 import grpclib.events
+import grpclib.client
 from grpclib import GRPCError, Status
-from grpclib.client import Channel, UnaryStreamMethod
 from grpclib.exceptions import StreamTerminatedError
 from grpclib.protocol import H2Protocol
 
+from modal_version import __version__
+
 from .logger import logger
+
+# Monkey patches grpclib to have a Modal User Agent header.
+grpclib.client.USER_AGENT = "modal-client/{version} ({sys}; {py}/{py_ver})'".format(
+    version=__version__,
+    sys=platform.system(),
+    py=platform.python_implementation(),
+    py_ver=platform.python_version(),
+).lower()
 
 
 class Subchannel:
@@ -43,7 +54,7 @@ class Subchannel:
         return True
 
 
-class ChannelPool(Channel):
+class ChannelPool(grpclib.client.Channel):
     """Use multiple channels under the hood. A drop-in replacement for the grpclib Channel.
 
     The main reason is to get around limitations with TCP connections over the internet,
@@ -133,7 +144,7 @@ def create_channel(
     *,
     inject_tracing_context: Optional[Callable[[Dict[str, str]], None]] = None,
     use_pool: Optional[bool] = None,  # If None, inferred from the scheme
-) -> Channel:
+) -> grpclib.client.Channel:
     """Creates a grpclib.Channel.
 
     Either to be used directly by a GRPC stub, or indirectly used through the channel pool.
@@ -144,13 +155,13 @@ def create_channel(
     if use_pool is None:
         use_pool = o.scheme in ("http", "https")
 
-    channel_cls: Type[Channel]
+    channel_cls: Type[grpclib.client.Channel]
     if use_pool:
         channel_cls = ChannelPool
     else:
-        channel_cls = Channel
+        channel_cls = grpclib.client.Channel
 
-    channel: Channel
+    channel: grpclib.client.Channel
     if o.scheme == "unix":
         channel = channel_cls(path=o.path)  # probably pointless to use a pool ever
     elif o.scheme in ("http", "https"):
@@ -179,7 +190,7 @@ def create_channel(
 
 
 async def unary_stream(
-    method: UnaryStreamMethod[_SendType, _RecvType],
+    method: grpclib.client.UnaryStreamMethod[_SendType, _RecvType],
     request: _SendType,
     metadata: Optional[Any] = None,
 ) -> AsyncIterator[_RecvType]:
