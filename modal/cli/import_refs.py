@@ -73,7 +73,6 @@ def import_file_or_module(file_or_module: str):
 
         # Import the module - see https://docs.python.org/3/library/importlib.html#importing-a-source-file-directly
         spec = importlib.util.spec_from_file_location(module_name, file_or_module)
-        print("importing", spec, module_name, file_or_module)
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
         spec.loader.exec_module(module)
