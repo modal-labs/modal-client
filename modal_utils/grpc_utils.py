@@ -29,7 +29,7 @@ from modal_version import __version__
 from .logger import logger
 
 # Monkey patches grpclib to have a Modal User Agent header.
-grpclib.client.USER_AGENT: str = "modal-client/{version} ({sys}; {py}/{py_ver})'".format(
+grpclib.client.USER_AGENT = "modal-client/{version} ({sys}; {py}/{py_ver})'".format(
     version=__version__,
     sys=platform.system(),
     py=platform.python_implementation(),
