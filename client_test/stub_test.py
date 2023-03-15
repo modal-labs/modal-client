@@ -3,6 +3,7 @@ import asyncio
 import logging
 import os
 import pytest
+import typeguard
 
 from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
@@ -240,3 +241,22 @@ def test_registered_web_endpoints(client, servicer):
     stub.webhook(square_webhook)
 
     assert stub.registered_web_endpoints == ["square_webhook"]
+
+
+def test_init_types():
+    with pytest.raises(typeguard.TypeCheckError):
+        Stub(secrets=modal.Secret())  # singular secret to plural argument
+    with pytest.raises(typeguard.TypeCheckError):
+        Stub(secrets=[{"foo": "bar"}])  # not a Secret Object
+    with pytest.raises(typeguard.TypeCheckError):
+        Stub(some_arg=5)  # blueprint needs to use Providers
+    with pytest.raises(typeguard.TypeCheckError):
+        Stub(image=modal.Secret())  # should be an Image
+
+    Stub(
+        image=modal.Image.debian_slim().pip_install("typeguard"),
+        secrets=[modal.Secret()],
+        mounts=[modal.Mount.from_local_file(__file__)],
+        some_dict=modal.Dict(),
+        some_queue=modal.Queue(),
+    )
