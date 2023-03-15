@@ -94,6 +94,7 @@ class _Stub:
     _local_entrypoints: Dict[str, LocalEntrypoint]
     _local_mounts: List[_Mount]
     _app: Optional[_App]
+    _default_image: _Image = _default_image
 
     @typechecked
     def __init__(
@@ -102,7 +103,7 @@ class _Stub:
         *,
         image: Optional[
             _Image
-        ] = _default_image,  # default image for all functions (default is modal.Image.debian_Slim)
+        ] = _default_image,  # default image for all functions (default is `modal.Image.debian_slim()`)
         mounts: Sequence[_Mount] = [],  # default mounts for all functions
         secrets: Sequence[_Secret] = [],  # default secrets for all functions
         **blueprint: Provider,  # any Modal Object dependencies (Dict, Queue, etc.)
