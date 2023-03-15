@@ -97,11 +97,24 @@ class _Stub:
         self,
         name: Optional[str] = None,
         *,
-        mounts: Collection[_Mount] = [],
-        secrets: Collection[_Secret] = [],
-        **blueprint,
+        image: Optional[
+            _Image
+        ] = _default_image,  # default image for all functions (default is modal.Image.debian_Slim)
+        mounts: Collection[_Mount] = [],  # default mounts for all functions
+        secrets: Collection[_Secret] = [],  # default secrets for all functions
+        **blueprint: Provider,  # any Modal Object dependencies (Dict, Queue, etc.)
     ) -> None:
-        """Construct a new app stub, optionally with default mounts."""
+        """Construct a new app stub, optionally with default image, mounts, secrets
+
+        Any "blueprint" objects are loaded as part of running or deploying the app,
+        and are accessible by name on the running container app, e.g.:
+        ```python
+        stub = modal.Stub(key_value_store=modal.Dict())
+
+        @stub.function
+        def store_something(key: str, value: str):
+            stub.app.key_value_store.put(key, value)
+        """
 
         self._name = name
         self._description = name
@@ -118,6 +131,7 @@ class _Stub:
         self._local_entrypoints = {}
         self._local_mounts = []
         self._web_endpoints = []
+        self._default_image = image
 
         self._app = None
         if not is_local():
@@ -299,10 +313,7 @@ class _Stub:
         return await deploy_stub(self, name, namespace, client, stdout, show_progress, object_entity)
 
     def _get_default_image(self):
-        if "image" in self._blueprint:
-            return self._blueprint["image"]
-        else:
-            return _default_image
+        return self._default_image
 
     @property
     def _pty_input_stream(self):
