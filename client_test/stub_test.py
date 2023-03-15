@@ -70,19 +70,23 @@ async def test_redeploy(servicer, aio_client):
     app = await stub.deploy("my-app", client=aio_client)
     assert app.app_id == "ap-1"
     assert servicer.app_objects["ap-1"]["square"] == "fu-1"
-    assert servicer.app_state[app.app_id] == api_pb2.APP_STATE_DEPLOYED
+    assert servicer.app_state_history[app.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
 
     # Redeploy, make sure all ids are the same
     app = await stub.deploy("my-app", client=aio_client)
     assert app.app_id == "ap-1"
     assert servicer.app_objects["ap-1"]["square"] == "fu-1"
-    assert servicer.app_state[app.app_id] == api_pb2.APP_STATE_DEPLOYED
+    assert servicer.app_state_history[app.app_id] == [
+        api_pb2.APP_STATE_INITIALIZING,
+        api_pb2.APP_STATE_DEPLOYED,
+        api_pb2.APP_STATE_DEPLOYED,
+    ]
 
     # Deploy to a different name, ids should change
     app = await stub.deploy("my-app-xyz", client=aio_client)
     assert app.app_id == "ap-2"
     assert servicer.app_objects["ap-2"]["square"] == "fu-2"
-    assert servicer.app_state[app.app_id] == api_pb2.APP_STATE_DEPLOYED
+    assert servicer.app_state_history[app.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
 
 
 def dummy():
@@ -203,19 +207,19 @@ def test_nested_serve_invocation(client):
 def test_run_state(client, servicer):
     stub = Stub()
     with stub.run(client=client) as app:
-        assert servicer.app_state[app.app_id] == api_pb2.APP_STATE_EPHEMERAL
+        assert servicer.app_state_history[app.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_EPHEMERAL]
 
 
 def test_deploy_state(client, servicer):
     stub = Stub()
     app = stub.deploy("foobar", client=client)
-    assert servicer.app_state[app.app_id] == api_pb2.APP_STATE_DEPLOYED
+    assert servicer.app_state_history[app.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
 
 
 def test_detach_state(client, servicer):
     stub = Stub()
     with stub.run(client=client, detach=True) as app:
-        assert servicer.app_state[app.app_id] == api_pb2.APP_STATE_DETACHED
+        assert servicer.app_state_history[app.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DETACHED]
 
 
 @pytest.mark.asyncio

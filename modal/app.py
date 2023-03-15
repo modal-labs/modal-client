@@ -93,6 +93,7 @@ class _App:
             app_id=self._app_id,
             indexed_object_ids=indexed_object_ids,
             unindexed_object_ids=unindexed_object_ids,
+            new_app_state=new_app_state,
         )
         await retry_transient_errors(self._client.stub.AppSetObjects, req_set)
         return self._tag_to_object
@@ -187,6 +188,7 @@ class _App:
             app_id=self.app_id,
             indexed_object_ids=indexed_object_ids,
             unindexed_object_ids=unindexed_object_ids,
+            new_app_state=api_pb2.APP_STATE_UNSPECIFIED,  # app is either already deployed or will be set to deployed after this call
         )
         await retry_transient_errors(self._client.stub.AppSetObjects, req_set)
 
