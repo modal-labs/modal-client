@@ -16,6 +16,7 @@ from ._output import OutputManager
 from ._watcher import watch
 from .cli.import_refs import import_stub
 from .client import _Client
+from .config import config
 
 
 def _run_serve(stub_ref: str, existing_app_id: str, is_ready: Event):
@@ -74,6 +75,9 @@ async def _run_serve_loop(
     stub = import_stub(stub_ref)
     if stub._description is None:
         stub._description = _get_clean_stub_description(stub_ref)
+
+    if timeout is None:
+        timeout = config["serve_timeout"]
 
     unsupported_msg = None
     if platform.system() == "Windows":

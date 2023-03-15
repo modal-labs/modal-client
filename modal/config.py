@@ -139,6 +139,7 @@ _SETTINGS = {
     "token_secret": _Setting(),
     "task_id": _Setting(),
     "task_secret": _Setting(),
+    "serve_timeout": _Setting(transform=float),
     "sync_entrypoint": _Setting(),
     "logs_timeout": _Setting(10, float),
     "image_python_version": _Setting(),
