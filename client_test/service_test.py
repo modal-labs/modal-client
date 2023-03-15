@@ -26,6 +26,14 @@ def test_run_class(client, servicer):
     assert objects == {"Foo.bar": function_id}
 
 
+def test_call_class(client, servicer):
+    with stub.run(client=client) as app:
+        foo = Foo()
+
+        # TODO(erikbern): this fails! because foo.bar.call is async
+        # assert foo.bar.call(42) == 1764  # Note: uses Mockservicer's impl
+
+
 def test_run_class_serialized(client, servicer):
     class FooSer:
         def bar(self, x):
