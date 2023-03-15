@@ -93,7 +93,7 @@ class _App:
             app_id=self._app_id,
             indexed_object_ids=indexed_object_ids,
             unindexed_object_ids=unindexed_object_ids,
-            new_app_state=new_app_state,
+            new_app_state=new_app_state,  # type: ignore
         )
         await retry_transient_errors(self._client.stub.AppSetObjects, req_set)
         return self._tag_to_object
