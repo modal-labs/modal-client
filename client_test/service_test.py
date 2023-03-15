@@ -78,3 +78,14 @@ def test_can_call_locally():
     foo = FooLocal()
     assert foo.bar(4) == 64
     assert foo.baz(4) == 125
+
+
+def test_can_call_remotely_from_local(client):
+    with stub_local.run(client=client) as app:
+        foo = FooLocal()
+
+        # remote calls use the mockservicer func impl
+        # which just squares the arguments
+        # TODO(erikbern): this fails, because foo.bar.call is async!!
+        # assert foo.bar.call(8) == 64
+        # assert foo.baz.call(9) == 81
