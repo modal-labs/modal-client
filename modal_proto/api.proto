@@ -90,8 +90,8 @@ message AppClientDisconnectRequest {
 message AppCreateRequest {
   string client_id = 1;
   string description = 2;    // Human readable label for the website
-  bool detach = 3; // TODO: deprecate in 0.43, remove when 0.42 is unsupported
-  bool initializing = 4; // TODO: remove and make default=True when client 0.42 is unsupported
+  bool detach = 3; // deprecated, but needed until 0.48 is the minimum version
+  bool initializing = 4; // deprecated, but needed until 0.48 is the minimum version
 }
 
 message AppCreateResponse {
@@ -117,7 +117,7 @@ message AppDeployResponse {
 message AppGetByDeploymentNameRequest {
   DeploymentNamespace namespace = 1;
   string name = 2;
-  string client_id = 3 [deprecated=true];
+  reserved 3;
 }
 
 message AppGetByDeploymentNameResponse {
@@ -147,7 +147,6 @@ message AppGetObjectsItem {
 }
 
 message AppGetObjectsResponse {
-  map<string, string> object_ids = 1 [deprecated=true]; // remove once support for 0.43.0 is dropped
   repeated AppGetObjectsItem items = 2;
 }
 
@@ -210,7 +209,7 @@ message ImageRegistryConfig {
 message BaseImage {
   string image_id = 1;
   string docker_tag = 2;
-  // fields 3 and 4 are deprecated
+  reserved 4;
 }
 
 message BlobCreateRequest {
@@ -408,8 +407,8 @@ message FunctionCreateRequest {
 
 message FunctionCreateResponse {
   string function_id = 1;
-  string web_url = 2;  // TODO(erikbern): deprecated shortly (moving it into Function)
-  WebUrlInfo web_url_info = 3;  // TODO(erikbern): deprecated shortly (moving it into Function)
+  string web_url = 2;  // Deprecated - needed until 0.46 is the minimum version
+  WebUrlInfo web_url_info = 3;  // Deprecated - needed until 0.46 is the minimum version
   Function function = 4;
 }
 
@@ -467,7 +466,7 @@ message FunctionInput {
     bytes args = 1;
     string args_blob_id = 7;
   }
-  bool final_input = 9; // TODO(erikbern): deprecate?
+  bool final_input = 9;
 }
 
 message FunctionMapRequest {
@@ -926,7 +925,6 @@ message TaskLogsBatch {
 }
 
 message TaskResultRequest {
-  string task_id = 1; // TODO: deprecate once old clients have been flushed.
   modal.client.GenericResult result = 2;
 }
 

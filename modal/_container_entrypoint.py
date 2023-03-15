@@ -310,7 +310,7 @@ class _FunctionIOManager:
                 tb_line_cache=tb_line_cache,
             )
 
-            req = api_pb2.TaskResultRequest(task_id=self.task_id, result=result)
+            req = api_pb2.TaskResultRequest(result=result)
             await retry_transient_errors(self.client.stub.TaskResult, req)
 
             # Shut down the task gracefully
