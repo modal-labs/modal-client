@@ -1,9 +1,13 @@
 # Copyright Modal Labs 2022
 from __future__ import annotations
+import base64
 import json
+import pathlib
 import pytest
+import subprocess
 import sys
 import time
+from typing import List
 
 from grpclib.exceptions import GRPCError
 
@@ -66,7 +70,6 @@ def _run_container(
             definition_type=definition_type,
         )
 
-        # Note that main is a synchronous function, so we need to run it in a separate thread
         container_args = api_pb2.ContainerArguments(
             task_id="ta-123",
             function_id="fu-123",
@@ -437,3 +440,39 @@ def test_asgi(unix_servicer, event_loop):
 def test_container_heartbeats(unix_servicer, event_loop):
     client, items = _run_container(unix_servicer, "modal_test_support.functions", "square")
     assert any(isinstance(request, api_pb2.ContainerHeartbeatRequest) for request in unix_servicer.requests)
+
+
+@skip_windows_unix_socket
+def test_cli(unix_servicer, event_loop):
+    # This tests the container being invoked as a subprocess (the if __name__ == "__main__" block)
+
+    # Build up payload we pass through sys args
+    function_def = api_pb2.Function(
+        module_name="modal_test_support.functions",
+        function_name="square",
+        function_type=api_pb2.Function.FUNCTION_TYPE_FUNCTION,
+        definition_type=api_pb2.Function.DEFINITION_TYPE_FILE,
+    )
+    container_args = api_pb2.ContainerArguments(
+        task_id="ta-123",
+        function_id="fu-123",
+        app_id="se-123",
+        function_def=function_def,
+    )
+    data_base64: str = base64.b64encode(container_args.SerializeToString()).decode("ascii")
+
+    # Inputs that will be consumed by the container
+    unix_servicer.container_inputs = _get_inputs()
+
+    # Launch subprocess
+    env = {"MODAL_SERVER_URL": unix_servicer.remote_addr}
+    lib_dir = pathlib.Path(__file__).parent.parent
+    args: List[str] = [sys.executable, "-m", "modal._container_entrypoint", data_base64]
+    ret = subprocess.run(args, cwd=lib_dir, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout = ret.stdout.decode()
+    stderr = ret.stderr.decode()
+    if ret.returncode != 0:
+        raise Exception(f"Failed with {ret.returncode} stdout: {stdout} stderr: {stderr}")
+
+    assert stdout == ""
+    # assert stderr == ""  # TODO(erikbern): this doesn't work right now:
