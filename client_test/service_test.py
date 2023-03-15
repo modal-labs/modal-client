@@ -52,3 +52,21 @@ def test_run_class_serialized(client, servicer):
 
     # Make sure it's callable
     assert meth(100) == 1000000
+
+
+stub_local = modal.Stub()
+
+
+@stub_local.service(cpu=42)
+class FooLocal:
+    def bar(self, x):
+        return x**3
+
+    def baz(self, y):
+        return self.bar(y + 1)
+
+
+def test_can_call_locally():
+    foo = FooLocal()
+    assert foo.bar(4) == 64
+    assert foo.baz(4) == 125
