@@ -465,10 +465,7 @@ def test_cli(unix_servicer, event_loop):
     unix_servicer.container_inputs = _get_inputs()
 
     # Launch subprocess
-    env = {
-        "MODAL_SERVER_URL": unix_servicer.remote_addr,
-        "PYTHONUTF8": "1",  # For windows
-    }
+    env = {"MODAL_SERVER_URL": unix_servicer.remote_addr}
     lib_dir = pathlib.Path(__file__).parent.parent
     args: List[str] = [sys.executable, "-m", "modal._container_entrypoint", data_base64]
     ret = subprocess.run(args, cwd=lib_dir, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
