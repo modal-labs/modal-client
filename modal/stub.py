@@ -7,7 +7,9 @@ from multiprocessing.synchronize import Event
 import os
 import sys
 import warnings
-from typing import AsyncGenerator, Collection, Dict, List, Optional, Union, Any
+from typing import AsyncGenerator, Collection, Dict, List, Optional, Union, Any, Sequence
+
+from typeguard import typechecked
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
@@ -85,14 +87,15 @@ class _Stub:
     _blueprint: Dict[str, Provider]
     _client_mount: Optional[_Mount]
     _function_mounts: Dict[str, _Mount]
-    _mounts: Collection[_Mount]
-    _secrets: Collection[_Secret]
+    _mounts: Sequence[_Mount]
+    _secrets: Sequence[_Secret]
     _function_handles: Dict[str, _FunctionHandle]
     _web_endpoints: List[str]  # Used by the CLI
     _local_entrypoints: Dict[str, LocalEntrypoint]
     _local_mounts: List[_Mount]
     _app: Optional[_App]
 
+    @typechecked
     def __init__(
         self,
         name: Optional[str] = None,
@@ -100,8 +103,8 @@ class _Stub:
         image: Optional[
             _Image
         ] = _default_image,  # default image for all functions (default is modal.Image.debian_Slim)
-        mounts: Collection[_Mount] = [],  # default mounts for all functions
-        secrets: Collection[_Secret] = [],  # default secrets for all functions
+        mounts: Sequence[_Mount] = [],  # default mounts for all functions
+        secrets: Sequence[_Secret] = [],  # default secrets for all functions
         **blueprint: Provider,  # any Modal Object dependencies (Dict, Queue, etc.)
     ) -> None:
         """Construct a new app stub, optionally with default image, mounts, secrets
