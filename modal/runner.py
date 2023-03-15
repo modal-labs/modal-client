@@ -10,7 +10,7 @@ from modal_utils.async_utils import TaskContext
 from modal_utils.grpc_utils import retry_transient_errors
 
 from . import _pty
-from ._output import OutputManager, step_completed, get_app_logs_loop
+from ._output import OutputManager, step_completed, step_progress, get_app_logs_loop
 from .app import _App, is_local
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config
@@ -50,6 +50,10 @@ async def run_stub(
     async with stub._set_app(app), TaskContext(grace=config["logs_timeout"]) as tc:
         # Start heartbeats loop to keep the client alive
         tc.infinite_loop(lambda: _heartbeat(client, app.app_id), sleep=HEARTBEAT_INTERVAL)
+
+        with output_mgr.ctx_if_visible(output_mgr.make_live(step_progress("Initializing..."))):
+            initialized_msg = f"Initialized. [grey70]View app at [underline]{app._app_page_url}[/underline][/grey70]"
+            output_mgr.print_if_visible(step_completed(initialized_msg))
 
         # Start logs loop
         logs_loop = tc.create_task(get_app_logs_loop(app.app_id, client, output_mgr))
