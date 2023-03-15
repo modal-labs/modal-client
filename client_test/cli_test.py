@@ -149,16 +149,26 @@ def test_help_message_unspecified_function(servicer, set_env_client, test_dir):
     assert "bar" in result.stderr
 
 
+def test_run_states(servicer, set_env_client, test_dir):
+    stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
+    _run(["run", stub_file.as_posix()])
+    assert servicer.app_state_history["ap-1"] == [
+        api_pb2.APP_STATE_INITIALIZING,
+        api_pb2.APP_STATE_EPHEMERAL,
+        api_pb2.APP_STATE_STOPPED,
+    ]
+
+
 def test_run_detach(servicer, set_env_client, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
     _run(["run", "--detach", stub_file.as_posix()])
-    assert servicer.app_state == {"ap-1": api_pb2.APP_STATE_DETACHED}
+    assert servicer.app_state_history["ap-1"] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DETACHED]
 
 
 def test_deploy(servicer, set_env_client, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
     _run(["deploy", "--name=deployment_name", stub_file.as_posix()])
-    assert servicer.app_state == {"ap-1": api_pb2.APP_STATE_DEPLOYED}
+    assert servicer.app_state_history["ap-1"] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
 
 
 def test_run_custom_stub(servicer, set_env_client, test_dir):
