@@ -20,3 +20,4 @@ toml==0.10.2
 typer==0.6.1
 types-certifi==2021.10.8.3
 types-toml==0.10.4
+typeguard>=3.0.0
