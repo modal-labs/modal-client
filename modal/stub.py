@@ -101,9 +101,7 @@ class _Stub:
         self,
         name: Optional[str] = None,
         *,
-        image: Optional[
-            _Image
-        ] = _default_image,  # default image for all functions (default is `modal.Image.debian_slim()`)
+        image: Optional[_Image] = None,  # default image for all functions (default is `modal.Image.debian_slim()`)
         mounts: Sequence[_Mount] = [],  # default mounts for all functions
         secrets: Sequence[_Secret] = [],  # default secrets for all functions
         **blueprint: Provider,  # any Modal Object dependencies (Dict, Queue, etc.)
@@ -127,7 +125,12 @@ class _Stub:
             self._validate_blueprint_value(k, v)
 
         self._blueprint = blueprint
-        self._blueprint["image"] = image  # backward compatibility since "image" used to be on the blueprint
+        if image is not None:
+            self._blueprint["image"] = image  # backward compatibility since "image" used to be on the blueprint
+            self._default_image = image
+        else:
+            self._default_image = _default_image
+
         self._client_mount = None
         self._function_mounts = {}
         self._mounts = mounts
@@ -136,7 +139,6 @@ class _Stub:
         self._local_entrypoints = {}
         self._local_mounts = []
         self._web_endpoints = []
-        self._default_image = image
 
         self._app = None
         if not is_local():
