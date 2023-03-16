@@ -6,7 +6,7 @@ import time
 import cloudpickle
 from synchronicity.exceptions import UserCodeException
 
-from modal import Proxy, Stub
+from modal import Proxy, Stub, SharedVolume
 from modal.exception import InvalidError
 from modal.functions import Function, FunctionCall, gather
 from modal.stub import AioStub
@@ -379,3 +379,17 @@ def test_raw_call():
 def test_method_call(client):
     with lc_stub.run(client=client):
         assert Class().f.call(111) == 12321
+
+
+def test_allow_cross_region_volumes(client, servicer):
+    stub = Stub()
+    vol1, vol2 = SharedVolume(), SharedVolume()
+    # Should pass flag for all the function's SharedVolumeMounts
+    stub.function(dummy, shared_volumes={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)
+
+    with stub.run(client=client):
+        assert len(servicer.app_functions) == 1
+        for func in servicer.app_functions.values():
+            assert len(func.shared_volume_mounts) == 2
+            for svm in func.shared_volume_mounts:
+                assert svm.allow_cross_region
