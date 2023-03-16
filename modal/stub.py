@@ -544,6 +544,7 @@ class _Stub:
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         mounts: Collection[_Mount] = (),
         shared_volumes: Dict[str, _SharedVolume] = {},
+        allow_cross_region_volumes: bool = False,  # Whether using shared volumes from other regions is allowed.
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
@@ -615,6 +616,7 @@ class _Stub:
             timeout=timeout,
             keep_warm=keep_warm,
             cloud=cloud,
+            allow_cross_region_volumes=allow_cross_region_volumes,
         )
         self._add_function(function, [*base_mounts, *mounts])
         return function_handle
