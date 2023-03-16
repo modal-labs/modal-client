@@ -240,6 +240,7 @@ def shell(
             cmd,
             mounts=_function._mounts,
             shared_volumes=_function._shared_volumes,
+            allow_cross_region_volumes=_function._allow_cross_region_volumes,
             image=_function._image,
             secrets=_function._secrets,
             gpu=_function._gpu,
