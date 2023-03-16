@@ -127,6 +127,7 @@ class _Stub:
             self._validate_blueprint_value(k, v)
 
         self._blueprint = blueprint
+        self._blueprint["image"] = image  # backward compatibility since "image" used to be on the blueprint
         self._client_mount = None
         self._function_mounts = {}
         self._mounts = mounts

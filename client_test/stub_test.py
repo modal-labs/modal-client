@@ -43,12 +43,10 @@ async def test_attrs(servicer, aio_client):
 
 @pytest.mark.asyncio
 async def test_stub_type_validation(servicer, aio_client):
-    with pytest.raises(InvalidError) as excinfo:
+    with pytest.raises(typeguard.TypeCheckError) as excinfo:
         stub = AioStub(
             foo=4242,
         )
-
-    assert "4242" in str(excinfo.value)
 
     stub = AioStub()
 
