@@ -7,7 +7,9 @@ from multiprocessing.synchronize import Event
 import os
 import sys
 import warnings
-from typing import AsyncGenerator, Collection, Dict, List, Optional, Union, Any
+from typing import AsyncGenerator, Collection, Dict, List, Optional, Union, Any, Sequence
+
+from typeguard import typechecked
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
@@ -85,23 +87,36 @@ class _Stub:
     _blueprint: Dict[str, Provider]
     _client_mount: Optional[_Mount]
     _function_mounts: Dict[str, _Mount]
-    _mounts: Collection[_Mount]
-    _secrets: Collection[_Secret]
+    _mounts: Sequence[_Mount]
+    _secrets: Sequence[_Secret]
     _function_handles: Dict[str, _FunctionHandle]
     _web_endpoints: List[str]  # Used by the CLI
     _local_entrypoints: Dict[str, LocalEntrypoint]
     _local_mounts: List[_Mount]
     _app: Optional[_App]
+    _default_image: _Image = _default_image
 
+    @typechecked
     def __init__(
         self,
         name: Optional[str] = None,
         *,
-        mounts: Collection[_Mount] = [],
-        secrets: Collection[_Secret] = [],
-        **blueprint,
+        image: Optional[_Image] = None,  # default image for all functions (default is `modal.Image.debian_slim()`)
+        mounts: Sequence[_Mount] = [],  # default mounts for all functions
+        secrets: Sequence[_Secret] = [],  # default secrets for all functions
+        **blueprint: Provider,  # any Modal Object dependencies (Dict, Queue, etc.)
     ) -> None:
-        """Construct a new app stub, optionally with default mounts."""
+        """Construct a new app stub, optionally with default image, mounts, secrets
+
+        Any "blueprint" objects are loaded as part of running or deploying the app,
+        and are accessible by name on the running container app, e.g.:
+        ```python
+        stub = modal.Stub(key_value_store=modal.Dict())
+
+        @stub.function
+        def store_something(key: str, value: str):
+            stub.app.key_value_store.put(key, value)
+        """
 
         self._name = name
         self._description = name
@@ -110,6 +125,10 @@ class _Stub:
             self._validate_blueprint_value(k, v)
 
         self._blueprint = blueprint
+        if image is not None:
+            self._blueprint["image"] = image  # backward compatibility since "image" used to be on the blueprint
+            self._default_image = image
+
         self._client_mount = None
         self._function_mounts = {}
         self._mounts = mounts
@@ -299,10 +318,7 @@ class _Stub:
         return await deploy_stub(self, name, namespace, client, stdout, show_progress, object_entity)
 
     def _get_default_image(self):
-        if "image" in self._blueprint:
-            return self._blueprint["image"]
-        else:
-            return _default_image
+        return self._default_image
 
     @property
     def _pty_input_stream(self):

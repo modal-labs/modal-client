@@ -1,4 +1,8 @@
 # Copyright Modal Labs 2022
+from typing import Dict
+
+from typeguard import typechecked
+
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 
@@ -23,7 +27,14 @@ class _Secret(Provider[_SecretHandle]):
     See [the secrets guide page](/docs/guide/secrets) for more information.
     """
 
-    def __init__(self, env_dict={}, template_type=""):
+    @typechecked
+    def __init__(
+        self,
+        env_dict: Dict[
+            str, str
+        ] = {},  # dict of entries to be inserted as environment variables in functions using the secret
+        template_type="",  # internal use only
+    ):
         async def _load(resolver: Resolver, existing_object_id: str) -> _SecretHandle:
             req = api_pb2.SecretCreateRequest(
                 app_id=resolver.app_id,
