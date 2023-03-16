@@ -94,7 +94,6 @@ class _Stub:
     _local_entrypoints: Dict[str, LocalEntrypoint]
     _local_mounts: List[_Mount]
     _app: Optional[_App]
-    _default_image: _Image = _default_image
 
     @typechecked
     def __init__(
@@ -127,7 +126,6 @@ class _Stub:
         self._blueprint = blueprint
         if image is not None:
             self._blueprint["image"] = image  # backward compatibility since "image" used to be on the blueprint
-            self._default_image = image
 
         self._client_mount = None
         self._function_mounts = {}
@@ -318,7 +316,10 @@ class _Stub:
         return await deploy_stub(self, name, namespace, client, stdout, show_progress, object_entity)
 
     def _get_default_image(self):
-        return self._default_image
+        if "image" in self._blueprint:
+            return self._blueprint["image"]
+        else:
+            return _default_image
 
     @property
     def _pty_input_stream(self):

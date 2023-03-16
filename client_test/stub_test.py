@@ -262,3 +262,13 @@ def test_init_types():
         some_dict=modal.Dict(),
         some_queue=modal.Queue(),
     )
+
+
+def test_set_image_on_stub_as_attribute():
+    # TODO: do we want to deprecate this syntax? It's kind of random for image to
+    #     have a reserved name in the blueprint, and being the only of the construction
+    #     arguments that can be set on the instance after construction
+    stub = Stub()
+    custom_img = modal.Image.debian_slim().apt_install("emacs")
+    stub.image = custom_img
+    assert stub._get_default_image() == custom_img
