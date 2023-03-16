@@ -128,8 +128,6 @@ class _Stub:
         if image is not None:
             self._blueprint["image"] = image  # backward compatibility since "image" used to be on the blueprint
             self._default_image = image
-        else:
-            self._default_image = _default_image
 
         self._client_mount = None
         self._function_mounts = {}
