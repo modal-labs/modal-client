@@ -705,6 +705,7 @@ class _Function(Provider[_FunctionHandle]):
         base_mounts: Collection[_Mount] = (),
         mounts: Collection[_Mount] = (),
         shared_volumes: Dict[str, _SharedVolume] = {},
+        allow_cross_region_volumes: bool = False,
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         memory: Optional[int] = None,
         proxy: Optional[_Proxy] = None,
@@ -775,6 +776,7 @@ class _Function(Provider[_FunctionHandle]):
         self._base_mounts = base_mounts
         self._mounts = mounts
         self._shared_volumes = shared_volumes
+        self._allow_cross_region_volumes = allow_cross_region_volumes
         self._webhook_config = webhook_config
         self._cpu = cpu
         self._memory = memory
@@ -858,7 +860,9 @@ class _Function(Provider[_FunctionHandle]):
 
             shared_volume_mounts.append(
                 api_pb2.SharedVolumeMount(
-                    mount_path=path, shared_volume_id=(await resolver.load(shared_volume)).object_id
+                    mount_path=path,
+                    shared_volume_id=(await resolver.load(shared_volume)).object_id,
+                    allow_cross_region=self._allow_cross_region_volumes,
                 )
             )
 
@@ -946,6 +950,8 @@ class _Function(Provider[_FunctionHandle]):
             response = await resolver.client.stub.FunctionCreate(request)
         except GRPCError as exc:
             if exc.status == Status.INVALID_ARGUMENT:
+                raise InvalidError(exc.message)
+            if exc.status == Status.FAILED_PRECONDITION:
                 raise InvalidError(exc.message)
             raise
 

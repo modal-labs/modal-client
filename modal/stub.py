@@ -449,6 +449,7 @@ class _Stub:
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Collection[_Mount] = (),
         shared_volumes: Dict[str, _SharedVolume] = {},
+        allow_cross_region_volumes: bool = False,  # Whether using shared volumes from other regions is allowed.
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
@@ -495,6 +496,7 @@ class _Stub:
             base_mounts=base_mounts,
             mounts=mounts,
             shared_volumes=shared_volumes,
+            allow_cross_region_volumes=allow_cross_region_volumes,
             memory=memory,
             proxy=proxy,
             retries=retries,
