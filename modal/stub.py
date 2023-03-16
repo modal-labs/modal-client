@@ -167,12 +167,17 @@ class _Stub:
     def _infer_app_desc(self):
         if is_notebook():
             # when running from a notebook the sys.argv for the kernel will
-            # be really long an not very helpful
+            # be really long and not very helpful
             return "Notebook"  # TODO: use actual name of notebook
 
-        script_filename = os.path.split(sys.argv[0])[-1]
-        args = [script_filename] + sys.argv[1:]
-        return " ".join(args)
+        if is_local():
+            script_filename = os.path.split(sys.argv[0])[-1]
+            args = [script_filename] + sys.argv[1:]
+            return " ".join(args)
+        else:
+            # in a container we rarely use the description, but nice to have a fallback
+            # instead of displaying "_container_entrypoint.py [base64 garbage]"
+            return "[unnamed app]"
 
     def __getitem__(self, tag: str):
         # Deprecated? Note: this is currently the only way to refer to lifecycled methods on the stub, since they have . in the tag
