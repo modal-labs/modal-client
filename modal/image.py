@@ -1,11 +1,10 @@
 # Copyright Modal Labs 2022
 from __future__ import annotations
-
 import os
 import shlex
 import sys
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union, Sequence
+from typing import Any, Callable, Dict, List, Optional, Union, Sequence, Tuple
 
 import toml
 from grpclib.exceptions import GRPCError, StreamTerminatedError
@@ -66,7 +65,7 @@ def _get_client_requirements_path():
     return os.path.join(modal_path, "requirements.txt")
 
 
-def _flatten_str_args(function_name: str, arg_name: str, args: tuple[Union[str, list[str]], ...]) -> list[str]:
+def _flatten_str_args(function_name: str, arg_name: str, args: Tuple[Union[str, List[str]], ...]) -> List[str]:
     """Takes a tuple of strings, or string lists, and flattens it.
 
     Raises an error if any of the elements are not strings or string lists.
@@ -78,7 +77,7 @@ def _flatten_str_args(function_name: str, arg_name: str, args: tuple[Union[str, 
     def is_str_list(x):
         return isinstance(x, list) and all(isinstance(y, str) for y in x)
 
-    ret: list[str] = []
+    ret: List[str] = []
     for x in args:
         if isinstance(x, str):
             ret.append(x)
@@ -130,7 +129,7 @@ class _Image(Provider[_ImageHandle]):
     def _from_args(
         base_images={},
         context_files={},
-        dockerfile_commands: Union[list[str], Callable[[], list[str]]] = [],
+        dockerfile_commands: Union[List[str], Callable[[], List[str]]] = [],
         secrets: Sequence[_Secret] = [],
         ref=None,
         gpu_config: api_pb2.GPUConfig = api_pb2.GPUConfig(),
@@ -157,7 +156,7 @@ class _Image(Provider[_ImageHandle]):
                 return _ImageHandle._from_id(image_id, resolver.client, None)
 
             # Recursively build base images
-            base_image_ids: list[str] = []
+            base_image_ids: List[str] = []
             for image in base_images.values():
                 base_image_ids.append((await resolver.load(image)).object_id)
             base_images_pb2s = [
@@ -185,7 +184,7 @@ class _Image(Provider[_ImageHandle]):
                 build_function_def = None
                 build_function_id = None
 
-            dockerfile_commands_list: list[str]
+            dockerfile_commands_list: List[str]
             if callable(dockerfile_commands):
                 # It's a closure (see DockerfileImage)
                 dockerfile_commands_list = dockerfile_commands()
@@ -315,7 +314,7 @@ class _Image(Provider[_ImageHandle]):
     @typechecked
     def pip_install(
         self,
-        *packages: Union[str, list[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
+        *packages: Union[str, List[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
         find_links: Optional[str] = None,  # Passes -f (--find-links) pip install
         index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
         extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
@@ -547,7 +546,7 @@ class _Image(Provider[_ImageHandle]):
     @typechecked
     def dockerfile_commands(
         self,
-        dockerfile_commands: Union[str, list[str]],
+        dockerfile_commands: Union[str, List[str]],
         context_files: Dict[str, str] = {},
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
@@ -575,7 +574,7 @@ class _Image(Provider[_ImageHandle]):
     @typechecked
     def run_commands(
         self,
-        *commands: Union[str, list[str]],
+        *commands: Union[str, List[str]],
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ):
@@ -652,8 +651,8 @@ class _Image(Provider[_ImageHandle]):
     @typechecked
     def conda_install(
         self,
-        *packages: Union[str, list[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
-        channels: list[str] = [],  # A list of Conda channels, eg. ["conda-forge", "nvidia"]
+        *packages: Union[str, List[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
+        channels: List[str] = [],  # A list of Conda channels, eg. ["conda-forge", "nvidia"]
     ) -> "_Image":
         """Install a list of additional packages using conda."""
         pkgs = _flatten_str_args("conda_install", "packages", packages)
@@ -692,7 +691,7 @@ class _Image(Provider[_ImageHandle]):
         return self.extend(dockerfile_commands=dockerfile_commands, context_files=context_files)
 
     @staticmethod
-    def _registry_setup_commands(tag: str, setup_commands: list[str]) -> list[str]:
+    def _registry_setup_commands(tag: str, setup_commands: List[str]) -> List[str]:
         """mdmd:hidden"""
         return [
             f"FROM {tag}",
@@ -704,7 +703,7 @@ class _Image(Provider[_ImageHandle]):
 
     @staticmethod
     @typechecked
-    def from_dockerhub(tag: str, setup_commands: list[str] = [], **kwargs) -> "_Image":
+    def from_dockerhub(tag: str, setup_commands: List[str] = [], **kwargs) -> "_Image":
         """
         Build a Modal image from a pre-existing image on Docker Hub.
 
@@ -739,7 +738,7 @@ class _Image(Provider[_ImageHandle]):
 
     @staticmethod
     @typechecked
-    def from_aws_ecr(tag: str, secret: Optional[_Secret] = None, setup_commands: list[str] = [], **kwargs) -> "_Image":
+    def from_aws_ecr(tag: str, secret: Optional[_Secret] = None, setup_commands: List[str] = [], **kwargs) -> "_Image":
         """
         Build a Modal image from a pre-existing image on a private AWS Elastic
         Container Registry (ECR). You will need to pass a `modal.Secret` containing
@@ -846,7 +845,7 @@ class _Image(Provider[_ImageHandle]):
     @typechecked
     def apt_install(
         self,
-        *packages: Union[str, list[str]],  # A list of packages, e.g. ["ssh", "libpq-dev"]
+        *packages: Union[str, List[str]],  # A list of packages, e.g. ["ssh", "libpq-dev"]
     ) -> "_Image":
         """Install a list of Debian packages using `apt`.
 
