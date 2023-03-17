@@ -5,15 +5,15 @@ import os
 import shlex
 import sys
 from pathlib import Path
-from typing import Any, Callable, Collection, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union, Sequence
 
-from grpclib.exceptions import GRPCError, StreamTerminatedError
 import toml
+from grpclib.exceptions import GRPCError, StreamTerminatedError
+from typeguard import typechecked
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, unary_stream
-
 from . import is_local
 from ._function_utils import FunctionInfo
 from ._resolver import Resolver
@@ -126,11 +126,12 @@ class _Image(Provider[_ImageHandle]):
     """
 
     @staticmethod
+    @typechecked
     def _from_args(
         base_images={},
         context_files={},
         dockerfile_commands: Union[list[str], Callable[[], list[str]]] = [],
-        secrets: Collection[_Secret] = [],
+        secrets: Sequence[_Secret] = [],
         ref=None,
         gpu_config: api_pb2.GPUConfig = api_pb2.GPUConfig(),
         build_function=None,
@@ -297,6 +298,7 @@ class _Image(Provider[_ImageHandle]):
 
         return _Image._from_args(base_images={"base": self}, **kwargs)
 
+    @typechecked
     def copy(self, mount: _Mount, remote_path: Union[str, Path] = "."):
         """Copy the entire contents of a `modal.Mount` into an image.
         Useful when files only available locally are required during the image
@@ -317,6 +319,7 @@ class _Image(Provider[_ImageHandle]):
             context_mount=mount,
         )
 
+    @typechecked
     def pip_install(
         self,
         *packages: Union[str, list[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
@@ -357,11 +360,12 @@ class _Image(Provider[_ImageHandle]):
 
         return self.extend(dockerfile_commands=dockerfile_commands)
 
+    @typechecked
     def pip_install_private_repos(
         self,
         *repositories: str,
         git_user: str,
-        secrets: Collection[_Secret] = [],
+        secrets: Sequence[_Secret] = [],
     ) -> "_Image":
         """
         Install a list of Python packages from private git repositories using pip.
@@ -436,6 +440,7 @@ class _Image(Provider[_ImageHandle]):
             secrets=secrets,
         )
 
+    @typechecked
     def pip_install_from_requirements(
         self,
         requirements_txt: str,  # Path to a requirements.txt file.
@@ -459,6 +464,7 @@ class _Image(Provider[_ImageHandle]):
             context_files=context_files,
         )
 
+    @typechecked
     def pip_install_from_pyproject(
         self,
         pyproject_toml: str,
@@ -490,6 +496,7 @@ class _Image(Provider[_ImageHandle]):
 
         return self.pip_install(*dependencies)
 
+    @typechecked
     def poetry_install_from_file(
         self,
         poetry_pyproject_toml: str,
@@ -544,11 +551,12 @@ class _Image(Provider[_ImageHandle]):
             context_files=context_files,
         )
 
+    @typechecked
     def dockerfile_commands(
         self,
         dockerfile_commands: Union[str, list[str]],
-        context_files: dict[str, str] = {},
-        secrets: Collection[_Secret] = [],
+        context_files: Dict[str, str] = {},
+        secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
         context_mount: Optional[
             _Mount
@@ -571,10 +579,11 @@ class _Image(Provider[_ImageHandle]):
             context_mount=context_mount,
         )
 
+    @typechecked
     def run_commands(
         self,
         *commands: Union[str, list[str]],
-        secrets: Collection[_Secret] = [],
+        secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ):
         """Extend an image with a list of shell commands to run."""
@@ -591,6 +600,7 @@ class _Image(Provider[_ImageHandle]):
         )
 
     @staticmethod
+    @typechecked
     def conda(python_version: str = "3.9") -> "_Image":
         """A Conda base image, using miniconda3 and derived from the official Docker Hub image."""
         _validate_python_version(python_version)
@@ -646,6 +656,7 @@ class _Image(Provider[_ImageHandle]):
             ]
         )
 
+    @typechecked
     def conda_install(
         self,
         *packages: Union[str, list[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
@@ -667,6 +678,7 @@ class _Image(Provider[_ImageHandle]):
 
         return self.extend(dockerfile_commands=dockerfile_commands)
 
+    @typechecked
     def conda_update_from_environment(
         self,
         environment_yml: str,
@@ -698,6 +710,7 @@ class _Image(Provider[_ImageHandle]):
         ]
 
     @staticmethod
+    @typechecked
     def from_dockerhub(tag: str, setup_commands: list[str] = [], **kwargs) -> "_Image":
         """
         Build a Modal image from a pre-existing image on Docker Hub.
@@ -732,6 +745,7 @@ class _Image(Provider[_ImageHandle]):
         )
 
     @staticmethod
+    @typechecked
     def from_aws_ecr(tag: str, secret: Optional[_Secret] = None, setup_commands: list[str] = [], **kwargs) -> "_Image":
         """
         Build a Modal image from a pre-existing image on a private AWS Elastic
@@ -774,6 +788,7 @@ class _Image(Provider[_ImageHandle]):
         )
 
     @staticmethod
+    @typechecked
     def from_dockerfile(
         path: Union[str, Path],
         context_mount: Optional[
@@ -812,6 +827,7 @@ class _Image(Provider[_ImageHandle]):
         )
 
     @staticmethod
+    @typechecked
     def debian_slim(python_version: Optional[str] = None) -> "_Image":
         """Default image, based on the official `python:X.Y.Z-slim-bullseye` Docker images."""
         python_version = _dockerhub_python_version(python_version)
@@ -834,6 +850,7 @@ class _Image(Provider[_ImageHandle]):
             context_files={"/modal_requirements.txt": requirements_path},
         )
 
+    @typechecked
     def apt_install(
         self,
         *packages: Union[str, list[str]],  # A list of packages, e.g. ["ssh", "libpq-dev"]
@@ -860,14 +877,15 @@ class _Image(Provider[_ImageHandle]):
 
         return self.extend(dockerfile_commands=dockerfile_commands)
 
+    @typechecked
     def run_function(
         self,
         raw_f: Callable[[], Any],
         *,
         secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
-        secrets: Collection[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
+        secrets: Sequence[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
-        mounts: Collection[_Mount] = (),
+        mounts: Sequence[_Mount] = (),
         shared_volumes: Dict[str, _SharedVolume] = {},
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
@@ -926,7 +944,8 @@ class _Image(Provider[_ImageHandle]):
         )
         return self.extend(build_function=function)
 
-    def env(self, vars: dict[str, str]) -> "_Image":
+    @typechecked
+    def env(self, vars: Dict[str, str]) -> "_Image":
         """Sets the environmental variables of the image.
 
         **Example**
