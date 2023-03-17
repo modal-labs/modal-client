@@ -81,7 +81,7 @@ def _get_click_command_for_function(_stub, function_tag):
 
     @click.pass_context
     def f(ctx, *args, **kwargs):
-        with blocking_stub.run(detach=ctx.obj["detach"], show_progress=not ctx.obj["quiet"]) as app:
+        with blocking_stub.run(detach=ctx.obj["detach"], show_progress=ctx.obj["show_progress"]) as app:
             _function_handle = app[function_tag]
             _function_handle.call(*args, **kwargs)
 
@@ -102,7 +102,7 @@ def _get_click_command_for_local_entrypoint(_stub, entrypoint: LocalEntrypoint):
                 "Note that running a local entrypoint in detached mode only keeps the last triggered Modal function alive after the parent process has been killed or disconnected."
             )
 
-        with blocking_stub.run(detach=ctx.obj["detach"], show_progress=not ctx.obj["quiet"]):
+        with blocking_stub.run(detach=ctx.obj["detach"], show_progress=ctx.obj["show_progress"]):
             if isasync:
                 asyncio.run(func(*args, **kwargs))
             else:
@@ -168,7 +168,7 @@ def run(ctx, detach, quiet):
     """
     ctx.ensure_object(dict)
     ctx.obj["detach"] = detach  # if subcommand would be a click command...
-    ctx.obj["quiet"] = quiet
+    ctx.obj["show_progress"] = False if quiet else None
 
 
 def deploy(
