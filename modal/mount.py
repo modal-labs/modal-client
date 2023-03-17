@@ -3,14 +3,15 @@ import abc
 import asyncio
 import concurrent.futures
 import dataclasses
-from datetime import date
 import os
 import time
 import typing
+from datetime import date
 from pathlib import Path, PurePosixPath
-from typing import AsyncGenerator, Callable, Collection, List, Optional, Union, Tuple
+from typing import AsyncGenerator, Callable, List, Optional, Union, Tuple, Sequence
 
 import aiostream
+from typeguard import typechecked
 
 import modal.exception
 from modal_proto import api_pb2
@@ -18,13 +19,11 @@ from modal_utils.async_utils import synchronize_apis
 from modal_utils.grpc_utils import retry_transient_errors
 from modal_utils.package_utils import get_module_mount_info, module_mount_condition
 from modal_version import __version__
-
 from ._blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec
 from ._resolver import Resolver
 from .config import config, logger
 from .exception import InvalidError, NotFoundError, deprecation_warning
 from .object import Handle, Provider
-
 
 MOUNT_PUT_FILE_CLIENT_TIMEOUT = 10 * 60  # 10 min max for transferring files
 
@@ -182,6 +181,7 @@ class _Mount(Provider[_MountHandle]):
         # we can't rely on it to be set. Let's clean this up later.
         return getattr(self, "_is_local", False)
 
+    @typechecked
     def add_local_dir(
         self,
         local_path: Union[str, Path],
@@ -205,6 +205,7 @@ class _Mount(Provider[_MountHandle]):
         )
 
     @staticmethod
+    @typechecked
     def from_local_dir(
         local_path: Union[str, Path],
         *,
@@ -216,6 +217,7 @@ class _Mount(Provider[_MountHandle]):
             local_path, remote_path=remote_path, condition=condition, recursive=recursive
         )
 
+    @typechecked
     def add_local_file(
         self, local_path: Union[str, Path], remote_path: Union[str, PurePosixPath, None] = None
     ) -> "_Mount":
@@ -231,6 +233,7 @@ class _Mount(Provider[_MountHandle]):
         )
 
     @staticmethod
+    @typechecked
     def from_local_file(local_path: Union[str, Path], remote_path: Union[str, PurePosixPath, None] = None) -> "_Mount":
         return _Mount(_entries=[]).add_local_file(local_path, remote_path=remote_path)
 
@@ -360,7 +363,8 @@ def _get_client_mount():
         return _Mount.from_name(client_mount_name(), namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
 
 
-async def _create_package_mounts(module_names: Collection[str]) -> List[_Mount]:
+@typechecked
+async def _create_package_mounts(module_names: Sequence[str]) -> List[_Mount]:
     """Returns a `modal.Mount` that makes local modules listed in `module_names` available inside the container.
     This works by mounting the local path of each module's package to a directory inside the container that's on `PYTHONPATH`.
 
