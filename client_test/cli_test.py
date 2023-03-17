@@ -165,6 +165,13 @@ def test_run_detach(servicer, set_env_client, test_dir):
     assert servicer.app_state_history["ap-1"] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DETACHED]
 
 
+def test_run_quiet(servicer, set_env_client, test_dir):
+    stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
+    # Just tests that the command runs without error for now (tests end up defaulting to `show_progress=False` anyway,
+    # without a TTY).
+    _run(["run", "--quiet", stub_file.as_posix()])
+
+
 def test_deploy(servicer, set_env_client, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
     _run(["deploy", "--name=deployment_name", stub_file.as_posix()])
