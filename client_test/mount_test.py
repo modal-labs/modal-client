@@ -1,10 +1,10 @@
 # Copyright Modal Labs 2022
 import hashlib
 import os
+import sys
 from pathlib import Path
 
 import pytest
-import sys
 
 from modal import App, Stub, create_package_mounts
 from modal._blob_utils import LARGE_FILE_LIMIT
@@ -23,7 +23,7 @@ async def test_get_files(servicer, aio_client, tmpdir):
     tmpdir.join("fluff").write("hello")
 
     files = {}
-    m = AioMount.from_local_dir(tmpdir, remote_path="/", condition=lambda fn: fn.endswith(".py"), recursive=True)
+    m = AioMount.from_local_dir(Path(tmpdir), remote_path="/", condition=lambda fn: fn.endswith(".py"), recursive=True)
     async for upload_spec in m._get_files():
         files[upload_spec.mount_filename] = upload_spec
 
@@ -92,13 +92,13 @@ def test_create_mount(servicer, client):
 
 def test_create_mount_file_errors(servicer, tmpdir, client):
     app = App._init_new(client)
-    m = Mount.from_local_dir(tmpdir / "xyz", remote_path="/xyz")
+    m = Mount.from_local_dir(Path(tmpdir) / "xyz", remote_path="/xyz")
     with pytest.raises(FileNotFoundError):
         app.create_one_object(m)
 
     with open(tmpdir / "abc", "w"):
         pass
-    m = Mount.from_local_dir(tmpdir / "abc", remote_path="/abc")
+    m = Mount.from_local_dir(Path(tmpdir) / "abc", remote_path="/abc")
     with pytest.raises(NotADirectoryError):
         app.create_one_object(m)
 
