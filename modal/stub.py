@@ -464,7 +464,7 @@ class _Stub:
         self,
         raw_f=None,  # The decorated function
         *,
-        image: _Image = None,  # The image to run as the container for the function
+        image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
         secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
         secrets: Sequence[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
@@ -543,9 +543,11 @@ class _Stub:
         raw_f,
         *,
         method: str = "GET",  # REST method for the created endpoint.
-        label: str = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
+        label: Optional[
+            str
+        ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-        image: _Image = None,  # The image to run as the container for the function
+        image: Optional[_Image] = None,  # The image to run as the container for the function
         secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
         secrets: Sequence[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
@@ -634,9 +636,11 @@ class _Stub:
         self,
         asgi_app,  # The asgi app
         *,
-        label: str = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
+        label: Optional[
+            str
+        ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-        image: _Image = None,  # The image to run as the container for the function
+        image: Optional[_Image] = None,  # The image to run as the container for the function
         secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
         secrets: Sequence[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
