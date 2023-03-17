@@ -81,7 +81,7 @@ def _get_click_command_for_function(_stub, function_tag):
 
     @click.pass_context
     def f(ctx, *args, **kwargs):
-        with blocking_stub.run(detach=ctx.obj["detach"]) as app:
+        with blocking_stub.run(detach=ctx.obj["detach"], show_progress=ctx.obj["show_progress"]) as app:
             _function_handle = app[function_tag]
             _function_handle.call(*args, **kwargs)
 
@@ -102,7 +102,7 @@ def _get_click_command_for_local_entrypoint(_stub, entrypoint: LocalEntrypoint):
                 "Note that running a local entrypoint in detached mode only keeps the last triggered Modal function alive after the parent process has been killed or disconnected."
             )
 
-        with blocking_stub.run(detach=ctx.obj["detach"]):
+        with blocking_stub.run(detach=ctx.obj["detach"], show_progress=ctx.obj["show_progress"]):
             if isasync:
                 asyncio.run(func(*args, **kwargs))
             else:
@@ -133,9 +133,10 @@ class RunGroup(click.Group):
     cls=RunGroup,
     subcommand_metavar="FUNC_REF",
 )
-@click.option("--detach", is_flag=True, help="Don't stop the app if the local process dies or disconnects.")
+@click.option("-q", "--quiet", is_flag=True, help="Don't show Modal progress indicators.")
+@click.option("-d", "--detach", is_flag=True, help="Don't stop the app if the local process dies or disconnects.")
 @click.pass_context
-def run(ctx, detach):
+def run(ctx, detach, quiet):
     """Run a Modal function or local entrypoint
 
     `FUNC_REF` should be of the format `{file or module}::{function name}`.
@@ -167,6 +168,7 @@ def run(ctx, detach):
     """
     ctx.ensure_object(dict)
     ctx.obj["detach"] = detach  # if subcommand would be a click command...
+    ctx.obj["show_progress"] = False if quiet else None
 
 
 def deploy(
