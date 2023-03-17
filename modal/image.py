@@ -151,13 +151,6 @@ class _Image(Provider[_ImageHandle]):
         if build_function and len(base_images) != 1:
             raise InvalidError("Cannot run a build function with multiple base images!")
 
-        for secret in secrets:
-            if not isinstance(secret, _Secret):
-                raise InvalidError(f"Secret {secret!r} must be a modal.Secret object")
-
-        if context_mount is not None and not isinstance(context_mount, _Mount):
-            raise InvalidError(f"Context mount {context_mount!r} must be a modal.Mount object")
-
         async def _load(resolver: Resolver, existing_object_id: str):
             if ref:
                 image_id = (await resolver.load(ref)).object_id
