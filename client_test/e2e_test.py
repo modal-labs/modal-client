@@ -16,6 +16,7 @@ def _cli(args, server_url, extra_env={}, check=True) -> Tuple[int, str, str]:
         **extra_env,
     }
     ret = subprocess.run(args, cwd=lib_dir, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
     stdout = ret.stdout.decode()
     stderr = ret.stderr.decode()
     if check and ret.returncode != 0:
@@ -26,6 +27,15 @@ def _cli(args, server_url, extra_env={}, check=True) -> Tuple[int, str, str]:
 def test_run_e2e(servicer):
     _, _, err = _cli(["-m", "modal_test_support.script"], servicer.remote_addr)
     assert err == ""
+
+
+def test_run_progress_info(servicer):
+    returncode, stdout, stderr = _cli(["-m", "modal_test_support.progress_info"], servicer.remote_addr)
+    assert returncode == 0
+    assert stderr == ""
+    lines = stdout.splitlines()
+    assert "Initialized. View app at https://modaltest.com/apps/ap-123" in lines[0]
+    assert "App completed" in lines[-1]
 
 
 def test_run_profiler(servicer):
