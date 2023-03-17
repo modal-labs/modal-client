@@ -5,6 +5,7 @@ from typing import Awaitable, Callable, Generic, Optional, Type, TypeVar
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
+from typeguard import typechecked
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
@@ -77,6 +78,7 @@ class Handle(metaclass=ObjectMeta):
         return obj
 
     @classmethod
+    @typechecked
     async def from_id(cls: Type[H], object_id: str, client: Optional[_Client] = None) -> H:
         # This is used in a few examples to construct FunctionCall objects
         # TODO(erikbern): doesn't use _initialize_from_proto - let's use AppLookupObjectRequest?
@@ -122,6 +124,7 @@ class Handle(metaclass=ObjectMeta):
         return handle
 
 
+@typechecked
 async def _lookup(
     app_name: str,
     tag: Optional[str] = None,
@@ -189,6 +192,7 @@ class Provider(Generic[H]):
         await app.deploy(label, namespace, object_entity)  # TODO(erikbern): not needed if the app already existed
         return handle
 
+    @typechecked
     def persist(self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE):
         """Deploy a Modal app containing this object. This object can then be imported from other apps using
         the returned reference, or by calling `modal.SharedVolume.from_name(label)` (or the equivalent method
@@ -222,6 +226,7 @@ class Provider(Generic[H]):
         return obj
 
     @classmethod
+    @typechecked
     def from_name(
         cls: Type[P], app_name: str, tag: Optional[str] = None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE
     ) -> P:
@@ -253,6 +258,7 @@ class Provider(Generic[H]):
         return obj
 
     @classmethod
+    @typechecked
     async def lookup(
         cls: Type[P],
         app_name: str,
