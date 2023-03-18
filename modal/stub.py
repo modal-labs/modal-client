@@ -7,13 +7,14 @@ from multiprocessing.synchronize import Event
 import os
 import sys
 import warnings
-from typing import AsyncGenerator, Collection, Dict, List, Optional, Union, Any, Sequence
+from typing import AsyncGenerator, Dict, List, Optional, Union, Any, Sequence
 
 from typeguard import typechecked
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 from modal_utils.decorator_utils import decorator_with_options
+from . import Retries
 
 from ._function_utils import FunctionInfo
 from ._ipython import is_notebook
@@ -198,6 +199,7 @@ class _Stub:
             self._validate_blueprint_value(tag, obj)
             self._blueprint[tag] = obj
 
+    @typechecked
     def is_inside(self, image: Optional[_Image] = None) -> bool:
         """Returns if the program is currently running inside a container for this app."""
         if self._app is None:
@@ -283,14 +285,17 @@ class _Stub:
     ) -> None:
         await serve_update(self, existing_app_id, is_ready)
 
+    @typechecked
     async def deploy(
         self,
-        name: str = None,  # Unique name of the deployment. Subsequent deploys with the same name overwrites previous ones. Falls back to the app name
+        name: Optional[
+            str
+        ] = None,  # Unique name of the deployment. Subsequent deploys with the same name overwrites previous ones. Falls back to the app name
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client=None,
         stdout=None,
         show_progress=None,
-        object_entity="ap",
+        object_entity: str = "ap",
     ) -> _App:
         """Deploy an app and export its objects persistently.
 
@@ -454,23 +459,24 @@ class _Stub:
         return entrypoint
 
     @decorator_with_options
+    @typechecked
     def function(
         self,
         raw_f=None,  # The decorated function
         *,
-        image: _Image = None,  # The image to run as the container for the function
+        image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
         secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
-        secrets: Collection[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
+        secrets: Sequence[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
-        mounts: Collection[_Mount] = (),
+        mounts: Sequence[_Mount] = (),
         shared_volumes: Dict[str, _SharedVolume] = {},
         allow_cross_region_volumes: bool = False,  # Whether using shared volumes from other regions is allowed.
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
-        retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
+        retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
@@ -531,24 +537,27 @@ class _Stub:
         return function_handle
 
     @decorator_with_options
+    @typechecked
     def webhook(
         self,
         raw_f,
         *,
         method: str = "GET",  # REST method for the created endpoint.
-        label: str = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
+        label: Optional[
+            str
+        ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-        image: _Image = None,  # The image to run as the container for the function
+        image: Optional[_Image] = None,  # The image to run as the container for the function
         secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
-        secrets: Collection[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
+        secrets: Sequence[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
-        mounts: Collection[_Mount] = (),
+        mounts: Sequence[_Mount] = (),
         shared_volumes: Dict[str, _SharedVolume] = {},
         allow_cross_region_volumes: bool = False,  # Whether using shared volumes from other regions is allowed.
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
-        retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
+        retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
@@ -622,22 +631,25 @@ class _Stub:
         return function_handle
 
     @decorator_with_options
+    @typechecked
     def asgi(
         self,
         asgi_app,  # The asgi app
         *,
-        label: str = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
+        label: Optional[
+            str
+        ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-        image: _Image = None,  # The image to run as the container for the function
+        image: Optional[_Image] = None,  # The image to run as the container for the function
         secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
-        secrets: Collection[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
+        secrets: Sequence[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
-        mounts: Collection[_Mount] = (),
+        mounts: Sequence[_Mount] = (),
         shared_volumes: Dict[str, _SharedVolume] = {},
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
-        retries: Optional[int] = None,  # Number of times to retry each input in case of failure.
+        retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
