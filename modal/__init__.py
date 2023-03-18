@@ -39,3 +39,7 @@ __all__ = [
     "lookup",
     "current_input_id",
 ]
+
+import typeguard
+
+typeguard.config.collection_check_strategy = typeguard.CollectionCheckStrategy.ALL_ITEMS
