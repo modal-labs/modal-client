@@ -5,6 +5,7 @@ from typing import Awaitable, Callable, Generic, Optional, Type, TypeVar
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
+from typeguard import typechecked
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
@@ -122,6 +123,7 @@ class Handle(metaclass=ObjectMeta):
         return handle
 
 
+@typechecked
 async def _lookup(
     app_name: str,
     tag: Optional[str] = None,
@@ -189,6 +191,7 @@ class Provider(Generic[H]):
         await app.deploy(label, namespace, object_entity)  # TODO(erikbern): not needed if the app already existed
         return handle
 
+    @typechecked
     def persist(self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE):
         """Deploy a Modal app containing this object. This object can then be imported from other apps using
         the returned reference, or by calling `modal.SharedVolume.from_name(label)` (or the equivalent method
