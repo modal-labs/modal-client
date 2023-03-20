@@ -78,7 +78,6 @@ class Handle(metaclass=ObjectMeta):
         return obj
 
     @classmethod
-    @typechecked
     async def from_id(cls: Type[H], object_id: str, client: Optional[_Client] = None) -> H:
         # This is used in a few examples to construct FunctionCall objects
         # TODO(erikbern): doesn't use _initialize_from_proto - let's use AppLookupObjectRequest?
@@ -226,7 +225,6 @@ class Provider(Generic[H]):
         return obj
 
     @classmethod
-    @typechecked
     def from_name(
         cls: Type[P], app_name: str, tag: Optional[str] = None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE
     ) -> P:
@@ -258,7 +256,6 @@ class Provider(Generic[H]):
         return obj
 
     @classmethod
-    @typechecked
     async def lookup(
         cls: Type[P],
         app_name: str,
