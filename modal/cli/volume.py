@@ -34,7 +34,7 @@ volume_cli = Typer(name="volume", help="Read and edit shared volumes.", no_args_
 
 
 @volume_cli.command(name="list", help="List the names of all shared volumes.")
-@synchronizer
+@synchronizer.create_blocking
 async def list():
     client = await AioClient.from_env()
     response = await retry_transient_errors(client.stub.SharedVolumeList, empty_pb2.Empty())
@@ -84,7 +84,7 @@ async def volume_from_name(deployment_name) -> _SharedVolumeHandle:
 
 
 @volume_cli.command(name="ls", help="List files and directories in a shared volume.")
-@synchronizer
+@synchronizer.create_blocking
 async def ls(volume_name: str, path: str = typer.Argument(default="/")):
     volume = await volume_from_name(volume_name)
     try:
@@ -123,7 +123,7 @@ Remote parent directories will be created as needed.
 Ending the REMOTE_PATH with a forward slash (/), it's assumed to be a directory and the file will be uploaded with its current name under that directory.
 """,
 )
-@synchronizer
+@synchronizer.create_blocking
 async def put(
     volume_name: str,
     local_path: str,
@@ -204,7 +204,7 @@ async def _glob_download(
 
 
 @volume_cli.command(name="get")
-@synchronizer
+@synchronizer.create_blocking
 async def get(volume_name: str, remote_path: str, local_destination: str = typer.Argument("."), force: bool = False):
     """Download a file from a shared volume.
 
@@ -263,7 +263,7 @@ async def get(volume_name: str, remote_path: str, local_destination: str = typer
 
 
 @volume_cli.command(name="rm", help="Delete a file or directory from a shared volume.")
-@synchronizer
+@synchronizer.create_blocking
 async def rm(
     volume_name: str,
     remote_path: str,

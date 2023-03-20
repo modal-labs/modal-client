@@ -45,7 +45,7 @@ def shell():
 
 
 @app_cli.command("list")
-@synchronizer
+@synchronizer.create_blocking
 async def list_apps():
     """List all running or recently running Modal apps for the current account"""
     aio_client = await AioClient.from_env()
@@ -83,7 +83,7 @@ async def list_apps():
 def app_logs(app_id: str):
     """Output logs for a running app."""
 
-    @synchronizer
+    @synchronizer.create_blocking
     async def sync_command():
         aio_client = await AioClient.from_env()
         output_mgr = OutputManager(None, None, "Tailing logs for {app_id}")
@@ -105,7 +105,7 @@ def app_logs(app_id: str):
 
 
 @app_cli.command("stop")
-@synchronizer
+@synchronizer.create_blocking
 async def list_stops(app_id: str):
     """Stop an app."""
     aio_client = await AioClient.from_env()

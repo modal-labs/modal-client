@@ -13,13 +13,11 @@ import synchronicity
 from .logger import logger
 
 _CLASS_PREFIXES = {
-    synchronicity.Interface.AUTODETECT: "Auto",  # not used
     synchronicity.Interface.BLOCKING: "",
     synchronicity.Interface.ASYNC: "Aio",
 }
 
 _FUNCTION_PREFIXES = {
-    synchronicity.Interface.AUTODETECT: "auto_",  # not used
     synchronicity.Interface.BLOCKING: "",
     synchronicity.Interface.ASYNC: "aio_",
 }
