@@ -1144,9 +1144,7 @@ def class_decorator(cls: type, method_decorator):
     new_dict = {}
     for k, v in cls.__dict__.items():
         if callable(v):
+            # TODO(erikbern): ignore classmethod, staticmethod etc
             new_dict[k] = method_decorator(v)
-        else:
-            new_dict[k] = v
-
-    new_cls = type.__new__(type, cls.__name__, cls.__bases__, new_dict)
+    new_cls = type.__new__(type, cls.__name__, (cls,), new_dict)
     return new_cls
