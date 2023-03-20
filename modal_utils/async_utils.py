@@ -12,37 +12,23 @@ import synchronicity
 
 from .logger import logger
 
-_CLASS_PREFIXES = {
-    synchronicity.Interface.BLOCKING: "",
-    synchronicity.Interface.ASYNC: "Aio",
-}
-
-_FUNCTION_PREFIXES = {
-    synchronicity.Interface.BLOCKING: "",
-    synchronicity.Interface.ASYNC: "aio_",
-}
-
-
-class Synchronizer(synchronicity.Synchronizer):
-    # Let's override the default naming convention
-    def get_name(self, object, interface):
-        if inspect.isclass(object):
-            return _CLASS_PREFIXES[interface] + object.__name__.lstrip("_")
-        elif inspect.isfunction(object):
-            return _FUNCTION_PREFIXES[interface] + object.__name__.lstrip("_")
-        else:
-            raise Exception("Can only compute names for classes and functions")
-
-
-synchronizer = Synchronizer()
+synchronizer = synchronicity.Synchronizer()
 # atexit.register(synchronizer.close)
 
 
 def synchronize_apis(obj):
-    interfaces = synchronizer.create(obj)
+    if inspect.isclass(obj):
+        blocking_name = obj.__name__.lstrip("_")
+        async_name = "Aio" + blocking_name
+    elif inspect.isfunction(object):
+        blocking_name = obj.__name__.lstrip("_")
+        async_name = "aio_" + blocking_name
+    else:
+        blocking_name = None
+        async_name = None
     return (
-        interfaces[synchronicity.Interface.BLOCKING],
-        interfaces[synchronicity.Interface.ASYNC],
+        synchronizer.create_one(obj, synchronicity.Interface.BLOCKING, blocking_name),
+        synchronizer.create_one(obj, synchronicity.Interface.ASYNC, async_name),
     )
 
 

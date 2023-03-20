@@ -124,6 +124,9 @@ class Handle(metaclass=ObjectMeta):
         handle: H = cls._from_id(response.object_id, client, proto)
         return handle
 
+synchronize_apis(Handle)
+
+    
 
 @typechecked
 async def _lookup(
@@ -142,6 +145,9 @@ async def _lookup(
 lookup, aio_lookup = synchronize_apis(_lookup)
 
 P = TypeVar("P", bound="Provider")
+
+# Dumb but needed becauase it's in the hierarchy
+synchronize_apis(Generic)
 
 
 class Provider(Generic[H]):
@@ -311,3 +317,6 @@ class Provider(Generic[H]):
                 return False
             else:
                 raise
+
+
+synchronize_apis(Provider)
