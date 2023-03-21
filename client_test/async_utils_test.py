@@ -5,7 +5,7 @@ import os
 import platform
 import pytest
 
-from synchronicity import Interface, Synchronizer
+from synchronicity import Synchronizer
 
 from modal_utils import async_utils
 from modal_utils.async_utils import (
@@ -182,7 +182,7 @@ def test_exit_handler():
     async def _setup_code():
         async_utils.on_shutdown(cleanup())
 
-    setup_code = sync.create(_setup_code)[Interface.BLOCKING]
+    setup_code = sync.create_blocking(_setup_code)
     setup_code()
 
     sync._close_loop()  # this is called on exit by synchronicity, which shuts down the event loop
