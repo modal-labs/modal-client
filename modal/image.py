@@ -765,7 +765,13 @@ class _Image(Provider[_ImageHandle]):
 
     @staticmethod
     @typechecked
-    def from_aws_ecr(tag: str, secret: Optional[_Secret] = None, setup_commands: List[str] = [], **kwargs) -> "_Image":
+    def from_aws_ecr(
+        tag: str,
+        secret: Optional[_Secret] = None,
+        setup_dockerfile_commands: List[str] = [],
+        setup_commands: List[str] = [],
+        **kwargs,
+    ) -> "_Image":
         """
         Build a Modal image from a pre-existing image on a private AWS Elastic
         Container Registry (ECR). You will need to pass a `modal.Secret` containing
@@ -781,23 +787,28 @@ class _Image(Provider[_ImageHandle]):
         - `pip` is installed correctly.
         - The image is built for the `linux/amd64` platform.
 
-        You can use the `setup_commands` argument to run any
-        commands in the image before Modal is installed.
-        This might be useful if Python or pip is not installed.
-
+        You may use `setup_dockerfile_commands` to run Dockerfile commands
+        before the remaining commands run. This might be useful if Python or pip is
+        not installed, or you need to set a `SHELL` for `python` to be available.
         **Example**
 
         ```python
         modal.Image.from_aws_ecr(
           "000000000000.dkr.ecr.us-east-1.amazonaws.com/my-private-registry:my-version",
           secret=modal.Secret.from_name("aws"),
-          setup_commands=["apt-get update", "apt-get install -y python3-pip"]
+          setup_dockerfile_commands=["RUN apt-get update", "RUN apt-get install -y python3-pip"]
         )
         ```
         """
         requirements_path = _get_client_requirements_path()
 
-        dockerfile_commands = _Image._registry_setup_commands(tag, setup_commands)
+        if setup_commands:
+            deprecation_warning(
+                date(2023, 3, 21),
+                "Setting `setup_commands` is deprecated in favor of the more general `setup_dockerfile_commands` argument. To migrate to this, prefix your existing commands with `RUN`.",
+            )
+
+        dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands, setup_commands)
 
         return _Image._from_args(
             dockerfile_commands=dockerfile_commands,
