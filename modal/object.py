@@ -124,9 +124,9 @@ class Handle(metaclass=ObjectMeta):
         handle: H = cls._from_id(response.object_id, client, proto)
         return handle
 
+
 synchronize_apis(Handle)
 
-    
 
 @typechecked
 async def _lookup(

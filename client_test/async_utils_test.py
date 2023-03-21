@@ -5,7 +5,7 @@ import os
 import platform
 import pytest
 
-from synchronicity import Interface, Synchronizer
+from synchronicity import Synchronizer
 
 from modal_utils import async_utils
 from modal_utils.async_utils import (
