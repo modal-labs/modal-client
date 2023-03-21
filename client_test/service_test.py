@@ -1,7 +1,9 @@
 # Copyright Modal Labs 2022
 import cloudpickle
+import pytest
 
 import modal
+import modal.aio
 from modal_proto import api_pb2
 
 stub = modal.Stub()
@@ -26,10 +28,26 @@ def test_run_class(client, servicer):
     assert objects == {"Foo.bar": function_id}
 
 
-def test_call_class(client, servicer):
+def test_call_class_sync(client, servicer):
     with stub.run(client=client):
         foo = Foo()
         assert foo.bar.call(42) == 1764  # Note: uses Mockservicer's impl
+
+
+aio_stub = modal.aio.AioStub()
+
+
+@aio_stub.service(cpu=42)
+class Bar:
+    def baz(self, x):
+        return x**3
+
+
+@pytest.mark.asyncio
+async def test_call_class_async(aio_client, servicer):
+    async with aio_stub.run(client=aio_client):
+        bar = Bar()
+        assert await bar.baz.call(42) == 1764  # Note: uses Mockservicer's impl
 
 
 def test_run_class_serialized(client, servicer):
