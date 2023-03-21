@@ -692,6 +692,21 @@ class _Image(Provider[_ImageHandle]):
         return self.extend(dockerfile_commands=dockerfile_commands, context_files=context_files)
 
     @staticmethod
+    @typechecked
+    def micromamba(python_version: str = "3.9") -> "_Image":
+        """A Micromamba base image. Micromamba allows for fast building of small conda-based containers."""
+        _validate_python_version(python_version)
+
+        return _Image.from_dockerhub(
+            "mambaorg/micromamba:1.3.1-bullseye-slim",
+            setup_dockerfile_commands=[
+                'SHELL ["/usr/local/bin/_dockerfile_shell.sh"]',
+                "ENV MAMBA_DOCKERFILE_ACTIVATE=1",
+                f"RUN micromamba install -n base -y python={python_version} pip -c conda-forge",
+            ],
+        )
+
+    @staticmethod
     def _registry_setup_commands(
         tag: str, setup_dockerfile_commands: List[str], setup_commands: List[str]
     ) -> List[str]:
