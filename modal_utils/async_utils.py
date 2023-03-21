@@ -27,8 +27,8 @@ def synchronize_apis(obj):
         blocking_name = None
         async_name = None
     return (
-        synchronizer.create_one(obj, synchronicity.Interface.BLOCKING, blocking_name),
-        synchronizer.create_one(obj, synchronicity.Interface.ASYNC, async_name),
+        synchronizer.create_blocking(obj, blocking_name),
+        synchronizer.create_async(obj, async_name),
     )
 
 
