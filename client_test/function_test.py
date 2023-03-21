@@ -236,6 +236,18 @@ def test_function_exception(client, servicer):
         assert "foo!" in str(excinfo.value)
 
 
+@pytest.mark.asyncio
+async def test_function_exception_async(aio_client, servicer):
+    stub = AioStub()
+
+    failure_modal = stub.function(servicer.function_body(failure))
+
+    async with stub.run(client=aio_client):
+        with pytest.raises(CustomException) as excinfo:
+            await failure_modal.call()
+        assert "foo!" in str(excinfo.value)
+
+
 def custom_exception_function(x):
     if x == 4:
         raise CustomException("bad")
