@@ -78,7 +78,7 @@ class Handle(metaclass=ObjectMeta):
 
     @classmethod
     async def from_id(cls: Type[H], object_id: str, client: Optional[_Client] = None) -> H:
-        """Get an object of this type from a unique object id (retrieved from `object.object_id`)"""
+        """Get an object of this type from a unique object id (retrieved from `obj.object_id`)"""
         # This is used in a few examples to construct FunctionCall objects
         # TODO(erikbern): doesn't use _initialize_from_proto - let's use AppLookupObjectRequest?
         # TODO(erikbern): this should probably be on the provider?
