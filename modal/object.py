@@ -79,6 +79,7 @@ class Handle(metaclass=ObjectMeta):
 
     @classmethod
     async def from_id(cls: Type[H], object_id: str, client: Optional[_Client] = None) -> H:
+        """Get an object of this type from a unique object id (retrieved from `obj.object_id`)"""
         # This is used in a few examples to construct FunctionCall objects
         # TODO(erikbern): doesn't use _initialize_from_proto - let's use AppLookupObjectRequest?
         # TODO(erikbern): this should probably be on the provider?
@@ -88,6 +89,7 @@ class Handle(metaclass=ObjectMeta):
 
     @property
     def object_id(self) -> str:
+        """A unique object id for this instance. Can be used to retrieve the object using `.from_id()`"""
         return self._object_id
 
     @classmethod
@@ -159,7 +161,7 @@ class Provider(Generic[H]):
         return obj
 
     @classmethod
-    def get_handle_cls(cls):
+    def _get_handle_cls(cls):
         (base,) = cls.__orig_bases__  # type: ignore
         (handle_cls,) = base.__args__
         return handle_cls
@@ -169,6 +171,7 @@ class Provider(Generic[H]):
 
     @property
     def local_uuid(self):
+        """mdmd:hidden"""
         return self._local_uuid
 
     async def _deploy(
@@ -184,7 +187,7 @@ class Provider(Generic[H]):
         if client is None:
             client = await _Client.from_env()
 
-        handle_cls = self.get_handle_cls()
+        handle_cls = self._get_handle_cls()
         object_entity = handle_cls._type_prefix
         app = await _App._init_from_name(client, label, namespace)
         handle = await app.create_one_object(self)
@@ -244,7 +247,7 @@ class Provider(Generic[H]):
         """
 
         async def _load_remote(resolver: Resolver, existing_object_id: str) -> H:
-            handle_cls = cls.get_handle_cls()
+            handle_cls = cls._get_handle_cls()
             handle: H = await handle_cls.from_app(app_name, tag, namespace, client=resolver.client)
             return handle
 
@@ -275,7 +278,7 @@ class Provider(Generic[H]):
             ...
         ```
         """
-        handle_cls = cls.get_handle_cls()
+        handle_cls = cls._get_handle_cls()
         handle: H = await handle_cls.from_app(app_name, tag, namespace, client)
         return handle
 
@@ -293,7 +296,7 @@ class Provider(Generic[H]):
         """
         if client is None:
             client = await _Client.from_env()
-        handle_cls = cls.get_handle_cls()
+        handle_cls = cls._get_handle_cls()
         request = api_pb2.AppLookupObjectRequest(
             app_name=app_name,
             object_tag=tag,
