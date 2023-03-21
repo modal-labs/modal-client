@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 from __future__ import annotations
+from datetime import date
 import os
 import shlex
 import sys
@@ -17,7 +18,7 @@ from . import is_local
 from ._function_utils import FunctionInfo
 from ._resolver import Resolver
 from .config import config, logger
-from .exception import InvalidError, NotFoundError, RemoteError
+from .exception import InvalidError, NotFoundError, RemoteError, deprecation_warning
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _get_client_mount, _Mount
 from .object import Handle, Provider
@@ -691,10 +692,13 @@ class _Image(Provider[_ImageHandle]):
         return self.extend(dockerfile_commands=dockerfile_commands, context_files=context_files)
 
     @staticmethod
-    def _registry_setup_commands(tag: str, setup_commands: List[str]) -> List[str]:
+    def _registry_setup_commands(
+        tag: str, setup_dockerfile_commands: List[str], setup_commands: List[str]
+    ) -> List[str]:
         """mdmd:hidden"""
         return [
             f"FROM {tag}",
+            *setup_dockerfile_commands,
             *(f"RUN {cmd}" for cmd in setup_commands),
             "COPY /modal_requirements.txt /modal_requirements.txt",
             "RUN python -m pip install --upgrade pip",
@@ -703,7 +707,9 @@ class _Image(Provider[_ImageHandle]):
 
     @staticmethod
     @typechecked
-    def from_dockerhub(tag: str, setup_commands: List[str] = [], **kwargs) -> "_Image":
+    def from_dockerhub(
+        tag: str, setup_dockerfile_commands: List[str] = [], setup_commands: List[str] = [], **kwargs
+    ) -> "_Image":
         """
         Build a Modal image from a pre-existing image on Docker Hub.
 
@@ -713,22 +719,28 @@ class _Image(Provider[_ImageHandle]):
         - `pip` is installed correctly.
         - The image is built for the `linux/amd64` platform.
 
-        You can use the `setup_commands` argument to run any
-        commands in the image before Modal is installed.
-        This might be useful if Python or pip is not installed.
+        You may use `setup_dockerfile_commands` to run Dockerfile commands
+        before the remaining commands run. This might be useful if Python or pip is
+        not installed, or you need to set a `SHELL` for `python` to be available.
 
         **Example**
 
         ```python
         modal.Image.from_dockerhub(
           "gisops/valhalla:latest",
-          setup_commands=["apt-get update", "apt-get install -y python3-pip"]
+          setup_dockerfile_commands=["RUN apt-get update", "RUN apt-get install -y python3-pip"]
         )
         ```
         """
         requirements_path = _get_client_requirements_path()
 
-        dockerfile_commands = _Image._registry_setup_commands(tag, setup_commands)
+        if setup_commands:
+            deprecation_warning(
+                date(2023, 3, 21),
+                "Setting `setup_commands` is deprecated in favor of the more general `setup_dockerfile_commands` argument. To migrate to this, prefix your existing commands with `RUN`.",
+            )
+
+        dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands, setup_commands)
 
         return _Image._from_args(
             dockerfile_commands=dockerfile_commands,
