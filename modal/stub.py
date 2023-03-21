@@ -13,7 +13,8 @@ from synchronicity.async_wrap import asynccontextmanager
 from modal._types import typechecked
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_apis
+
+from modal_utils.async_utils import synchronize_apis, synchronizer
 from modal_utils.decorator_utils import decorator_with_options_unsupported, decorator_with_options
 from .retries import Retries
 
@@ -859,6 +860,7 @@ class _Stub:
         async with self.run():
             await wrapped_fn.call(cmd)
 
+    @synchronizer.nowrap
     @decorator_with_options
     def service(self, cls, **kwargs):
         # TOOD(erikbern): include all the docstring from stub.function
