@@ -1,11 +1,14 @@
 # Copyright Modal Labs 2022
 import pytest
 
+from modal import App, Stub
 from modal.aio import AioApp, AioStub
+from modal.exception import DeprecationError
 
 stub = AioStub()
 
 
+@stub.function(cpu=42)
 @stub.webhook(method="POST")
 async def f(x):
     return {"square": x**2}
@@ -42,3 +45,17 @@ def test_webhook_cors():
 
     assert client.get("/").json() == {"message": "Hello, World!"}
     assert client.post("/").status_code == 405  # Method Not Allowed
+
+
+def f2(x):
+    return {"square": x**2}
+
+
+def test_deprecated_syntax(servicer, client):
+    stub = Stub()
+    with pytest.warns(DeprecationError):
+        stub.webhook(f2, method="POST", cpu=42)
+
+    with stub.run(client=client) as app:
+        container_app = App.init_container(client, app.app_id)
+        assert container_app.f2.web_url

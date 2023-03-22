@@ -48,6 +48,12 @@ class LocalEntrypoint:
         return self.raw_f(*args, **kwargs)
 
 
+class Webhook:
+    def __init__(self, raw_f, config):
+        self.raw_f = raw_f
+        self.config = config
+
+
 class _Stub:
     """A `Stub` is a description of how to create a Modal application.
 
@@ -492,6 +498,15 @@ class _Stub:
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
     ) -> _FunctionHandle:  # Function object - callable as a regular function within a Modal app
         """Decorator to register a new Modal function with this stub."""
+        if isinstance(raw_f, Webhook):
+            # This has already been decorated using @webhook
+            webhook = raw_f
+            is_generator = True
+            webhook_config = webhook.config
+            raw_f = webhook.raw_f
+        else:
+            webhook_config = None
+
         if image is None:
             image = self._get_default_image()
         info = FunctionInfo(raw_f, serialized=serialized, name_override=name)
@@ -536,6 +551,7 @@ class _Stub:
             keep_warm=keep_warm,
             name=name,
             cloud=cloud,
+            webhook_config=webhook_config,
         )
 
         self._add_function(function, [*base_mounts, *mounts])
@@ -552,23 +568,8 @@ class _Stub:
             str
         ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-        image: Optional[_Image] = None,  # The image to run as the container for the function
-        secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
-        secrets: Sequence[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
-        gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
-        mounts: Sequence[_Mount] = (),
-        shared_volumes: Dict[str, _SharedVolume] = {},
-        allow_cross_region_volumes: bool = False,  # Whether using shared volumes from other regions is allowed.
-        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
-        memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
-        proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
-        retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
-        concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
-        container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
-        timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
-        keep_warm: Union[bool, int, None] = None,  # An optional number of containers to always keep warm.
-        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
-    ):
+        **kwargs,
+    ) -> Webhook:
         """Register a basic web endpoint with this application.
 
         This is the simple way to create a web endpoint on Modal. The function
@@ -590,50 +591,49 @@ class _Stub:
         * `wait_for_response=True` - tries to fulfill the request on the original URL, but returns a 302 redirect after ~150s to a result URL (original URL with an added `__modal_function_id=...` query parameter)
         * `wait_for_response=False` - immediately returns a 202 ACCEPTED response with a JSON payload: `{"result_url": "..."}` containing the result "redirect" URL from above (which in turn redirects to itself every ~150s)
         """
-        if image is None:
-            image = self._get_default_image()
+        if kwargs:
+            first_kwarg = next(iter(kwargs.keys()))
+            deprecation_warning(
+                date(2023, 3, 22),
+                f"Argument {first_kwarg} is deprecated."
+                " Please put this in a function decorator instead. E.g.:\n\n"
+                f"@stub.function({first_kwarg}=...)\n"
+                "@stub.webhook(...)\n",
+            )
+
         info = FunctionInfo(raw_f)
         function_handle = self._get_function_handle(info)
         self._web_endpoints.append(info.get_tag())
         base_mounts = self._get_function_mounts(info)
-        secrets = [*self._secrets, *secrets]
+        mounts = kwargs.pop("mounts", [])
+        image = kwargs.pop("image", self._get_default_image())
+        secrets = [*self._secrets, *kwargs.pop("secrets", [])]
 
         if not wait_for_response:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
         else:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
 
+        webhook_config = api_pb2.WebhookConfig(
+            type=api_pb2.WEBHOOK_TYPE_FUNCTION,
+            method=method,
+            requested_suffix=label,
+            async_mode=_response_mode,
+        )
+
         function = _Function(
             function_handle,
             info,
             _stub=self,
             image=image,
-            secret=secret,
+            mounts=mounts,
             secrets=secrets,
             is_generator=True,
-            gpu=gpu,
-            base_mounts=base_mounts,
-            mounts=mounts,
-            shared_volumes=shared_volumes,
-            webhook_config=api_pb2.WebhookConfig(
-                type=api_pb2.WEBHOOK_TYPE_FUNCTION,
-                method=method,
-                requested_suffix=label,
-                async_mode=_response_mode,
-            ),
-            cpu=cpu,
-            memory=memory,
-            proxy=proxy,
-            retries=retries,
-            concurrency_limit=concurrency_limit,
-            container_idle_timeout=container_idle_timeout,
-            timeout=timeout,
-            keep_warm=keep_warm,
-            cloud=cloud,
-            allow_cross_region_volumes=allow_cross_region_volumes,
+            webhook_config=webhook_config,
+            **kwargs,
         )
         self._add_function(function, [*base_mounts, *mounts])
-        return function_handle
+        return Webhook(raw_f, webhook_config)
 
     @decorator_with_options
     @typechecked
