@@ -9,7 +9,7 @@ import sys
 import warnings
 from typing import AsyncGenerator, Dict, List, Optional, Union, Any, Sequence
 
-from typeguard import typechecked
+from modal._types import typechecked
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis

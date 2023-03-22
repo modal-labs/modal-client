@@ -1,11 +1,15 @@
 # Copyright Modal Labs 2022
+import importlib
 import os
 import pytest
 from unittest import mock
 
+from typeguard import TypeCheckError
+
 from modal.aio import AioApp, AioFunctionHandle, AioImage, AioStub, aio_container_app
 
 from .supports.skip import skip_windows_unix_socket
+import modal.secret
 
 
 def my_f_1(x):
@@ -120,3 +124,19 @@ async def test_is_inside_default_image(servicer, unix_servicer, aio_client, aio_
 
     with mock.patch.dict(os.environ, {"MODAL_IMAGE_ID": default_image_id}):
         assert stub.is_inside()
+
+
+@pytest.mark.asyncio
+def test_typechecking_not_enforced_in_container():
+    def incorrect_usage():
+        class InvalidType:
+            pass
+
+        modal.secret.Secret(env_dict={"foo": InvalidType()})
+
+    with pytest.raises(TypeCheckError):
+        incorrect_usage()  # should throw when running locally
+
+    with mock.patch.dict(os.environ, {"MODAL_IMAGE_ID": "im-123"}):
+        importlib.reload(modal.secret)
+        incorrect_usage()  # should not throw in container, since typechecks add a lot of overhead on import
