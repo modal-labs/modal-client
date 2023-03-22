@@ -411,7 +411,7 @@ def test_allow_cross_region_volumes_webhook(client, servicer):
     stub = Stub()
     vol1, vol2 = SharedVolume(), SharedVolume()
     # Should pass flag for all the function's SharedVolumeMounts
-    stub.webhook(dummy, shared_volumes={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)
+    stub.function(shared_volumes={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(stub.webhook(dummy))
 
     with stub.run(client=client):
         assert len(servicer.app_functions) == 1
