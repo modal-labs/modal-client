@@ -11,7 +11,7 @@ from pathlib import Path, PurePosixPath
 from typing import AsyncGenerator, Callable, List, Optional, Union, Tuple, Sequence
 
 import aiostream
-from typeguard import typechecked
+from modal._types import typechecked
 
 import modal.exception
 from modal_proto import api_pb2

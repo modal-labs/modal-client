@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 from typing import Dict
 
-from typeguard import typechecked
+from modal._types import typechecked
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
