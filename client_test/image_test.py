@@ -240,13 +240,13 @@ def test_conda_update_from_environment(servicer, client):
 
 
 def test_dockerhub_install(servicer, client):
-    stub = Stub(image=Image.from_dockerhub("gisops/valhalla:latest", setup_commands=["apt-get update"]))
+    stub = Stub(image=Image.from_dockerhub("gisops/valhalla:latest", setup_dockerfile_commands=["RUN apt-get update"]))
 
     with stub.run(client=client) as running_app:
         layers = get_image_layers(running_app["image"].object_id, servicer)
 
         assert any("FROM gisops/valhalla:latest" in cmd for cmd in layers[0].dockerfile_commands)
-        assert any("apt-get update" in cmd for cmd in layers[0].dockerfile_commands)
+        assert any("RUN apt-get update" in cmd for cmd in layers[0].dockerfile_commands)
 
 
 def test_ecr_install(servicer, client):
@@ -254,7 +254,7 @@ def test_ecr_install(servicer, client):
     stub = Stub(
         image=Image.from_aws_ecr(
             image_tag,
-            setup_commands=["apt-get update"],
+            setup_dockerfile_commands=["RUN apt-get update"],
             secret=Secret({"AWS_ACCESS_KEY_ID": "", "AWS_SECRET_ACCESS_KEY": ""}),
         )
     )
@@ -263,7 +263,7 @@ def test_ecr_install(servicer, client):
         layers = get_image_layers(running_app["image"].object_id, servicer)
 
         assert any(f"FROM {image_tag}" in cmd for cmd in layers[0].dockerfile_commands)
-        assert any("apt-get update" in cmd for cmd in layers[0].dockerfile_commands)
+        assert any("RUN apt-get update" in cmd for cmd in layers[0].dockerfile_commands)
 
 
 def run_f():
