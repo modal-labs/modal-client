@@ -5,7 +5,7 @@ from typing import Awaitable, Callable, Generic, Optional, Type, TypeVar
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
-from typeguard import typechecked
+from modal._types import typechecked
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis

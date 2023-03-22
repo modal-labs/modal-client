@@ -8,7 +8,7 @@ from typing import Any, Callable, Dict, List, Optional, Union, Sequence, Tuple
 
 import toml
 from grpclib.exceptions import GRPCError, StreamTerminatedError
-from typeguard import typechecked
+from modal._types import typechecked
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
