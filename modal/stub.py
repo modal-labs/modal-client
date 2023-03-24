@@ -27,7 +27,7 @@ from .exception import InvalidError, deprecation_warning
 from .functions import _Function, _FunctionHandle
 from .gpu import GPU_T
 from .image import _Image, _ImageHandle
-from .mount import _get_client_mount, _Mount
+from .mount import _Mount
 from .object import Provider
 from .proxy import _Proxy
 from .queue import _Queue
@@ -341,7 +341,7 @@ class _Stub:
 
         # Create client mount
         if self._client_mount is None:
-            self._client_mount = _get_client_mount()
+            self._client_mount = _Mount._get_client_mount()
         mounts.append(self._client_mount)
 
         # Create function mounts

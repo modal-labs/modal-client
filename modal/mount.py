@@ -331,93 +331,108 @@ class _Mount(Provider[_MountHandle]):
         logger.debug(f"Uploaded {len(uploaded_hashes)}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
         return _MountHandle._from_id(resp.mount_id, resolver.client, None)
 
+    @staticmethod
+    def create_client_mount():
+        import modal
+
+        # Get the base_path because it also contains `modal_utils` and `modal_proto`.
+        base_path, _ = os.path.split(modal.__path__[0])
+
+        # TODO(erikbern): this is incredibly dumb, but we only want to include packages that start with "modal"
+        # TODO(erikbern): merge functionality with _function_utils._is_modal_path
+        prefix = os.path.join(base_path, "modal")
+
+        def condition(arg):
+            return module_mount_condition(arg) and arg.startswith(prefix)
+
+        return _Mount.from_local_dir(base_path, remote_path="/pkg/", condition=condition, recursive=True)
+
+    @staticmethod
+    def _get_client_mount():
+        if config["sync_entrypoint"]:
+            return _Mount.create_client_mount()
+        else:
+            return _Mount.from_name(client_mount_name(), namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
+
+    @staticmethod
+    def create_package_mounts(module_names: Sequence[str]) -> List["_Mount"]:
+        """Returns a `modal.Mount` that makes local modules listed in `module_names` available inside the container.
+        This works by mounting the local path of each module's package to a directory inside the container that's on `PYTHONPATH`.
+
+        **Usage**
+
+        ```python notest
+        import modal
+        import my_local_module
+
+        stub = modal.Stub()
+
+        @stub.function(mounts=[
+            *modal.create_package_mounts(["my_local_module", "my_other_module"]),
+            modal.Mount(local_dir="/my_local_dir", remote_dir="/"),
+        ])
+        def f():
+            my_local_module.do_stuff()
+        ```
+        """
+        from modal import is_local
+
+        # Don't re-run inside container.
+        # TODO(erikbern): a better solution would be to pass a `load` closure to
+        # the Object superconstructor that creates the mounts at a later point.
+        if not is_local():
+            return []
+
+        mounts = []
+        for module_name in module_names:
+            mount_infos = get_module_mount_info(module_name)
+
+            if mount_infos == []:
+                raise NotFoundError(f"Module {module_name} not found.")
+
+            for mount_info in mount_infos:
+                is_package, base_path, module_mount_condition = mount_info
+                if is_package:
+                    mounts.append(
+                        _Mount.from_local_dir(
+                            base_path,
+                            remote_path=f"/pkg/{module_name}",
+                            condition=module_mount_condition,
+                            recursive=True,
+                        )
+                    )
+                else:
+                    remote_path = PurePosixPath("/pkg") / Path(base_path).name
+                    mounts.append(
+                        _Mount.from_local_file(
+                            base_path,
+                            remote_path=remote_path,
+                        )
+                    )
+        return mounts
+
 
 Mount, AioMount = synchronize_apis(_Mount)
 
 
 def _create_client_mount():
-    # TODO(erikbern): make this a static method on the Mount class
-    import modal
-
-    # Get the base_path because it also contains `modal_utils` and `modal_proto`.
-    base_path, _ = os.path.split(modal.__path__[0])
-
-    # TODO(erikbern): this is incredibly dumb, but we only want to include packages that start with "modal"
-    # TODO(erikbern): merge functionality with _function_utils._is_modal_path
-    prefix = os.path.join(base_path, "modal")
-
-    def condition(arg):
-        return module_mount_condition(arg) and arg.startswith(prefix)
-
-    return _Mount.from_local_dir(base_path, remote_path="/pkg/", condition=condition, recursive=True)
+    deprecation_warning(
+        date(2023, 3, 24),
+        "create_client_mount() is deprecated in favor of Mount.create_client_mount()",
+    )
+    return _Mount.create_client_mount()
 
 
 _, aio_create_client_mount = synchronize_apis(_create_client_mount)
 
 
-def _get_client_mount():
-    # TODO(erikbern): make this a static method on the Mount class
-    if config["sync_entrypoint"]:
-        return _create_client_mount()
-    else:
-        return _Mount.from_name(client_mount_name(), namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
-
-
 @typechecked
 def _create_package_mounts(module_names: Sequence[str]) -> List[_Mount]:
-    """Returns a `modal.Mount` that makes local modules listed in `module_names` available inside the container.
-    This works by mounting the local path of each module's package to a directory inside the container that's on `PYTHONPATH`.
-
-    **Usage**
-
-    ```python notest
-    import modal
-    import my_local_module
-
-    stub = modal.Stub()
-
-    @stub.function(mounts=[
-        *modal.create_package_mounts(["my_local_module", "my_other_module"]),
-        modal.Mount(local_dir="/my_local_dir", remote_dir="/"),
-    ])
-    def f():
-        my_local_module.do_stuff()
-    ```
-    """
-    # TODO(erikbern): make this a static method on the Mount class
-    from modal import is_local
-
-    # Don't re-run inside container.
-    if not is_local():
-        return []
-
-    mounts = []
-    for module_name in module_names:
-        mount_infos = get_module_mount_info(module_name)
-
-        if mount_infos == []:
-            raise NotFoundError(f"Module {module_name} not found.")
-
-        for mount_info in mount_infos:
-            is_package, base_path, module_mount_condition = mount_info
-            if is_package:
-                mounts.append(
-                    _Mount.from_local_dir(
-                        base_path,
-                        remote_path=f"/pkg/{module_name}",
-                        condition=module_mount_condition,
-                        recursive=True,
-                    )
-                )
-            else:
-                remote_path = PurePosixPath("/pkg") / Path(base_path).name
-                mounts.append(
-                    _Mount.from_local_file(
-                        base_path,
-                        remote_path=remote_path,
-                    )
-                )
-    return mounts
+    deprecation_warning(
+        date(2023, 3, 24),
+        "create_package_mounts() is deprecated in favor of Mount.create_package_mounts()",
+    )
+    return _Mount.create_package_mounts(module_names)
 
 
 create_package_mounts, aio_create_package_mounts = synchronize_apis(_create_package_mounts)

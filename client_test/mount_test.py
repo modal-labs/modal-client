@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from modal import App, Stub, create_package_mounts
+from modal import App, Stub
 from modal._blob_utils import LARGE_FILE_LIMIT
 from modal.aio import AioApp
 from modal.exception import DeprecationError, NotFoundError
@@ -112,7 +112,7 @@ def test_create_package_mounts(servicer, client, test_dir):
 
     sys.path.append((test_dir / "supports").as_posix())
 
-    stub.function(dummy, mounts=create_package_mounts(["pkg_a", "pkg_b", "standalone_file"]))
+    stub.function(dummy, mounts=Mount.create_package_mounts(["pkg_a", "pkg_b", "standalone_file"]))
 
     with stub.run(client=client):
         files = servicer.files_name2sha.keys()
@@ -128,9 +128,9 @@ def test_create_package_mounts(servicer, client, test_dir):
 def test_stub_mounts(servicer, client, test_dir):
     sys.path.append((test_dir / "supports").as_posix())
 
-    stub = Stub(mounts=create_package_mounts(["pkg_b"]))
+    stub = Stub(mounts=Mount.create_package_mounts(["pkg_b"]))
 
-    stub.function(dummy, mounts=create_package_mounts(["pkg_a"]))
+    stub.function(dummy, mounts=Mount.create_package_mounts(["pkg_a"]))
 
     with stub.run(client=client):
         files = servicer.files_name2sha.keys()
@@ -146,4 +146,4 @@ def test_create_package_mounts_missing_module(servicer, client, test_dir):
     stub = Stub()
 
     with pytest.raises(NotFoundError):
-        stub.function(dummy, mounts=create_package_mounts(["nonexistent_package"]))
+        stub.function(dummy, mounts=Mount.create_package_mounts(["nonexistent_package"]))
