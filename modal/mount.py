@@ -364,7 +364,7 @@ def _get_client_mount():
 
 
 @typechecked
-async def _create_package_mounts(module_names: Sequence[str]) -> List[_Mount]:
+def _create_package_mounts(module_names: Sequence[str]) -> List[_Mount]:
     """Returns a `modal.Mount` that makes local modules listed in `module_names` available inside the container.
     This works by mounting the local path of each module's package to a directory inside the container that's on `PYTHONPATH`.
 
