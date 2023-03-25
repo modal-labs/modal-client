@@ -12,8 +12,9 @@ def typechecked(f: F) -> F:
     # where it matters the most
     is_local = not bool(config.get("image_id"))
     if is_local:
-        from typeguard import typechecked
+        import typeguard
 
-        return typechecked(f)
+        typeguard.config.collection_check_strategy = typeguard.CollectionCheckStrategy.ALL_ITEMS
+        return typeguard.typechecked(f)
     else:
         return f
