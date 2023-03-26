@@ -224,13 +224,16 @@ async def retry_transient_errors(
 
     idempotency_key = str(uuid.uuid4())
 
+    t0 = time.time()
     if total_timeout is not None:
-        total_deadline = time.time() + total_timeout
+        total_deadline = t0 + total_timeout
     else:
         total_deadline = None
 
     while True:
         metadata = [("x-idempotency-key", idempotency_key), ("x-retry-attempt", str(n_retries))]
+        if n_retries > 0:
+            metadata.append(("x-retry-delay", str(time.time() - t0)))
         timeouts = []
         if attempt_timeout is not None:
             timeouts.append(attempt_timeout)
