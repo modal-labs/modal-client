@@ -292,7 +292,7 @@ class _Image(Provider[_ImageHandle]):
         return _Image._from_args(base_images={"base": self}, **kwargs)
 
     @typechecked
-    def copy(self, mount: _Mount, remote_path: Union[str, Path] = "."):
+    def copy(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
         """Copy the entire contents of a `modal.Mount` into an image.
         Useful when files only available locally are required during the image
         build process.
@@ -462,7 +462,7 @@ class _Image(Provider[_ImageHandle]):
         self,
         pyproject_toml: str,
         optional_dependencies: List[str] = [],
-    ):
+    ) -> "_Image":
         """Install dependencies specified by a `pyproject.toml` file.
 
         When `optional_dependencies`, a list of the keys of the
@@ -473,7 +473,7 @@ class _Image(Provider[_ImageHandle]):
 
         # Don't re-run inside container.
         if not is_local():
-            return []
+            return self
 
         pyproject_toml = os.path.expanduser(pyproject_toml)
 
@@ -498,7 +498,7 @@ class _Image(Provider[_ImageHandle]):
         ] = None,  # Path to the lockfile. If not provided, uses poetry.lock in the same directory.
         ignore_lockfile: bool = False,  # If set to True, it will not use poetry.lock
         old_installer: bool = False,  # If set to True, use old installer. See https://github.com/python-poetry/poetry/issues/3336
-    ):
+    ) -> "_Image":
         """Install poetry *dependencies* specified by a pyproject.toml file.
 
         The path to the lockfile is inferred, if not provided. However, the
@@ -509,7 +509,7 @@ class _Image(Provider[_ImageHandle]):
         """
         if not is_local():
             # existence checks can fail in global scope of the containers
-            return
+            return self
 
         poetry_pyproject_toml = os.path.expanduser(poetry_pyproject_toml)
 
@@ -554,7 +554,7 @@ class _Image(Provider[_ImageHandle]):
         context_mount: Optional[
             _Mount
         ] = None,  # modal.Mount with local files to supply as build context for COPY commands
-    ):
+    ) -> "_Image":
         """Extend an image with arbitrary Dockerfile-like commands."""
 
         _dockerfile_commands = ["FROM base"]
@@ -578,7 +578,7 @@ class _Image(Provider[_ImageHandle]):
         *commands: Union[str, List[str]],
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
-    ):
+    ) -> "_Image":
         """Extend an image with a list of shell commands to run."""
         cmds = _flatten_str_args("run_commands", "commands", commands)
         if not cmds:
