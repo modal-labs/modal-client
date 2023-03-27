@@ -36,10 +36,18 @@ class A100(_GPUConfig):
         allowed_memory_values = {0, 20, 40}
         if memory not in allowed_memory_values:
             raise ValueError(f"A100s can only have memory values of {allowed_memory_values} => memory={memory}")
+
+        # Multi-GPU workloads require a different GPU type.
+        gpu_type = api_pb2.GPU_TYPE_A100
+        if count > 1:
+            gpu_type = api_pb2.GPU_TYPE_A100_40GB_MANY
+
         if memory == 20:
+            if count != 1:
+                raise ValueError(f"Cannot request more than 1 A100 20GB unit. Requested {count}")
             super().__init__(api_pb2.GPU_TYPE_A100_20G, count, memory)
         else:
-            super().__init__(api_pb2.GPU_TYPE_A100, count, memory)
+            super().__init__(gpu_type, count, memory)
 
     def __repr__(self):
         if self.memory == 20:
