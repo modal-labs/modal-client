@@ -290,7 +290,7 @@ async def _map_invocation(
         function_id=function_id,
         parent_input_id=current_input_id(),
         function_call_type=api_pb2.FUNCTION_CALL_TYPE_MAP,
-        return_exceptions=return_exceptions
+        return_exceptions=return_exceptions,
     )
     response = await retry_transient_errors(client.stub.FunctionMap, request)
 
