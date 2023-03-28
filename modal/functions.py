@@ -204,6 +204,7 @@ class _Invocation:
             response = await retry_transient_errors(
                 self.stub.FunctionGetOutputs,
                 request,
+                attempt_timeout=backend_timeout + 1.0,
             )
             if len(response.outputs) > 0:
                 for item in response.outputs:
@@ -250,6 +251,7 @@ class _Invocation:
                 response = await retry_transient_errors(
                     self.stub.FunctionGetOutputs,
                     request,
+                    attempt_timeout=config["outputs_timeout"] + 1.0,
                 )
                 if len(response.outputs) > 0:
                     last_entry_id = response.last_entry_id
@@ -352,6 +354,7 @@ async def _map_invocation(
                 client.stub.FunctionGetOutputs,
                 request,
                 max_retries=10,
+                attempt_timeout=config["outputs_timeout"] + 1.0,
             )
             last_entry_id = response.last_entry_id
             for item in response.outputs:
