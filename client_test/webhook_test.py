@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import pytest
 
+from modal_proto import api_pb2
 from modal.aio import AioApp, AioStub
 from modal.functions import AioFunctionHandle
 from modal.exception import InvalidError
@@ -96,3 +97,25 @@ async def test_webhook_decorator_in_wrong_order(servicer, aio_client):
             pass
 
     assert "wrong order" in str(excinfo.value).lower()
+
+
+@pytest.mark.asyncio
+async def test_asgi_wsgi(servicer, aio_client):
+    stub = AioStub()
+
+    @stub.function(serialized=True)
+    @stub.asgi_app
+    async def my_asgi(x):
+        pass
+
+    @stub.function(serialized=True)
+    @stub.wsgi_app
+    async def my_wsgi(x):
+        pass
+
+    async with stub.run(client=aio_client):
+        pass
+
+    assert len(servicer.app_functions) == 2
+    assert servicer.app_functions["fu-1"].webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP
+    assert servicer.app_functions["fu-2"].webhook_config.type == api_pb2.WEBHOOK_TYPE_WSGI_APP
