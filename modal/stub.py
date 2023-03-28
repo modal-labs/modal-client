@@ -588,9 +588,11 @@ class _Stub:
             info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
             webhook_config = f.webhook_config
             self._web_endpoints.append(info.get_tag())
+            raw_f = f.raw_f
         else:
             info = FunctionInfo(f, serialized=serialized, name_override=name)
             webhook_config = None
+            raw_f = f
         function_handle = self._get_function_handle(info)
         base_mounts = self._get_function_mounts(info)
         secrets = [*self._secrets, *secrets]
@@ -716,7 +718,6 @@ class _Stub:
             raw_f,
             api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
-                method=method,
                 requested_suffix=label,
                 async_mode=_response_mode,
             ),
@@ -740,7 +741,6 @@ class _Stub:
             raw_f,
             api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_WSGI_APP,
-                method=method,
                 requested_suffix=label,
                 async_mode=_response_mode,
             ),
