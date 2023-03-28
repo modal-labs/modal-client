@@ -353,9 +353,13 @@ async def _map_invocation(
             response = await retry_transient_errors(
                 client.stub.FunctionGetOutputs,
                 request,
-                max_retries=10,
+                max_retries=20,
                 attempt_timeout=config["outputs_timeout"] + 1.0,
             )
+
+            if len(response.outputs) == 0:
+                continue
+
             last_entry_id = response.last_entry_id
             for item in response.outputs:
                 pending_outputs.setdefault(item.input_id, 0)
