@@ -4,7 +4,6 @@ import pytest
 import time
 
 import cloudpickle
-from synchronicity.exceptions import UserCodeException
 
 from modal import Proxy, Stub, SharedVolume
 from modal.exception import InvalidError
@@ -267,7 +266,7 @@ def test_map_exceptions(client, servicer):
 
         res = list(custom_function_modal.map(range(6), return_exceptions=True))
         assert res[:4] == [0, 1, 4, 9] and res[5] == 25
-        assert type(res[4]) == UserCodeException and "bad" in str(res[4])
+        assert type(res[4]) == CustomException and "bad" in str(res[4])
 
 
 def import_failure():

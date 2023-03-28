@@ -393,7 +393,10 @@ async def _map_invocation(
             output = await _process_result(item.result, client.stub, client)
         except Exception as e:
             if return_exceptions:
-                output = e
+                if isinstance(e, UserCodeException):
+                    output = e.exc
+                else:
+                    output = e
             else:
                 raise e
         return (item.idx, output)
@@ -547,7 +550,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
                 raise Exception("ohno")
             return a ** 2
 
-        # [0, 1, UserCodeException(Exception('ohno'))]
+        # [0, 1, Exception('ohno')]
         print(list(my_func.map(range(3), return_exceptions=True)))
         ```
         """
