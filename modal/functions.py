@@ -456,12 +456,6 @@ class FunctionStats:
     num_total_runners: int
 
 
-@dataclass
-class WebhookConfig:
-    raw_f: Callable
-    webhook_config: api_pb2.WebhookConfig
-
-
 class _FunctionHandle(_Handle, type_prefix="fu"):
     """Interact with a Modal Function of a live app."""
 
