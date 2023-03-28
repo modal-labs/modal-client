@@ -15,7 +15,7 @@ async def f(x):
     return {"square": x**2}
 
 
-@stub.webhook(method="POST", cpu=42)
+@stub.webhook(method="PUT", cpu=42)
 async def g(x):
     return {"square": x**2}
 
@@ -25,6 +25,14 @@ async def test_webhook(servicer, aio_client):
     async with stub.run(client=aio_client) as app:
         assert f.web_url
         assert g.web_url
+
+        assert servicer.app_functions["fu-1"].webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION
+        assert servicer.app_functions["fu-1"].webhook_config.method == "POST"
+        assert servicer.app_functions["fu-2"].webhook_config.method == "PUT"
+
+        # Make sure we can call the webhooks
+        assert await f.call(10)
+        assert await f(100) == {"square": 10000}
 
         # Make sure the container gets the app id as well
         container_app = await AioApp.init_container(aio_client, app.app_id)
