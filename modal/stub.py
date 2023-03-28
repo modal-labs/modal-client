@@ -7,7 +7,7 @@ from multiprocessing.synchronize import Event
 import os
 import sys
 import warnings
-from typing import AsyncGenerator, Callable, Dict, List, Optional, Union, Any, Sequence
+from typing import AsyncGenerator, Callable, Dict, List, Optional, Union, Any, Sequence, Set
 
 from synchronicity.async_wrap import asynccontextmanager
 from modal._types import typechecked
@@ -112,6 +112,7 @@ class _Stub:
     _local_entrypoints: Dict[str, LocalEntrypoint]
     _local_mounts: List[_Mount]
     _app: Optional[_App]
+    _loose_webhook_configs: Set[Callable]  # Used to warn users if they forget to decorate a webhook
 
     @typechecked
     def __init__(
@@ -158,6 +159,7 @@ class _Stub:
         self._local_entrypoints = {}
         self._local_mounts = []
         self._web_endpoints = []
+        self._loose_webhook_configs = set()
 
         self._app = None
         if not is_local():
@@ -595,6 +597,7 @@ class _Stub:
             webhook_config = f.webhook_config
             self._web_endpoints.append(info.get_tag())
             raw_f = f.raw_f
+            self._loose_webhook_configs.remove(raw_f)
         else:
             info = FunctionInfo(f, serialized=serialized, name_override=name)
             webhook_config = None
@@ -681,6 +684,8 @@ class _Stub:
         else:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
 
+        self._loose_webhook_configs.add(raw_f)
+
         return WebhookConfig(
             raw_f,
             api_pb2.WebhookConfig(
@@ -720,6 +725,8 @@ class _Stub:
         else:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
 
+        self._loose_webhook_configs.add(raw_f)
+
         return WebhookConfig(
             raw_f,
             api_pb2.WebhookConfig(
@@ -743,6 +750,7 @@ class _Stub:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
         else:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
+        self._loose_webhook_configs.add(raw_f)
         return WebhookConfig(
             raw_f,
             api_pb2.WebhookConfig(

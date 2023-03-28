@@ -67,3 +67,18 @@ def test_webhook_generator():
         stub.webhook(web_gen)
 
     assert "StreamingResponse" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_webhook_forgot_function(servicer, aio_client):
+    stub = AioStub()
+
+    @stub.web_endpoint
+    async def g(x):
+        pass
+
+    with pytest.raises(InvalidError) as excinfo:
+        async with stub.run(client=aio_client):
+            pass
+
+    assert "@stub.function" in str(excinfo.value)
