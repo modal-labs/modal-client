@@ -8,8 +8,14 @@ from modal.exception import InvalidError
 stub = AioStub()
 
 
-@stub.webhook(method="POST")
+@stub.function(cpu=42)
+@stub.web_endpoint(method="POST")
 async def f(x):
+    return {"square": x**2}
+
+
+@stub.webhook(method="POST", cpu=42)
+async def g(x):
     return {"square": x**2}
 
 
@@ -17,11 +23,13 @@ async def f(x):
 async def test_webhook(servicer, aio_client):
     async with stub.run(client=aio_client) as app:
         assert f.web_url
+        assert g.web_url
 
         # Make sure the container gets the app id as well
         container_app = await AioApp.init_container(aio_client, app.app_id)
         assert isinstance(container_app.f, AioFunctionHandle)
         assert container_app.f.web_url
+        assert container_app.g.web_url
 
 
 def test_webhook_cors():
