@@ -357,8 +357,6 @@ async def _map_invocation(
                 attempt_timeout=config["outputs_timeout"] + 1.0,
             )
 
-            print(response.last_entry_id)
-
             if len(response.outputs) == 0:
                 continue
 
