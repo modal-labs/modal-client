@@ -126,7 +126,6 @@ async def test_is_inside_default_image(servicer, unix_servicer, aio_client, aio_
         assert stub.is_inside()
 
 
-@pytest.mark.asyncio
 def test_typechecking_not_enforced_in_container():
     def incorrect_usage():
         class InvalidType:

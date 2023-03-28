@@ -9,7 +9,7 @@ from grpclib import GRPCError, Status
 from modal_proto import api_grpc, api_pb2
 from modal_utils.grpc_utils import ChannelPool, create_channel, retry_transient_errors
 
-from .supports.skip import skip_windows
+from .supports.skip import skip_windows_unix_socket
 
 
 @pytest.mark.asyncio
@@ -25,7 +25,7 @@ async def test_http_channel(servicer):
     channel.close()
 
 
-@skip_windows
+@skip_windows_unix_socket
 @pytest.mark.asyncio
 async def test_unix_channel(unix_servicer):
     assert unix_servicer.remote_addr.startswith("unix://")
