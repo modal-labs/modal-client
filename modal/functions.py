@@ -274,7 +274,7 @@ MAP_INVOCATION_CHUNK_SIZE = 100
 
 async def _map_invocation(
     function_id: str,
-    input_stream: AsyncIterable,
+    input_stream: AsyncIterable[Any],
     kwargs: Dict[str, Any],
     client: _Client,
     is_generator: bool,
@@ -490,7 +490,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
     def is_generator(self) -> bool:
         return self._is_generator
 
-    async def _map(self, input_stream: AsyncIterable, order_outputs: bool, return_exceptions: bool, kwargs={}):
+    async def _map(self, input_stream: AsyncIterable[Any], order_outputs: bool, return_exceptions: bool, kwargs={}):
         if order_outputs and self._is_generator:
             raise ValueError("Can't return ordered results for a generator")
 
@@ -678,7 +678,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         return self
 
 
-FunctionHandle, AioFunctionHandle = synchronize_apis(_FunctionHandle)
+FunctionHandle, AioFunctionHandle = synchronize_apis(_FunctionHandle, target_module=__name__)
 
 
 class _Function(Provider[_FunctionHandle]):

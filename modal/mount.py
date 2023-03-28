@@ -137,7 +137,7 @@ class _Mount(Provider[_MountHandle]):
         # Local file to mount, if only a single file needs to be mounted. Note that exactly one of `local_dir` and `local_file` can be provided.
         local_file: Optional[Union[str, Path]] = None,
         # Optional predicate to filter files while creating the mount. `condition` is any function that accepts an absolute local file path, and returns `True` if it should be mounted, and `False` otherwise.
-        condition: Callable[[str], bool] = lambda path: True,
+        condition: Optional[Callable[[str], bool]] = None,  # default to include all files
         # Optional flag to toggle if subdirectories should be mounted recursively.
         recursive: bool = True,
         _entries: Optional[List[_MountEntry]] = None,  # internal - don't use
@@ -187,13 +187,21 @@ class _Mount(Provider[_MountHandle]):
         local_path: Union[str, Path],
         *,
         remote_path: Union[str, PurePosixPath, None] = None,  # Where the directory is placed within in the mount
-        condition: Callable[[str], bool] = lambda path: True,  # Filter function for file selection
+        condition: Optional[
+            Callable[[str], bool]
+        ] = None,  # Filter function for file selection, default to include all files
         recursive: bool = True,  # add files from subdirectories as well
     ) -> "_Mount":
         local_path = Path(local_path)
         if remote_path is None:
             remote_path = local_path.name
         remote_path = PurePosixPath("/", remote_path)
+        if condition is None:
+
+            def include_all(path):
+                return True
+
+            condition = include_all
 
         return self.extend(
             _MountDir(
@@ -210,7 +218,7 @@ class _Mount(Provider[_MountHandle]):
         local_path: Union[str, Path],
         *,
         remote_path: Union[str, PurePosixPath, None] = None,  # Where the directory is placed within in the mount
-        condition: Callable[[str], bool] = lambda path: True,  # Filter function for file selection
+        condition: Optional[Callable[[str], bool]] = None,  # Filter function for file selection - default all files
         recursive: bool = True,  # add files from subdirectories as well
     ):
         return _Mount(_entries=[]).add_local_dir(

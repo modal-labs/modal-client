@@ -125,7 +125,8 @@ class Handle(metaclass=ObjectMeta):
         return handle
 
 
-synchronize_apis(Handle)
+synchronize_apis(Handle, target_module=__name__)
+AioHandle = Handle
 
 
 @typechecked
@@ -319,4 +320,5 @@ class Provider(Generic[H]):
                 raise
 
 
-synchronize_apis(Provider)
+synchronize_apis(Provider, target_module=__name__)
+AioProvider = Provider

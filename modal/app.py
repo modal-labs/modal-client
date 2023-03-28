@@ -1,6 +1,4 @@
 # Copyright Modal Labs 2022
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Dict, Optional, TypeVar
 
 from modal_proto import api_pb2
@@ -133,7 +131,7 @@ class _App:
             self._tag_to_object[item.tag] = obj
 
     @staticmethod
-    async def init_container(client: _Client, app_id: str) -> _App:
+    async def init_container(client: _Client, app_id: str) -> "_App":
         """Used by the container to bootstrap the app and all its objects. Not intended to be called by Modal users."""
         global _container_app, _is_container_app
         _is_container_app = True
@@ -141,7 +139,7 @@ class _App:
         return _container_app
 
     @staticmethod
-    async def _init_existing(client: _Client, existing_app_id: str) -> _App:
+    async def _init_existing(client: _Client, existing_app_id: str) -> "_App":
         # Get all the objects first
         obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
         obj_resp = await retry_transient_errors(client.stub.AppGetObjects, obj_req)
@@ -152,7 +150,7 @@ class _App:
     @staticmethod
     async def _init_new(
         client: _Client, description: Optional[str] = None, detach: bool = False, deploying: bool = False
-    ) -> _App:
+    ) -> "_App":
         # Start app
         # TODO(erikbern): maybe this should happen outside of this method?
         app_req = api_pb2.AppCreateRequest(

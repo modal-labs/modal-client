@@ -180,7 +180,7 @@ class _SharedVolume(Provider[_SharedVolumeHandle]):
     persist this object across app runs.
     """
 
-    def __init__(self, cloud_provider: "Optional[api_pb2.CloudProvider.V]" = None) -> None:
+    def __init__(self, cloud_provider: Optional[api_pb2.CloudProvider.ValueType] = None) -> None:
         """Construct a new shared volume, which is empty by default."""
 
         async def _load(resolver: Resolver, existing_object_id: str) -> _SharedVolumeHandle:

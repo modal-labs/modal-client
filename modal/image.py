@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-from __future__ import annotations
 from datetime import date
 import os
 import shlex
@@ -14,7 +13,7 @@ from modal._types import typechecked
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, unary_stream
-from . import is_local
+from .app import is_local
 from ._function_utils import FunctionInfo
 from ._resolver import Resolver
 from .config import config, logger
@@ -104,7 +103,9 @@ class _ImageRegistryConfig:
     """mdmd:hidden"""
 
     def __init__(
-        self, registry_type: api_pb2.RegistryType.V = api_pb2.RegistryType.DOCKERHUB, secret: Optional[_Secret] = None
+        self,
+        registry_type: api_pb2.RegistryType.ValueType = api_pb2.RegistryType.DOCKERHUB,
+        secret: Optional[_Secret] = None,
     ):
         self.registry_type = registry_type
         self.secret = secret
@@ -133,11 +134,16 @@ class _Image(Provider[_ImageHandle]):
         dockerfile_commands: Union[List[str], Callable[[], List[str]]] = [],
         secrets: Sequence[_Secret] = [],
         ref=None,
-        gpu_config: api_pb2.GPUConfig = api_pb2.GPUConfig(),
+        gpu_config: api_pb2.GPUConfig = None,
         build_function=None,
         context_mount: Optional[_Mount] = None,
-        image_registry_config: _ImageRegistryConfig = _ImageRegistryConfig(),
+        image_registry_config: _ImageRegistryConfig = None,
     ):
+        if gpu_config is None:
+            gpu_config = api_pb2.GPUConfig()
+        if image_registry_config is None:
+            image_registry_config = _ImageRegistryConfig()
+
         if ref and (base_images or dockerfile_commands or context_files):
             raise InvalidError("No other arguments can be provided when initializing an image from a ref.")
         if not ref and not dockerfile_commands and not build_function:
@@ -469,7 +475,7 @@ class _Image(Provider[_ImageHandle]):
         optional-dependencies section(s) of the `pyproject.toml` file
         (e.g. test, doc, experiment, etc), is provided,
         all of those packages in each section are installed as well."""
-        from modal import is_local
+        from modal.app import is_local
 
         # Don't re-run inside container.
         if not is_local():

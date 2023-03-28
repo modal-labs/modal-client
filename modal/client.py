@@ -1,10 +1,8 @@
 # Copyright Modal Labs 2022
-from __future__ import annotations
-
 import asyncio
 import platform
 import warnings
-from typing import Callable, Optional
+from typing import Callable, Optional, Tuple, Dict
 
 from aiohttp import ClientConnectorError, ClientResponseError
 from google.protobuf import empty_pb2
@@ -27,7 +25,7 @@ CLIENT_CREATE_ATTEMPT_TIMEOUT = 4.0
 CLIENT_CREATE_TOTAL_TIMEOUT = 15.0
 
 
-def _get_metadata(client_type: int, credentials: Optional[tuple[str, str]], version: str) -> dict[str, str]:
+def _get_metadata(client_type: int, credentials: Optional[Tuple[str, str]], version: str) -> Dict[str, str]:
     metadata = {
         "x-modal-client-version": version,
         "x-modal-client-type": str(client_type),
@@ -170,7 +168,7 @@ class _Client:
         # To be used with the token flow
         return _Client(server_url, api_pb2.CLIENT_TYPE_CLIENT, None, no_verify=True)
 
-    async def start_token_flow(self) -> tuple[str, str]:
+    async def start_token_flow(self) -> Tuple[str, str]:
         # Create token creation request
         # Send some strings identifying the computer (these are shown to the user for security reasons)
         req = api_pb2.TokenFlowCreateRequest(
@@ -180,7 +178,7 @@ class _Client:
         resp = await self.stub.TokenFlowCreate(req)
         return (resp.token_flow_id, resp.web_url)
 
-    async def finish_token_flow(self, token_flow_id) -> tuple[str, str]:
+    async def finish_token_flow(self, token_flow_id) -> Tuple[str, str]:
         # Wait for token forever
         while True:
             req = api_pb2.TokenFlowWaitRequest(token_flow_id=token_flow_id, timeout=15.0)
@@ -245,4 +243,4 @@ class _Client:
         cls._client_from_env = client
 
 
-Client, AioClient = synchronize_apis(_Client)
+Client, AioClient = synchronize_apis(_Client, target_module=__name__)

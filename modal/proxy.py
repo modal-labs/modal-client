@@ -20,5 +20,5 @@ class _Proxy(Provider[_ProxyHandle]):
     pass
 
 
-ProxyHandle, AioProxyHandle = synchronize_apis(_ProxyHandle)
-Proxy, AioProxy = synchronize_apis(_Proxy)
+ProxyHandle, AioProxyHandle = synchronize_apis(_ProxyHandle, target_module=__name__)
+Proxy, AioProxy = synchronize_apis(_Proxy, target_module=__name__)
