@@ -82,3 +82,17 @@ async def test_webhook_forgot_function(servicer, aio_client):
             pass
 
     assert "@stub.function" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_webhook_decorator_in_wrong_order(servicer, aio_client):
+    stub = AioStub()
+
+    with pytest.raises(InvalidError) as excinfo:
+
+        @stub.web_endpoint
+        @stub.function(serialized=True)
+        async def g(x):
+            pass
+
+    assert "wrong order" in str(excinfo.value).lower()

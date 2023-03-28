@@ -650,8 +650,7 @@ class _Stub:
     @typechecked
     def web_endpoint(
         self,
-        raw_f: Optional[Callable[..., Any]] = None,
-        *,
+        raw_f: Callable,
         method: str = "GET",  # REST method for the created endpoint.
         label: Optional[
             str
@@ -679,6 +678,12 @@ class _Stub:
         * `wait_for_response=True` - tries to fulfill the request on the original URL, but returns a 302 redirect after ~150s to a result URL (original URL with an added `__modal_function_id=...` query parameter)
         * `wait_for_response=False` - immediately returns a 202 ACCEPTED response with a JSON payload: `{"result_url": "..."}` containing the result "redirect" URL from above (which in turn redirects to itself every ~150s)
         """
+        if isinstance(raw_f, _FunctionHandle):
+            raw_f = raw_f.get_raw_f()
+            raise InvalidError(
+                f"Applying decorators for {raw_f} in the wrong order!\nUsage:\n\n"
+                "@stub.function\n@stub.web_endpoint\ndef my_webhook():\n    ..."
+            )
         if not wait_for_response:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
         else:
