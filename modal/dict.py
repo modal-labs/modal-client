@@ -8,14 +8,14 @@ from modal_utils.grpc_utils import retry_transient_errors
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from .config import logger
-from .object import Handle, Provider
+from .object import _Handle, Provider
 
 
 def _serialize_dict(data):
     return [api_pb2.DictEntry(key=serialize(k), value=serialize(v)) for k, v in data.items()]
 
 
-class _DictHandle(Handle, type_prefix="di"):
+class _DictHandle(_Handle, type_prefix="di"):
     """Handle for interacting with the contents of a `Dict`
 
     ```python

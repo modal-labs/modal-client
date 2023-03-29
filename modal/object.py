@@ -17,10 +17,10 @@ from ._resolver import Resolver
 from .client import _Client
 from .exception import InvalidError, NotFoundError, deprecation_warning
 
-H = TypeVar("H", bound="Handle")
+H = TypeVar("H", bound="_Handle")
 
 
-class Handle(metaclass=ObjectMeta):
+class _Handle(metaclass=ObjectMeta):
     """mdmd:hidden The shared base class of any synced/distributed object in Modal.
 
     Examples of objects include Modal primitives like Images and Functions, as
@@ -38,7 +38,7 @@ class Handle(metaclass=ObjectMeta):
 
     @classmethod
     def _new(cls: Type[H]) -> H:
-        obj = Handle.__new__(cls)
+        obj = _Handle.__new__(cls)
         obj._init()
         obj._initialize_from_empty()
         return obj
@@ -125,8 +125,7 @@ class Handle(metaclass=ObjectMeta):
         return handle
 
 
-synchronize_apis(Handle, target_module=__name__)
-AioHandle = Handle
+BlockingHandle, AioHandle = synchronize_apis(_Handle, target_module=__name__)
 
 
 @typechecked
@@ -135,12 +134,12 @@ async def _lookup(
     tag: Optional[str] = None,
     namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
     client: Optional[_Client] = None,
-) -> Handle:
+) -> _Handle:
     deprecation_warning(
         date(2023, 2, 11),
         "modal.lookup is deprecated. Use corresponding class methods instead," " e.g. modal.Secret.lookup, etc.",
     )
-    return await Handle.from_app(app_name, tag, namespace, client)
+    return await _Handle.from_app(app_name, tag, namespace, client)
 
 
 lookup, aio_lookup = synchronize_apis(_lookup)
@@ -163,7 +162,7 @@ class Provider(Generic[H]):
 
     @classmethod
     def _from_loader(cls, load: Callable[[Resolver, str], Awaitable[H]], rep: str):
-        obj = Handle.__new__(cls)
+        obj = _Handle.__new__(cls)
         obj._init(load, rep)
         return obj
 

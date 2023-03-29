@@ -25,7 +25,7 @@ async def test_use_object(aio_client):
 
 
 def test_from_id(client):
-    from modal.object import Handle
+    from modal.object import _Handle
     from modal.dict import _DictHandle
     from modal.queue import _QueueHandle
 
@@ -35,8 +35,8 @@ def test_from_id(client):
     with pytest.raises(InvalidError):
         _QueueHandle._from_id("di-123", client, None)  # Wrong prefix for type
 
-    assert isinstance(Handle._from_id("qu-123", client, None), _QueueHandle)
-    assert isinstance(Handle._from_id("di-123", client, None), _DictHandle)
+    assert isinstance(_Handle._from_id("qu-123", client, None), _QueueHandle)
+    assert isinstance(_Handle._from_id("di-123", client, None), _DictHandle)
 
     with pytest.raises(InvalidError):
-        Handle._from_id("xy-123", client, None)
+        _Handle._from_id("xy-123", client, None)

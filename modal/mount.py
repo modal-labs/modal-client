@@ -23,7 +23,7 @@ from ._blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec
 from ._resolver import Resolver
 from .config import config, logger
 from .exception import InvalidError, NotFoundError, deprecation_warning
-from .object import Handle, Provider
+from .object import _Handle, Provider
 
 MOUNT_PUT_FILE_CLIENT_TIMEOUT = 10 * 60  # 10 min max for transferring files
 
@@ -100,7 +100,7 @@ class _MountDir(_MountEntry):
         return self.local_dir, None
 
 
-class _MountHandle(Handle, type_prefix="mo"):
+class _MountHandle(_Handle, type_prefix="mo"):
     pass
 
 

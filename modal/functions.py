@@ -45,7 +45,7 @@ from .exception import TimeoutError as _TimeoutError
 from .gpu import GPU_T, parse_gpu_config, display_gpu_config
 from .image import _Image
 from .mount import _Mount
-from .object import Handle, Provider
+from .object import _Handle, Provider
 from .proxy import _Proxy
 from .retries import Retries
 from .schedule import Schedule
@@ -442,7 +442,7 @@ class FunctionStats:
     num_total_runners: int
 
 
-class _FunctionHandle(Handle, type_prefix="fu"):
+class _FunctionHandle(_Handle, type_prefix="fu"):
     """Interact with a Modal Function of a live app."""
 
     _web_url: Optional[str]
@@ -1006,7 +1006,7 @@ class _Function(Provider[_FunctionHandle]):
 Function, AioFunction = synchronize_apis(_Function)
 
 
-class _FunctionCall(Handle, type_prefix="fc"):
+class _FunctionCall(_Handle, type_prefix="fc"):
     """A reference to an executed function call
 
     Constructed using `.spawn(...)` on a Modal function with the same

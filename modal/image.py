@@ -20,7 +20,7 @@ from .config import config, logger
 from .exception import InvalidError, NotFoundError, RemoteError, deprecation_warning
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _get_client_mount, _Mount
-from .object import Handle, Provider
+from .object import _Handle, Provider
 from .secret import _Secret
 from .shared_volume import _SharedVolume
 
@@ -88,7 +88,7 @@ def _flatten_str_args(function_name: str, arg_name: str, args: Tuple[Union[str, 
     return ret
 
 
-class _ImageHandle(Handle, type_prefix="im"):
+class _ImageHandle(_Handle, type_prefix="im"):
     def _is_inside(self) -> bool:
         """Returns whether this container is active or not.
 

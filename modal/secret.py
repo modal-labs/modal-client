@@ -7,10 +7,10 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 
 from ._resolver import Resolver
-from .object import Handle, Provider
+from .object import _Handle, Provider
 
 
-class _SecretHandle(Handle, type_prefix="st"):
+class _SecretHandle(_Handle, type_prefix="st"):
     pass
 
 

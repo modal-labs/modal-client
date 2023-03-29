@@ -10,10 +10,10 @@ from modal_utils.grpc_utils import retry_transient_errors
 
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
-from .object import Handle, Provider
+from .object import _Handle, Provider
 
 
-class _QueueHandle(Handle, type_prefix="qu"):
+class _QueueHandle(_Handle, type_prefix="qu"):
     """Handle for interacting with the contents of a `Queue`
 
     ```python

@@ -12,14 +12,14 @@ from modal_utils.hash_utils import get_sha256_hex
 
 from ._blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
 from ._resolver import Resolver
-from .object import Handle, Provider
+from .object import _Handle, Provider
 
 SHARED_VOLUME_PUT_FILE_CLIENT_TIMEOUT = (
     10 * 60
 )  # 10 min max for transferring files (does not include upload time to s3)
 
 
-class _SharedVolumeHandle(Handle, type_prefix="sv"):
+class _SharedVolumeHandle(_Handle, type_prefix="sv"):
     """Handle to a `SharedVolume` object.
 
     Should typically not be used directly in a Modal function,

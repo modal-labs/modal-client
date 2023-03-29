@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2022
 import asyncio
-import contextlib
 from datetime import date
 import inspect
 from multiprocessing.synchronize import Event
@@ -8,7 +7,7 @@ import os
 import sys
 import warnings
 from typing import AsyncGenerator, Dict, List, Optional, Union, Any, Sequence
-
+from synchronicity.async_wrap import asynccontextmanager
 from modal._types import typechecked
 
 from modal_proto import api_pb2
@@ -234,7 +233,7 @@ class _Stub:
         assert isinstance(image_handle, _ImageHandle)
         return image_handle._is_inside()
 
-    @contextlib.asynccontextmanager
+    @asynccontextmanager
     async def _set_app(self, app: _App) -> AsyncGenerator[None, None]:
         self._app = app
         try:
@@ -242,7 +241,7 @@ class _Stub:
         finally:
             self._app = None
 
-    @contextlib.asynccontextmanager
+    @asynccontextmanager
     async def run(
         self,
         client: Optional[_Client] = None,
