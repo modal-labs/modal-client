@@ -259,18 +259,22 @@ def test_create_package_mounts_inside_container(unix_servicer, event_loop):
     assert items[0].result.data == serialize(0)
 
 
-@skip_windows_unix_socket
-def test_webhook(unix_servicer, event_loop):
+def _get_web_inputs(path="/"):
     scope = {
         "method": "GET",
         "type": "http",
-        "path": "/",
+        "path": path,
         "headers": {},
         "query_string": "arg=space",
         "http_version": "2",
     }
     body = b""
-    inputs = _get_inputs(([scope, body], {}))
+    return _get_inputs(([scope, body], {}))
+
+
+@skip_windows_unix_socket
+def test_webhook(unix_servicer, event_loop):
+    inputs = _get_web_inputs()
     client, items = _run_container(
         unix_servicer,
         "modal_test_support.functions",
@@ -302,17 +306,22 @@ def test_webhook(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
+def test_webhook_old(unix_servicer, event_loop):
+    inputs = _get_web_inputs()
+    client, items = _run_container(
+        unix_servicer,
+        "modal_test_support.functions",
+        "webhook_old",
+        inputs=inputs,
+        webhook_type=api_pb2.WEBHOOK_TYPE_FUNCTION,
+    )
+
+    assert len(items) == 3
+
+
+@skip_windows_unix_socket
 def test_webhook_lifecycle(unix_servicer, event_loop):
-    scope = {
-        "method": "GET",
-        "type": "http",
-        "path": "/",
-        "headers": {},
-        "query_string": "arg=space",
-        "http_version": "2",
-    }
-    body = b""
-    inputs = _get_inputs(([scope, body], {}))
+    inputs = _get_web_inputs()
     client, items = _run_container(
         unix_servicer,
         "modal_test_support.functions",
@@ -347,16 +356,7 @@ def test_serialized_function(unix_servicer, event_loop):
 
 @skip_windows_unix_socket
 def test_webhook_serialized(unix_servicer, event_loop):
-    scope = {
-        "method": "GET",
-        "type": "http",
-        "path": "/",
-        "headers": {},
-        "query_string": "arg=space",
-        "http_version": "2",
-    }
-    body = b""
-    inputs = _get_inputs(([scope, body], {}))
+    inputs = _get_web_inputs()
 
     # Store a serialized webhook function on the servicer
     def webhook(arg="world"):
@@ -395,16 +395,7 @@ def test_function_returning_generator(unix_servicer, event_loop):
 
 @skip_windows_unix_socket
 def test_asgi(unix_servicer, event_loop):
-    scope = {
-        "method": "GET",
-        "type": "http",
-        "path": "/foo",
-        "headers": {},
-        "query_string": "arg=space",
-        "http_version": "2",
-    }
-    body = b""
-    inputs = _get_inputs(([scope, body], {}))
+    inputs = _get_web_inputs(path="/foo")
     client, items = _run_container(
         unix_servicer,
         "modal_test_support.functions",
