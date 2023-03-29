@@ -251,7 +251,7 @@ def test_init_types():
     with pytest.raises(typeguard.TypeCheckError):
         Stub(secrets=[{"foo": "bar"}])  # not a Secret Object
     with pytest.raises(typeguard.TypeCheckError):
-        Stub(some_arg=5)  # blueprint needs to use Providers
+        Stub(some_arg=5)  # blueprint needs to use _Providers
     with pytest.raises(typeguard.TypeCheckError):
         Stub(image=modal.Secret())  # should be an Image
 

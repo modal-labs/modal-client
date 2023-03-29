@@ -20,7 +20,7 @@ from .config import config, logger
 from .exception import InvalidError, NotFoundError, RemoteError, deprecation_warning
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _get_client_mount, _Mount
-from .object import _Handle, Provider
+from .object import _Handle, _Provider
 from .secret import _Secret
 from .shared_volume import _SharedVolume
 
@@ -119,7 +119,7 @@ class _ImageRegistryConfig:
         )
 
 
-class _Image(Provider[_ImageHandle]):
+class _Image(_Provider[_ImageHandle]):
     """Base class for container images to run functions in.
 
     Do not construct this class directly; instead use one of its static factory methods,

@@ -125,7 +125,7 @@ class _Handle(metaclass=ObjectMeta):
         return handle
 
 
-BlockingHandle, AioHandle = synchronize_apis(_Handle, target_module=__name__)
+Handle, AioHandle = synchronize_apis(_Handle, target_module=__name__)
 
 
 @typechecked
@@ -144,13 +144,13 @@ async def _lookup(
 
 lookup, aio_lookup = synchronize_apis(_lookup)
 
-P = TypeVar("P", bound="Provider")
+P = TypeVar("P", bound="_Provider")
 
 # Dumb but needed becauase it's in the hierarchy
 synchronize_apis(Generic)
 
 
-class Provider(Generic[H]):
+class _Provider(Generic[H]):
     def _init(self, load: Callable[[Resolver, str], Awaitable[H]], rep: str):
         self._local_uuid = str(uuid.uuid4())
         self._load = load
@@ -230,7 +230,7 @@ class Provider(Generic[H]):
         cls = type(self)
         obj = cls.__new__(cls)
         rep = f"PersistedRef<{self}>({label})"
-        Provider.__init__(obj, _load_persisted, rep)
+        _Provider.__init__(obj, _load_persisted, rep)
         return obj
 
     @classmethod
@@ -258,10 +258,10 @@ class Provider(Generic[H]):
             return handle
 
         # Create a class of type cls, but use the base constructor
-        # TODO(erikbern): No Provider subclass should override __init__
+        # TODO(erikbern): No _Provider subclass should override __init__
         obj = cls.__new__(cls)
         rep = f"Ref({app_name})"
-        Provider.__init__(obj, _load_remote, rep)
+        _Provider.__init__(obj, _load_remote, rep)
         return obj
 
     @classmethod
@@ -319,5 +319,4 @@ class Provider(Generic[H]):
                 raise
 
 
-synchronize_apis(Provider, target_module=__name__)
-AioProvider = Provider
+Provider, AioProvider = synchronize_apis(_Provider, target_module=__name__)

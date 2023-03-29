@@ -8,7 +8,7 @@ from modal_utils.grpc_utils import retry_transient_errors
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from .config import logger
-from .object import _Handle, Provider
+from .object import _Handle, _Provider
 
 
 def _serialize_dict(data):
@@ -102,7 +102,7 @@ class _DictHandle(_Handle, type_prefix="di"):
 DictHandle, AioDictHandle = synchronize_apis(_DictHandle)
 
 
-class _Dict(Provider[_DictHandle]):
+class _Dict(_Provider[_DictHandle]):
     """A distributed dictionary available to Modal apps.
 
     Keys and values can be essentially any object, so long as it can be

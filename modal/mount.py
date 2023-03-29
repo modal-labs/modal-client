@@ -23,7 +23,7 @@ from ._blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec
 from ._resolver import Resolver
 from .config import config, logger
 from .exception import InvalidError, NotFoundError, deprecation_warning
-from .object import _Handle, Provider
+from .object import _Handle, _Provider
 
 MOUNT_PUT_FILE_CLIENT_TIMEOUT = 10 * 60  # 10 min max for transferring files
 
@@ -104,7 +104,7 @@ class _MountHandle(_Handle, type_prefix="mo"):
     pass
 
 
-class _Mount(Provider[_MountHandle]):
+class _Mount(_Provider[_MountHandle]):
     """Create a mount for a local directory or file that can be attached
     to one or more Modal functions.
 

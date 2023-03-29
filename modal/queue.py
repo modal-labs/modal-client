@@ -10,7 +10,7 @@ from modal_utils.grpc_utils import retry_transient_errors
 
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
-from .object import _Handle, Provider
+from .object import _Handle, _Provider
 
 
 class _QueueHandle(_Handle, type_prefix="qu"):
@@ -129,7 +129,7 @@ class _QueueHandle(_Handle, type_prefix="qu"):
 QueueHandle, AioQueueHandle = synchronize_apis(_QueueHandle)
 
 
-class _Queue(Provider[_QueueHandle]):
+class _Queue(_Provider[_QueueHandle]):
     """A distributed, FIFO Queue available to Modal apps.
 
     The queue can contain any object serializable by `cloudpickle`.

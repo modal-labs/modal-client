@@ -27,7 +27,7 @@ from .functions import _Function, _FunctionHandle
 from .gpu import GPU_T
 from .image import _Image, _ImageHandle
 from .mount import _get_client_mount, _Mount
-from .object import Provider
+from .object import _Provider
 from .proxy import _Proxy
 from .queue import _Queue
 from .runner import run_stub, deploy_stub, serve_update
@@ -84,7 +84,7 @@ class _Stub:
     _name: str
     _description: str
     _app_id: str
-    _blueprint: Dict[str, Provider]
+    _blueprint: Dict[str, _Provider]
     _client_mount: Optional[_Mount]
     _function_mounts: Dict[str, _Mount]
     _mounts: Sequence[_Mount]
@@ -103,7 +103,7 @@ class _Stub:
         image: Optional[_Image] = None,  # default image for all functions (default is `modal.Image.debian_slim()`)
         mounts: Sequence[_Mount] = [],  # default mounts for all functions
         secrets: Sequence[_Secret] = [],  # default secrets for all functions
-        **blueprint: Provider,  # any Modal Object dependencies (Dict, Queue, etc.)
+        **blueprint: _Provider,  # any Modal Object dependencies (Dict, Queue, etc.)
     ) -> None:
         """Construct a new app stub, optionally with default image, mounts, secrets
 
@@ -159,7 +159,7 @@ class _Stub:
         return self._description or self._infer_app_desc()
 
     def _validate_blueprint_value(self, key: str, value: Any):
-        if not isinstance(value, Provider):
+        if not isinstance(value, _Provider):
             raise InvalidError(f"Stub attribute {key} with value {value} is not a valid Modal object")
 
     def _infer_app_desc(self):
@@ -181,12 +181,12 @@ class _Stub:
         # Deprecated? Note: this is currently the only way to refer to lifecycled methods on the stub, since they have . in the tag
         return self._blueprint[tag]
 
-    def __setitem__(self, tag: str, obj: Provider):
+    def __setitem__(self, tag: str, obj: _Provider):
         self._validate_blueprint_value(tag, obj)
         # Deprecated ?
         self._blueprint[tag] = obj
 
-    def __getattr__(self, tag: str) -> Provider:
+    def __getattr__(self, tag: str) -> _Provider:
         assert isinstance(tag, str)
         if tag.startswith("__"):
             # Hacky way to avoid certain issues, e.g. pickle will try to look this up
@@ -194,7 +194,7 @@ class _Stub:
         # Return a reference to an object that will be created in the future
         return self._blueprint[tag]
 
-    def __setattr__(self, tag: str, obj: Provider):
+    def __setattr__(self, tag: str, obj: _Provider):
         # Note that only attributes defined in __annotations__ are set on the object itself,
         # everything else is registered on the blueprint
         if tag in self.__annotations__:

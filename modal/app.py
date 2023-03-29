@@ -8,7 +8,7 @@ from modal_utils.grpc_utils import retry_transient_errors
 from ._resolver import Resolver
 from .client import _Client
 from .config import logger
-from .object import _Handle, Provider
+from .object import _Handle, _Provider
 
 if TYPE_CHECKING:
     from rich.tree import Tree
@@ -69,7 +69,7 @@ class _App:
         return self._app_id
 
     async def _create_all_objects(
-        self, blueprint: Dict[str, Provider], output_mgr, new_app_state: int
+        self, blueprint: Dict[str, _Provider], output_mgr, new_app_state: int
     ):  # api_pb2.AppState.V
         """Create objects that have been defined but not created on the server."""
         resolver = Resolver(output_mgr, self._client, self.app_id)
@@ -176,7 +176,7 @@ class _App:
         else:
             return await _App._init_new(client, name, detach=False, deploying=True)
 
-    async def create_one_object(self, provider: Provider) -> _Handle:
+    async def create_one_object(self, provider: _Provider) -> _Handle:
         existing_object_id: Optional[str] = self._tag_to_existing_id.get("_object")
         resolver = Resolver(None, self._client, self.app_id)
         handle = await resolver.load(provider, existing_object_id)

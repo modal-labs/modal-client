@@ -45,7 +45,7 @@ from .exception import TimeoutError as _TimeoutError
 from .gpu import GPU_T, parse_gpu_config, display_gpu_config
 from .image import _Image
 from .mount import _Mount
-from .object import _Handle, Provider
+from .object import _Handle, _Provider
 from .proxy import _Proxy
 from .retries import Retries
 from .schedule import Schedule
@@ -681,7 +681,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
 FunctionHandle, AioFunctionHandle = synchronize_apis(_FunctionHandle, target_module=__name__)
 
 
-class _Function(Provider[_FunctionHandle]):
+class _Function(_Provider[_FunctionHandle]):
     """Functions are the basic units of serverless execution on Modal.
 
     Generally, you will not construct a `Function` directly. Instead, use the
