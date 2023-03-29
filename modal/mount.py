@@ -368,7 +368,7 @@ class _Mount(Provider[_MountHandle]):
         stub = modal.Stub()
 
         @stub.function(mounts=[
-            *modal.create_package_mounts(["my_local_module", "my_other_module"]),
+            *modal.Mount.create_package_mounts(["my_local_module", "my_other_module"]),
             modal.Mount(local_dir="/my_local_dir", remote_dir="/"),
         ])
         def f():
