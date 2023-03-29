@@ -219,7 +219,7 @@ class _Mount(_Provider[_MountHandle]):
         local_path = Path(local_path)
         if remote_path is None:
             remote_path = local_path.name
-        remote_path = PurePosixPath("/", remote_path)
+        remote_path = PurePosixPath("/", remote_path)  # TODO(Jonathon): don't make filepath absolute client-side
         return self.extend(
             _MountFile(
                 local_file=local_path,
@@ -319,6 +319,8 @@ class _Mount(_Provider[_MountHandle]):
 
         # Build mounts
         status_row.message(f"Creating mount {message_label}: Building mount")
+        print("MOUNT BUILD DETAILS")
+        print(files)
         req = api_pb2.MountBuildRequest(app_id=resolver.app_id, existing_mount_id=existing_object_id, files=files)
         resp = await retry_transient_errors(resolver.client.stub.MountBuild, req, base_delay=1)
         status_row.finish(f"Created mount {message_label}")
