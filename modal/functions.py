@@ -4,6 +4,7 @@ import inspect
 import os
 import platform
 import time
+import typing
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
@@ -51,6 +52,9 @@ from .retries import Retries
 from .schedule import Schedule
 from .secret import _Secret
 from .shared_volume import _SharedVolume
+
+if typing.TYPE_CHECKING:
+    import modal.stub
 
 
 def exc_with_hints(exc: BaseException):
@@ -454,6 +458,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
 
     _web_url: Optional[str]
     _info: Optional[FunctionInfo]
+    _stub: Optional["modal.stub._Stub"]
 
     def _initialize_from_empty(self):
         self._progress = None
@@ -660,7 +665,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         invocation = await self.call_function_nowait(args, kwargs)
         return _FunctionCall._from_id(invocation.function_call_id, invocation.client, None)
 
-    def get_raw_f(self) -> Callable:
+    def get_raw_f(self) -> Callable[..., Any]:
         """Return the inner Python object wrapped by this Modal Function."""
         if not self._info:
             raise AttributeError("_info has not been set on this FunctionHandle and not available in this context")
@@ -685,7 +690,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         return self
 
 
-FunctionHandle, AioFunctionHandle = synchronize_apis(_FunctionHandle, target_module=__name__)
+FunctionHandle, AioFunctionHandle = synchronize_apis(_FunctionHandle, __name__)
 
 
 class _Function(_Provider[_FunctionHandle]):
@@ -697,6 +702,15 @@ class _Function(_Provider[_FunctionHandle]):
 
     # TODO: more type annotations
     _secrets: Collection[_Secret]
+    _info: FunctionInfo
+    _mounts: Collection[_Mount]
+    _shared_volumes: Collection[_SharedVolume]
+    _allow_cross_region_volumes: bool
+    _image: Optional[_Image]
+    _gpu: Optional[GPU_T]
+    _cloud: Optional[str]
+    _function_handle: _FunctionHandle
+    _stub: "modal.stub._Stub"
 
     def __init__(
         self,
@@ -1010,7 +1024,7 @@ class _Function(_Provider[_FunctionHandle]):
         return f"{inspect.getsource(self._raw_f)}\n{repr(kwargs)}"
 
 
-Function, AioFunction = synchronize_apis(_Function)
+Function, AioFunction = synchronize_apis(_Function, __name__)
 
 
 class _FunctionCall(_Handle, type_prefix="fc"):
@@ -1051,7 +1065,7 @@ class _FunctionCall(_Handle, type_prefix="fc"):
         await self._client.stub.FunctionCallCancel(request)
 
 
-FunctionCall, AioFunctionCall = synchronize_apis(_FunctionCall)
+FunctionCall, AioFunctionCall = synchronize_apis(_FunctionCall, __name__)
 
 
 async def _gather(*function_calls: _FunctionCall):
@@ -1078,7 +1092,7 @@ async def _gather(*function_calls: _FunctionCall):
         raise exc
 
 
-gather, aio_gather = synchronize_apis(_gather)
+gather, aio_gather = synchronize_apis(_gather, __name__)
 
 
 _current_input_id: Optional[str] = None

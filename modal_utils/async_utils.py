@@ -28,7 +28,7 @@ def synchronize_apis(obj, target_module=None):
         async_name = None
     return (
         synchronizer.create_blocking(obj, blocking_name, "modal" if target_module is None else target_module),
-        synchronizer.create_async(obj, async_name, "modal.aio" if target_module is None else target_module),
+        synchronizer.create_async(obj, async_name, "modal.aio"),
     )
 
 

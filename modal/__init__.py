@@ -19,7 +19,6 @@ from .stub import Stub
 __all__ = [
     "__version__",
     "App",
-    "Cloud",
     "Cron",
     "Dict",
     "Error",

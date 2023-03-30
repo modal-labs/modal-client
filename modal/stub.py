@@ -13,7 +13,7 @@ from modal._types import typechecked
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 from modal_utils.decorator_utils import decorator_with_options
-from . import Retries
+from .retries import Retries
 
 from ._function_utils import FunctionInfo
 from ._ipython import is_notebook

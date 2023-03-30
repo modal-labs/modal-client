@@ -37,7 +37,7 @@ from .app import _App
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .config import logger
 from .exception import InvalidError
-from .functions import AioFunctionHandle, FunctionHandle, _set_current_input_id
+from .functions import AioFunctionHandle, FunctionHandle, _set_current_input_id  # type: ignore
 
 MAX_OUTPUT_BATCH_SIZE = 100
 

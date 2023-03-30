@@ -393,7 +393,7 @@ def _create_package_mounts(module_names: Sequence[str]) -> List[_Mount]:
     ```
     """
     # TODO(erikbern): make this a static method on the Mount class
-    from modal import is_local
+    from modal.app import is_local
 
     # Don't re-run inside container.
     if not is_local():
