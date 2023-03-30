@@ -497,7 +497,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
     def is_generator(self) -> bool:
         return self._is_generator
 
-    async def _map(self, input_stream: AsyncIterable, order_outputs: bool, return_exceptions: bool, kwargs={}):
+    async def _map(self, input_stream: AsyncIterable[Any], order_outputs: bool, return_exceptions: bool, kwargs={}):
         if order_outputs and self._is_generator:
             raise ValueError("Can't return ordered results for a generator")
 
