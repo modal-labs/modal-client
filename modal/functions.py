@@ -38,7 +38,7 @@ from ._output import OutputManager
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._traceback import append_modal_tb
-from .config import logger
+from .config import config, logger
 from .client import _Client
 from .exception import ExecutionError, InvalidError, RemoteError, deprecation_warning
 from .exception import TimeoutError as _TimeoutError
@@ -189,9 +189,9 @@ class _Invocation:
     async def pop_function_call_outputs(self, timeout: Optional[float], clear_on_success: bool):
         t0 = time.time()
         if timeout is None:
-            backend_timeout = 55.0
+            backend_timeout = config["outputs_timeout"]
         else:
-            backend_timeout = min(55.0, timeout)  # refresh backend call every 55s
+            backend_timeout = min(config["outputs_timeout"], timeout)  # refresh backend call every 55s
 
         while True:
             # always execute at least one poll for results, regardless if timeout is 0
@@ -204,6 +204,7 @@ class _Invocation:
             response = await retry_transient_errors(
                 self.stub.FunctionGetOutputs,
                 request,
+                attempt_timeout=backend_timeout + 1.0,
             )
             if len(response.outputs) > 0:
                 for item in response.outputs:
@@ -212,7 +213,7 @@ class _Invocation:
 
             if timeout is not None:
                 # update timeout in retry loop
-                backend_timeout = min(55.0, t0 + timeout - time.time())
+                backend_timeout = min(config["outputs_timeout"], t0 + timeout - time.time())
                 if backend_timeout < 0:
                     break
 
@@ -243,13 +244,14 @@ class _Invocation:
             while not completed:
                 request = api_pb2.FunctionGetOutputsRequest(
                     function_call_id=self.function_call_id,
-                    timeout=55.0,
+                    timeout=config["outputs_timeout"],
                     last_entry_id=last_entry_id,
                     clear_on_success=False,  # there could be more results
                 )
                 response = await retry_transient_errors(
                     self.stub.FunctionGetOutputs,
                     request,
+                    attempt_timeout=config["outputs_timeout"] + 1.0,
                 )
                 if len(response.outputs) > 0:
                     last_entry_id = response.last_entry_id
@@ -344,15 +346,20 @@ async def _map_invocation(
         while not have_all_inputs or len(pending_outputs) > len(completed_outputs):
             request = api_pb2.FunctionGetOutputsRequest(
                 function_call_id=function_call_id,
-                timeout=55,
+                timeout=config["outputs_timeout"],
                 last_entry_id=last_entry_id,
                 clear_on_success=False,
             )
             response = await retry_transient_errors(
                 client.stub.FunctionGetOutputs,
                 request,
-                max_retries=10,
+                max_retries=20,
+                attempt_timeout=config["outputs_timeout"] + 1.0,
             )
+
+            if len(response.outputs) == 0:
+                continue
+
             last_entry_id = response.last_entry_id
             for item in response.outputs:
                 pending_outputs.setdefault(item.input_id, 0)

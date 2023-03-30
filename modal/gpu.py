@@ -24,8 +24,8 @@ class _GPUConfig:
 
 
 class T4(_GPUConfig):
-    def __init__(self):
-        super().__init__(api_pb2.GPU_TYPE_T4, 1, 0)
+    def __init__(self, count: int = 1):
+        super().__init__(api_pb2.GPU_TYPE_T4, count, 0)
 
     def __repr__(self):
         return f"GPU(T4, count={self.count})"
