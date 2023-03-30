@@ -948,6 +948,7 @@ class _Function(Provider[_FunctionHandle]):
             pty_info=pty_info,
             cloud_provider=self._cloud_provider,
             warm_pool_size=warm_pool_size,
+            runtime=config.get("function_runtime"),
         )
         request = api_pb2.FunctionCreateRequest(
             app_id=resolver.app_id,

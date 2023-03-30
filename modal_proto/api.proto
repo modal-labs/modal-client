@@ -396,6 +396,9 @@ message Function {
 
   string web_url = 28;
   WebUrlInfo web_url_info = 29;
+
+  // If set, overrides the runtime used by the function, either "runc" or "gvisor".
+  string runtime = 30;
 }
 
 message FunctionCreateRequest {
