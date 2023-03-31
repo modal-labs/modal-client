@@ -76,21 +76,21 @@ def test_image_kwargs_validation(servicer, client):
     stub["image"] = Image.debian_slim().copy(Mount.from_local_dir("/", remote_path="/"), remote_path="/dummy")
     stub["image"] = Image.debian_slim().copy(Mount.from_name("foo"), remote_path="/dummy")
     with pytest.raises(TypeCheckError):
-        stub["image"] = Image.debian_slim().copy(Secret({"xyz": "123"}), remote_path="/dummy")
+        stub["image"] = Image.debian_slim().copy(Secret({"xyz": "123"}), remote_path="/dummy")  # type: ignore
 
 
 def test_wrong_type(servicer, client):
     image = Image.debian_slim()
     for method in [image.pip_install, image.apt_install, image.run_commands]:
-        method(["xyz"])
+        method(["xyz"])  # type: ignore
         method("xyz")
-        method("xyz", ["def", "foo"], "ghi")
+        method("xyz", ["def", "foo"], "ghi")  # type: ignore
         with pytest.raises(TypeCheckError):
-            method(3)
+            method(3)  # type: ignore
         with pytest.raises(TypeCheckError):
-            method([3])
+            method([3])  # type: ignore
         with pytest.raises(TypeCheckError):
-            method([["double-nested-package"]])
+            method([["double-nested-package"]])  # type: ignore
 
 
 def test_image_requirements_txt(servicer, client):
