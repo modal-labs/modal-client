@@ -29,7 +29,7 @@ def test_webhook_cors():
     def handler():
         return {"message": "Hello, World!"}
 
-    app = webhook_asgi_app(handler, method="GET")
+    app = webhook_asgi_app(handler, method="GET", is_generator=False)
     client = TestClient(app)
     resp = client.options(
         "/",
