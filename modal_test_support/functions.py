@@ -128,6 +128,13 @@ def webhook_streaming():
         yield f"{i}..."
 
 
+@stub.webhook
+async def webhook_streaming_async():
+    for i in range(10):
+        await asyncio.sleep(SLEEP_DELAY)
+        yield f"{i}..."
+
+
 if __name__ == "__main__":
     raise Exception("This line is not supposed to be reachable")
 

@@ -437,7 +437,7 @@ def test_asgi(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_webhook_streaming(unix_servicer, event_loop):
+def test_webhook_streaming_sync(unix_servicer, event_loop):
     scope = {
         "method": "GET",
         "type": "http",
@@ -452,6 +452,29 @@ def test_webhook_streaming(unix_servicer, event_loop):
         unix_servicer,
         "modal_test_support.functions",
         "webhook_streaming",
+        inputs=inputs,
+        webhook_type=api_pb2.WEBHOOK_TYPE_FUNCTION,
+    )
+
+    assert len(items) > 3
+
+
+@skip_windows_unix_socket
+def test_webhook_streaming_async(unix_servicer, event_loop):
+    scope = {
+        "method": "GET",
+        "type": "http",
+        "path": "/",
+        "headers": {},
+        "query_string": "",
+        "http_version": "2",
+    }
+    body = b""
+    inputs = _get_inputs(([scope, body], {}))
+    client, items = _run_container(
+        unix_servicer,
+        "modal_test_support.functions",
+        "webhook_streaming_async",
         inputs=inputs,
         webhook_type=api_pb2.WEBHOOK_TYPE_FUNCTION,
     )
