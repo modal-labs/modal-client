@@ -561,7 +561,6 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
             input_stream_unwrapped = synchronizer._translate_in(container_app._pty_input_stream)
             input_stream_blocking = synchronizer._translate_out(input_stream_unwrapped, Interface.BLOCKING)
-
             imp_fun.fun = run_in_pty(imp_fun.fun, input_stream_blocking, container_args.function_def.pty_info)
 
         if not imp_fun.is_async:
