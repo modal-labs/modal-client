@@ -453,14 +453,12 @@ def test_webhook_streaming_sync(unix_servicer, event_loop):
         "webhook_streaming",
         inputs=inputs,
         webhook_type=api_pb2.WEBHOOK_TYPE_FUNCTION,
+        function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
     )
 
-    for item in items:
-        print(item)
-
-    assert len(items) == 12  # header + 10 items + eof
-    for i, item in enumerate(items[1:11]):
-        print(item)
+    data = [deserialize(item.result.data, None) for item in items if item.result.data]
+    bodies = [d["body"].decode() for d in data if d.get("body")]
+    assert bodies == [f"{i}..." for i in range(10)]
 
 
 @skip_windows_unix_socket
@@ -481,9 +479,12 @@ def test_webhook_streaming_async(unix_servicer, event_loop):
         "webhook_streaming_async",
         inputs=inputs,
         webhook_type=api_pb2.WEBHOOK_TYPE_FUNCTION,
+        function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
     )
 
-    assert len(items) > 3
+    data = [deserialize(item.result.data, None) for item in items if item.result.data]
+    bodies = [d["body"].decode() for d in data if d.get("body")]
+    assert bodies == [f"{i}..." for i in range(10)]
 
 
 @skip_windows_unix_socket
