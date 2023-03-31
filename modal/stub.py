@@ -1,12 +1,13 @@
 # Copyright Modal Labs 2022
 import asyncio
+import typing
 from datetime import date
 import inspect
 from multiprocessing.synchronize import Event
 import os
 import sys
 import warnings
-from typing import AsyncGenerator, Dict, List, Optional, Union, Any, Sequence
+from typing import AsyncGenerator, Dict, List, Optional, Union, Any, Sequence, Callable
 from synchronicity.async_wrap import asynccontextmanager
 from modal._types import typechecked
 
@@ -462,6 +463,10 @@ class _Stub:
         entrypoint = self._local_entrypoints[tag] = LocalEntrypoint(raw_f, self)
         return entrypoint
 
+    @typing.overload
+    def function(self, raw_f: None) -> Callable[[], _FunctionHandle]:
+        ...
+
     @decorator_with_options
     @typechecked
     def function(
@@ -489,7 +494,9 @@ class _Stub:
         name: Optional[str] = None,  # Sets the Modal name of the function within the stub
         is_generator: Optional[bool] = None,  # If not set, it's inferred from the function signature
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
-    ) -> _FunctionHandle:  # Function object - callable as a regular function within a Modal app
+    ) -> Union[
+        _FunctionHandle, Callable[[Callable[..., Any]], _FunctionHandle]
+    ]:  # Function object - callable as a regular function within a Modal app
         """Decorator to register a new Modal function with this stub."""
         if image is None:
             image = self._get_default_image()

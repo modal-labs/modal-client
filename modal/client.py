@@ -243,4 +243,4 @@ class _Client:
         cls._client_from_env = client
 
 
-Client, AioClient = synchronize_apis(_Client, target_module=__name__)
+Client, AioClient = synchronize_apis(_Client)

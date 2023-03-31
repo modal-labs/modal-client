@@ -6,10 +6,10 @@ The async interfaces are mostly mirrors of the blocking ones, with the `Aio` or 
 
 from .app import AioApp, aio_container_app
 from .dict import AioDict
-from .functions import AioFunction, AioFunctionHandle, AioFunctionCall  # type: ignore
+from .functions import AioFunction, AioFunctionHandle, AioFunctionCall
 from .image import AioImage
 from .mount import AioMount
-from .object import aio_lookup, AioProvider, AioHandle, AioGeneric, _ASYNC_H, _ASYNC_P  # noqa
+from .object import aio_lookup
 from .queue import AioQueue
 from .secret import AioSecret
 from .shared_volume import AioSharedVolume
@@ -21,16 +21,14 @@ __all__ = [
     "AioApp",
     "AioClient",
     "AioDict",
-    "AioFunction",  # noqa
-    "AioFunctionCall",  # noqa
-    "AioHandle",
+    "AioFunction",
+    "AioFunctionCall",
     "AioImage",
     "AioMount",
     "AioQueue",
     "AioSecret",
     "AioSharedVolume",
     "AioStub",
-    "AioProvider",
     "AioProxy",
     "AioFunctionHandle",  # noqa
     "aio_container_app",

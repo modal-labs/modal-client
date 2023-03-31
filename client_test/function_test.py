@@ -8,7 +8,7 @@ from synchronicity.exceptions import UserCodeException
 
 from modal import Proxy, Stub, SharedVolume
 from modal.exception import InvalidError
-from modal.functions import Function, FunctionCall, gather
+from modal.functions import Function, FunctionCall, gather, FunctionHandle, AioFunctionHandle
 from modal.stub import AioStub
 from modal_proto import api_pb2
 
@@ -45,6 +45,7 @@ def test_map(client, servicer, slow_put_inputs):
 
     stub = Stub()
     dummy_modal = stub.function(dummy)
+    assert isinstance(dummy_modal, FunctionHandle)
 
     assert len(servicer.cleared_function_calls) == 0
     with stub.run(client=client):
@@ -65,7 +66,7 @@ def side_effect(_):
 def test_for_each(client, servicer):
     stub = Stub()
     side_effect_modal = stub.function(servicer.function_body(side_effect))
-
+    assert isinstance(side_effect_modal, FunctionHandle)
     assert _side_effect_count == 0
     with stub.run(client=client):
         side_effect_modal.for_each(range(10))
@@ -81,6 +82,8 @@ def test_map_none_values(client, servicer):
     stub = Stub()
 
     custom_function_modal = stub.function(servicer.function_body(custom_function))
+    assert isinstance(custom_function_modal, FunctionHandle)
+
     with stub.run(client=client):
         assert list(custom_function_modal.map(range(4))) == [0, None, 2, None]
 
@@ -89,6 +92,7 @@ def test_starmap(client):
     stub = Stub()
 
     dummy_modal = stub.function(dummy)
+    assert isinstance(dummy_modal, FunctionHandle)
     with stub.run(client=client):
         assert list(dummy_modal.starmap([[5, 2], [4, 3]])) == [29, 25]
 
@@ -111,7 +115,7 @@ def test_function_future(client, servicer):
     stub = Stub()
 
     later_modal = stub.function(servicer.function_body(later))
-
+    assert isinstance(later_modal, FunctionHandle)
     with stub.run(client=client):
         future = later_modal.spawn()
         assert isinstance(future, FunctionCall)
@@ -142,6 +146,7 @@ async def test_function_future_async(client, servicer):
     stub = AioStub()
 
     later_modal = stub.function(servicer.function_body(later))
+    assert isinstance(later_modal, AioFunctionHandle)
 
     async with stub.run(client=client):
         future = await later_modal.spawn()
@@ -164,6 +169,7 @@ async def test_generator(client, servicer):
     stub = Stub()
 
     later_gen_modal = stub.function(later_gen)
+    assert isinstance(later_gen_modal, FunctionHandle)
 
     def dummy():
         yield "bar"
@@ -185,6 +191,7 @@ async def test_generator_future(client, servicer):
     stub = Stub()
 
     later_gen_modal = stub.function(later_gen)
+    assert isinstance(later_gen_modal, FunctionHandle)
     with stub.run(client=client):
         assert later_gen_modal.spawn() is None  # until we have a nice interface for polling generator futures
 
@@ -200,6 +207,7 @@ def test_sync_parallelism(client, servicer):
     stub = Stub()
 
     slo1_modal = stub.function(servicer.function_body(slo1))
+    assert isinstance(slo1_modal, FunctionHandle)
     with stub.run(client=client):
         t0 = time.time()
         # NOTE tests breaks in macOS CI if the smaller time is smaller than ~300ms
@@ -229,7 +237,7 @@ def test_function_exception(client, servicer):
     stub = Stub()
 
     failure_modal = stub.function(servicer.function_body(failure))
-
+    assert isinstance(failure_modal, FunctionHandle)
     with stub.run(client=client):
         with pytest.raises(CustomException) as excinfo:
             failure_modal.call()
@@ -241,7 +249,7 @@ async def test_function_exception_async(aio_client, servicer):
     stub = AioStub()
 
     failure_modal = stub.function(servicer.function_body(failure))
-
+    assert isinstance(failure_modal, AioFunctionHandle)
     async with stub.run(client=aio_client):
         with pytest.raises(CustomException) as excinfo:
             await failure_modal.call()
@@ -258,6 +266,8 @@ def test_map_exceptions(client, servicer):
     stub = Stub()
 
     custom_function_modal = stub.function(servicer.function_body(custom_exception_function))
+    assert isinstance(custom_function_modal, FunctionHandle)
+
     with stub.run(client=client):
         assert list(custom_function_modal.map(range(4))) == [0, 1, 4, 9]
 
@@ -278,6 +288,8 @@ def test_function_relative_import_hint(client, servicer):
     stub = Stub()
 
     import_failure_modal = stub.function(servicer.function_body(import_failure))
+    assert isinstance(import_failure_modal, FunctionHandle)
+
     with stub.run(client=client):
         with pytest.raises(ImportError) as excinfo:
             import_failure_modal.call()
@@ -384,13 +396,18 @@ class Class:
 
 
 def test_raw_call():
+    assert isinstance(f, FunctionHandle)
     assert f(111) == 12321
-    assert Class().f(1111) == 1234321
+    instance = Class()
+    assert isinstance(instance.f, FunctionHandle)
+    assert instance.f(1111) == 1234321
 
 
 def test_method_call(client):
+    instance = Class()
+    assert isinstance(instance.f, FunctionHandle)
     with lc_stub.run(client=client):
-        assert Class().f.call(111) == 12321
+        assert instance.f.call(111) == 12321
 
 
 def test_allow_cross_region_volumes(client, servicer):

@@ -628,7 +628,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
     async def _call_generator_nowait(self, args, kwargs):
         return await _Invocation.create(self._object_id, args, kwargs, self._client)
 
-    def call(self, *args, **kwargs):
+    def call(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
         """
         Calls the function, executing it remotely with the given arguments and returning the execution's result.
         """
@@ -637,7 +637,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         else:
             return self.call_function(args, kwargs)
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
         if not self._info:
             raise AttributeError(
                 "The definition for this function is missing so it is not possible to invoke it locally"
@@ -691,7 +691,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         return self
 
 
-FunctionHandle, AioFunctionHandle = synchronize_apis(_FunctionHandle, __name__)
+FunctionHandle, AioFunctionHandle = synchronize_apis(_FunctionHandle)
 
 
 class _Function(_Provider[_FunctionHandle]):
@@ -1025,7 +1025,7 @@ class _Function(_Provider[_FunctionHandle]):
         return f"{inspect.getsource(self._raw_f)}\n{repr(kwargs)}"
 
 
-Function, AioFunction = synchronize_apis(_Function, __name__)
+Function, AioFunction = synchronize_apis(_Function)
 
 
 class _FunctionCall(_Handle, type_prefix="fc"):
@@ -1066,7 +1066,7 @@ class _FunctionCall(_Handle, type_prefix="fc"):
         await self._client.stub.FunctionCallCancel(request)
 
 
-FunctionCall, AioFunctionCall = synchronize_apis(_FunctionCall, __name__)
+FunctionCall, AioFunctionCall = synchronize_apis(_FunctionCall)
 
 
 async def _gather(*function_calls: _FunctionCall):
@@ -1093,7 +1093,7 @@ async def _gather(*function_calls: _FunctionCall):
         raise exc
 
 
-gather, aio_gather = synchronize_apis(_gather, __name__)
+gather, aio_gather = synchronize_apis(_gather)
 
 
 _current_input_id: Optional[str] = None
