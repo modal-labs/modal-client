@@ -148,12 +148,10 @@ lookup, aio_lookup = synchronize_apis(_lookup)
 
 P = TypeVar("P", bound="_Provider")
 
-# Dumb but needed becauase it's in the hierarchy
-BuiltinGeneric = Generic  # type: ignore
-Generic, AioGeneric = synchronize_apis(BuiltinGeneric)
+_BLOCKING_P, _ASYNC_P = synchronize_apis(P)
 
 
-class _Provider(BuiltinGeneric[H]):
+class _Provider(Generic[H]):
     def _init(self, load: Callable[[Resolver, str], Awaitable[H]], rep: str):
         self._local_uuid = str(uuid.uuid4())
         self._load = load
@@ -322,4 +320,6 @@ class _Provider(BuiltinGeneric[H]):
                 raise
 
 
+# Dumb but needed becauase it's in the hierarchy
+Generic, AioGeneric = synchronize_apis(Generic)  # erases base Generic type...
 Provider, AioProvider = synchronize_apis(_Provider, target_module=__name__)

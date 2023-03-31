@@ -8,6 +8,7 @@ from .functions import Function, current_input_id
 from .image import Image
 from .mount import Mount, create_package_mounts
 from .object import lookup
+from .object import Handle, _BLOCKING_H  # noqa
 from .proxy import Proxy
 from .queue import Queue
 from .retries import Retries
