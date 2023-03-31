@@ -456,7 +456,12 @@ def test_webhook_streaming_sync(unix_servicer, event_loop):
         webhook_type=api_pb2.WEBHOOK_TYPE_FUNCTION,
     )
 
-    assert len(items) > 3
+    for item in items:
+        print(item)
+
+    assert len(items) == 12  # header + 10 items + eof
+    for i, item in enumerate(items[1:11]):
+        print(item)
 
 
 @skip_windows_unix_socket

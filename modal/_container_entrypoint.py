@@ -508,7 +508,8 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> tuple[A
         return obj, wsgi_app_wrapper(wsgi_app), True
     elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
         # function is webhook without an ASGI app. Create one for it.
-        asgi_app = webhook_asgi_app(fun, function_def.webhook_config.method)
+        is_generator = function_def.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
+        asgi_app = webhook_asgi_app(fun, function_def.webhook_config.method, is_generator)
         return obj, asgi_app_wrapper(asgi_app), True
     else:
         return obj, fun, is_async
