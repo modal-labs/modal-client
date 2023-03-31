@@ -536,7 +536,6 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     # TODO: if there's an exception in this scope (in particular when we import code dynamically),
     # we could catch that exception and set it properly serialized to the client. Right now the
     # whole container fails with a non-zero exit code and we send back a more opaque error message.
-    function_type = container_args.function_def.function_type
 
     # This is a bit weird but we need both the blocking and async versions of FunctionIOManager.
     # At some point, we should fix that by having built-in support for running "user code"
@@ -557,11 +556,12 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             imp_fun = import_function(container_args.function_def, ser_cls, ser_fun)
 
         if container_args.function_def.pty_info.enabled:
+            # TODO(erikbern): there is no client test for this branch
             from modal import container_app
 
             input_stream_unwrapped = synchronizer._translate_in(container_app._pty_input_stream)
             input_stream_blocking = synchronizer._translate_out(input_stream_unwrapped, Interface.BLOCKING)
-            imp_fun.fun = run_in_pty(fun, input_stream_blocking, container_args.function_def.pty_info)
+            imp_fun.fun = run_in_pty(imp_fun.fun, input_stream_blocking, container_args.function_def.pty_info)
 
         if not imp_fun.is_async:
             call_function_sync(function_io_manager, imp_fun.obj, imp_fun.fun, imp_fun.is_generator)
