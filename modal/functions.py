@@ -52,6 +52,8 @@ from .schedule import Schedule
 from .secret import _Secret
 from .shared_volume import _SharedVolume
 
+ATTEMPT_TIMEOUT_GRACE_PERIOD = 5  # seconds
+
 
 def exc_with_hints(exc: BaseException):
     """mdmd:hidden"""
@@ -204,7 +206,7 @@ class _Invocation:
             response = await retry_transient_errors(
                 self.stub.FunctionGetOutputs,
                 request,
-                attempt_timeout=backend_timeout + 1.0,
+                attempt_timeout=backend_timeout + ATTEMPT_TIMEOUT_GRACE_PERIOD,
             )
             if len(response.outputs) > 0:
                 for item in response.outputs:
@@ -251,7 +253,7 @@ class _Invocation:
                 response = await retry_transient_errors(
                     self.stub.FunctionGetOutputs,
                     request,
-                    attempt_timeout=config["outputs_timeout"] + 1.0,
+                    attempt_timeout=config["outputs_timeout"] + ATTEMPT_TIMEOUT_GRACE_PERIOD,
                 )
                 if len(response.outputs) > 0:
                     last_entry_id = response.last_entry_id
@@ -354,7 +356,7 @@ async def _map_invocation(
                 client.stub.FunctionGetOutputs,
                 request,
                 max_retries=20,
-                attempt_timeout=config["outputs_timeout"] + 1.0,
+                attempt_timeout=config["outputs_timeout"] + ATTEMPT_TIMEOUT_GRACE_PERIOD,
             )
 
             if len(response.outputs) == 0:
