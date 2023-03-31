@@ -53,6 +53,7 @@ from .schedule import Schedule
 from .secret import _Secret
 from .shared_volume import _SharedVolume
 
+
 if typing.TYPE_CHECKING:
     import modal.stub
 

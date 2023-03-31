@@ -19,6 +19,8 @@ from .exception import InvalidError, NotFoundError, deprecation_warning
 
 H = TypeVar("H", bound="_Handle")
 
+_BLOCKING_H, _ASYNC_H = synchronize_apis(H)
+
 
 class _Handle(metaclass=ObjectMeta):
     """mdmd:hidden The shared base class of any synced/distributed object in Modal.
@@ -125,7 +127,7 @@ class _Handle(metaclass=ObjectMeta):
         return handle
 
 
-Handle, AioHandle = synchronize_apis(_Handle, target_module=__name__)
+Handle, AioHandle = synchronize_apis(_Handle)
 
 
 @typechecked
@@ -147,10 +149,11 @@ lookup, aio_lookup = synchronize_apis(_lookup)
 P = TypeVar("P", bound="_Provider")
 
 # Dumb but needed becauase it's in the hierarchy
-synchronize_apis(Generic)
+BuiltinGeneric = Generic  # type: ignore
+Generic, AioGeneric = synchronize_apis(BuiltinGeneric)
 
 
-class _Provider(Generic[H]):
+class _Provider(BuiltinGeneric[H]):
     def _init(self, load: Callable[[Resolver, str], Awaitable[H]], rep: str):
         self._local_uuid = str(uuid.uuid4())
         self._load = load

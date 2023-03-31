@@ -23,6 +23,9 @@ def synchronize_apis(obj, target_module=None):
     elif inspect.isfunction(object):
         blocking_name = obj.__name__.lstrip("_")
         async_name = "aio_" + blocking_name
+    elif isinstance(obj, TypeVar):
+        blocking_name = "_BLOCKING_" + obj.__name__
+        async_name = "_ASYNC_" + obj.__name__
     else:
         blocking_name = None
         async_name = None
