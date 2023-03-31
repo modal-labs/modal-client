@@ -58,7 +58,6 @@ def _run_container(
                 method="GET",
                 wait_for_response=True,
             )
-            function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
         else:
             webhook_config = None
 
