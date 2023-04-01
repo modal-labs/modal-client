@@ -2,6 +2,7 @@
 from modal_version import __version__
 
 from .app import App, container_app, is_local
+from .client import Client
 from .dict import Dict
 from .exception import Error
 from .functions import Function, current_input_id
@@ -19,6 +20,7 @@ from .stub import Stub
 __all__ = [
     "__version__",
     "App",
+    "Client",
     "Cloud",
     "Cron",
     "Dict",

@@ -15,7 +15,7 @@ from modal._container_entrypoint import UserException, main
 
 # from modal_test_support import SLEEP_DELAY
 from modal._serialization import deserialize, serialize
-from modal.client import Client
+from modal import Client
 from modal.exception import InvalidError
 from modal_proto import api_pb2
 
