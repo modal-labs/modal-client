@@ -2,6 +2,7 @@
 import pytest
 
 from modal.aio import AioApp, AioStub
+from modal.exception import InvalidError
 
 stub = AioStub()
 
@@ -42,3 +43,17 @@ def test_webhook_cors():
 
     assert client.get("/").json() == {"message": "Hello, World!"}
     assert client.post("/").status_code == 405  # Method Not Allowed
+
+
+def web_gen():
+    for x in range(10):
+        yield str(x)
+
+
+def test_webhook_generator():
+    stub = AioStub()
+
+    with pytest.raises(InvalidError) as excinfo:
+        stub.webhook(web_gen)
+
+    assert "StreamingResponse" in str(excinfo.value)
