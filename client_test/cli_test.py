@@ -13,7 +13,7 @@ import pytest
 import pytest_asyncio
 
 from modal.cli.entry_point import entrypoint_cli
-from modal.client import Client
+from modal import Client
 from modal_proto import api_pb2
 
 dummy_app_file = """
