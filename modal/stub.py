@@ -579,11 +579,14 @@ class _Stub:
         if image is None:
             image = self._get_default_image()
 
-        if is_generator is None:
-            is_generator = inspect.isgeneratorfunction(f) or inspect.isasyncgenfunction(f)
-
         if isinstance(f, WebhookConfig):
-            if is_generator:
+            info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
+            webhook_config = f.webhook_config
+            self._web_endpoints.append(info.get_tag())
+            raw_f = f.raw_f
+            self._loose_webhook_configs.remove(raw_f)
+
+            if is_generator or (inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)):
                 if webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
                     raise InvalidError(
                         "Webhooks cannot be generators. If you want to streaming response, use fastapi.responses.StreamingResponse. Example:\n\n"
@@ -592,19 +595,17 @@ class _Stub:
                     )
                 else:
                     raise InvalidError("Webhooks cannot be generators")
-
-            info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
-            webhook_config = f.webhook_config
-            self._web_endpoints.append(info.get_tag())
-            raw_f = f.raw_f
-            self._loose_webhook_configs.remove(raw_f)
         else:
             info = FunctionInfo(f, serialized=serialized, name_override=name)
             webhook_config = None
             raw_f = f
+
         function_handle = self._get_function_handle(info)
         base_mounts = self._get_function_mounts(info)
         secrets = [*self._secrets, *secrets]
+
+        if is_generator is None:
+            is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
 
         if interactive:
             if self._pty_input_stream:
