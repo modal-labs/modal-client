@@ -58,7 +58,6 @@ def _run_container(
                 method="GET",
                 wait_for_response=True,
             )
-            function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
         else:
             webhook_config = None
 
@@ -434,6 +433,58 @@ def test_asgi(unix_servicer, event_loop):
     # Check EOF
     assert items[2].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     assert items[2].result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE
+
+
+@skip_windows_unix_socket
+def test_webhook_streaming_sync(unix_servicer, event_loop):
+    scope = {
+        "method": "GET",
+        "type": "http",
+        "path": "/",
+        "headers": {},
+        "query_string": "",
+        "http_version": "2",
+    }
+    body = b""
+    inputs = _get_inputs(([scope, body], {}))
+    client, items = _run_container(
+        unix_servicer,
+        "modal_test_support.functions",
+        "webhook_streaming",
+        inputs=inputs,
+        webhook_type=api_pb2.WEBHOOK_TYPE_FUNCTION,
+        function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
+    )
+
+    data = [deserialize(item.result.data, None) for item in items if item.result.data]
+    bodies = [d["body"].decode() for d in data if d.get("body")]
+    assert bodies == [f"{i}..." for i in range(10)]
+
+
+@skip_windows_unix_socket
+def test_webhook_streaming_async(unix_servicer, event_loop):
+    scope = {
+        "method": "GET",
+        "type": "http",
+        "path": "/",
+        "headers": {},
+        "query_string": "",
+        "http_version": "2",
+    }
+    body = b""
+    inputs = _get_inputs(([scope, body], {}))
+    client, items = _run_container(
+        unix_servicer,
+        "modal_test_support.functions",
+        "webhook_streaming_async",
+        inputs=inputs,
+        webhook_type=api_pb2.WEBHOOK_TYPE_FUNCTION,
+        function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
+    )
+
+    data = [deserialize(item.result.data, None) for item in items if item.result.data]
+    bodies = [d["body"].decode() for d in data if d.get("body")]
+    assert bodies == [f"{i}..." for i in range(10)]
 
 
 @skip_windows_unix_socket
