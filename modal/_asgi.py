@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2022
 import asyncio
-import functools
 from typing import Any, Callable, Dict
 
 from asgiref.wsgi import WsgiToAsgi
@@ -51,26 +50,11 @@ def wsgi_app_wrapper(wsgi_app):
     return asgi_app_wrapper(asgi_app)
 
 
-def _stream_generator(fn: Callable) -> Callable:
-    # Wrap a generator function in a handler that returns a StreamingResponse
-    from fastapi.responses import StreamingResponse
-
-    @functools.wraps(fn)
-    async def wrapper(*args, **kwargs):
-        generator = fn(*args, **kwargs)
-        return StreamingResponse(generator)
-
-    return wrapper
-
-
-def webhook_asgi_app(fn: Callable, method: str, is_generator: bool):
+def webhook_asgi_app(fn: Callable, method: str):
     """Return a FastAPI app wrapping a function handler."""
     # Pulls in `fastapi` module, which is slow to import.
     from fastapi import FastAPI
     from fastapi.middleware.cors import CORSMiddleware
-
-    if is_generator:
-        fn = _stream_generator(fn)
 
     app = FastAPI()
     app.add_middleware(

@@ -524,7 +524,7 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> Importe
         is_generator = True
     elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
         # function is webhook without an ASGI app. Create one for it.
-        asgi_app = webhook_asgi_app(fun, function_def.webhook_config.method, is_generator)
+        asgi_app = webhook_asgi_app(fun, function_def.webhook_config.method)
         fun = asgi_app_wrapper(asgi_app)
         is_async = True
         is_generator = True

@@ -121,18 +121,30 @@ class WebhookLifecycleClass:
         return {"hello": arg}
 
 
-@stub.webhook
-def webhook_streaming():
+def stream():
     for i in range(10):
         time.sleep(SLEEP_DELAY)
         yield f"{i}..."
 
 
 @stub.webhook
-async def webhook_streaming_async():
+def webhook_streaming():
+    from fastapi.responses import StreamingResponse
+
+    return StreamingResponse(stream())
+
+
+async def stream_async():
     for i in range(10):
         await asyncio.sleep(SLEEP_DELAY)
         yield f"{i}..."
+
+
+@stub.webhook
+async def webhook_streaming_async():
+    from fastapi.responses import StreamingResponse
+
+    return StreamingResponse(stream_async())
 
 
 if __name__ == "__main__":

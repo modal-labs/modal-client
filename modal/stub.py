@@ -603,6 +603,13 @@ class _Stub:
         else:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
 
+        if inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f):
+            raise InvalidError(
+                "Webhooks cannot be generators. If you want to streaming response, use fastapi.responses.StreamingResponse. Example:\n\n"
+                "def my_iter():\n    for x in range(10):\n        time.sleep(1.0)\n        yield str(i)\n\n"
+                "@stub.webhook\ndef web():\n    return StreamingResponse(my_iter())\n"
+            )
+
         function = _Function(
             function_handle,
             info,
@@ -688,6 +695,9 @@ class _Stub:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
         else:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
+
+        if inspect.isgeneratorfunction(asgi_app) or inspect.isasyncgenfunction(asgi_app):
+            raise InvalidError("Webhooks cannot be generators")
 
         function = _Function(
             function_handle,
