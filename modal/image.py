@@ -1000,5 +1000,5 @@ class _Image(_Provider[_ImageHandle]):
         )
 
 
-synchronize_apis(_ImageHandle, __name__)
+ImageHandle, AioImageHandle = synchronize_apis(_ImageHandle)
 Image, AioImage = synchronize_apis(_Image)

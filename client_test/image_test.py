@@ -83,7 +83,7 @@ def test_wrong_type(servicer, client):
     image = Image.debian_slim()
     for method in [image.pip_install, image.apt_install, image.run_commands]:
         method(["xyz"])  # type: ignore
-        method("xyz")
+        method("xyz")  # type: ignore
         method("xyz", ["def", "foo"], "ghi")  # type: ignore
         with pytest.raises(TypeCheckError):
             method(3)  # type: ignore

@@ -6,6 +6,8 @@ import pytest
 import modal
 import modal.aio
 from modal.exception import InvalidError
+from modal.functions import FunctionHandle
+from modal.shared_volume import SharedVolumeHandle, AioSharedVolumeHandle
 
 from .supports.skip import skip_windows
 
@@ -33,19 +35,19 @@ def test_shared_volume_bad_paths(client, test_dir, servicer):
         pass
 
     dummy_modal = stub.function(dummy, shared_volumes={"/root/../../foo": modal.SharedVolume()})
-
+    assert isinstance(dummy_modal, FunctionHandle)
     with pytest.raises(InvalidError):
         with stub.run(client=client):
             dummy_modal.call()
 
     dummy_modal = stub.function(dummy, shared_volumes={"/": modal.SharedVolume()})
-
+    assert isinstance(dummy_modal, FunctionHandle)
     with pytest.raises(InvalidError):
         with stub.run(client=client):
             dummy_modal.call()
 
     dummy_modal = stub.function(dummy, shared_volumes={"/tmp/": modal.SharedVolume()})
-
+    assert isinstance(dummy_modal, FunctionHandle)
     with pytest.raises(InvalidError):
         with stub.run(client=client):
             dummy_modal.call()
@@ -59,6 +61,7 @@ def test_shared_volume_handle_single_file(client, tmp_path, servicer):
 
     with stub.run(client=client) as app:
         handle = app.vol
+        assert isinstance(handle, SharedVolumeHandle)
         handle.add_local_file(local_file_path)
         handle.add_local_file(local_file_path.as_posix(), remote_path="/foo/other_destination")
 
@@ -84,6 +87,7 @@ async def test_shared_volume_handle_dir(client, tmp_path, servicer):
 
     with stub.run(client=client) as app:
         handle = app.vol
+        assert isinstance(handle, SharedVolumeHandle)
         handle.add_local_dir(local_dir)
 
     assert servicer.shared_volume_files[handle.object_id].keys() == {
@@ -104,6 +108,7 @@ async def test_shared_volume_handle_big_file(client, tmp_path, servicer, blob_se
 
         async with stub.run(client=client) as app:
             handle = app.vol
+            assert isinstance(handle, AioSharedVolumeHandle)
             await handle.add_local_file(local_file_path)
 
         assert servicer.shared_volume_files[handle.object_id].keys() == {"/bigfile"}

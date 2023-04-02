@@ -36,10 +36,13 @@ from .schedule import Schedule
 from .secret import _Secret
 from .shared_volume import _SharedVolume
 
-_default_image = _Image.debian_slim()
+_default_image: _Image = _Image.debian_slim()
 
 
 class LocalEntrypoint:
+    raw_f: Callable[..., typing.Any]
+    _stub: "_Stub"
+
     def __init__(self, raw_f, stub):
         self.raw_f = raw_f
         self._stub = stub
@@ -551,7 +554,7 @@ class _Stub:
     @typechecked
     def webhook(
         self,
-        raw_f,
+        raw_f: Optional[Callable[..., Any]] = None,
         *,
         method: str = "GET",  # REST method for the created endpoint.
         label: Optional[
@@ -574,7 +577,7 @@ class _Stub:
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         keep_warm: Union[bool, int, None] = None,  # An optional number of containers to always keep warm.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
-    ):
+    ) -> Union[_FunctionHandle, Callable[[Callable[..., Any]], _FunctionHandle]]:
         """Register a basic web endpoint with this application.
 
         This is the simple way to create a web endpoint on Modal. The function

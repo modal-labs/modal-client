@@ -12,6 +12,7 @@ import modal.app
 from modal import Stub
 from modal.aio import AioDict, AioQueue, AioStub
 from modal.exception import DeprecationError, InvalidError
+from modal.functions import FunctionHandle
 from modal_proto import api_pb2
 from modal_test_support import module_1, module_2
 import modal.client
@@ -37,15 +38,15 @@ async def test_attrs(servicer, aio_client):
     stub.d = AioDict()
     stub.q = AioQueue()
     async with stub.run(client=aio_client) as app:
-        await app.d.put("foo", "bar")
-        await app.q.put("baz")
-        assert await app.d.get("foo") == "bar"
-        assert await app.q.get() == "baz"
+        await app.d.put("foo", "bar")  # type: ignore
+        await app.q.put("baz")  # type: ignore
+        assert await app.d.get("foo") == "bar"  # type: ignore
+        assert await app.q.get() == "baz"  # type: ignore
 
 
 @pytest.mark.asyncio
 async def test_stub_type_validation(servicer, aio_client):
-    with pytest.raises(typeguard.TypeCheckError) as excinfo:
+    with pytest.raises(typeguard.TypeCheckError):
         stub = AioStub(
             foo=4242,  # type: ignore
         )
@@ -53,7 +54,7 @@ async def test_stub_type_validation(servicer, aio_client):
     stub = AioStub()
 
     with pytest.raises(InvalidError) as excinfo:
-        stub.bar = 4242
+        stub.bar = 4242  # type: ignore
 
     assert "4242" in str(excinfo.value)
 
@@ -125,6 +126,7 @@ def test_deploy_uses_deployment_name_if_specified(servicer, client):
 def test_run_function_without_app_error():
     stub = Stub()
     dummy_modal = stub.function(dummy)
+    assert isinstance(dummy_modal, FunctionHandle)
 
     with pytest.raises(InvalidError) as excinfo:
         dummy_modal.call()
@@ -143,7 +145,7 @@ def test_missing_attr():
 
     stub = Stub()
     with pytest.raises(KeyError):
-        stub.fun()
+        stub.fun()  # type: ignore
 
 
 def test_same_function_name(caplog):

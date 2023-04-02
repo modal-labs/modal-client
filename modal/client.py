@@ -19,10 +19,10 @@ from ._tracing import inject_tracing_context
 from .config import config, logger
 from .exception import AuthError, ConnectionError, DeprecationError, VersionError
 
-HEARTBEAT_INTERVAL = config.get("heartbeat_interval")
-HEARTBEAT_TIMEOUT = 10.1
-CLIENT_CREATE_ATTEMPT_TIMEOUT = 4.0
-CLIENT_CREATE_TOTAL_TIMEOUT = 15.0
+HEARTBEAT_INTERVAL: float = config.get("heartbeat_interval")
+HEARTBEAT_TIMEOUT: float = 10.1
+CLIENT_CREATE_ATTEMPT_TIMEOUT: float = 4.0
+CLIENT_CREATE_TOTAL_TIMEOUT: float = 15.0
 
 
 def _get_metadata(client_type: int, credentials: Optional[Tuple[str, str]], version: str) -> Dict[str, str]:

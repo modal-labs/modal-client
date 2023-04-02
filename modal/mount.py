@@ -104,6 +104,9 @@ class _MountHandle(_Handle, type_prefix="mo"):
     pass
 
 
+MountHandle, AioMountHandle = synchronize_apis(_MountHandle)
+
+
 class _Mount(_Provider[_MountHandle]):
     """Create a mount for a local directory or file that can be attached
     to one or more Modal functions.

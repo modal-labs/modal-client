@@ -14,7 +14,7 @@ class _SecretHandle(_Handle, type_prefix="st"):
     pass
 
 
-synchronize_apis(_SecretHandle)
+SecretHandle, AioSecretHandle = synchronize_apis(_SecretHandle)
 
 
 class _Secret(_Provider[_SecretHandle]):
