@@ -490,7 +490,7 @@ class _Stub:
     @typing.overload
     def function(
         self,
-        f: Union[WebhookConfig, Callable[..., Any]],  # The decorated function
+        f: None = None,  # The decorated function
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
@@ -549,7 +549,7 @@ class _Stub:
     @typechecked
     def function(
         self,
-        f: Union[WebhookConfig, Callable[..., Any]],  # The decorated function
+        f: Optional[Union[WebhookConfig, Callable[..., Any]]] = None,  # The decorated function
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
