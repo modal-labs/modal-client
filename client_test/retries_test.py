@@ -3,7 +3,6 @@ import pytest
 
 import modal
 from modal.exception import InvalidError
-from modal.functions import FunctionHandle
 
 
 def default_retries_from_int():
@@ -30,19 +29,15 @@ def test_retries(client):
     stub = modal.Stub()
 
     default_retries_from_int_modal = stub.function(default_retries_from_int, retries=5)
-    assert isinstance(default_retries_from_int_modal, FunctionHandle)
     fixed_delay_retries_modal = stub.function(
         fixed_delay_retries, retries=modal.Retries(max_retries=5, backoff_coefficient=1.0)
     )
-    assert isinstance(fixed_delay_retries_modal, FunctionHandle)
     exponential_backoff_modal = stub.function(
         exponential_backoff, retries=modal.Retries(max_retries=2, initial_delay=2.0, backoff_coefficient=2.0)
     )
-    assert isinstance(exponential_backoff_modal, FunctionHandle)
     exponential_with_max_delay_modal = stub.function(
         exponential_with_max_delay, retries=modal.Retries(max_retries=2, backoff_coefficient=2.0, max_delay=30.0)
     )
-    assert isinstance(exponential_with_max_delay_modal, FunctionHandle)
 
     with pytest.raises(TypeError):
         # Reject no-args constructions, which is unreadable and harder to support long-term

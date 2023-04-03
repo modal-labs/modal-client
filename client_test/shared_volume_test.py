@@ -6,7 +6,6 @@ import pytest
 import modal
 import modal.aio
 from modal.exception import InvalidError
-from modal.functions import FunctionHandle
 from modal.shared_volume import SharedVolumeHandle, AioSharedVolumeHandle
 
 from .supports.skip import skip_windows
@@ -35,19 +34,16 @@ def test_shared_volume_bad_paths(client, test_dir, servicer):
         pass
 
     dummy_modal = stub.function(dummy, shared_volumes={"/root/../../foo": modal.SharedVolume()})
-    assert isinstance(dummy_modal, FunctionHandle)
     with pytest.raises(InvalidError):
         with stub.run(client=client):
             dummy_modal.call()
 
     dummy_modal = stub.function(dummy, shared_volumes={"/": modal.SharedVolume()})
-    assert isinstance(dummy_modal, FunctionHandle)
     with pytest.raises(InvalidError):
         with stub.run(client=client):
             dummy_modal.call()
 
     dummy_modal = stub.function(dummy, shared_volumes={"/tmp/": modal.SharedVolume()})
-    assert isinstance(dummy_modal, FunctionHandle)
     with pytest.raises(InvalidError):
         with stub.run(client=client):
             dummy_modal.call()

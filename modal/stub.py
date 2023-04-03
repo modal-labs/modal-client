@@ -467,14 +467,68 @@ class _Stub:
         return entrypoint
 
     @typing.overload
-    def function(self, raw_f: None) -> Callable[[], _FunctionHandle]:
+    def function(
+        self,
+        raw_f: None = None,
+        *,
+        image: Optional[_Image] = None,  # The image to run as the container for the function
+        schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
+        secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
+        secrets: Sequence[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
+        gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
+        serialized: bool = False,  # Whether to send the function over using cloudpickle.
+        mounts: Sequence[_Mount] = (),
+        shared_volumes: Dict[str, _SharedVolume] = {},
+        allow_cross_region_volumes: bool = False,  # Whether using shared volumes from other regions is allowed.
+        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
+        memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
+        proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
+        retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
+        concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
+        container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
+        timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
+        interactive: bool = False,  # Whether to run the function in interactive mode.
+        keep_warm: Union[bool, int, None] = None,  # An optional number of containers to always keep warm.
+        name: Optional[str] = None,  # Sets the Modal name of the function within the stub
+        is_generator: Optional[bool] = None,  # If not set, it's inferred from the function signature
+        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
+    ) -> Callable[[Callable[..., Any]], _FunctionHandle]:
+        ...
+
+    @typing.overload
+    def function(
+        self,
+        raw_f: Callable[..., Any],  # The decorated function
+        *,
+        image: Optional[_Image] = None,  # The image to run as the container for the function
+        schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
+        secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
+        secrets: Sequence[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
+        gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
+        serialized: bool = False,  # Whether to send the function over using cloudpickle.
+        mounts: Sequence[_Mount] = (),
+        shared_volumes: Dict[str, _SharedVolume] = {},
+        allow_cross_region_volumes: bool = False,  # Whether using shared volumes from other regions is allowed.
+        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
+        memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
+        proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
+        retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
+        concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
+        container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
+        timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
+        interactive: bool = False,  # Whether to run the function in interactive mode.
+        keep_warm: Union[bool, int, None] = None,  # An optional number of containers to always keep warm.
+        name: Optional[str] = None,  # Sets the Modal name of the function within the stub
+        is_generator: Optional[bool] = None,  # If not set, it's inferred from the function signature
+        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
+    ) -> _FunctionHandle:
         ...
 
     @decorator_with_options
     @typechecked
     def function(
         self,
-        raw_f=None,  # The decorated function
+        raw_f: Optional[Callable[..., Any]] = None,  # The decorated function
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function

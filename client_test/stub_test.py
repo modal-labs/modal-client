@@ -12,7 +12,6 @@ import modal.app
 from modal import Stub
 from modal.aio import AioDict, AioQueue, AioStub
 from modal.exception import DeprecationError, InvalidError
-from modal.functions import FunctionHandle
 from modal_proto import api_pb2
 from modal_test_support import module_1, module_2
 import modal.client
@@ -126,7 +125,6 @@ def test_deploy_uses_deployment_name_if_specified(servicer, client):
 def test_run_function_without_app_error():
     stub = Stub()
     dummy_modal = stub.function(dummy)
-    assert isinstance(dummy_modal, FunctionHandle)
 
     with pytest.raises(InvalidError) as excinfo:
         dummy_modal.call()
