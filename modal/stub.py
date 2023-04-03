@@ -44,7 +44,7 @@ class LocalEntrypoint:
     _stub: "_Stub"
 
     def __init__(self, raw_f, stub):
-        self.raw_f = raw_f
+        self.raw_f = raw_f  # type: ignore
         self._stub = stub
 
     def __call__(self, *args, **kwargs):
