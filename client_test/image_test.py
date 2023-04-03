@@ -5,8 +5,6 @@ import sys
 from tempfile import NamedTemporaryFile
 from typing import List
 
-from typeguard import TypeCheckError
-
 from modal import Image, Mount, Secret, SharedVolume, Stub, gpu
 from modal.exception import InvalidError, NotFoundError
 from modal.image import _dockerhub_python_version
@@ -66,16 +64,21 @@ def test_image_kwargs_validation(servicer, client):
     stub["image"] = Image.debian_slim().run_commands(
         "echo hi", secrets=[Secret({"xyz": "123"}), Secret.from_name("foo")]
     )
-    with pytest.raises(TypeCheckError):
+    with pytest.raises(InvalidError):
         stub["image"] = Image.debian_slim().run_commands(
             "echo hi",
-            secrets=[Secret({"xyz": "123"}), Secret.from_name("foo"), Mount.from_local_dir("/", remote_path="/")],
+            secrets=[
+                Secret({"xyz": "123"}),
+                Secret.from_name("foo"),
+                Mount.from_local_dir("/", remote_path="/"),
+            ],  # Mount is not a valid Secret
         )
 
     stub = Stub()
     stub["image"] = Image.debian_slim().copy(Mount.from_local_dir("/", remote_path="/"), remote_path="/dummy")
     stub["image"] = Image.debian_slim().copy(Mount.from_name("foo"), remote_path="/dummy")
-    with pytest.raises(TypeCheckError):
+    with pytest.raises(InvalidError):
+        # Secret is not a valid Mount
         stub["image"] = Image.debian_slim().copy(Secret({"xyz": "123"}), remote_path="/dummy")  # type: ignore
 
 
@@ -85,11 +88,11 @@ def test_wrong_type(servicer, client):
         method(["xyz"])  # type: ignore
         method("xyz")  # type: ignore
         method("xyz", ["def", "foo"], "ghi")  # type: ignore
-        with pytest.raises(TypeCheckError):
+        with pytest.raises(InvalidError):
             method(3)  # type: ignore
-        with pytest.raises(TypeCheckError):
+        with pytest.raises(InvalidError):
             method([3])  # type: ignore
-        with pytest.raises(TypeCheckError):
+        with pytest.raises(InvalidError):
             method([["double-nested-package"]])  # type: ignore
 
 
