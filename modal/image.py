@@ -150,6 +150,9 @@ class _Image(_Provider[_ImageHandle]):
             raise InvalidError(
                 "No commands were provided for the image — have you tried using modal.Image.debian_slim()?"
             )
+        for secret in secrets:
+            if not isinstance(secret, _Secret):
+                raise InvalidError("All secrets of an image needs to be modal.Secret/AioSecret instances")
 
         if build_function and dockerfile_commands:
             raise InvalidError("Cannot provide both a build function and Dockerfile commands!")
@@ -313,6 +316,8 @@ class _Image(_Provider[_ImageHandle]):
         image = modal.Image.debian_slim().copy(mount, remote_path="/static")
         ```
         """
+        if not isinstance(mount, _Mount):
+            raise InvalidError("The mount argument to copy has to be a Modal Mount object")
         return self.extend(
             dockerfile_commands=["FROM base", f"COPY . {remote_path}"],  # copy everything from the supplied mount
             context_mount=mount,

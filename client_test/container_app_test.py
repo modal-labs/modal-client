@@ -4,9 +4,8 @@ import os
 import pytest
 from unittest import mock
 
-from typeguard import TypeCheckError
-
 from modal.aio import AioApp, AioFunctionHandle, AioImage, AioStub, aio_container_app
+from modal.exception import InvalidError
 
 from .supports.skip import skip_windows_unix_socket
 import modal.secret
@@ -126,6 +125,7 @@ async def test_is_inside_default_image(servicer, unix_servicer, aio_client, aio_
         assert stub.is_inside()
 
 
+@pytest.mark.skip("runtime type checking has been temporarily disabled")
 def test_typechecking_not_enforced_in_container():
     def incorrect_usage():
         class InvalidType:
@@ -133,7 +133,7 @@ def test_typechecking_not_enforced_in_container():
 
         modal.secret.Secret(env_dict={"foo": InvalidType()})  # type: ignore
 
-    with pytest.raises(TypeCheckError):
+    with pytest.raises(InvalidError):
         incorrect_usage()  # should throw when running locally
 
     with mock.patch.dict(os.environ, {"MODAL_IMAGE_ID": "im-123"}):

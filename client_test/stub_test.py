@@ -2,8 +2,8 @@
 import asyncio
 import logging
 import os
+
 import pytest
-import typeguard
 
 from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
@@ -44,7 +44,7 @@ async def test_attrs(servicer, aio_client):
 
 @pytest.mark.asyncio
 async def test_stub_type_validation(servicer, aio_client):
-    with pytest.raises(typeguard.TypeCheckError):
+    with pytest.raises(InvalidError):
         stub = AioStub(
             foo=4242,  # type: ignore
         )
@@ -247,21 +247,21 @@ def test_registered_web_endpoints(client, servicer):
 
 
 def test_init_types():
-    with pytest.raises(typeguard.TypeCheckError):
+    with pytest.raises(InvalidError):
         # singular secret to plural argument
         Stub(secrets=modal.Secret())  # type: ignore
-    with pytest.raises(typeguard.TypeCheckError):
+    with pytest.raises(InvalidError):
         # not a Secret Object
         Stub(secrets=[{"foo": "bar"}])  # type: ignore
-    with pytest.raises(typeguard.TypeCheckError):
+    with pytest.raises(InvalidError):
         # blueprint needs to use _Providers
         Stub(some_arg=5)  # type: ignore
-    with pytest.raises(typeguard.TypeCheckError):
+    with pytest.raises(InvalidError):
         # should be an Image
         Stub(image=modal.Secret())  # type: ignore
 
     Stub(
-        image=modal.Image.debian_slim().pip_install("typeguard"),
+        image=modal.Image.debian_slim().pip_install("pandas"),
         secrets=[modal.Secret()],
         mounts=[modal.Mount.from_local_file(__file__)],
         some_dict=modal.Dict(),
