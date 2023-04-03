@@ -104,7 +104,7 @@ class _ImageRegistryConfig:
 
     def __init__(
         self,
-        registry_type: api_pb2.RegistryType.ValueType = api_pb2.RegistryType.DOCKERHUB,
+        registry_type: "api_pb2.RegistryType.ValueType" = api_pb2.RegistryType.DOCKERHUB,
         secret: Optional[_Secret] = None,
     ):
         self.registry_type = registry_type

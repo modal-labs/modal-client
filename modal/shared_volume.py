@@ -190,7 +190,7 @@ class _SharedVolume(_Provider[_SharedVolumeHandle]):
                 return _SharedVolumeHandle._from_id(existing_object_id, resolver.client, None)
 
             status_row.message("Creating shared volume...")
-            req = api_pb2.SharedVolumeCreateRequest(app_id=resolver.app_id, cloud_provider=cloud_provider)
+            req = api_pb2.SharedVolumeCreateRequest(app_id=resolver.app_id, cloud_provider=cloud_provider)  # type: ignore
             resp = await retry_transient_errors(resolver.client.stub.SharedVolumeCreate, req)
             status_row.finish("Created shared volume.")
             return _SharedVolumeHandle._from_id(resp.shared_volume_id, resolver.client, None)
