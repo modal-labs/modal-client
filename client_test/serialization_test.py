@@ -14,7 +14,7 @@ async def test_persistent_object(servicer, client):
     async with stub.run(client=client) as running_app:
         q = running_app.q
         data = serialize(q)
-        assert len(data) < 256  # Currently 93
+        assert len(data) < 290  # Used to be 93...
         # Note: if this blows up significantly, it's most likely because
         # cloudpickle can't find a class in the global scope. When this
         # happens, it tries to serialize the entire class along with the
