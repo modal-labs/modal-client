@@ -42,6 +42,9 @@ jobs:
 
       - run: inv protoc
 
+      - name: Build type stubs
+        run: python -m synchronicity.type_stubs modal.image modal.app modal.stub modal.mount modal.functions modal.object modal.dict modal.queue modal.client modal.secret modal.shared_volume modal.proxy
+
       - run: inv mypy
 
   check-copyright:
