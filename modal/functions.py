@@ -707,7 +707,7 @@ class _Function(_Provider[_FunctionHandle]):
     _secrets: Collection[_Secret]
     _info: FunctionInfo
     _mounts: Collection[_Mount]
-    _shared_volumes: Collection[_SharedVolume]
+    _shared_volumes: Dict[str, _SharedVolume]
     _allow_cross_region_volumes: bool
     _image: Optional[_Image]
     _gpu: Optional[GPU_T]
