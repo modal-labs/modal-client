@@ -65,7 +65,6 @@ def side_effect(_):
 def test_for_each(client, servicer):
     stub = Stub()
     side_effect_modal = stub.function(servicer.function_body(side_effect))
-
     assert _side_effect_count == 0
     with stub.run(client=client):
         side_effect_modal.for_each(range(10))
@@ -81,6 +80,7 @@ def test_map_none_values(client, servicer):
     stub = Stub()
 
     custom_function_modal = stub.function(servicer.function_body(custom_function))
+
     with stub.run(client=client):
         assert list(custom_function_modal.map(range(4))) == [0, None, 2, None]
 
@@ -111,7 +111,6 @@ def test_function_future(client, servicer):
     stub = Stub()
 
     later_modal = stub.function(servicer.function_body(later))
-
     with stub.run(client=client):
         future = later_modal.spawn()
         assert isinstance(future, FunctionCall)
@@ -229,7 +228,6 @@ def test_function_exception(client, servicer):
     stub = Stub()
 
     failure_modal = stub.function(servicer.function_body(failure))
-
     with stub.run(client=client):
         with pytest.raises(CustomException) as excinfo:
             failure_modal.call()
@@ -241,7 +239,6 @@ async def test_function_exception_async(aio_client, servicer):
     stub = AioStub()
 
     failure_modal = stub.function(servicer.function_body(failure))
-
     async with stub.run(client=aio_client):
         with pytest.raises(CustomException) as excinfo:
             await failure_modal.call()
@@ -258,6 +255,7 @@ def test_map_exceptions(client, servicer):
     stub = Stub()
 
     custom_function_modal = stub.function(servicer.function_body(custom_exception_function))
+
     with stub.run(client=client):
         assert list(custom_function_modal.map(range(4))) == [0, 1, 4, 9]
 
@@ -278,6 +276,7 @@ def test_function_relative_import_hint(client, servicer):
     stub = Stub()
 
     import_failure_modal = stub.function(servicer.function_body(import_failure))
+
     with stub.run(client=client):
         with pytest.raises(ImportError) as excinfo:
             import_failure_modal.call()
@@ -385,12 +384,14 @@ class Class:
 
 def test_raw_call():
     assert f(111) == 12321
-    assert Class().f(1111) == 1234321
+    instance = Class()
+    assert instance.f(1111) == 1234321
 
 
 def test_method_call(client):
+    instance = Class()
     with lc_stub.run(client=client):
-        assert Class().f.call(111) == 12321
+        assert instance.f.call(111) == 12321
 
 
 def test_allow_cross_region_volumes(client, servicer):

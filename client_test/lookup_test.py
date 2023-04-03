@@ -3,6 +3,7 @@ import pytest
 
 from modal.aio import AioFunction, AioQueue, AioStub, aio_lookup
 from modal.exception import DeprecationError, NotFoundError
+from modal.queue import AioQueueHandle
 
 
 @pytest.mark.asyncio
@@ -11,8 +12,9 @@ async def test_persistent_object(servicer, aio_client):
     stub["q_1"] = AioQueue()
     await stub.deploy("my-queue", client=aio_client)
 
-    q = await AioQueue.lookup("my-queue", client=aio_client)
-    # assert isinstance(q_3, AioQueue)  # TODO(erikbern): it's a AioQueueHandler
+    q: AioQueueHandle = await AioQueue.lookup("my-queue", client=aio_client)
+    # TODO: remove type annotation here after genstub gets better Generic base class support
+    assert isinstance(q, AioQueueHandle)  # TODO(erikbern): it's a AioQueueHandler
     assert q.object_id == "qu-1"
 
     with pytest.raises(NotFoundError):

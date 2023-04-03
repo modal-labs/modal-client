@@ -23,7 +23,7 @@ import modal
 from modal._location import display_location, parse_cloud_provider
 from modal._output import step_progress, step_completed
 from modal.client import AioClient
-from modal.shared_volume import AioSharedVolumeHandle, _SharedVolumeHandle, AioSharedVolume
+from modal.shared_volume import _SharedVolumeHandle, _SharedVolume
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
 from modal_utils.grpc_utils import retry_transient_errors
@@ -77,8 +77,8 @@ def create(name: str, cloud: str = typer.Option("aws", help="Cloud provider to c
 
 
 async def volume_from_name(deployment_name) -> _SharedVolumeHandle:
-    shared_volume = await AioSharedVolume.lookup(deployment_name)
-    if not isinstance(shared_volume, AioSharedVolumeHandle):
+    shared_volume = await _SharedVolume.lookup(deployment_name)
+    if not isinstance(shared_volume, _SharedVolumeHandle):
         raise Exception("The specified app entity is not a shared volume")
     return shared_volume
 
@@ -156,9 +156,7 @@ class CliError(Exception):
         self.message = message
 
 
-async def _glob_download(
-    volume: AioSharedVolumeHandle, remote_glob_path: str, local_destination: Path, overwrite: bool
-):
+async def _glob_download(volume: _SharedVolumeHandle, remote_glob_path: str, local_destination: Path, overwrite: bool):
     q: asyncio.Queue[Tuple[Optional[Path], Optional[api_pb2.SharedVolumeListFilesEntry]]] = asyncio.Queue()
 
     async def producer():

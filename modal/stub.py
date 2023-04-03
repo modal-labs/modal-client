@@ -1,20 +1,20 @@
 # Copyright Modal Labs 2022
 import asyncio
-import contextlib
+import typing
 from datetime import date
 import inspect
 from multiprocessing.synchronize import Event
 import os
 import sys
 import warnings
-from typing import AsyncGenerator, Dict, List, Optional, Union, Any, Sequence
-
+from typing import AsyncGenerator, Dict, List, Optional, Union, Any, Sequence, Callable
+from synchronicity.async_wrap import asynccontextmanager
 from modal._types import typechecked
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 from modal_utils.decorator_utils import decorator_with_options
-from . import Retries
+from .retries import Retries
 
 from ._function_utils import FunctionInfo
 from ._ipython import is_notebook
@@ -28,7 +28,7 @@ from .functions import _Function, _FunctionHandle
 from .gpu import GPU_T
 from .image import _Image, _ImageHandle
 from .mount import _get_client_mount, _Mount
-from .object import Provider
+from .object import _Provider
 from .proxy import _Proxy
 from .queue import _Queue
 from .runner import run_stub, deploy_stub, serve_update
@@ -36,12 +36,15 @@ from .schedule import Schedule
 from .secret import _Secret
 from .shared_volume import _SharedVolume
 
-_default_image = _Image.debian_slim()
+_default_image: _Image = _Image.debian_slim()
 
 
 class LocalEntrypoint:
+    raw_f: Callable[..., typing.Any]
+    _stub: "_Stub"
+
     def __init__(self, raw_f, stub):
-        self.raw_f = raw_f
+        self.raw_f = raw_f  # type: ignore
         self._stub = stub
 
     def __call__(self, *args, **kwargs):
@@ -85,7 +88,7 @@ class _Stub:
     _name: str
     _description: str
     _app_id: str
-    _blueprint: Dict[str, Provider]
+    _blueprint: Dict[str, _Provider]
     _client_mount: Optional[_Mount]
     _function_mounts: Dict[str, _Mount]
     _mounts: Sequence[_Mount]
@@ -104,7 +107,7 @@ class _Stub:
         image: Optional[_Image] = None,  # default image for all functions (default is `modal.Image.debian_slim()`)
         mounts: Sequence[_Mount] = [],  # default mounts for all functions
         secrets: Sequence[_Secret] = [],  # default secrets for all functions
-        **blueprint: Provider,  # any Modal Object dependencies (Dict, Queue, etc.)
+        **blueprint: _Provider,  # any Modal Object dependencies (Dict, Queue, etc.)
     ) -> None:
         """Construct a new app stub, optionally with default image, mounts, secrets
 
@@ -160,7 +163,7 @@ class _Stub:
         return self._description or self._infer_app_desc()
 
     def _validate_blueprint_value(self, key: str, value: Any):
-        if not isinstance(value, Provider):
+        if not isinstance(value, _Provider):
             raise InvalidError(f"Stub attribute {key} with value {value} is not a valid Modal object")
 
     def _infer_app_desc(self):
@@ -182,12 +185,12 @@ class _Stub:
         # Deprecated? Note: this is currently the only way to refer to lifecycled methods on the stub, since they have . in the tag
         return self._blueprint[tag]
 
-    def __setitem__(self, tag: str, obj: Provider):
+    def __setitem__(self, tag: str, obj: _Provider):
         self._validate_blueprint_value(tag, obj)
         # Deprecated ?
         self._blueprint[tag] = obj
 
-    def __getattr__(self, tag: str) -> Provider:
+    def __getattr__(self, tag: str) -> _Provider:
         assert isinstance(tag, str)
         if tag.startswith("__"):
             # Hacky way to avoid certain issues, e.g. pickle will try to look this up
@@ -195,7 +198,7 @@ class _Stub:
         # Return a reference to an object that will be created in the future
         return self._blueprint[tag]
 
-    def __setattr__(self, tag: str, obj: Provider):
+    def __setattr__(self, tag: str, obj: _Provider):
         # Note that only attributes defined in __annotations__ are set on the object itself,
         # everything else is registered on the blueprint
         if tag in self.__annotations__:
@@ -234,7 +237,7 @@ class _Stub:
         assert isinstance(image_handle, _ImageHandle)
         return image_handle._is_inside()
 
-    @contextlib.asynccontextmanager
+    @asynccontextmanager
     async def _set_app(self, app: _App) -> AsyncGenerator[None, None]:
         self._app = app
         try:
@@ -242,7 +245,7 @@ class _Stub:
         finally:
             self._app = None
 
-    @contextlib.asynccontextmanager
+    @asynccontextmanager
     async def run(
         self,
         client: Optional[_Client] = None,
@@ -463,11 +466,10 @@ class _Stub:
         entrypoint = self._local_entrypoints[tag] = LocalEntrypoint(raw_f, self)
         return entrypoint
 
-    @decorator_with_options
-    @typechecked
+    @typing.overload
     def function(
         self,
-        raw_f=None,  # The decorated function
+        raw_f: None = None,
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
@@ -490,7 +492,68 @@ class _Stub:
         name: Optional[str] = None,  # Sets the Modal name of the function within the stub
         is_generator: Optional[bool] = None,  # If not set, it's inferred from the function signature
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
-    ) -> _FunctionHandle:  # Function object - callable as a regular function within a Modal app
+    ) -> Callable[[Callable[..., Any]], _FunctionHandle]:
+        ...
+
+    @typing.overload
+    def function(
+        self,
+        raw_f: Callable[..., Any],  # The decorated function
+        *,
+        image: Optional[_Image] = None,  # The image to run as the container for the function
+        schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
+        secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
+        secrets: Sequence[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
+        gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
+        serialized: bool = False,  # Whether to send the function over using cloudpickle.
+        mounts: Sequence[_Mount] = (),
+        shared_volumes: Dict[str, _SharedVolume] = {},
+        allow_cross_region_volumes: bool = False,  # Whether using shared volumes from other regions is allowed.
+        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
+        memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
+        proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
+        retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
+        concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
+        container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
+        timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
+        interactive: bool = False,  # Whether to run the function in interactive mode.
+        keep_warm: Union[bool, int, None] = None,  # An optional number of containers to always keep warm.
+        name: Optional[str] = None,  # Sets the Modal name of the function within the stub
+        is_generator: Optional[bool] = None,  # If not set, it's inferred from the function signature
+        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
+    ) -> _FunctionHandle:
+        ...
+
+    @decorator_with_options
+    @typechecked
+    def function(
+        self,
+        raw_f: Optional[Callable[..., Any]] = None,  # The decorated function
+        *,
+        image: Optional[_Image] = None,  # The image to run as the container for the function
+        schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
+        secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
+        secrets: Sequence[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
+        gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
+        serialized: bool = False,  # Whether to send the function over using cloudpickle.
+        mounts: Sequence[_Mount] = (),
+        shared_volumes: Dict[str, _SharedVolume] = {},
+        allow_cross_region_volumes: bool = False,  # Whether using shared volumes from other regions is allowed.
+        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
+        memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
+        proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
+        retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
+        concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
+        container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
+        timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
+        interactive: bool = False,  # Whether to run the function in interactive mode.
+        keep_warm: Union[bool, int, None] = None,  # An optional number of containers to always keep warm.
+        name: Optional[str] = None,  # Sets the Modal name of the function within the stub
+        is_generator: Optional[bool] = None,  # If not set, it's inferred from the function signature
+        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
+    ) -> Union[
+        _FunctionHandle, Callable[[Callable[..., Any]], _FunctionHandle]
+    ]:  # Function object - callable as a regular function within a Modal app
         """Decorator to register a new Modal function with this stub."""
         if image is None:
             image = self._get_default_image()
@@ -545,7 +608,7 @@ class _Stub:
     @typechecked
     def webhook(
         self,
-        raw_f,
+        raw_f: Optional[Callable[..., Any]] = None,
         *,
         method: str = "GET",  # REST method for the created endpoint.
         label: Optional[
@@ -568,7 +631,7 @@ class _Stub:
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         keep_warm: Union[bool, int, None] = None,  # An optional number of containers to always keep warm.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
-    ):
+    ) -> Union[_FunctionHandle, Callable[[Callable[..., Any]], _FunctionHandle]]:
         """Register a basic web endpoint with this application.
 
         This is the simple way to create a web endpoint on Modal. The function

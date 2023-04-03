@@ -23,10 +23,11 @@ async def test_kwargs(servicer, aio_client):
         q=AioQueue(),
     )
     async with stub.run(client=aio_client) as app:
-        await app["d"].put("foo", "bar")
-        await app["q"].put("baz")
-        assert await app["d"].get("foo") == "bar"
-        assert await app["q"].get() == "baz"
+        # TODO: interface to get type safe objects from live apps
+        await app["d"].put("foo", "bar")  # type: ignore
+        await app["q"].put("baz")  # type: ignore
+        assert await app["d"].get("foo") == "bar"  # type: ignore
+        assert await app["q"].get() == "baz"  # type: ignore
 
 
 @pytest.mark.asyncio
@@ -35,23 +36,23 @@ async def test_attrs(servicer, aio_client):
     stub.d = AioDict()
     stub.q = AioQueue()
     async with stub.run(client=aio_client) as app:
-        await app.d.put("foo", "bar")
-        await app.q.put("baz")
-        assert await app.d.get("foo") == "bar"
-        assert await app.q.get() == "baz"
+        await app.d.put("foo", "bar")  # type: ignore
+        await app.q.put("baz")  # type: ignore
+        assert await app.d.get("foo") == "bar"  # type: ignore
+        assert await app.q.get() == "baz"  # type: ignore
 
 
 @pytest.mark.asyncio
 async def test_stub_type_validation(servicer, aio_client):
-    with pytest.raises(typeguard.TypeCheckError) as excinfo:
+    with pytest.raises(typeguard.TypeCheckError):
         stub = AioStub(
-            foo=4242,
+            foo=4242,  # type: ignore
         )
 
     stub = AioStub()
 
     with pytest.raises(InvalidError) as excinfo:
-        stub.bar = 4242
+        stub.bar = 4242  # type: ignore
 
     assert "4242" in str(excinfo.value)
 
@@ -141,7 +142,7 @@ def test_missing_attr():
 
     stub = Stub()
     with pytest.raises(KeyError):
-        stub.fun()
+        stub.fun()  # type: ignore
 
 
 def test_same_function_name(caplog):
@@ -247,13 +248,17 @@ def test_registered_web_endpoints(client, servicer):
 
 def test_init_types():
     with pytest.raises(typeguard.TypeCheckError):
-        Stub(secrets=modal.Secret())  # singular secret to plural argument
+        # singular secret to plural argument
+        Stub(secrets=modal.Secret())  # type: ignore
     with pytest.raises(typeguard.TypeCheckError):
-        Stub(secrets=[{"foo": "bar"}])  # not a Secret Object
+        # not a Secret Object
+        Stub(secrets=[{"foo": "bar"}])  # type: ignore
     with pytest.raises(typeguard.TypeCheckError):
-        Stub(some_arg=5)  # blueprint needs to use Providers
+        # blueprint needs to use _Providers
+        Stub(some_arg=5)  # type: ignore
     with pytest.raises(typeguard.TypeCheckError):
-        Stub(image=modal.Secret())  # should be an Image
+        # should be an Image
+        Stub(image=modal.Secret())  # type: ignore
 
     Stub(
         image=modal.Image.debian_slim().pip_install("typeguard"),
