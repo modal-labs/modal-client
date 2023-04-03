@@ -98,8 +98,14 @@ class CubeAsync:
         return x**3
 
 
-@stub.webhook
+@stub.function
+@stub.web_endpoint
 def webhook(arg="world"):
+    return {"hello": arg}
+
+
+@stub.webhook
+def webhook_old(arg="world"):
     return {"hello": arg}
 
 
@@ -115,7 +121,8 @@ class WebhookLifecycleClass:
     async def __aexit__(self, typ, exc, tb):
         self._events.append("exit")
 
-    @stub.webhook
+    @stub.function
+    @stub.web_endpoint
     def webhook(self, arg="world"):
         self._events.append("call")
         return {"hello": arg}
@@ -161,7 +168,8 @@ def fun_returning_gen(n):
     return gen(n)
 
 
-@stub.asgi
+@stub.function
+@stub.asgi_app
 def fastapi_app():
     from fastapi import FastAPI
 

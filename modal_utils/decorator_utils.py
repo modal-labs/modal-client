@@ -16,7 +16,10 @@ def decorator_with_options(dec_fun):
     @functools.wraps(dec_fun)
     def wrapper(*args, **kwargs):
         # Note: if the def_fun is a method, then args will contain the object the method is bound to.
-        if args and inspect.isfunction(args[-1]):
+        # TODO(erikbern): this could be solved using the descriptor protocol, but this would also require
+        # synchronicity to implement the full descriptor protocol. This isn't trivial, but we should
+        # do that some day!
+        if len(args) >= 2 or (len(args) == 1 and inspect.isfunction(args[-1])):
             # The decorator is invoked with a function as its first argument
             # Call the decorator function directly
             return dec_fun(*args, **kwargs)

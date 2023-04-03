@@ -234,16 +234,21 @@ async def test_grpc_protocol(aio_client, servicer):
     assert isinstance(servicer.requests[3], api_pb2.AppClientDisconnectRequest)
 
 
-async def square_webhook(x):
+async def web1(x):
     return {"square": x**2}
+
+
+async def web2(x):
+    return {"cube": x**3}
 
 
 def test_registered_web_endpoints(client, servicer):
     stub = Stub()
     stub.function(square)
-    stub.webhook(square_webhook)
+    stub.webhook(web1)
+    stub.function(stub.web_endpoint(web2))
 
-    assert stub.registered_web_endpoints == ["square_webhook"]
+    assert stub.registered_web_endpoints == ["web1", "web2"]
 
 
 def test_init_types():

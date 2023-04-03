@@ -35,6 +35,11 @@ async def run_stub(
     detach: bool = False,
     output_mgr: Optional[OutputManager] = None,
 ) -> AsyncGenerator[_App, None]:
+    if stub._loose_webhook_configs:
+        raise InvalidError(
+            f"Web endpoints {stub._loose_webhook_configs} need to be decorated with @stub.function too.\nUsage:\n\n"
+            "@stub.function\n@stub.web_endpoint\ndef my_webhook():\n    ..."
+        )
     if not is_local():
         raise InvalidError(
             "Can not run an app from within a container."

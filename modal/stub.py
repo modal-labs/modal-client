@@ -7,7 +7,7 @@ from multiprocessing.synchronize import Event
 import os
 import sys
 import warnings
-from typing import AsyncGenerator, Dict, List, Optional, Union, Any, Sequence, Callable
+from typing import AsyncGenerator, Callable, Dict, List, Optional, Union, Any, Sequence, Set
 
 from synchronicity.async_wrap import asynccontextmanager
 from modal._types import typechecked
@@ -41,7 +41,7 @@ _default_image: _Image = _Image.debian_slim()
 
 
 class LocalEntrypoint:
-    raw_f: Callable[..., typing.Any]
+    raw_f: Callable[..., Any]
     _stub: "_Stub"
 
     def __init__(self, raw_f, stub):
@@ -50,6 +50,12 @@ class LocalEntrypoint:
 
     def __call__(self, *args, **kwargs):
         return self.raw_f(*args, **kwargs)
+
+
+class WebhookConfig:
+    def __init__(self, raw_f: Callable[..., Any], webhook_config: api_pb2.WebhookConfig):
+        self.raw_f = raw_f
+        self.webhook_config = webhook_config
 
 
 def check_sequence(items: typing.Sequence[typing.Any], item_type: typing.Type[typing.Any], error_msg: str):
@@ -106,6 +112,7 @@ class _Stub:
     _local_entrypoints: Dict[str, LocalEntrypoint]
     _local_mounts: List[_Mount]
     _app: Optional[_App]
+    _loose_webhook_configs: Set[Callable[..., Any]]  # Used to warn users if they forget to decorate a webhook
 
     @typechecked
     def __init__(
@@ -152,6 +159,7 @@ class _Stub:
         self._local_entrypoints = {}
         self._local_mounts = []
         self._web_endpoints = []
+        self._loose_webhook_configs = set()
 
         self._app = None
         if not is_local():
@@ -482,7 +490,7 @@ class _Stub:
     @typing.overload
     def function(
         self,
-        raw_f: None = None,
+        f: None = None,  # The decorated function
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
@@ -511,7 +519,7 @@ class _Stub:
     @typing.overload
     def function(
         self,
-        raw_f: Callable[..., Any],  # The decorated function
+        f: Union[WebhookConfig, Callable[..., Any]],  # The decorated function
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
@@ -541,7 +549,7 @@ class _Stub:
     @typechecked
     def function(
         self,
-        raw_f: Optional[Callable[..., Any]] = None,  # The decorated function
+        f: Optional[Union[WebhookConfig, Callable[..., Any]]] = None,  # The decorated function
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
@@ -570,10 +578,34 @@ class _Stub:
         """Decorator to register a new Modal function with this stub."""
         if image is None:
             image = self._get_default_image()
-        info = FunctionInfo(raw_f, serialized=serialized, name_override=name)
+
+        if isinstance(f, WebhookConfig):
+            info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
+            webhook_config = f.webhook_config
+            self._web_endpoints.append(info.get_tag())
+            raw_f = f.raw_f
+            self._loose_webhook_configs.remove(raw_f)
+
+            if is_generator or (inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)):
+                if webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
+                    raise InvalidError(
+                        "Webhooks cannot be generators. If you want to streaming response, use fastapi.responses.StreamingResponse. Example:\n\n"
+                        "def my_iter():\n    for x in range(10):\n        time.sleep(1.0)\n        yield str(i)\n\n"
+                        "@stub.webhook\ndef web():\n    return StreamingResponse(my_iter())\n"
+                    )
+                else:
+                    raise InvalidError("Webhooks cannot be generators")
+        else:
+            info = FunctionInfo(f, serialized=serialized, name_override=name)
+            webhook_config = None
+            raw_f = f
+
         function_handle = self._get_function_handle(info)
         base_mounts = self._get_function_mounts(info)
         secrets = [*self._secrets, *secrets]
+
+        if is_generator is None:
+            is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
 
         if interactive:
             if self._pty_input_stream:
@@ -582,9 +614,6 @@ class _Stub:
                 )
             else:
                 self._blueprint["_pty_input_stream"] = _Queue()
-
-        if is_generator is None:
-            is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
 
         function = _Function(
             function_handle,
@@ -612,6 +641,7 @@ class _Stub:
             keep_warm=keep_warm,
             name=name,
             cloud=cloud,
+            webhook_config=webhook_config,
         )
 
         self._add_function(function, [*base_mounts, *mounts])
@@ -619,32 +649,15 @@ class _Stub:
 
     @decorator_with_options
     @typechecked
-    def webhook(
+    def web_endpoint(
         self,
         raw_f: Optional[Callable[..., Any]] = None,
-        *,
         method: str = "GET",  # REST method for the created endpoint.
         label: Optional[
             str
         ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-        image: Optional[_Image] = None,  # The image to run as the container for the function
-        secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
-        secrets: Sequence[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
-        gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
-        mounts: Sequence[_Mount] = (),
-        shared_volumes: Dict[str, _SharedVolume] = {},
-        allow_cross_region_volumes: bool = False,  # Whether using shared volumes from other regions is allowed.
-        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
-        memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
-        proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
-        retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
-        concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
-        container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
-        timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
-        keep_warm: Union[bool, int, None] = None,  # An optional number of containers to always keep warm.
-        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
-    ) -> Union[_FunctionHandle, Callable[[Callable[..., Any]], _FunctionHandle]]:
+    ):
         """Register a basic web endpoint with this application.
 
         This is the simple way to create a web endpoint on Modal. The function
@@ -654,7 +667,7 @@ class _Stub:
         Endpoints created with `@stub.webhook` are meant to be simple, single
         request handlers and automatically have
         [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) enabled.
-        For more flexibility, use `@stub.asgi`.
+        For more flexibility, use `@stub.asgi_app`.
 
         To learn how to use Modal with popular web frameworks, see the
         [guide on web endpoints](https://modal.com/docs/guide/webhooks).
@@ -666,84 +679,38 @@ class _Stub:
         * `wait_for_response=True` - tries to fulfill the request on the original URL, but returns a 302 redirect after ~150s to a result URL (original URL with an added `__modal_function_id=...` query parameter)
         * `wait_for_response=False` - immediately returns a 202 ACCEPTED response with a JSON payload: `{"result_url": "..."}` containing the result "redirect" URL from above (which in turn redirects to itself every ~150s)
         """
-        if image is None:
-            image = self._get_default_image()
-        info = FunctionInfo(raw_f)
-        function_handle = self._get_function_handle(info)
-        self._web_endpoints.append(info.get_tag())
-        base_mounts = self._get_function_mounts(info)
-        secrets = [*self._secrets, *secrets]
-
+        if isinstance(raw_f, _FunctionHandle):
+            raw_f = raw_f.get_raw_f()
+            raise InvalidError(
+                f"Applying decorators for {raw_f} in the wrong order!\nUsage:\n\n"
+                "@stub.function\n@stub.web_endpoint\ndef my_webhook():\n    ..."
+            )
         if not wait_for_response:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
         else:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
 
-        if inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f):
-            raise InvalidError(
-                "Webhooks cannot be generators. If you want to streaming response, use fastapi.responses.StreamingResponse. Example:\n\n"
-                "def my_iter():\n    for x in range(10):\n        time.sleep(1.0)\n        yield str(i)\n\n"
-                "@stub.webhook\ndef web():\n    return StreamingResponse(my_iter())\n"
-            )
+        self._loose_webhook_configs.add(raw_f)
 
-        function = _Function(
-            function_handle,
-            info,
-            _stub=self,
-            image=image,
-            secret=secret,
-            secrets=secrets,
-            gpu=gpu,
-            base_mounts=base_mounts,
-            mounts=mounts,
-            shared_volumes=shared_volumes,
-            webhook_config=api_pb2.WebhookConfig(
+        return WebhookConfig(
+            raw_f,
+            api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_FUNCTION,
                 method=method,
                 requested_suffix=label,
                 async_mode=_response_mode,
             ),
-            cpu=cpu,
-            memory=memory,
-            proxy=proxy,
-            retries=retries,
-            concurrency_limit=concurrency_limit,
-            container_idle_timeout=container_idle_timeout,
-            timeout=timeout,
-            keep_warm=keep_warm,
-            cloud=cloud,
-            allow_cross_region_volumes=allow_cross_region_volumes,
         )
-        self._add_function(function, [*base_mounts, *mounts])
-        return function_handle
 
     @decorator_with_options
     @typechecked
-    def asgi(
+    def asgi_app(
         self,
-        asgi_app,  # The asgi app
-        *,
+        raw_f,
         label: Optional[
             str
         ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-        image: Optional[_Image] = None,  # The image to run as the container for the function
-        secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
-        secrets: Sequence[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
-        gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
-        mounts: Sequence[_Mount] = (),
-        shared_volumes: Dict[str, _SharedVolume] = {},
-        allow_cross_region_volumes: bool = False,  # Whether using shared volumes from other regions is allowed.
-        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
-        memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
-        proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
-        retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
-        concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
-        container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
-        timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
-        keep_warm: Union[bool, int, None] = None,  # An optional number of containers to always keep warm.
-        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
-        _webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
     ):
         """Register an ASGI app with this application.
 
@@ -759,57 +726,86 @@ class _Stub:
         * wait_for_response=True - tries to fulfill the request on the original URL, but returns a 302 redirect after ~150s to a result URL (original URL with an added `__modal_function_id=fc-1234abcd` query parameter)
         * wait_for_response=False - immediately returns a 202 ACCEPTED response with a json payload: `{"result_url": "..."}` containing the result "redirect" url from above (which in turn redirects to itself every 150s)
         """
-        if image is None:
-            image = self._get_default_image()
-        info = FunctionInfo(asgi_app)
-        function_handle = self._get_function_handle(info)
-        self._web_endpoints.append(info.get_tag())
-        base_mounts = self._get_function_mounts(info)
-        secrets = [*self._secrets, *secrets]
-
         if not wait_for_response:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
         else:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
 
-        if inspect.isgeneratorfunction(asgi_app) or inspect.isasyncgenfunction(asgi_app):
-            raise InvalidError("Webhooks cannot be generators")
+        self._loose_webhook_configs.add(raw_f)
 
-        function = _Function(
-            function_handle,
-            info,
-            _stub=self,
-            image=image,
-            secret=secret,
-            secrets=secrets,
-            gpu=gpu,
-            base_mounts=base_mounts,
-            mounts=mounts,
-            shared_volumes=shared_volumes,
-            webhook_config=api_pb2.WebhookConfig(type=_webhook_type, requested_suffix=label, async_mode=_response_mode),
-            cpu=cpu,
-            memory=memory,
-            proxy=proxy,
-            retries=retries,
-            concurrency_limit=concurrency_limit,
-            container_idle_timeout=container_idle_timeout,
-            timeout=timeout,
-            keep_warm=keep_warm,
-            cloud=cloud,
-            allow_cross_region_volumes=allow_cross_region_volumes,
+        return WebhookConfig(
+            raw_f,
+            api_pb2.WebhookConfig(
+                type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
+                requested_suffix=label,
+                async_mode=_response_mode,
+            ),
         )
-        self._add_function(function, [*base_mounts, *mounts])
-        return function_handle
+
+    @decorator_with_options
+    @typechecked
+    def wsgi_app(
+        self,
+        raw_f,
+        label: Optional[
+            str
+        ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
+        wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
+    ):
+        if not wait_for_response:
+            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
+        else:
+            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
+        self._loose_webhook_configs.add(raw_f)
+        return WebhookConfig(
+            raw_f,
+            api_pb2.WebhookConfig(
+                type=api_pb2.WEBHOOK_TYPE_WSGI_APP,
+                requested_suffix=label,
+                async_mode=_response_mode,
+            ),
+        )
+
+    @decorator_with_options
+    @typechecked
+    def webhook(
+        self,
+        raw_f=None,
+        *,
+        method: str = "GET",
+        label: Optional[str] = None,
+        wait_for_response: bool = True,
+        **function_args,
+    ) -> _FunctionHandle:
+        # TODO(erikbern): deprecate this
+        web_endpoint = self.web_endpoint(raw_f, method, label, wait_for_response)
+        return self.function(web_endpoint, **function_args)
+
+    @decorator_with_options
+    @typechecked
+    def asgi(
+        self,
+        raw_f,
+        *,
+        label: Optional[str] = None,
+        wait_for_response: bool = True,
+        **function_args,
+    ) -> _FunctionHandle:
+        # TODO(erikbern): deprecate this
+        web_endpoint = self.asgi_app(raw_f, label, wait_for_response)
+        return self.function(web_endpoint, **function_args)
 
     @decorator_with_options
     def wsgi(
         self,
-        wsgi_app,
-        **kwargs,
-    ):
-        """Exposes a WSGI app. For a list of arguments, see the documentation for `asgi`."""
-        asgi_decorator = self.asgi(_webhook_type=api_pb2.WEBHOOK_TYPE_WSGI_APP, **kwargs)
-        return asgi_decorator(wsgi_app)
+        raw_f,
+        label: Optional[str] = None,
+        wait_for_response: bool = True,
+        **function_args,
+    ) -> _FunctionHandle:
+        # TODO(erikbern): deprecate this
+        web_endpoint = self.wsgi_app(raw_f, label, wait_for_response)
+        return self.function(web_endpoint, **function_args)
 
     async def interactive_shell(self, cmd=None, image=None, **kwargs):
         """Run an interactive shell (like `bash`) within the image for this app.
