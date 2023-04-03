@@ -13,5 +13,5 @@ def foo():
 @stub.local_entrypoint
 def main():
     print("called locally")
-    foo.call()  # type: ignore
-    foo.call()  # type: ignore
+    foo.call()
+    foo.call()
