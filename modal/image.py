@@ -137,7 +137,7 @@ class _Image(_Provider[_ImageHandle]):
         gpu_config: Optional[api_pb2.GPUConfig] = None,
         build_function=None,
         context_mount: Optional[_Mount] = None,
-        image_registry_config: _ImageRegistryConfig = None,
+        image_registry_config: Optional[_ImageRegistryConfig] = None,
     ):
         if gpu_config is None:
             gpu_config = api_pb2.GPUConfig()

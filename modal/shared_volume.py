@@ -180,7 +180,7 @@ class _SharedVolume(_Provider[_SharedVolumeHandle]):
     persist this object across app runs.
     """
 
-    def __init__(self, cloud_provider: Optional[int] = None) -> None:  # api_pb2.CloudProvider.ValueType
+    def __init__(self, cloud_provider: Optional["api_pb2.CloudProvider.ValueType"] = None) -> None:
         """Construct a new shared volume, which is empty by default."""
 
         async def _load(resolver: Resolver, existing_object_id: str) -> _SharedVolumeHandle:
@@ -190,7 +190,7 @@ class _SharedVolume(_Provider[_SharedVolumeHandle]):
                 return _SharedVolumeHandle._from_id(existing_object_id, resolver.client, None)
 
             status_row.message("Creating shared volume...")
-            req = api_pb2.SharedVolumeCreateRequest(app_id=resolver.app_id, cloud_provider=cloud_provider)  # type: ignore
+            req = api_pb2.SharedVolumeCreateRequest(app_id=resolver.app_id, cloud_provider=cloud_provider)
             resp = await retry_transient_errors(resolver.client.stub.SharedVolumeCreate, req)
             status_row.finish("Created shared volume.")
             return _SharedVolumeHandle._from_id(resp.shared_volume_id, resolver.client, None)
