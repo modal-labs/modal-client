@@ -41,7 +41,7 @@ _default_image: _Image = _Image.debian_slim()
 
 
 class LocalEntrypoint:
-    raw_f: Callable[..., typing.Any]
+    raw_f: Callable[..., Any]
     _stub: "_Stub"
 
     def __init__(self, raw_f, stub):
@@ -53,7 +53,7 @@ class LocalEntrypoint:
 
 
 class WebhookConfig:
-    def __init__(self, raw_f: Callable, webhook_config: api_pb2.WebhookConfig):
+    def __init__(self, raw_f: Callable[..., Any], webhook_config: api_pb2.WebhookConfig):
         self.raw_f = raw_f
         self.webhook_config = webhook_config
 
@@ -112,7 +112,7 @@ class _Stub:
     _local_entrypoints: Dict[str, LocalEntrypoint]
     _local_mounts: List[_Mount]
     _app: Optional[_App]
-    _loose_webhook_configs: Set[Callable]  # Used to warn users if they forget to decorate a webhook
+    _loose_webhook_configs: Set[Callable[..., Any]]  # Used to warn users if they forget to decorate a webhook
 
     @typechecked
     def __init__(
@@ -490,7 +490,7 @@ class _Stub:
     @typing.overload
     def function(
         self,
-        f: Union[WebhookConfig, Callable],  # The decorated function
+        f: Union[WebhookConfig, Callable[..., Any]],  # The decorated function
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
@@ -519,7 +519,7 @@ class _Stub:
     @typing.overload
     def function(
         self,
-        f: Union[WebhookConfig, Callable],  # The decorated function
+        f: Union[WebhookConfig, Callable[..., Any]],  # The decorated function
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
@@ -549,7 +549,7 @@ class _Stub:
     @typechecked
     def function(
         self,
-        f: Union[WebhookConfig, Callable],  # The decorated function
+        f: Union[WebhookConfig, Callable[..., Any]],  # The decorated function
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
@@ -651,7 +651,7 @@ class _Stub:
     @typechecked
     def web_endpoint(
         self,
-        raw_f: Callable,
+        raw_f: Callable[..., Any],
         method: str = "GET",  # REST method for the created endpoint.
         label: Optional[
             str
