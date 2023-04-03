@@ -16,19 +16,24 @@ synchronizer = synchronicity.Synchronizer()
 # atexit.register(synchronizer.close)
 
 
-def synchronize_apis(obj):
+def synchronize_apis(obj, target_module=None):
     if inspect.isclass(obj):
         blocking_name = obj.__name__.lstrip("_")
         async_name = "Aio" + blocking_name
     elif inspect.isfunction(object):
         blocking_name = obj.__name__.lstrip("_")
         async_name = "aio_" + blocking_name
+    elif isinstance(obj, TypeVar):
+        blocking_name = "_BLOCKING_" + obj.__name__
+        async_name = "_ASYNC_" + obj.__name__
     else:
         blocking_name = None
         async_name = None
+    if target_module is None:
+        target_module = obj.__module__
     return (
-        synchronizer.create_blocking(obj, blocking_name),
-        synchronizer.create_async(obj, async_name),
+        synchronizer.create_blocking(obj, blocking_name, target_module=target_module),
+        synchronizer.create_async(obj, async_name, target_module=target_module),
     )
 
 

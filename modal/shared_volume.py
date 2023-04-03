@@ -12,14 +12,14 @@ from modal_utils.hash_utils import get_sha256_hex
 
 from ._blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
 from ._resolver import Resolver
-from .object import Handle, Provider
+from .object import _Handle, _Provider
 
 SHARED_VOLUME_PUT_FILE_CLIENT_TIMEOUT = (
     10 * 60
 )  # 10 min max for transferring files (does not include upload time to s3)
 
 
-class _SharedVolumeHandle(Handle, type_prefix="sv"):
+class _SharedVolumeHandle(_Handle, type_prefix="sv"):
     """Handle to a `SharedVolume` object.
 
     Should typically not be used directly in a Modal function,
@@ -151,7 +151,7 @@ class _SharedVolumeHandle(Handle, type_prefix="sv"):
 SharedVolumeHandle, AioSharedVolumeHandle = synchronize_apis(_SharedVolumeHandle)
 
 
-class _SharedVolume(Provider[_SharedVolumeHandle]):
+class _SharedVolume(_Provider[_SharedVolumeHandle]):
     """A shared, writable file system accessible by one or more Modal functions.
 
     By attaching this file system as a mount to one or more functions, they can
@@ -180,7 +180,7 @@ class _SharedVolume(Provider[_SharedVolumeHandle]):
     persist this object across app runs.
     """
 
-    def __init__(self, cloud_provider: "Optional[api_pb2.CloudProvider.V]" = None) -> None:
+    def __init__(self, cloud_provider: Optional["api_pb2.CloudProvider.ValueType"] = None) -> None:
         """Construct a new shared volume, which is empty by default."""
 
         async def _load(resolver: Resolver, existing_object_id: str) -> _SharedVolumeHandle:

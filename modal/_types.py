@@ -1,9 +1,10 @@
 # Copyright Modal Labs 2023
+import typing
 from typing import TypeVar
 
 from modal.config import config
 
-F = TypeVar("F")
+F = TypeVar("F", bound=typing.Callable[..., typing.Any])
 
 
 def typechecked(f: F) -> F:
@@ -15,6 +16,6 @@ def typechecked(f: F) -> F:
         import typeguard
 
         typeguard.config.collection_check_strategy = typeguard.CollectionCheckStrategy.ALL_ITEMS
-        return typeguard.typechecked(f)
+        return typeguard.typechecked(f)  # noqa
     else:
         return f

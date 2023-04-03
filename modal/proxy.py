@@ -1,14 +1,14 @@
 # Copyright Modal Labs 2022
 from modal_utils.async_utils import synchronize_apis
 
-from .object import Handle, Provider
+from .object import _Handle, _Provider
 
 
-class _ProxyHandle(Handle, type_prefix="pr"):
+class _ProxyHandle(_Handle, type_prefix="pr"):
     pass
 
 
-class _Proxy(Provider[_ProxyHandle]):
+class _Proxy(_Provider[_ProxyHandle]):
     """
     Proxy objects are used to setup secure tunnel connections to a private remote address, for example
     a database.
@@ -20,5 +20,5 @@ class _Proxy(Provider[_ProxyHandle]):
     pass
 
 
-ProxyHandle, AioProxyHandle = synchronize_apis(_ProxyHandle)
-Proxy, AioProxy = synchronize_apis(_Proxy)
+ProxyHandle, AioProxyHandle = synchronize_apis(_ProxyHandle, target_module=__name__)
+Proxy, AioProxy = synchronize_apis(_Proxy, target_module=__name__)

@@ -4,6 +4,7 @@ import inspect
 import os
 import platform
 import time
+import typing
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,7 +46,7 @@ from .exception import TimeoutError as _TimeoutError
 from .gpu import GPU_T, parse_gpu_config, display_gpu_config
 from .image import _Image
 from .mount import _Mount
-from .object import Handle, Provider
+from .object import _Handle, _Provider
 from .proxy import _Proxy
 from .retries import Retries
 from .schedule import Schedule
@@ -53,6 +54,10 @@ from .secret import _Secret
 from .shared_volume import _SharedVolume
 
 ATTEMPT_TIMEOUT_GRACE_PERIOD = 5  # seconds
+
+
+if typing.TYPE_CHECKING:
+    import modal.stub
 
 
 def exc_with_hints(exc: BaseException):
@@ -278,7 +283,7 @@ MAP_INVOCATION_CHUNK_SIZE = 100
 
 async def _map_invocation(
     function_id: str,
-    input_stream: AsyncIterable,
+    input_stream: AsyncIterable[Any],
     kwargs: Dict[str, Any],
     client: _Client,
     is_generator: bool,
@@ -451,11 +456,12 @@ class FunctionStats:
     num_total_runners: int
 
 
-class _FunctionHandle(Handle, type_prefix="fu"):
+class _FunctionHandle(_Handle, type_prefix="fu"):
     """Interact with a Modal Function of a live app."""
 
     _web_url: Optional[str]
     _info: Optional[FunctionInfo]
+    _stub: Optional["modal.stub._Stub"]
 
     def _initialize_from_empty(self):
         self._progress = None
@@ -624,7 +630,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
     async def _call_generator_nowait(self, args, kwargs):
         return await _Invocation.create(self._object_id, args, kwargs, self._client)
 
-    def call(self, *args, **kwargs):
+    def call(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
         """
         Calls the function, executing it remotely with the given arguments and returning the execution's result.
         """
@@ -633,7 +639,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         else:
             return self.call_function(args, kwargs)
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
         if not self._info:
             raise AttributeError(
                 "The definition for this function is missing so it is not possible to invoke it locally"
@@ -662,7 +668,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
         invocation = await self.call_function_nowait(args, kwargs)
         return _FunctionCall._from_id(invocation.function_call_id, invocation.client, None)
 
-    def get_raw_f(self) -> Callable:
+    def get_raw_f(self) -> Callable[..., Any]:
         """Return the inner Python object wrapped by this Modal Function."""
         if not self._info:
             raise AttributeError("_info has not been set on this FunctionHandle and not available in this context")
@@ -690,7 +696,7 @@ class _FunctionHandle(Handle, type_prefix="fu"):
 FunctionHandle, AioFunctionHandle = synchronize_apis(_FunctionHandle)
 
 
-class _Function(Provider[_FunctionHandle]):
+class _Function(_Provider[_FunctionHandle]):
     """Functions are the basic units of serverless execution on Modal.
 
     Generally, you will not construct a `Function` directly. Instead, use the
@@ -699,6 +705,15 @@ class _Function(Provider[_FunctionHandle]):
 
     # TODO: more type annotations
     _secrets: Collection[_Secret]
+    _info: FunctionInfo
+    _mounts: Collection[_Mount]
+    _shared_volumes: Dict[str, _SharedVolume]
+    _allow_cross_region_volumes: bool
+    _image: Optional[_Image]
+    _gpu: Optional[GPU_T]
+    _cloud: Optional[str]
+    _function_handle: _FunctionHandle
+    _stub: "modal.stub._Stub"
 
     def __init__(
         self,
@@ -1016,7 +1031,7 @@ class _Function(Provider[_FunctionHandle]):
 Function, AioFunction = synchronize_apis(_Function)
 
 
-class _FunctionCall(Handle, type_prefix="fc"):
+class _FunctionCall(_Handle, type_prefix="fc"):
     """A reference to an executed function call
 
     Constructed using `.spawn(...)` on a Modal function with the same

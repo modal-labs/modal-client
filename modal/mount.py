@@ -23,7 +23,7 @@ from ._blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec
 from ._resolver import Resolver
 from .config import config, logger
 from .exception import InvalidError, NotFoundError, deprecation_warning
-from .object import Handle, Provider
+from .object import _Handle, _Provider
 
 MOUNT_PUT_FILE_CLIENT_TIMEOUT = 10 * 60  # 10 min max for transferring files
 
@@ -100,11 +100,14 @@ class _MountDir(_MountEntry):
         return self.local_dir, None
 
 
-class _MountHandle(Handle, type_prefix="mo"):
+class _MountHandle(_Handle, type_prefix="mo"):
     pass
 
 
-class _Mount(Provider[_MountHandle]):
+MountHandle, AioMountHandle = synchronize_apis(_MountHandle)
+
+
+class _Mount(_Provider[_MountHandle]):
     """Create a mount for a local directory or file that can be attached
     to one or more Modal functions.
 
@@ -137,7 +140,7 @@ class _Mount(Provider[_MountHandle]):
         # Local file to mount, if only a single file needs to be mounted. Note that exactly one of `local_dir` and `local_file` can be provided.
         local_file: Optional[Union[str, Path]] = None,
         # Optional predicate to filter files while creating the mount. `condition` is any function that accepts an absolute local file path, and returns `True` if it should be mounted, and `False` otherwise.
-        condition: Callable[[str], bool] = lambda path: True,
+        condition: Optional[Callable[[str], bool]] = None,  # default to include all files
         # Optional flag to toggle if subdirectories should be mounted recursively.
         recursive: bool = True,
         _entries: Optional[List[_MountEntry]] = None,  # internal - don't use
@@ -187,13 +190,21 @@ class _Mount(Provider[_MountHandle]):
         local_path: Union[str, Path],
         *,
         remote_path: Union[str, PurePosixPath, None] = None,  # Where the directory is placed within in the mount
-        condition: Callable[[str], bool] = lambda path: True,  # Filter function for file selection
+        condition: Optional[
+            Callable[[str], bool]
+        ] = None,  # Filter function for file selection, default to include all files
         recursive: bool = True,  # add files from subdirectories as well
     ) -> "_Mount":
         local_path = Path(local_path)
         if remote_path is None:
             remote_path = local_path.name
         remote_path = PurePosixPath("/", remote_path)
+        if condition is None:
+
+            def include_all(path):
+                return True
+
+            condition = include_all
 
         return self.extend(
             _MountDir(
@@ -210,7 +221,7 @@ class _Mount(Provider[_MountHandle]):
         local_path: Union[str, Path],
         *,
         remote_path: Union[str, PurePosixPath, None] = None,  # Where the directory is placed within in the mount
-        condition: Callable[[str], bool] = lambda path: True,  # Filter function for file selection
+        condition: Optional[Callable[[str], bool]] = None,  # Filter function for file selection - default all files
         recursive: bool = True,  # add files from subdirectories as well
     ):
         return _Mount(_entries=[]).add_local_dir(
@@ -385,7 +396,7 @@ def _create_package_mounts(module_names: Sequence[str]) -> List[_Mount]:
     ```
     """
     # TODO(erikbern): make this a static method on the Mount class
-    from modal import is_local
+    from modal.app import is_local
 
     # Don't re-run inside container.
     if not is_local():

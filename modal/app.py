@@ -1,6 +1,4 @@
 # Copyright Modal Labs 2022
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Dict, Optional, TypeVar
 
 from modal_proto import api_pb2
@@ -10,7 +8,7 @@ from modal_utils.grpc_utils import retry_transient_errors
 from ._resolver import Resolver
 from .client import _Client
 from .config import logger
-from .object import Handle, Provider
+from .object import _Handle, _Provider
 
 if TYPE_CHECKING:
     from rich.tree import Tree
@@ -39,7 +37,7 @@ class _App:
     ```
     """
 
-    _tag_to_object: Dict[str, Handle]
+    _tag_to_object: Dict[str, _Handle]
     _tag_to_existing_id: Dict[str, str]
     _client: _Client
     _app_id: str
@@ -50,7 +48,7 @@ class _App:
         client: _Client,
         app_id: str,
         app_page_url: str,
-        tag_to_object: Optional[Dict[str, Handle]] = None,
+        tag_to_object: Optional[Dict[str, _Handle]] = None,
         tag_to_existing_id: Optional[Dict[str, str]] = None,
     ):
         """mdmd:hidden This is the app constructor. Users should not call this directly."""
@@ -71,7 +69,7 @@ class _App:
         return self._app_id
 
     async def _create_all_objects(
-        self, blueprint: Dict[str, Provider], output_mgr, new_app_state: int
+        self, blueprint: Dict[str, _Provider], output_mgr, new_app_state: int
     ):  # api_pb2.AppState.V
         """Create objects that have been defined but not created on the server."""
         resolver = Resolver(output_mgr, self._client, self.app_id)
@@ -115,11 +113,11 @@ class _App:
     def log_url(self):
         return self._app_page_url
 
-    def __getitem__(self, tag: str) -> Handle:
+    def __getitem__(self, tag: str) -> _Handle:
         # Deprecated?
         return self._tag_to_object[tag]
 
-    def __getattr__(self, tag: str) -> Handle:
+    def __getattr__(self, tag: str) -> _Handle:
         return self._tag_to_object[tag]
 
     async def _init_container(self, client: _Client, app_id: str):
@@ -129,11 +127,11 @@ class _App:
         req = api_pb2.AppGetObjectsRequest(app_id=app_id)
         resp = await retry_transient_errors(self._client.stub.AppGetObjects, req)
         for item in resp.items:
-            obj = Handle._from_id(item.object_id, self._client, item.function)
+            obj = _Handle._from_id(item.object_id, self._client, item.function)
             self._tag_to_object[item.tag] = obj
 
     @staticmethod
-    async def init_container(client: _Client, app_id: str) -> _App:
+    async def init_container(client: _Client, app_id: str) -> "_App":
         """Used by the container to bootstrap the app and all its objects. Not intended to be called by Modal users."""
         global _container_app, _is_container_app
         _is_container_app = True
@@ -141,7 +139,7 @@ class _App:
         return _container_app
 
     @staticmethod
-    async def _init_existing(client: _Client, existing_app_id: str) -> _App:
+    async def _init_existing(client: _Client, existing_app_id: str) -> "_App":
         # Get all the objects first
         obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
         obj_resp = await retry_transient_errors(client.stub.AppGetObjects, obj_req)
@@ -152,7 +150,7 @@ class _App:
     @staticmethod
     async def _init_new(
         client: _Client, description: Optional[str] = None, detach: bool = False, deploying: bool = False
-    ) -> _App:
+    ) -> "_App":
         # Start app
         # TODO(erikbern): maybe this should happen outside of this method?
         app_req = api_pb2.AppCreateRequest(
@@ -178,7 +176,7 @@ class _App:
         else:
             return await _App._init_new(client, name, detach=False, deploying=True)
 
-    async def create_one_object(self, provider: Provider) -> Handle:
+    async def create_one_object(self, provider: _Provider) -> _Handle:
         existing_object_id: Optional[str] = self._tag_to_existing_id.get("_object")
         resolver = Resolver(None, self._client, self.app_id)
         handle = await resolver.load(provider, existing_object_id)

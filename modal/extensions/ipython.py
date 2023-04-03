@@ -4,7 +4,7 @@ import logging
 import sys
 from typing import Any
 
-from modal import Stub
+from modal.aio import AioStub
 from modal.config import config, logger
 from modal_utils.async_utils import run_coro_blocking
 
@@ -19,7 +19,7 @@ def load_ipython_extension(ipython):
     logger.setLevel(config["loglevel"])
 
     # Create a app and provide it in the IPython app
-    stub = Stub(blocking_late_creation_ok=True)
+    stub = AioStub()
     ipython.push({"stub": stub})
 
     app_ctx = stub.run()

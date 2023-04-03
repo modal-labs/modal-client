@@ -10,7 +10,7 @@ from rich.table import Table
 
 from modal._output import OutputManager, get_app_logs_loop
 from modal.cli.utils import timestamp_to_local
-from modal.client import AioClient
+from modal.client import AioClient, _Client
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
 
@@ -85,7 +85,7 @@ def app_logs(app_id: str):
 
     @synchronizer.create_blocking
     async def sync_command():
-        aio_client = await AioClient.from_env()
+        aio_client = await _Client.from_env()
         output_mgr = OutputManager(None, None, "Tailing logs for {app_id}")
         try:
             with output_mgr.show_status_spinner():

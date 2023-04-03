@@ -48,7 +48,7 @@ async def test_container_function_initialization(unix_servicer, aio_container_cl
     # Now, let's create my_f_2 after the app started running
     # This might happen if some local module is imported lazily
     my_f_2_container = stub.function(my_f_2)
-    assert await my_f_2_container.call(42) == 1764
+    assert await my_f_2_container.call(42) == 1764  # type: ignore
 
 
 @skip_windows_unix_socket
@@ -131,7 +131,7 @@ def test_typechecking_not_enforced_in_container():
         class InvalidType:
             pass
 
-        modal.secret.Secret(env_dict={"foo": InvalidType()})
+        modal.secret.Secret(env_dict={"foo": InvalidType()})  # type: ignore
 
     with pytest.raises(TypeCheckError):
         incorrect_usage()  # should throw when running locally
