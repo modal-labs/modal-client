@@ -7,6 +7,7 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 
 from ._resolver import Resolver
+from .exception import InvalidError
 from .object import _Handle, _Provider
 
 
@@ -15,6 +16,9 @@ class _SecretHandle(_Handle, type_prefix="st"):
 
 
 SecretHandle, AioSecretHandle = synchronize_apis(_SecretHandle)
+
+
+ENV_DICT_WRONG_TYPE_ERR = "the env_dict argument to Secret has to be a dict[str, str]"
 
 
 class _Secret(_Provider[_SecretHandle]):
@@ -35,6 +39,11 @@ class _Secret(_Provider[_SecretHandle]):
         ] = {},  # dict of entries to be inserted as environment variables in functions using the secret
         template_type="",  # internal use only
     ):
+        if not isinstance(env_dict, dict) or not all(
+            isinstance(k, str) and isinstance(v, str) for k, v in env_dict.items()
+        ):
+            raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
+
         async def _load(resolver: Resolver, existing_object_id: str) -> _SecretHandle:
             req = api_pb2.SecretCreateRequest(
                 app_id=resolver.app_id,

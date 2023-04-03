@@ -67,13 +67,18 @@ def test_image_kwargs_validation(servicer, client):
     with pytest.raises(InvalidError):
         stub["image"] = Image.debian_slim().run_commands(
             "echo hi",
-            secrets=[Secret({"xyz": "123"}), Secret.from_name("foo"), Mount.from_local_dir("/", remote_path="/")],
+            secrets=[
+                Secret({"xyz": "123"}),
+                Secret.from_name("foo"),
+                Mount.from_local_dir("/", remote_path="/"),
+            ],  # Mount is not a valid Secret
         )
 
     stub = Stub()
     stub["image"] = Image.debian_slim().copy(Mount.from_local_dir("/", remote_path="/"), remote_path="/dummy")
     stub["image"] = Image.debian_slim().copy(Mount.from_name("foo"), remote_path="/dummy")
     with pytest.raises(InvalidError):
+        # Secret is not a valid Mount
         stub["image"] = Image.debian_slim().copy(Secret({"xyz": "123"}), remote_path="/dummy")  # type: ignore
 
 

@@ -15,7 +15,7 @@ def test_secret(servicer, client):
 
 def test_init_types():
     with pytest.raises(InvalidError):
-        Secret({"foo": None})
+        Secret({"foo": None})  # type: ignore
 
     with pytest.raises(InvalidError):
-        AioSecret({"foo": None})
+        AioSecret({"foo": None})  # type: ignore

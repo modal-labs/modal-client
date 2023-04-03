@@ -52,6 +52,13 @@ class LocalEntrypoint:
         return self.raw_f(*args, **kwargs)
 
 
+def check_sequence(items: typing.Sequence[typing.Any], item_type: typing.Type, error_msg: str):
+    if not isinstance(items, (list, tuple)):
+        raise InvalidError(error_msg)
+    if not all(isinstance(v, item_type) for v in items):
+        raise InvalidError(error_msg)
+
+
 class _Stub:
     """A `Stub` is a description of how to create a Modal application.
 
@@ -124,6 +131,11 @@ class _Stub:
 
         self._name = name
         self._description = name
+
+        check_sequence(mounts, _Mount, "mounts has to be a list or tuple of Mount/AioMount objects")
+        check_sequence(secrets, _Secret, "secrets has to be a list or tuple of Secret/AioSecret objects")
+        if image is not None and not isinstance(image, _Image):
+            raise InvalidError("image has to be a modal Image or AioImage object")
 
         for k, v in blueprint.items():
             self._validate_blueprint_value(k, v)
