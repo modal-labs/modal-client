@@ -134,7 +134,7 @@ class _Image(_Provider[_ImageHandle]):
         dockerfile_commands: Union[List[str], Callable[[], List[str]]] = [],
         secrets: Sequence[_Secret] = [],
         ref=None,
-        gpu_config: api_pb2.GPUConfig = None,
+        gpu_config: Optional[api_pb2.GPUConfig] = None,
         build_function=None,
         context_mount: Optional[_Mount] = None,
         image_registry_config: _ImageRegistryConfig = None,
