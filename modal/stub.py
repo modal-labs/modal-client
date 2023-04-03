@@ -52,7 +52,7 @@ class LocalEntrypoint:
         return self.raw_f(*args, **kwargs)
 
 
-def check_sequence(items: typing.Sequence[typing.Any], item_type: typing.Type, error_msg: str):
+def check_sequence(items: typing.Sequence[typing.Any], item_type: typing.Type[typing.Any], error_msg: str):
     if not isinstance(items, (list, tuple)):
         raise InvalidError(error_msg)
     if not all(isinstance(v, item_type) for v in items):
