@@ -9,12 +9,11 @@ from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 
 import modal.app
-from modal import Stub
+from modal import Client, Stub
 from modal.aio import AioDict, AioQueue, AioStub
 from modal.exception import DeprecationError, InvalidError
 from modal_proto import api_pb2
 from modal_test_support import module_1, module_2
-import modal.client
 
 
 @pytest.mark.asyncio
@@ -181,7 +180,7 @@ def test_serve(client):
 @skip_in_github
 def test_serve_teardown(client, servicer):
     stub = Stub()
-    with modal.client.Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
+    with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
         stub.wsgi(dummy)
         with pytest.warns(DeprecationError):
             stub.serve(client=client, timeout=1)

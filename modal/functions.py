@@ -53,6 +53,8 @@ from .schedule import Schedule
 from .secret import _Secret
 from .shared_volume import _SharedVolume
 
+ATTEMPT_TIMEOUT_GRACE_PERIOD = 5  # seconds
+
 
 if typing.TYPE_CHECKING:
     import modal.stub
@@ -209,7 +211,7 @@ class _Invocation:
             response = await retry_transient_errors(
                 self.stub.FunctionGetOutputs,
                 request,
-                attempt_timeout=backend_timeout + 1.0,
+                attempt_timeout=backend_timeout + ATTEMPT_TIMEOUT_GRACE_PERIOD,
             )
             if len(response.outputs) > 0:
                 for item in response.outputs:
@@ -256,7 +258,7 @@ class _Invocation:
                 response = await retry_transient_errors(
                     self.stub.FunctionGetOutputs,
                     request,
-                    attempt_timeout=config["outputs_timeout"] + 1.0,
+                    attempt_timeout=config["outputs_timeout"] + ATTEMPT_TIMEOUT_GRACE_PERIOD,
                 )
                 if len(response.outputs) > 0:
                     last_entry_id = response.last_entry_id
@@ -359,7 +361,7 @@ async def _map_invocation(
                 client.stub.FunctionGetOutputs,
                 request,
                 max_retries=20,
-                attempt_timeout=config["outputs_timeout"] + 1.0,
+                attempt_timeout=config["outputs_timeout"] + ATTEMPT_TIMEOUT_GRACE_PERIOD,
             )
 
             if len(response.outputs) == 0:
@@ -963,6 +965,7 @@ class _Function(_Provider[_FunctionHandle]):
             pty_info=pty_info,
             cloud_provider=self._cloud_provider,
             warm_pool_size=warm_pool_size,
+            runtime=config.get("function_runtime"),
         )
         request = api_pb2.FunctionCreateRequest(
             app_id=resolver.app_id,

@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
+from dataclasses import dataclass
 import importlib
 import inspect
 import math
@@ -468,8 +469,16 @@ async def call_function_async(
                     obj.__exit__(*sys.exc_info())
 
 
+@dataclass
+class ImportedFunction:
+    obj: Any
+    fun: Callable
+    is_async: bool
+    is_generator: bool
+
+
 @wrap()
-def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> tuple[Any, Callable, bool]:
+def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> ImportedFunction:
     # This is not in function_io_manager, so that any global scope code that runs during import
     # runs on the main thread.
 
@@ -486,8 +495,11 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> tuple[A
         _function_proxy = synchronizer._translate_in(fun)
         fun = _function_proxy.get_raw_f()
 
-    # Check this property before we turn it into a method
+    # Check this property before we turn it into a method (overriden by webhooks)
     is_async = get_is_async(fun)
+
+    # Use the function definition for whether this is a generator (overriden by webhooks)
+    is_generator = function_def.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
 
     # Instantiate the class if it's defined
     if cls:
@@ -501,24 +513,29 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> tuple[A
     if function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP:
         # function returns an asgi_app, that we can use as a callable.
         asgi_app = fun()
-        return obj, asgi_app_wrapper(asgi_app), True
+        fun = asgi_app_wrapper(asgi_app)
+        is_async = True
+        is_generator = True
     elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_WSGI_APP:
         # function returns an wsgi_app, that we can use as a callable.
         wsgi_app = fun()
-        return obj, wsgi_app_wrapper(wsgi_app), True
+        fun = wsgi_app_wrapper(wsgi_app)
+        is_async = True
+        is_generator = True
     elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
         # function is webhook without an ASGI app. Create one for it.
         asgi_app = webhook_asgi_app(fun, function_def.webhook_config.method)
-        return obj, asgi_app_wrapper(asgi_app), True
-    else:
-        return obj, fun, is_async
+        fun = asgi_app_wrapper(asgi_app)
+        is_async = True
+        is_generator = True
+
+    return ImportedFunction(obj, fun, is_async, is_generator)
 
 
 def main(container_args: api_pb2.ContainerArguments, client: Client):
     # TODO: if there's an exception in this scope (in particular when we import code dynamically),
     # we could catch that exception and set it properly serialized to the client. Right now the
     # whole container fails with a non-zero exit code and we send back a more opaque error message.
-    function_type = container_args.function_def.function_type
 
     # This is a bit weird but we need both the blocking and async versions of FunctionIOManager.
     # At some point, we should fix that by having built-in support for running "user code"
@@ -528,8 +545,6 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     function_io_manager.initialize_app()
 
     with function_io_manager.heartbeats():
-        is_generator = function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
-
         # If this is a serialized function, fetch the definition from the server
         if container_args.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
             ser_cls, ser_fun = function_io_manager.get_serialized_function()
@@ -538,19 +553,22 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         # Initialize the function
         with function_io_manager.handle_user_exception():
-            obj, fun, is_async = import_function(container_args.function_def, ser_cls, ser_fun)
+            imp_fun = import_function(container_args.function_def, ser_cls, ser_fun)
 
         if container_args.function_def.pty_info.enabled:
+            # TODO(erikbern): there is no client test for this branch
             from modal import container_app
 
             input_stream_unwrapped = synchronizer._translate_in(container_app._pty_input_stream)
             input_stream_blocking = synchronizer._translate_out(input_stream_unwrapped, Interface.BLOCKING)
-            fun = run_in_pty(fun, input_stream_blocking, container_args.function_def.pty_info)
+            imp_fun.fun = run_in_pty(imp_fun.fun, input_stream_blocking, container_args.function_def.pty_info)
 
-        if not is_async:
-            call_function_sync(function_io_manager, obj, fun, is_generator)
+        if not imp_fun.is_async:
+            call_function_sync(function_io_manager, imp_fun.obj, imp_fun.fun, imp_fun.is_generator)
         else:
-            run_with_signal_handler(call_function_async(aio_function_io_manager, obj, fun, is_generator))
+            run_with_signal_handler(
+                call_function_async(aio_function_io_manager, imp_fun.obj, imp_fun.fun, imp_fun.is_generator)
+            )
 
 
 if __name__ == "__main__":

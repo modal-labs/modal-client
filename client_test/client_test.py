@@ -4,7 +4,8 @@ import pytest
 from google.protobuf.empty_pb2 import Empty
 
 import modal.exception
-from modal.client import AioClient, Client
+from modal import Client
+from modal.aio import AioClient
 from modal.exception import AuthError, ConnectionError, VersionError
 from modal_proto import api_pb2
 
