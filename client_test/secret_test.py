@@ -1,8 +1,8 @@
 # Copyright Modal Labs 2022
 import pytest
-import typeguard
 
 from modal import Secret, Stub
+from modal.exception import InvalidError
 from modal.secret import AioSecret
 
 
@@ -14,8 +14,8 @@ def test_secret(servicer, client):
 
 
 def test_init_types():
-    with pytest.raises(typeguard.TypeCheckError):
+    with pytest.raises(InvalidError):
         Secret({"foo": None})
 
-    with pytest.raises(typeguard.TypeCheckError):
+    with pytest.raises(InvalidError):
         AioSecret({"foo": None})
