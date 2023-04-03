@@ -2,6 +2,7 @@
 # Copyright (c) Modal Labs 2022
 
 import inspect
+import subprocess
 
 if not hasattr(inspect, "getargspec"):
     # Workaround until invoke supports Python 3.11
@@ -79,3 +80,23 @@ def update_build_number(ctx, new_build_number):
     assert new_build_number > current_build_number
     with open("modal_version/_version_generated.py", "w") as f:
         f.write(f"{copyright_header_full}\nbuild_number = {new_build_number}\n")
+
+
+@task
+def type_stubs(ctx):
+    # we only generate type stubs for modules that contain synchronicity wrapped types
+    modules = [
+        "modal.app",
+        "modal.client",
+        "modal.dict",
+        "modal.functions",
+        "modal.image",
+        "modal.mount",
+        "modal.object",
+        "modal.proxy",
+        "modal.queue",
+        "modal.secret",
+        "modal.shared_volume",
+        "modal.stub",
+    ]
+    subprocess.check_call(["python", "-m", "synchronicity.type_stubs", *modules])
