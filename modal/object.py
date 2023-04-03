@@ -321,5 +321,5 @@ class _Provider(Generic[H]):
 
 
 # Dumb but needed becauase it's in the hierarchy
-Generic, AioGeneric = synchronize_apis(Generic, __name__)  # erases base Generic type...
+synchronize_apis(Generic, __name__)  # erases base Generic type...
 Provider, AioProvider = synchronize_apis(_Provider, target_module=__name__)
