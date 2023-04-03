@@ -651,13 +651,13 @@ class _Stub:
     @typechecked
     def web_endpoint(
         self,
-        raw_f: Callable[..., Any],
+        raw_f: Optional[Callable[..., Any]] = None,
         method: str = "GET",  # REST method for the created endpoint.
         label: Optional[
             str
         ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-    ) -> WebhookConfig:
+    ):
         """Register a basic web endpoint with this application.
 
         This is the simple way to create a web endpoint on Modal. The function
@@ -770,7 +770,7 @@ class _Stub:
     @typechecked
     def webhook(
         self,
-        raw_f,
+        raw_f=None,
         *,
         method: str = "GET",
         label: Optional[str] = None,
