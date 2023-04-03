@@ -4,6 +4,7 @@ import modal
 stub = modal.Stub()
 
 
-@stub.webhook
+@stub.function
+@stub.web_endpoint
 def foo():
     return {"bar": "baz"}
