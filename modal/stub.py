@@ -706,7 +706,7 @@ class _Stub:
     @typechecked
     def asgi_app(
         self,
-        raw_f,
+        raw_f=None,
         label: Optional[
             str
         ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
@@ -746,7 +746,7 @@ class _Stub:
     @typechecked
     def wsgi_app(
         self,
-        raw_f,
+        raw_f=None,
         label: Optional[
             str
         ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
