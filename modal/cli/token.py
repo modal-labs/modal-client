@@ -51,15 +51,16 @@ def new(env: Optional[str] = env_option, no_verify: bool = False):
         console = Console()
         with console.status("Waiting for authentication in the web browser...", spinner="dots"):
             # Open the web url in the browser
-            link_text = f"[link={web_url}]{web_url}[/link]"
-            console.print(f"Launching {link_text} in your browser window")
+            console.print("Launching login page in your browser window...")
             if webbrowser.open_new_tab(web_url):
-                console.print("If this is not showing up, please copy the URL into your web browser manually")
+                console.print("If this is not showing up, please copy this URL into your web browser manually:")
             else:
                 console.print(
                     "[red]Was not able to launch web browser[/red]"
-                    " - please go to the URL manually and complete the flow"
+                    " - please go to this URL manually and complete the flow:"
                 )
+            console.print(f"\n[link={web_url}]{web_url}[/link]\n")
+
         token_id, token_secret = client.finish_token_flow(token_flow_id)
         console.print("[green]Success![/green]")
 
