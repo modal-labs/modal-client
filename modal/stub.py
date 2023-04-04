@@ -131,7 +131,7 @@ class _Stub:
         ```python
         stub = modal.Stub(key_value_store=modal.Dict())
 
-        @stub.function
+        @stub.function()
         def store_something(key: str, value: str):
             stub.app.key_value_store.put(key, value)
         """
@@ -683,7 +683,7 @@ class _Stub:
             raw_f = raw_f.get_raw_f()
             raise InvalidError(
                 f"Applying decorators for {raw_f} in the wrong order!\nUsage:\n\n"
-                "@stub.function\n@stub.web_endpoint\ndef my_webhook():\n    ..."
+                "@stub.function()\n@stub.web_endpoint()\ndef my_webhook():\n    ..."
             )
         if not wait_for_response:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
@@ -798,7 +798,7 @@ class _Stub:
         deprecation_warning(
             date(2023, 4, 3),
             "stub.asgi() is deprecated. Use stub.function in combination with stub.asgi_app instead. Usage:\n\n"
-            "@stub.function(cpu=42)\n@stub.asgi_app\ndef my_asgi_app():\n    ...",
+            "@stub.function(cpu=42)\n@stub.asgi_app()\ndef my_asgi_app():\n    ...",
         )
         web_endpoint = self.asgi_app(raw_f, label, wait_for_response)
         return self.function(web_endpoint, **function_args)
@@ -814,7 +814,7 @@ class _Stub:
         deprecation_warning(
             date(2023, 4, 3),
             "stub.wsgi() is deprecated. Use stub.function in combination with stub.wsgi_app instead. Usage:\n\n"
-            "@stub.function(cpu=42)\n@stub.wsgi_app\ndef my_wsgi_app():\n    ...",
+            "@stub.function(cpu=42)\n@stub.wsgi_app()\ndef my_wsgi_app():\n    ...",
         )
         web_endpoint = self.wsgi_app(raw_f, label, wait_for_response)
         return self.function(web_endpoint, **function_args)
