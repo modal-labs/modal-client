@@ -4,7 +4,7 @@ import pytest
 from modal_proto import api_pb2
 from modal.aio import AioApp, AioStub
 from modal.functions import AioFunctionHandle
-from modal.exception import InvalidError
+from modal.exception import DeprecationError, InvalidError
 
 stub = AioStub()
 
@@ -15,9 +15,11 @@ async def f(x):
     return {"square": x**2}
 
 
-@stub.webhook(method="PUT", cpu=42)
-async def g(x):
-    return {"square": x**2}
+with pytest.warns(DeprecationError):
+
+    @stub.webhook(method="PUT", cpu=42)
+    async def g(x):
+        return {"square": x**2}
 
 
 @pytest.mark.asyncio
@@ -65,16 +67,15 @@ def test_webhook_cors():
     assert client.post("/").status_code == 405  # Method Not Allowed
 
 
-def web_gen():
-    for x in range(10):
-        yield str(x)
-
-
 def test_webhook_generator():
     stub = AioStub()
 
     with pytest.raises(InvalidError) as excinfo:
-        stub.webhook(web_gen)
+
+        @stub.function(serialized=True)
+        @stub.web_endpoint
+        def web_gen():
+            yield None
 
     assert "StreamingResponse" in str(excinfo.value)
 
@@ -90,6 +91,11 @@ async def test_webhook_forgot_function(servicer, aio_client):
     with pytest.raises(InvalidError) as excinfo:
         async with stub.run(client=aio_client):
             pass
+
+    assert "@stub.function" in str(excinfo.value)
+
+    with pytest.raises(InvalidError) as excinfo:
+        await stub.deploy("webhook-test", client=aio_client)
 
     assert "@stub.function" in str(excinfo.value)
 

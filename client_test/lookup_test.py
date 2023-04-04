@@ -50,7 +50,7 @@ async def test_lookup_function(servicer, aio_client):
 @pytest.mark.asyncio
 async def test_webhook_lookup(servicer, aio_client):
     stub = AioStub()
-    stub.webhook(square, method="POST")
+    stub.function(stub.web_endpoint(square, method="POST"))
     await stub.deploy("my-webhook", client=aio_client)
 
     f = await AioFunction.lookup("my-webhook", client=aio_client)

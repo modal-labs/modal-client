@@ -777,7 +777,11 @@ class _Stub:
         wait_for_response: bool = True,
         **function_args,
     ) -> _FunctionHandle:
-        # TODO(erikbern): deprecate this
+        deprecation_warning(
+            date(2023, 4, 3),
+            "stub.webhook() is deprecated. Use stub.function in combination with stub.web_endpoint instead. Usage:\n\n"
+            '@stub.function(cpu=42)\n@stub.web_endpoint(method="POST")\ndef my_function():\n    ...',
+        )
         web_endpoint = self.web_endpoint(raw_f, method, label, wait_for_response)
         return self.function(web_endpoint, **function_args)
 
@@ -791,7 +795,11 @@ class _Stub:
         wait_for_response: bool = True,
         **function_args,
     ) -> _FunctionHandle:
-        # TODO(erikbern): deprecate this
+        deprecation_warning(
+            date(2023, 4, 3),
+            "stub.asgi() is deprecated. Use stub.function in combination with stub.asgi_app instead. Usage:\n\n"
+            "@stub.function(cpu=42)\n@stub.asgi_app\ndef my_asgi_app():\n    ...",
+        )
         web_endpoint = self.asgi_app(raw_f, label, wait_for_response)
         return self.function(web_endpoint, **function_args)
 
@@ -803,7 +811,11 @@ class _Stub:
         wait_for_response: bool = True,
         **function_args,
     ) -> _FunctionHandle:
-        # TODO(erikbern): deprecate this
+        deprecation_warning(
+            date(2023, 4, 3),
+            "stub.wsgi() is deprecated. Use stub.function in combination with stub.wsgi_app instead. Usage:\n\n"
+            "@stub.function(cpu=42)\n@stub.wsgi_app\ndef my_wsgi_app():\n    ...",
+        )
         web_endpoint = self.wsgi_app(raw_f, label, wait_for_response)
         return self.function(web_endpoint, **function_args)
 
