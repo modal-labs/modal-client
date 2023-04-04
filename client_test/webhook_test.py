@@ -73,7 +73,7 @@ def test_webhook_generator():
     with pytest.raises(InvalidError) as excinfo:
 
         @stub.function(serialized=True)
-        @stub.web_endpoint
+        @stub.web_endpoint()
         def web_gen():
             yield None
 
@@ -84,7 +84,7 @@ def test_webhook_generator():
 async def test_webhook_forgot_function(servicer, aio_client):
     stub = AioStub()
 
-    @stub.web_endpoint
+    @stub.web_endpoint()
     async def g(x):
         pass
 
@@ -106,7 +106,7 @@ async def test_webhook_decorator_in_wrong_order(servicer, aio_client):
 
     with pytest.raises(InvalidError) as excinfo:
 
-        @stub.web_endpoint
+        @stub.web_endpoint()
         @stub.function(serialized=True)
         async def g(x):
             pass
@@ -119,12 +119,12 @@ async def test_asgi_wsgi(servicer, aio_client):
     stub = AioStub()
 
     @stub.function(serialized=True)
-    @stub.asgi_app
+    @stub.asgi_app()
     async def my_asgi(x):
         pass
 
     @stub.function(serialized=True)
-    @stub.wsgi_app
+    @stub.wsgi_app()
     async def my_wsgi(x):
         pass
 
