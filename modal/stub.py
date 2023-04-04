@@ -14,7 +14,7 @@ from modal._types import typechecked
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
-from modal_utils.decorator_utils import decorator_with_options
+from modal_utils.decorator_utils import decorator_with_options, decorator_with_options_deprecated
 from .retries import Retries
 
 from ._function_utils import FunctionInfo
@@ -647,7 +647,7 @@ class _Stub:
         self._add_function(function, [*base_mounts, *mounts])
         return function_handle
 
-    @decorator_with_options
+    @decorator_with_options_deprecated
     @typechecked
     def web_endpoint(
         self,
@@ -702,7 +702,7 @@ class _Stub:
             ),
         )
 
-    @decorator_with_options
+    @decorator_with_options_deprecated
     @typechecked
     def asgi_app(
         self,
@@ -742,7 +742,7 @@ class _Stub:
             ),
         )
 
-    @decorator_with_options
+    @decorator_with_options_deprecated
     @typechecked
     def wsgi_app(
         self,
@@ -782,7 +782,7 @@ class _Stub:
             "stub.webhook() is deprecated. Use stub.function in combination with stub.web_endpoint instead. Usage:\n\n"
             '@stub.function(cpu=42)\n@stub.web_endpoint(method="POST")\ndef my_function():\n    ...',
         )
-        web_endpoint = self.web_endpoint(raw_f, method, label, wait_for_response)
+        web_endpoint = self.web_endpoint(method=method, label=label, wait_for_response=wait_for_response)(raw_f)
         return self.function(web_endpoint, **function_args)
 
     @decorator_with_options
@@ -800,7 +800,7 @@ class _Stub:
             "stub.asgi() is deprecated. Use stub.function in combination with stub.asgi_app instead. Usage:\n\n"
             "@stub.function(cpu=42)\n@stub.asgi_app()\ndef my_asgi_app():\n    ...",
         )
-        web_endpoint = self.asgi_app(raw_f, label, wait_for_response)
+        web_endpoint = self.asgi_app(label=label, wait_for_response=wait_for_response)(raw_f)
         return self.function(web_endpoint, **function_args)
 
     @decorator_with_options
@@ -816,7 +816,7 @@ class _Stub:
             "stub.wsgi() is deprecated. Use stub.function in combination with stub.wsgi_app instead. Usage:\n\n"
             "@stub.function(cpu=42)\n@stub.wsgi_app()\ndef my_wsgi_app():\n    ...",
         )
-        web_endpoint = self.wsgi_app(raw_f, label, wait_for_response)
+        web_endpoint = self.wsgi_app(label=label, wait_for_response=wait_for_response)(raw_f)
         return self.function(web_endpoint, **function_args)
 
     async def interactive_shell(self, cmd=None, image=None, **kwargs):

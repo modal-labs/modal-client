@@ -30,3 +30,16 @@ def decorator_with_options(dec_fun):
             return functools.partial(dec_fun, *args, **kwargs)
 
     return wrapper
+
+
+def decorator_with_options_deprecated(dec_fun):
+    # Used when we are removing support for decorator_with_options
+    @functools.wraps(dec_fun)
+    def wrapper(*args, **kwargs):
+        if len(args) >= 2 or (len(args) == 1 and inspect.isfunction(args[-1])):
+            name = dec_fun.__name__
+            raise RuntimeError(f"The function {name} needs to be used with arguments. Add () to it if there are none.")
+        else:
+            return functools.partial(dec_fun, *args, **kwargs)
+
+    return wrapper

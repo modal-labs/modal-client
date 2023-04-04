@@ -101,7 +101,7 @@ class CubeAsync:
 
 
 @stub.function
-@stub.web_endpoint
+@stub.web_endpoint()
 def webhook(arg="world"):
     return {"hello": arg}
 
@@ -126,7 +126,7 @@ class WebhookLifecycleClass:
         self._events.append("exit")
 
     @stub.function
-    @stub.web_endpoint
+    @stub.web_endpoint()
     def webhook(self, arg="world"):
         self._events.append("call")
         return {"hello": arg}
@@ -139,7 +139,7 @@ def stream():
 
 
 @stub.function
-@stub.web_endpoint
+@stub.web_endpoint()
 def webhook_streaming():
     from fastapi.responses import StreamingResponse
 
@@ -153,7 +153,7 @@ async def stream_async():
 
 
 @stub.function
-@stub.web_endpoint
+@stub.web_endpoint()
 async def webhook_streaming_async():
     from fastapi.responses import StreamingResponse
 
@@ -175,7 +175,7 @@ def fun_returning_gen(n):
 
 
 @stub.function
-@stub.asgi_app
+@stub.asgi_app()
 def fastapi_app():
     from fastapi import FastAPI
 

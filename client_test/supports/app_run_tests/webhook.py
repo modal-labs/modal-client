@@ -5,6 +5,6 @@ stub = modal.Stub()
 
 
 @stub.function
-@stub.web_endpoint
+@stub.web_endpoint()
 def foo():
     return {"bar": "baz"}
