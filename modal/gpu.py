@@ -5,7 +5,7 @@ from typing import Union, Optional
 
 from modal_proto import api_pb2
 
-from .exception import InvalidError, deprecation_warning
+from .exception import InvalidError, deprecation_error
 
 
 @dataclass
@@ -78,7 +78,7 @@ STRING_TO_GPU_CONFIG = {"t4": T4(), "a100": A100(), "a100-20g": A100(memory=20),
 GPU_T = Union[None, bool, str, _GPUConfig]
 
 
-def _parse_gpu_config(value: GPU_T, warn_on_true: bool = True) -> Optional[_GPUConfig]:
+def _parse_gpu_config(value: GPU_T, raise_on_true: bool = True) -> Optional[_GPUConfig]:
     if isinstance(value, _GPUConfig):
         return value
     elif isinstance(value, str):
@@ -88,8 +88,8 @@ def _parse_gpu_config(value: GPU_T, warn_on_true: bool = True) -> Optional[_GPUC
             )
         return STRING_TO_GPU_CONFIG[value.lower()]
     elif value is True:
-        if warn_on_true:
-            deprecation_warning(
+        if raise_on_true:
+            deprecation_error(
                 date(2022, 12, 19), 'Setting gpu=True is deprecated. Use `gpu="any"` or `gpu=modal.gpu.Any()` instead.'
             )
         return Any()
@@ -99,9 +99,9 @@ def _parse_gpu_config(value: GPU_T, warn_on_true: bool = True) -> Optional[_GPUC
         raise InvalidError(f"Invalid GPU config: {value}. Value must be a string, a GPUConfig object or `None`.")
 
 
-def parse_gpu_config(value: GPU_T, warn_on_true: bool = True) -> api_pb2.GPUConfig:
+def parse_gpu_config(value: GPU_T, raise_on_true: bool = True) -> api_pb2.GPUConfig:
     """mdmd:hidden"""
-    gpu_config = _parse_gpu_config(value, warn_on_true)
+    gpu_config = _parse_gpu_config(value, raise_on_true)
     if gpu_config is None:
         return api_pb2.GPUConfig()
     return gpu_config._to_proto()
