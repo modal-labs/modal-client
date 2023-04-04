@@ -771,6 +771,32 @@ class _Image(Provider[_ImageHandle]):
         setup_dockerfile_commands: List[str] = [],
         **kwargs,
     ) -> "_Image":
+        """
+        Build a Modal image from a pre-existing image in GCP Artifact Registry.
+        You will need to pass a `modal.Secret` containing your GCP service account key
+        as `SERVICE_ACCOUNT_JSON`. This can be done from the [Secrets](/secrets) page.
+
+        The service account needs to have at least the "Artifact Registry Reader" role.
+
+        For the image, the same assumptions hold as `from_dockerhub`:
+
+        - Python 3.7 or above is present, and is available as `python`.
+        - `pip` is installed correctly.
+        - The image is built for the `linux/amd64` platform.
+
+        You may use `setup_dockerfile_commands` to run Dockerfile commands
+        before the remaining commands run. This might be useful if Python or pip is
+        not installed, or you need to set a `SHELL` for `python` to be available.
+        **Example**
+
+        ```python
+        modal.Image.from_gcp_artifact_registry(
+          "us-east1-docker.pkg.dev/my-project-1234/my-repo/my-image:my-version",
+          secret=modal.Secret.from_name("my-gcp-secret"),
+          setup_dockerfile_commands=["RUN apt-get update", "RUN apt-get install -y python3-pip"]
+        )
+        ```
+        """
         requirements_path = _get_client_requirements_path()
 
         dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands, [])
