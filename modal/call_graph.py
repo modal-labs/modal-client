@@ -7,6 +7,8 @@ from modal_proto import api_pb2
 
 
 class InputStatus(IntEnum):
+    """Enum representing status of a function input."""
+
     PENDING = 0
     SUCCESS = api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     FAILURE = api_pb2.GenericResult.GENERIC_STATUS_FAILURE
@@ -20,6 +22,8 @@ class InputStatus(IntEnum):
 
 @dataclass
 class InputInfo:
+    """Simple data structure storing information about a function input."""
+
     input_id: str
     task_id: str
     status: InputStatus
@@ -28,7 +32,7 @@ class InputInfo:
     children: List["InputInfo"]
 
 
-def reconstruct_call_graph(ser_graph: api_pb2.FunctionGetCallGraphResponse) -> List[InputInfo]:
+def _reconstruct_call_graph(ser_graph: api_pb2.FunctionGetCallGraphResponse) -> List[InputInfo]:
     function_calls_by_id: Dict[str, api_pb2.FunctionCallCallGraphInfo] = {}
     inputs_by_id: Dict[str, api_pb2.InputCallGraphInfo] = {}
 

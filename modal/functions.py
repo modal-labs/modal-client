@@ -32,13 +32,13 @@ from ._blob_utils import (
     blob_download,
     blob_upload,
 )
-from ._call_graph import InputInfo, reconstruct_call_graph
 from ._function_utils import FunctionInfo, LocalFunctionError, load_function_from_module
 from ._location import parse_cloud_provider
 from ._output import OutputManager
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._traceback import append_modal_tb
+from .call_graph import InputInfo, _reconstruct_call_graph
 from .config import config, logger
 from .client import _Client
 from .exception import ExecutionError, InvalidError, RemoteError, deprecation_warning
@@ -1039,7 +1039,7 @@ Function, AioFunction = synchronize_apis(_Function)
 
 
 class _FunctionCall(_Handle, type_prefix="fc"):
-    """A reference to an executed function call
+    """A reference to an executed function call.
 
     Constructed using `.spawn(...)` on a Modal function with the same
     arguments that a function normally takes. Acts as a reference to
@@ -1068,7 +1068,7 @@ class _FunctionCall(_Handle, type_prefix="fc"):
         assert self._client and self._client.stub
         request = api_pb2.FunctionGetCallGraphRequest(function_call_id=self.object_id)
         response = await retry_transient_errors(self._client.stub.FunctionGetCallGraph, request)
-        return reconstruct_call_graph(response)
+        return _reconstruct_call_graph(response)
 
     async def cancel(self):
         request = api_pb2.FunctionCallCancelRequest(function_call_id=self.object_id)
