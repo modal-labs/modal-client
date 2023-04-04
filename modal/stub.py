@@ -591,7 +591,7 @@ class _Stub:
                     raise InvalidError(
                         "Webhooks cannot be generators. If you want to streaming response, use fastapi.responses.StreamingResponse. Example:\n\n"
                         "def my_iter():\n    for x in range(10):\n        time.sleep(1.0)\n        yield str(i)\n\n"
-                        "@stub.webhook\ndef web():\n    return StreamingResponse(my_iter())\n"
+                        "@stub.function()\n@stub.web_endpoint()\ndef web():\n    return StreamingResponse(my_iter())\n"
                     )
                 else:
                     raise InvalidError("Webhooks cannot be generators")
@@ -664,7 +664,7 @@ class _Stub:
         behaves as a [FastAPI](https://fastapi.tiangolo.com/) handler and should
         return a response object to the caller.
 
-        Endpoints created with `@stub.webhook` are meant to be simple, single
+        Endpoints created with `@stub.web_endpoint` are meant to be simple, single
         request handlers and automatically have
         [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) enabled.
         For more flexibility, use `@stub.asgi_app`.
