@@ -38,7 +38,7 @@ async def run_stub(
     if stub._loose_webhook_configs:
         raise InvalidError(
             f"Web endpoints {stub._loose_webhook_configs} need to be decorated with @stub.function too.\nUsage:\n\n"
-            "@stub.function\n@stub.web_endpoint\ndef my_webhook():\n    ..."
+            "@stub.function()\n@stub.web_endpoint()\ndef my_webhook():\n    ..."
         )
     if not is_local():
         raise InvalidError(
@@ -134,6 +134,11 @@ async def deploy_stub(
     show_progress=None,
     object_entity="ap",
 ) -> _App:
+    if stub._loose_webhook_configs:
+        raise InvalidError(
+            f"Web endpoints {stub._loose_webhook_configs} need to be decorated with @stub.function too. Usage:\n\n"
+            "@stub.function()\n@stub.web_endpoint()\ndef my_webhook():\n    ..."
+        )
     if not is_local():
         raise InvalidError("Cannot run a deploy from within a container.")
     if name is None:

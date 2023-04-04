@@ -4,8 +4,10 @@ import asyncio
 from datetime import date
 import time
 
+import pytest
+
 from modal import Stub
-from modal.exception import deprecation_warning
+from modal.exception import DeprecationError, deprecation_warning
 
 SLEEP_DELAY = 0.1
 
@@ -104,9 +106,11 @@ def webhook(arg="world"):
     return {"hello": arg}
 
 
-@stub.webhook
-def webhook_old(arg="world"):
-    return {"hello": arg}
+with pytest.warns(DeprecationError):
+
+    @stub.webhook
+    def webhook_old(arg="world"):
+        return {"hello": arg}
 
 
 class WebhookLifecycleClass:
@@ -134,7 +138,8 @@ def stream():
         yield f"{i}..."
 
 
-@stub.webhook
+@stub.function
+@stub.web_endpoint
 def webhook_streaming():
     from fastapi.responses import StreamingResponse
 
@@ -147,7 +152,8 @@ async def stream_async():
         yield f"{i}..."
 
 
-@stub.webhook
+@stub.function
+@stub.web_endpoint
 async def webhook_streaming_async():
     from fastapi.responses import StreamingResponse
 
