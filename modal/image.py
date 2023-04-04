@@ -765,6 +765,25 @@ class _Image(Provider[_ImageHandle]):
 
     @staticmethod
     @typechecked
+    def from_gcp_artifact_registry(
+        tag: str,
+        secret: Optional[_Secret] = None,
+        setup_dockerfile_commands: List[str] = [],
+        **kwargs,
+    ) -> "_Image":
+        requirements_path = _get_client_requirements_path()
+
+        dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands, [])
+
+        return _Image._from_args(
+            dockerfile_commands=dockerfile_commands,
+            context_files={"/modal_requirements.txt": requirements_path},
+            image_registry_config=_ImageRegistryConfig(api_pb2.RegistryType.GCP_ARTIFACT_REGISTRY, secret),
+            **kwargs,
+        )
+
+    @staticmethod
+    @typechecked
     def from_aws_ecr(
         tag: str,
         secret: Optional[_Secret] = None,

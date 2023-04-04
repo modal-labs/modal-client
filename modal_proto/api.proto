@@ -199,6 +199,7 @@ message AppHeartbeatRequest {
 enum RegistryType {
   DOCKERHUB = 0;
   ECR = 1;
+  GCP_ARTIFACT_REGISTRY = 2;
 }
 
 message ImageRegistryConfig {
