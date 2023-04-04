@@ -131,7 +131,7 @@ class _Stub:
         ```python
         stub = modal.Stub(key_value_store=modal.Dict())
 
-        @stub.function
+        @stub.function()
         def store_something(key: str, value: str):
             stub.app.key_value_store.put(key, value)
         """
@@ -591,7 +591,7 @@ class _Stub:
                     raise InvalidError(
                         "Webhooks cannot be generators. If you want to streaming response, use fastapi.responses.StreamingResponse. Example:\n\n"
                         "def my_iter():\n    for x in range(10):\n        time.sleep(1.0)\n        yield str(i)\n\n"
-                        "@stub.webhook\ndef web():\n    return StreamingResponse(my_iter())\n"
+                        "@stub.function()\n@stub.web_endpoint()\ndef web():\n    return StreamingResponse(my_iter())\n"
                     )
                 else:
                     raise InvalidError("Webhooks cannot be generators")
@@ -664,7 +664,7 @@ class _Stub:
         behaves as a [FastAPI](https://fastapi.tiangolo.com/) handler and should
         return a response object to the caller.
 
-        Endpoints created with `@stub.webhook` are meant to be simple, single
+        Endpoints created with `@stub.web_endpoint` are meant to be simple, single
         request handlers and automatically have
         [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) enabled.
         For more flexibility, use `@stub.asgi_app`.
@@ -683,7 +683,7 @@ class _Stub:
             raw_f = raw_f.get_raw_f()
             raise InvalidError(
                 f"Applying decorators for {raw_f} in the wrong order!\nUsage:\n\n"
-                "@stub.function\n@stub.web_endpoint\ndef my_webhook():\n    ..."
+                "@stub.function()\n@stub.web_endpoint()\ndef my_webhook():\n    ..."
             )
         if not wait_for_response:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
@@ -777,7 +777,11 @@ class _Stub:
         wait_for_response: bool = True,
         **function_args,
     ) -> _FunctionHandle:
-        # TODO(erikbern): deprecate this
+        deprecation_warning(
+            date(2023, 4, 3),
+            "stub.webhook() is deprecated. Use stub.function in combination with stub.web_endpoint instead. Usage:\n\n"
+            '@stub.function(cpu=42)\n@stub.web_endpoint(method="POST")\ndef my_function():\n    ...',
+        )
         web_endpoint = self.web_endpoint(raw_f, method, label, wait_for_response)
         return self.function(web_endpoint, **function_args)
 
@@ -791,7 +795,11 @@ class _Stub:
         wait_for_response: bool = True,
         **function_args,
     ) -> _FunctionHandle:
-        # TODO(erikbern): deprecate this
+        deprecation_warning(
+            date(2023, 4, 3),
+            "stub.asgi() is deprecated. Use stub.function in combination with stub.asgi_app instead. Usage:\n\n"
+            "@stub.function(cpu=42)\n@stub.asgi_app()\ndef my_asgi_app():\n    ...",
+        )
         web_endpoint = self.asgi_app(raw_f, label, wait_for_response)
         return self.function(web_endpoint, **function_args)
 
@@ -803,7 +811,11 @@ class _Stub:
         wait_for_response: bool = True,
         **function_args,
     ) -> _FunctionHandle:
-        # TODO(erikbern): deprecate this
+        deprecation_warning(
+            date(2023, 4, 3),
+            "stub.wsgi() is deprecated. Use stub.function in combination with stub.wsgi_app instead. Usage:\n\n"
+            "@stub.function(cpu=42)\n@stub.wsgi_app()\ndef my_wsgi_app():\n    ...",
+        )
         web_endpoint = self.wsgi_app(raw_f, label, wait_for_response)
         return self.function(web_endpoint, **function_args)
 
