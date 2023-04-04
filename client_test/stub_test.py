@@ -172,7 +172,7 @@ skip_in_github = pytest.mark.skipif(
 def test_serve(client):
     stub = Stub()
 
-    stub.function(stub.wsgi_app(dummy))
+    stub.function(stub.wsgi_app()(dummy))
     with pytest.warns(DeprecationError):
         stub.serve(client=client, timeout=1)
 
@@ -181,7 +181,7 @@ def test_serve(client):
 def test_serve_teardown(client, servicer):
     stub = Stub()
     with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
-        stub.function(stub.wsgi_app(dummy))
+        stub.function(stub.wsgi_app()(dummy))
         with pytest.warns(DeprecationError):
             stub.serve(client=client, timeout=1)
 
@@ -195,7 +195,7 @@ def test_serve_teardown(client, servicer):
 def test_nested_serve_invocation(client):
     stub = Stub()
 
-    stub.function(stub.wsgi_app(dummy))
+    stub.function(stub.wsgi_app()(dummy))
     with pytest.raises(InvalidError) as excinfo:
         with stub.run(client=client):
             # This nested call creates a second web endpoint!
@@ -247,7 +247,7 @@ def test_registered_web_endpoints(client, servicer):
     stub.function(square)
     with pytest.warns(DeprecationError):
         stub.webhook(web1)
-    stub.function(stub.web_endpoint(web2))
+    stub.function(stub.web_endpoint()(web2))
 
     assert stub.registered_web_endpoints == ["web1", "web2"]
 
