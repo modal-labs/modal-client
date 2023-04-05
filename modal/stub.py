@@ -446,7 +446,7 @@ class _Stub:
         **Example**
 
         ```python
-        @stub.local_entrypoint
+        @stub.local_entrypoint()
         def main():
             some_modal_function.call()
         ```
@@ -474,7 +474,7 @@ class _Stub:
         CLI options. For example, the following function can be called with `modal run stub_module.py --foo 1 --bar "hello"`:
 
         ```python
-        @stub.local_entrypoint
+        @stub.local_entrypoint()
         def main(foo: int, bar: str):
             some_modal_function.call(foo, bar)
         ```

@@ -10,7 +10,7 @@ class Error(Exception):
 
     **Usage**
 
-    ```python
+    ```python notest
     import modal
 
     try:
