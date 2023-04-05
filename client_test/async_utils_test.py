@@ -171,6 +171,21 @@ async def test_warn_if_generator_is_not_consumed(caplog):
     assert "list" in caplog.text
 
 
+@pytest.mark.asyncio
+async def test_no_warn_if_generator_is_consumed(caplog):
+    @warn_if_generator_is_not_consumed
+    async def my_generator():
+        yield 42
+
+    with caplog.at_level(logging.WARNING):
+        g = my_generator()
+        async for _ in g:
+            pass
+        del g  # Force destructor
+
+    assert len(caplog.records) == 0
+
+
 def test_exit_handler():
     result = None
     sync = Synchronizer()

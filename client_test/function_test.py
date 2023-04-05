@@ -174,7 +174,10 @@ async def test_generator(client, servicer):
     with stub.run(client=client):
         assert later_gen_modal.is_generator
         res = later_gen_modal.call()
+        # Generators fulfil the *iterator protocol*, which requires both these methods.
+        # https://docs.python.org/3/library/stdtypes.html#typeiter
         assert hasattr(res, "__iter__")  # strangely inspect.isgenerator returns false
+        assert hasattr(res, "__next__")
         assert list(res) == ["bar", "baz"]
         assert len(servicer.cleared_function_calls) == 1
 
