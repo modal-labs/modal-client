@@ -1062,8 +1062,11 @@ class _FunctionCall(_Handle, type_prefix="fc"):
         return await self._invocation().poll_function(timeout=timeout)
 
     async def get_call_graph(self) -> List[InputInfo]:
-        """Returns a nested dictionary structure representing the call graph from a given root
+        """Returns a structure representing the call graph from a given root
         call ID, along with the status of execution for each node.
+
+        See [`modal.call_graph`](/docs/reference/modal.call_graph) reference page
+        for documentation on the structure of the returned `InputInfo` items.
         """
         assert self._client and self._client.stub
         request = api_pb2.FunctionGetCallGraphRequest(function_call_id=self.object_id)
