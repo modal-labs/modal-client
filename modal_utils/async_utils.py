@@ -265,6 +265,10 @@ class _WarnIfGeneratorIsNotConsumed:
         self.iterated = True
         return self.gen
 
+    def __anext__(self):
+        self.iterated = True
+        return self.gen.__anext__()
+
     def __repr__(self):
         return repr(self.gen)
 
