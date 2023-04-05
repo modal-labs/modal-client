@@ -1,4 +1,7 @@
 # Copyright Modal Labs 2022
+import pytest
+
+from modal.exception import DeprecationError
 from modal_utils.decorator_utils import decorator_with_options
 
 
@@ -10,12 +13,22 @@ def dec(f, add=0):
     return wrapped
 
 
-def test_simple():
-    @dec
+def test_no_args_warns():
+    with pytest.warns(DeprecationError, match="[^.]dec"):
+
+        @dec
+        def f(x):
+            return x + 7
+
+    assert f(42) == 49  # should still be usable
+
+
+def test_empty_args():
+    @dec()
     def f(x):
         return x + 7
 
-    assert f(42) == 49
+    assert f(42) == 49  # should still be usable
 
 
 def test_args():
@@ -30,13 +43,25 @@ def double(x):
     return 2 * x
 
 
-def test_direct():
-    p = dec(double)
+def test_direct_no_args_warns():
+    with pytest.warns(DeprecationError, match="[^.]dec"):
+        p = dec(double)
     assert p(42) == 84
 
 
-def test_direct_args():
-    q = dec(double, add=9)
+def test_direct_empty_args():
+    p = dec()(double)
+    assert p(42) == 84
+
+
+def test_direct_args_warns():
+    with pytest.warns(DeprecationError, match="[^.]dec"):
+        q = dec(double, add=9)
+    assert q(42) == 93
+
+
+def test_indirect_args_nowarning():
+    q = dec(add=9)(double)
     assert q(42) == 93
 
 
@@ -55,12 +80,14 @@ class Cls:
         return wrapped
 
 
-def test_method_simple():
+def test_method_simple_warns():
     c = Cls(3)
 
-    @c.dec
-    def f(x):
-        return x + 7
+    with pytest.warns(DeprecationError, match="Cls.dec"):
+
+        @c.dec
+        def f(x):
+            return x + 7
 
     assert f(42) == 52
 
@@ -75,13 +102,27 @@ def test_method_args():
     assert g(42) == 52
 
 
-def test_method_direct():
+def test_method_direct_warns():
     c = Cls(5)
-    p = c.dec(double)
+    with pytest.warns(DeprecationError, match="Cls.dec"):
+        p = c.dec(double)
     assert p(42) == 89
 
 
-def test_method_direct_args():
+def test_method_indirect_ok():
+    c = Cls(5)
+    p = c.dec()(double)
+    assert p(42) == 89
+
+
+def test_method_direct_args_warns():
     c = Cls(6)
-    q = c.dec(double, add=9)
+    with pytest.warns(DeprecationError, match="Cls.dec"):
+        q = c.dec(double, add=9)
+    assert q(42) == 99
+
+
+def test_method_indirect_args_ok():
+    c = Cls(6)
+    q = c.dec(add=9)(double)
     assert q(42) == 99

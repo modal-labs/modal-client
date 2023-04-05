@@ -14,7 +14,7 @@ from modal._types import typechecked
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
-from modal_utils.decorator_utils import decorator_with_options, decorator_with_options_deprecated
+from modal_utils.decorator_utils import decorator_with_options_unsupported, decorator_with_options
 from .retries import Retries
 
 from ._function_utils import FunctionInfo
@@ -434,7 +434,7 @@ class _Stub:
         """Names of web endpoint (ie. webhook) functions registered on the stub."""
         return self._web_endpoints
 
-    @decorator_with_options
+    @decorator_with_options_unsupported
     def local_entrypoint(self, raw_f=None, name: Optional[str] = None):
         """Decorate a function to be used as a CLI entrypoint for a Modal App.
 
@@ -647,7 +647,7 @@ class _Stub:
         self._add_function(function, [*base_mounts, *mounts])
         return function_handle
 
-    @decorator_with_options_deprecated
+    @decorator_with_options_unsupported
     @typechecked
     def web_endpoint(
         self,
@@ -702,7 +702,7 @@ class _Stub:
             ),
         )
 
-    @decorator_with_options_deprecated
+    @decorator_with_options_unsupported
     @typechecked
     def asgi_app(
         self,
@@ -742,7 +742,7 @@ class _Stub:
             ),
         )
 
-    @decorator_with_options_deprecated
+    @decorator_with_options_unsupported
     @typechecked
     def wsgi_app(
         self,

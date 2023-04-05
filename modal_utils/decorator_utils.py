@@ -1,6 +1,9 @@
 # Copyright Modal Labs 2022
+import datetime
 import functools
 import inspect
+
+from modal.exception import deprecation_warning
 
 
 def decorator_with_options(dec_fun):
@@ -22,6 +25,11 @@ def decorator_with_options(dec_fun):
         if len(args) >= 2 or (len(args) == 1 and inspect.isfunction(args[-1])):
             # The decorator is invoked with a function as its first argument
             # Call the decorator function directly
+            name = dec_fun.__qualname__
+            deprecation_warning(
+                datetime.date(2023, 4, 5),
+                f"The decorator {name} without arguments will soon be deprecated. Add () to it if there are no arguments",
+            )
             return dec_fun(*args, **kwargs)
         else:
             # The function is called with arguments
@@ -32,13 +40,13 @@ def decorator_with_options(dec_fun):
     return wrapper
 
 
-def decorator_with_options_deprecated(dec_fun):
+def decorator_with_options_unsupported(dec_fun):
     # Used when we are removing support for decorator_with_options
     @functools.wraps(dec_fun)
     def wrapper(*args, **kwargs):
         if len(args) >= 2 or (len(args) == 1 and inspect.isfunction(args[-1])):
-            name = dec_fun.__name__
-            raise RuntimeError(f"The function {name} needs to be used with arguments. Add () to it if there are none.")
+            name = dec_fun.__qualname__
+            raise RuntimeError(f"The decorator {name} needs to be used with arguments. Add () to it if there are none")
         else:
             return functools.partial(dec_fun, *args, **kwargs)
 
