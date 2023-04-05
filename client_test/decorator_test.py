@@ -83,7 +83,7 @@ class Cls:
 def test_method_simple_warns():
     c = Cls(3)
 
-    with pytest.warns(DeprecationError, match="Cls.dec"):
+    with pytest.warns(DeprecationError, match="cls.dec"):
 
         @c.dec
         def f(x):
@@ -104,7 +104,7 @@ def test_method_args():
 
 def test_method_direct_warns():
     c = Cls(5)
-    with pytest.warns(DeprecationError, match="Cls.dec"):
+    with pytest.warns(DeprecationError, match="cls.dec"):
         p = c.dec(double)
     assert p(42) == 89
 
@@ -117,7 +117,7 @@ def test_method_indirect_ok():
 
 def test_method_direct_args_warns():
     c = Cls(6)
-    with pytest.warns(DeprecationError, match="Cls.dec"):
+    with pytest.warns(DeprecationError, match="cls.dec"):
         q = c.dec(double, add=9)
     assert q(42) == 99
 
