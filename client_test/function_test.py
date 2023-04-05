@@ -158,6 +158,10 @@ def later_gen():
     yield "foo"
 
 
+async def async_later_gen():
+    yield "foo"
+
+
 @pytest.mark.asyncio
 async def test_generator(client, servicer):
     stub = Stub()
@@ -167,6 +171,7 @@ async def test_generator(client, servicer):
     def dummy():
         yield "bar"
         yield "baz"
+        yield "boo"
 
     servicer.function_body(dummy)
 
@@ -178,8 +183,35 @@ async def test_generator(client, servicer):
         # https://docs.python.org/3/library/stdtypes.html#typeiter
         assert hasattr(res, "__iter__")  # strangely inspect.isgenerator returns false
         assert hasattr(res, "__next__")
-        assert list(res) == ["bar", "baz"]
+        assert next(res) == "bar"
+        assert list(res) == ["baz", "boo"]
         assert len(servicer.cleared_function_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_generator_async(aio_client, servicer):
+    stub = AioStub()
+
+    later_gen_modal = stub.function(async_later_gen)
+
+    async def async_dummy():
+        yield "bar"
+        yield "baz"
+
+    servicer.function_body(async_dummy)
+
+    assert len(servicer.cleared_function_calls) == 0
+    async with stub.run(client=aio_client):
+        assert later_gen_modal.is_generator
+        res = later_gen_modal.call()
+        # Async generators fulfil the *asynchronous iterator protocol*, which requires both these methods.
+        # https://peps.python.org/pep-0525/#support-for-asynchronous-iteration-protocol
+        assert hasattr(res, "__aiter__")
+        assert hasattr(res, "__anext__")
+        # TODO(Jonathon): This works outside of testing, but here gives:
+        # `TypeError: cannot pickle 'async_generator' object`
+        # await res.__anext__() == "bar"
+        # assert len(servicer.cleared_function_calls) == 1
 
 
 @pytest.mark.asyncio
