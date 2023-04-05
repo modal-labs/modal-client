@@ -27,6 +27,6 @@ def unannotated_arg(i):
 
 
 class ALifecycle:
-    @stub.function
+    @stub.function()
     def some_method(self, i):
         print(repr(i))

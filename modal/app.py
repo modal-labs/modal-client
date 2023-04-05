@@ -224,7 +224,7 @@ Useful for accessing object handles for any Modal objects declared on the stub, 
 stub = modal.Stub()
 stub.data = modal.Dict()
 
-@stub.function
+@stub.function()
 def store_something(key, value):
     data: modal.DictHandle = modal.container_app.data
     data.put(key, value)

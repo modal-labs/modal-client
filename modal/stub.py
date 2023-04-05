@@ -80,7 +80,7 @@ class _Stub:
     **Registering functions with an app**
 
     The most common way to explicitly register an Object with an app is through the
-    `@stub.function` decorator. It both registers the annotated function itself and
+    `@stub.function()` decorator. It both registers the annotated function itself and
     other passed objects, like schedules and secrets, with the app:
 
     ```python

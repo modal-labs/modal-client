@@ -14,44 +14,44 @@ SLEEP_DELAY = 0.1
 stub = Stub()
 
 
-@stub.function
+@stub.function()
 def square(x):
     return x * x
 
 
-@stub.function
+@stub.function()
 def delay(t):
     time.sleep(t)
 
 
-@stub.function
+@stub.function()
 async def square_async(x):
     await asyncio.sleep(SLEEP_DELAY)
     return x * x
 
 
-@stub.function
+@stub.function()
 def raises(x):
     raise Exception("Failure!")
 
 
-@stub.function
+@stub.function()
 def raises_sysexit(x):
     raise SystemExit(1)
 
 
-@stub.function
+@stub.function()
 def raises_keyboardinterrupt(x):
     raise KeyboardInterrupt()
 
 
-@stub.function
+@stub.function()
 def gen_n(n):
     for i in range(n):
         yield i**2
 
 
-@stub.function
+@stub.function()
 def gen_n_fail_on_m(n, m):
     for i in range(n):
         if i == m:
@@ -76,7 +76,7 @@ class Cube:
     def __exit__(self, typ, exc, tb):
         self._events.append("exit")
 
-    @stub.function
+    @stub.function()
     def f(self, x):
         self._events.append("call")
         return x**3
@@ -94,13 +94,13 @@ class CubeAsync:
     async def __aexit__(self, typ, exc, tb):
         self._events.append("exit")
 
-    @stub.function
+    @stub.function()
     async def f(self, x):
         self._events.append("call")
         return x**3
 
 
-@stub.function
+@stub.function()
 @stub.web_endpoint()
 def webhook(arg="world"):
     return {"hello": arg}
@@ -125,7 +125,7 @@ class WebhookLifecycleClass:
     async def __aexit__(self, typ, exc, tb):
         self._events.append("exit")
 
-    @stub.function
+    @stub.function()
     @stub.web_endpoint()
     def webhook(self, arg="world"):
         self._events.append("call")
@@ -138,7 +138,7 @@ def stream():
         yield f"{i}..."
 
 
-@stub.function
+@stub.function()
 @stub.web_endpoint()
 def webhook_streaming():
     from fastapi.responses import StreamingResponse
@@ -152,7 +152,7 @@ async def stream_async():
         yield f"{i}..."
 
 
-@stub.function
+@stub.function()
 @stub.web_endpoint()
 async def webhook_streaming_async():
     from fastapi.responses import StreamingResponse
@@ -174,7 +174,7 @@ def fun_returning_gen(n):
     return gen(n)
 
 
-@stub.function
+@stub.function()
 @stub.asgi_app()
 def fastapi_app():
     from fastapi import FastAPI

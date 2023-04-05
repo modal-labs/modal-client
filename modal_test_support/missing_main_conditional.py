@@ -4,7 +4,7 @@ import modal
 stub = modal.Stub()
 
 
-@stub.function
+@stub.function()
 def square(x):
     return x**2
 

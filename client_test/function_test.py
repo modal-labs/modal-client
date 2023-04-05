@@ -312,7 +312,7 @@ def test_nonglobal_function():
 
     with pytest.raises(InvalidError) as excinfo:
 
-        @stub.function
+        @stub.function()
         def f():
             pass
 

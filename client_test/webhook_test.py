@@ -92,12 +92,12 @@ async def test_webhook_forgot_function(servicer, aio_client):
         async with stub.run(client=aio_client):
             pass
 
-    assert "@stub.function" in str(excinfo.value)
+    assert "@stub.function()" in str(excinfo.value)
 
     with pytest.raises(InvalidError) as excinfo:
         await stub.deploy("webhook-test", client=aio_client)
 
-    assert "@stub.function" in str(excinfo.value)
+    assert "@stub.function()" in str(excinfo.value)
 
 
 @pytest.mark.asyncio
