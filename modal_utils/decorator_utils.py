@@ -37,7 +37,7 @@ def decorator_with_options(dec_fun):
             name = pretty_name(dec_fun.__qualname__)
             deprecation_warning(
                 datetime.date(2023, 4, 5),
-                f"The decorator {name} without arguments will soon be deprecated. Add () to it if there are no arguments",
+                f"The decorator {name} without arguments will soon be deprecated. Add empty parens to it, e.g. @{name}() if there are no arguments",
             )
             return dec_fun(*args, **kwargs)
         else:
@@ -55,7 +55,9 @@ def decorator_with_options_unsupported(dec_fun):
     def wrapper(*args, **kwargs):
         if len(args) >= 2 or (len(args) == 1 and inspect.isfunction(args[-1])):
             name = pretty_name(dec_fun.__qualname__)
-            raise RuntimeError(f"The decorator {name} needs to be used with arguments. Add () to it if there are none")
+            raise RuntimeError(
+                f"The decorator {name} needs to be called before decorating a function. Add empty parens to it, e.g. @{name}() if there are no arguments"
+            )
         else:
             return functools.partial(dec_fun, *args, **kwargs)
 
