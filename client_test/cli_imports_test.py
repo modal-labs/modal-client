@@ -18,7 +18,7 @@ local_entrypoint_src = """
 import modal
 
 stub = modal.Stub()
-@stub.local_entrypoint
+@stub.local_entrypoint()
 def main():
     pass
 """

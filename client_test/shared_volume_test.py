@@ -33,17 +33,17 @@ def test_shared_volume_bad_paths(client, test_dir, servicer):
     def _f():
         pass
 
-    dummy_modal = stub.function(dummy, shared_volumes={"/root/../../foo": modal.SharedVolume()})
+    dummy_modal = stub.function(shared_volumes={"/root/../../foo": modal.SharedVolume()})(dummy)
     with pytest.raises(InvalidError):
         with stub.run(client=client):
             dummy_modal.call()
 
-    dummy_modal = stub.function(dummy, shared_volumes={"/": modal.SharedVolume()})
+    dummy_modal = stub.function(shared_volumes={"/": modal.SharedVolume()})(dummy)
     with pytest.raises(InvalidError):
         with stub.run(client=client):
             dummy_modal.call()
 
-    dummy_modal = stub.function(dummy, shared_volumes={"/tmp/": modal.SharedVolume()})
+    dummy_modal = stub.function(shared_volumes={"/tmp/": modal.SharedVolume()})(dummy)
     with pytest.raises(InvalidError):
         with stub.run(client=client):
             dummy_modal.call()

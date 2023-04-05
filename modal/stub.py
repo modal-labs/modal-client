@@ -434,7 +434,7 @@ class _Stub:
         """Names of web endpoint (ie. webhook) functions registered on the stub."""
         return self._web_endpoints
 
-    @decorator_with_options_unsupported
+    @decorator_with_options
     def local_entrypoint(self, raw_f=None, name: Optional[str] = None):
         """Decorate a function to be used as a CLI entrypoint for a Modal App.
 
