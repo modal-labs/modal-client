@@ -371,13 +371,13 @@ def test_panel(client, servicer):
 lc_stub = Stub()
 
 
-@lc_stub.function
+@lc_stub.function()
 def f(x):
     return x**2
 
 
 class Class:
-    @lc_stub.function
+    @lc_stub.function()
     def f(self, x):
         return x**2
 
