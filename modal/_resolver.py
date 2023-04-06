@@ -3,6 +3,7 @@ import contextlib
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypeVar
 
 from modal_proto import api_pb2
+from .config import logger
 
 if TYPE_CHECKING:
     from rich.spinner import Spinner
@@ -72,6 +73,7 @@ class Resolver:
             # We already created this object before, shortcut this method
             return cached_obj
 
+        logger.debug(f"Loading {obj}")
         created_obj = await obj._load(self, existing_object_id)
 
         if existing_object_id is not None and created_obj.object_id != existing_object_id:
