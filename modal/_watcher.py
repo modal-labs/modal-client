@@ -37,9 +37,23 @@ class StubFilesFilter(DefaultFilter):
         # into a target directory.
         elif p.name == "4913":
             return False
+
+        allowlists = set()
+
         for root, allowlist in self.dir_filters.items():
-            if allowlist is not None and root in p.parents and path not in allowlist:
-                return False
+            # For every filter path that's a parent of the current path...
+            if root in p.parents:
+                # If allowlist is None, we're watching the directory and we have a match.
+                if allowlist is None:
+                    return super().__call__(change, path)
+
+                # If not, it's specific files, and we could have a match.
+                else:
+                    allowlists |= allowlist
+
+        if allowlists and path not in allowlists:
+            return False
+
         return super().__call__(change, path)
 
 
