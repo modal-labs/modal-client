@@ -3,8 +3,6 @@ import datetime
 import functools
 import inspect
 
-from modal.exception import deprecation_warning
-
 
 def pretty_name(qualname):
     if "." in qualname:
@@ -35,6 +33,8 @@ def decorator_with_options(dec_fun):
             # The decorator is invoked with a function as its first argument
             # Call the decorator function directly
             name = pretty_name(dec_fun.__qualname__)
+            from modal.exception import deprecation_warning
+
             deprecation_warning(
                 datetime.date(2023, 4, 5),
                 f"The decorator {name} without arguments will soon be deprecated. Add empty parens to it, e.g. @{name}() if there are no arguments",
