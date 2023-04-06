@@ -75,7 +75,7 @@ class Resolver:
 
         logger.debug(f"Loading {obj}")
         created_obj = await obj._load(self, existing_object_id)
-
+        logger.debug(f"Done loading {obj}")
         if existing_object_id is not None and created_obj.object_id != existing_object_id:
             # TODO(erikbern): this is a very ugly fix to a problem that's on the server side.
             # Unlike every other object, images are not assigned random ids, but rather an
