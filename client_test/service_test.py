@@ -27,8 +27,8 @@ def test_run_class(client, servicer):
 
 
 def test_call_class(client, servicer):
-    with stub.run(client=client) as app:
-        foo = Foo()
+    with stub.run(client=client):
+        Foo()
 
         # TODO(erikbern): this fails! because foo.bar.call is async
         # assert foo.bar.call(42) == 1764  # Note: uses Mockservicer's impl
@@ -40,10 +40,10 @@ def test_run_class_serialized(client, servicer):
             return x**3
 
     stub_ser = modal.Stub()
-    ret = stub_ser.service(cpu=42, serialized=True)(FooSer)
+    stub_ser.service(cpu=42, serialized=True)(FooSer)
 
     assert servicer.n_functions == 0
-    with stub_ser.run(client=client) as app:
+    with stub_ser.run(client=client):
         pass
 
     assert servicer.n_functions == 1
@@ -81,8 +81,8 @@ def test_can_call_locally():
 
 
 def test_can_call_remotely_from_local(client):
-    with stub_local.run(client=client) as app:
-        foo = FooLocal()
+    with stub_local.run(client=client):
+        FooLocal()
 
         # remote calls use the mockservicer func impl
         # which just squares the arguments
