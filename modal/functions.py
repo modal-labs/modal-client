@@ -32,7 +32,7 @@ from ._blob_utils import (
     blob_download,
     blob_upload,
 )
-from ._function_utils import FunctionInfo, LocalFunctionError, load_function_from_module
+from ._function_utils import FunctionInfo
 from ._location import parse_cloud_provider
 from ._output import OutputManager
 from ._resolver import Resolver
@@ -935,23 +935,8 @@ class _Function(_Provider[_FunctionHandle]):
             # serialize at _load time, not function decoration time
             # otherwise we can't capture a surrounding class for lifetime methods etc.
             function_serialized = self._info.serialized_function
-            mod = inspect.getmodule(self._raw_f)
-
             if self._cls is not None:
-                cls = self._cls
-            else:
-                # This is probably the case of a function in global scope,
-                # but it *might* be a function decorated on a class.
-                # We should probably deprecate it, since it's a messy case
-                try:
-                    cls, _ = load_function_from_module(mod, self._raw_f.__qualname__)
-                except LocalFunctionError:
-                    # if a serialized function is defined within a function scope
-                    # we can't load it from the module and detect its parent class
-                    cls = None
-
-            if cls:
-                class_serialized = cloudpickle.dumps(cls)
+                class_serialized = cloudpickle.dumps(self._cls)
 
         if self._keep_warm is True:
             deprecation_warning(
