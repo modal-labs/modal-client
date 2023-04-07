@@ -192,7 +192,7 @@ async def test_generator(client, servicer):
 async def test_generator_async(aio_client, servicer):
     stub = AioStub()
 
-    later_gen_modal = stub.function(async_later_gen)
+    later_gen_modal = stub.function()(async_later_gen)
 
     async def async_dummy():
         yield "bar"
