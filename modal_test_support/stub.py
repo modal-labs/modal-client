@@ -4,7 +4,7 @@ import modal
 stub = modal.Stub()
 
 
-@stub.function
+@stub.function()
 def f(x):
     # not actually used in test (servicer returns sum of square of all args)
     pass

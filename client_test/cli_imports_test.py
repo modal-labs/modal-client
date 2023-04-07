@@ -18,7 +18,7 @@ local_entrypoint_src = """
 import modal
 
 stub = modal.Stub()
-@stub.local_entrypoint
+@stub.local_entrypoint()
 def main():
     pass
 """
@@ -26,11 +26,11 @@ python_module_src = """
 import modal
 stub = modal.Stub("FOO")
 other_stub = modal.Stub("BAR")
-@other_stub.function
+@other_stub.function()
 def func():
     pass
 class Parent:
-    @stub.function
+    @stub.function()
     def meth(self):
         pass
 
@@ -41,7 +41,7 @@ python_package_src = """
 import modal
 stub = modal.Stub("FOO")
 other_stub = modal.Stub("BAR")
-@other_stub.function
+@other_stub.function()
 def func():
     pass
 assert __package__ == "pack"
@@ -51,7 +51,7 @@ python_subpackage_src = """
 import modal
 stub = modal.Stub("FOO")
 other_stub = modal.Stub("BAR")
-@other_stub.function
+@other_stub.function()
 def func():
     pass
 assert __package__ == "pack.sub"

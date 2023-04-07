@@ -44,7 +44,7 @@ def test_map(client, servicer, slow_put_inputs):
     servicer.slow_put_inputs = slow_put_inputs
 
     stub = Stub()
-    dummy_modal = stub.function(dummy)
+    dummy_modal = stub.function()(dummy)
 
     assert len(servicer.cleared_function_calls) == 0
     with stub.run(client=client):
@@ -64,7 +64,7 @@ def side_effect(_):
 
 def test_for_each(client, servicer):
     stub = Stub()
-    side_effect_modal = stub.function(servicer.function_body(side_effect))
+    side_effect_modal = stub.function()(servicer.function_body(side_effect))
     assert _side_effect_count == 0
     with stub.run(client=client):
         side_effect_modal.for_each(range(10))
@@ -79,7 +79,7 @@ def custom_function(x):
 def test_map_none_values(client, servicer):
     stub = Stub()
 
-    custom_function_modal = stub.function(servicer.function_body(custom_function))
+    custom_function_modal = stub.function()(servicer.function_body(custom_function))
 
     with stub.run(client=client):
         assert list(custom_function_modal.map(range(4))) == [0, None, 2, None]
@@ -88,19 +88,19 @@ def test_map_none_values(client, servicer):
 def test_starmap(client):
     stub = Stub()
 
-    dummy_modal = stub.function(dummy)
+    dummy_modal = stub.function()(dummy)
     with stub.run(client=client):
         assert list(dummy_modal.starmap([[5, 2], [4, 3]])) == [29, 25]
 
 
 def test_function_memory_request(client):
     stub = Stub()
-    stub.function(dummy, memory=2048)
+    stub.function(memory=2048)(dummy)
 
 
 def test_function_cpu_request(client):
     stub = Stub()
-    stub.function(dummy, cpu=2.0)
+    stub.function(cpu=2.0)(dummy)
 
 
 def later():
@@ -110,7 +110,7 @@ def later():
 def test_function_future(client, servicer):
     stub = Stub()
 
-    later_modal = stub.function(servicer.function_body(later))
+    later_modal = stub.function()(servicer.function_body(later))
     with stub.run(client=client):
         future = later_modal.spawn()
         assert isinstance(future, FunctionCall)
@@ -140,7 +140,7 @@ def test_function_future(client, servicer):
 async def test_function_future_async(client, servicer):
     stub = AioStub()
 
-    later_modal = stub.function(servicer.function_body(later))
+    later_modal = stub.function()(servicer.function_body(later))
 
     async with stub.run(client=client):
         future = await later_modal.spawn()
@@ -166,7 +166,7 @@ async def async_later_gen():
 async def test_generator(client, servicer):
     stub = Stub()
 
-    later_gen_modal = stub.function(later_gen)
+    later_gen_modal = stub.function()(later_gen)
 
     def dummy():
         yield "bar"
@@ -218,7 +218,7 @@ async def test_generator_async(aio_client, servicer):
 async def test_generator_future(client, servicer):
     stub = Stub()
 
-    later_gen_modal = stub.function(later_gen)
+    later_gen_modal = stub.function()(later_gen)
     with stub.run(client=client):
         assert later_gen_modal.spawn() is None  # until we have a nice interface for polling generator futures
 
@@ -233,7 +233,7 @@ async def slo1(sleep_seconds):
 def test_sync_parallelism(client, servicer):
     stub = Stub()
 
-    slo1_modal = stub.function(servicer.function_body(slo1))
+    slo1_modal = stub.function()(servicer.function_body(slo1))
     with stub.run(client=client):
         t0 = time.time()
         # NOTE tests breaks in macOS CI if the smaller time is smaller than ~300ms
@@ -246,7 +246,7 @@ def test_sync_parallelism(client, servicer):
 def test_proxy(client, servicer):
     stub = Stub()
 
-    stub.function(dummy, proxy=Proxy.from_name("my-proxy"))
+    stub.function(proxy=Proxy.from_name("my-proxy"))(dummy)
     with stub.run(client=client):
         pass
 
@@ -262,7 +262,7 @@ def failure():
 def test_function_exception(client, servicer):
     stub = Stub()
 
-    failure_modal = stub.function(servicer.function_body(failure))
+    failure_modal = stub.function()(servicer.function_body(failure))
     with stub.run(client=client):
         with pytest.raises(CustomException) as excinfo:
             failure_modal.call()
@@ -273,7 +273,7 @@ def test_function_exception(client, servicer):
 async def test_function_exception_async(aio_client, servicer):
     stub = AioStub()
 
-    failure_modal = stub.function(servicer.function_body(failure))
+    failure_modal = stub.function()(servicer.function_body(failure))
     async with stub.run(client=aio_client):
         with pytest.raises(CustomException) as excinfo:
             await failure_modal.call()
@@ -289,7 +289,7 @@ def custom_exception_function(x):
 def test_map_exceptions(client, servicer):
     stub = Stub()
 
-    custom_function_modal = stub.function(servicer.function_body(custom_exception_function))
+    custom_function_modal = stub.function()(servicer.function_body(custom_exception_function))
 
     with stub.run(client=client):
         assert list(custom_function_modal.map(range(4))) == [0, 1, 4, 9]
@@ -310,7 +310,7 @@ def import_failure():
 def test_function_relative_import_hint(client, servicer):
     stub = Stub()
 
-    import_failure_modal = stub.function(servicer.function_body(import_failure))
+    import_failure_modal = stub.function()(servicer.function_body(import_failure))
 
     with stub.run(client=client):
         with pytest.raises(ImportError) as excinfo:
@@ -347,7 +347,7 @@ def test_nonglobal_function():
 
     with pytest.raises(InvalidError) as excinfo:
 
-        @stub.function
+        @stub.function()
         def f():
             pass
 
@@ -396,7 +396,7 @@ def test_from_id(client, servicer):
 
 def test_panel(client, servicer):
     stub = Stub()
-    stub.function(dummy)
+    stub.function()(dummy)
     function = stub["dummy"]
     assert isinstance(function, Function)
     image = stub._get_default_image()
@@ -406,13 +406,13 @@ def test_panel(client, servicer):
 lc_stub = Stub()
 
 
-@lc_stub.function
+@lc_stub.function()
 def f(x):
     return x**2
 
 
 class Class:
-    @lc_stub.function
+    @lc_stub.function()
     def f(self, x):
         return x**2
 
@@ -433,7 +433,7 @@ def test_allow_cross_region_volumes(client, servicer):
     stub = Stub()
     vol1, vol2 = SharedVolume(), SharedVolume()
     # Should pass flag for all the function's SharedVolumeMounts
-    stub.function(dummy, shared_volumes={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)
+    stub.function(shared_volumes={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(dummy)
 
     with stub.run(client=client):
         assert len(servicer.app_functions) == 1
@@ -448,8 +448,8 @@ def test_allow_cross_region_volumes_webhook(client, servicer):
     stub = Stub()
     vol1, vol2 = SharedVolume(), SharedVolume()
     # Should pass flag for all the function's SharedVolumeMounts
-    stub.function(
-        stub.web_endpoint()(dummy), shared_volumes={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True
+    stub.function(shared_volumes={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(
+        stub.web_endpoint()(dummy)
     )
 
     with stub.run(client=client):

@@ -7,6 +7,6 @@ if not modal.is_local():
     import nonexistent_package  # noqa
 
 
-@stub.function
+@stub.function()
 def f(i):
     pass

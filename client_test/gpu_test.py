@@ -14,13 +14,13 @@ def test_gpu_true_function(client, servicer):
     stub = Stub()
 
     with pytest.raises(DeprecationError):
-        stub.function(dummy, gpu=True)
+        stub.function(gpu=True)(dummy)
 
 
 def test_gpu_any_function(client, servicer):
     stub = Stub()
 
-    stub.function(dummy, gpu="any")
+    stub.function(gpu="any")(dummy)
     with stub.run(client=client):
         pass
 
@@ -36,9 +36,9 @@ def test_gpu_string_config(client, servicer):
 
     # Invalid enum value.
     with pytest.raises(InvalidError):
-        stub.function(dummy, gpu="foo")
+        stub.function(gpu="foo")(dummy)
 
-    stub.function(dummy, gpu="A100")
+    stub.function(gpu="A100")(dummy)
     with stub.run(client=client):
         pass
 
@@ -54,7 +54,7 @@ def test_gpu_config_function(client, servicer):
 
     stub = Stub()
 
-    stub.function(dummy, gpu=modal.gpu.A100())
+    stub.function(gpu=modal.gpu.A100())(dummy)
     with stub.run(client=client):
         pass
 
@@ -70,7 +70,7 @@ def test_cloud_provider_selection(client, servicer):
 
     stub = Stub()
 
-    stub.function(dummy, gpu=modal.gpu.A100(), cloud="gcp")
+    stub.function(gpu=modal.gpu.A100(), cloud="gcp")(dummy)
     with stub.run(client=client):
         pass
 
@@ -83,7 +83,7 @@ def test_cloud_provider_selection(client, servicer):
 
     # Invalid enum value.
     with pytest.raises(InvalidError):
-        stub.function(dummy, cloud="foo")
+        stub.function(cloud="foo")(dummy)
 
 
 A100_GPU_MEMORY_MAPPING = {0: api_pb2.GPU_TYPE_A100, 20: api_pb2.GPU_TYPE_A100_20G, 40: api_pb2.GPU_TYPE_A100}
@@ -95,7 +95,7 @@ def test_memory_selection_gpu_variant(client, servicer, memory, gpu_type):
 
     stub = Stub()
 
-    stub.function(dummy, gpu=modal.gpu.A100(memory=memory))
+    stub.function(gpu=modal.gpu.A100(memory=memory))(dummy)
     with stub.run(client=client):
         pass
 
@@ -118,13 +118,13 @@ def test_gpu_type_selection_from_count(client, servicer, count, gpu_type):
     # Functions that use A100 20GB can only request one GPU
     # at a time.
     with pytest.raises(ValueError):
-        stub.function(dummy, gpu=modal.gpu.A100(count=2, memory=20))
+        stub.function(gpu=modal.gpu.A100(count=2, memory=20))(dummy)
         with stub.run(client=client):
             pass
 
     # Task type changes whenever user asks more than 1 GPU on
     # an A100.
-    stub.function(dummy, gpu=modal.gpu.A100(count=count))
+    stub.function(gpu=modal.gpu.A100(count=count))(dummy)
     with stub.run(client=client):
         pass
 

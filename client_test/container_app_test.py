@@ -30,7 +30,7 @@ async def test_container_function_initialization(unix_servicer, aio_container_cl
     await AioApp.init_container(aio_container_client, "ap-123")
 
     stub = AioStub()
-    # my_f_1_container = stub.function(my_f_1)
+    # my_f_1_container = stub.function()(my_f_1)
 
     # Make sure these functions exist and have the right type
     my_f_1_app = aio_container_app["my_f_1"]
@@ -46,7 +46,7 @@ async def test_container_function_initialization(unix_servicer, aio_container_cl
 
     # Now, let's create my_f_2 after the app started running
     # This might happen if some local module is imported lazily
-    my_f_2_container = stub.function(my_f_2)
+    my_f_2_container = stub.function()(my_f_2)
     assert await my_f_2_container.call(42) == 1764  # type: ignore
 
 
@@ -102,7 +102,7 @@ def f():
 @pytest.mark.asyncio
 async def test_is_inside_default_image(servicer, unix_servicer, aio_client, aio_container_client):
     stub = AioStub()
-    stub.function(f)
+    stub.function()(f)
 
     assert not stub.is_inside()
 

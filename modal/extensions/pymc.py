@@ -62,7 +62,7 @@ def rebuild_exc(exc, tb):
     return exc
 
 
-@aio_pymc_stub.function
+@aio_pymc_stub.function()
 async def sample_process(
     draws: int,
     tune: int,

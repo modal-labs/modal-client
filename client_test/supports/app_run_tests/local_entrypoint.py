@@ -5,12 +5,12 @@ import modal
 stub = modal.Stub()
 
 
-@stub.function
+@stub.function()
 def foo():
     pass
 
 
-@stub.local_entrypoint
+@stub.local_entrypoint()
 def main():
     print("called locally")
     foo.call()

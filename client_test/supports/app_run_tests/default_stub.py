@@ -4,6 +4,6 @@ import modal
 stub = modal.Stub()
 
 
-@stub.function
+@stub.function()
 def foo():
     print("foo")
