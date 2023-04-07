@@ -30,7 +30,7 @@ def square(x):
 async def test_lookup_function(servicer, aio_client):
     stub = AioStub()
 
-    stub.function(square)
+    stub.function()(square)
     await stub.deploy("my-function", client=aio_client)
 
     f = await AioFunction.lookup("my-function", client=aio_client)
@@ -50,7 +50,7 @@ async def test_lookup_function(servicer, aio_client):
 @pytest.mark.asyncio
 async def test_webhook_lookup(servicer, aio_client):
     stub = AioStub()
-    stub.function(stub.web_endpoint(method="POST")(square))
+    stub.function()(stub.web_endpoint(method="POST")(square))
     await stub.deploy("my-webhook", client=aio_client)
 
     f = await AioFunction.lookup("my-webhook", client=aio_client)

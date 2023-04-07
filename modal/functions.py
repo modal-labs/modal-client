@@ -546,7 +546,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
 
         Example:
         ```python notest
-        @stub.function
+        @stub.function()
         def my_func(a):
             return a ** 2
 
@@ -563,7 +563,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
 
         `return_exceptions` can be used to treat exceptions as successful results:
         ```python notest
-        @stub.function
+        @stub.function()
         def my_func(a):
             if a == 2:
                 raise Exception("ohno")
@@ -599,7 +599,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
 
         Example:
         ```python notest
-        @stub.function
+        @stub.function()
         def my_func(a, b):
             return a + b
 
@@ -707,7 +707,7 @@ class _Function(_Provider[_FunctionHandle]):
     """Functions are the basic units of serverless execution on Modal.
 
     Generally, you will not construct a `Function` directly. Instead, use the
-    `@stub.function` decorator on the `Stub` object for your application.
+    `@stub.function()` decorator on the `Stub` object for your application.
     """
 
     # TODO: more type annotations
@@ -1120,7 +1120,7 @@ def current_input_id() -> str:
     ```python
     from modal import current_input_id
 
-    @stub.function
+    @stub.function()
     def process_stuff():
         print(f"Starting to process {current_input_id()}")
     ```

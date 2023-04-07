@@ -64,7 +64,7 @@ def square(x):
 @pytest.mark.asyncio
 async def test_redeploy(servicer, aio_client):
     stub = AioStub()
-    stub.function(square)
+    stub.function()(square)
 
     # Deploy app
     app = await stub.deploy("my-app", client=aio_client)
@@ -99,7 +99,7 @@ def test_create_object_exception(servicer, client):
     servicer.function_create_error = True
 
     stub = Stub()
-    stub.function(dummy)
+    stub.function()(dummy)
 
     with pytest.raises(GRPCError) as excinfo:
         with stub.run(client=client):
@@ -123,7 +123,7 @@ def test_deploy_uses_deployment_name_if_specified(servicer, client):
 
 def test_run_function_without_app_error():
     stub = Stub()
-    dummy_modal = stub.function(dummy)
+    dummy_modal = stub.function()(dummy)
 
     with pytest.raises(InvalidError) as excinfo:
         dummy_modal.call()
@@ -150,12 +150,12 @@ def test_same_function_name(caplog):
 
     # Add first function
     with caplog.at_level(logging.WARNING):
-        stub.function(module_1.square)
+        stub.function()(module_1.square)
     assert len(caplog.records) == 0
 
     # Add second function: check warning
     with caplog.at_level(logging.WARNING):
-        stub.function(module_2.square)
+        stub.function()(module_2.square)
     assert len(caplog.records) == 1
     assert "module_1" in caplog.text
     assert "module_2" in caplog.text
@@ -172,7 +172,7 @@ skip_in_github = pytest.mark.skipif(
 def test_serve(client):
     stub = Stub()
 
-    stub.function(stub.wsgi_app()(dummy))
+    stub.function()(stub.wsgi_app()(dummy))
     with pytest.warns(DeprecationError):
         stub.serve(client=client, timeout=1)
 
@@ -181,7 +181,7 @@ def test_serve(client):
 def test_serve_teardown(client, servicer):
     stub = Stub()
     with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
-        stub.function(stub.wsgi_app()(dummy))
+        stub.function()(stub.wsgi_app()(dummy))
         with pytest.warns(DeprecationError):
             stub.serve(client=client, timeout=1)
 
@@ -195,7 +195,7 @@ def test_serve_teardown(client, servicer):
 def test_nested_serve_invocation(client):
     stub = Stub()
 
-    stub.function(stub.wsgi_app()(dummy))
+    stub.function()(stub.wsgi_app()(dummy))
     with pytest.raises(InvalidError) as excinfo:
         with stub.run(client=client):
             # This nested call creates a second web endpoint!
@@ -244,10 +244,10 @@ async def web2(x):
 
 def test_registered_web_endpoints(client, servicer):
     stub = Stub()
-    stub.function(square)
+    stub.function()(square)
     with pytest.warns(DeprecationError):
         stub.webhook(web1)
-    stub.function(stub.web_endpoint()(web2))
+    stub.function()(stub.web_endpoint()(web2))
 
     assert stub.registered_web_endpoints == ["web1", "web2"]
 

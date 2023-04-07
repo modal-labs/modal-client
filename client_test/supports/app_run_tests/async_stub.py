@@ -4,6 +4,6 @@ import modal.aio
 stub = modal.aio.AioStub()
 
 
-@stub.function
+@stub.function()
 async def foo():
     pass

@@ -10,6 +10,6 @@ pytest._did_load_main_thread_assertion = True  # can be checked to ensure module
 stub = modal.Stub()
 
 
-@stub.function
+@stub.function()
 def dummy():
     pass

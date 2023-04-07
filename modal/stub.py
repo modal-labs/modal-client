@@ -14,7 +14,7 @@ from modal._types import typechecked
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
-from modal_utils.decorator_utils import decorator_with_options, decorator_with_options_deprecated
+from modal_utils.decorator_utils import decorator_with_options_unsupported, decorator_with_options
 from .retries import Retries
 
 from ._function_utils import FunctionInfo
@@ -80,7 +80,7 @@ class _Stub:
     **Registering functions with an app**
 
     The most common way to explicitly register an Object with an app is through the
-    `@stub.function` decorator. It both registers the annotated function itself and
+    `@stub.function()` decorator. It both registers the annotated function itself and
     other passed objects, like schedules and secrets, with the app:
 
     ```python
@@ -446,7 +446,7 @@ class _Stub:
         **Example**
 
         ```python
-        @stub.local_entrypoint
+        @stub.local_entrypoint()
         def main():
             some_modal_function.call()
         ```
@@ -474,7 +474,7 @@ class _Stub:
         CLI options. For example, the following function can be called with `modal run stub_module.py --foo 1 --bar "hello"`:
 
         ```python
-        @stub.local_entrypoint
+        @stub.local_entrypoint()
         def main(foo: int, bar: str):
             some_modal_function.call(foo, bar)
         ```
@@ -647,7 +647,7 @@ class _Stub:
         self._add_function(function, [*base_mounts, *mounts])
         return function_handle
 
-    @decorator_with_options_deprecated
+    @decorator_with_options_unsupported
     @typechecked
     def web_endpoint(
         self,
@@ -702,7 +702,7 @@ class _Stub:
             ),
         )
 
-    @decorator_with_options_deprecated
+    @decorator_with_options_unsupported
     @typechecked
     def asgi_app(
         self,
@@ -742,7 +742,7 @@ class _Stub:
             ),
         )
 
-    @decorator_with_options_deprecated
+    @decorator_with_options_unsupported
     @typechecked
     def wsgi_app(
         self,

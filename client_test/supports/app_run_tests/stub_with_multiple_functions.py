@@ -4,11 +4,11 @@ import modal
 stub = modal.Stub()
 
 
-@stub.function
+@stub.function()
 def foo():
     pass
 
 
-@stub.function
+@stub.function()
 def bar():
     pass

@@ -237,7 +237,7 @@ Given the following example `app.py`:
 ```
 stub = modal.Stub()
 
-@stub.function
+@stub.function()
 def foo():
     ...
 ```
