@@ -26,7 +26,7 @@ from .app import _App, _container_app, is_local
 from .client import _Client
 from .config import logger
 from .exception import InvalidError, deprecation_warning
-from .functions import _Function, _FunctionHandle, class_decorator
+from .functions import _Function, _FunctionHandle, class_decorator, WebhookConfig
 from .gpu import GPU_T
 from .image import _Image, _ImageHandle
 from .mount import _get_client_mount, _Mount
@@ -51,12 +51,6 @@ class LocalEntrypoint:
 
     def __call__(self, *args, **kwargs):
         return self.raw_f(*args, **kwargs)
-
-
-class WebhookConfig:
-    def __init__(self, raw_f: Callable[..., Any], webhook_config: api_pb2.WebhookConfig):
-        self.raw_f = raw_f
-        self.webhook_config = webhook_config
 
 
 def check_sequence(items: typing.Sequence[typing.Any], item_type: typing.Type[typing.Any], error_msg: str):

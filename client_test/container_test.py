@@ -461,6 +461,32 @@ def test_webhook_streaming_async(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
+def test_service_function(unix_servicer, event_loop):
+    client, items = _run_container(unix_servicer, "modal_test_support.functions", "Service.f")
+    assert len(items) == 1
+    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert items[0].result.data == serialize(42*111)
+
+
+@skip_windows_unix_socket
+def test_service_web_endpoint(unix_servicer, event_loop):
+    inputs = _get_web_inputs()
+    client, items = _run_container(
+        unix_servicer,
+        "modal_test_support.functions",
+        "Service.web",
+        inputs=inputs,
+        webhook_type=api_pb2.WEBHOOK_TYPE_FUNCTION,
+    )
+
+    assert len(items) == 3
+    assert items[1].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert items[1].result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
+    second_message = deserialize(items[1].result.data, client)
+    assert json.loads(second_message["body"]) == {"ret": "space" * 111}
+
+
+@skip_windows_unix_socket
 def test_container_heartbeats(unix_servicer, event_loop):
     client, items = _run_container(unix_servicer, "modal_test_support.functions", "square")
     assert any(isinstance(request, api_pb2.ContainerHeartbeatRequest) for request in unix_servicer.requests)

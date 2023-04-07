@@ -463,6 +463,12 @@ class FunctionStats:
     num_total_runners: int
 
 
+class WebhookConfig:
+    def __init__(self, raw_f: Callable[..., Any], webhook_config: api_pb2.WebhookConfig):
+        self.raw_f = raw_f
+        self.webhook_config = webhook_config
+
+
 class _FunctionHandle(_Handle, type_prefix="fu"):
     """Interact with a Modal Function of a live app."""
 
@@ -1143,7 +1149,7 @@ def _set_current_input_id(input_id: Optional[str]):
 def class_decorator(cls: type, method_decorator):
     new_dict = {}
     for k, v in cls.__dict__.items():
-        if callable(v):
+        if callable(v) or isinstance(v, WebhookConfig):
             # TODO(erikbern): ignore classmethod, staticmethod etc
             new_dict[k] = method_decorator(v)
     new_cls = type.__new__(type, cls.__name__, (cls,), new_dict)

@@ -186,3 +186,16 @@ def fastapi_app():
         return {"hello": arg}
 
     return web_app
+
+
+@stub.service()
+class Service:
+    def __enter__(self):
+        self._k = 111
+
+    def f(self, x):
+        return self._k * x
+
+    @stub.web_endpoint()
+    def web(self, arg):
+        return {"ret": arg * self._k}
