@@ -666,7 +666,9 @@ class _Image(_Provider[_ImageHandle]):
         *packages: Union[str, List[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
         channels: List[str] = [],  # A list of Conda channels, eg. ["conda-forge", "nvidia"]
     ) -> "_Image":
-        """Install a list of additional packages using conda."""
+        """Install a list of additional packages using conda. Note that in most cases, using `Image.micromamba()`
+        is recommended over `Image.conda()`, as it leads to significantly faster image build times."""
+
         pkgs = _flatten_str_args("conda_install", "packages", packages)
         if not pkgs:
             return self
@@ -716,6 +718,28 @@ class _Image(_Provider[_ImageHandle]):
                 f"RUN micromamba install -n base -y python={python_version} pip -c conda-forge",
             ],
         )
+
+    @typechecked
+    def micromamba_install(
+        self,
+        *packages: Union[str, List[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
+        channels: List[str] = [],  # A list of Conda channels, eg. ["conda-forge", "nvidia"]
+    ) -> "_Image":
+        """Install a list of additional packages using micromamba."""
+
+        pkgs = _flatten_str_args("micromamba_install", "packages", packages)
+        if not pkgs:
+            return self
+
+        package_args = " ".join(shlex.quote(pkg) for pkg in pkgs)
+        channel_args = "".join(f" -c {channel}" for channel in channels)
+
+        dockerfile_commands = [
+            "FROM base",
+            f"RUN micromamba install {package_args}{channel_args} --yes",
+        ]
+
+        return self.extend(dockerfile_commands=dockerfile_commands)
 
     @staticmethod
     def _registry_setup_commands(
