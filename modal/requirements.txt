@@ -11,7 +11,7 @@ fastprogress==1.0.0
 grpclib==0.4.3
 importlib_metadata==4.8.1
 ipython>=7.34.0
-protobuf>=4.21.0
+protobuf>=3.19.0
 python-multipart>=0.0.5
 rich==12.3.0
 synchronicity==0.4.2
