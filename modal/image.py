@@ -138,6 +138,7 @@ class _Image(_Provider[_ImageHandle]):
         build_function=None,
         context_mount: Optional[_Mount] = None,
         image_registry_config: Optional[_ImageRegistryConfig] = None,
+        force_build: bool = False,
     ):
         if gpu_config is None:
             gpu_config = api_pb2.GPUConfig()
@@ -225,6 +226,7 @@ class _Image(_Provider[_ImageHandle]):
                 image=image_definition,
                 existing_image_id=existing_object_id,  # TODO: ignored
                 build_function_id=build_function_id,
+                force_build=force_build,
             )
             resp = await resolver.client.stub.ImageGetOrCreate(req)
             image_id = resp.image_id
@@ -331,6 +333,7 @@ class _Image(_Provider[_ImageHandle]):
         index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
         extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
         pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
+        force_build: bool = False,
     ) -> "_Image":
         """Install a list of Python packages using pip.
 
@@ -362,7 +365,7 @@ class _Image(_Provider[_ImageHandle]):
             # Maybe let's remove it later when/if client requirements change.
         ]
 
-        return self.extend(dockerfile_commands=dockerfile_commands)
+        return self.extend(dockerfile_commands=dockerfile_commands, force_build=force_build)
 
     @typechecked
     def pip_install_private_repos(
@@ -370,6 +373,7 @@ class _Image(_Provider[_ImageHandle]):
         *repositories: str,
         git_user: str,
         secrets: Sequence[_Secret] = [],
+        force_build: bool = False,
     ) -> "_Image":
         """
         Install a list of Python packages from private git repositories using pip.
@@ -442,6 +446,7 @@ class _Image(_Provider[_ImageHandle]):
         return self.extend(
             dockerfile_commands=dockerfile_commands,
             secrets=secrets,
+            force_build=force_build,
         )
 
     @typechecked
@@ -449,6 +454,7 @@ class _Image(_Provider[_ImageHandle]):
         self,
         requirements_txt: str,  # Path to a requirements.txt file.
         find_links: Optional[str] = None,
+        force_build: bool = False,
     ) -> "_Image":
         """Install a list of Python packages from a `requirements.txt` file."""
 
@@ -466,6 +472,7 @@ class _Image(_Provider[_ImageHandle]):
         return self.extend(
             dockerfile_commands=dockerfile_commands,
             context_files=context_files,
+            force_build=force_build,
         )
 
     @typechecked
@@ -473,6 +480,7 @@ class _Image(_Provider[_ImageHandle]):
         self,
         pyproject_toml: str,
         optional_dependencies: List[str] = [],
+        force_build: bool = False,
     ) -> "_Image":
         """Install dependencies specified by a `pyproject.toml` file.
 
@@ -498,7 +506,7 @@ class _Image(_Provider[_ImageHandle]):
                 if dep_group_name in optionals:
                     dependencies.extend(optionals[dep_group_name])
 
-        return self.pip_install(*dependencies)
+        return self.pip_install(*dependencies, force_build=force_build)
 
     @typechecked
     def poetry_install_from_file(
@@ -509,6 +517,7 @@ class _Image(_Provider[_ImageHandle]):
         ] = None,  # Path to the lockfile. If not provided, uses poetry.lock in the same directory.
         ignore_lockfile: bool = False,  # If set to True, it will not use poetry.lock
         old_installer: bool = False,  # If set to True, use old installer. See https://github.com/python-poetry/poetry/issues/3336
+        force_build: bool = False,
     ) -> "_Image":
         """Install poetry *dependencies* specified by a pyproject.toml file.
 
@@ -553,6 +562,7 @@ class _Image(_Provider[_ImageHandle]):
         return self.extend(
             dockerfile_commands=dockerfile_commands,
             context_files=context_files,
+            force_build=force_build,
         )
 
     @typechecked
@@ -565,6 +575,7 @@ class _Image(_Provider[_ImageHandle]):
         context_mount: Optional[
             _Mount
         ] = None,  # modal.Mount with local files to supply as build context for COPY commands
+        force_build: bool = False,
     ) -> "_Image":
         """Extend an image with arbitrary Dockerfile-like commands."""
 
@@ -581,6 +592,7 @@ class _Image(_Provider[_ImageHandle]):
             secrets=secrets,
             gpu_config=parse_gpu_config(gpu, raise_on_true=False),
             context_mount=context_mount,
+            force_build=force_build,
         )
 
     @typechecked
@@ -589,6 +601,7 @@ class _Image(_Provider[_ImageHandle]):
         *commands: Union[str, List[str]],
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
+        force_build: bool = False,
     ) -> "_Image":
         """Extend an image with a list of shell commands to run."""
         cmds = _flatten_str_args("run_commands", "commands", commands)
@@ -601,11 +614,12 @@ class _Image(_Provider[_ImageHandle]):
             dockerfile_commands=dockerfile_commands,
             secrets=secrets,
             gpu_config=parse_gpu_config(gpu, raise_on_true=False),
+            force_build=force_build,
         )
 
     @staticmethod
     @typechecked
-    def conda(python_version: str = "3.9") -> "_Image":
+    def conda(python_version: str = "3.9", force_build: bool = False) -> "_Image":
         """A Conda base image, using miniconda3 and derived from the official Docker Hub image."""
         _validate_python_version(python_version)
         requirements_path = _get_client_requirements_path()
@@ -649,6 +663,7 @@ class _Image(_Provider[_ImageHandle]):
         return _Image._from_args(
             dockerfile_commands=dockerfile_commands,
             context_files={"/modal_requirements.txt": requirements_path},
+            force_build=force_build,
         ).dockerfile_commands(
             [
                 "ENV CONDA_EXE=/usr/local/bin/conda",
@@ -665,6 +680,7 @@ class _Image(_Provider[_ImageHandle]):
         self,
         *packages: Union[str, List[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
         channels: List[str] = [],  # A list of Conda channels, eg. ["conda-forge", "nvidia"]
+        force_build: bool = False,
     ) -> "_Image":
         """Install a list of additional packages using conda. Note that in most cases, using `Image.micromamba()`
         is recommended over `Image.conda()`, as it leads to significantly faster image build times."""
@@ -682,12 +698,13 @@ class _Image(_Provider[_ImageHandle]):
             "&& conda clean --yes --index-cache --tarballs --tempfiles --logfiles",
         ]
 
-        return self.extend(dockerfile_commands=dockerfile_commands)
+        return self.extend(dockerfile_commands=dockerfile_commands, force_build=force_build)
 
     @typechecked
     def conda_update_from_environment(
         self,
         environment_yml: str,
+        force_build: bool = False,
     ) -> "_Image":
         """Update conda environment using dependencies from a given environment.yml file."""
 
@@ -702,11 +719,16 @@ class _Image(_Provider[_ImageHandle]):
             "&& conda clean --yes --index-cache --tarballs --tempfiles --logfiles",
         ]
 
-        return self.extend(dockerfile_commands=dockerfile_commands, context_files=context_files)
+        return self.extend(
+            dockerfile_commands=dockerfile_commands, context_files=context_files, force_build=force_build
+        )
 
     @staticmethod
     @typechecked
-    def micromamba(python_version: str = "3.9") -> "_Image":
+    def micromamba(
+        python_version: str = "3.9",
+        force_build: bool = False,
+    ) -> "_Image":
         """A Micromamba base image. Micromamba allows for fast building of small conda-based containers."""
         _validate_python_version(python_version)
 
@@ -717,6 +739,7 @@ class _Image(_Provider[_ImageHandle]):
                 "ENV MAMBA_DOCKERFILE_ACTIVATE=1",
                 f"RUN micromamba install -n base -y python={python_version} pip -c conda-forge",
             ],
+            force_build=force_build,
         )
 
     @typechecked
@@ -724,6 +747,7 @@ class _Image(_Provider[_ImageHandle]):
         self,
         *packages: Union[str, List[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
         channels: List[str] = [],  # A list of Conda channels, eg. ["conda-forge", "nvidia"]
+        force_build: bool = False,
     ) -> "_Image":
         """Install a list of additional packages using micromamba."""
 
@@ -739,7 +763,7 @@ class _Image(_Provider[_ImageHandle]):
             f"RUN micromamba install {package_args}{channel_args} --yes",
         ]
 
-        return self.extend(dockerfile_commands=dockerfile_commands)
+        return self.extend(dockerfile_commands=dockerfile_commands, force_build=force_build)
 
     @staticmethod
     def _registry_setup_commands(
@@ -758,7 +782,11 @@ class _Image(_Provider[_ImageHandle]):
     @staticmethod
     @typechecked
     def from_dockerhub(
-        tag: str, setup_dockerfile_commands: List[str] = [], setup_commands: List[str] = [], **kwargs
+        tag: str,
+        setup_dockerfile_commands: List[str] = [],
+        setup_commands: List[str] = [],
+        force_build: bool = False,
+        **kwargs,
     ) -> "_Image":
         """
         Build a Modal image from a pre-existing image on Docker Hub.
@@ -795,6 +823,7 @@ class _Image(_Provider[_ImageHandle]):
         return _Image._from_args(
             dockerfile_commands=dockerfile_commands,
             context_files={"/modal_requirements.txt": requirements_path},
+            force_build=force_build,
             **kwargs,
         )
 
@@ -804,6 +833,7 @@ class _Image(_Provider[_ImageHandle]):
         tag: str,
         secret: Optional[_Secret] = None,
         setup_dockerfile_commands: List[str] = [],
+        force_build: bool = False,
         **kwargs,
     ) -> "_Image":
         """
@@ -840,6 +870,7 @@ class _Image(_Provider[_ImageHandle]):
             dockerfile_commands=dockerfile_commands,
             context_files={"/modal_requirements.txt": requirements_path},
             image_registry_config=_ImageRegistryConfig(api_pb2.RegistryType.GCP_ARTIFACT_REGISTRY, secret),
+            force_build=force_build,
             **kwargs,
         )
 
@@ -850,6 +881,7 @@ class _Image(_Provider[_ImageHandle]):
         secret: Optional[_Secret] = None,
         setup_dockerfile_commands: List[str] = [],
         setup_commands: List[str] = [],
+        force_build: bool = False,
         **kwargs,
     ) -> "_Image":
         """
@@ -894,6 +926,7 @@ class _Image(_Provider[_ImageHandle]):
             dockerfile_commands=dockerfile_commands,
             context_files={"/modal_requirements.txt": requirements_path},
             image_registry_config=_ImageRegistryConfig(api_pb2.RegistryType.ECR, secret),
+            force_build=force_build,
             **kwargs,
         )
 
@@ -904,6 +937,7 @@ class _Image(_Provider[_ImageHandle]):
         context_mount: Optional[
             _Mount
         ] = None,  # modal.Mount with local files to supply as build context for COPY commands
+        force_build: bool = False,
     ) -> "_Image":
         """Build a Modal image from a local Dockerfile.
 
@@ -934,11 +968,12 @@ class _Image(_Provider[_ImageHandle]):
         return base_image.extend(
             dockerfile_commands=dockerfile_commands,
             context_files={"/modal_requirements.txt": requirements_path},
+            force_build=force_build,
         )
 
     @staticmethod
     @typechecked
-    def debian_slim(python_version: Optional[str] = None) -> "_Image":
+    def debian_slim(python_version: Optional[str] = None, force_build: bool = False) -> "_Image":
         """Default image, based on the official `python:X.Y.Z-slim-bullseye` Docker images."""
         python_version = _dockerhub_python_version(python_version)
 
@@ -958,12 +993,14 @@ class _Image(_Provider[_ImageHandle]):
         return _Image._from_args(
             dockerfile_commands=dockerfile_commands,
             context_files={"/modal_requirements.txt": requirements_path},
+            force_build=force_build,
         )
 
     @typechecked
     def apt_install(
         self,
         *packages: Union[str, List[str]],  # A list of packages, e.g. ["ssh", "libpq-dev"]
+        force_build: bool = False,
     ) -> "_Image":
         """Install a list of Debian packages using `apt`.
 
@@ -985,7 +1022,7 @@ class _Image(_Provider[_ImageHandle]):
             f"RUN apt-get install -y {package_args}",
         ]
 
-        return self.extend(dockerfile_commands=dockerfile_commands)
+        return self.extend(dockerfile_commands=dockerfile_commands, force_build=force_build)
 
     @typechecked
     def run_function(
@@ -1001,6 +1038,7 @@ class _Image(_Provider[_ImageHandle]):
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         timeout: Optional[int] = 86400,  # Maximum execution time of the function in seconds.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
+        force_build: bool = False,
     ) -> "_Image":
         """Run user-defined function `raw_function` as an image build step. The function runs just like an ordinary Modal
         function, and any kwargs accepted by `@stub.function` (such as `Mount`s, `SharedVolume`s, and resource requests) can
@@ -1052,7 +1090,7 @@ class _Image(_Provider[_ImageHandle]):
             cpu=cpu,
             cloud=cloud,
         )
-        return self.extend(build_function=function)
+        return self.extend(build_function=function, force_build=force_build)
 
     @typechecked
     def env(self, vars: Dict[str, str]) -> "_Image":
