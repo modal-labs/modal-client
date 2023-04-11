@@ -368,3 +368,21 @@ def test_image_gpu(client, servicer):
     with stub.run(client=client) as running_app:
         layers = get_image_layers(running_app["image"].object_id, servicer)
         assert layers[0].gpu_config.type == api_pb2.GPU_TYPE_A10G
+
+
+def test_image_force_build(client, servicer):
+    stub = Stub()
+    stub["image"] = (
+        Image.debian_slim().run_commands("echo 1").pip_install("foo", force_build=True).run_commands("echo 2")
+    )
+    with stub.run(client=client):
+        assert servicer.force_built_images == [2, 3]
+
+    stub["image"] = (
+        Image.from_gcp_artifact_registry("foo", force_build=True)
+        .run_commands("echo 1")
+        .pip_install("foo", force_build=True)
+        .run_commands("echo 2")
+    )
+    with stub.run(client=client):
+        assert servicer.force_built_images == [2, 3, 4, 5, 6, 7]
