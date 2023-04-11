@@ -126,6 +126,8 @@ class _Image(_Provider[_ImageHandle]):
     such as `modal.Image.debian_slim`, `modal.Image.from_dockerhub`, or `modal.Image.conda`.
     """
 
+    force_build: bool = False
+
     @staticmethod
     @typechecked
     def _from_args(
@@ -278,7 +280,9 @@ class _Image(_Provider[_ImageHandle]):
             return _ImageHandle._from_id(image_id, resolver.client, None)
 
         rep = f"Image({dockerfile_commands})"
-        return _Image._from_loader(_load, rep)
+        obj = _Image._from_loader(_load, rep)
+        obj.force_build = force_build
+        return obj
 
     def extend(self, **kwargs) -> "_Image":
         """Extend an image (named "base") with additional options or commands.
@@ -365,7 +369,7 @@ class _Image(_Provider[_ImageHandle]):
             # Maybe let's remove it later when/if client requirements change.
         ]
 
-        return self.extend(dockerfile_commands=dockerfile_commands, force_build=force_build)
+        return self.extend(dockerfile_commands=dockerfile_commands, force_build=self.force_build or force_build)
 
     @typechecked
     def pip_install_private_repos(
@@ -446,7 +450,7 @@ class _Image(_Provider[_ImageHandle]):
         return self.extend(
             dockerfile_commands=dockerfile_commands,
             secrets=secrets,
-            force_build=force_build,
+            force_build=self.force_build or force_build,
         )
 
     @typechecked
@@ -472,7 +476,7 @@ class _Image(_Provider[_ImageHandle]):
         return self.extend(
             dockerfile_commands=dockerfile_commands,
             context_files=context_files,
-            force_build=force_build,
+            force_build=self.force_build or force_build,
         )
 
     @typechecked
@@ -506,7 +510,7 @@ class _Image(_Provider[_ImageHandle]):
                 if dep_group_name in optionals:
                     dependencies.extend(optionals[dep_group_name])
 
-        return self.pip_install(*dependencies, force_build=force_build)
+        return self.pip_install(*dependencies, force_build=self.force_build or force_build)
 
     @typechecked
     def poetry_install_from_file(
@@ -562,7 +566,7 @@ class _Image(_Provider[_ImageHandle]):
         return self.extend(
             dockerfile_commands=dockerfile_commands,
             context_files=context_files,
-            force_build=force_build,
+            force_build=self.force_build or force_build,
         )
 
     @typechecked
@@ -592,7 +596,7 @@ class _Image(_Provider[_ImageHandle]):
             secrets=secrets,
             gpu_config=parse_gpu_config(gpu, raise_on_true=False),
             context_mount=context_mount,
-            force_build=force_build,
+            force_build=self.force_build or force_build,
         )
 
     @typechecked
@@ -614,7 +618,7 @@ class _Image(_Provider[_ImageHandle]):
             dockerfile_commands=dockerfile_commands,
             secrets=secrets,
             gpu_config=parse_gpu_config(gpu, raise_on_true=False),
-            force_build=force_build,
+            force_build=self.force_build or force_build,
         )
 
     @staticmethod
@@ -698,7 +702,7 @@ class _Image(_Provider[_ImageHandle]):
             "&& conda clean --yes --index-cache --tarballs --tempfiles --logfiles",
         ]
 
-        return self.extend(dockerfile_commands=dockerfile_commands, force_build=force_build)
+        return self.extend(dockerfile_commands=dockerfile_commands, force_build=self.force_build or force_build)
 
     @typechecked
     def conda_update_from_environment(
@@ -720,7 +724,9 @@ class _Image(_Provider[_ImageHandle]):
         ]
 
         return self.extend(
-            dockerfile_commands=dockerfile_commands, context_files=context_files, force_build=force_build
+            dockerfile_commands=dockerfile_commands,
+            context_files=context_files,
+            force_build=self.force_build or force_build,
         )
 
     @staticmethod
@@ -763,7 +769,7 @@ class _Image(_Provider[_ImageHandle]):
             f"RUN micromamba install {package_args}{channel_args} --yes",
         ]
 
-        return self.extend(dockerfile_commands=dockerfile_commands, force_build=force_build)
+        return self.extend(dockerfile_commands=dockerfile_commands, force_build=self.force_build or force_build)
 
     @staticmethod
     def _registry_setup_commands(
@@ -1022,7 +1028,7 @@ class _Image(_Provider[_ImageHandle]):
             f"RUN apt-get install -y {package_args}",
         ]
 
-        return self.extend(dockerfile_commands=dockerfile_commands, force_build=force_build)
+        return self.extend(dockerfile_commands=dockerfile_commands, force_build=self.force_build or force_build)
 
     @typechecked
     def run_function(
@@ -1090,7 +1096,7 @@ class _Image(_Provider[_ImageHandle]):
             cpu=cpu,
             cloud=cloud,
         )
-        return self.extend(build_function=function, force_build=force_build)
+        return self.extend(build_function=function, force_build=self.force_build or force_build)
 
     @typechecked
     def env(self, vars: Dict[str, str]) -> "_Image":
