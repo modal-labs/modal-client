@@ -66,6 +66,9 @@ class Resolver:
     def client(self):
         return self._client
 
+    async def preload(self, obj) -> Optional[str]:
+        return await obj._preload(self)
+
     async def load(self, obj, existing_object_id: Optional[str] = None):
         cached_obj = self._local_uuid_to_object.get(obj.local_uuid)
         if cached_obj is not None:

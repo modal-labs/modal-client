@@ -4,8 +4,10 @@ import pickle
 
 import cloudpickle
 
+from synchronicity.synchronizer import TARGET_INTERFACE_ATTR
+from modal_utils import async_utils
 from .exception import InvalidError
-from .object import _Handle
+from .object import _Handle, Handle, AioHandle
 
 PICKLE_PROTOCOL = 4  # Support older Python versions.
 
@@ -15,23 +17,31 @@ class Pickler(cloudpickle.Pickler):
         super().__init__(buf, protocol=PICKLE_PROTOCOL)
 
     def persistent_id(self, obj):
-        if not isinstance(obj, _Handle):
+        if not isinstance(obj, (_Handle, Handle, AioHandle)):
             return
         if not obj.object_id:
             raise InvalidError(f"Can't serialize object {obj} which hasn't been created.")
-        return obj.object_id
+        return obj.object_id, getattr(obj, TARGET_INTERFACE_ATTR, None)
 
 
 class Unpickler(pickle.Unpickler):
-    def __init__(self, client, buf):
+    def __init__(self, client, buf, app=None):
         self.client = client
+        self.app = app
         super().__init__(buf)
 
     def persistent_load(self, pid):
-        object_id = pid
-        # TODO(erikbern): we should get the proto somehow,
-        # for functions
-        return _Handle._from_id(object_id, self.client, None)
+        object_id, target_interface = pid
+        if object_id.startswith("fu-"):  # TODO(elias): ugly check
+            function_handle = self.app._object_id_to_object[object_id]
+            proto = function_handle._function_definition
+        else:
+            proto = None
+
+        handle = _Handle._from_id(object_id, self.client, proto)
+        if target_interface:
+            return async_utils.synchronizer._translate_out(handle, target_interface)
+        return handle
 
 
 def serialize(obj):
@@ -41,6 +51,6 @@ def serialize(obj):
     return buf.getvalue()
 
 
-def deserialize(s: bytes, client):
+def deserialize(s: bytes, client, app=None):
     """Deserializes object and replaces all client placeholders by self."""
-    return Unpickler(client, io.BytesIO(s)).load()
+    return Unpickler(client, io.BytesIO(s), app=app).load()

@@ -488,6 +488,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         self._is_generator = proto.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
         self._web_url = proto.web_url
         self._function_name = proto.function_name
+        self._function_definition = proto
 
     def _initialize_from_local(self, stub, info: FunctionInfo):
         self._stub = stub
@@ -758,7 +759,7 @@ class _Function(_Provider[_FunctionHandle]):
         raw_f = function_info.raw_f
         self._stub = _stub
         assert callable(raw_f)
-        self._info = FunctionInfo(raw_f, serialized, name_override=name)
+        self._info = function_info
         if schedule is not None:
             if not self._info.is_nullary():
                 raise InvalidError(
@@ -846,8 +847,14 @@ class _Function(_Provider[_FunctionHandle]):
 
         self._function_handle = function_handle
 
-        rep = r"Function({self._tag})"
+        rep = f"Function({self._tag})"
         super().__init__(self._load, rep)
+
+    async def _preload(self, resolver: Resolver):
+        req = api_pb2.FunctionReserveIdRequest(app_id=resolver.app_id, tag=self._tag)
+        response = await resolver.client.stub.FunctionReserveId(req)
+        self._function_handle._initialize_handle(resolver.client, response.function_id)
+        return response.function_id
 
     async def _load(self, resolver: Resolver, existing_object_id: str):
         status_row = resolver.add_status_row()
@@ -928,7 +935,7 @@ class _Function(_Provider[_FunctionHandle]):
             # Use cloudpickle. Used when working w/ Jupyter notebooks.
             # serialize at _load time, not function decoration time
             # otherwise we can't capture a surrounding class for lifetime methods etc.
-            function_serialized = self._info.serialized_function
+            function_serialized = self._info.serialized_function()
             mod = inspect.getmodule(self._raw_f)
 
             try:

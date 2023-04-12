@@ -58,6 +58,7 @@ class _App:
         self._client = client
         self._tag_to_object = tag_to_object or {}
         self._tag_to_existing_id = tag_to_existing_id or {}
+        self._object_id_to_object = {}  # only used by container
 
     @property
     def client(self) -> _Client:
@@ -75,6 +76,21 @@ class _App:
         """Create objects that have been defined but not created on the server."""
         resolver = Resolver(output_mgr, self._client, self.app_id)
         with resolver.display():
+            # Preload all functions to make sure they have ids assigned before they are loaded.
+            # This is important to make sure any enclosed function handle references in serialized
+            # functions have ids assigned to them when the function is serialized.
+            # Note: when handles/providers are merged, all objects will need to get ids pre-assigned
+            # like this in order to be referrable within serialized functions
+            for tag, provider in blueprint.items():
+                existing_object_id = self._tag_to_existing_id.get(tag)
+                if not existing_object_id:
+                    # Note: preload only currently implemented for Functions, returns None otherwise
+                    # this is to ensure that directly referenced functions from the global scope has
+                    # ids associated with them when they are serialized into other functions
+                    object_id = await resolver.preload(provider)
+                    if object_id is not None:
+                        self._tag_to_existing_id[tag] = object_id
+
             for tag, provider in blueprint.items():
                 existing_object_id = self._tag_to_existing_id.get(tag)
                 created_obj = await resolver.load(provider, existing_object_id)
@@ -127,9 +143,11 @@ class _App:
 
         req = api_pb2.AppGetObjectsRequest(app_id=app_id)
         resp = await retry_transient_errors(self._client.stub.AppGetObjects, req)
+        self._object_id_to_object = {}
         for item in resp.items:
             obj = _Handle._from_id(item.object_id, self._client, item.function)
             self._tag_to_object[item.tag] = obj
+            self._object_id_to_object[obj.object_id] = obj
 
     @staticmethod
     async def init_container(client: _Client, app_id: str) -> "_App":

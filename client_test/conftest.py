@@ -92,6 +92,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.blob_create_metadata = None
         self.blob_multipart_threshold = 10_000_000
 
+        self.reserved_functions = set()
         self.app_functions = {}
         self.fcidx = 0
         self.created_secrets = 0
@@ -317,6 +318,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.FunctionPutOutputsRequest = await stream.recv_message()
         self.container_outputs.append(request)
         await stream.send_message(Empty())
+
+    async def FunctionReserveId(self, stream):
+        self.n_functions += 1
+        function_id = f"fu-{self.n_functions}"
+        self.reserved_functions.add(function_id)
+        await stream.send_message(api_pb2.FunctionReserveIdResponse(function_id=function_id))
 
     async def FunctionCreate(self, stream):
         request: api_pb2.FunctionCreateRequest = await stream.recv_message()

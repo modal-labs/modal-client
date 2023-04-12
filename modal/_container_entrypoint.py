@@ -115,7 +115,8 @@ class _FunctionIOManager:
 
     @wrap()
     async def initialize_app(self):
-        await _App.init_container(self._client, self.app_id)
+        self.app = await _App.init_container(self._client, self.app_id)
+        return self.app
 
     async def _heartbeat(self):
         request = api_pb2.ContainerHeartbeatRequest()
@@ -133,8 +134,9 @@ class _FunctionIOManager:
             tc.infinite_loop(self._heartbeat, sleep=HEARTBEAT_INTERVAL)
             yield
 
-    async def get_serialized_function(self) -> tuple[Optional[Any], Callable]:
+    async def get_serialized_function(self, container_app) -> tuple[Optional[Any], Callable]:
         # Fetch the serialized function definition
+        # TODO: we shouldn't have to do this request, since we already have the serialized function as part of the container app load
         request = api_pb2.FunctionGetSerializedRequest(function_id=self.function_id)
         response = await self.client.stub.FunctionGetSerialized(request)
         fun = self.deserialize(response.function_serialized)
@@ -150,7 +152,7 @@ class _FunctionIOManager:
         return serialize(obj)
 
     def deserialize(self, data: bytes) -> Any:
-        return deserialize(data, self._client)
+        return deserialize(data, self._client, self.app)
 
     @wrap()
     async def populate_input_blobs(self, item):
@@ -542,12 +544,12 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     _function_io_manager = _FunctionIOManager(container_args, client)
     function_io_manager, aio_function_io_manager = synchronize_apis(_function_io_manager)
 
-    function_io_manager.initialize_app()
+    container_app = function_io_manager.initialize_app()
 
     with function_io_manager.heartbeats():
         # If this is a serialized function, fetch the definition from the server
         if container_args.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
-            ser_cls, ser_fun = function_io_manager.get_serialized_function()
+            ser_cls, ser_fun = function_io_manager.get_serialized_function(container_app)
         else:
             ser_cls, ser_fun = None, None
 
