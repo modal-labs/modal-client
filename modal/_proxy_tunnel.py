@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import contextlib
+import os
 import subprocess
 import tempfile
 
@@ -16,6 +17,17 @@ def proxy_tunnel(info: api_pb2.ProxyInfo):
         f = open(t.name, "w")
         f.write(info.proxy_key)
         f.close()
+
+        if info.remote_addr:
+            # Forward port from address.
+            args = ["-L", f"{info.remote_port}:{info.remote_addr}:{info.remote_port}"]
+        else:
+            # Set up SOCKS proxy.
+            # TODO: add a local_port column and proxy_type (this is all being rewritten anyway)
+            args = ["-D", f"{info.remote_port}"]
+            os.environ["HTTP_PROXY"] = f"socks5://localhost:{info.remote_port}"
+            os.environ["HTTPS_PROXY"] = f"socks5://localhost:{info.remote_port}"
+
         cmd = [
             "autossh",
             "-M 0",  # don't use a monitoring port for autossh
@@ -24,8 +36,7 @@ def proxy_tunnel(info: api_pb2.ProxyInfo):
             "-T",  # ignore the tty
             "-n",  # no input
             "-N",  # don't execute a command
-            "-L",
-            f"{info.remote_port}:{info.remote_addr}:{info.remote_port}",  # tunnel
+            *args,
             f"ubuntu@{info.elastic_ip}",
             "-o",
             "StrictHostKeyChecking=no",  # avoid prompt for host
