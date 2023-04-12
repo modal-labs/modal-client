@@ -73,6 +73,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.n_queues = 0
         self.files_name2sha = {}
         self.files_sha2data = {}
+        self.function_id_for_function_call = {}
         self.client_calls = {}
         self.function_is_running = False
         self.n_functions = 0
@@ -346,8 +347,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def FunctionMap(self, stream):
         self.fcidx += 1
-        await stream.recv_message()
-        await stream.send_message(api_pb2.FunctionMapResponse(function_call_id=f"fc-{self.fcidx}"))
+        request: api_pb2.FunctionMapRequest = await stream.recv_message()
+        function_call_id = f"fc-{self.fcidx}"
+        self.function_id_for_function_call[function_call_id] = request.function_id
+        await stream.send_message(api_pb2.FunctionMapResponse(function_call_id=function_call_id))
 
     async def FunctionPutInputs(self, stream):
         request: api_pb2.FunctionPutInputsRequest = await stream.recv_message()

@@ -469,10 +469,10 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
     _web_url: Optional[str]
     _info: Optional[FunctionInfo]
     _stub: Optional["modal.stub._Stub"]
+    _function_definition: Optional[api_pb2.Function]
 
     def _initialize_from_empty(self):
         self._progress = None
-        self._is_generator = None
         self._info = None
         self._web_url = None
         self._output_mgr: Optional[OutputManager] = None
@@ -737,7 +737,6 @@ class _Function(_Provider[_FunctionHandle]):
         is_generator=False,
         gpu: GPU_T = None,
         # TODO: maybe break this out into a separate decorator for notebooks.
-        serialized: bool = False,
         base_mounts: Collection[_Mount] = (),
         mounts: Collection[_Mount] = (),
         shared_volumes: Dict[str, _SharedVolume] = {},

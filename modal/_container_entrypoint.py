@@ -134,9 +134,8 @@ class _FunctionIOManager:
             tc.infinite_loop(self._heartbeat, sleep=HEARTBEAT_INTERVAL)
             yield
 
-    async def get_serialized_function(self, container_app) -> tuple[Optional[Any], Callable]:
-        # Fetch the serialized function definition
-        # TODO: we shouldn't have to do this request, since we already have the serialized function as part of the container app load
+    async def get_serialized_function(self) -> tuple[Optional[Any], Callable]:
+        # Fetch the serialized function definition, since that's stripped from the container args
         request = api_pb2.FunctionGetSerializedRequest(function_id=self.function_id)
         response = await self.client.stub.FunctionGetSerialized(request)
         fun = self.deserialize(response.function_serialized)
@@ -544,12 +543,12 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     _function_io_manager = _FunctionIOManager(container_args, client)
     function_io_manager, aio_function_io_manager = synchronize_apis(_function_io_manager)
 
-    container_app = function_io_manager.initialize_app()
+    function_io_manager.initialize_app()
 
     with function_io_manager.heartbeats():
         # If this is a serialized function, fetch the definition from the server
         if container_args.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
-            ser_cls, ser_fun = function_io_manager.get_serialized_function(container_app)
+            ser_cls, ser_fun = function_io_manager.get_serialized_function()
         else:
             ser_cls, ser_fun = None, None
 

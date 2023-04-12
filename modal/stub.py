@@ -625,7 +625,6 @@ class _Stub:
             schedule=schedule,
             is_generator=is_generator,
             gpu=gpu,
-            serialized=serialized,
             base_mounts=base_mounts,
             mounts=mounts,
             shared_volumes=shared_volumes,

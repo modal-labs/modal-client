@@ -39,6 +39,8 @@ class _App:
 
     _tag_to_object: Dict[str, _Handle]
     _tag_to_existing_id: Dict[str, str]
+    _object_id_to_object: Dict[str, _Handle]
+
     _client: _Client
     _app_id: str
     _app_page_url: str
@@ -58,7 +60,7 @@ class _App:
         self._client = client
         self._tag_to_object = tag_to_object or {}
         self._tag_to_existing_id = tag_to_existing_id or {}
-        self._object_id_to_object = {}  # only used by container
+        self._object_id_to_object = {obj.object_id: obj for obj in self._tag_to_object.values()}
 
     @property
     def client(self) -> _Client:
@@ -100,9 +102,12 @@ class _App:
         # TODO(erikbern): we should delete objects from a previous version that are no longer needed
         # We just delete them from the app, but the actual objects will stay around
         indexed_object_ids = {tag: obj.object_id for tag, obj in self._tag_to_object.items()}
+        all_objects = resolver.objects()
+        for obj in all_objects:
+            self._object_id_to_object[obj.object_id] = obj
+
         unindexed_object_ids = list(
-            set(obj.object_id for obj in resolver.objects())
-            - set(obj.object_id for obj in self._tag_to_object.values())
+            set(obj.object_id for obj in all_objects) - set(obj.object_id for obj in self._tag_to_object.values())
         )
         req_set = api_pb2.AppSetObjectsRequest(
             app_id=self._app_id,
