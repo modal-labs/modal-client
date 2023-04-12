@@ -473,6 +473,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
 
     def _initialize_from_empty(self):
         self._progress = None
+        self._is_generator = None
         self._info = None
         self._web_url = None
         self._output_mgr: Optional[OutputManager] = None
