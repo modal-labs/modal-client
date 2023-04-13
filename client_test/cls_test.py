@@ -9,7 +9,7 @@ from modal_proto import api_pb2
 stub = modal.Stub()
 
 
-@stub.service(cpu=42)
+@stub.cls(cpu=42)
 class Foo:
     def bar(self, x):
         return x**3
@@ -37,7 +37,7 @@ def test_call_class_sync(client, servicer):
 aio_stub = modal.aio.AioStub()
 
 
-@aio_stub.service(cpu=42)
+@aio_stub.cls(cpu=42)
 class Bar:
     def baz(self, x):
         return x**3
@@ -56,7 +56,7 @@ def test_run_class_serialized(client, servicer):
             return x**3
 
     stub_ser = modal.Stub()
-    stub_ser.service(cpu=42, serialized=True)(FooSer)
+    stub_ser.cls(cpu=42, serialized=True)(FooSer)
 
     assert servicer.n_functions == 0
     with stub_ser.run(client=client):
@@ -81,7 +81,7 @@ def test_run_class_serialized(client, servicer):
 stub_local = modal.Stub()
 
 
-@stub_local.service(cpu=42)
+@stub_local.cls(cpu=42)
 class FooLocal:
     def bar(self, x):
         return x**3

@@ -856,7 +856,7 @@ class _Stub:
 
     @synchronizer.nowrap
     @decorator_with_options
-    def service(self, cls=None, **kwargs):
+    def cls(self, cls=None, **kwargs):
         # TOOD(erikbern): include all the docstring from stub.function
 
         # All methods to know what class they are on

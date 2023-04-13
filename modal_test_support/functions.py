@@ -188,8 +188,8 @@ def fastapi_app():
     return web_app
 
 
-@stub.service()
-class Service:
+@stub.cls()
+class Cls:
     def __enter__(self):
         self._k = 111
 
