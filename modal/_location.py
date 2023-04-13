@@ -10,6 +10,7 @@ class CloudProvider(Enum):
     AWS = api_pb2.CLOUD_PROVIDER_AWS
     GCP = api_pb2.CLOUD_PROVIDER_GCP
     AUTO = api_pb2.CLOUD_PROVIDER_AUTO
+    OCI = api_pb2.CLOUD_PROVIDER_OCI
 
 
 def parse_cloud_provider(value: str) -> "api_pb2.CloudProvider.V":
