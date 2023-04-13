@@ -648,9 +648,11 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
 
     def __call__(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
         if not self._info:
-            raise AttributeError(
-                "The definition for this function is missing so it is not possible to invoke it locally"
+            msg = (
+                "The definition for this function is missing so it is not possible to invoke it locally. "
+                "If this function was retrieved via `Function.lookup` you need to use `.call()`."
             )
+            raise AttributeError(msg)
 
         if self._self_obj:
             # This is a method on a class, so bind the self to the function
