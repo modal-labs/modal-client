@@ -650,7 +650,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         if not self._info:
             msg = (
                 "The definition for this function is missing so it is not possible to invoke it locally. "
-                "If this function was retrieved via `Function.lookup`, you need to use `.call()`."
+                "If this function was retrieved via `Function.lookup` you need to use `.call()`."
             )
             raise AttributeError(msg)
 
