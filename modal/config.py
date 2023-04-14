@@ -189,10 +189,12 @@ config = Config()
 
 # Logging
 
-logging.basicConfig(format="%(asctime)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%S%z")
 logger = logging.getLogger("modal-client")
+ch = logging.StreamHandler()
 log_level_numeric = logging.getLevelName(config["loglevel"])
-logger.setLevel(log_level_numeric)
+ch.setLevel(log_level_numeric)
+ch.setFormatter(logging.Formatter("%(asctime)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%S%z"))
+logger.addHandler(ch)
 
 # Utils to write config
 
