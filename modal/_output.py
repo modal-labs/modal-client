@@ -64,7 +64,7 @@ def step_progress(text: str = "") -> Spinner:
 
 
 def step_progress_update(spinner: Spinner, message: str):
-    spinner.update(text=Text(message, style="blue"))
+    spinner.update(text=message)
 
 
 def step_completed(message: str, is_substep: bool = False) -> RenderableType:
@@ -128,6 +128,7 @@ class OutputManager:
     _snapshot_progress: Optional[Progress]
     _line_buffers: dict[int, LineBufferedOutput]
     _status_spinner: Spinner
+    _app_page_url: Optional[str]
 
     def __init__(
         self, stdout: io.TextIOWrapper, show_progress: Optional[bool], status_spinner_text: str = "Running app..."
@@ -147,6 +148,7 @@ class OutputManager:
         self._snapshot_progress = None
         self._line_buffers = {}
         self._status_spinner = step_progress(status_spinner_text)
+        self._app_page_url = None
 
     def print_if_visible(self, renderable) -> None:
         if self._visible_progress:
@@ -162,7 +164,7 @@ class OutputManager:
         is placed in a `rich.Group` to allow for dynamic additions later."""
         self._function_progress = None
         self._current_render_group = Group(renderable)
-        return Live(self._current_render_group, console=self._console, transient=True, refresh_per_second=10)
+        return Live(self._current_render_group, console=self._console, transient=True, refresh_per_second=4)
 
     @property
     def function_progress(self) -> Progress:
@@ -236,6 +238,9 @@ class OutputManager:
 
         self._console.out(data, style=style, end="")
 
+    def update_app_page_url(self, app_page_url: str) -> None:
+        self._app_page_url = app_page_url
+
     def update_task_state(self, task_id: str, state: int):
         """Updates the state of a task, sets the new task status string."""
         self._task_states[task_id] = state
@@ -261,6 +266,8 @@ class OutputManager:
             message = f"Running ({tasks_completed} containers finished)..."
         else:
             message = "Running..."
+
+        message = f"[blue]{message}[/blue] [grey70]View app at [underline]{self._app_page_url}[/underline][/grey70]"
 
         # Set the new message
         step_progress_update(self._status_spinner, message)

@@ -59,6 +59,7 @@ async def run_stub(
         with output_mgr.ctx_if_visible(output_mgr.make_live(step_progress("Initializing..."))):
             initialized_msg = f"Initialized. [grey70]View app at [underline]{app._app_page_url}[/underline][/grey70]"
             output_mgr.print_if_visible(step_completed(initialized_msg))
+            output_mgr.update_app_page_url(app._app_page_url)
 
         # Start logs loop
         logs_loop = tc.create_task(get_app_logs_loop(app.app_id, client, output_mgr))
