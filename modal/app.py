@@ -41,6 +41,7 @@ class _App:
     _tag_to_existing_id: Dict[str, str]
     _client: _Client
     _app_id: str
+    _app_page_url: str
     _resolver: Optional[Resolver]
 
     def __init__(
