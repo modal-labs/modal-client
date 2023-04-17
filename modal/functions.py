@@ -469,6 +469,11 @@ class WebhookConfig:
         self.webhook_config = webhook_config
 
 
+class Method:
+    def __init__(self, raw_f: Callable[..., Any]):
+        self.raw_f = raw_f
+
+
 class _FunctionHandle(_Handle, type_prefix="fu"):
     """Interact with a Modal Function of a live app."""
 
@@ -1134,7 +1139,7 @@ def _set_current_input_id(input_id: Optional[str]):
 def class_decorator(cls: type, method_decorator):
     new_dict = {}
     for k, v in cls.__dict__.items():
-        if callable(v) or isinstance(v, WebhookConfig):
+        if isinstance(v, (Method, WebhookConfig)):
             # TODO(erikbern): ignore classmethod, staticmethod etc
             new_dict[k] = method_decorator(v)
     new_cls = type.__new__(type, cls.__name__, (cls,), new_dict)

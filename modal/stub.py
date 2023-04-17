@@ -26,7 +26,7 @@ from .app import _App, _container_app, is_local
 from .client import _Client
 from .config import logger
 from .exception import InvalidError, deprecation_warning
-from .functions import _Function, _FunctionHandle, class_decorator, WebhookConfig
+from .functions import _Function, _FunctionHandle, class_decorator, Method, WebhookConfig
 from .gpu import GPU_T
 from .image import _Image, _ImageHandle
 from .mount import _get_client_mount, _Mount
@@ -514,7 +514,7 @@ class _Stub:
     @typing.overload
     def function(
         self,
-        f: Union[WebhookConfig, Callable[..., Any]],  # The decorated function
+        f: Union[Method, WebhookConfig, Callable[..., Any]],  # The decorated function
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
@@ -544,7 +544,7 @@ class _Stub:
     @typechecked
     def function(
         self,
-        f: Optional[Union[WebhookConfig, Callable[..., Any]]] = None,  # The decorated function
+        f: Optional[Union[Method, WebhookConfig, Callable[..., Any]]] = None,  # The decorated function
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
@@ -575,7 +575,12 @@ class _Stub:
         if image is None:
             image = self._get_default_image()
 
-        if isinstance(f, WebhookConfig):
+        if isinstance(f, Method):
+            info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
+            webhook_config = None
+            raw_f = f.raw_f
+
+        elif isinstance(f, WebhookConfig):
             info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
             webhook_config = f.webhook_config
             self._web_endpoints.append(info.get_tag())
@@ -643,6 +648,13 @@ class _Stub:
 
         self._add_function(function, [*base_mounts, *mounts])
         return function_handle
+
+    @decorator_with_options_unsupported
+    def method(
+        self,
+        raw_f: Callable[..., Any],
+    ) -> Method:
+        return Method(raw_f)
 
     @decorator_with_options_unsupported
     @typechecked

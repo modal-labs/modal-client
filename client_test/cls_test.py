@@ -11,6 +11,7 @@ stub = modal.Stub()
 
 @stub.cls(cpu=42)
 class Foo:
+    @stub.method()
     def bar(self, x):
         return x**3
 
@@ -39,6 +40,7 @@ aio_stub = modal.aio.AioStub()
 
 @aio_stub.cls(cpu=42)
 class Bar:
+    @aio_stub.method()
     def baz(self, x):
         return x**3
 
@@ -51,12 +53,13 @@ async def test_call_class_async(aio_client, servicer):
 
 
 def test_run_class_serialized(client, servicer):
+    stub_ser = modal.Stub()
+
+    @stub_ser.cls(cpu=42, serialized=True)
     class FooSer:
+        @stub_ser.method()
         def bar(self, x):
             return x**3
-
-    stub_ser = modal.Stub()
-    stub_ser.cls(cpu=42, serialized=True)(FooSer)
 
     assert servicer.n_functions == 0
     with stub_ser.run(client=client):
@@ -83,9 +86,11 @@ stub_local = modal.Stub()
 
 @stub_local.cls(cpu=42)
 class FooLocal:
+    @stub_local.method()
     def bar(self, x):
         return x**3
 
+    @stub_local.method()
     def baz(self, y):
         return self.bar(y + 1)
 

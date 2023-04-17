@@ -193,6 +193,7 @@ class Cls:
     def __enter__(self):
         self._k = 111
 
+    @stub.method()
     def f(self, x):
         return self._k * x
 
