@@ -213,7 +213,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
             assert request.object_entity
             if object_id is not None:
                 assert object_id.startswith(request.object_entity)
-        function = function_definition_to_handle_metadata(self.app_functions.get(object_id))
+
+        if object_id in self.app_functions:
+            function = function_definition_to_handle_metadata(self.app_functions.get(object_id))
+        else:
+            function = None
         await stream.send_message(api_pb2.AppLookupObjectResponse(object_id=object_id, function=function))
 
     async def AppHeartbeat(self, stream):
