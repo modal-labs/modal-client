@@ -8,7 +8,7 @@ from synchronicity.exceptions import UserCodeException
 
 from modal import Proxy, Stub, SharedVolume
 from modal.exception import InvalidError
-from modal.functions import Function, FunctionCall, gather
+from modal.functions import Function, FunctionCall, gather, FunctionHandle
 from modal.stub import AioStub
 from modal_proto import api_pb2
 
@@ -460,3 +460,23 @@ def test_allow_cross_region_volumes_webhook(client, servicer):
             assert len(func.shared_volume_mounts) == 2
             for svm in func.shared_volume_mounts:
                 assert svm.allow_cross_region
+
+
+def test_serialize_deserialize_function_handle(servicer, client):
+    from modal._serialization import serialize, deserialize
+
+    stub = Stub()
+
+    @stub.function(serialized=True)
+    def my_handle():
+        pass
+
+    with pytest.raises(InvalidError, match="hasn't been created"):
+        serialize(my_handle)  # handle is not "live" yet! should not be serializable yet
+
+    with stub.run(client=client):
+        blob = serialize(my_handle)
+
+    rehydrated_function_handle = deserialize(blob, client)
+    assert rehydrated_function_handle.object_id == my_handle.object_id
+    assert isinstance(rehydrated_function_handle, FunctionHandle)

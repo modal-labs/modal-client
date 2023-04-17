@@ -151,7 +151,7 @@ class _FunctionIOManager:
         return serialize(obj)
 
     def deserialize(self, data: bytes) -> Any:
-        return deserialize(data, self._client, self.app)
+        return deserialize(data, self._client)
 
     @wrap()
     async def populate_input_blobs(self, item):

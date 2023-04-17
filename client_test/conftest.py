@@ -35,6 +35,14 @@ from modal_utils.grpc_utils import find_free_port, patch_mock_servicer
 from modal_utils.http_utils import run_temporary_http_server
 
 
+def function_definition_to_handle_metadata(definition: api_pb2.Function) -> api_pb2.FunctionHandleMetadata:
+    return api_pb2.FunctionHandleMetadata(
+        function_name=definition.function_name,
+        function_type=definition.function_type,
+        web_url=definition.web_url,
+    )
+
+
 @patch_mock_servicer
 class MockClientServicer(api_grpc.ModalClientBase):
     # TODO(erikbern): add more annotations
@@ -163,7 +171,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.AppGetObjectsRequest = await stream.recv_message()
         object_ids = self.app_objects.get(request.app_id, {})
         items = [
-            api_pb2.AppGetObjectsItem(tag=tag, object_id=object_id, function=self.app_functions.get(object_id))
+            api_pb2.AppGetObjectsItem(
+                tag=tag,
+                object_id=object_id,
+                function=function_definition_to_handle_metadata(self.app_functions.get(object_id)),
+            )
             for tag, object_id in object_ids.items()
         ]
         await stream.send_message(api_pb2.AppGetObjectsResponse(items=items))
@@ -203,8 +215,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
             assert request.object_entity
             if object_id is not None:
                 assert object_id.startswith(request.object_entity)
-        function = self.app_functions.get(object_id)
-        await stream.send_message(api_pb2.AppLookupObjectResponse(object_id=object_id, function=function))
+        if object_id in self.app_functions:
+            function_handle_metadata = function_definition_to_handle_metadata(self.app_functions.get(object_id))
+        else:
+            function_handle_metadata = None
+        await stream.send_message(
+            api_pb2.AppLookupObjectResponse(object_id=object_id, function=function_handle_metadata)
+        )
 
     async def AppHeartbeat(self, stream):
         request: api_pb2.AppHeartbeatRequest = await stream.recv_message()
@@ -320,11 +337,23 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.container_outputs.append(request)
         await stream.send_message(Empty())
 
-    async def FunctionReserveId(self, stream):
+    async def FunctionPrecreate(self, stream):
+        req: api_pb2.FunctionPrecreateRequest = await stream.recv_message()
         self.n_functions += 1
         function_id = f"fu-{self.n_functions}"
         self.reserved_functions.add(function_id)
-        await stream.send_message(api_pb2.FunctionReserveIdResponse(function_id=function_id))
+        web_url = "http://xyz.internal" if req.HasField("webhook_config") and req.webhook_config.type else None
+
+        await stream.send_message(
+            api_pb2.FunctionPrecreateResponse(
+                function_id=function_id,
+                handle_metadata=api_pb2.FunctionHandleMetadata(
+                    function_name=req.function_name,
+                    function_type=req.function_type,
+                    web_url=web_url,
+                ),
+            )
+        )
 
     async def FunctionCreate(self, stream):
         request: api_pb2.FunctionCreateRequest = await stream.recv_message()
