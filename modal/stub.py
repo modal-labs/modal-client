@@ -652,7 +652,7 @@ class _Stub:
     @decorator_with_options_unsupported
     def method(
         self,
-        raw_f: Callable[..., Any],
+        raw_f: Optional[Callable[..., Any]] = None,
     ) -> Method:
         return Method(raw_f)
 
