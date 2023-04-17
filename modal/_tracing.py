@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import contextlib
 import logging
+import os
 from typing import Dict
 
 from .config import config, logger
@@ -18,7 +19,10 @@ else:
 
 if TRACING_ENABLED:
     logging.getLogger("ddtrace").setLevel(logging.CRITICAL)
-    tracer.configure(hostname="172.19.0.1")
+    if any(os.environ.get(k) for k in ("DD_TRACE_AGENT_URL", "DD_AGENT_HOST")):
+        tracer.configure()
+    else:
+        tracer.configure(hostname="172.19.0.1")
 
 if config.get("profiling_enabled"):
     try:
