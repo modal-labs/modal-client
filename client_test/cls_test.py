@@ -32,7 +32,7 @@ def test_run_class(client, servicer):
 def test_call_class_sync(client, servicer):
     with stub.run(client=client):
         foo = Foo()
-        assert foo.bar.call(42) == 1764  # type: ignore
+        assert foo.bar.call(42) == 1764
 
 
 aio_stub = modal.aio.AioStub()
@@ -49,7 +49,7 @@ class Bar:
 async def test_call_class_async(aio_client, servicer):
     async with aio_stub.run(client=aio_client):
         bar = Bar()
-        assert await bar.baz.call(42) == 1764  # type: ignore
+        assert await bar.baz.call(42) == 1764
 
 
 def test_run_class_serialized(client, servicer):
@@ -106,5 +106,5 @@ def test_can_call_remotely_from_local(client):
         foo = FooLocal()
         # remote calls use the mockservicer func impl
         # which just squares the arguments
-        assert foo.bar.call(8) == 64  # type: ignore
-        assert foo.baz.call(9) == 81  # type: ignore
+        assert foo.bar.call(8) == 64
+        assert foo.baz.call(9) == 81
