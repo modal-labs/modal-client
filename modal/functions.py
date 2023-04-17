@@ -484,7 +484,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         self._self_obj = None
 
     def _initialize_from_proto(self, proto: Message):
-        assert isinstance(proto, api_pb2.Function)
+        assert isinstance(proto, (api_pb2.Function, api_pb2.FunctionHandleMetadata))
         self._is_generator = proto.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
         self._web_url = proto.web_url
         self._function_name = proto.function_name
@@ -1010,7 +1010,7 @@ class _Function(_Provider[_FunctionHandle]):
 
         # Update the precreated function handle (todo: hack until we merge providers/handles)
         self._function_handle._initialize_handle(resolver.client, response.function_id)
-        self._function_handle._initialize_from_proto(response.function)
+        self._function_handle._initialize_from_proto(response.handle_metadata)
 
         # Instead of returning a new object, just return the precreated one
         return self._function_handle
