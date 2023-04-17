@@ -483,6 +483,15 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         self._stub = None
         self._self_obj = None
 
+    def _handle_proto(self):
+        return api_pb2.FunctionHandleMetadata(
+            function_name=self._function_name,
+            function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR
+            if self._is_generator
+            else api_pb2.Function.FUNCTION_TYPE_FUNCTION,
+            web_url=self._web_url,
+        )
+
     def _initialize_from_proto(self, proto: Message):
         assert isinstance(proto, (api_pb2.Function, api_pb2.FunctionHandleMetadata))
         self._is_generator = proto.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
@@ -1010,7 +1019,16 @@ class _Function(_Provider[_FunctionHandle]):
 
         # Update the precreated function handle (todo: hack until we merge providers/handles)
         self._function_handle._initialize_handle(resolver.client, response.function_id)
-        self._function_handle._initialize_from_proto(response.handle_metadata)
+        if response.HasField("handle_metadata"):
+            self._function_handle._initialize_from_proto(response.handle_metadata)
+        else:
+            # TODO: remove this branch as soon as backend with handle_metadata is live
+            handle_metadata = api_pb2.FunctionHandleMetadata(
+                function_name=response.function.function_name,
+                function_type=response.function.function_type,
+                web_url=response.function.web_url,
+            )
+            self._function_handle._initialize_from_proto(handle_metadata)
 
         # Instead of returning a new object, just return the precreated one
         return self._function_handle
