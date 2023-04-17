@@ -653,7 +653,7 @@ class _Stub:
     def method(
         self,
         raw_f: Optional[Callable[..., Any]] = None,
-    ) -> Method:
+    ):  # TODO: return type!
         return Method(raw_f)
 
     @decorator_with_options_unsupported
@@ -666,7 +666,7 @@ class _Stub:
             str
         ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-    ):
+    ):  # TODO: return type!
         """Register a basic web endpoint with this application.
 
         This is the simple way to create a web endpoint on Modal. The function
