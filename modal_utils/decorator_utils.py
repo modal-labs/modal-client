@@ -3,7 +3,13 @@
 import datetime
 import functools
 import inspect
-from typing import Any, Callable, Concatenate, ParamSpec, TypeVar
+import sys
+from typing import Any, Callable, TypeVar
+
+if sys.version_info >= (3, 10):
+    from typing import Concatenate, ParamSpec
+else:
+    from typing_extensions import Concatenate, ParamSpec
 
 
 def pretty_name(qualname):
