@@ -18,7 +18,7 @@ else:
 
 if TRACING_ENABLED:
     logging.getLogger("ddtrace").setLevel(logging.CRITICAL)
-    tracer.configure(hostname="172.19.0.1")
+    tracer.configure(hostname=config.get("tracing_hostname"))
 
 if config.get("profiling_enabled"):
     try:
