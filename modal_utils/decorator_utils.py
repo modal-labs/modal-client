@@ -1,7 +1,9 @@
 # Copyright Modal Labs 2022
+
 import datetime
 import functools
 import inspect
+from typing import Any, Callable, Concatenate, ParamSpec, TypeVar
 
 
 def pretty_name(qualname):
@@ -60,5 +62,36 @@ def decorator_with_options_unsupported(dec_fun):
             )
         else:
             return functools.partial(dec_fun, *args, **kwargs)
+
+    return wrapper
+
+
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
+def decorator_simplify(
+    dec_fun: Callable[Concatenate[Callable[..., Any], P], R]
+) -> Callable[P, Callable[[Callable[..., Any]], R]]:
+    """Compatible with decorator_with_options_unsupported but preserves type hints
+
+    Usage:
+    ```
+    @decorator_simplify
+    def decorator(raw_f: Callable[..., Any], xyz: int = 7) -> Whatever:
+        return Whatever(raw_f, xyz)
+
+
+    @decorator(xyz = 42)
+    def f():
+        return 77
+
+    assert isinstance(f, Whatever)
+    ```
+    """
+
+    @functools.wraps(dec_fun)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> Callable[[Callable[..., Any]], R]:
+        return functools.partial(dec_fun, *args, **kwargs)
 
     return wrapper

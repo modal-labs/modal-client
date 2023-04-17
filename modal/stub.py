@@ -14,7 +14,7 @@ from modal._types import typechecked
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
-from modal_utils.decorator_utils import decorator_with_options_unsupported, decorator_with_options
+from modal_utils.decorator_utils import decorator_simplify, decorator_with_options_unsupported, decorator_with_options
 from .retries import Retries
 
 from ._function_utils import FunctionInfo
@@ -434,8 +434,8 @@ class _Stub:
         """Names of web endpoint (ie. webhook) functions registered on the stub."""
         return self._web_endpoints
 
-    @decorator_with_options
-    def local_entrypoint(self, raw_f=None, name: Optional[str] = None):
+    @decorator_simplify
+    def local_entrypoint(self, raw_f: Callable[[], None], name: Optional[str] = None) -> LocalEntrypoint:
         """Decorate a function to be used as a CLI entrypoint for a Modal App.
 
         These functions can be used to define code that runs locally to set up the app,
@@ -647,17 +647,17 @@ class _Stub:
         self._add_function(function, [*base_mounts, *mounts])
         return function_handle
 
-    @decorator_with_options_unsupported
+    @decorator_simplify
     @typechecked
     def web_endpoint(
         self,
-        raw_f: Optional[Callable[..., Any]] = None,
+        raw_f: Callable[..., Any],
         method: str = "GET",  # REST method for the created endpoint.
         label: Optional[
             str
         ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-    ):
+    ) -> WebhookConfig:
         """Register a basic web endpoint with this application.
 
         This is the simple way to create a web endpoint on Modal. The function
