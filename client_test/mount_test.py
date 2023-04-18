@@ -9,7 +9,7 @@ import pytest
 from modal import App, Stub, create_package_mounts
 from modal._blob_utils import LARGE_FILE_LIMIT
 from modal.aio import AioApp
-from modal.exception import DeprecationError, NotFoundError
+from modal.exception import NotFoundError
 from modal.mount import AioMount, Mount
 
 
@@ -49,26 +49,6 @@ async def test_get_files(servicer, aio_client, tmpdir):
         "data": small_content,
         "data_blob_id": "",
     }
-
-
-def test_create_mount_legacy_constructor(servicer, client):
-    local_dir, cur_filename = os.path.split(__file__)
-    remote_dir = "/foo"
-
-    def condition(fn):
-        return fn.endswith(".py")
-
-    with pytest.warns(DeprecationError):
-        m = Mount(local_dir=local_dir, remote_dir=remote_dir, condition=condition)
-
-    app = App._init_new(client)
-    obj = app.create_one_object(m)
-
-    assert obj.object_id == "mo-123"
-    assert f"/foo/{cur_filename}" in servicer.files_name2sha
-    sha256_hex = servicer.files_name2sha[f"/foo/{cur_filename}"]
-    assert sha256_hex in servicer.files_sha2data
-    assert servicer.files_sha2data[sha256_hex]["data"] == open(__file__, "rb").read()
 
 
 def test_create_mount(servicer, client):

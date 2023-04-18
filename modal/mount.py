@@ -22,7 +22,7 @@ from modal_version import __version__
 from ._blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec
 from ._resolver import Resolver
 from .config import config, logger
-from .exception import InvalidError, NotFoundError, deprecation_warning
+from .exception import NotFoundError, deprecation_error
 from .object import _Handle, _Provider
 
 MOUNT_PUT_FILE_CLIENT_TIMEOUT = 10 * 60  # 10 min max for transferring files
@@ -145,32 +145,16 @@ class _Mount(_Provider[_MountHandle]):
         recursive: bool = True,
         _entries: Optional[List[_MountEntry]] = None,  # internal - don't use
     ):
-        if _entries is not None:
-            self._entries = _entries
-            assert local_file is None and local_dir is None
-        else:
-            deprecation_warning(
+        """The Mount constructor is deprecated. Use static factory method Mount.from_local_dir or Mount.from_local_file"""
+        if _entries is None:
+            deprecation_error(
                 date(2023, 2, 8),
-                "The Mount constructor is deprecated. Use static factory method Mount.from_local_dir or Mount.from_local_file",
+                self.__init__.__doc__,
             )
-            self._entries = []
-            if local_file or local_dir:
-                # TODO: add deprecation warning here for legacy API
-                if local_file is not None and local_dir is not None:
-                    raise InvalidError("Cannot specify both local_file and local_dir as arguments to Mount.")
 
-                if local_dir:
-                    remote_path = PurePosixPath(remote_dir)
-                    self._entries = self.from_local_dir(
-                        local_path=local_dir,
-                        remote_path=remote_path,
-                        condition=condition,
-                        recursive=recursive,
-                    )._entries
-                elif local_file:
-                    remote_path = PurePosixPath(remote_dir) / Path(local_file).name
-                    self._entries = self.from_local_file(local_path=local_file, remote_path=remote_path)._entries
-
+        # TODO(erikbern): remove this code path, and use _from_loader instead
+        assert local_file is None and local_dir is None
+        self._entries = _entries
         self._is_local = True
         rep = f"Mount({self._entries})"
         super().__init__(self._load, rep)
