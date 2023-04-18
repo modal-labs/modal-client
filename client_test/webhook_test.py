@@ -7,7 +7,7 @@ import sys
 from modal_proto import api_pb2
 from modal.aio import AioApp, AioStub, aio_web_endpoint, aio_asgi_app, aio_wsgi_app
 from modal.functions import AioFunctionHandle
-from modal.exception import DeprecationError, PendingDeprecationError, InvalidError
+from modal.exception import DeprecationError, InvalidError
 
 stub = AioStub()
 
@@ -18,7 +18,7 @@ async def f(x):
     return {"square": x**2}
 
 
-with pytest.warns(PendingDeprecationError):
+with pytest.warns(DeprecationError):
 
     @stub.function(cpu=42)
     @stub.web_endpoint(method="POST")
