@@ -863,17 +863,53 @@ class _Stub:
             await wrapped_fn.call(cmd)
 
     @decorator_with_options_unsupported
-    def cls(self, user_cls=None, **kwargs):
-        # TOOD(erikbern): include all the docstring from stub.function
-
-        # All methods need to know what class they are on
-        kwargs.update(_cls=user_cls)
-
+    def cls(
+        self,
+        user_cls: Optional[type] = None,
+        image: Optional[_Image] = None,  # The image to run as the container for the function
+        secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
+        secrets: Sequence[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
+        gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
+        serialized: bool = False,  # Whether to send the function over using cloudpickle.
+        mounts: Sequence[_Mount] = (),
+        shared_volumes: Dict[str, _SharedVolume] = {},
+        allow_cross_region_volumes: bool = False,  # Whether using shared volumes from other regions is allowed.
+        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
+        memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
+        proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
+        retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
+        concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
+        container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
+        timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
+        interactive: bool = False,  # Whether to run the function in interactive mode.
+        keep_warm: Union[bool, int, None] = None,  # An optional number of containers to always keep warm.
+        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
+    ) -> type:
         function_handles: Dict[str, _FunctionHandle] = {}
         for k, v in user_cls.__dict__.items():
             if isinstance(v, (PartialFunction, AioPartialFunction)):
                 partial_function = synchronizer._translate_in(v)  # TODO: remove need for?
-                function_handles[k] = self.function(**kwargs)(partial_function)
+                function_handles[k] = self.function(
+                    _cls=user_cls,
+                    image=image,
+                    secret=secret,
+                    secrets=secrets,
+                    gpu=gpu,
+                    serialized=serialized,
+                    mounts=mounts,
+                    shared_volumes=shared_volumes,
+                    allow_cross_region_volumes=allow_cross_region_volumes,
+                    cpu=cpu,
+                    memory=memory,
+                    proxy=proxy,
+                    retries=retries,
+                    concurrency_limit=concurrency_limit,
+                    container_idle_timeout=container_idle_timeout,
+                    timeout=timeout,
+                    interactive=interactive,
+                    keep_warm=keep_warm,
+                    cloud=cloud,
+                )(partial_function)
 
         _PartialFunction.initialize_cls(user_cls, function_handles)
         return user_cls
