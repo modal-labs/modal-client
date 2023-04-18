@@ -137,9 +137,10 @@ async def _lookup(
     namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
     client: Optional[_Client] = None,
 ) -> _Handle:
+    """Deprecated. Use corresponding class methods instead," " e.g. modal.Secret.lookup, etc."""
     deprecation_warning(
         date(2023, 2, 11),
-        "modal.lookup is deprecated. Use corresponding class methods instead," " e.g. modal.Secret.lookup, etc.",
+        _lookup.__doc__,
     )
     return await _Handle.from_app(app_name, tag, namespace, client)
 
