@@ -1137,6 +1137,7 @@ class _PartialFunction:
     def __init__(self, raw_f: Callable[..., Any], webhook_config: Optional[api_pb2.WebhookConfig] = None):
         self.raw_f = raw_f
         self.webhook_config = webhook_config
+        self.wrapped = False  # Make sure that this was converted into a FunctionHandle
 
     def __get__(self, obj, objtype=None) -> _FunctionHandle:
         k = self.raw_f.__name__
@@ -1145,6 +1146,13 @@ class _PartialFunction:
         else:  # Cls.fun
             function_handle = objtype._modal_function_handles[k]
         return function_handle.__get__(obj, objtype)
+
+    def __del__(self):
+        if self.wrapped is False:
+            warnings.warn(
+                f"Method or web function {self.raw_f} was never turned into a function."
+                " Did you forget a @stub.function or @stub.cls decorator?"
+            )
 
 
 PartialFunction, AioPartialFunction = synchronize_apis(_PartialFunction)

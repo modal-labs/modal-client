@@ -7,7 +7,7 @@ from multiprocessing.synchronize import Event
 import os
 import sys
 import warnings
-from typing import AsyncGenerator, Callable, Dict, List, Optional, Union, Any, Sequence, Set
+from typing import AsyncGenerator, Callable, Dict, List, Optional, Union, Any, Sequence
 
 from synchronicity.async_wrap import asynccontextmanager
 from modal._types import typechecked
@@ -108,7 +108,6 @@ class _Stub:
     _local_entrypoints: Dict[str, LocalEntrypoint]
     _local_mounts: List[_Mount]
     _app: Optional[_App]
-    _loose_webhook_configs: Set[Callable[..., Any]]  # Used to warn users if they forget to decorate a webhook
 
     @typechecked
     def __init__(
@@ -155,7 +154,6 @@ class _Stub:
         self._local_entrypoints = {}
         self._local_mounts = []
         self._web_endpoints = []
-        self._loose_webhook_configs = set()
 
         self._app = None
         if not is_local():
@@ -577,12 +575,12 @@ class _Stub:
             image = self._get_default_image()
 
         if isinstance(f, _PartialFunction):
+            f.wrapped = True
             info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
             raw_f = f.raw_f
             webhook_config = f.webhook_config
             if webhook_config:
                 self._web_endpoints.append(info.get_tag())
-                # self._loose_webhook_configs.remove(raw_f)
 
                 if is_generator or (inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)):
                     if webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:

@@ -1,5 +1,8 @@
 # Copyright Modal Labs 2022
+import pathlib
 import pytest
+import subprocess
+import sys
 
 from modal_proto import api_pb2
 from modal.aio import AioApp, AioStub, aio_web_endpoint, aio_asgi_app, aio_wsgi_app
@@ -90,22 +93,12 @@ def test_webhook_generator():
 
 @pytest.mark.asyncio
 async def test_webhook_forgot_function(servicer, aio_client):
-    stub = AioStub()
-
-    @aio_web_endpoint()
-    async def g(x):
-        pass
-
-    with pytest.raises(InvalidError) as excinfo:
-        async with stub.run(client=aio_client):
-            pass
-
-    assert "@stub.function()" in str(excinfo.value)
-
-    with pytest.raises(InvalidError) as excinfo:
-        await stub.deploy("webhook-test", client=aio_client)
-
-    assert "@stub.function()" in str(excinfo.value)
+    lib_dir = pathlib.Path(__file__).parent.parent
+    args = [sys.executable, "-m", "modal_test_support.webhook_forgot_function"]
+    ret = subprocess.run(args, cwd=lib_dir, stderr=subprocess.PIPE)
+    stderr = ret.stderr.decode()
+    assert "absent_minded_function" in stderr
+    assert "@stub.function" in stderr
 
 
 @pytest.mark.asyncio
