@@ -666,6 +666,7 @@ stub = Stub()
 def my_function():
     ...
 """,
+            pending=True,
         )
         return _web_endpoint(method, label, wait_for_response)
 
@@ -677,7 +678,7 @@ def my_function():
         ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
     ):
-        deprecation_warning(date(2023, 4, 18), "stub.asgi_app is deprecated. Use modal.asgi_app instead.")
+        deprecation_warning(date(2023, 4, 18), "stub.asgi_app is deprecated. Use modal.asgi_app instead.", pending=True)
         return _asgi_app(label, wait_for_response)
 
     @typechecked
@@ -688,7 +689,7 @@ def my_function():
         ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
     ):
-        deprecation_warning(date(2023, 4, 18), "stub.wsgi_app is deprecated. Use modal.wsgi_app instead.")
+        deprecation_warning(date(2023, 4, 18), "stub.wsgi_app is deprecated. Use modal.wsgi_app instead.", pending=True)
         return _wsgi_app(label, wait_for_response)
 
     @decorator_with_options
