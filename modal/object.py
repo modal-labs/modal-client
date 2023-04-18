@@ -15,7 +15,7 @@ from modal_utils.grpc_utils import retry_transient_errors
 from ._object_meta import ObjectMeta
 from ._resolver import Resolver
 from .client import _Client
-from .exception import InvalidError, NotFoundError, deprecation_warning
+from .exception import InvalidError, NotFoundError, deprecation_error
 
 H = TypeVar("H", bound="_Handle")
 
@@ -136,13 +136,12 @@ async def _lookup(
     tag: Optional[str] = None,
     namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
     client: Optional[_Client] = None,
-) -> _Handle:
+):
     """Deprecated. Use corresponding class methods instead," " e.g. modal.Secret.lookup, etc."""
-    deprecation_warning(
+    deprecation_error(
         date(2023, 2, 11),
         _lookup.__doc__,
     )
-    return await _Handle.from_app(app_name, tag, namespace, client)
 
 
 lookup, aio_lookup = synchronize_apis(_lookup)
