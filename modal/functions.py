@@ -463,14 +463,6 @@ class FunctionStats:
     num_total_runners: int
 
 
-class _PartialFunction:
-    """Intermediate function, produced by @method or @web_endpoint"""
-
-    def __init__(self, raw_f: Callable[..., Any], webhook_config: Optional[api_pb2.WebhookConfig] = None):
-        self.raw_f = raw_f
-        self.webhook_config = webhook_config
-
-
 class _FunctionHandle(_Handle, type_prefix="fu"):
     """Interact with a Modal Function of a live app."""
 
@@ -1132,11 +1124,14 @@ def _set_current_input_id(input_id: Optional[str]):
     _current_input_id = input_id
 
 
-def class_decorator(cls: type, method_decorator):
-    new_dict = {}
-    for k, v in cls.__dict__.items():
-        if isinstance(v, _PartialFunction):
-            # TODO(erikbern): ignore classmethod, staticmethod etc
-            new_dict[k] = method_decorator(v)
-    new_cls = type.__new__(type, cls.__name__, (cls,), new_dict)
-    return new_cls
+class _PartialFunction:
+    """Intermediate function, produced by @method or @web_endpoint"""
+
+    def __init__(self, raw_f: Callable[..., Any], webhook_config: Optional[api_pb2.WebhookConfig] = None):
+        self.raw_f = raw_f
+        self.webhook_config = webhook_config
+
+    def __get__(self, obj, objtype=None):
+        k = self.raw_f.__name__
+        function_handle = obj._modal_function_handles[k]
+        return function_handle.__get__(obj, objtype)

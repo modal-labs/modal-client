@@ -26,7 +26,7 @@ from .app import _App, _container_app, is_local
 from .client import _Client
 from .config import logger
 from .exception import InvalidError, deprecation_warning
-from .functions import _Function, _FunctionHandle, class_decorator, _PartialFunction
+from .functions import _Function, _FunctionHandle, _PartialFunction
 from .gpu import GPU_T
 from .image import _Image, _ImageHandle
 from .mount import _get_client_mount, _Mount
@@ -863,18 +863,21 @@ class _Stub:
             await wrapped_fn.call(cmd)
 
     @synchronizer.nowrap
-    @decorator_with_options
+    @decorator_with_options_unsupported
     def cls(self, cls=None, **kwargs):
         # TOOD(erikbern): include all the docstring from stub.function
 
         # All methods to know what class they are on
         kwargs.update(_cls=cls)
 
-        # Use the function decorator as a helper
-        # TODO(erikbern): don't call "external" interface
-        function_decorator = self.function(**kwargs)
+        function_handles = {}
+        for k, v in cls.__dict__.items():
+            if isinstance(v, _PartialFunction):
+                # TODO(erikbern): handle classmethod, staticmethod etc
+                function_handles[k] = self.function(**kwargs)(v)
 
-        return class_decorator(cls, function_decorator)
+        cls._modal_function_handles = function_handles
+        return cls
 
 
 Stub, AioStub = synchronize_apis(_Stub)
