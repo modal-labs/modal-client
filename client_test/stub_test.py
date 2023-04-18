@@ -10,7 +10,7 @@ from grpclib import GRPCError, Status
 
 import modal.app
 from modal import Client, Stub, web_endpoint, wsgi_app
-from modal.aio import AioDict, AioQueue, AioStub
+from modal.aio import AioDict, AioQueue, AioStub, AioImage
 from modal.exception import DeprecationError, InvalidError
 from modal_proto import api_pb2
 from modal_test_support import module_1, module_2
@@ -65,6 +65,7 @@ def square(x):
 async def test_redeploy(servicer, aio_client):
     stub = AioStub()
     stub.function()(square)
+    stub.image = AioImage.debian_slim().pip_install("pandas")
 
     # Deploy app
     app = await stub.deploy("my-app", client=aio_client)
@@ -283,3 +284,23 @@ def test_set_image_on_stub_as_attribute():
     custom_img = modal.Image.debian_slim().apt_install("emacs")
     stub.image = custom_img
     assert stub._get_default_image() == custom_img
+
+
+@pytest.mark.asyncio
+async def test_redeploy_persist(servicer, aio_client):
+    stub = AioStub()
+    stub.function()(square)
+    stub.image = AioImage.debian_slim().pip_install("pandas")
+
+    stub.d = AioDict()
+
+    # Deploy app
+    app = await stub.deploy("my-app", client=aio_client)
+    assert app.app_id == "ap-1"
+    assert servicer.app_objects["ap-1"]["d"] == "di-0"
+
+    stub.d = AioDict().persist("my-dict")
+    # Redeploy, make sure all ids are the same
+    app = await stub.deploy("my-app", client=aio_client)
+    assert app.app_id == "ap-1"
+    assert servicer.app_objects["ap-1"]["d"] == "di-1"
