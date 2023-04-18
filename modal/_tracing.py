@@ -54,21 +54,21 @@ def inject_tracing_context(metadata: Dict[str, str]):
         logger.exception("Failed to inject tracing context")
 
 
-TRACING_SERVICE = None if os.environ.get("DD_SERVICE") else "modal-runtime-client"
+TRACING_KWARGS = {} if os.environ.get("DD_SERVICE") else {"service": "modal-runtime-client"}
 
 
 def wrap(*args, **kwargs):
     if not TRACING_ENABLED:
         return lambda f: f
 
-    return tracer.wrap(*args, **kwargs, service=TRACING_SERVICE)
+    return tracer.wrap(*args, **kwargs, **TRACING_KWARGS)
 
 
 def trace(*args, **kwargs):
     if not TRACING_ENABLED:
         return contextlib.nullcontext()
 
-    return tracer.trace(*args, **kwargs, service=TRACING_SERVICE)
+    return tracer.trace(*args, **kwargs, **TRACING_KWARGS)
 
 
 def set_span_tag(key, value):
