@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from modal import Stub
+from modal import Stub, method
 from modal.exception import DeprecationError, deprecation_warning
 
 SLEEP_DELAY = 0.1
@@ -186,3 +186,17 @@ def fastapi_app():
         return {"hello": arg}
 
     return web_app
+
+
+@stub.cls()
+class Cls:
+    def __enter__(self):
+        self._k = 111
+
+    @method()
+    def f(self, x):
+        return self._k * x
+
+    @stub.web_endpoint()
+    def web(self, arg):
+        return {"ret": arg * self._k}

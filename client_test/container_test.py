@@ -461,6 +461,54 @@ def test_webhook_streaming_async(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
+def test_cls_function(unix_servicer, event_loop):
+    client, items = _run_container(unix_servicer, "modal_test_support.functions", "Cls.f")
+    assert len(items) == 1
+    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert items[0].result.data == serialize(42 * 111)
+
+
+@skip_windows_unix_socket
+def test_cls_web_endpoint(unix_servicer, event_loop):
+    inputs = _get_web_inputs()
+    client, items = _run_container(
+        unix_servicer,
+        "modal_test_support.functions",
+        "Cls.web",
+        inputs=inputs,
+        webhook_type=api_pb2.WEBHOOK_TYPE_FUNCTION,
+    )
+
+    assert len(items) == 3
+    assert items[1].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert items[1].result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
+    second_message = deserialize(items[1].result.data, client)
+    assert json.loads(second_message["body"]) == {"ret": "space" * 111}
+
+
+@skip_windows_unix_socket
+def test_serialized_cls(unix_servicer, event_loop):
+    class Cls:
+        def __enter__(self):
+            self.power = 5
+
+        def method(self, x):
+            return x**self.power
+
+    unix_servicer.class_serialized = serialize(Cls)
+    unix_servicer.function_serialized = serialize(Cls.method)
+    client, items = _run_container(
+        unix_servicer,
+        "module.doesnt.matter",
+        "function.doesnt.matter",
+        definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
+    )
+    assert len(items) == 1
+    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert items[0].result.data == serialize(42**5)
+
+
+@skip_windows_unix_socket
 def test_container_heartbeats(unix_servicer, event_loop):
     client, items = _run_container(unix_servicer, "modal_test_support.functions", "square")
     assert any(isinstance(request, api_pb2.ContainerHeartbeatRequest) for request in unix_servicer.requests)
