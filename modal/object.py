@@ -157,9 +157,15 @@ class _Provider(Generic[H]):
         self._load = load
         self._rep = rep
 
-    def __init__(self, load: Callable[[Resolver, str], Awaitable[H]], rep: str):
+    def __init__(
+        self,
+        load: Callable[[Resolver, str], Awaitable[H]],
+        rep: str,
+        is_persisted_ref: bool = False,
+    ):
         # TODO(erikbern): this is semi-deprecated - subclasses should use _from_loader
         self._init(load, rep)
+        self.is_persisted_ref = is_persisted_ref
 
     @classmethod
     def _from_loader(cls, load: Callable[[Resolver, str], Awaitable[H]], rep: str):
@@ -182,7 +188,10 @@ class _Provider(Generic[H]):
         return self._local_uuid
 
     async def _deploy(
-        self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, client: Optional[_Client] = None
+        self,
+        label: str,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        client: Optional[_Client] = None,
     ) -> H:
         """mdmd:hidden
 
@@ -231,12 +240,15 @@ class _Provider(Generic[H]):
         cls = type(self)
         obj = cls.__new__(cls)
         rep = f"PersistedRef<{self}>({label})"
-        _Provider.__init__(obj, _load_persisted, rep)
+        _Provider.__init__(obj, _load_persisted, rep, is_persisted_ref=True)
         return obj
 
     @classmethod
     def from_name(
-        cls: Type[P], app_name: str, tag: Optional[str] = None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE
+        cls: Type[P],
+        app_name: str,
+        tag: Optional[str] = None,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
     ) -> P:
         """Returns a reference to an Modal object of any type
 
