@@ -519,6 +519,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.shared_volume_files[req.shared_volume_id][req.path] = req
         await stream.send_message(api_pb2.SharedVolumePutFileResponse(exists=True))
 
+    async def SharedVolumeGetFile(self, stream):
+        req = await stream.recv_message()
+        put_req = self.shared_volume_files.get(req.shared_volume_id, {}).get(req.path)
+        if not put_req:
+            raise GRPCError(Status.NOT_FOUND, f"No such file: {req.path}")
+        if put_req.data_blob_id:
+            await stream.send_message(api_pb2.SharedVolumeGetFileResponse(data_blob_id=put_req.data_blob_id))
+        else:
+            await stream.send_message(api_pb2.SharedVolumeGetFileResponse(data=put_req.data))
+
     ### Task
 
     async def TaskResult(self, stream):

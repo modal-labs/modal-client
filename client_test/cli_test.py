@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import os
 import sys
+import tempfile
 import traceback
 import unittest.mock
 from contextlib import asynccontextmanager
@@ -318,3 +319,16 @@ def test_logs(servicer, server_url_env):
     servicer.done = True
     res = _run(["app", "logs", "ap-123"], expected_exit_code=0)
     assert res.stdout == "hello, world (1)\n"  # from servicer mock
+
+
+def test_volume_get(set_env_client):
+    volume_name = "my-shared-volume"
+    _run(["volume", "create", volume_name])
+    with tempfile.NamedTemporaryFile(mode="w+") as fp:
+        fp.write("foo bar baz")
+        fp.flush()
+        _run(["volume", "put", volume_name, fp.name, "test.txt"])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _run(["volume", "get", volume_name, "test.txt", tmpdir])
+        with open(os.path.join(tmpdir, "test.txt"), "r") as f:
+            assert f.read() == "foo bar baz"
