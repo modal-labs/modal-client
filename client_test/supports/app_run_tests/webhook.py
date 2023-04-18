@@ -1,10 +1,10 @@
 # Copyright Modal Labs 2022
-import modal
+from modal import Stub, web_endpoint
 
-stub = modal.Stub()
+stub = Stub()
 
 
 @stub.function()
-@stub.web_endpoint()
+@web_endpoint()
 def foo():
     return {"bar": "baz"}

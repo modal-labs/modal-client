@@ -61,6 +61,10 @@ class DeprecationError(UserWarning):
     # Overloading it to evade the default filter, which excludes __main__.
 
 
+class PendingDeprecationError(UserWarning):
+    """Soon to be deprecated feature. Only used intermittently because of multi-repo concerns."""
+
+
 _INTERNAL_MODULES = ["modal", "synchronicity"]
 
 
@@ -73,7 +77,7 @@ def deprecation_error(deprecated_on: date, msg: str):
     raise DeprecationError(f"Deprecated on {deprecated_on}: {msg}")
 
 
-def deprecation_warning(deprecated_on: date, msg: str):
+def deprecation_warning(deprecated_on: date, msg: str, pending=False):
     """Utility for getting the proper stack entry.
 
     See the implementation of the built-in [warnings.warn](https://docs.python.org/3/library/warnings.html#available-functions).
@@ -89,5 +93,7 @@ def deprecation_warning(deprecated_on: date, msg: str):
         filename = "<unknown>"
         lineno = 0
 
+    warning_cls: type = PendingDeprecationError if pending else DeprecationError
+
     # This is a lower-level function that warnings.warn uses
-    warnings.warn_explicit(f"{deprecated_on}: {msg}", DeprecationError, filename, lineno)
+    warnings.warn_explicit(f"{deprecated_on}: {msg}", warning_cls, filename, lineno)
