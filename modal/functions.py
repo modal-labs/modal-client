@@ -1133,5 +1133,8 @@ class _PartialFunction:
 
     def __get__(self, obj, objtype=None):
         k = self.raw_f.__name__
-        function_handle = obj._modal_function_handles[k]
+        if obj:  # Cls().fun
+            function_handle = obj._modal_function_handles[k]
+        else:  # Cls.fun
+            function_handle = objtype._modal_function_handles[k]
         return function_handle.__get__(obj, objtype)
