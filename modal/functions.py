@@ -1135,7 +1135,7 @@ class _PartialFunction:
         self.raw_f = raw_f
         self.webhook_config = webhook_config
 
-    def __get__(self, obj, objtype=None):
+    def __get__(self, obj, objtype=None) -> _FunctionHandle:
         k = self.raw_f.__name__
         if obj:  # Cls().fun
             function_handle = obj._modal_function_handles[k]
