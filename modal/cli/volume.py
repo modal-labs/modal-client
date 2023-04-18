@@ -244,7 +244,7 @@ async def get(volume_name: str, remote_path: str, local_destination: str = typer
         else:
             with NamedTemporaryFile(delete=False) as fp:
                 yield fp
-            Path(fp.name).rename(destination)
+            shutil.move(fp.name, destination)
 
     b = 0
     try:
