@@ -47,7 +47,10 @@ def _add_click_options(func, signature: inspect.Signature):
     """
     for param in signature.parameters.values():
         param_type = str if param.annotation is inspect.Signature.empty else param.annotation
-        cli_name = "--" + param.name.replace("_", "-")
+        param_name = param.name.replace("_", "-")
+        cli_name = "--" + param_name
+        if param_type in (bool, "bool"):
+            cli_name += "/--no-" + param_name
         parser = option_parsers.get(param_type)
         if parser is None:
             raise NoParserAvailable(repr(param_type))
