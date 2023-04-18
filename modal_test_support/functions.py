@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from modal import Stub
+from modal import Stub, method
 from modal.exception import DeprecationError, deprecation_warning
 
 SLEEP_DELAY = 0.1
@@ -193,7 +193,7 @@ class Cls:
     def __enter__(self):
         self._k = 111
 
-    @stub.method()
+    @method()
     def f(self, x):
         return self._k * x
 

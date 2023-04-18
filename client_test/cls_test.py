@@ -2,16 +2,16 @@
 import cloudpickle
 import pytest
 
-import modal
-import modal.aio
+from modal import Stub, method
+from modal.aio import AioStub, aio_method
 from modal_proto import api_pb2
 
-stub = modal.Stub()
+stub = Stub()
 
 
 @stub.cls(cpu=42)
 class Foo:
-    @stub.method()
+    @method()
     def bar(self, x):
         return x**3
 
@@ -35,12 +35,12 @@ def test_call_class_sync(client, servicer):
         assert foo.bar.call(42) == 1764
 
 
-aio_stub = modal.aio.AioStub()
+aio_stub = AioStub()
 
 
 @aio_stub.cls(cpu=42)
 class Bar:
-    @aio_stub.method()
+    @aio_method()
     def baz(self, x):
         return x**3
 
@@ -53,11 +53,11 @@ async def test_call_class_async(aio_client, servicer):
 
 
 def test_run_class_serialized(client, servicer):
-    stub_ser = modal.Stub()
+    stub_ser = Stub()
 
     @stub_ser.cls(cpu=42, serialized=True)
     class FooSer:
-        @stub_ser.method()
+        @method()
         def bar(self, x):
             return x**3
 
@@ -81,16 +81,16 @@ def test_run_class_serialized(client, servicer):
     assert meth(100) == 1000000
 
 
-stub_local = modal.Stub()
+stub_local = Stub()
 
 
 @stub_local.cls(cpu=42)
 class FooLocal:
-    @stub_local.method()
+    @method()
     def bar(self, x):
         return x**3
 
-    @stub_local.method()
+    @method()
     def baz(self, y):
         return self.bar(y + 1)
 

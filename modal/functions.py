@@ -1145,3 +1145,21 @@ class _PartialFunction:
 
 
 PartialFunction, AioPartialFunction = synchronize_apis(_PartialFunction)
+
+
+def _method() -> Callable[[Callable[..., Any]], _PartialFunction]:
+    """Decorator for methods that should be transformed by Modal.
+
+    Usage:
+    ```
+    @stub.cls(cpu=8)
+    class MyCls:
+        @method()
+        def f(self):
+            ...
+    ```
+    """
+    return _PartialFunction
+
+
+method, aio_method = synchronize_apis(_method)
