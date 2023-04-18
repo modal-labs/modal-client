@@ -1,13 +1,12 @@
 # Copyright Modal Labs 2022
 import asyncio
 import inspect
-import os
-import platform
+import posixpath
 import time
 import typing
 import warnings
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import PurePath
 from typing import Any, AsyncIterable, Callable, Collection, Dict, List, Optional, Set, Union
 
 import cloudpickle
@@ -882,18 +881,17 @@ class _Function(_Provider[_FunctionHandle]):
         shared_volume_mounts = []
         # Relies on dicts being ordered (true as of Python 3.6).
         for path, shared_volume in self._shared_volumes.items():
-            # TODO: check paths client-side on Windows as well.
-            path = Path(path).as_posix()
-            abs_path = os.path.abspath(path)
+            path = PurePath(path).as_posix()
+            abs_path = posixpath.abspath(path)
 
-            if platform.system() != "Windows" and path != abs_path:
+            if path != abs_path:
                 raise InvalidError(f"Shared volume {abs_path} must be a canonical, absolute path.")
-            elif platform.system() != "Windows" and abs_path == "/":
+            elif abs_path == "/":
                 raise InvalidError(f"Shared volume {abs_path} cannot be mounted into root directory.")
-            elif platform.system() != "Windows" and abs_path == "/root":
+            elif abs_path == "/root":
                 raise InvalidError(f"Shared volume {abs_path} cannot be mounted at '/root'.")
-            elif platform.system() != "Windows" and abs_path == "/tmp":
-                raise InvalidError(f"Shared volume {abs_path} cannot be mounted at /tmp.")
+            elif abs_path == "/tmp":
+                raise InvalidError(f"Shared volume {abs_path} cannot be mounted at '/tmp'.")
 
             shared_volume_mounts.append(
                 api_pb2.SharedVolumeMount(
