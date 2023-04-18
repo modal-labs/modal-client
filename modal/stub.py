@@ -7,7 +7,7 @@ from multiprocessing.synchronize import Event
 import os
 import sys
 import warnings
-from typing import AsyncGenerator, Callable, Dict, List, Optional, Union, Any, Sequence, Set
+from typing import AsyncGenerator, Callable, Dict, List, Optional, Union, Any, Sequence
 
 from synchronicity.async_wrap import asynccontextmanager
 from modal._types import typechecked
@@ -27,6 +27,7 @@ from .client import _Client
 from .config import logger
 from .exception import InvalidError, deprecation_warning
 from .functions import _Function, _FunctionHandle, PartialFunction, AioPartialFunction, _PartialFunction
+from .functions import _asgi_app, _web_endpoint, _wsgi_app
 from .gpu import GPU_T
 from .image import _Image, _ImageHandle
 from .mount import _get_client_mount, _Mount
@@ -107,7 +108,6 @@ class _Stub:
     _local_entrypoints: Dict[str, LocalEntrypoint]
     _local_mounts: List[_Mount]
     _app: Optional[_App]
-    _loose_webhook_configs: Set[Callable[..., Any]]  # Used to warn users if they forget to decorate a webhook
 
     @typechecked
     def __init__(
@@ -154,7 +154,6 @@ class _Stub:
         self._local_entrypoints = {}
         self._local_mounts = []
         self._web_endpoints = []
-        self._loose_webhook_configs = set()
 
         self._app = None
         if not is_local():
@@ -508,7 +507,7 @@ class _Stub:
         name: Optional[str] = None,  # Sets the Modal name of the function within the stub
         is_generator: Optional[bool] = None,  # If not set, it's inferred from the function signature
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
-    ) -> Callable[[Callable[..., Any]], _FunctionHandle]:
+    ) -> Callable[[Union[_PartialFunction, Callable[..., Any]]], _FunctionHandle]:
         ...
 
     @typing.overload
@@ -569,19 +568,19 @@ class _Stub:
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
         _cls: Optional[type] = None,  # Used for methods only
     ) -> Union[
-        _FunctionHandle, Callable[[Callable[..., Any]], _FunctionHandle]
+        _FunctionHandle, Callable[[Union[_PartialFunction, Callable[..., Any]]], _FunctionHandle]
     ]:  # Function object - callable as a regular function within a Modal app
         """Decorator to register a new Modal function with this stub."""
         if image is None:
             image = self._get_default_image()
 
         if isinstance(f, _PartialFunction):
+            f.wrapped = True
             info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
             raw_f = f.raw_f
             webhook_config = f.webhook_config
             if webhook_config:
                 self._web_endpoints.append(info.get_tag())
-                self._loose_webhook_configs.remove(raw_f)
 
                 if is_generator or (inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)):
                     if webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
@@ -645,125 +644,53 @@ class _Stub:
         self._add_function(function, [*base_mounts, *mounts])
         return function_handle
 
-    @decorator_with_options_unsupported
     @typechecked
     def web_endpoint(
         self,
-        raw_f: Optional[Callable[..., Any]] = None,
         method: str = "GET",  # REST method for the created endpoint.
         label: Optional[
             str
         ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-    ):  # TODO: return type!
-        # TODO(erikbern): let's move this out to not sit on the stub
-        """Register a basic web endpoint with this application.
+    ):
+        deprecation_warning(
+            date(2023, 4, 18),
+            """
+stub.web_endpoint is deprecated. Use modal.web_endpoint instead. Usage:
 
-        This is the simple way to create a web endpoint on Modal. The function
-        behaves as a [FastAPI](https://fastapi.tiangolo.com/) handler and should
-        return a response object to the caller.
+from modal import Stub, web_endpoint
 
-        Endpoints created with `@stub.web_endpoint` are meant to be simple, single
-        request handlers and automatically have
-        [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) enabled.
-        For more flexibility, use `@stub.asgi_app`.
-
-        To learn how to use Modal with popular web frameworks, see the
-        [guide on web endpoints](https://modal.com/docs/guide/webhooks).
-
-        All webhook requests have a 150s maximum request time for the HTTP request itself. However, the underlying functions can
-        run for longer and return results to the caller on completion.
-
-        The two `wait_for_response` modes for webhooks are as follows:
-        * `wait_for_response=True` - tries to fulfill the request on the original URL, but returns a 302 redirect after ~150s to a result URL (original URL with an added `__modal_function_id=...` query parameter)
-        * `wait_for_response=False` - immediately returns a 202 ACCEPTED response with a JSON payload: `{"result_url": "..."}` containing the result "redirect" URL from above (which in turn redirects to itself every ~150s)
-        """
-        if isinstance(raw_f, _FunctionHandle):
-            raw_f = raw_f.get_raw_f()
-            raise InvalidError(
-                f"Applying decorators for {raw_f} in the wrong order!\nUsage:\n\n"
-                "@stub.function()\n@stub.web_endpoint()\ndef my_webhook():\n    ..."
-            )
-        if not wait_for_response:
-            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
-        else:
-            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
-
-        self._loose_webhook_configs.add(raw_f)
-
-        return _PartialFunction(
-            raw_f,
-            api_pb2.WebhookConfig(
-                type=api_pb2.WEBHOOK_TYPE_FUNCTION,
-                method=method,
-                requested_suffix=label,
-                async_mode=_response_mode,
-            ),
+stub = Stub()
+@stub.function(cpu=42)
+@web_endpoint(method="POST")
+def my_function():
+    ...
+""",
+            pending=True,
         )
+        return _web_endpoint(method, label, wait_for_response)
 
-    @decorator_with_options_unsupported
     @typechecked
     def asgi_app(
         self,
-        raw_f=None,
         label: Optional[
             str
         ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
     ):
-        """Register an ASGI app with this application.
+        deprecation_warning(date(2023, 4, 18), "stub.asgi_app is deprecated. Use modal.asgi_app instead.", pending=True)
+        return _asgi_app(label, wait_for_response)
 
-        Asynchronous Server Gateway Interface (ASGI) is a standard for Python
-        synchronous and asynchronous apps, supported by all popular Python web
-        libraries. This is an advanced decorator that gives full flexibility in
-        defining one or more web endpoints on Modal.
-
-        To learn how to use Modal with popular web frameworks, see the
-        [guide on web endpoints](https://modal.com/docs/guide/webhooks).
-
-        The two `wait_for_response` modes for webhooks are as follows:
-        * wait_for_response=True - tries to fulfill the request on the original URL, but returns a 302 redirect after ~150s to a result URL (original URL with an added `__modal_function_id=fc-1234abcd` query parameter)
-        * wait_for_response=False - immediately returns a 202 ACCEPTED response with a json payload: `{"result_url": "..."}` containing the result "redirect" url from above (which in turn redirects to itself every 150s)
-        """
-        if not wait_for_response:
-            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
-        else:
-            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
-
-        self._loose_webhook_configs.add(raw_f)
-
-        return _PartialFunction(
-            raw_f,
-            api_pb2.WebhookConfig(
-                type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
-                requested_suffix=label,
-                async_mode=_response_mode,
-            ),
-        )
-
-    @decorator_with_options_unsupported
     @typechecked
     def wsgi_app(
         self,
-        raw_f=None,
         label: Optional[
             str
         ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
     ):
-        if not wait_for_response:
-            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
-        else:
-            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
-        self._loose_webhook_configs.add(raw_f)
-        return _PartialFunction(
-            raw_f,
-            api_pb2.WebhookConfig(
-                type=api_pb2.WEBHOOK_TYPE_WSGI_APP,
-                requested_suffix=label,
-                async_mode=_response_mode,
-            ),
-        )
+        deprecation_warning(date(2023, 4, 18), "stub.wsgi_app is deprecated. Use modal.wsgi_app instead.", pending=True)
+        return _wsgi_app(label, wait_for_response)
 
     @decorator_with_options
     @typechecked
@@ -779,9 +706,9 @@ class _Stub:
         deprecation_warning(
             date(2023, 4, 3),
             "stub.webhook() is deprecated. Use stub.function in combination with stub.web_endpoint instead. Usage:\n\n"
-            '@stub.function(cpu=42)\n@stub.web_endpoint(method="POST")\ndef my_function():\n    ...',
+            '@stub.function(cpu=42)\n@web_endpoint(method="POST")\ndef my_function():\n    ...',
         )
-        web_endpoint = self.web_endpoint(method=method, label=label, wait_for_response=wait_for_response)(raw_f)
+        web_endpoint = _web_endpoint(method=method, label=label, wait_for_response=wait_for_response)(raw_f)
         return self.function(web_endpoint, **function_args)
 
     @decorator_with_options
@@ -796,10 +723,10 @@ class _Stub:
     ) -> _FunctionHandle:
         deprecation_warning(
             date(2023, 4, 3),
-            "stub.asgi() is deprecated. Use stub.function in combination with stub.asgi_app instead. Usage:\n\n"
-            "@stub.function(cpu=42)\n@stub.asgi_app()\ndef my_asgi_app():\n    ...",
+            "stub.asgi() is deprecated. Use stub.function in combination with modal.asgi_app instead. Usage:\n\n"
+            "@stub.function(cpu=42)\n@asgi_app()\ndef my_asgi_app():\n    ...",
         )
-        web_endpoint = self.asgi_app(label=label, wait_for_response=wait_for_response)(raw_f)
+        web_endpoint = _asgi_app(label=label, wait_for_response=wait_for_response)(raw_f)
         return self.function(web_endpoint, **function_args)
 
     @decorator_with_options
@@ -812,10 +739,10 @@ class _Stub:
     ) -> _FunctionHandle:
         deprecation_warning(
             date(2023, 4, 3),
-            "stub.wsgi() is deprecated. Use stub.function in combination with stub.wsgi_app instead. Usage:\n\n"
-            "@stub.function(cpu=42)\n@stub.wsgi_app()\ndef my_wsgi_app():\n    ...",
+            "stub.wsgi() is deprecated. Use stub.function in combination with modal.wsgi_app instead. Usage:\n\n"
+            "@stub.function(cpu=42)\n@wsgi_app()\ndef my_wsgi_app():\n    ...",
         )
-        web_endpoint = self.wsgi_app(label=label, wait_for_response=wait_for_response)(raw_f)
+        web_endpoint = _wsgi_app(label=label, wait_for_response=wait_for_response)(raw_f)
         return self.function(web_endpoint, **function_args)
 
     async def interactive_shell(self, cmd=None, image=None, **kwargs):

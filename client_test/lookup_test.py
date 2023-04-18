@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2023
 import pytest
 
-from modal.aio import AioFunction, AioQueue, AioStub, aio_lookup
+from modal.aio import AioFunction, AioQueue, AioStub, aio_lookup, aio_web_endpoint
 from modal.exception import DeprecationError, NotFoundError
 from modal.queue import AioQueueHandle
 
@@ -50,7 +50,7 @@ async def test_lookup_function(servicer, aio_client):
 @pytest.mark.asyncio
 async def test_webhook_lookup(servicer, aio_client):
     stub = AioStub()
-    stub.function()(stub.web_endpoint(method="POST")(square))
+    stub.function()(aio_web_endpoint(method="POST")(square))
     await stub.deploy("my-webhook", client=aio_client)
 
     f = await AioFunction.lookup("my-webhook", client=aio_client)
