@@ -2,7 +2,7 @@
 import pytest
 
 from modal_proto import api_pb2
-from modal.aio import AioApp, AioStub
+from modal.aio import AioApp, AioStub, aio_web_endpoint, aio_asgi_app, aio_wsgi_app
 from modal.functions import AioFunctionHandle
 from modal.exception import DeprecationError, InvalidError
 
@@ -10,9 +10,17 @@ stub = AioStub()
 
 
 @stub.function(cpu=42)
-@stub.web_endpoint(method="POST")
+@aio_web_endpoint(method="PATCH")
 async def f(x):
     return {"square": x**2}
+
+
+with pytest.warns(DeprecationError):
+
+    @stub.function(cpu=42)
+    @stub.web_endpoint(method="POST")
+    async def h(x):
+        return {"square": x**2}
 
 
 with pytest.warns(DeprecationError):
@@ -29,8 +37,8 @@ async def test_webhook(servicer, aio_client):
         assert g.web_url
 
         assert servicer.app_functions["fu-1"].webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION
-        assert servicer.app_functions["fu-1"].webhook_config.method == "POST"
-        assert servicer.app_functions["fu-2"].webhook_config.method == "PUT"
+        assert servicer.app_functions["fu-1"].webhook_config.method == "PATCH"
+        assert servicer.app_functions["fu-2"].webhook_config.method == "POST"
 
         # Make sure we can call the webhooks
         assert await f.call(10)
@@ -73,7 +81,7 @@ def test_webhook_generator():
     with pytest.raises(InvalidError) as excinfo:
 
         @stub.function(serialized=True)
-        @stub.web_endpoint()
+        @aio_web_endpoint()
         def web_gen():
             yield None
 
@@ -84,7 +92,7 @@ def test_webhook_generator():
 async def test_webhook_forgot_function(servicer, aio_client):
     stub = AioStub()
 
-    @stub.web_endpoint()
+    @aio_web_endpoint()
     async def g(x):
         pass
 
@@ -106,7 +114,7 @@ async def test_webhook_decorator_in_wrong_order(servicer, aio_client):
 
     with pytest.raises(InvalidError) as excinfo:
 
-        @stub.web_endpoint()
+        @aio_web_endpoint()
         @stub.function(serialized=True)
         async def g(x):
             pass
@@ -119,12 +127,12 @@ async def test_asgi_wsgi(servicer, aio_client):
     stub = AioStub()
 
     @stub.function(serialized=True)
-    @stub.asgi_app()
+    @aio_asgi_app()
     async def my_asgi(x):
         pass
 
     @stub.function(serialized=True)
-    @stub.wsgi_app()
+    @aio_wsgi_app()
     async def my_wsgi(x):
         pass
 
