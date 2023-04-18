@@ -6,7 +6,7 @@ import time
 import cloudpickle
 from synchronicity.exceptions import UserCodeException
 
-from modal import Proxy, Stub, SharedVolume
+from modal import Proxy, Stub, SharedVolume, web_endpoint
 from modal.exception import InvalidError
 from modal.functions import Function, FunctionCall, gather
 from modal.stub import AioStub
@@ -423,9 +423,7 @@ def test_allow_cross_region_volumes_webhook(client, servicer):
     stub = Stub()
     vol1, vol2 = SharedVolume(), SharedVolume()
     # Should pass flag for all the function's SharedVolumeMounts
-    stub.function(shared_volumes={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(
-        stub.web_endpoint()(dummy)
-    )
+    stub.function(shared_volumes={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(web_endpoint()(dummy))
 
     with stub.run(client=client):
         assert len(servicer.app_functions) == 1
