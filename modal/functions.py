@@ -832,11 +832,20 @@ class _Function(_Provider[_FunctionHandle]):
         self._tag = self._info.get_tag()
         self._gpu_config = parse_gpu_config(gpu)
         self._cloud = cloud
-        self._cls = _cls
         if cloud:
             self._cloud_provider = parse_cloud_provider(cloud)
         else:
             self._cloud_provider = None
+
+        if self._info.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
+            # Use cloudpickle. Used when working w/ Jupyter notebooks.
+            # serialize at _load time, not function decoration time
+            # otherwise we can't capture a surrounding class for lifetime methods etc.
+            self._function_serialized = self._info.serialized_function
+            self._class_serialized = cloudpickle.dumps(_cls) if _cls is not None else None
+        else:
+            self._function_serialized = None
+            self._class_serialized = None
 
         self._panel_items = [
             str(i)
@@ -930,16 +939,6 @@ class _Function(_Provider[_FunctionHandle]):
         else:
             pty_info = None
 
-        function_serialized = None
-        class_serialized = None
-        if self._info.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
-            # Use cloudpickle. Used when working w/ Jupyter notebooks.
-            # serialize at _load time, not function decoration time
-            # otherwise we can't capture a surrounding class for lifetime methods etc.
-            function_serialized = self._info.serialized_function
-            if self._cls is not None:
-                class_serialized = cloudpickle.dumps(self._cls)
-
         if self._keep_warm is True:
             deprecation_warning(
                 date(2023, 3, 3),
@@ -957,8 +956,8 @@ class _Function(_Provider[_FunctionHandle]):
             secret_ids=secret_ids,
             image_id=image_id,
             definition_type=self._info.definition_type,
-            function_serialized=function_serialized,
-            class_serialized=class_serialized,
+            function_serialized=self._function_serialized,
+            class_serialized=self._class_serialized,
             function_type=function_type,
             resources=api_pb2.Resources(milli_cpu=milli_cpu, gpu_config=self._gpu_config, memory_mb=self._memory),
             webhook_config=self._webhook_config,
