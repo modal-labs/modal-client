@@ -5,7 +5,7 @@ from .app import App, container_app, is_local
 from .client import Client
 from .dict import Dict
 from .exception import Error
-from .functions import Function, current_input_id
+from .functions import Function, current_input_id, method
 from .image import Image
 from .mount import Mount, create_package_mounts
 from .object import lookup
@@ -39,5 +39,6 @@ __all__ = [
     "create_package_mounts",
     "is_local",
     "lookup",
+    "method",
     "current_input_id",
 ]

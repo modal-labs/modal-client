@@ -13,7 +13,8 @@ from synchronicity.async_wrap import asynccontextmanager
 from modal._types import typechecked
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_apis
+
+from modal_utils.async_utils import synchronize_apis, synchronizer
 from modal_utils.decorator_utils import decorator_with_options_unsupported, decorator_with_options
 from .retries import Retries
 
@@ -25,7 +26,7 @@ from .app import _App, _container_app, is_local
 from .client import _Client
 from .config import logger
 from .exception import InvalidError, deprecation_warning
-from .functions import _Function, _FunctionHandle
+from .functions import _Function, _FunctionHandle, PartialFunction, AioPartialFunction, _PartialFunction
 from .gpu import GPU_T
 from .image import _Image, _ImageHandle
 from .mount import _get_client_mount, _Mount
@@ -50,12 +51,6 @@ class LocalEntrypoint:
 
     def __call__(self, *args, **kwargs):
         return self.raw_f(*args, **kwargs)
-
-
-class WebhookConfig:
-    def __init__(self, raw_f: Callable[..., Any], webhook_config: api_pb2.WebhookConfig):
-        self.raw_f = raw_f
-        self.webhook_config = webhook_config
 
 
 def check_sequence(items: typing.Sequence[typing.Any], item_type: typing.Type[typing.Any], error_msg: str):
@@ -519,7 +514,7 @@ class _Stub:
     @typing.overload
     def function(
         self,
-        f: Union[WebhookConfig, Callable[..., Any]],  # The decorated function
+        f: Union[_PartialFunction, Callable[..., Any]],  # The decorated function
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
@@ -549,7 +544,7 @@ class _Stub:
     @typechecked
     def function(
         self,
-        f: Optional[Union[WebhookConfig, Callable[..., Any]]] = None,  # The decorated function
+        f: Optional[Union[_PartialFunction, Callable[..., Any]]] = None,  # The decorated function
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
@@ -572,6 +567,7 @@ class _Stub:
         name: Optional[str] = None,  # Sets the Modal name of the function within the stub
         is_generator: Optional[bool] = None,  # If not set, it's inferred from the function signature
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
+        _cls: Optional[type] = None,  # Used for methods only
     ) -> Union[
         _FunctionHandle, Callable[[Callable[..., Any]], _FunctionHandle]
     ]:  # Function object - callable as a regular function within a Modal app
@@ -579,22 +575,23 @@ class _Stub:
         if image is None:
             image = self._get_default_image()
 
-        if isinstance(f, WebhookConfig):
+        if isinstance(f, _PartialFunction):
             info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
-            webhook_config = f.webhook_config
-            self._web_endpoints.append(info.get_tag())
             raw_f = f.raw_f
-            self._loose_webhook_configs.remove(raw_f)
+            webhook_config = f.webhook_config
+            if webhook_config:
+                self._web_endpoints.append(info.get_tag())
+                self._loose_webhook_configs.remove(raw_f)
 
-            if is_generator or (inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)):
-                if webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
-                    raise InvalidError(
-                        "Webhooks cannot be generators. If you want to streaming response, use fastapi.responses.StreamingResponse. Example:\n\n"
-                        "def my_iter():\n    for x in range(10):\n        time.sleep(1.0)\n        yield str(i)\n\n"
-                        "@stub.function()\n@stub.web_endpoint()\ndef web():\n    return StreamingResponse(my_iter())\n"
-                    )
-                else:
-                    raise InvalidError("Webhooks cannot be generators")
+                if is_generator or (inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)):
+                    if webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
+                        raise InvalidError(
+                            "Webhooks cannot be generators. If you want to streaming response, use fastapi.responses.StreamingResponse. Example:\n\n"
+                            "def my_iter():\n    for x in range(10):\n        time.sleep(1.0)\n        yield str(i)\n\n"
+                            "@stub.function()\n@stub.web_endpoint()\ndef web():\n    return StreamingResponse(my_iter())\n"
+                        )
+                    else:
+                        raise InvalidError("Webhooks cannot be generators")
         else:
             info = FunctionInfo(f, serialized=serialized, name_override=name)
             webhook_config = None
@@ -642,6 +639,7 @@ class _Stub:
             name=name,
             cloud=cloud,
             webhook_config=webhook_config,
+            _cls=_cls,
         )
 
         self._add_function(function, [*base_mounts, *mounts])
@@ -657,7 +655,8 @@ class _Stub:
             str
         ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-    ):
+    ):  # TODO: return type!
+        # TODO(erikbern): let's move this out to not sit on the stub
         """Register a basic web endpoint with this application.
 
         This is the simple way to create a web endpoint on Modal. The function
@@ -692,7 +691,7 @@ class _Stub:
 
         self._loose_webhook_configs.add(raw_f)
 
-        return WebhookConfig(
+        return _PartialFunction(
             raw_f,
             api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_FUNCTION,
@@ -733,7 +732,7 @@ class _Stub:
 
         self._loose_webhook_configs.add(raw_f)
 
-        return WebhookConfig(
+        return _PartialFunction(
             raw_f,
             api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
@@ -757,7 +756,7 @@ class _Stub:
         else:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
         self._loose_webhook_configs.add(raw_f)
-        return WebhookConfig(
+        return _PartialFunction(
             raw_f,
             api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_WSGI_APP,
@@ -856,6 +855,58 @@ class _Stub:
 
         async with self.run():
             await wrapped_fn.call(cmd)
+
+    @decorator_with_options_unsupported
+    def cls(
+        self,
+        user_cls: Optional[type] = None,
+        image: Optional[_Image] = None,  # The image to run as the container for the function
+        secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
+        secrets: Sequence[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
+        gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
+        serialized: bool = False,  # Whether to send the function over using cloudpickle.
+        mounts: Sequence[_Mount] = (),
+        shared_volumes: Dict[str, _SharedVolume] = {},
+        allow_cross_region_volumes: bool = False,  # Whether using shared volumes from other regions is allowed.
+        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
+        memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
+        proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
+        retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
+        concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
+        container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
+        timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
+        interactive: bool = False,  # Whether to run the function in interactive mode.
+        keep_warm: Union[bool, int, None] = None,  # An optional number of containers to always keep warm.
+        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
+    ) -> type:
+        function_handles: Dict[str, _FunctionHandle] = {}
+        for k, v in user_cls.__dict__.items():
+            if isinstance(v, (PartialFunction, AioPartialFunction)):
+                partial_function = synchronizer._translate_in(v)  # TODO: remove need for?
+                function_handles[k] = self.function(
+                    _cls=user_cls,
+                    image=image,
+                    secret=secret,
+                    secrets=secrets,
+                    gpu=gpu,
+                    serialized=serialized,
+                    mounts=mounts,
+                    shared_volumes=shared_volumes,
+                    allow_cross_region_volumes=allow_cross_region_volumes,
+                    cpu=cpu,
+                    memory=memory,
+                    proxy=proxy,
+                    retries=retries,
+                    concurrency_limit=concurrency_limit,
+                    container_idle_timeout=container_idle_timeout,
+                    timeout=timeout,
+                    interactive=interactive,
+                    keep_warm=keep_warm,
+                    cloud=cloud,
+                )(partial_function)
+
+        _PartialFunction.initialize_cls(user_cls, function_handles)
+        return user_cls
 
 
 Stub, AioStub = synchronize_apis(_Stub)

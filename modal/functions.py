@@ -32,7 +32,7 @@ from ._blob_utils import (
     blob_download,
     blob_upload,
 )
-from ._function_utils import FunctionInfo, LocalFunctionError, load_function_from_module
+from ._function_utils import FunctionInfo
 from ._location import parse_cloud_provider
 from ._output import OutputManager
 from ._resolver import Resolver
@@ -753,6 +753,7 @@ class _Function(_Provider[_FunctionHandle]):
         interactive: bool = False,
         name: Optional[str] = None,
         cloud: Optional[str] = None,
+        _cls: Optional[type] = None,
     ) -> None:
         """mdmd:hidden"""
         raw_f = function_info.raw_f
@@ -829,6 +830,16 @@ class _Function(_Provider[_FunctionHandle]):
             self._cloud_provider = parse_cloud_provider(cloud)
         else:
             self._cloud_provider = None
+
+        if self._info.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
+            # Use cloudpickle. Used when working w/ Jupyter notebooks.
+            # serialize at _load time, not function decoration time
+            # otherwise we can't capture a surrounding class for lifetime methods etc.
+            self._function_serialized = self._info.serialized_function
+            self._class_serialized = cloudpickle.dumps(_cls) if _cls is not None else None
+        else:
+            self._function_serialized = None
+            self._class_serialized = None
 
         self._panel_items = [
             str(i)
@@ -922,27 +933,6 @@ class _Function(_Provider[_FunctionHandle]):
         else:
             pty_info = None
 
-        function_serialized = None
-        class_serialized = None
-        if self._info.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
-            # Use cloudpickle. Used when working w/ Jupyter notebooks.
-            # serialize at _load time, not function decoration time
-            # otherwise we can't capture a surrounding class for lifetime methods etc.
-            function_serialized = self._info.serialized_function
-            mod = inspect.getmodule(self._raw_f)
-
-            try:
-                cls, _ = load_function_from_module(mod, self._raw_f.__qualname__)
-            except LocalFunctionError:
-                # if a serialized function is defined within a function scope
-                # we can't load it from the module and detect its parent class
-                # TODO: fix this somehow... maybe put the decorator on the
-                #       class instead for entrypoint classes
-                cls = None
-
-            if cls:
-                class_serialized = cloudpickle.dumps(cls)
-
         if self._keep_warm is True:
             deprecation_warning(
                 date(2023, 3, 3),
@@ -960,8 +950,8 @@ class _Function(_Provider[_FunctionHandle]):
             secret_ids=secret_ids,
             image_id=image_id,
             definition_type=self._info.definition_type,
-            function_serialized=function_serialized,
-            class_serialized=class_serialized,
+            function_serialized=self._function_serialized,
+            class_serialized=self._class_serialized,
             function_type=function_type,
             resources=api_pb2.Resources(milli_cpu=milli_cpu, gpu_config=self._gpu_config, memory_mb=self._memory),
             webhook_config=self._webhook_config,
@@ -1134,3 +1124,44 @@ def current_input_id() -> str:
 def _set_current_input_id(input_id: Optional[str]):
     global _current_input_id
     _current_input_id = input_id
+
+
+class _PartialFunction:
+    """Intermediate function, produced by @method or @web_endpoint"""
+
+    @staticmethod
+    def initialize_cls(user_cls: type, function_handles: Dict[str, _FunctionHandle]):
+        user_cls._modal_function_handles = function_handles
+
+    def __init__(self, raw_f: Callable[..., Any], webhook_config: Optional[api_pb2.WebhookConfig] = None):
+        self.raw_f = raw_f
+        self.webhook_config = webhook_config
+
+    def __get__(self, obj, objtype=None) -> _FunctionHandle:
+        k = self.raw_f.__name__
+        if obj:  # Cls().fun
+            function_handle = obj._modal_function_handles[k]
+        else:  # Cls.fun
+            function_handle = objtype._modal_function_handles[k]
+        return function_handle.__get__(obj, objtype)
+
+
+PartialFunction, AioPartialFunction = synchronize_apis(_PartialFunction)
+
+
+def _method() -> Callable[[Callable[..., Any]], _PartialFunction]:
+    """Decorator for methods that should be transformed by Modal.
+
+    Usage:
+    ```
+    @stub.cls(cpu=8)
+    class MyCls:
+        @method()
+        def f(self):
+            ...
+    ```
+    """
+    return _PartialFunction
+
+
+method, aio_method = synchronize_apis(_method)
