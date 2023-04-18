@@ -1127,6 +1127,10 @@ def _set_current_input_id(input_id: Optional[str]):
 class _PartialFunction:
     """Intermediate function, produced by @method or @web_endpoint"""
 
+    @staticmethod
+    def initialize_cls(user_cls: type, function_handles: Dict[str, _FunctionHandle]):
+        user_cls._modal_function_handles = function_handles
+
     def __init__(self, raw_f: Callable[..., Any], webhook_config: Optional[api_pb2.WebhookConfig] = None):
         self.raw_f = raw_f
         self.webhook_config = webhook_config

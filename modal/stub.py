@@ -863,20 +863,20 @@ class _Stub:
             await wrapped_fn.call(cmd)
 
     @decorator_with_options_unsupported
-    def cls(self, cls=None, **kwargs):
+    def cls(self, user_cls=None, **kwargs):
         # TOOD(erikbern): include all the docstring from stub.function
 
-        # All methods to know what class they are on
-        kwargs.update(_cls=cls)
+        # All methods need to know what class they are on
+        kwargs.update(_cls=user_cls)
 
-        function_handles = {}
-        for k, v in cls.__dict__.items():
+        function_handles: Dict[str, _FunctionHandle] = {}
+        for k, v in user_cls.__dict__.items():
             if isinstance(v, (PartialFunction, AioPartialFunction)):
                 partial_function = synchronizer._translate_in(v)  # TODO: remove need for?
                 function_handles[k] = self.function(**kwargs)(partial_function)
 
-        cls._modal_function_handles = function_handles
-        return cls
+        _PartialFunction.initialize_cls(user_cls, function_handles)
+        return user_cls
 
 
 Stub, AioStub = synchronize_apis(_Stub)
