@@ -284,3 +284,23 @@ def test_set_image_on_stub_as_attribute():
     custom_img = modal.Image.debian_slim().apt_install("emacs")
     stub.image = custom_img
     assert stub._get_default_image() == custom_img
+
+
+@pytest.mark.asyncio
+async def test_redeploy_persist(servicer, aio_client):
+    stub = AioStub()
+    stub.function()(square)
+    stub.image = AioImage.debian_slim().pip_install("pandas")
+
+    stub.d = AioDict()
+
+    # Deploy app
+    app = await stub.deploy("my-app", client=aio_client)
+    assert app.app_id == "ap-1"
+    assert servicer.app_objects["ap-1"]["d"] == "di-0"
+
+    stub.d = AioDict().persist("my-dict")
+    # Redeploy, make sure all ids are the same
+    app = await stub.deploy("my-app", client=aio_client)
+    assert app.app_id == "ap-1"
+    assert servicer.app_objects["ap-1"]["d"] == "di-1"
