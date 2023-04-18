@@ -6,7 +6,8 @@ from typing import Dict
 
 from .config import config, logger
 
-if config.get("tracing_enabled"):
+dd_trace_enabled = os.environ.get("DD_TRACE_ENABLED", "") in ("true", "1")
+if config.get("tracing_enabled") or dd_trace_enabled:
     try:
         from ddtrace import tracer
         from ddtrace.propagation.http import HTTPPropagator
