@@ -667,7 +667,6 @@ class _Stub:
         deprecation_warning(
             date(2023, 4, 18),
             self.web_endpoint.__doc__,
-            pending=True,
         )
         return _web_endpoint(method, label, wait_for_response)
 
@@ -680,7 +679,7 @@ class _Stub:
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
     ):
         """stub.asgi_app is deprecated. Use modal.asgi_app instead."""
-        deprecation_warning(date(2023, 4, 18), self.asgi_app.__doc__, pending=True)
+        deprecation_warning(date(2023, 4, 18), self.asgi_app.__doc__)
         return _asgi_app(label, wait_for_response)
 
     @typechecked
@@ -692,7 +691,7 @@ class _Stub:
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
     ):
         """stub.wsgi_app is deprecated. Use modal.wsgi_app instead."""
-        deprecation_warning(date(2023, 4, 18), self.wsgi_app.__doc__, pending=True)
+        deprecation_warning(date(2023, 4, 18), self.wsgi_app.__doc__)
         return _wsgi_app(label, wait_for_response)
 
     @decorator_with_options
