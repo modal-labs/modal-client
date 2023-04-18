@@ -1138,3 +1138,6 @@ class _PartialFunction:
         else:  # Cls.fun
             function_handle = objtype._modal_function_handles[k]
         return function_handle.__get__(obj, objtype)
+
+
+PartialFunction, AioPartialFunction = synchronize_apis(_PartialFunction)
