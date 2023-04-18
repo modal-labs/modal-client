@@ -287,10 +287,10 @@ class _Stub:
         show_progress: Optional[bool] = None,
         timeout: float = 1e10,
     ) -> None:
-        """Run an app until the program is interrupted."""
+        """Deprecated. Use the `modal serve` CLI command instead."""
         deprecation_warning(
             date(2023, 2, 28),
-            "stub.serve() is deprecated. Use the `modal serve` CLI command instead",
+            self.serve.__doc__,
         )
         if self._app is not None:
             raise InvalidError(
@@ -653,19 +653,20 @@ class _Stub:
         ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
     ):
+        """stub.web_endpoint is deprecated. Use modal.web_endpoint instead. Usage:
+
+        ```
+        from modal import Stub, web_endpoint
+
+        stub = Stub()
+        @stub.function(cpu=42)
+        @web_endpoint(method="POST")
+        def my_function():
+            ...
+        ```"""
         deprecation_warning(
             date(2023, 4, 18),
-            """
-stub.web_endpoint is deprecated. Use modal.web_endpoint instead. Usage:
-
-from modal import Stub, web_endpoint
-
-stub = Stub()
-@stub.function(cpu=42)
-@web_endpoint(method="POST")
-def my_function():
-    ...
-""",
+            self.web_endpoint.__doc__,
             pending=True,
         )
         return _web_endpoint(method, label, wait_for_response)
@@ -678,7 +679,8 @@ def my_function():
         ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
     ):
-        deprecation_warning(date(2023, 4, 18), "stub.asgi_app is deprecated. Use modal.asgi_app instead.", pending=True)
+        """stub.asgi_app is deprecated. Use modal.asgi_app instead."""
+        deprecation_warning(date(2023, 4, 18), self.asgi_app.__doc__, pending=True)
         return _asgi_app(label, wait_for_response)
 
     @typechecked
@@ -689,7 +691,8 @@ def my_function():
         ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
     ):
-        deprecation_warning(date(2023, 4, 18), "stub.wsgi_app is deprecated. Use modal.wsgi_app instead.", pending=True)
+        """stub.wsgi_app is deprecated. Use modal.wsgi_app instead."""
+        deprecation_warning(date(2023, 4, 18), self.wsgi_app.__doc__, pending=True)
         return _wsgi_app(label, wait_for_response)
 
     @decorator_with_options
@@ -703,10 +706,17 @@ def my_function():
         wait_for_response: bool = True,
         **function_args,
     ) -> _FunctionHandle:
+        """stub.webhook() is deprecated. Use stub.function in combination with stub.web_endpoint instead. Usage:
+
+        ```
+        @stub.function(cpu=42)
+        @web_endpoint(method="POST")
+        def my_function():
+           ...
+        ```"""
         deprecation_warning(
             date(2023, 4, 3),
-            "stub.webhook() is deprecated. Use stub.function in combination with stub.web_endpoint instead. Usage:\n\n"
-            '@stub.function(cpu=42)\n@web_endpoint(method="POST")\ndef my_function():\n    ...',
+            self.webhook.__doc__,
         )
         web_endpoint = _web_endpoint(method=method, label=label, wait_for_response=wait_for_response)(raw_f)
         return self.function(web_endpoint, **function_args)
@@ -721,10 +731,17 @@ def my_function():
         wait_for_response: bool = True,
         **function_args,
     ) -> _FunctionHandle:
+        """stub.asgi() is deprecated. Use stub.function in combination with modal.asgi_app instead. Usage:
+
+        ```
+        @stub.function(cpu=42)
+        @asgi_app()
+        def my_asgi_app():
+            ...
+        ```"""
         deprecation_warning(
             date(2023, 4, 3),
-            "stub.asgi() is deprecated. Use stub.function in combination with modal.asgi_app instead. Usage:\n\n"
-            "@stub.function(cpu=42)\n@asgi_app()\ndef my_asgi_app():\n    ...",
+            self.asgi.__doc__,
         )
         web_endpoint = _asgi_app(label=label, wait_for_response=wait_for_response)(raw_f)
         return self.function(web_endpoint, **function_args)
@@ -737,10 +754,17 @@ def my_function():
         wait_for_response: bool = True,
         **function_args,
     ) -> _FunctionHandle:
+        """stub.wsgi() is deprecated. Use stub.function in combination with modal.wsgi_app instead. Usage:
+
+        ```
+        @stub.function(cpu=42)
+        @wsgi_app()
+        def my_wsgi_app():
+            ...
+        ```"""
         deprecation_warning(
             date(2023, 4, 3),
-            "stub.wsgi() is deprecated. Use stub.function in combination with modal.wsgi_app instead. Usage:\n\n"
-            "@stub.function(cpu=42)\n@wsgi_app()\ndef my_wsgi_app():\n    ...",
+            self.wsgi.__doc__,
         )
         web_endpoint = _wsgi_app(label=label, wait_for_response=wait_for_response)(raw_f)
         return self.function(web_endpoint, **function_args)
