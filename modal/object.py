@@ -152,11 +152,10 @@ _BLOCKING_P, _ASYNC_P = synchronize_apis(P)
 
 
 class _Provider(Generic[H]):
-    def _init(self, load: Callable[[Resolver, str], Awaitable[H]], rep: str, is_persisted_ref: bool = False):
+    def _init(self, load: Callable[[Resolver, str], Awaitable[H]], rep: str):
         self._local_uuid = str(uuid.uuid4())
         self._load = load
         self._rep = rep
-        self.is_persisted_ref = is_persisted_ref
 
     def __init__(
         self,
@@ -165,7 +164,8 @@ class _Provider(Generic[H]):
         is_persisted_ref: bool = False,
     ):
         # TODO(erikbern): this is semi-deprecated - subclasses should use _from_loader
-        self._init(load, rep, is_persisted_ref)
+        self._init(load, rep)
+        self.is_persisted_ref = is_persisted_ref
 
     @classmethod
     def _from_loader(cls, load: Callable[[Resolver, str], Awaitable[H]], rep: str):
