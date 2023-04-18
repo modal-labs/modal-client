@@ -26,7 +26,7 @@ from .app import _App, _container_app, is_local
 from .client import _Client
 from .config import logger
 from .exception import InvalidError, deprecation_warning
-from .functions import _Function, _FunctionHandle, class_decorator, Method, WebhookConfig
+from .functions import _Function, _FunctionHandle, class_decorator, _PartialFunction
 from .gpu import GPU_T
 from .image import _Image, _ImageHandle
 from .mount import _get_client_mount, _Mount
@@ -514,7 +514,7 @@ class _Stub:
     @typing.overload
     def function(
         self,
-        f: Union[Method, WebhookConfig, Callable[..., Any]],  # The decorated function
+        f: Union[_PartialFunction, Callable[..., Any]],  # The decorated function
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
@@ -544,7 +544,7 @@ class _Stub:
     @typechecked
     def function(
         self,
-        f: Optional[Union[Method, WebhookConfig, Callable[..., Any]]] = None,  # The decorated function
+        f: Optional[Union[_PartialFunction, Callable[..., Any]]] = None,  # The decorated function
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
@@ -575,27 +575,23 @@ class _Stub:
         if image is None:
             image = self._get_default_image()
 
-        if isinstance(f, Method):
+        if isinstance(f, _PartialFunction):
             info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
-            webhook_config = None
             raw_f = f.raw_f
-
-        elif isinstance(f, WebhookConfig):
-            info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
             webhook_config = f.webhook_config
-            self._web_endpoints.append(info.get_tag())
-            raw_f = f.raw_f
-            self._loose_webhook_configs.remove(raw_f)
+            if webhook_config:
+                self._web_endpoints.append(info.get_tag())
+                self._loose_webhook_configs.remove(raw_f)
 
-            if is_generator or (inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)):
-                if webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
-                    raise InvalidError(
-                        "Webhooks cannot be generators. If you want to streaming response, use fastapi.responses.StreamingResponse. Example:\n\n"
-                        "def my_iter():\n    for x in range(10):\n        time.sleep(1.0)\n        yield str(i)\n\n"
-                        "@stub.function()\n@stub.web_endpoint()\ndef web():\n    return StreamingResponse(my_iter())\n"
-                    )
-                else:
-                    raise InvalidError("Webhooks cannot be generators")
+                if is_generator or (inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)):
+                    if webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
+                        raise InvalidError(
+                            "Webhooks cannot be generators. If you want to streaming response, use fastapi.responses.StreamingResponse. Example:\n\n"
+                            "def my_iter():\n    for x in range(10):\n        time.sleep(1.0)\n        yield str(i)\n\n"
+                            "@stub.function()\n@stub.web_endpoint()\ndef web():\n    return StreamingResponse(my_iter())\n"
+                        )
+                    else:
+                        raise InvalidError("Webhooks cannot be generators")
         else:
             info = FunctionInfo(f, serialized=serialized, name_override=name)
             webhook_config = None
@@ -654,7 +650,7 @@ class _Stub:
         self,
         raw_f: Optional[Callable[..., Any]] = None,
     ):  # TODO: return type!
-        return Method(raw_f)
+        return _PartialFunction(raw_f)
 
     @decorator_with_options_unsupported
     @typechecked
@@ -701,7 +697,7 @@ class _Stub:
 
         self._loose_webhook_configs.add(raw_f)
 
-        return WebhookConfig(
+        return _PartialFunction(
             raw_f,
             api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_FUNCTION,
@@ -742,7 +738,7 @@ class _Stub:
 
         self._loose_webhook_configs.add(raw_f)
 
-        return WebhookConfig(
+        return _PartialFunction(
             raw_f,
             api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
@@ -766,7 +762,7 @@ class _Stub:
         else:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
         self._loose_webhook_configs.add(raw_f)
-        return WebhookConfig(
+        return _PartialFunction(
             raw_f,
             api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_WSGI_APP,
