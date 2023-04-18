@@ -890,6 +890,8 @@ class _Function(_Provider[_FunctionHandle]):
                 raise InvalidError(f"Shared volume {abs_path} must be a canonical, absolute path.")
             elif platform.system() != "Windows" and abs_path == "/":
                 raise InvalidError(f"Shared volume {abs_path} cannot be mounted into root directory.")
+            elif platform.system() != "Windows" and abs_path == "/root":
+                raise InvalidError(f"Shared volume {abs_path} cannot be mounted at '/root'.")
             elif platform.system() != "Windows" and abs_path == "/tmp":
                 raise InvalidError(f"Shared volume {abs_path} cannot be mounted at /tmp.")
 
