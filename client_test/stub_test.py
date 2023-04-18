@@ -10,7 +10,7 @@ from grpclib import GRPCError, Status
 
 import modal.app
 from modal import Client, Stub, web_endpoint, wsgi_app
-from modal.aio import AioDict, AioQueue, AioStub
+from modal.aio import AioDict, AioQueue, AioStub, AioImage
 from modal.exception import DeprecationError, InvalidError
 from modal_proto import api_pb2
 from modal_test_support import module_1, module_2
@@ -65,6 +65,7 @@ def square(x):
 async def test_redeploy(servicer, aio_client):
     stub = AioStub()
     stub.function()(square)
+    stub.image = AioImage.debian_slim().pip_install("pandas")
 
     # Deploy app
     app = await stub.deploy("my-app", client=aio_client)

@@ -334,7 +334,7 @@ def test_image_build_with_context_mount(client, servicer, tmp_path):
     stub["dockerfile_commands"] = Image.debian_slim().from_dockerfile(dockerfile.name, context_mount=data_mount)
 
     with stub.run(client=client) as running_app:
-        for (image_name, expected_layer) in [("copy", 0), ("dockerfile_commands", 1), ("from_dockerfile", 0)]:
+        for image_name, expected_layer in [("copy", 0), ("dockerfile_commands", 1), ("from_dockerfile", 0)]:
             layers = get_image_layers(running_app[image_name].object_id, servicer)
             assert layers[expected_layer].context_mount_id == "mo-123", f"error in {image_name}"
             assert "COPY . /dummy" in layers[expected_layer].dockerfile_commands
@@ -380,7 +380,7 @@ def test_image_force_build(client, servicer):
 
     stub["image"] = (
         Image.from_gcp_artifact_registry("foo", force_build=True)
-        .run_commands("echo 1")
+        .run_commands("python_packagesecho 1")
         .pip_install("foo", force_build=True)
         .run_commands("echo 2")
     )
