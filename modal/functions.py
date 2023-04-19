@@ -515,7 +515,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         return self._stub[self._info.get_tag()]
 
     @property
-    async def web_url(self) -> str:
+    def web_url(self) -> str:
         """URL of a Function running as a web endpoint."""
         return self._web_url
 
