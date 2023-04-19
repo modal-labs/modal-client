@@ -148,7 +148,7 @@ message AppGetObjectsItem {
   string tag = 1;
   string object_id = 2;
   oneof object_oneof {
-    Function function = 3;
+    FunctionHandleMetadata function = 3;
   }
 }
 
@@ -183,7 +183,7 @@ message AppLookupObjectResponse {
   string object_id = 1;
   string error_message = 2;
   oneof object_oneof {
-    Function function = 3;
+    FunctionHandleMetadata function = 3;
   }
 }
 
@@ -408,6 +408,17 @@ message Function {
   string runtime = 30;
 }
 
+message FunctionHandleMetadata {
+  // contains all the info about a function that is needed to trigger the right
+  // behaviour when using a FunctionHandler. Notably excludes things purely
+  // used for *executing* the function in a container entrypoint
+
+  // Should be a subset and use IDs/types from `Function` above
+  string function_name = 2;
+  Function.FunctionType function_type = 8;
+  string web_url = 28;
+}
+
 message FunctionCreateRequest {
   Function function = 1;
   string app_id = 2;
@@ -420,6 +431,7 @@ message FunctionCreateResponse {
   string web_url = 2;  // Deprecated - needed until 0.46 is the minimum version
   WebUrlInfo web_url_info = 3;  // Deprecated - needed until 0.46 is the minimum version
   Function function = 4;
+  FunctionHandleMetadata handle_metadata = 5;
 }
 
 message FunctionGetInputsItem {
