@@ -14,7 +14,7 @@ from .object import _Handle, Handle, AioHandle
 PICKLE_PROTOCOL = 4  # Support older Python versions.
 
 
-def get_synchronicity_interface(obj):
+def get_synchronicity_interface(obj) -> Optional[Interface]:
     return getattr(obj, TARGET_INTERFACE_ATTR, None)
 
 
