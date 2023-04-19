@@ -98,7 +98,7 @@ display_string_to_config = "\n".join(f'- "{key}" → `{value}`' for key, value i
 __doc__ = f"""
 **GPU configuration shortcodes**
 
-The following are the valid `str` values for the `gpu` attribute of [`@stub.function`](/docs/reference/modal.Stub#function).
+The following are the valid `str` values for the `gpu` parameter of [`@stub.function`](/docs/reference/modal.Stub#function).
 
 {display_string_to_config}
 
