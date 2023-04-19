@@ -56,6 +56,9 @@ class _Handle(metaclass=ObjectMeta):
     def _initialize_from_proto(self, proto: Message):
         pass  # default implementation
 
+    def _handle_proto(self) -> Optional[Message]:
+        return None
+
     @classmethod
     def _from_id(cls: Type[H], object_id: str, client: _Client, proto: Optional[Message]) -> H:
         if cls._type_prefix is not None:

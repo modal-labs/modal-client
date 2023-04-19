@@ -12,7 +12,7 @@ import tempfile
 import traceback
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 import aiohttp.web
 import aiohttp.web_runner
@@ -33,6 +33,16 @@ from modal_proto import api_grpc, api_pb2
 from modal_utils.async_utils import synchronize_apis
 from modal_utils.grpc_utils import find_free_port, patch_mock_servicer
 from modal_utils.http_utils import run_temporary_http_server
+
+
+def function_definition_to_handle_metadata(definition: Optional[api_pb2.Function]) -> api_pb2.FunctionHandleMetadata:
+    if definition is None:
+        return None
+    return api_pb2.FunctionHandleMetadata(
+        function_name=definition.function_name,
+        function_type=definition.function_type,
+        web_url=definition.web_url,
+    )
 
 
 @patch_mock_servicer
@@ -161,7 +171,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.AppGetObjectsRequest = await stream.recv_message()
         object_ids = self.app_objects.get(request.app_id, {})
         items = [
-            api_pb2.AppGetObjectsItem(tag=tag, object_id=object_id, function=self.app_functions.get(object_id))
+            api_pb2.AppGetObjectsItem(
+                tag=tag,
+                object_id=object_id,
+                function=function_definition_to_handle_metadata(self.app_functions.get(object_id)),
+            )
             for tag, object_id in object_ids.items()
         ]
         await stream.send_message(api_pb2.AppGetObjectsResponse(items=items))
@@ -201,7 +215,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
             assert request.object_entity
             if object_id is not None:
                 assert object_id.startswith(request.object_entity)
-        function = self.app_functions.get(object_id)
+
+        function = function_definition_to_handle_metadata(self.app_functions.get(object_id))
         await stream.send_message(api_pb2.AppLookupObjectResponse(object_id=object_id, function=function))
 
     async def AppHeartbeat(self, stream):
