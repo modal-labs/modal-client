@@ -56,7 +56,7 @@ class _Handle(metaclass=ObjectMeta):
     def _initialize_from_proto(self, proto: Message):
         pass  # default implementation
 
-    def _handle_proto(self) -> Optional[Message]:
+    def _get_handle_metadata(self) -> Optional[Message]:
         return None
 
     @classmethod

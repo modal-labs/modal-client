@@ -469,7 +469,6 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
     _web_url: Optional[str]
     _info: Optional[FunctionInfo]
     _stub: Optional["modal.stub._Stub"]
-    _function_definition: Optional[api_pb2.Function]
 
     def _initialize_from_empty(self):
         self._progress = None
@@ -484,7 +483,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         self._stub = None
         self._self_obj = None
 
-    def _handle_proto(self):
+    def _get_handle_metadata(self):
         return api_pb2.FunctionHandleMetadata(
             function_name=self._function_name,
             function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR
@@ -498,7 +497,6 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         self._is_generator = proto.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
         self._web_url = proto.web_url
         self._function_name = proto.function_name
-        self._function_definition = proto
 
     def _initialize_from_local(self, stub, info: FunctionInfo):
         self._stub = stub

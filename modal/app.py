@@ -39,7 +39,6 @@ class _App:
 
     _tag_to_object: Dict[str, _Handle]
     _tag_to_existing_id: Dict[str, str]
-    _object_id_to_object: Dict[str, _Handle]
 
     _client: _Client
     _app_id: str
@@ -60,7 +59,6 @@ class _App:
         self._client = client
         self._tag_to_object = tag_to_object or {}
         self._tag_to_existing_id = tag_to_existing_id or {}
-        self._object_id_to_object = {obj.object_id: obj for obj in self._tag_to_object.values()}
 
     @property
     def client(self) -> _Client:
@@ -102,8 +100,6 @@ class _App:
         # We just delete them from the app, but the actual objects will stay around
         indexed_object_ids = {tag: obj.object_id for tag, obj in self._tag_to_object.items()}
         all_objects = resolver.objects()
-        for obj in all_objects:
-            self._object_id_to_object[obj.object_id] = obj
 
         unindexed_object_ids = list(
             set(obj.object_id for obj in all_objects) - set(obj.object_id for obj in self._tag_to_object.values())
@@ -147,11 +143,9 @@ class _App:
 
         req = api_pb2.AppGetObjectsRequest(app_id=app_id)
         resp = await retry_transient_errors(self._client.stub.AppGetObjects, req)
-        self._object_id_to_object = {}
         for item in resp.items:
             obj = _Handle._from_id(item.object_id, self._client, item.function)
             self._tag_to_object[item.tag] = obj
-            self._object_id_to_object[obj.object_id] = obj
 
     @staticmethod
     async def init_container(client: _Client, app_id: str) -> "_App":

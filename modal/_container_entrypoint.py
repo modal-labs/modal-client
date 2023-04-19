@@ -115,8 +115,7 @@ class _FunctionIOManager:
 
     @wrap()
     async def initialize_app(self):
-        self.app = await _App.init_container(self._client, self.app_id)
-        return self.app
+        await _App.init_container(self._client, self.app_id)
 
     async def _heartbeat(self):
         request = api_pb2.ContainerHeartbeatRequest()
@@ -135,7 +134,7 @@ class _FunctionIOManager:
             yield
 
     async def get_serialized_function(self) -> tuple[Optional[Any], Callable]:
-        # Fetch the serialized function definition, since that's stripped from the container args
+        # Fetch the serialized function definition
         request = api_pb2.FunctionGetSerializedRequest(function_id=self.function_id)
         response = await self.client.stub.FunctionGetSerialized(request)
         fun = self.deserialize(response.function_serialized)
