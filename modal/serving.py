@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2023
-import asyncio
+import contextlib
 import io
 import multiprocessing
 from multiprocessing.context import SpawnProcess
@@ -10,13 +10,14 @@ from typing import AsyncGenerator, Optional
 
 from synchronicity import Interface
 
-from modal_utils.async_utils import asyncify, synchronize_apis, synchronizer
+from modal_utils.async_utils import TaskContext, asyncify, synchronize_apis, synchronizer
 
 from ._output import OutputManager
 from ._watcher import watch
+from .app import _App
 from .cli.import_refs import import_stub
 from .client import _Client
-from .config import config
+from .runner import run_stub
 
 
 def _run_serve(stub_ref: str, existing_app_id: str, is_ready: Event):
@@ -54,31 +55,7 @@ async def _terminate(proc: Optional[SpawnProcess], output_mgr: OutputManager, ti
         pass  # Child process already finished
 
 
-def _get_clean_stub_description(stub_ref: str) -> str:
-    # If possible, consider the 'ref' argument the start of the app's args. Everything
-    # before it Modal CLI cruft (eg. `modal serve --timeout 1.0`).
-    try:
-        func_ref_arg_idx = sys.argv.index(stub_ref)
-        return " ".join(sys.argv[func_ref_arg_idx:])
-    except ValueError:
-        return " ".join(sys.argv)
-
-
-async def _run_serve_loop(
-    stub_ref: str,
-    timeout: Optional[float] = None,
-    stdout: Optional[io.TextIOWrapper] = None,
-    show_progress: bool = True,
-    _watcher: Optional[AsyncGenerator[None, None]] = None,  # for testing
-    _app_q: Optional[asyncio.Queue] = None,  # for testing
-):
-    stub = import_stub(stub_ref)
-    if stub._description is None:
-        stub._description = _get_clean_stub_description(stub_ref)
-
-    if timeout is None:
-        timeout = config["serve_timeout"]
-
+async def _run_watch_loop(stub_ref: str, app_id: str, output_mgr: OutputManager, watcher: AsyncGenerator[None, None]):
     unsupported_msg = None
     if platform.system() == "Windows":
         unsupported_msg = "Live-reload skipped. This feature is currently unsupported on Windows"
@@ -89,6 +66,40 @@ async def _run_serve_loop(
             " Upgrade to Python 3.8+ to enable live-reloading."
         )
 
+    if unsupported_msg:
+        async for _ in watcher:
+            output_mgr.print_if_visible(unsupported_msg)
+    else:
+        curr_proc = None
+        try:
+            async for _ in watcher:
+                await _terminate(curr_proc, output_mgr)
+                curr_proc = await _restart_serve(stub_ref, existing_app_id=app_id)
+        finally:
+            await _terminate(curr_proc, output_mgr)
+
+
+def _get_clean_stub_description(stub_ref: str) -> str:
+    # If possible, consider the 'ref' argument the start of the app's args. Everything
+    # before it Modal CLI cruft (eg. `modal serve --timeout 1.0`).
+    try:
+        func_ref_arg_idx = sys.argv.index(stub_ref)
+        return " ".join(sys.argv[func_ref_arg_idx:])
+    except ValueError:
+        return " ".join(sys.argv)
+
+
+@contextlib.asynccontextmanager
+async def _serve_stub(
+    stub_ref: str,
+    stdout: Optional[io.TextIOWrapper] = None,
+    show_progress: bool = True,
+    _watcher: Optional[AsyncGenerator[None, None]] = None,  # for testing
+) -> AsyncGenerator[_App, None]:
+    stub = import_stub(stub_ref)
+    if stub._description is None:
+        stub._description = _get_clean_stub_description(stub_ref)
+
     client = await _Client.from_env()
 
     output_mgr = OutputManager(stdout, show_progress, "Running app...")
@@ -96,28 +107,13 @@ async def _run_serve_loop(
     if _watcher is not None:
         watcher = _watcher  # Only used by tests
     else:
-        watcher = watch(stub._local_mounts, output_mgr, timeout)
+        watcher = watch(stub._local_mounts, output_mgr)
 
-    if unsupported_msg:
-        async with stub.run(client=client, output_mgr=output_mgr) as app:
-            client.set_pre_stop(app.disconnect)
-            async for _ in watcher:
-                output_mgr.print_if_visible(unsupported_msg)
-    else:
-        # Run the object creation loop one time first, to make sure all images etc get built
-        # This also handles the logs and the heartbeats
-        async with stub.run(client=client, output_mgr=output_mgr) as app:
-            if _app_q:
-                await _app_q.put(app)
-            client.set_pre_stop(app.disconnect)
-            existing_app_id = app.app_id
-            curr_proc = None
-            try:
-                async for _ in watcher:
-                    await _terminate(curr_proc, output_mgr)
-                    curr_proc = await _restart_serve(stub_ref, existing_app_id=existing_app_id)
-            finally:
-                await _terminate(curr_proc, output_mgr)
+    async with run_stub(stub, client=client, output_mgr=output_mgr) as app:
+        client.set_pre_stop(app.disconnect)
+        async with TaskContext(grace=0.1) as tc:
+            tc.create_task(_run_watch_loop(stub_ref, app.app_id, output_mgr, watcher))
+            yield app
 
 
-run_serve_loop, aio_run_serve_loop = synchronize_apis(_run_serve_loop)
+serve_stub, aio_serve_stub = synchronize_apis(_serve_stub)
