@@ -199,7 +199,8 @@ def serve(
     modal serve hello_world.py
     ```
     """
-    run_serve_loop(stub_ref, timeout)
+    with run_serve_loop(stub_ref, timeout):
+        pass  # Nothing to do in parallel
 
 
 def shell(
