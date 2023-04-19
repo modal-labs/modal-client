@@ -20,13 +20,18 @@ def proxy_tunnel(info: api_pb2.ProxyInfo):
 
         if info.remote_addr:
             # Forward port from address.
-            args = ["-L", f"{info.remote_port}:{info.remote_addr}:{info.remote_port}"]
+            args = [
+                "-L",
+                f"{info.remote_port}:{info.remote_addr}:{info.remote_port}",
+            ]
         else:
             # Set up SOCKS proxy.
             # TODO: add a local_port column and proxy_type (this is all being rewritten anyway)
             args = ["-D", f"{info.remote_port}"]
             os.environ["HTTP_PROXY"] = f"socks5://localhost:{info.remote_port}"
-            os.environ["HTTPS_PROXY"] = f"socks5://localhost:{info.remote_port}"
+
+            # https://github.com/getsentry/sentry-python/issues/1049
+            os.environ["NO_PROXY"] = "sentry.io"
 
         cmd = [
             "autossh",
