@@ -17,6 +17,7 @@ from ._watcher import watch
 from .app import _App
 from .cli.import_refs import import_stub
 from .client import _Client
+from .runner import run_stub
 
 
 def _run_serve(stub_ref: str, existing_app_id: str, is_ready: Event):
@@ -108,7 +109,7 @@ async def _run_serve_loop(
     else:
         watcher = watch(stub._local_mounts, output_mgr)
 
-    async with stub.run(client=client, output_mgr=output_mgr) as app:
+    async with run_stub(stub, client=client, output_mgr=output_mgr) as app:
         client.set_pre_stop(app.disconnect)
         async with TaskContext(grace=0.1) as tc:
             tc.create_task(_run_watch_loop(stub_ref, app.app_id, output_mgr, watcher))
