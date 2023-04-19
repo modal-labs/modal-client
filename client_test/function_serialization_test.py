@@ -19,7 +19,7 @@ async def test_serialize_deserialize_function(servicer, client):
         pass
 
     assert foo.object_id is not None
-    assert {foo.object_id} == servicer.reserved_functions
+    assert {foo.object_id} == servicer.precreated_functions
 
     foo_def = servicer.app_functions[foo.object_id]
 

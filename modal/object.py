@@ -322,7 +322,7 @@ class _Provider(Generic[H]):
             else:
                 raise
 
-    async def _preload(self, resolver):
+    async def _preload(self, resolver, existing_object_id) -> Optional[str]:
         return None
 
 

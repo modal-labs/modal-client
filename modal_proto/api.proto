@@ -429,8 +429,9 @@ message FunctionCreateRequest {
 message FunctionPrecreateRequest {
   string app_id = 1;
   string function_name = 2;
-  Function.FunctionType function_type = 3;
-  WebhookConfig webhook_config = 4;
+  string existing_function_id = 3;
+  Function.FunctionType function_type = 4;
+  WebhookConfig webhook_config = 5;
 }
 
 message FunctionPrecreateResponse {

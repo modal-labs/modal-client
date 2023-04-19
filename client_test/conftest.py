@@ -103,7 +103,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.blob_create_metadata = None
         self.blob_multipart_threshold = 10_000_000
 
-        self.reserved_functions = set()
+        self.precreated_functions = set()
         self.app_functions = {}
         self.fcidx = 0
         self.created_secrets = 0
@@ -339,7 +339,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         req: api_pb2.FunctionPrecreateRequest = await stream.recv_message()
         self.n_functions += 1
         function_id = f"fu-{self.n_functions}"
-        self.reserved_functions.add(function_id)
+        self.precreated_functions.add(function_id)
         web_url = "http://xyz.internal" if req.HasField("webhook_config") and req.webhook_config.type else None
 
         await stream.send_message(

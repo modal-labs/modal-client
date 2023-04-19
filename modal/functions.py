@@ -515,7 +515,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         return self._stub[self._info.get_tag()]
 
     @property
-    def web_url(self) -> str:
+    async def web_url(self) -> str:
         """URL of a Function running as a web endpoint."""
         return self._web_url
 
@@ -859,7 +859,7 @@ class _Function(_Provider[_FunctionHandle]):
         rep = f"Function({self._tag})"
         super().__init__(self._load, rep)
 
-    async def _preload(self, resolver: Resolver):
+    async def _preload(self, resolver: Resolver, existing_object_id: Optional[str]):
         if self._is_generator:
             function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
         else:
@@ -870,6 +870,7 @@ class _Function(_Provider[_FunctionHandle]):
             function_name=self._info.function_name,
             function_type=function_type,
             webhook_config=self._webhook_config,
+            existing_function_id=existing_object_id,
         )
         response = await resolver.client.stub.FunctionPrecreate(req)
         self._function_handle._initialize_handle(resolver.client, response.function_id)
