@@ -15,7 +15,7 @@ from modal_utils.grpc_utils import retry_transient_errors
 from ._object_meta import ObjectMeta
 from ._resolver import Resolver
 from .client import _Client
-from .exception import InvalidError, NotFoundError, deprecation_warning
+from .exception import InvalidError, NotFoundError, deprecation_error
 
 H = TypeVar("H", bound="_Handle")
 
@@ -139,12 +139,12 @@ async def _lookup(
     tag: Optional[str] = None,
     namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
     client: Optional[_Client] = None,
-) -> _Handle:
-    deprecation_warning(
+):
+    """Deprecated. Use corresponding class methods instead," " e.g. modal.Secret.lookup, etc."""
+    deprecation_error(
         date(2023, 2, 11),
-        "modal.lookup is deprecated. Use corresponding class methods instead," " e.g. modal.Secret.lookup, etc.",
+        _lookup.__doc__,
     )
-    return await _Handle.from_app(app_name, tag, namespace, client)
 
 
 lookup, aio_lookup = synchronize_apis(_lookup)
@@ -155,14 +155,20 @@ _BLOCKING_P, _ASYNC_P = synchronize_apis(P)
 
 
 class _Provider(Generic[H]):
-    def _init(self, load: Callable[[Resolver, str], Awaitable[H]], rep: str):
+    def _init(self, load: Callable[[Resolver, str], Awaitable[H]], rep: str, is_persisted_ref: bool = False):
         self._local_uuid = str(uuid.uuid4())
         self._load = load
         self._rep = rep
+        self.is_persisted_ref = is_persisted_ref
 
-    def __init__(self, load: Callable[[Resolver, str], Awaitable[H]], rep: str):
+    def __init__(
+        self,
+        load: Callable[[Resolver, str], Awaitable[H]],
+        rep: str,
+        is_persisted_ref: bool = False,
+    ):
         # TODO(erikbern): this is semi-deprecated - subclasses should use _from_loader
-        self._init(load, rep)
+        self._init(load, rep, is_persisted_ref)
 
     @classmethod
     def _from_loader(cls, load: Callable[[Resolver, str], Awaitable[H]], rep: str):
@@ -185,7 +191,10 @@ class _Provider(Generic[H]):
         return self._local_uuid
 
     async def _deploy(
-        self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, client: Optional[_Client] = None
+        self,
+        label: str,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        client: Optional[_Client] = None,
     ) -> H:
         """mdmd:hidden
 
@@ -234,12 +243,15 @@ class _Provider(Generic[H]):
         cls = type(self)
         obj = cls.__new__(cls)
         rep = f"PersistedRef<{self}>({label})"
-        _Provider.__init__(obj, _load_persisted, rep)
+        _Provider.__init__(obj, _load_persisted, rep, is_persisted_ref=True)
         return obj
 
     @classmethod
     def from_name(
-        cls: Type[P], app_name: str, tag: Optional[str] = None, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE
+        cls: Type[P],
+        app_name: str,
+        tag: Optional[str] = None,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
     ) -> P:
         """Returns a reference to an Modal object of any type
 

@@ -16,7 +16,9 @@ from modal.exception import ExecutionError
 
 class StatusRow:
     def __init__(self, progress: Optional[Tree]):
-        from ._output import step_progress  # Lazy import to only import `rich` when necessary.
+        from ._output import (
+            step_progress,
+        )  # Lazy import to only import `rich` when necessary.
 
         self._spinner = None
         self._step_node = None
@@ -78,12 +80,15 @@ class Resolver:
         created_obj = await obj._load(self, existing_object_id)
 
         if existing_object_id is not None and created_obj.object_id != existing_object_id:
-            # TODO(erikbern): this is a very ugly fix to a problem that's on the server side.
+            # TODO(erikbern): ignoring images is an ugly fix to a problem that's on the server.
             # Unlike every other object, images are not assigned random ids, but rather an
             # id given by the hash of its contents. This means we can't _force_ an image to
             # have a particular id. The better solution is probably to separate "images"
             # from "image definitions" or something like that, but that's a big project.
-            if not existing_object_id.startswith("im-"):
+            #
+            # Persisted refs are ignored because their life cycle is managed independently.
+            # The same tag on an app can be pointed at different objects.
+            if not obj.is_persisted_ref and not existing_object_id.startswith("im-"):
                 raise Exception(
                     f"Tried creating an object using existing id {existing_object_id}"
                     f" but it has id {created_obj.object_id}"

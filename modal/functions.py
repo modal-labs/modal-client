@@ -1,13 +1,12 @@
 # Copyright Modal Labs 2022
 import asyncio
 import inspect
-import os
-import platform
+import posixpath
 import time
 import typing
 import warnings
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import PurePath
 from typing import Any, AsyncIterable, Callable, Collection, Dict, List, Optional, Set, Union
 
 import cloudpickle
@@ -19,6 +18,7 @@ from synchronicity.exceptions import UserCodeException
 
 from modal import _pty
 from modal_proto import api_pb2
+from modal._types import typechecked
 from modal_utils.async_utils import (
     queue_batch_iterator,
     synchronize_apis,
@@ -32,7 +32,7 @@ from ._blob_utils import (
     blob_download,
     blob_upload,
 )
-from ._function_utils import FunctionInfo, LocalFunctionError, load_function_from_module
+from ._function_utils import FunctionInfo
 from ._location import parse_cloud_provider
 from ._output import OutputManager
 from ._resolver import Resolver
@@ -761,6 +761,7 @@ class _Function(_Provider[_FunctionHandle]):
         interactive: bool = False,
         name: Optional[str] = None,
         cloud: Optional[str] = None,
+        _cls: Optional[type] = None,
     ) -> None:
         """mdmd:hidden"""
         raw_f = function_info.raw_f
@@ -838,6 +839,16 @@ class _Function(_Provider[_FunctionHandle]):
         else:
             self._cloud_provider = None
 
+        if self._info.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
+            # Use cloudpickle. Used when working w/ Jupyter notebooks.
+            # serialize at _load time, not function decoration time
+            # otherwise we can't capture a surrounding class for lifetime methods etc.
+            self._function_serialized = self._info.serialized_function()
+            self._class_serialized = cloudpickle.dumps(_cls) if _cls is not None else None
+        else:
+            self._function_serialized = None
+            self._class_serialized = None
+
         self._panel_items = [
             str(i)
             for i in [
@@ -908,16 +919,17 @@ class _Function(_Provider[_FunctionHandle]):
         shared_volume_mounts = []
         # Relies on dicts being ordered (true as of Python 3.6).
         for path, shared_volume in self._shared_volumes.items():
-            # TODO: check paths client-side on Windows as well.
-            path = Path(path).as_posix()
-            abs_path = os.path.abspath(path)
+            path = PurePath(path).as_posix()
+            abs_path = posixpath.abspath(path)
 
-            if platform.system() != "Windows" and path != abs_path:
+            if path != abs_path:
                 raise InvalidError(f"Shared volume {abs_path} must be a canonical, absolute path.")
-            elif platform.system() != "Windows" and abs_path == "/":
+            elif abs_path == "/":
                 raise InvalidError(f"Shared volume {abs_path} cannot be mounted into root directory.")
-            elif platform.system() != "Windows" and abs_path == "/tmp":
-                raise InvalidError(f"Shared volume {abs_path} cannot be mounted at /tmp.")
+            elif abs_path == "/root":
+                raise InvalidError(f"Shared volume {abs_path} cannot be mounted at '/root'.")
+            elif abs_path == "/tmp":
+                raise InvalidError(f"Shared volume {abs_path} cannot be mounted at '/tmp'.")
 
             shared_volume_mounts.append(
                 api_pb2.SharedVolumeMount(
@@ -948,27 +960,6 @@ class _Function(_Provider[_FunctionHandle]):
         else:
             pty_info = None
 
-        function_serialized = None
-        class_serialized = None
-        if self._info.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
-            # Use cloudpickle. Used when working w/ Jupyter notebooks.
-            # serialize at _load time, not function decoration time
-            # otherwise we can't capture a surrounding class for lifetime methods etc.
-            function_serialized = self._info.serialized_function()
-            mod = inspect.getmodule(self._raw_f)
-
-            try:
-                cls, _ = load_function_from_module(mod, self._raw_f.__qualname__)
-            except LocalFunctionError:
-                # if a serialized function is defined within a function scope
-                # we can't load it from the module and detect its parent class
-                # TODO: fix this somehow... maybe put the decorator on the
-                #       class instead for entrypoint classes
-                cls = None
-
-            if cls:
-                class_serialized = cloudpickle.dumps(cls)
-
         if self._keep_warm is True:
             deprecation_warning(
                 date(2023, 3, 3),
@@ -986,8 +977,8 @@ class _Function(_Provider[_FunctionHandle]):
             secret_ids=secret_ids,
             image_id=image_id,
             definition_type=self._info.definition_type,
-            function_serialized=function_serialized,
-            class_serialized=class_serialized,
+            function_serialized=self._function_serialized,
+            class_serialized=self._class_serialized,
             function_type=function_type,
             resources=api_pb2.Resources(milli_cpu=milli_cpu, gpu_config=self._gpu_config, memory_mb=self._memory),
             webhook_config=self._webhook_config,
@@ -1169,3 +1160,180 @@ def current_input_id() -> str:
 def _set_current_input_id(input_id: Optional[str]):
     global _current_input_id
     _current_input_id = input_id
+
+
+class _PartialFunction:
+    """Intermediate function, produced by @method or @web_endpoint"""
+
+    @staticmethod
+    def initialize_cls(user_cls: type, function_handles: Dict[str, _FunctionHandle]):
+        user_cls._modal_function_handles = function_handles
+
+    def __init__(self, raw_f: Callable[..., Any], webhook_config: Optional[api_pb2.WebhookConfig] = None):
+        self.raw_f = raw_f
+        self.webhook_config = webhook_config
+        self.wrapped = False  # Make sure that this was converted into a FunctionHandle
+
+    def __get__(self, obj, objtype=None) -> _FunctionHandle:
+        k = self.raw_f.__name__
+        if obj:  # Cls().fun
+            function_handle = obj._modal_function_handles[k]
+        else:  # Cls.fun
+            function_handle = objtype._modal_function_handles[k]
+        return function_handle.__get__(obj, objtype)
+
+    def __del__(self):
+        if self.wrapped is False:
+            logger.warning(
+                f"Method or web function {self.raw_f} was never turned into a function."
+                " Did you forget a @stub.function or @stub.cls decorator?"
+            )
+
+
+PartialFunction, AioPartialFunction = synchronize_apis(_PartialFunction)
+
+
+def _method() -> Callable[[Callable[..., Any]], _PartialFunction]:
+    """Decorator for methods that should be transformed by Modal.
+
+    Usage:
+    ```
+    @stub.cls(cpu=8)
+    class MyCls:
+        @method()
+        def f(self):
+            ...
+    ```
+    """
+    return _PartialFunction
+
+
+@typechecked
+def _web_endpoint(
+    method: str = "GET",  # REST method for the created endpoint.
+    label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
+    wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
+) -> Callable[[Callable[..., Any]], _PartialFunction]:
+    """Register a basic web endpoint with this application.
+
+    This is the simple way to create a web endpoint on Modal. The function
+    behaves as a [FastAPI](https://fastapi.tiangolo.com/) handler and should
+    return a response object to the caller.
+
+    Endpoints created with `@stub.web_endpoint` are meant to be simple, single
+    request handlers and automatically have
+    [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) enabled.
+    For more flexibility, use `@stub.asgi_app`.
+
+    To learn how to use Modal with popular web frameworks, see the
+    [guide on web endpoints](https://modal.com/docs/guide/webhooks).
+
+    All webhook requests have a 150s maximum request time for the HTTP request itself. However, the underlying functions can
+    run for longer and return results to the caller on completion.
+
+    The two `wait_for_response` modes for webhooks are as follows:
+    * `wait_for_response=True` - tries to fulfill the request on the original URL, but returns a 302 redirect after ~150s to a result URL (original URL with an added `__modal_function_id=...` query parameter)
+    * `wait_for_response=False` - immediately returns a 202 ACCEPTED response with a JSON payload: `{"result_url": "..."}` containing the result "redirect" URL from above (which in turn redirects to itself every ~150s)
+    """
+
+    def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
+        if isinstance(raw_f, _FunctionHandle):
+            raw_f = raw_f.get_raw_f()
+            raise InvalidError(
+                f"Applying decorators for {raw_f} in the wrong order!\nUsage:\n\n"
+                "@stub.function()\n@stub.web_endpoint()\ndef my_webhook():\n    ..."
+            )
+        if not wait_for_response:
+            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
+        else:
+            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
+
+        # self._loose_webhook_configs.add(raw_f)
+
+        return _PartialFunction(
+            raw_f,
+            api_pb2.WebhookConfig(
+                type=api_pb2.WEBHOOK_TYPE_FUNCTION,
+                method=method,
+                requested_suffix=label,
+                async_mode=_response_mode,
+            ),
+        )
+
+    return wrapper
+
+
+@typechecked
+def _asgi_app(
+    label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
+    wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
+) -> Callable[[Callable[..., Any]], _PartialFunction]:
+    """Register an ASGI app with this application.
+
+    Asynchronous Server Gateway Interface (ASGI) is a standard for Python
+    synchronous and asynchronous apps, supported by all popular Python web
+    libraries. This is an advanced decorator that gives full flexibility in
+    defining one or more web endpoints on Modal.
+
+    To learn how to use Modal with popular web frameworks, see the
+    [guide on web endpoints](https://modal.com/docs/guide/webhooks).
+
+    The two `wait_for_response` modes for webhooks are as follows:
+    * wait_for_response=True - tries to fulfill the request on the original URL, but returns a 302 redirect after ~150s to a result URL (original URL with an added `__modal_function_id=fc-1234abcd` query parameter)
+    * wait_for_response=False - immediately returns a 202 ACCEPTED response with a json payload: `{"result_url": "..."}` containing the result "redirect" url from above (which in turn redirects to itself every 150s)
+    """
+
+    def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
+        if not wait_for_response:
+            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
+        else:
+            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
+
+        # self._loose_webhook_configs.add(raw_f)
+
+        return _PartialFunction(
+            raw_f,
+            api_pb2.WebhookConfig(
+                type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
+                requested_suffix=label,
+                async_mode=_response_mode,
+            ),
+        )
+
+    return wrapper
+
+
+@typechecked
+def _wsgi_app(
+    label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
+    wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
+) -> Callable[[Callable[..., Any]], _PartialFunction]:
+    """Register an WSGI app with this application.
+
+    See documentation for asgi_app
+    """
+
+    def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
+        if not wait_for_response:
+            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
+        else:
+            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
+
+        # self._loose_webhook_configs.add(raw_f)
+
+        return _PartialFunction(
+            raw_f,
+            api_pb2.WebhookConfig(
+                type=api_pb2.WEBHOOK_TYPE_WSGI_APP,
+                requested_suffix=label,
+                async_mode=_response_mode,
+            ),
+        )
+
+    return wrapper
+
+
+method, aio_method = synchronize_apis(_method)
+web_endpoint, aio_web_endpoint = synchronize_apis(_web_endpoint)
+asgi_app, aio_asgi_app = synchronize_apis(_asgi_app)
+wsgi_app, aio_wsgi_app = synchronize_apis(_wsgi_app)

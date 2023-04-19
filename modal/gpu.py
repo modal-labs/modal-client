@@ -24,6 +24,12 @@ class _GPUConfig:
 
 
 class T4(_GPUConfig):
+    """
+    [NVIDIA T4](https://www.nvidia.com/en-us/data-center/tesla-t4/) GPU class.
+
+    Low-cost GPU option, providing 16GiB of GPU memory.
+    """
+
     def __init__(self, count: int = 1):
         super().__init__(api_pb2.GPU_TYPE_T4, count, 0)
 
@@ -32,6 +38,12 @@ class T4(_GPUConfig):
 
 
 class A100(_GPUConfig):
+    """
+    [NVIDIA A100 Tensor Core](https://www.nvidia.com/en-us/data-center/a100/) GPU class.
+
+    The most powerful GPU available in the cloud. Available in 20GiB and 40GiB GPU memory configurations.
+    """
+
     def __init__(self, *, count: int = 1, memory: int = 0):
         allowed_memory_values = {0, 20, 40}
         if memory not in allowed_memory_values:
@@ -57,6 +69,13 @@ class A100(_GPUConfig):
 
 
 class A10G(_GPUConfig):
+    """
+    [NVIDIA A10G Tensor Core](https://www.nvidia.com/en-us/data-center/products/a10-gpu/) GPU class.
+
+    A10G GPUs deliver up to 3.3x better ML training performance, 3x better ML inference performance,
+    and 3x better graphics performance, in comparison to NVIDIA T4 GPUs.
+    """
+
     def __init__(self, *, count: int = 1):
         super().__init__(api_pb2.GPU_TYPE_A10G, count)
 
@@ -65,6 +84,8 @@ class A10G(_GPUConfig):
 
 
 class Any(_GPUConfig):
+    """Selects any one of the GPU classes available within Modal, according to availability."""
+
     def __init__(self, *, count: int = 1):
         super().__init__(api_pb2.GPU_TYPE_ANY, count)
 
@@ -73,6 +94,16 @@ class Any(_GPUConfig):
 
 
 STRING_TO_GPU_CONFIG = {"t4": T4(), "a100": A100(), "a100-20g": A100(memory=20), "a10g": A10G(), "any": Any()}
+display_string_to_config = "\n".join(f'- "{key}" → `{value}`' for key, value in STRING_TO_GPU_CONFIG.items())
+__doc__ = f"""
+**GPU configuration shortcodes**
+
+The following are the valid `str` values for the `gpu` parameter of [`@stub.function`](/docs/reference/modal.Stub#function).
+
+{display_string_to_config}
+
+Other configurations can be created using the constructors documented below.
+"""
 
 # bool will be deprecated in future versions.
 GPU_T = Union[None, bool, str, _GPUConfig]

@@ -6,11 +6,10 @@ import time
 import cloudpickle
 from synchronicity.exceptions import UserCodeException
 
-from modal import Proxy, Stub, SharedVolume
+from modal import Proxy, Stub, SharedVolume, web_endpoint
 from modal.exception import InvalidError
 from modal.functions import Function, FunctionCall, gather, FunctionHandle
 from modal.stub import AioStub
-from modal_proto import api_pb2
 
 stub = Stub()
 
@@ -318,30 +317,6 @@ def test_function_relative_import_hint(client, servicer):
         assert "HINT" in str(excinfo.value)
 
 
-lifecycle_stub = Stub()
-
-
-class Foo:
-    bar = "hello"
-
-    @lifecycle_stub.function(serialized=True)
-    def run(self):
-        return self.bar
-
-
-def test_serialized_function_includes_lifecycle_class(client, servicer):
-    with lifecycle_stub.run(client=client):
-        pass
-
-    assert len(servicer.app_functions) == 1
-    func_def = next(iter(servicer.app_functions.values()))
-    assert func_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED
-
-    func = cloudpickle.loads(func_def.function_serialized)
-    cls = cloudpickle.loads(func_def.class_serialized)
-    assert func(cls()) == "hello"
-
-
 def test_nonglobal_function():
     stub = Stub()
 
@@ -450,9 +425,7 @@ def test_allow_cross_region_volumes_webhook(client, servicer):
     stub = Stub()
     vol1, vol2 = SharedVolume(), SharedVolume()
     # Should pass flag for all the function's SharedVolumeMounts
-    stub.function(shared_volumes={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(
-        stub.web_endpoint()(dummy)
-    )
+    stub.function(shared_volumes={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(web_endpoint()(dummy))
 
     with stub.run(client=client):
         assert len(servicer.app_functions) == 1

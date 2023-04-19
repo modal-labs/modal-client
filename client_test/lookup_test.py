@@ -1,8 +1,8 @@
 # Copyright Modal Labs 2023
 import pytest
 
-from modal.aio import AioFunction, AioQueue, AioStub, aio_lookup
-from modal.exception import DeprecationError, NotFoundError
+from modal.aio import AioFunction, AioQueue, AioStub, aio_web_endpoint
+from modal.exception import NotFoundError
 from modal.queue import AioQueueHandle
 
 
@@ -50,23 +50,11 @@ async def test_lookup_function(servicer, aio_client):
 @pytest.mark.asyncio
 async def test_webhook_lookup(servicer, aio_client):
     stub = AioStub()
-    stub.function()(stub.web_endpoint(method="POST")(square))
+    stub.function()(aio_web_endpoint(method="POST")(square))
     await stub.deploy("my-webhook", client=aio_client)
 
     f = await AioFunction.lookup("my-webhook", client=aio_client)
     assert f.web_url
-
-
-@pytest.mark.asyncio
-async def test_deprecated(servicer, aio_client):
-    stub = AioStub()
-    stub["q_1"] = AioQueue()
-    await stub.deploy("my-queue", client=aio_client)
-
-    servicer.enforce_object_entity = False
-    with pytest.warns(DeprecationError):
-        q = await aio_lookup("my-queue", client=aio_client)
-    assert q.object_id == "qu-1"
 
 
 @pytest.mark.asyncio
