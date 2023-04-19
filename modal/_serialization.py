@@ -1,15 +1,27 @@
 # Copyright Modal Labs 2022
 import io
 import pickle
+from typing import Optional
 
 import cloudpickle
 
 from modal_utils import async_utils
+from synchronicity import Interface
 from synchronicity.synchronizer import TARGET_INTERFACE_ATTR
 from .exception import InvalidError
 from .object import _Handle, Handle, AioHandle
 
 PICKLE_PROTOCOL = 4  # Support older Python versions.
+
+
+def get_synchronicity_interface(obj) -> Optional[Interface]:
+    return getattr(obj, TARGET_INTERFACE_ATTR, None)
+
+
+def restore_synchronicity_interface(raw_obj, target_interface: Optional[Interface]):
+    if target_interface:
+        return async_utils.synchronizer._translate_out(raw_obj, target_interface)
+    return raw_obj
 
 
 class Pickler(cloudpickle.Pickler):
@@ -21,7 +33,7 @@ class Pickler(cloudpickle.Pickler):
             return
         if not obj.object_id:
             raise InvalidError(f"Can't serialize object {obj} which hasn't been created.")
-        return (obj.object_id, getattr(obj, TARGET_INTERFACE_ATTR, None), obj._handle_proto())
+        return (obj.object_id, get_synchronicity_interface(obj), obj._handle_proto())
 
 
 class Unpickler(pickle.Unpickler):
@@ -32,9 +44,7 @@ class Unpickler(pickle.Unpickler):
     def persistent_load(self, pid):
         (object_id, target_interface, handle_proto) = pid
         raw_obj = _Handle._from_id(object_id, self.client, handle_proto)
-        if target_interface:
-            return async_utils.synchronizer._translate_out(raw_obj, target_interface)
-        return raw_obj
+        return restore_synchronicity_interface(raw_obj, target_interface)
 
 
 def serialize(obj):
