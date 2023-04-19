@@ -90,7 +90,7 @@ def _get_clean_stub_description(stub_ref: str) -> str:
 
 
 @contextlib.asynccontextmanager
-async def _run_serve_loop(
+async def _serve_stub(
     stub_ref: str,
     stdout: Optional[io.TextIOWrapper] = None,
     show_progress: bool = True,
@@ -116,4 +116,4 @@ async def _run_serve_loop(
             yield app
 
 
-run_serve_loop, aio_run_serve_loop = synchronize_apis(_run_serve_loop)
+serve_stub, aio_serve_stub = synchronize_apis(_serve_stub)

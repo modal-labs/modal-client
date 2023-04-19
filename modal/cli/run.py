@@ -11,9 +11,9 @@ import typer
 from rich.console import Console
 from synchronicity import Interface
 
-from modal._live_reload import run_serve_loop
 from modal.config import config
 from modal.exception import InvalidError
+from modal.serving import serve_stub
 from modal.stub import LocalEntrypoint
 from modal_utils.async_utils import synchronizer
 
@@ -201,7 +201,7 @@ def serve(
     modal serve hello_world.py
     ```
     """
-    with run_serve_loop(stub_ref):
+    with serve_stub(stub_ref):
         if timeout is None:
             timeout = config["serve_timeout"]
         if timeout is None:
