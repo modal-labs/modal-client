@@ -201,11 +201,12 @@ def serve(
     modal serve hello_world.py
     ```
     """
-    with run_serve_loop(stub_ref, timeout):
+    with run_serve_loop(stub_ref):
         if timeout is None:
-            time.sleep(1e9)
-        else:
-            time.sleep(config["serve_timeout"])
+            timeout = config["serve_timeout"]
+        if timeout is None:
+            timeout = 1e9
+        time.sleep(timeout)
 
 
 def shell(
