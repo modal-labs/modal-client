@@ -3,6 +3,7 @@ import asyncio
 import datetime
 import inspect
 import sys
+import time
 from typing import Optional
 
 import click
@@ -11,6 +12,7 @@ from rich.console import Console
 from synchronicity import Interface
 
 from modal._live_reload import run_serve_loop
+from modal.config import config
 from modal.exception import InvalidError
 from modal.stub import LocalEntrypoint
 from modal_utils.async_utils import synchronizer
@@ -200,7 +202,10 @@ def serve(
     ```
     """
     with run_serve_loop(stub_ref, timeout):
-        pass  # Nothing to do in parallel
+        if timeout is None:
+            time.sleep(1e9)
+        else:
+            time.sleep(config["serve_timeout"])
 
 
 def shell(

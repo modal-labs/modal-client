@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2023
-import asyncio
 import contextlib
 import io
 import multiprocessing
@@ -11,14 +10,13 @@ from typing import AsyncGenerator, Optional
 
 from synchronicity import Interface
 
-from modal_utils.async_utils import asyncify, synchronize_apis, synchronizer
+from modal_utils.async_utils import TaskContext, asyncify, synchronize_apis, synchronizer
 
 from ._output import OutputManager
 from ._watcher import watch
 from .app import _App
 from .cli.import_refs import import_stub
 from .client import _Client
-from .config import config
 
 
 def _run_serve(stub_ref: str, existing_app_id: str, is_ready: Event):
@@ -93,7 +91,6 @@ def _get_clean_stub_description(stub_ref: str) -> str:
 @contextlib.asynccontextmanager
 async def _run_serve_loop(
     stub_ref: str,
-    timeout: Optional[float] = None,
     stdout: Optional[io.TextIOWrapper] = None,
     show_progress: bool = True,
     _watcher: Optional[AsyncGenerator[None, None]] = None,  # for testing
@@ -102,9 +99,6 @@ async def _run_serve_loop(
     if stub._description is None:
         stub._description = _get_clean_stub_description(stub_ref)
 
-    if timeout is None:
-        timeout = config["serve_timeout"]
-
     client = await _Client.from_env()
 
     output_mgr = OutputManager(stdout, show_progress, "Running app...")
@@ -112,15 +106,13 @@ async def _run_serve_loop(
     if _watcher is not None:
         watcher = _watcher  # Only used by tests
     else:
-        watcher = watch(stub._local_mounts, output_mgr, timeout)
+        watcher = watch(stub._local_mounts, output_mgr)
 
     async with stub.run(client=client, output_mgr=output_mgr) as app:
         client.set_pre_stop(app.disconnect)
-        watcher_task = asyncio.create_task(_run_watch_loop(stub_ref, app.app_id, output_mgr, watcher))
-        try:
+        async with TaskContext(grace=0.1) as tc:
+            tc.create_task(_run_watch_loop(stub_ref, app.app_id, output_mgr, watcher))
             yield app
-        finally:
-            await watcher_task
 
 
 run_serve_loop, aio_run_serve_loop = synchronize_apis(_run_serve_loop)

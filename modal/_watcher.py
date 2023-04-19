@@ -1,10 +1,8 @@
 # Copyright Modal Labs 2022
-import asyncio
 from collections import defaultdict
 from pathlib import Path
 from typing import AsyncGenerator, Dict, List, Optional, Set, Tuple
 
-from aiostream import stream
 from rich.tree import Tree
 from watchfiles import Change, DefaultFilter, awatch
 
@@ -57,11 +55,6 @@ class StubFilesFilter(DefaultFilter):
         return super().__call__(change, path)
 
 
-async def _sleep(timeout: float):
-    await asyncio.sleep(timeout)
-    yield _TIMEOUT_SENTINEL
-
-
 async def _watch_paths(paths: Set[Path], watch_filter: StubFilesFilter):
     try:
         async for changes in awatch(*paths, step=500, watch_filter=watch_filter):
@@ -71,11 +64,8 @@ async def _watch_paths(paths: Set[Path], watch_filter: StubFilesFilter):
         pass
 
 
-def _print_watched_paths(paths: Set[Path], output_mgr: OutputManager, timeout: Optional[float]):
-    if timeout:
-        msg = f"⚡️ Serving for {timeout} seconds... hit Ctrl-C to stop!"
-    else:
-        msg = "️️⚡️ Serving... hit Ctrl-C to stop!"
+def _print_watched_paths(paths: Set[Path], output_mgr: OutputManager):
+    msg = "️️⚡️ Serving... hit Ctrl-C to stop!"
 
     output_tree = Tree(msg, guide_style="gray50")
 
@@ -102,18 +92,10 @@ def _watch_args_from_mounts(mounts: List[_Mount]) -> Tuple[Set[Path], StubFilesF
     return paths, watch_filter
 
 
-async def watch(
-    mounts: List[_Mount], output_mgr: OutputManager, timeout: Optional[float]
-) -> AsyncGenerator[None, None]:
+async def watch(mounts: List[_Mount], output_mgr: OutputManager) -> AsyncGenerator[None, None]:
     paths, watch_filter = _watch_args_from_mounts(mounts)
 
-    _print_watched_paths(paths, output_mgr, timeout)
+    _print_watched_paths(paths, output_mgr)
 
-    timeout_agen = [] if timeout is None else [_sleep(timeout)]
-
-    async with stream.merge(_watch_paths(paths, watch_filter), *timeout_agen).stream() as streamer:
-        async for event in streamer:
-            if event == _TIMEOUT_SENTINEL:
-                return
-            else:
-                yield
+    async for event in _watch_paths(paths, watch_filter):
+        yield
