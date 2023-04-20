@@ -3,6 +3,7 @@ import pytest
 
 from modal import Stub, method
 from modal.aio import AioStub, aio_method
+from modal.functions import FunctionHandle
 from modal_proto import api_pb2
 from modal._serialization import deserialize
 
@@ -77,6 +78,7 @@ def test_run_class_serialized(client, servicer):
     obj = cls()
     meth = fun.__get__(obj, cls)
 
+    assert isinstance(obj.bar, FunctionHandle)
     # Make sure it's callable
     assert meth(100) == 1000000
 
