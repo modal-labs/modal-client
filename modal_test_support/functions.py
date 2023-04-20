@@ -200,3 +200,10 @@ class Cls:
     @web_endpoint()
     def web(self, arg):
         return {"ret": arg * self._k}
+
+    def _generator(self, x):
+        yield x**3
+
+    @method(is_generator=True)
+    def generator(self, x):
+        return self._generator(x)

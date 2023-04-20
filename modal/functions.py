@@ -1152,9 +1152,15 @@ class _PartialFunction:
     def initialize_cls(user_cls: type, function_handles: Dict[str, _FunctionHandle]):
         user_cls._modal_function_handles = function_handles
 
-    def __init__(self, raw_f: Callable[..., Any], webhook_config: Optional[api_pb2.WebhookConfig] = None):
+    def __init__(
+        self,
+        raw_f: Callable[..., Any],
+        webhook_config: Optional[api_pb2.WebhookConfig] = None,
+        is_generator: Optional[bool] = None,
+    ):
         self.raw_f = raw_f
         self.webhook_config = webhook_config
+        self.is_generator = is_generator
         self.wrapped = False  # Make sure that this was converted into a FunctionHandle
 
     def __get__(self, obj, objtype=None) -> _FunctionHandle:
@@ -1176,7 +1182,7 @@ class _PartialFunction:
 PartialFunction, AioPartialFunction = synchronize_apis(_PartialFunction)
 
 
-def _method() -> Callable[[Callable[..., Any]], _PartialFunction]:
+def _method(is_generator=Optional[bool]) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Decorator for methods that should be transformed by Modal.
 
     Usage:
@@ -1188,7 +1194,11 @@ def _method() -> Callable[[Callable[..., Any]], _PartialFunction]:
             ...
     ```
     """
-    return _PartialFunction
+
+    def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
+        return _PartialFunction(raw_f, is_generator=is_generator)
+
+    return wrapper
 
 
 @typechecked

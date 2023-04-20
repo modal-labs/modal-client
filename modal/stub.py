@@ -579,6 +579,7 @@ class _Stub:
             info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
             raw_f = f.raw_f
             webhook_config = f.webhook_config
+            is_generator = f.is_generator
             if webhook_config:
                 self._web_endpoints.append(info.get_tag())
 
