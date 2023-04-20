@@ -53,14 +53,14 @@ class _Handle(metaclass=ObjectMeta):
     def _initialize_from_empty(self):
         pass  # default implementation
 
-    def _initialize_from_proto(self, proto: Message):
+    def _initialize_from_handle_metadata(self, proto: Message):
         pass  # default implementation
 
     def _handle_proto(self) -> Optional[Message]:
         return None
 
     @classmethod
-    def _from_id(cls: Type[H], object_id: str, client: _Client, proto: Optional[Message]) -> H:
+    def _from_id(cls: Type[H], object_id: str, client: _Client, handle_metadata: Optional[Message]) -> H:
         if cls._type_prefix is not None:
             # This is called directly on a subclass, e.g. Secret.from_id
             if not object_id.startswith(cls._type_prefix):
@@ -79,18 +79,26 @@ class _Handle(metaclass=ObjectMeta):
         # Instantiate object and return
         obj = object_cls._new()
         obj._initialize_handle(client, object_id)
-        obj._initialize_from_proto(proto)
+        obj._initialize_from_handle_metadata(handle_metadata)
         return obj
 
     @classmethod
     async def from_id(cls: Type[H], object_id: str, client: Optional[_Client] = None) -> H:
         """Get an object of this type from a unique object id (retrieved from `obj.object_id`)"""
         # This is used in a few examples to construct FunctionCall objects
-        # TODO(erikbern): doesn't use _initialize_from_proto - let's use AppLookupObjectRequest?
         # TODO(erikbern): this should probably be on the provider?
         if client is None:
             client = await _Client.from_env()
-        return cls._from_id(object_id, client, None)
+        app_lookup_object_response: api_pb2.AppLookupObjectResponse = await client.stub.AppLookupObject(
+            api_pb2.AppLookupObjectRequest(object_id=object_id)
+        )
+
+        handle_metadata_attr = app_lookup_object_response.WhichOneof("handle_metadata_oneof")
+        if handle_metadata_attr:
+            handle_metadata = getattr(app_lookup_object_response, handle_metadata_attr)
+        else:
+            handle_metadata = None
+        return cls._from_id(object_id, client, handle_metadata)
 
     @property
     def object_id(self) -> str:

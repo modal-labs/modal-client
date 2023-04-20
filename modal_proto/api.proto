@@ -182,7 +182,7 @@ message AppLookupObjectRequest {
 message AppLookupObjectResponse {
   string object_id = 1;
   string error_message = 2;
-  oneof object_oneof {
+  oneof handle_metadata_oneof {
     FunctionHandleMetadata function = 3;
   }
 }
