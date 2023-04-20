@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from pathlib import PurePath
 from typing import Any, AsyncIterable, Callable, Collection, Dict, List, Optional, Set, Union
 
-import cloudpickle
 from datetime import date
 from aiostream import pipe, stream
 from google.protobuf.message import Message
@@ -966,7 +965,7 @@ class _Function(_Provider[_FunctionHandle]):
             # serialize at _load time, not function decoration time
             # otherwise we can't capture a surrounding class for lifetime methods etc.
             function_serialized = self._info.serialized_function()
-            class_serialized = cloudpickle.dumps(self._cls) if self._cls is not None else None
+            class_serialized = serialize(self._cls) if self._cls is not None else None
         else:
             function_serialized = None
             class_serialized = None
