@@ -505,7 +505,9 @@ class _Stub:
         interactive: bool = False,  # Whether to run the function in interactive mode.
         keep_warm: Union[bool, int, None] = None,  # An optional number of containers to always keep warm.
         name: Optional[str] = None,  # Sets the Modal name of the function within the stub
-        is_generator: Optional[bool] = None,  # If not set, it's inferred from the function signature
+        is_generator: Optional[
+            bool
+        ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
     ) -> Callable[[Union[_PartialFunction, Callable[..., Any]]], _FunctionHandle]:
         ...
@@ -534,7 +536,9 @@ class _Stub:
         interactive: bool = False,  # Whether to run the function in interactive mode.
         keep_warm: Union[bool, int, None] = None,  # An optional number of containers to always keep warm.
         name: Optional[str] = None,  # Sets the Modal name of the function within the stub
-        is_generator: Optional[bool] = None,  # If not set, it's inferred from the function signature
+        is_generator: Optional[
+            bool
+        ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
     ) -> _FunctionHandle:
         ...
@@ -564,7 +568,9 @@ class _Stub:
         interactive: bool = False,  # Whether to run the function in interactive mode.
         keep_warm: Union[bool, int, None] = None,  # An optional number of containers to always keep warm.
         name: Optional[str] = None,  # Sets the Modal name of the function within the stub
-        is_generator: Optional[bool] = None,  # If not set, it's inferred from the function signature
+        is_generator: Optional[
+            bool
+        ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
         _cls: Optional[type] = None,  # Used for methods only
     ) -> Union[
