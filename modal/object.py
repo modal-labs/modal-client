@@ -46,7 +46,6 @@ class _Handle(metaclass=ObjectMeta):
         return obj
 
     def _initialize_handle(self, client: _Client, object_id: str):
-        """mdmd:hidden"""
         self._client = client
         self._object_id = object_id
 
@@ -196,8 +195,7 @@ class _Provider(Generic[H]):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
     ) -> H:
-        """mdmd:hidden
-
+        """
         Note 1: this uses the single-object app method, which we're planning to get rid of later
         Note 2: still considering this an "internal" method, but we'll make it "official" later
         """
@@ -312,8 +310,7 @@ class _Provider(Generic[H]):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
     ) -> bool:
-        """mdmd:hidden
-
+        """
         Internal for now - will make this "public" later.
         """
         if client is None:

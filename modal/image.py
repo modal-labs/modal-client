@@ -775,7 +775,6 @@ class _Image(_Provider[_ImageHandle]):
     def _registry_setup_commands(
         tag: str, setup_dockerfile_commands: List[str], setup_commands: List[str]
     ) -> List[str]:
-        """mdmd:hidden"""
         return [
             f"FROM {tag}",
             *setup_dockerfile_commands,

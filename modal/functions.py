@@ -506,7 +506,6 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         self._mute_cancellation = value
 
     def _set_output_mgr(self, output_mgr: OutputManager):
-        """mdmd:hidden"""
         self._output_mgr = output_mgr
 
     def _get_function(self) -> "_Function":
