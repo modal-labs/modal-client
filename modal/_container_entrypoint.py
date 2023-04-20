@@ -14,6 +14,7 @@ import time
 import traceback
 from typing import Any, AsyncIterator, Callable, Optional
 
+from ddtrace import tracer
 from grpclib import Status
 from synchronicity.interface import Interface
 
@@ -178,11 +179,15 @@ class _FunctionIOManager:
     ) -> AsyncIterator[tuple[str, api_pb2.FunctionInput]]:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         eof_received = False
+        iteration = 0
         while not eof_received:
             request.average_call_time = self.get_average_call_time()
             request.max_values = self.get_max_inputs_to_fetch()  # Deprecated; remove.
 
             with trace("get_inputs"):
+                span = tracer.current_span()
+                span.set_tag("iteration", str(iteration))  # force this to be a tag string
+                iteration += 1
                 response = await retry_transient_errors(self.client.stub.FunctionGetInputs, request)
 
             if response.rate_limit_sleep_duration:
