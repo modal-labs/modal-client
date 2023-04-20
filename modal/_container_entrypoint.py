@@ -186,7 +186,8 @@ class _FunctionIOManager:
 
             with trace("get_inputs"):
                 span = tracer.current_span()
-                span.set_tag("iteration", str(iteration))  # force this to be a tag string
+                if span:
+                    span.set_tag("iteration", str(iteration))  # force this to be a tag string
                 iteration += 1
                 response = await retry_transient_errors(self.client.stub.FunctionGetInputs, request)
 
