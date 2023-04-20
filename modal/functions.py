@@ -622,8 +622,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         async for item in self._map(input_stream, order_outputs, return_exceptions, kwargs):
             yield item
 
-    async def call_function(self, args, kwargs):
-        """mdmd:hidden"""
+    async def _call_function(self, args, kwargs):
         invocation = await _Invocation.create(self._object_id, args, kwargs, self._client)
         try:
             return await invocation.run_function()
@@ -632,13 +631,11 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
             if not self._mute_cancellation:
                 raise
 
-    async def call_function_nowait(self, args, kwargs):
-        """mdmd:hidden"""
+    async def _call_function_nowait(self, args, kwargs):
         return await _Invocation.create(self._object_id, args, kwargs, self._client)
 
     @warn_if_generator_is_not_consumed
-    async def call_generator(self, args, kwargs):
-        """mdmd:hidden"""
+    async def _call_generator(self, args, kwargs):
         invocation = await _Invocation.create(self._object_id, args, kwargs, self._client)
         async for res in invocation.run_generator():
             yield res
@@ -651,9 +648,9 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         Calls the function, executing it remotely with the given arguments and returning the execution's result.
         """
         if self._is_generator:
-            return self.call_generator(args, kwargs)
+            return self._call_generator(args, kwargs)
         else:
-            return self.call_function(args, kwargs)
+            return self._call_function(args, kwargs)
 
     def __call__(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
         if not self._info:
@@ -683,7 +680,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
             await self._call_generator_nowait(args, kwargs)
             return None
 
-        invocation = await self.call_function_nowait(args, kwargs)
+        invocation = await self._call_function_nowait(args, kwargs)
         return _FunctionCall._from_id(invocation.function_call_id, invocation.client, None)
 
     def get_raw_f(self) -> Callable[..., Any]:
