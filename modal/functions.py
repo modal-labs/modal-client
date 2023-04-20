@@ -1182,7 +1182,7 @@ class _PartialFunction:
 PartialFunction, AioPartialFunction = synchronize_apis(_PartialFunction)
 
 
-def _method(is_generator=Optional[bool]) -> Callable[[Callable[..., Any]], _PartialFunction]:
+def _method(is_generator: Optional[bool] = None) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Decorator for methods that should be transformed by Modal.
 
     Usage:
