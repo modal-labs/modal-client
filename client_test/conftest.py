@@ -337,9 +337,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def FunctionPrecreate(self, stream):
         req: api_pb2.FunctionPrecreateRequest = await stream.recv_message()
-        self.n_functions += 1
-        function_id = f"fu-{self.n_functions}"
+        if not req.existing_function_id:
+            self.n_functions += 1
+            function_id = f"fu-{self.n_functions}"
+        else:
+            function_id = req.existing_function_id
+
         self.precreated_functions.add(function_id)
+
         web_url = "http://xyz.internal" if req.HasField("webhook_config") and req.webhook_config.type else None
 
         await stream.send_message(

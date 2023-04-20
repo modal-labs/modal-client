@@ -441,7 +441,7 @@ def test_serialize_deserialize_function_handle(servicer, client):
     stub = Stub()
 
     @stub.function(serialized=True)
-    @stub.web_endpoint()
+    @web_endpoint()
     def my_handle():
         pass
 
