@@ -87,6 +87,7 @@ class FunctionInfo:
     # TODO: if the function is declared in a local scope, this function still "works": we should throw an exception
     def __init__(self, f, serialized=False, name_override: Optional[str] = None):
         self.raw_f = f
+        # TODO(erikbern): if f.__qualname__ != f.__name__,  we should infer the class name instead
         self.function_name = name_override if name_override is not None else f.__qualname__
         self.signature = inspect.signature(f)
         module = inspect.getmodule(f)

@@ -245,7 +245,8 @@ class _Stub:
                     """`is_inside` only works for an image associated with an App. For instance:
                     stub.image = DebianSlim()
                     if stub.is_inside(stub.image):
-                    print("I'm inside!")"""
+                        print("I'm inside!")
+                    """
                 )
             )
 
@@ -593,6 +594,23 @@ class _Stub:
             webhook_config = None
             raw_f = f
 
+        if not _cls and not info.serialized_function and "." in info.function_name:  # This is a method
+            deprecation_warning(
+                date(2023, 4, 20),
+                inspect.cleandoc(
+                    """@stub.function on methods is deprecated. Use the @stub.cls and @method decorators. Usage:
+
+                    ```
+                    @stub.cls(cpu=8)
+                    class MyCls:
+                        @method()
+                        def f(self):
+                            ...
+                    ```
+                    """
+                ),
+            )
+
         function_handle = self._get_function_handle(info)
         base_mounts = self._get_function_mounts(info)
         secrets = [*self._secrets, *secrets]
@@ -603,9 +621,20 @@ class _Stub:
         if is_generator and webhook_config:
             if webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
                 raise InvalidError(
-                    "Webhooks cannot be generators. If you want to streaming response, use fastapi.responses.StreamingResponse. Example:\n\n"
-                    "def my_iter():\n    for x in range(10):\n        time.sleep(1.0)\n        yield str(i)\n\n"
-                    "@stub.function()\n@stub.web_endpoint()\ndef web():\n    return StreamingResponse(my_iter())\n"
+                    inspect.cleandoc(
+                        """Webhooks cannot be generators. If you want to streaming response, use `fastapi.responses.StreamingResponse`. Usage:
+
+                        def my_iter():
+                            for x in range(10):
+                                time.sleep(1.0)
+                                yield str(i)
+
+                        @stub.function()
+                        @web_endpoint()
+                        def web():
+                            return StreamingResponse(my_iter())
+                        """
+                    )
                 )
             else:
                 raise InvalidError("Webhooks cannot be generators")

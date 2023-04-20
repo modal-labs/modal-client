@@ -7,7 +7,7 @@ import cloudpickle
 from synchronicity.exceptions import UserCodeException
 
 from modal import Proxy, Stub, SharedVolume, web_endpoint
-from modal.exception import InvalidError
+from modal.exception import DeprecationError, InvalidError
 from modal.functions import Function, FunctionCall, gather, FunctionHandle
 from modal.stub import AioStub
 
@@ -386,10 +386,12 @@ def f(x):
     return x**2
 
 
-class Class:
-    @lc_stub.function()
-    def f(self, x):
-        return x**2
+with pytest.warns(DeprecationError):
+
+    class Class:
+        @lc_stub.function()
+        def f(self, x):
+            return x**2
 
 
 def test_raw_call():

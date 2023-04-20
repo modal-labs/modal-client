@@ -1183,6 +1183,7 @@ PartialFunction, AioPartialFunction = synchronize_apis(_PartialFunction)
 
 
 def _method(
+    *,
     is_generator: Optional[
         bool
     ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
