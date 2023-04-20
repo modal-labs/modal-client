@@ -29,8 +29,9 @@ other_stub = modal.Stub("BAR")
 @other_stub.function()
 def func():
     pass
+@stub.cls()
 class Parent:
-    @stub.function()
+    @modal.method()
     def meth(self):
         pass
 
