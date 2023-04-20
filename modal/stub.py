@@ -582,16 +582,6 @@ class _Stub:
             is_generator = f.is_generator
             if webhook_config:
                 self._web_endpoints.append(info.get_tag())
-
-                if is_generator or (inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)):
-                    if webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
-                        raise InvalidError(
-                            "Webhooks cannot be generators. If you want to streaming response, use fastapi.responses.StreamingResponse. Example:\n\n"
-                            "def my_iter():\n    for x in range(10):\n        time.sleep(1.0)\n        yield str(i)\n\n"
-                            "@stub.function()\n@stub.web_endpoint()\ndef web():\n    return StreamingResponse(my_iter())\n"
-                        )
-                    else:
-                        raise InvalidError("Webhooks cannot be generators")
         else:
             info = FunctionInfo(f, serialized=serialized, name_override=name)
             webhook_config = None
@@ -603,6 +593,16 @@ class _Stub:
 
         if is_generator is None:
             is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
+
+        if is_generator and webhook_config:
+            if webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
+                raise InvalidError(
+                    "Webhooks cannot be generators. If you want to streaming response, use fastapi.responses.StreamingResponse. Example:\n\n"
+                    "def my_iter():\n    for x in range(10):\n        time.sleep(1.0)\n        yield str(i)\n\n"
+                    "@stub.function()\n@stub.web_endpoint()\ndef web():\n    return StreamingResponse(my_iter())\n"
+                )
+            else:
+                raise InvalidError("Webhooks cannot be generators")
 
         if interactive:
             if self._pty_input_stream:
