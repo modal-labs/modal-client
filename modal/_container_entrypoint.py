@@ -14,7 +14,6 @@ import time
 import traceback
 from typing import Any, AsyncIterator, Callable, Optional
 
-from ddtrace import tracer
 from grpclib import Status
 from synchronicity.interface import Interface
 
@@ -185,9 +184,7 @@ class _FunctionIOManager:
             request.max_values = self.get_max_inputs_to_fetch()  # Deprecated; remove.
 
             with trace("get_inputs"):
-                span = tracer.current_span()
-                if span:
-                    span.set_tag("iteration", str(iteration))  # force this to be a tag string
+                set_span_tag("iteration", str(iteration))  # force this to be a tag string
                 iteration += 1
                 response = await retry_transient_errors(self.client.stub.FunctionGetInputs, request)
 
