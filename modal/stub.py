@@ -505,7 +505,9 @@ class _Stub:
         interactive: bool = False,  # Whether to run the function in interactive mode.
         keep_warm: Union[bool, int, None] = None,  # An optional number of containers to always keep warm.
         name: Optional[str] = None,  # Sets the Modal name of the function within the stub
-        is_generator: Optional[bool] = None,  # If not set, it's inferred from the function signature
+        is_generator: Optional[
+            bool
+        ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
     ) -> Callable[[Union[_PartialFunction, Callable[..., Any]]], _FunctionHandle]:
         ...
@@ -534,7 +536,9 @@ class _Stub:
         interactive: bool = False,  # Whether to run the function in interactive mode.
         keep_warm: Union[bool, int, None] = None,  # An optional number of containers to always keep warm.
         name: Optional[str] = None,  # Sets the Modal name of the function within the stub
-        is_generator: Optional[bool] = None,  # If not set, it's inferred from the function signature
+        is_generator: Optional[
+            bool
+        ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
     ) -> _FunctionHandle:
         ...
@@ -564,7 +568,9 @@ class _Stub:
         interactive: bool = False,  # Whether to run the function in interactive mode.
         keep_warm: Union[bool, int, None] = None,  # An optional number of containers to always keep warm.
         name: Optional[str] = None,  # Sets the Modal name of the function within the stub
-        is_generator: Optional[bool] = None,  # If not set, it's inferred from the function signature
+        is_generator: Optional[
+            bool
+        ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
         _cls: Optional[type] = None,  # Used for methods only
     ) -> Union[
@@ -579,18 +585,9 @@ class _Stub:
             info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
             raw_f = f.raw_f
             webhook_config = f.webhook_config
+            is_generator = f.is_generator
             if webhook_config:
                 self._web_endpoints.append(info.get_tag())
-
-                if is_generator or (inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)):
-                    if webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
-                        raise InvalidError(
-                            "Webhooks cannot be generators. If you want to streaming response, use fastapi.responses.StreamingResponse. Example:\n\n"
-                            "def my_iter():\n    for x in range(10):\n        time.sleep(1.0)\n        yield str(i)\n\n"
-                            "@stub.function()\n@stub.web_endpoint()\ndef web():\n    return StreamingResponse(my_iter())\n"
-                        )
-                    else:
-                        raise InvalidError("Webhooks cannot be generators")
         else:
             info = FunctionInfo(f, serialized=serialized, name_override=name)
             webhook_config = None
@@ -602,6 +599,16 @@ class _Stub:
 
         if is_generator is None:
             is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
+
+        if is_generator and webhook_config:
+            if webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
+                raise InvalidError(
+                    "Webhooks cannot be generators. If you want to streaming response, use fastapi.responses.StreamingResponse. Example:\n\n"
+                    "def my_iter():\n    for x in range(10):\n        time.sleep(1.0)\n        yield str(i)\n\n"
+                    "@stub.function()\n@stub.web_endpoint()\ndef web():\n    return StreamingResponse(my_iter())\n"
+                )
+            else:
+                raise InvalidError("Webhooks cannot be generators")
 
         if interactive:
             if self._pty_input_stream:
