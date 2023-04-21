@@ -44,17 +44,22 @@ class _Handle(metaclass=ObjectMeta):
         obj._initialize_from_empty()
         return obj
 
-    def _initialize_handle(self, client: _Client, object_id: str):
-        self._client = client
-        self._object_id = object_id
-
     def _initialize_from_empty(self):
         pass  # default implementation
 
-    def _initialize_from_handle_metadata(self, proto: Message):
-        pass  # default implementation
+    def _hydrate(self, client: _Client, object_id: str, handle_metadata: Optional[Message]):
+        self._client = client
+        self._object_id = object_id
+        if handle_metadata:
+            self._hydrate_metadata(handle_metadata)
+
+    def _hydrate_metadata(self, handle_metadata: Message):
+        # override this is subclasses that need additional data (other than an object_id) for a functioning Handle
+        pass
 
     def _get_handle_metadata(self) -> Optional[Message]:
+        # get the necessary metadata from this handle to be able to re-hydrate in another context
+        # inverse of _hydrate_from_handle_metadata
         return None
 
     @classmethod
@@ -76,8 +81,7 @@ class _Handle(metaclass=ObjectMeta):
 
         # Instantiate object and return
         obj = object_cls._new()
-        obj._initialize_handle(client, object_id)
-        obj._initialize_from_handle_metadata(handle_metadata)
+        obj._hydrate(client, object_id, handle_metadata)
         return obj
 
     @classmethod
