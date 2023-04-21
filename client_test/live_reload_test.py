@@ -59,7 +59,7 @@ async def test_heartbeats(test_dir, server_url_env, servicer):
     with mock.patch("modal.runner.HEARTBEAT_INTERVAL", 1):
         stub_file = str(test_dir / "supports" / "app_run_tests" / "webhook.py")
         async with aio_serve_stub(stub_file):
-            await asyncio.sleep(3.5)
+            await asyncio.sleep(3.1)
 
     apps = list(servicer.app_heartbeats.keys())
     assert len(apps) == 1
