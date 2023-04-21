@@ -175,6 +175,7 @@ class _Image(_Provider[_ImageHandle]):
             if build_function:
                 # preloading function, to set the handle
                 await resolver.preload(build_function)
+            return None
 
         async def _load(resolver: Resolver, existing_object_id: str):
             if ref:

@@ -1025,6 +1025,8 @@ class _Function(_Provider[_FunctionHandle]):
             status_row.finish(f"Created {self._tag}.")
 
         # Instead of returning a new object, just return the precreated one
+        # TODO (elias): We should not have to run _hydrate in here since functions are preloaded. Needed for now due to some conflicts with builder_functions
+        self._function_handle._hydrate(resolver.client, response.function_id, response.handle_metadata)
         return self._function_handle
 
     def get_panel_items(self) -> List[str]:

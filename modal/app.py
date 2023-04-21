@@ -86,15 +86,14 @@ class _App:
                 # Note: preload only currently implemented for Functions, returns None otherwise
                 # this is to ensure that directly referenced functions from the global scope has
                 # ids associated with them when they are serialized into other functions
-                object_id = await resolver.preload(provider, existing_object_id)
-                if object_id is not None:
-                    self._tag_to_existing_id[tag] = object_id
+                precreated_object = await resolver.preload(provider, existing_object_id)
+                if precreated_object is not None:
+                    self._tag_to_existing_id[tag] = precreated_object.object_id
+                    self._tag_to_object[tag] = precreated_object
 
             for tag, provider in blueprint.items():
                 existing_object_id = self._tag_to_existing_id.get(tag)
                 created_obj = await resolver.load(provider, existing_object_id)
-                if not created_obj.object_id:
-                    breakpoint()
                 self._tag_to_object[tag] = created_obj
 
         # Create the app (and send a list of all tagged obs)
