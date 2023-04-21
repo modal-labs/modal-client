@@ -873,7 +873,7 @@ class _Function(_Provider[_FunctionHandle]):
         response = await resolver.client.stub.FunctionPrecreate(req)
         # Update the precreated function handle (todo: hack until we merge providers/handles)
         self._function_handle._hydrate(resolver.client, response.function_id, response.handle_metadata)
-        return response.function_id
+        return self._function_handle
 
     async def _load(self, resolver: Resolver, existing_object_id: str):
         status_row = resolver.add_status_row()

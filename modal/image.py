@@ -174,7 +174,6 @@ class _Image(_Provider[_ImageHandle]):
 
             if build_function:
                 # preloading function, to set the handle
-                breakpoint()
                 await resolver.preload(build_function)
 
         async def _load(resolver: Resolver, existing_object_id: str):

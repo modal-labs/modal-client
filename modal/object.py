@@ -169,12 +169,9 @@ class _Provider(Generic[H]):
         preload: Optional[Callable[[Resolver, str], Awaitable[H]]] = None,
     ):
         self._local_uuid = str(uuid.uuid4())
-
-        async def default_preload(resolver, existing_object_id=None):
-            pass
-
-        self._preload = preload if preload is not None else default_preload
         self._load = load
+        if preload is not None:
+            self._preload = preload
         self._rep = rep
         self.is_persisted_ref = is_persisted_ref
 
@@ -355,7 +352,7 @@ class _Provider(Generic[H]):
             else:
                 raise
 
-    async def _preload(self, resolver, existing_object_id) -> Optional[str]:
+    async def _preload(self, resolver, existing_object_id):
         return None
 
 
