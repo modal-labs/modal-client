@@ -509,6 +509,22 @@ def test_serialized_cls(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
+def test_cls_generator(unix_servicer, event_loop):
+    client, items = _run_container(
+        unix_servicer,
+        "modal_test_support.functions",
+        "Cls.generator",
+        function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
+    )
+    assert len(items) == 2
+    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert items[0].result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
+    assert items[0].result.data == serialize(42**3)
+    assert items[1].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert items[1].result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE
+
+
+@skip_windows_unix_socket
 def test_container_heartbeats(unix_servicer, event_loop):
     client, items = _run_container(unix_servicer, "modal_test_support.functions", "square")
     assert any(isinstance(request, api_pb2.ContainerHeartbeatRequest) for request in unix_servicer.requests)

@@ -64,40 +64,49 @@ def deprecated_function(x):
     return x**2
 
 
-class Cube:
-    _events: list[str] = []
-
-    def __init__(self):
-        self._events.append("init")
-
-    def __enter__(self):
-        self._events.append("enter")
-
-    def __exit__(self, typ, exc, tb):
-        self._events.append("exit")
-
-    @stub.function()
-    def f(self, x):
-        self._events.append("call")
-        return x**3
+# TODO(erikbern): once we remove support for the "old" lifecycle method syntax,
+# let's consolidate some tests - Cube, CubeAsync, and Cls pretty much test
+# the same things (but currently only Cls uses the "new" syntax).
 
 
-class CubeAsync:
-    _events: list[str] = []
+with pytest.warns(DeprecationError):
 
-    def __init__(self):
-        self._events.append("init")
+    class Cube:
+        _events: list[str] = []
 
-    async def __aenter__(self):
-        self._events.append("enter")
+        def __init__(self):
+            self._events.append("init")
 
-    async def __aexit__(self, typ, exc, tb):
-        self._events.append("exit")
+        def __enter__(self):
+            self._events.append("enter")
 
-    @stub.function()
-    async def f(self, x):
-        self._events.append("call")
-        return x**3
+        def __exit__(self, typ, exc, tb):
+            self._events.append("exit")
+
+        @stub.function()  # Will trigger deprecation warning
+        def f(self, x):
+            self._events.append("call")
+            return x**3
+
+
+with pytest.warns(DeprecationError):
+
+    class CubeAsync:
+        _events: list[str] = []
+
+        def __init__(self):
+            self._events.append("init")
+
+        async def __aenter__(self):
+            self._events.append("enter")
+
+        async def __aexit__(self, typ, exc, tb):
+            self._events.append("exit")
+
+        @stub.function()  # Will trigger deprecation warning
+        async def f(self, x):
+            self._events.append("call")
+            return x**3
 
 
 @stub.function()
@@ -113,23 +122,25 @@ with pytest.warns(DeprecationError):
         return {"hello": arg}
 
 
-class WebhookLifecycleClass:
-    _events: list[str] = []
+with pytest.warns(DeprecationError):
 
-    def __init__(self):
-        self._events.append("init")
+    class WebhookLifecycleClass:
+        _events: list[str] = []
 
-    async def __aenter__(self):
-        self._events.append("enter")
+        def __init__(self):
+            self._events.append("init")
 
-    async def __aexit__(self, typ, exc, tb):
-        self._events.append("exit")
+        async def __aenter__(self):
+            self._events.append("enter")
 
-    @stub.function()
-    @web_endpoint()
-    def webhook(self, arg="world"):
-        self._events.append("call")
-        return {"hello": arg}
+        async def __aexit__(self, typ, exc, tb):
+            self._events.append("exit")
+
+        @stub.function()  # Will trigger deprecation warning
+        @web_endpoint()
+        def webhook(self, arg="world"):
+            self._events.append("call")
+            return {"hello": arg}
 
 
 def stream():
@@ -200,3 +211,10 @@ class Cls:
     @web_endpoint()
     def web(self, arg):
         return {"ret": arg * self._k}
+
+    def _generator(self, x):
+        yield x**3
+
+    @method(is_generator=True)
+    def generator(self, x):
+        return self._generator(x)

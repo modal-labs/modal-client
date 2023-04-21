@@ -33,7 +33,7 @@ class Pickler(cloudpickle.Pickler):
             return
         if not obj.object_id:
             raise InvalidError(f"Can't serialize object {obj} which hasn't been created.")
-        return (obj.object_id, get_synchronicity_interface(obj), obj._handle_proto())
+        return (obj.object_id, get_synchronicity_interface(obj), obj._get_handle_metadata())
 
 
 class Unpickler(pickle.Unpickler):

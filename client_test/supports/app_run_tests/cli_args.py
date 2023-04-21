@@ -1,9 +1,9 @@
 # Copyright Modal Labs 2022
 from datetime import datetime
 
-import modal
+from modal import Stub, method
 
-stub = modal.Stub()
+stub = Stub()
 
 
 @stub.local_entrypoint()
@@ -26,7 +26,8 @@ def unannotated_arg(i):
     print(repr(i))
 
 
+@stub.cls()
 class ALifecycle:
-    @stub.function()
+    @method()
     def some_method(self, i):
         print(repr(i))
