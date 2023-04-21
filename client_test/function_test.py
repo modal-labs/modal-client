@@ -4,6 +4,7 @@ import pytest
 import time
 
 import cloudpickle
+
 from synchronicity.exceptions import UserCodeException
 
 from modal import Proxy, Stub, SharedVolume, web_endpoint
@@ -365,10 +366,29 @@ def test_from_id_internal(client, servicer):
     assert obj.object_id == "fc-123"
 
 
-def test_from_id(client, servicer):
+@pytest.mark.asyncio
+async def test_from_id(client, servicer):
+    stub = Stub()
+
+    @stub.function(serialized=True)
+    @web_endpoint()
+    def foo():
+        pass
+
+    stub.deploy("dummy", client=client)
+
+    function_id = foo.object_id
+    assert function_id
+    assert foo.web_url
+    rehydrated_function = FunctionHandle.from_id(function_id, client=client)
+    assert rehydrated_function.object_id == function_id
+    assert rehydrated_function.web_url == foo.web_url
+
+    function_call_handle = foo.spawn()
+    assert function_call_handle.object_id
     # Used in a few examples to construct FunctionCall objects
-    obj = FunctionCall.from_id("fc-123", client)
-    assert obj.object_id == "fc-123"
+    rehydrated_function_call_handle = FunctionCall.from_id(function_call_handle.object_id, client)
+    assert rehydrated_function_call_handle.object_id == function_call_handle.object_id
 
 
 def test_panel(client, servicer):
