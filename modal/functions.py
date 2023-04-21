@@ -960,7 +960,7 @@ class _Function(_Provider[_FunctionHandle]):
         else:
             warm_pool_size = self._keep_warm or 0
 
-        if self._info.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
+        if self._info.is_serialized():
             # Use cloudpickle. Used when working w/ Jupyter notebooks.
             # serialize at _load time, not function decoration time
             # otherwise we can't capture a surrounding class for lifetime methods etc.

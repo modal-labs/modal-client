@@ -594,7 +594,7 @@ class _Stub:
             webhook_config = None
             raw_f = f
 
-        if not _cls and not info.serialized_function and "." in info.function_name:  # This is a method
+        if not _cls and not info.is_serialized() and "." in info.function_name:  # This is a method
             deprecation_warning(
                 date(2023, 4, 20),
                 inspect.cleandoc(
