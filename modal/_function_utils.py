@@ -142,11 +142,14 @@ class FunctionInfo:
                     "Modal can only import functions defined in global scope unless they are `serialized=True`"
                 )
 
+    def is_serialized(self) -> bool:
+        return self.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED
+
     def serialized_function(self) -> bytes:
         # Note: this should only be called from .load() and not at function decoration time
         #       otherwise the serialized function won't have access to variables/side effect
         #        defined after it in the same file
-        assert self.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED
+        assert self.is_serialized()
         serialized_bytes = serialize(self.raw_f)
         logger.debug(f"Serializing {self.raw_f.__qualname__}, size is {len(serialized_bytes)}")
         return serialized_bytes
