@@ -205,8 +205,11 @@ def serve(
         if timeout is None:
             timeout = config["serve_timeout"]
         if timeout is None:
-            timeout = 1e9
-        time.sleep(timeout)
+            timeout = float("inf")
+        while timeout > 0:
+            t = min(timeout, 3600)
+            time.sleep(t)
+            timeout -= t
 
 
 def shell(
