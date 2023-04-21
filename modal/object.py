@@ -59,7 +59,7 @@ class _Handle(metaclass=ObjectMeta):
 
     def _get_handle_metadata(self) -> Optional[Message]:
         # get the necessary metadata from this handle to be able to re-hydrate in another context
-        # inverse of _hydrate_from_handle_metadata
+        # inverse of _hydrate_metadata
         return None
 
     @classmethod
