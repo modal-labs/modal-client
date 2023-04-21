@@ -161,8 +161,19 @@ _BLOCKING_P, _ASYNC_P = synchronize_apis(P)
 
 
 class _Provider(Generic[H]):
-    def _init(self, load: Callable[[Resolver, str], Awaitable[H]], rep: str, is_persisted_ref: bool = False):
+    def _init(
+        self,
+        load: Callable[[Resolver, str], Awaitable[H]],
+        rep: str,
+        is_persisted_ref: bool = False,
+        preload: Optional[Callable[[Resolver, str], Awaitable[H]]] = None,
+    ):
         self._local_uuid = str(uuid.uuid4())
+
+        async def default_preload(resolver, existing_object_id=None):
+            pass
+
+        self._preload = preload if preload is not None else default_preload
         self._load = load
         self._rep = rep
         self.is_persisted_ref = is_persisted_ref
@@ -172,14 +183,20 @@ class _Provider(Generic[H]):
         load: Callable[[Resolver, str], Awaitable[H]],
         rep: str,
         is_persisted_ref: bool = False,
+        preload: Optional[Callable[[Resolver, str], Awaitable[H]]] = None,
     ):
         # TODO(erikbern): this is semi-deprecated - subclasses should use _from_loader
-        self._init(load, rep, is_persisted_ref)
+        self._init(load, rep, is_persisted_ref, preload=preload)
 
     @classmethod
-    def _from_loader(cls, load: Callable[[Resolver, str], Awaitable[H]], rep: str):
+    def _from_loader(
+        cls,
+        load: Callable[[Resolver, str], Awaitable[H]],
+        rep: str,
+        preload: Optional[Callable[[Resolver, str], Awaitable[H]]] = None,
+    ):
         obj = _Handle.__new__(cls)
-        obj._init(load, rep)
+        obj._init(load, rep, preload=preload)
         return obj
 
     @classmethod
