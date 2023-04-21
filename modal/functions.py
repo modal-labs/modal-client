@@ -874,7 +874,7 @@ class _Function(_Provider[_FunctionHandle]):
         )
         response = await resolver.client.stub.FunctionPrecreate(req)
         self._function_handle._initialize_handle(resolver.client, response.function_id)
-        self._function_handle._initialize_from_proto(response.handle_metadata)
+        self._function_handle._initialize_from_handle_metadata(response.handle_metadata)
         return response.function_id
 
     async def _load(self, resolver: Resolver, existing_object_id: str):

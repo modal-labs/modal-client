@@ -20,6 +20,7 @@ from typing import (
 
 import grpclib.events
 import grpclib.client
+from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from grpclib.exceptions import StreamTerminatedError
 from grpclib.protocol import H2Protocol
@@ -284,3 +285,11 @@ def patch_mock_servicer(cls):
 
     cls.__abstractmethods__ = frozenset()
     return cls
+
+
+def get_proto_oneof(message: Message, oneof_group: str) -> Optional[Message]:
+    oneof_field = message.WhichOneof(oneof_group)
+    if oneof_field is None:
+        return None
+
+    return getattr(message, oneof_field)

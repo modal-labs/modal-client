@@ -9,8 +9,7 @@ from modal._types import typechecked
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
-from modal_utils.grpc_utils import retry_transient_errors
-
+from modal_utils.grpc_utils import retry_transient_errors, get_proto_oneof
 
 from ._object_meta import ObjectMeta
 from ._resolver import Resolver
@@ -93,11 +92,7 @@ class _Handle(metaclass=ObjectMeta):
             api_pb2.AppLookupObjectRequest(object_id=object_id)
         )
 
-        handle_metadata_attr = app_lookup_object_response.WhichOneof("handle_metadata_oneof")
-        if handle_metadata_attr:
-            handle_metadata = getattr(app_lookup_object_response, handle_metadata_attr)
-        else:
-            handle_metadata = None
+        handle_metadata = get_proto_oneof(app_lookup_object_response, "handle_metadata_oneof")
         return cls._from_id(object_id, client, handle_metadata)
 
     @property
