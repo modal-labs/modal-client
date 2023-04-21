@@ -83,6 +83,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.n_queues = 0
         self.files_name2sha = {}
         self.files_sha2data = {}
+        self.function_id_for_function_call = {}
         self.client_calls = {}
         self.function_is_running = False
         self.n_functions = 0
@@ -102,6 +103,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.blob_create_metadata = None
         self.blob_multipart_threshold = 10_000_000
 
+        self.precreated_functions = set()
         self.app_functions = {}
         self.fcidx = 0
         self.created_secrets = 0
@@ -336,6 +338,29 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.container_outputs.append(request)
         await stream.send_message(Empty())
 
+    async def FunctionPrecreate(self, stream):
+        req: api_pb2.FunctionPrecreateRequest = await stream.recv_message()
+        if not req.existing_function_id:
+            self.n_functions += 1
+            function_id = f"fu-{self.n_functions}"
+        else:
+            function_id = req.existing_function_id
+
+        self.precreated_functions.add(function_id)
+
+        web_url = "http://xyz.internal" if req.HasField("webhook_config") and req.webhook_config.type else None
+
+        await stream.send_message(
+            api_pb2.FunctionPrecreateResponse(
+                function_id=function_id,
+                handle_metadata=api_pb2.FunctionHandleMetadata(
+                    function_name=req.function_name,
+                    function_type=req.function_type,
+                    web_url=web_url,
+                ),
+            )
+        )
+
     async def FunctionCreate(self, stream):
         request: api_pb2.FunctionCreateRequest = await stream.recv_message()
         if self.function_create_error:
@@ -357,8 +382,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def FunctionMap(self, stream):
         self.fcidx += 1
-        await stream.recv_message()
-        await stream.send_message(api_pb2.FunctionMapResponse(function_call_id=f"fc-{self.fcidx}"))
+        request: api_pb2.FunctionMapRequest = await stream.recv_message()
+        function_call_id = f"fc-{self.fcidx}"
+        self.function_id_for_function_call[function_call_id] = request.function_id
+        await stream.send_message(api_pb2.FunctionMapResponse(function_call_id=function_call_id))
 
     async def FunctionPutInputs(self, stream):
         request: api_pb2.FunctionPutInputsRequest = await stream.recv_message()
