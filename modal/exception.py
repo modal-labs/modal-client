@@ -65,7 +65,8 @@ class PendingDeprecationError(UserWarning):
     """Soon to be deprecated feature. Only used intermittently because of multi-repo concerns."""
 
 
-_INTERNAL_MODULES = ["modal", "synchronicity"]
+# TODO(erikbern): we have something similready in _function_utils.py
+_INTERNAL_MODULES = ["modal", "modal_utils", "synchronicity"]
 
 
 def _is_internal_frame(frame):
