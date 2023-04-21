@@ -117,7 +117,6 @@ class FunctionInfo:
             self.remote_dir = ROOT_DIR / PurePosixPath(module.__package__.split(".")[0])
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
             self.type = FunctionInfoType.PACKAGE
-            self.serialized_function = None
         elif hasattr(module, "__file__") and not serialized:
             # This generally covers the case where it's invoked with
             # python foo/bar/baz.py
@@ -126,13 +125,10 @@ class FunctionInfo:
             self.base_dir = os.path.dirname(self.file)
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
             self.type = FunctionInfoType.FILE
-            self.serialized_function = None
         else:
             self.module_name = None
             self.base_dir = os.path.abspath("")  # get current dir
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_SERIALIZED
-            self.serialized_function = serialize(self.raw_f)
-            logger.debug(f"Serializing {self.raw_f.__qualname__}, size is {len(self.serialized_function)}")
             if serialized:
                 self.type = FunctionInfoType.SERIALIZED
             else:
@@ -145,6 +141,15 @@ class FunctionInfo:
                 raise LocalFunctionError(
                     "Modal can only import functions defined in global scope unless they are `serialized=True`"
                 )
+
+    def serialized_function(self) -> bytes:
+        # Note: this should only be called from .load() and not at function decoration time
+        #       otherwise the serialized function won't have access to variables/side effect
+        #        defined after it in the same file
+        assert self.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED
+        serialized_bytes = serialize(self.raw_f)
+        logger.debug(f"Serializing {self.raw_f.__qualname__}, size is {len(serialized_bytes)}")
+        return serialized_bytes
 
     def get_mounts(self) -> Dict[str, _Mount]:
         if self.type == FunctionInfoType.PACKAGE:
