@@ -375,8 +375,7 @@ async def test_from_id(client, servicer):
     def foo():
         pass
 
-    app = stub.deploy("dummy", client=client)
-    print(app.app_id)
+    stub.deploy("dummy", client=client)
 
     function_id = foo.object_id
     assert function_id
