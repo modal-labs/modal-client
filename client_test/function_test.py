@@ -340,11 +340,13 @@ def test_non_global_serialized_function():
 def test_closure_valued_serialized_function(client, servicer):
     stub = Stub()
 
-    for s in ["foo", "bar"]:
-
+    def make_function(s):
         @stub.function(name=f"ret_{s}", serialized=True)
         def returner():
             return s
+
+    for s in ["foo", "bar"]:
+        make_function(s)
 
     with stub.run(client=client):
         pass
@@ -441,6 +443,7 @@ def test_serialize_deserialize_function_handle(servicer, client):
     stub = Stub()
 
     @stub.function(serialized=True)
+    @web_endpoint()
     def my_handle():
         pass
 
@@ -453,3 +456,4 @@ def test_serialize_deserialize_function_handle(servicer, client):
     rehydrated_function_handle = deserialize(blob, client)
     assert rehydrated_function_handle.object_id == my_handle.object_id
     assert isinstance(rehydrated_function_handle, FunctionHandle)
+    assert rehydrated_function_handle.web_url == "http://xyz.internal"

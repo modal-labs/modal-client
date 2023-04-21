@@ -56,14 +56,14 @@ class _Handle(metaclass=ObjectMeta):
     def _initialize_from_proto(self, proto: Message):
         pass  # default implementation
 
-    def _handle_proto(self) -> Optional[Message]:
+    def _get_handle_metadata(self) -> Optional[Message]:
         return None
 
     @classmethod
     def _from_id(cls: Type[H], object_id: str, client: _Client, proto: Optional[Message]) -> H:
         if cls._type_prefix is not None:
             # This is called directly on a subclass, e.g. Secret.from_id
-            if not object_id.startswith(cls._type_prefix):
+            if not object_id.startswith(cls._type_prefix + "-"):
                 raise InvalidError(f"Object {object_id} does not start with {cls._type_prefix}")
             object_cls = cls
         else:
@@ -177,7 +177,7 @@ class _Provider(Generic[H]):
         return obj
 
     @classmethod
-    def _get_handle_cls(cls):
+    def _get_handle_cls(cls) -> Type[H]:
         (base,) = cls.__orig_bases__  # type: ignore
         (handle_cls,) = base.__args__
         return handle_cls
@@ -333,6 +333,9 @@ class _Provider(Generic[H]):
                 return False
             else:
                 raise
+
+    async def _preload(self, resolver, existing_object_id) -> Optional[str]:
+        return None
 
 
 # Dumb but needed becauase it's in the hierarchy

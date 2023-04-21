@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from pathlib import PurePath
 from typing import Any, AsyncIterable, Callable, Collection, Dict, List, Optional, Set, Union
 
-import cloudpickle
 from datetime import date
 from aiostream import pipe, stream
 from google.protobuf.message import Message
@@ -483,7 +482,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         self._stub = None
         self._self_obj = None
 
-    def _handle_proto(self):
+    def _get_handle_metadata(self):
         return api_pb2.FunctionHandleMetadata(
             function_name=self._function_name,
             function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR
@@ -745,7 +744,6 @@ class _Function(_Provider[_FunctionHandle]):
         is_generator=False,
         gpu: GPU_T = None,
         # TODO: maybe break this out into a separate decorator for notebooks.
-        serialized: bool = False,
         base_mounts: Collection[_Mount] = (),
         mounts: Collection[_Mount] = (),
         shared_volumes: Dict[str, _SharedVolume] = {},
@@ -768,7 +766,7 @@ class _Function(_Provider[_FunctionHandle]):
         raw_f = function_info.raw_f
         self._stub = _stub
         assert callable(raw_f)
-        self._info = FunctionInfo(raw_f, serialized, name_override=name)
+        self._info = function_info
         if schedule is not None:
             if not self._info.is_nullary():
                 raise InvalidError(
@@ -835,20 +833,12 @@ class _Function(_Provider[_FunctionHandle]):
         self._tag = self._info.get_tag()
         self._gpu_config = parse_gpu_config(gpu)
         self._cloud = cloud
+        self._cls = _cls
+
         if cloud:
             self._cloud_provider = parse_cloud_provider(cloud)
         else:
             self._cloud_provider = None
-
-        if self._info.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
-            # Use cloudpickle. Used when working w/ Jupyter notebooks.
-            # serialize at _load time, not function decoration time
-            # otherwise we can't capture a surrounding class for lifetime methods etc.
-            self._function_serialized = self._info.serialized_function
-            self._class_serialized = cloudpickle.dumps(_cls) if _cls is not None else None
-        else:
-            self._function_serialized = None
-            self._class_serialized = None
 
         self._panel_items = [
             str(i)
@@ -866,8 +856,26 @@ class _Function(_Provider[_FunctionHandle]):
 
         self._function_handle = function_handle
 
-        rep = r"Function({self._tag})"
+        rep = f"Function({self._tag})"
         super().__init__(self._load, rep)
+
+    async def _preload(self, resolver: Resolver, existing_object_id: Optional[str]):
+        if self._is_generator:
+            function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
+        else:
+            function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
+
+        req = api_pb2.FunctionPrecreateRequest(
+            app_id=resolver.app_id,
+            function_name=self._info.function_name,
+            function_type=function_type,
+            webhook_config=self._webhook_config,
+            existing_function_id=existing_object_id,
+        )
+        response = await resolver.client.stub.FunctionPrecreate(req)
+        self._function_handle._initialize_handle(resolver.client, response.function_id)
+        self._function_handle._initialize_from_proto(response.handle_metadata)
+        return response.function_id
 
     async def _load(self, resolver: Resolver, existing_object_id: str):
         status_row = resolver.add_status_row()
@@ -952,6 +960,16 @@ class _Function(_Provider[_FunctionHandle]):
         else:
             warm_pool_size = self._keep_warm or 0
 
+        if self._info.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
+            # Use cloudpickle. Used when working w/ Jupyter notebooks.
+            # serialize at _load time, not function decoration time
+            # otherwise we can't capture a surrounding class for lifetime methods etc.
+            function_serialized = self._info.serialized_function()
+            class_serialized = serialize(self._cls) if self._cls is not None else None
+        else:
+            function_serialized = None
+            class_serialized = None
+
         # Create function remotely
         function_definition = api_pb2.Function(
             module_name=self._info.module_name,
@@ -960,8 +978,8 @@ class _Function(_Provider[_FunctionHandle]):
             secret_ids=secret_ids,
             image_id=image_id,
             definition_type=self._info.definition_type,
-            function_serialized=self._function_serialized,
-            class_serialized=self._class_serialized,
+            function_serialized=function_serialized,
+            class_serialized=class_serialized,
             function_type=function_type,
             resources=api_pb2.Resources(milli_cpu=milli_cpu, gpu_config=self._gpu_config, memory_mb=self._memory),
             webhook_config=self._webhook_config,

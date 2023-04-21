@@ -1,10 +1,11 @@
 # Copyright Modal Labs 2022
-import cloudpickle
 import pytest
 
 from modal import Stub, method
 from modal.aio import AioStub, aio_method
+from modal.functions import FunctionHandle
 from modal_proto import api_pb2
+from modal._serialization import deserialize
 
 stub = Stub()
 
@@ -70,13 +71,14 @@ def test_run_class_serialized(client, servicer):
     function = servicer.app_functions[function_id]
     assert function.function_name.endswith("FooSer.bar")  # because it's defined in a local scope
     assert function.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED
-    cls = cloudpickle.loads(function.class_serialized)
-    fun = cloudpickle.loads(function.function_serialized)
+    cls = deserialize(function.class_serialized, client)
+    fun = deserialize(function.function_serialized, client)
 
     # Create bound method
     obj = cls()
     meth = fun.__get__(obj, cls)
 
+    assert isinstance(obj.bar, FunctionHandle)
     # Make sure it's callable
     assert meth(100) == 1000000
 

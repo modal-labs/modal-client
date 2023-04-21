@@ -39,6 +39,7 @@ class _App:
 
     _tag_to_object: Dict[str, _Handle]
     _tag_to_existing_id: Dict[str, str]
+
     _client: _Client
     _app_id: str
     _app_page_url: str
@@ -75,6 +76,20 @@ class _App:
         """Create objects that have been defined but not created on the server."""
         resolver = Resolver(output_mgr, self._client, self.app_id)
         with resolver.display():
+            # Preload all functions to make sure they have ids assigned before they are loaded.
+            # This is important to make sure any enclosed function handle references in serialized
+            # functions have ids assigned to them when the function is serialized.
+            # Note: when handles/providers are merged, all objects will need to get ids pre-assigned
+            # like this in order to be referrable within serialized functions
+            for tag, provider in blueprint.items():
+                existing_object_id = self._tag_to_existing_id.get(tag)
+                # Note: preload only currently implemented for Functions, returns None otherwise
+                # this is to ensure that directly referenced functions from the global scope has
+                # ids associated with them when they are serialized into other functions
+                object_id = await resolver.preload(provider, existing_object_id)
+                if object_id is not None:
+                    self._tag_to_existing_id[tag] = object_id
+
             for tag, provider in blueprint.items():
                 existing_object_id = self._tag_to_existing_id.get(tag)
                 created_obj = await resolver.load(provider, existing_object_id)
@@ -84,9 +99,10 @@ class _App:
         # TODO(erikbern): we should delete objects from a previous version that are no longer needed
         # We just delete them from the app, but the actual objects will stay around
         indexed_object_ids = {tag: obj.object_id for tag, obj in self._tag_to_object.items()}
+        all_objects = resolver.objects()
+
         unindexed_object_ids = list(
-            set(obj.object_id for obj in resolver.objects())
-            - set(obj.object_id for obj in self._tag_to_object.values())
+            set(obj.object_id for obj in all_objects) - set(obj.object_id for obj in self._tag_to_object.values())
         )
         req_set = api_pb2.AppSetObjectsRequest(
             app_id=self._app_id,
