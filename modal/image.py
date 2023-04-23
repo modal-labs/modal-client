@@ -522,6 +522,9 @@ class _Image(_Provider[_ImageHandle]):
         ignore_lockfile: bool = False,  # If set to True, it will not use poetry.lock
         old_installer: bool = False,  # If set to True, use old installer. See https://github.com/python-poetry/poetry/issues/3336
         force_build: bool = False,
+        with_: List[str] = [],
+        without: List[str] = [],
+        only: List[str] = [],
     ) -> "_Image":
         """Install poetry *dependencies* specified by a pyproject.toml file.
 
@@ -556,11 +559,23 @@ class _Image(_Provider[_ImageHandle]):
             context_files["/.poetry.lock"] = poetry_lockfile
             dockerfile_commands += ["COPY /.poetry.lock /tmp/poetry/poetry.lock"]
 
+        # Indentation for back-compat
+        install_cmd = "  poetry install --no-root"
+
+        if with_:
+            install_cmd += f" --with {','.join(with_)}"
+
+        if without:
+            install_cmd += f" --without {','.join(without)}"
+
+        if only:
+            install_cmd += f" --only {','.join(only)}"
+
         dockerfile_commands += [
             "COPY /.pyproject.toml /tmp/poetry/pyproject.toml",
             "RUN cd /tmp/poetry && \\ ",
             "  poetry config virtualenvs.create false && \\ ",
-            "  poetry install --no-root",
+            install_cmd,
         ]
 
         return self.extend(
