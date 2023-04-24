@@ -44,17 +44,23 @@ class _Handle(metaclass=ObjectMeta):
         obj._initialize_from_empty()
         return obj
 
-    def _initialize_handle(self, client: _Client, object_id: str):
-        self._client = client
-        self._object_id = object_id
-
     def _initialize_from_empty(self):
         pass  # default implementation
 
-    def _initialize_from_handle_metadata(self, proto: Message):
-        pass  # default implementation
+    def _hydrate(self, client: _Client, object_id: str, handle_metadata: Optional[Message]):
+        self._client = client
+        self._object_id = object_id
+        if handle_metadata:
+            self._hydrate_metadata(handle_metadata)
+
+    def _hydrate_metadata(self, handle_metadata: Message):
+        # override this is subclasses that need additional data (other than an object_id) for a functioning Handle
+        pass
 
     def _get_handle_metadata(self) -> Optional[Message]:
+        # return the necessary metadata from this handle to be able to re-hydrate in another context if one is needed
+        # used to provide a handle's handle_metadata for serializing/pickling a live handle
+        # the object_id is already provided by other means
         return None
 
     @classmethod
@@ -76,8 +82,7 @@ class _Handle(metaclass=ObjectMeta):
 
         # Instantiate object and return
         obj = object_cls._new()
-        obj._initialize_handle(client, object_id)
-        obj._initialize_from_handle_metadata(handle_metadata)
+        obj._hydrate(client, object_id, handle_metadata)
         return obj
 
     @classmethod
@@ -157,25 +162,40 @@ _BLOCKING_P, _ASYNC_P = synchronize_apis(P)
 
 
 class _Provider(Generic[H]):
-    def _init(self, load: Callable[[Resolver, str], Awaitable[H]], rep: str, is_persisted_ref: bool = False):
+    def _init(
+        self,
+        load: Callable[[Resolver, str], Awaitable[H]],
+        rep: str,
+        is_persisted_ref: bool = False,
+        preload: Optional[Callable[[Resolver, str], Awaitable[H]]] = None,
+    ):
         self._local_uuid = str(uuid.uuid4())
         self._load = load
+        if preload is not None:
+            # only sets _preload if one is provided, otherwise a noop is used
+            self._preload = preload
         self._rep = rep
         self.is_persisted_ref = is_persisted_ref
 
     def __init__(
         self,
-        load: Callable[[Resolver, str], Awaitable[H]],
+        load: Optional[Callable[[Resolver, str], Awaitable[H]]],
         rep: str,
         is_persisted_ref: bool = False,
+        preload: Optional[Callable[[Resolver, str], Awaitable[Optional[H]]]] = None,
     ):
         # TODO(erikbern): this is semi-deprecated - subclasses should use _from_loader
-        self._init(load, rep, is_persisted_ref)
+        self._init(load, rep, is_persisted_ref, preload=preload)
 
     @classmethod
-    def _from_loader(cls, load: Callable[[Resolver, str], Awaitable[H]], rep: str):
+    def _from_loader(
+        cls,
+        load: Callable[[Resolver, str], Awaitable[H]],
+        rep: str,
+        preload: Optional[Callable[[Resolver, str], Awaitable[H]]] = None,
+    ):
         obj = _Handle.__new__(cls)
-        obj._init(load, rep)
+        obj._init(load, rep, preload=preload)
         return obj
 
     @classmethod
@@ -274,11 +294,14 @@ class _Provider(Generic[H]):
             handle: H = await handle_cls.from_app(app_name, tag, namespace, client=resolver.client)
             return handle
 
+        async def _no_preload(resolver: Resolver, existing_object_id: str) -> Optional[H]:
+            return None
+
         # Create a class of type cls, but use the base constructor
         # TODO(erikbern): No _Provider subclass should override __init__
         obj = cls.__new__(cls)
         rep = f"Ref({app_name})"
-        _Provider.__init__(obj, _load_remote, rep)
+        _Provider.__init__(obj, _load_remote, rep, preload=_no_preload)
         return obj
 
     @classmethod
@@ -334,7 +357,7 @@ class _Provider(Generic[H]):
             else:
                 raise
 
-    async def _preload(self, resolver, existing_object_id) -> Optional[str]:
+    async def _preload(self, resolver, existing_object_id):
         return None
 
 

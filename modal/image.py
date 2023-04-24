@@ -1,21 +1,22 @@
 # Copyright Modal Labs 2022
-from datetime import date
 import os
 import shlex
 import sys
+import typing
+from datetime import date
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union, Sequence, Tuple
 
 import toml
 from grpclib.exceptions import GRPCError, StreamTerminatedError
-from modal._types import typechecked
 
+from modal._types import typechecked
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
 from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, unary_stream
-from .app import is_local
 from ._function_utils import FunctionInfo
 from ._resolver import Resolver
+from .app import is_local
 from .config import config, logger
 from .exception import InvalidError, NotFoundError, RemoteError, deprecation_warning
 from .gpu import GPU_T, parse_gpu_config
@@ -119,6 +120,10 @@ class _ImageRegistryConfig:
         )
 
 
+if typing.TYPE_CHECKING:
+    import modal.functions
+
+
 class _Image(_Provider[_ImageHandle]):
     """Base class for container images to run functions in.
 
@@ -137,7 +142,7 @@ class _Image(_Provider[_ImageHandle]):
         secrets: Sequence[_Secret] = [],
         ref=None,
         gpu_config: Optional[api_pb2.GPUConfig] = None,
-        build_function=None,
+        build_function: "modal.functions._Function" = None,
         context_mount: Optional[_Mount] = None,
         image_registry_config: Optional[_ImageRegistryConfig] = None,
         force_build: bool = False,

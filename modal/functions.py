@@ -482,6 +482,18 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         self._stub = None
         self._self_obj = None
 
+    def _initialize_from_local(self, stub, info: FunctionInfo):
+        # note that this is not a full hydration of the function, as it doesn't yet get an object_id etc.
+        self._stub = stub
+        self._info = info
+
+    def _hydrate_metadata(self, handle_metadata: Message):
+        # makes function usable
+        assert isinstance(handle_metadata, (api_pb2.Function, api_pb2.FunctionHandleMetadata))
+        self._is_generator = handle_metadata.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
+        self._web_url = handle_metadata.web_url
+        self._function_name = handle_metadata.function_name
+
     def _get_handle_metadata(self):
         return api_pb2.FunctionHandleMetadata(
             function_name=self._function_name,
@@ -490,16 +502,6 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
             else api_pb2.Function.FUNCTION_TYPE_FUNCTION,
             web_url=self._web_url,
         )
-
-    def _initialize_from_handle_metadata(self, proto: Message):
-        assert isinstance(proto, (api_pb2.Function, api_pb2.FunctionHandleMetadata))
-        self._is_generator = proto.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
-        self._web_url = proto.web_url
-        self._function_name = proto.function_name
-
-    def _initialize_from_local(self, stub, info: FunctionInfo):
-        self._stub = stub
-        self._info = info
 
     def _set_mute_cancellation(self, value: bool = True):
         self._mute_cancellation = value
@@ -869,9 +871,9 @@ class _Function(_Provider[_FunctionHandle]):
             existing_function_id=existing_object_id,
         )
         response = await resolver.client.stub.FunctionPrecreate(req)
-        self._function_handle._initialize_handle(resolver.client, response.function_id)
-        self._function_handle._initialize_from_handle_metadata(response.handle_metadata)
-        return response.function_id
+        # Update the precreated function handle (todo: hack until we merge providers/handles)
+        self._function_handle._hydrate(resolver.client, response.function_id, response.handle_metadata)
+        return self._function_handle
 
     async def _load(self, resolver: Resolver, existing_object_id: str):
         status_row = resolver.add_status_row()
@@ -1022,20 +1024,9 @@ class _Function(_Provider[_FunctionHandle]):
         else:
             status_row.finish(f"Created {self._tag}.")
 
-        # Update the precreated function handle (todo: hack until we merge providers/handles)
-        self._function_handle._initialize_handle(resolver.client, response.function_id)
-        if response.HasField("handle_metadata"):
-            self._function_handle._initialize_from_handle_metadata(response.handle_metadata)
-        else:
-            # TODO: remove this branch as soon as backend with handle_metadata is live
-            handle_metadata = api_pb2.FunctionHandleMetadata(
-                function_name=response.function.function_name,
-                function_type=response.function.function_type,
-                web_url=response.function.web_url,
-            )
-            self._function_handle._initialize_from_handle_metadata(handle_metadata)
-
         # Instead of returning a new object, just return the precreated one
+        # TODO (elias): We should not have to run _hydrate in here since functions are preloaded. Needed for now due to some conflicts with builder_functions
+        self._function_handle._hydrate(resolver.client, response.function_id, response.handle_metadata)
         return self._function_handle
 
     def get_panel_items(self) -> List[str]:

@@ -68,7 +68,7 @@ class Resolver:
     def client(self):
         return self._client
 
-    async def preload(self, obj, existing_object_id: Optional[str] = None) -> Optional[str]:
+    async def preload(self, obj, existing_object_id: Optional[str] = None):
         return await obj._preload(self, existing_object_id)
 
     async def load(self, obj, existing_object_id: Optional[str] = None):
