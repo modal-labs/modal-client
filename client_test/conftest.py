@@ -349,7 +349,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.precreated_functions.add(function_id)
 
         web_url = "http://xyz.internal" if req.HasField("webhook_config") and req.webhook_config.type else None
-
         await stream.send_message(
             api_pb2.FunctionPrecreateResponse(
                 function_id=function_id,
@@ -378,7 +377,17 @@ class MockClientServicer(api_grpc.ModalClientBase):
             function.web_url = "http://xyz.internal"
 
         self.app_functions[function_id] = function
-        await stream.send_message(api_pb2.FunctionCreateResponse(function_id=function_id, function=function))
+        await stream.send_message(
+            api_pb2.FunctionCreateResponse(
+                function_id=function_id,
+                function=function,
+                handle_metadata=api_pb2.FunctionHandleMetadata(
+                    function_name=function.function_name,
+                    function_type=function.function_type,
+                    web_url=function.web_url,
+                ),
+            )
+        )
 
     async def FunctionMap(self, stream):
         self.fcidx += 1
