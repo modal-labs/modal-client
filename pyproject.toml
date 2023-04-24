@@ -29,7 +29,6 @@ filterwarnings = [
     "ignore::DeprecationWarning:pytest.*:",
     "ignore::DeprecationWarning:pkg_resources.*:",
     "ignore::DeprecationWarning:google.rpc.*:",
-    "module:Jupyter is migrating its paths to use standard platformdirs:DeprecationWarning",
     "ignore:.*pkg_resources.*:DeprecationWarning::",
 ]
 
