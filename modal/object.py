@@ -180,7 +180,7 @@ class _Provider(Generic[H]):
 
     def __init__(
         self,
-        load: Optional[Callable[[Resolver, Optional[str]], Awaitable[H]]],
+        load: Callable[[Resolver, Optional[str]], Awaitable[H]],
         rep: str,
         is_persisted_ref: bool = False,
         preload: Optional[Callable[[Resolver, Optional[str]], Awaitable[H]]] = None,
