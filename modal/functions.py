@@ -857,7 +857,7 @@ class _Function(_Provider[_FunctionHandle]):
         rep = f"Function({self._tag})"
         super().__init__(self._load, rep, preload=self._preload)
 
-    async def _preload(self, resolver: Resolver, existing_object_id: Optional[str]):
+    async def _preload(self, resolver: Resolver, existing_object_id: Optional[str]) -> _FunctionHandle:
         if self._is_generator:
             function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
         else:
@@ -875,7 +875,7 @@ class _Function(_Provider[_FunctionHandle]):
         self._function_handle._hydrate(resolver.client, response.function_id, response.handle_metadata)
         return self._function_handle
 
-    async def _load(self, resolver: Resolver, existing_object_id: Optional[str]):
+    async def _load(self, resolver: Resolver, existing_object_id: Optional[str]) -> _FunctionHandle:
         status_row = resolver.add_status_row()
         status_row.message(f"Creating {self._tag}...")
 

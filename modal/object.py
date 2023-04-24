@@ -183,7 +183,7 @@ class _Provider(Generic[H]):
         load: Optional[Callable[[Resolver, Optional[str]], Awaitable[H]]],
         rep: str,
         is_persisted_ref: bool = False,
-        preload: Optional[Callable[[Resolver, Optional[str]], Awaitable[Optional[H]]]] = None,
+        preload: Optional[Callable[[Resolver, Optional[str]], Awaitable[H]]] = None,
     ):
         # TODO(erikbern): this is semi-deprecated - subclasses should use _from_loader
         self._init(load, rep, is_persisted_ref, preload=preload)
