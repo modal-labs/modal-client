@@ -349,9 +349,6 @@ class _Provider(Generic[H]):
             else:
                 raise
 
-    async def _preload(self, resolver, existing_object_id):
-        return None
-
 
 # Dumb but needed becauase it's in the hierarchy
 synchronize_apis(Generic, __name__)  # erases base Generic type...
