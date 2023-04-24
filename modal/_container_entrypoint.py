@@ -4,7 +4,6 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
-from dataclasses import dataclass
 import importlib
 import inspect
 import math
@@ -12,11 +11,13 @@ import signal
 import sys
 import time
 import traceback
+import typing
+from dataclasses import dataclass
 from typing import Any, AsyncIterator, Callable, Optional
 
 from grpclib import Status
-from synchronicity.interface import Interface
 
+from modal.stub import _Stub, Stub, AioStub
 from modal_proto import api_pb2
 from modal_utils.async_utils import (
     TaskContext,
@@ -25,7 +26,7 @@ from modal_utils.async_utils import (
     synchronizer,
 )
 from modal_utils.grpc_utils import retry_transient_errors
-
+from synchronicity.interface import Interface
 from ._asgi import asgi_app_wrapper, webhook_asgi_app, wsgi_app_wrapper
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._function_utils import load_function_from_module
@@ -115,7 +116,7 @@ class _FunctionIOManager:
 
     @wrap()
     async def initialize_app(self):
-        await _App.init_container(self._client, self.app_id)
+        return await _App.init_container(self._client, self.app_id)
 
     async def _heartbeat(self):
         request = api_pb2.ContainerHeartbeatRequest()
@@ -476,6 +477,7 @@ async def call_function_async(
 class ImportedFunction:
     obj: Any
     fun: Callable
+    stub: Optional[_Stub]
     is_async: bool
     is_generator: bool
 
@@ -484,7 +486,7 @@ class ImportedFunction:
 def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> ImportedFunction:
     # This is not in function_io_manager, so that any global scope code that runs during import
     # runs on the main thread.
-
+    module = None
     if ser_fun is not None:
         # This is a serialized function we already fetched from the server
         cls, fun = ser_cls, ser_fun
@@ -507,11 +509,27 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> Importe
     # Instantiate the class if it's defined
     if cls:
         obj = cls()
-
         # Bind the function to the instance (using the descriptor protocol!)
         fun = fun.__get__(obj, cls)
     else:
         obj = None
+
+    stub = None
+    if isinstance(fun, FunctionHandle):
+        stub = synchronizer._translate_in(fun._stub)
+    elif module is not None:
+        # non-serialized privately decorated function
+        stubs: typing.List[_Stub] = []
+        for module_item in module.__dict__.values():
+            if isinstance(module_item, (Stub, AioStub)):
+                stubs.append(synchronizer._translate_in(module_item))
+        if len(stubs) == 1:
+            stub = stubs[0]
+        else:
+            logger.warning(
+                "Could not determine the active stub - non-global decorations of functions currently require there to be a single stub in the global scope of the function's origin module. Otherwise you won't be able to call other functions of the stub"
+            )
+            # TODO(elias): implement multistub name resolution by storing the stub name on the function definition (?)
 
     if function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP:
         # function returns an asgi_app, that we can use as a callable.
@@ -532,7 +550,7 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> Importe
         is_async = True
         is_generator = True
 
-    return ImportedFunction(obj, fun, is_async, is_generator)
+    return ImportedFunction(obj, fun, stub, is_async, is_generator)
 
 
 def main(container_args: api_pb2.ContainerArguments, client: Client):
@@ -545,7 +563,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     _function_io_manager = _FunctionIOManager(container_args, client)
     function_io_manager, aio_function_io_manager = synchronize_apis(_function_io_manager)
 
-    function_io_manager.initialize_app()
+    container_app = function_io_manager.initialize_app()
 
     with function_io_manager.heartbeats():
         # If this is a serialized function, fetch the definition from the server
@@ -557,11 +575,13 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Initialize the function
         with function_io_manager.handle_user_exception():
             imp_fun = import_function(container_args.function_def, ser_cls, ser_fun)
+            if imp_fun.stub:
+                _container_app = synchronizer._translate_in(container_app)
+                _client = synchronizer._translate_in(client)
+                imp_fun.stub._hydrate_function_handles(_client, _container_app)
 
         if container_args.function_def.pty_info.enabled:
             # TODO(erikbern): there is no client test for this branch
-            from modal import container_app
-
             input_stream_unwrapped = synchronizer._translate_in(container_app._pty_input_stream)
             input_stream_blocking = synchronizer._translate_out(input_stream_unwrapped, Interface.BLOCKING)
             imp_fun.fun = run_in_pty(imp_fun.fun, input_stream_blocking, container_args.function_def.pty_info)

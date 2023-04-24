@@ -35,6 +35,17 @@ def _get_inputs(args=((42,), {})) -> list[api_pb2.FunctionGetInputsResponse]:
     ]
 
 
+def _load_stub(servicer, module_name, stub_name):
+    # loads stub in another process to prevent leaking objects from client to container process
+    env = {"MODAL_SERVER_URL": servicer.remote_addr}
+    lib_dir = pathlib.Path(__file__).parent.parent
+    subprocess.check_call(
+        [sys.executable, "-c", f"import {module_name}\nwith {module_name}.{stub_name}.run():\n\tpass"],
+        cwd=lib_dir,
+        env=env,
+    )
+
+
 def _run_container(
     servicer,
     module_name,
@@ -72,7 +83,7 @@ def _run_container(
         container_args = api_pb2.ContainerArguments(
             task_id="ta-123",
             function_id="fu-123",
-            app_id="se-123",
+            app_id="ap-1",
             function_def=function_def,
         )
 
@@ -564,3 +575,10 @@ def test_cli(unix_servicer, event_loop):
 
     assert stdout == ""
     # assert stderr == ""  # TODO(erikbern): this doesn't work right now:
+
+
+def test_function_hydration(unix_servicer):
+    _load_stub(unix_servicer, "modal_test_support.functions", "stub")
+    print(unix_servicer.app_objects["ap-1"])
+    client, items = _run_container(unix_servicer, "modal_test_support.functions", "check_sibling_hydration")
+    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS

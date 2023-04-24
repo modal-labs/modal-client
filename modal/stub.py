@@ -150,7 +150,7 @@ class _Stub:
         self._function_mounts = {}
         self._mounts = mounts
         self._secrets = secrets
-        self._function_handles = {}
+        self._function_handles: Dict[str, _FunctionHandle] = {}
         self._local_entrypoints = {}
         self._local_mounts = []
         self._web_endpoints = []
@@ -372,28 +372,20 @@ class _Stub:
         return mounts
 
     def _get_function_handle(self, info: FunctionInfo) -> _FunctionHandle:
+        """This can either return a hydrated or an unhydrated _FunctionHandle
+
+        If called from within a container_app that has this function handle,
+        it will return a Hydrated funciton handle, but in all other contexts
+        it will be unhydrated.
+        """
         tag = info.get_tag()
-        function_handle: Optional[_FunctionHandle] = None
-        if self._app:
-            # Grab the existing function handle from the running app
-            # TODO: handle missing items, or wrong types
-            try:
-                handle = self._app[tag]
-                if isinstance(handle, _FunctionHandle):
-                    function_handle = handle
-                else:
-                    logger.warning(f"Object {tag} has wrong type {type(handle)}")
-            except KeyError:
-                logger.warning(
-                    f"Could not find Modal function '{tag}' in app '{self.description}'. '{tag}' may still be invoked as local function: {tag}()"
-                )
+        if tag in self._function_handles:
+            return self._function_handles[tag]
 
-        if function_handle is None:
-            function_handle = _FunctionHandle._new()
-
+        function_handle = _FunctionHandle._new()
         function_handle._initialize_from_local(self, info)
         self._function_handles[tag] = function_handle
-        return function_handle
+        return function_handle  # note that the function handle is not yet hydrated at this point:
 
     def _add_function(self, function: _Function, mounts: List[_Mount]):
         if function.tag in self._blueprint:
@@ -892,6 +884,13 @@ class _Stub:
 
         _PartialFunction.initialize_cls(user_cls, function_handles)
         return user_cls
+
+    def _hydrate_function_handles(self, client: _Client, container_app: _App):
+        for tag, obj in container_app._tag_to_object.items():
+            if isinstance(obj, _FunctionHandle):
+                function_id = obj.object_id
+                handle_metadata = obj._get_handle_metadata()
+                self._function_handles[tag]._hydrate(client, function_id, handle_metadata)
 
 
 Stub, AioStub = synchronize_apis(_Stub)

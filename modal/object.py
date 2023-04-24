@@ -36,6 +36,7 @@ class _Handle(metaclass=ObjectMeta):
     def _init(self):
         self._client = None
         self._object_id = None
+        self._is_hydrated = False
 
     @classmethod
     def _new(cls: Type[H]) -> H:
@@ -52,6 +53,12 @@ class _Handle(metaclass=ObjectMeta):
         self._object_id = object_id
         if handle_metadata:
             self._hydrate_metadata(handle_metadata)
+        self._is_hydrated = True
+
+    def is_hydrated(self) -> bool:
+        # A hydrated Handle is fully functional and linked to a live object in an app
+        # To hydrate Handles, run an app using stub.run() or look up the object from a running app using <HandleClass>.lookup()
+        return self._is_hydrated
 
     def _hydrate_metadata(self, handle_metadata: Message):
         # override this is subclasses that need additional data (other than an object_id) for a functioning Handle
