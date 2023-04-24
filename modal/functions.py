@@ -1210,7 +1210,7 @@ def _method(
     @stub.cls(cpu=8)
     class MyCls:
 
-        @method()
+        @modal.method()
         def f(self):
             ...
     ```
