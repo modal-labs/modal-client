@@ -121,7 +121,7 @@ class _ImageRegistryConfig:
 
 
 if typing.TYPE_CHECKING:
-    from .functions import _Function
+    import modal.functions
 
 
 class _Image(_Provider[_ImageHandle]):
@@ -142,7 +142,7 @@ class _Image(_Provider[_ImageHandle]):
         secrets: Sequence[_Secret] = [],
         ref=None,
         gpu_config: Optional[api_pb2.GPUConfig] = None,
-        build_function: "_Function" = None,
+        build_function: "modal.functions._Function" = None,
         context_mount: Optional[_Mount] = None,
         image_registry_config: Optional[_ImageRegistryConfig] = None,
         force_build: bool = False,
