@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2022
-from typing import Dict
+from typing import Dict, Optional
 
 from modal._types import typechecked
 
@@ -44,7 +44,7 @@ class _Secret(_Provider[_SecretHandle]):
         ):
             raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
 
-        async def _load(resolver: Resolver, existing_object_id: str) -> _SecretHandle:
+        async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _SecretHandle:
             req = api_pb2.SecretCreateRequest(
                 app_id=resolver.app_id,
                 env_dict=env_dict,

@@ -168,7 +168,7 @@ class _Image(_Provider[_ImageHandle]):
         if build_function and len(base_images) != 1:
             raise InvalidError("Cannot run a build function with multiple base images!")
 
-        async def _load(resolver: Resolver, existing_object_id: str):
+        async def _load(resolver: Resolver, existing_object_id: Optional[str]):
             if ref:
                 image_id = (await resolver.load(ref)).object_id
                 return _ImageHandle._from_id(image_id, resolver.client, None)
