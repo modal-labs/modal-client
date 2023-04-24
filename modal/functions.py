@@ -1189,17 +1189,19 @@ PartialFunction, AioPartialFunction = synchronize_apis(_PartialFunction)
 
 def _method(
     *,
-    is_generator: Optional[
-        bool
-    ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
+    # Set this to True if it's a non-generator function returning
+    # a [sync/async] generator object
+    is_generator: Optional[bool] = None,
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
-    """Decorator for methods that should be transformed by Modal.
+    """Decorator for methods that should be transformed into a Modal Function registered against this class's stub.
 
-    Usage:
-    ```
+    **Usage:**
+
+    ```python
     @stub.cls(cpu=8)
     class MyCls:
-        @method()
+
+        @modal.method()
         def f(self):
             ...
     ```
@@ -1283,7 +1285,7 @@ def _asgi_app(
 
     The two `wait_for_response` modes for webhooks are as follows:
     * wait_for_response=True - tries to fulfill the request on the original URL, but returns a 302 redirect after ~150s to a result URL (original URL with an added `__modal_function_id=fc-1234abcd` query parameter)
-    * wait_for_response=False - immediately returns a 202 ACCEPTED response with a json payload: `{"result_url": "..."}` containing the result "redirect" url from above (which in turn redirects to itself every 150s)
+    * wait_for_response=False - immediately returns a 202 ACCEPTED response with a JSON payload: `{"result_url": "..."}` containing the result "redirect" url from above (which in turn redirects to itself every 150s)
     """
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
@@ -1311,9 +1313,9 @@ def _wsgi_app(
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
-    """Register an WSGI app with this application.
+    """Register a WSGI app with this application.
 
-    See documentation for asgi_app
+    See documentation for [`asgi_app`](/docs/reference/modal.asgi_app).
     """
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
