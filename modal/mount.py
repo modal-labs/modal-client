@@ -131,42 +131,25 @@ class _Mount(_Provider[_MountHandle]):
 
     _entries: List[_MountEntry]
 
-    def __init__(
-        self,
-        # Mount path within the container.
-        remote_dir: Union[str, PurePosixPath] = None,
-        *,
-        # Local directory to mount.
-        local_dir: Optional[Union[str, Path]] = None,
-        # Local file to mount, if only a single file needs to be mounted. Note that exactly one of `local_dir` and `local_file` can be provided.
-        local_file: Optional[Union[str, Path]] = None,
-        # Optional predicate to filter files while creating the mount. `condition` is any function that accepts an absolute local file path, and returns `True` if it should be mounted, and `False` otherwise.
-        condition: Optional[Callable[[str], bool]] = None,  # default to include all files
-        # Optional flag to toggle if subdirectories should be mounted recursively.
-        recursive: bool = True,
-        _entries: Optional[List[_MountEntry]] = None,  # internal - don't use
-    ):
+    def __init__(self, *args, **kwargs):
         """The Mount constructor is deprecated. Use static factory method Mount.from_local_dir or Mount.from_local_file"""
-        if _entries is None:
-            deprecation_error(
-                date(2023, 2, 8),
-                self.__init__.__doc__,
-            )
+        deprecation_error(
+            date(2023, 2, 8),
+            self.__init__.__doc__,
+        )
 
-        # TODO(erikbern): remove this code path, and use _from_loader instead
-        assert local_file is None and local_dir is None
-        self._entries = _entries
-        self._is_local = True
-        rep = f"Mount({self._entries})"
-        load = functools.partial(_Mount._load_mount, _entries)
-        super().__init__(load, rep)
+    @staticmethod
+    def _from_entries(*entries: _MountEntry) -> "_Mount":
+        rep = f"Mount({entries})"
+        load = functools.partial(_Mount._load_mount, entries)
+        obj = _Mount._from_loader(load, rep)
+        obj._entries = entries
+        obj._is_local = True
+        return obj
 
     @property
     def entries(self):
         return self._entries
-
-    def extend(self, *entries) -> "_Mount":
-        return _Mount(_entries=[*self._entries, *entries])
 
     def is_local(self) -> bool:
         """mdmd:hidden"""
@@ -196,7 +179,7 @@ class _Mount(_Provider[_MountHandle]):
 
             condition = include_all
 
-        return self.extend(
+        return _Mount._from_entries(
             _MountDir(
                 local_dir=local_path,
                 condition=condition,
@@ -214,7 +197,7 @@ class _Mount(_Provider[_MountHandle]):
         condition: Optional[Callable[[str], bool]] = None,  # Filter function for file selection - default all files
         recursive: bool = True,  # add files from subdirectories as well
     ):
-        return _Mount(_entries=[]).add_local_dir(
+        return _Mount._from_entries().add_local_dir(
             local_path, remote_path=remote_path, condition=condition, recursive=recursive
         )
 
@@ -226,7 +209,7 @@ class _Mount(_Provider[_MountHandle]):
         if remote_path is None:
             remote_path = local_path.name
         remote_path = PurePosixPath("/", remote_path)
-        return self.extend(
+        return _Mount._from_entries(
             _MountFile(
                 local_file=local_path,
                 remote_path=PurePosixPath(remote_path),
@@ -236,7 +219,7 @@ class _Mount(_Provider[_MountHandle]):
     @staticmethod
     @typechecked
     def from_local_file(local_path: Union[str, Path], remote_path: Union[str, PurePosixPath, None] = None) -> "_Mount":
-        return _Mount(_entries=[]).add_local_file(local_path, remote_path=remote_path)
+        return _Mount._from_entries().add_local_file(local_path, remote_path=remote_path)
 
     @staticmethod
     def _description(entries: List[_MountEntry]) -> str:
