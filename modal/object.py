@@ -58,8 +58,9 @@ class _Handle(metaclass=ObjectMeta):
         pass
 
     def _get_handle_metadata(self) -> Optional[Message]:
-        # get the necessary metadata from this handle to be able to re-hydrate in another context
-        # inverse of _hydrate_metadata
+        # return the necessary metadata from this handle to be able to re-hydrate in another context if one is needed
+        # used to provide a handle's handle_metadata for serializing/pickling a live handle
+        # the object_id is already provided by other means
         return None
 
     @classmethod
@@ -171,7 +172,7 @@ class _Provider(Generic[H]):
         self._local_uuid = str(uuid.uuid4())
         self._load = load
         if preload is not None:
-            # overwrite preload, needed for refs to Functions to work
+            # only sets _preload if one is provided, otherwise a noop is used
             self._preload = preload
         self._rep = rep
         self.is_persisted_ref = is_persisted_ref

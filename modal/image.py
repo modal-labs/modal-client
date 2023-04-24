@@ -168,15 +168,6 @@ class _Image(_Provider[_ImageHandle]):
         if build_function and len(base_images) != 1:
             raise InvalidError("Cannot run a build function with multiple base images!")
 
-        async def _preload(resolver: Resolver, existing_object_id: str):
-            for image in base_images.values():
-                await resolver.preload(image)
-
-            if build_function:
-                # preloading function, to set the handle
-                await resolver.preload(build_function)
-            return None
-
         async def _load(resolver: Resolver, existing_object_id: str):
             if ref:
                 image_id = (await resolver.load(ref)).object_id
@@ -294,7 +285,7 @@ class _Image(_Provider[_ImageHandle]):
             return _ImageHandle._from_id(image_id, resolver.client, None)
 
         rep = f"Image({dockerfile_commands})"
-        obj = _Image._from_loader(_load, rep, preload=_preload)
+        obj = _Image._from_loader(_load, rep)
         obj.force_build = force_build
         return obj
 
