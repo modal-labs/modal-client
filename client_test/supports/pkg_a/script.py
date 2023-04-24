@@ -19,7 +19,7 @@ async def get_files():
     fn_info = FunctionInfo(f)
 
     for _, mount in fn_info.get_mounts().items():
-        async for file_info in mount._get_files():
+        async for file_info in mount._get_files(mount.entries):
             print(file_info.mount_filename)
 
 
