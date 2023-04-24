@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2022
-from typing import Any
+from typing import Any, Optional
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
@@ -137,7 +137,7 @@ class _Dict(_Provider[_DictHandle]):
     def __init__(self, data={}):
         """Create a new dictionary, optionally filled with initial data."""
 
-        async def _load(resolver: Resolver, existing_object_id: str) -> _DictHandle:
+        async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _DictHandle:
             serialized = _serialize_dict(data)
             req = api_pb2.DictCreateRequest(
                 app_id=resolver.app_id, data=serialized, existing_dict_id=existing_object_id
