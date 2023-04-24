@@ -3,6 +3,7 @@ import abc
 import asyncio
 import concurrent.futures
 import dataclasses
+import functools
 import os
 import time
 import typing
@@ -157,7 +158,12 @@ class _Mount(_Provider[_MountHandle]):
         self._entries = _entries
         self._is_local = True
         rep = f"Mount({self._entries})"
-        super().__init__(self._load, rep)
+        load = functools.partial(_Mount._load_mount, _entries)
+        super().__init__(load, rep)
+
+    @property
+    def entries(self):
+        return self._entries
 
     def extend(self, *entries) -> "_Mount":
         return _Mount(_entries=[*self._entries, *entries])
@@ -232,13 +238,15 @@ class _Mount(_Provider[_MountHandle]):
     def from_local_file(local_path: Union[str, Path], remote_path: Union[str, PurePosixPath, None] = None) -> "_Mount":
         return _Mount(_entries=[]).add_local_file(local_path, remote_path=remote_path)
 
-    def _description(self) -> str:
-        local_contents = [e.description() for e in self._entries]
+    @staticmethod
+    def _description(entries: List[_MountEntry]) -> str:
+        local_contents = [e.description() for e in entries]
         return ", ".join(local_contents)
 
-    async def _get_files(self) -> AsyncGenerator[FileUploadSpec, None]:
+    @staticmethod
+    async def _get_files(entries: List[_MountEntry]) -> AsyncGenerator[FileUploadSpec, None]:
         all_files: List[Tuple[Path, str]] = []
-        for entry in self._entries:
+        for entry in entries:
             all_files += list(entry.get_files_to_upload())
 
         loop = asyncio.get_event_loop()
@@ -255,7 +263,8 @@ class _Mount(_Provider[_MountHandle]):
                     # Can happen with temporary files (e.g. emacs will write temp files and delete them quickly)
                     logger.info(f"Ignoring file not found: {exc}")
 
-    async def _load(self, resolver: Resolver, existing_object_id: Optional[str]):
+    @staticmethod
+    async def _load_mount(entries: List[_MountEntry], resolver: Resolver, existing_object_id: Optional[str]):
         # Run a threadpool to compute hash values, and use concurrent coroutines to register files.
         t0 = time.time()
         n_concurrent_uploads = 16
@@ -263,7 +272,7 @@ class _Mount(_Provider[_MountHandle]):
         n_files = 0
         uploaded_hashes: set[str] = set()
         total_bytes = 0
-        message_label = self._description()
+        message_label = _Mount._description(entries)
         status_row = resolver.add_status_row()
 
         async def _put_file(file_spec: FileUploadSpec) -> api_pb2.MountFile:
@@ -309,7 +318,7 @@ class _Mount(_Provider[_MountHandle]):
         logger.debug(f"Uploading mount using {n_concurrent_uploads} uploads")
 
         # Create async generator
-        files_stream = aiostream.stream.iterate(self._get_files())
+        files_stream = aiostream.stream.iterate(_Mount._get_files(entries))
 
         # Upload files
         uploads_stream = aiostream.stream.map(files_stream, _put_file, task_limit=n_concurrent_uploads)
