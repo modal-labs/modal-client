@@ -193,10 +193,11 @@ class _Provider(Generic[H]):
         cls,
         load: Callable[[Resolver, str], Awaitable[H]],
         rep: str,
+        is_persisted_ref: bool = False,
         preload: Optional[Callable[[Resolver, str], Awaitable[H]]] = None,
     ):
         obj = _Handle.__new__(cls)
-        obj._init(load, rep, preload=preload)
+        obj._init(load, rep, is_persisted_ref, preload)
         return obj
 
     @classmethod
@@ -261,12 +262,9 @@ class _Provider(Generic[H]):
         async def _load_persisted(resolver: Resolver, existing_object_id: str) -> H:
             return await self._deploy(label, namespace, resolver.client)
 
-        # Create a class of type cls, but use the base constructor
         cls = type(self)
-        obj = cls.__new__(cls)
         rep = f"PersistedRef<{self}>({label})"
-        _Provider.__init__(obj, _load_persisted, rep, is_persisted_ref=True)
-        return obj
+        return cls._from_loader(_load_persisted, rep, is_persisted_ref=True)
 
     @classmethod
     def from_name(
@@ -295,12 +293,8 @@ class _Provider(Generic[H]):
             handle: H = await handle_cls.from_app(app_name, tag, namespace, client=resolver.client)
             return handle
 
-        # Create a class of type cls, but use the base constructor
-        # TODO(erikbern): No _Provider subclass should override __init__
-        obj = cls.__new__(cls)
         rep = f"Ref({app_name})"
-        _Provider.__init__(obj, _load_remote, rep)
-        return obj
+        return cls._from_loader(_load_remote, rep)
 
     @classmethod
     async def lookup(
