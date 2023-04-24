@@ -162,15 +162,15 @@ _BLOCKING_P, _ASYNC_P = synchronize_apis(P)
 
 
 class _Provider(Generic[H]):
-    _load: Callable[[Resolver, str], Awaitable[H]]
-    _preload: Optional[Callable[[Resolver, str], Awaitable[H]]]
+    _load: Callable[[Resolver, Optional[str]], Awaitable[H]]
+    _preload: Optional[Callable[[Resolver, Optional[str]], Awaitable[H]]]
 
     def _init(
         self,
-        load: Callable[[Resolver, str], Awaitable[H]],
+        load: Callable[[Resolver, Optional[str]], Awaitable[H]],
         rep: str,
         is_persisted_ref: bool = False,
-        preload: Optional[Callable[[Resolver, str], Awaitable[H]]] = None,
+        preload: Optional[Callable[[Resolver, Optional[str]], Awaitable[H]]] = None,
     ):
         self._local_uuid = str(uuid.uuid4())
         self._load = load
@@ -180,10 +180,10 @@ class _Provider(Generic[H]):
 
     def __init__(
         self,
-        load: Optional[Callable[[Resolver, str], Awaitable[H]]],
+        load: Optional[Callable[[Resolver, Optional[str]], Awaitable[H]]],
         rep: str,
         is_persisted_ref: bool = False,
-        preload: Optional[Callable[[Resolver, str], Awaitable[Optional[H]]]] = None,
+        preload: Optional[Callable[[Resolver, Optional[str]], Awaitable[Optional[H]]]] = None,
     ):
         # TODO(erikbern): this is semi-deprecated - subclasses should use _from_loader
         self._init(load, rep, is_persisted_ref, preload=preload)
@@ -191,10 +191,10 @@ class _Provider(Generic[H]):
     @classmethod
     def _from_loader(
         cls,
-        load: Callable[[Resolver, str], Awaitable[H]],
+        load: Callable[[Resolver, Optional[str]], Awaitable[H]],
         rep: str,
         is_persisted_ref: bool = False,
-        preload: Optional[Callable[[Resolver, str], Awaitable[H]]] = None,
+        preload: Optional[Callable[[Resolver, Optional[str]], Awaitable[H]]] = None,
     ):
         obj = _Handle.__new__(cls)
         obj._init(load, rep, is_persisted_ref, preload)
@@ -259,7 +259,7 @@ class _Provider(Generic[H]):
 
         """
 
-        async def _load_persisted(resolver: Resolver, existing_object_id: str) -> H:
+        async def _load_persisted(resolver: Resolver, existing_object_id: Optional[str]) -> H:
             return await self._deploy(label, namespace, resolver.client)
 
         cls = type(self)
@@ -288,7 +288,7 @@ class _Provider(Generic[H]):
         ```
         """
 
-        async def _load_remote(resolver: Resolver, existing_object_id: str) -> H:
+        async def _load_remote(resolver: Resolver, existing_object_id: Optional[str]) -> H:
             handle_cls = cls._get_handle_cls()
             handle: H = await handle_cls.from_app(app_name, tag, namespace, client=resolver.client)
             return handle

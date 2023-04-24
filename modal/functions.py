@@ -875,7 +875,7 @@ class _Function(_Provider[_FunctionHandle]):
         self._function_handle._hydrate(resolver.client, response.function_id, response.handle_metadata)
         return self._function_handle
 
-    async def _load(self, resolver: Resolver, existing_object_id: str):
+    async def _load(self, resolver: Resolver, existing_object_id: Optional[str]):
         status_row = resolver.add_status_row()
         status_row.message(f"Creating {self._tag}...")
 
