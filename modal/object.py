@@ -162,6 +162,9 @@ _BLOCKING_P, _ASYNC_P = synchronize_apis(P)
 
 
 class _Provider(Generic[H]):
+    _load: Callable[[Resolver, str], Awaitable[H]]
+    _preload: Optional[Callable[[Resolver, str], Awaitable[H]]]
+
     def _init(
         self,
         load: Callable[[Resolver, str], Awaitable[H]],
@@ -171,9 +174,7 @@ class _Provider(Generic[H]):
     ):
         self._local_uuid = str(uuid.uuid4())
         self._load = load
-        if preload is not None:
-            # only sets _preload if one is provided, otherwise a noop is used
-            self._preload = preload
+        self._preload = preload
         self._rep = rep
         self.is_persisted_ref = is_persisted_ref
 
@@ -294,14 +295,11 @@ class _Provider(Generic[H]):
             handle: H = await handle_cls.from_app(app_name, tag, namespace, client=resolver.client)
             return handle
 
-        async def _no_preload(resolver: Resolver, existing_object_id: str) -> Optional[H]:
-            return None
-
         # Create a class of type cls, but use the base constructor
         # TODO(erikbern): No _Provider subclass should override __init__
         obj = cls.__new__(cls)
         rep = f"Ref({app_name})"
-        _Provider.__init__(obj, _load_remote, rep, preload=_no_preload)
+        _Provider.__init__(obj, _load_remote, rep)
         return obj
 
     @classmethod

@@ -855,7 +855,7 @@ class _Function(_Provider[_FunctionHandle]):
         self._function_handle = function_handle
 
         rep = f"Function({self._tag})"
-        super().__init__(self._load, rep)
+        super().__init__(self._load, rep, preload=self._preload)
 
     async def _preload(self, resolver: Resolver, existing_object_id: Optional[str]):
         if self._is_generator:
