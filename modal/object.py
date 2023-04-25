@@ -169,27 +169,28 @@ _BLOCKING_P, _ASYNC_P = synchronize_apis(P)
 
 
 class _Provider(Generic[H]):
+    _load: Callable[[Resolver, Optional[str]], Awaitable[H]]
+    _preload: Optional[Callable[[Resolver, Optional[str]], Awaitable[H]]]
+
     def _init(
         self,
-        load: Callable[[Resolver, str], Awaitable[H]],
+        load: Callable[[Resolver, Optional[str]], Awaitable[H]],
         rep: str,
         is_persisted_ref: bool = False,
-        preload: Optional[Callable[[Resolver, str], Awaitable[H]]] = None,
+        preload: Optional[Callable[[Resolver, Optional[str]], Awaitable[H]]] = None,
     ):
         self._local_uuid = str(uuid.uuid4())
         self._load = load
-        if preload is not None:
-            # only sets _preload if one is provided, otherwise a noop is used
-            self._preload = preload
+        self._preload = preload
         self._rep = rep
         self.is_persisted_ref = is_persisted_ref
 
     def __init__(
         self,
-        load: Optional[Callable[[Resolver, str], Awaitable[H]]],
+        load: Callable[[Resolver, Optional[str]], Awaitable[H]],
         rep: str,
         is_persisted_ref: bool = False,
-        preload: Optional[Callable[[Resolver, str], Awaitable[Optional[H]]]] = None,
+        preload: Optional[Callable[[Resolver, Optional[str]], Awaitable[H]]] = None,
     ):
         # TODO(erikbern): this is semi-deprecated - subclasses should use _from_loader
         self._init(load, rep, is_persisted_ref, preload=preload)
@@ -197,12 +198,13 @@ class _Provider(Generic[H]):
     @classmethod
     def _from_loader(
         cls,
-        load: Callable[[Resolver, str], Awaitable[H]],
+        load: Callable[[Resolver, Optional[str]], Awaitable[H]],
         rep: str,
-        preload: Optional[Callable[[Resolver, str], Awaitable[H]]] = None,
+        is_persisted_ref: bool = False,
+        preload: Optional[Callable[[Resolver, Optional[str]], Awaitable[H]]] = None,
     ):
         obj = _Handle.__new__(cls)
-        obj._init(load, rep, preload=preload)
+        obj._init(load, rep, is_persisted_ref, preload)
         return obj
 
     @classmethod
@@ -264,15 +266,12 @@ class _Provider(Generic[H]):
 
         """
 
-        async def _load_persisted(resolver: Resolver, existing_object_id: str) -> H:
+        async def _load_persisted(resolver: Resolver, existing_object_id: Optional[str]) -> H:
             return await self._deploy(label, namespace, resolver.client)
 
-        # Create a class of type cls, but use the base constructor
         cls = type(self)
-        obj = cls.__new__(cls)
         rep = f"PersistedRef<{self}>({label})"
-        _Provider.__init__(obj, _load_persisted, rep, is_persisted_ref=True)
-        return obj
+        return cls._from_loader(_load_persisted, rep, is_persisted_ref=True)
 
     @classmethod
     def from_name(
@@ -296,20 +295,13 @@ class _Provider(Generic[H]):
         ```
         """
 
-        async def _load_remote(resolver: Resolver, existing_object_id: str) -> H:
+        async def _load_remote(resolver: Resolver, existing_object_id: Optional[str]) -> H:
             handle_cls = cls._get_handle_cls()
             handle: H = await handle_cls.from_app(app_name, tag, namespace, client=resolver.client)
             return handle
 
-        async def _no_preload(resolver: Resolver, existing_object_id: str) -> Optional[H]:
-            return None
-
-        # Create a class of type cls, but use the base constructor
-        # TODO(erikbern): No _Provider subclass should override __init__
-        obj = cls.__new__(cls)
         rep = f"Ref({app_name})"
-        _Provider.__init__(obj, _load_remote, rep, preload=_no_preload)
-        return obj
+        return cls._from_loader(_load_remote, rep)
 
     @classmethod
     async def lookup(
@@ -363,9 +355,6 @@ class _Provider(Generic[H]):
                 return False
             else:
                 raise
-
-    async def _preload(self, resolver, existing_object_id):
-        return None
 
 
 # Dumb but needed becauase it's in the hierarchy

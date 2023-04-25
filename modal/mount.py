@@ -255,7 +255,7 @@ class _Mount(_Provider[_MountHandle]):
                     # Can happen with temporary files (e.g. emacs will write temp files and delete them quickly)
                     logger.info(f"Ignoring file not found: {exc}")
 
-    async def _load(self, resolver: Resolver, existing_object_id: str):
+    async def _load(self, resolver: Resolver, existing_object_id: Optional[str]):
         # Run a threadpool to compute hash values, and use concurrent coroutines to register files.
         t0 = time.time()
         n_concurrent_uploads = 16
