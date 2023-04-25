@@ -24,7 +24,7 @@ async def test_get_files(servicer, aio_client, tmpdir):
 
     files = {}
     m = AioMount.from_local_dir(Path(tmpdir), remote_path="/", condition=lambda fn: fn.endswith(".py"), recursive=True)
-    async for upload_spec in m._get_files():
+    async for upload_spec in AioMount._get_files(m.entries):
         files[upload_spec.mount_filename] = upload_spec
 
     assert "/small.py" in files
