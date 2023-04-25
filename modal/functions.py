@@ -968,6 +968,10 @@ class _Function(_Provider[_FunctionHandle]):
             function_serialized = None
             class_serialized = None
 
+        stub_name = ""
+        if self._stub and self._stub.name:
+            stub_name = self._stub.name
+
         # Create function remotely
         function_definition = api_pb2.Function(
             module_name=self._info.module_name,
@@ -991,7 +995,7 @@ class _Function(_Provider[_FunctionHandle]):
             cloud_provider=self._cloud_provider,
             warm_pool_size=warm_pool_size,
             runtime=config.get("function_runtime"),
-            stub_name=self._stub.name or "",
+            stub_name=stub_name,
         )
         request = api_pb2.FunctionCreateRequest(
             app_id=resolver.app_id,
