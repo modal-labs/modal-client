@@ -514,22 +514,34 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> Importe
     else:
         obj = None
 
-    stub = None
+    active_stub = None
     if isinstance(fun, FunctionHandle):
-        stub = synchronizer._translate_in(fun._stub)
+        active_stub = synchronizer._translate_in(fun._stub)
+        # there are two cases when imported functions are not FunctionHandles:
+        # * Serialized functions (The unpickled FunctionHandle only has object_id and handle_metadata)
+        # * Privately decorated functions - the FunctionHandle is in non-global scope or has a different name than the imported function
     elif module is not None:
-        # non-serialized privately decorated function
+        # Privately decorated function - determine the active stub by looking for any stubs in the imported module
+        # This is not necessarily enough, and the active stub might not even be loaded, but it's a best effort
         stubs: typing.List[_Stub] = []
         for module_item in module.__dict__.values():
             if isinstance(module_item, (Stub, AioStub)):
                 stubs.append(synchronizer._translate_in(module_item))
         if len(stubs) == 1:
-            stub = stubs[0]
+            active_stub = stubs[0]
         else:
-            logger.warning(
-                "Could not determine the active stub - non-global decorations of functions currently require there to be a single stub in the global scope of the function's origin module. Otherwise you won't be able to call other functions of the stub"
-            )
-            # TODO(elias): implement multistub name resolution by storing the stub name on the function definition (?)
+            for stub in stubs:
+                if stub.name == function_def.stub_name:
+                    if active_stub is not None:
+                        logger.warning(
+                            "You have more than one stub with the same name in the target module. Function hydration might not work as expected. Either name all your Stubs distinctly, or use global function decoration."
+                        )
+                    active_stub = stub
+
+            if not active_stub:
+                logger.warning(
+                    "Could not determine the active stub. This might cause unexpected behavior if trying to call o ther functions. Try giving distinct names to each of your stubs."
+                )
 
     if function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP:
         # function returns an asgi_app, that we can use as a callable.
@@ -550,7 +562,7 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> Importe
         is_async = True
         is_generator = True
 
-    return ImportedFunction(obj, fun, stub, is_async, is_generator)
+    return ImportedFunction(obj, fun, active_stub, is_async, is_generator)
 
 
 def main(container_args: api_pb2.ContainerArguments, client: Client):

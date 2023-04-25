@@ -890,7 +890,12 @@ class _Stub:
             if isinstance(obj, _FunctionHandle):
                 function_id = obj.object_id
                 handle_metadata = obj._get_handle_metadata()
-                self._function_handles[tag]._hydrate(client, function_id, handle_metadata)
+                if tag not in self._function_handles:
+                    # this could happen if a sibling function decoration is lazy loaded at a later than function import
+                    # assigning the app's hydrated function handle ensures it will be used for the later decoration return value
+                    self._function_handles[tag] = obj
+                else:
+                    self._function_handles[tag]._hydrate(client, function_id, handle_metadata)
 
 
 Stub, AioStub = synchronize_apis(_Stub)
