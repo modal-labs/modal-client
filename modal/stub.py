@@ -95,7 +95,7 @@ class _Stub:
     In this example, the secret and schedule are registered with the app.
     """
 
-    _name: str
+    _name: Optional[str]
     _description: str
     _app_id: str
     _blueprint: Dict[str, _Provider]
@@ -163,7 +163,7 @@ class _Stub:
             self._app = _container_app
 
     @property
-    def name(self) -> str:
+    def name(self) -> Optional[str]:
         """The user-provided name of the Stub."""
         return self._name
 
