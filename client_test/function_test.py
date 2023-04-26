@@ -482,21 +482,21 @@ def test_serialize_deserialize_function_handle(servicer, client):
 def test_invalid_web_decorator_usage():
     with pytest.raises(InvalidError, match="Add empty parens to the decorator"):
 
-        @stub.function()
-        @web_endpoint
+        @stub.function()  # type: ignore
+        @web_endpoint  # type: ignore
         def my_handle():
             pass
 
     with pytest.raises(InvalidError, match="Add empty parens to the decorator"):
 
-        @stub.function()
-        @asgi_app
+        @stub.function()  # type: ignore
+        @asgi_app  # type: ignore
         def my_handle_asgi():
             pass
 
     with pytest.raises(InvalidError, match="Add empty parens to the decorator"):
 
-        @stub.function()
-        @wsgi_app
+        @stub.function()  # type: ignore
+        @wsgi_app  # type: ignore
         def my_handle_wsgi():
             pass
