@@ -1258,6 +1258,12 @@ def _web_endpoint(
     * `wait_for_response=True` - tries to fulfill the request on the original URL, but returns a 302 redirect after ~150s to a result URL (original URL with an added `__modal_function_id=...` query parameter)
     * `wait_for_response=False` - immediately returns a 202 ACCEPTED response with a JSON payload: `{"result_url": "..."}` containing the result "redirect" URL from above (which in turn redirects to itself every ~150s)
     """
+    if not isinstance(method, str):
+        raise InvalidError(
+            f"Unexpected argument {method} of type {type(method)} for `method` parameter. "
+            "Add empty parens to the decorator, e.g. @web_endpoint() if there are no arguments. "
+            "Otherwise, pass an argument of type `str`: @web_endpoint(method='POST')"
+        )
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         if isinstance(raw_f, _FunctionHandle):
@@ -1305,6 +1311,12 @@ def _asgi_app(
     * wait_for_response=True - tries to fulfill the request on the original URL, but returns a 302 redirect after ~150s to a result URL (original URL with an added `__modal_function_id=fc-1234abcd` query parameter)
     * wait_for_response=False - immediately returns a 202 ACCEPTED response with a JSON payload: `{"result_url": "..."}` containing the result "redirect" url from above (which in turn redirects to itself every 150s)
     """
+    if label and not isinstance(label, str):
+        raise InvalidError(
+            f"Unexpected argument {label} of type {type(label)} for `label` parameter. "
+            "Add empty parens to the decorator, e.g. @asgi_app() if there are no arguments. "
+            "Otherwise, pass an argument of type `str`: @asgi_app(label='mylabel')"
+        )
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         if not wait_for_response:
@@ -1335,6 +1347,12 @@ def _wsgi_app(
 
     See documentation for [`asgi_app`](/docs/reference/modal.asgi_app).
     """
+    if label and not isinstance(label, str):
+        raise InvalidError(
+            f"Unexpected argument {label} of type {type(label)} for `label` parameter. "
+            "Add empty parens to the decorator, e.g. @asgi_app() if there are no arguments. "
+            "Otherwise, pass an argument of type `str`: @asgi_app(label='mylabel')"
+        )
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         if not wait_for_response:
