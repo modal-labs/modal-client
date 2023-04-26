@@ -82,6 +82,15 @@ class A10G(_GPUConfig):
     def __repr__(self):
         return f"GPU(A10G, count={self.count})"
 
+class Inferentia2(_GPUConfig):
+    """mdmd:hidden"""
+
+    def __init__(self, *, count: int = 1):
+        super().__init__(api_pb2.GPU_TYPE_INFERENTIA_2, count)
+    
+    def __repr__(self):
+        return f"GPU(INFERENTIA2, count={self.count})"
+
 
 class Any(_GPUConfig):
     """Selects any one of the GPU classes available within Modal, according to availability."""
