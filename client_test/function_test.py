@@ -38,6 +38,26 @@ def test_call_function_locally(client, servicer):
         assert foo(22, 55) == 88
 
 
+@stub.function()
+@web_endpoint()
+def webby(i, j):
+    return {"number": i + j}
+
+
+def test_call_web_endpoint_remote(client, servicer):
+    assert len(servicer.cleared_function_calls) == 0
+    with stub.run(client=client):
+        assert webby.call(2, 4) == 20
+        assert len(servicer.cleared_function_calls) == 1
+
+
+def test_call_web_endpoint_locally(client, servicer):
+    assert webby(10, 20) == {"number": 30}
+    with stub.run(client=client):
+        assert webby.call(123, 458) == 224893
+        assert webby(444, 333) == {"number": 777}
+
+
 @pytest.mark.parametrize("slow_put_inputs", [False, True])
 @pytest.mark.timeout(120)
 def test_map(client, servicer, slow_put_inputs):
