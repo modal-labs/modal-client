@@ -522,6 +522,12 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         return self._is_generator
 
     async def _map(self, input_stream: AsyncIterable[Any], order_outputs: bool, return_exceptions: bool, kwargs={}):
+        if self._web_url:
+            raise InvalidError(
+                "A web endpoint function cannot be directly invoked for parallel remote execution. "
+                f"Invoke this function via its web url '{self._web_url}' or call it locally: {self._function_name}()."
+            )
+
         if order_outputs and self._is_generator:
             raise ValueError("Can't return ordered results for a generator")
 
@@ -645,8 +651,13 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
 
     def call(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
         """
-        Calls the function, executing it remotely with the given arguments and returning the execution's result.
+        Calls the function remotely, executing it with the given arguments and returning the execution's result.
         """
+        if self._web_url:
+            raise InvalidError(
+                "A web endpoint function cannot be invoked for remote execution with `.call`. "
+                f"Invoke this function via its web url '{self._web_url}' or call it locally: {self._function_name}()."
+            )
         if self._is_generator:
             return self._call_generator(args, kwargs)
         else:
