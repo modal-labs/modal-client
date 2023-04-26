@@ -7,7 +7,7 @@ import cloudpickle
 
 from synchronicity.exceptions import UserCodeException
 
-from modal import Proxy, Stub, SharedVolume, web_endpoint
+from modal import Proxy, Stub, SharedVolume, web_endpoint, asgi_app, wsgi_app
 from modal.exception import DeprecationError, InvalidError
 from modal.functions import Function, FunctionCall, gather, FunctionHandle
 from modal.stub import AioStub
@@ -36,26 +36,6 @@ def test_call_function_locally(client, servicer):
     with stub.run(client=client):
         assert foo.call(2, 4) == 20
         assert foo(22, 55) == 88
-
-
-@stub.function()
-@web_endpoint()
-def webby(i, j):
-    return {"number": i + j}
-
-
-def test_call_web_endpoint_remote(client, servicer):
-    assert len(servicer.cleared_function_calls) == 0
-    with stub.run(client=client):
-        assert webby.call(2, 4) == 20
-        assert len(servicer.cleared_function_calls) == 1
-
-
-def test_call_web_endpoint_locally(client, servicer):
-    assert webby(10, 20) == {"number": 30}
-    with stub.run(client=client):
-        assert webby.call(123, 458) == 224893
-        assert webby(444, 333) == {"number": 777}
 
 
 @pytest.mark.parametrize("slow_put_inputs", [False, True])
@@ -497,3 +477,26 @@ def test_serialize_deserialize_function_handle(servicer, client):
     assert rehydrated_function_handle.object_id == my_handle.object_id
     assert isinstance(rehydrated_function_handle, FunctionHandle)
     assert rehydrated_function_handle.web_url == "http://xyz.internal"
+
+
+def test_invalid_web_decorator_usage():
+    with pytest.raises(InvalidError, match="Add empty parens to the decorator"):
+
+        @stub.function()
+        @web_endpoint
+        def my_handle():
+            pass
+
+    with pytest.raises(InvalidError, match="Add empty parens to the decorator"):
+
+        @stub.function()
+        @asgi_app
+        def my_handle_asgi():
+            pass
+
+    with pytest.raises(InvalidError, match="Add empty parens to the decorator"):
+
+        @stub.function()
+        @wsgi_app
+        def my_handle_wsgi():
+            pass
