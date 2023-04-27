@@ -87,7 +87,7 @@ class Inferentia2(_GPUConfig):
     """mdmd:hidden"""
 
     def __init__(self, *, count: int = 1):
-        super().__init__(api_pb2.GPU_TYPE_INFERENTIA_2, count)
+        super().__init__(api_pb2.GPU_TYPE_INFERENTIA2, count)
 
     def __repr__(self):
         return f"GPU(INFERENTIA2, count={self.count})"
