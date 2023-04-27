@@ -180,6 +180,7 @@ class _Mount(_Provider[_MountHandle]):
             condition = include_all
 
         return _Mount._from_entries(
+            *self._entries,
             _MountDir(
                 local_dir=local_path,
                 condition=condition,
@@ -210,6 +211,7 @@ class _Mount(_Provider[_MountHandle]):
             remote_path = local_path.name
         remote_path = PurePosixPath("/", remote_path)
         return _Mount._from_entries(
+            *self._entries,
             _MountFile(
                 local_file=local_path,
                 remote_path=PurePosixPath(remote_path),
