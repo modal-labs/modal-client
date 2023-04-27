@@ -139,3 +139,13 @@ def test_chained_entries(test_dir):
     mount = Mount.from_local_file(a_txt).add_local_file(b_txt)
     entries = mount.entries
     assert len(entries) == 2
+    files = [file for file in Mount._get_files(entries)]
+    assert len(files) == 2
+    files.sort(key=lambda file: file.filename)
+    assert files[0].filename.name == "a.txt"
+    assert files[0].mount_filename.endswith("/a.txt")
+    assert files[0].content == b"A"
+    m = hashlib.sha256()
+    m.update(b"A")
+    assert files[0].sha256_hex == m.hexdigest()
+    assert files[0].use_blob is False
