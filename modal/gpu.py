@@ -102,7 +102,7 @@ class Any(_GPUConfig):
         return f"GPU(Any, count={self.count})"
 
 
-STRING_TO_GPU_CONFIG = {"t4": T4(), "a100": A100(), "a100-20g": A100(memory=20), "a10g": A10G(), "any": Any()}
+STRING_TO_GPU_CONFIG = {"t4": T4(), "a100": A100(), "a100-20g": A100(memory=20), "a10g": A10G(), "inf2": Inferentia2(), "any": Any()}
 display_string_to_config = "\n".join(f'- "{key}" → `{value}`' for key, value in STRING_TO_GPU_CONFIG.items())
 __doc__ = f"""
 **GPU configuration shortcodes**
