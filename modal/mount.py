@@ -186,7 +186,7 @@ class _Mount(_Provider[_MountHandle]):
                 condition=condition,
                 remote_path=remote_path,
                 recursive=recursive,
-            )
+            ),
         )
 
     @staticmethod
@@ -215,7 +215,7 @@ class _Mount(_Provider[_MountHandle]):
             _MountFile(
                 local_file=local_path,
                 remote_path=PurePosixPath(remote_path),
-            )
+            ),
         )
 
     @staticmethod
