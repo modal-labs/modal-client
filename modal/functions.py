@@ -1350,8 +1350,8 @@ def _wsgi_app(
     if label and not isinstance(label, str):
         raise InvalidError(
             f"Unexpected argument {label} of type {type(label)} for `label` parameter. "
-            "Add empty parens to the decorator, e.g. @asgi_app() if there are no arguments. "
-            "Otherwise, pass an argument of type `str`: @asgi_app(label='mylabel')"
+            "Add empty parens to the decorator, e.g. @wsgi_app() if there are no arguments. "
+            "Otherwise, pass an argument of type `str`: @wsgi_app(label='mylabel')"
         )
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
