@@ -4,6 +4,7 @@ import dataclasses
 import hashlib
 import io
 import os
+from pathlib import Path
 from contextlib import contextmanager
 from typing import AsyncIterator, BinaryIO, Optional, Union, List
 from urllib.parse import urlparse
@@ -315,7 +316,7 @@ async def blob_iter(blob_id, stub) -> AsyncIterator[bytes]:
 
 @dataclasses.dataclass
 class FileUploadSpec:
-    filename: str
+    filename: Path
     mount_filename: str
 
     use_blob: bool
@@ -324,7 +325,7 @@ class FileUploadSpec:
     size: int
 
 
-def get_file_upload_spec(filename: str, mount_filename: str) -> FileUploadSpec:
+def get_file_upload_spec(filename: Path, mount_filename: str) -> FileUploadSpec:
     # Somewhat CPU intensive, so we run it in a thread/process
     size = os.path.getsize(filename)
     if size >= LARGE_FILE_LIMIT:

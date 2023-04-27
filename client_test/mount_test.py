@@ -127,3 +127,25 @@ def test_create_package_mounts_missing_module(servicer, client, test_dir):
 
     with pytest.raises(NotFoundError):
         stub.function(mounts=create_package_mounts(["nonexistent_package"]))(dummy)
+
+
+def test_chained_entries(test_dir):
+    a_txt = str(test_dir / "a.txt")
+    b_txt = str(test_dir / "b.txt")
+    with open(a_txt, "w") as f:
+        f.write("A")
+    with open(b_txt, "w") as f:
+        f.write("B")
+    mount = Mount.from_local_file(a_txt).add_local_file(b_txt)
+    entries = mount.entries
+    assert len(entries) == 2
+    files = [file for file in Mount._get_files(entries)]
+    assert len(files) == 2
+    files.sort(key=lambda file: file.filename)
+    assert files[0].filename.name == "a.txt"
+    assert files[0].mount_filename.endswith("/a.txt")
+    assert files[0].content == b"A"
+    m = hashlib.sha256()
+    m.update(b"A")
+    assert files[0].sha256_hex == m.hexdigest()
+    assert files[0].use_blob is False
