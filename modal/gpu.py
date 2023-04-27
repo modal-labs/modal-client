@@ -82,12 +82,13 @@ class A10G(_GPUConfig):
     def __repr__(self):
         return f"GPU(A10G, count={self.count})"
 
+
 class Inferentia2(_GPUConfig):
     """mdmd:hidden"""
 
     def __init__(self, *, count: int = 1):
         super().__init__(api_pb2.GPU_TYPE_INFERENTIA_2, count)
-    
+
     def __repr__(self):
         return f"GPU(INFERENTIA2, count={self.count})"
 
@@ -102,7 +103,14 @@ class Any(_GPUConfig):
         return f"GPU(Any, count={self.count})"
 
 
-STRING_TO_GPU_CONFIG = {"t4": T4(), "a100": A100(), "a100-20g": A100(memory=20), "a10g": A10G(), "inf2": Inferentia2(), "any": Any()}
+STRING_TO_GPU_CONFIG = {
+    "t4": T4(),
+    "a100": A100(),
+    "a100-20g": A100(memory=20),
+    "a10g": A10G(),
+    "inf2": Inferentia2(),
+    "any": Any(),
+}
 display_string_to_config = "\n".join(f'- "{key}" → `{value}`' for key, value in STRING_TO_GPU_CONFIG.items())
 __doc__ = f"""
 **GPU configuration shortcodes**
