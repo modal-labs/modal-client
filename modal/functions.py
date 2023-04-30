@@ -535,6 +535,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
             self._output_mgr.function_progress_callback(self._function_name) if self._output_mgr else None
         )
 
+        self._stub.app.track_function_invocation()
         async for item in _map_invocation(
             self._object_id,
             input_stream,
@@ -629,6 +630,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
             yield item
 
     async def _call_function(self, args, kwargs):
+        self._stub.app.track_function_invocation()
         invocation = await _Invocation.create(self._object_id, args, kwargs, self._client)
         try:
             return await invocation.run_function()
@@ -638,15 +640,18 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
                 raise
 
     async def _call_function_nowait(self, args, kwargs):
+        self._stub.app.track_function_invocation()
         return await _Invocation.create(self._object_id, args, kwargs, self._client)
 
     @warn_if_generator_is_not_consumed
     async def _call_generator(self, args, kwargs):
+        self._stub.app.track_function_invocation()
         invocation = await _Invocation.create(self._object_id, args, kwargs, self._client)
         async for res in invocation.run_generator():
             yield res
 
     async def _call_generator_nowait(self, args, kwargs):
+        self._stub.app.track_function_invocation()
         return await _Invocation.create(self._object_id, args, kwargs, self._client)
 
     def call(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars

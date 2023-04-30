@@ -107,11 +107,17 @@ def _get_click_command_for_local_entrypoint(_stub, entrypoint: LocalEntrypoint):
                 "Note that running a local entrypoint in detached mode only keeps the last triggered Modal function alive after the parent process has been killed or disconnected."
             )
 
-        with blocking_stub.run(detach=ctx.obj["detach"], show_progress=ctx.obj["show_progress"]):
+        with blocking_stub.run(detach=ctx.obj["detach"], show_progress=ctx.obj["show_progress"]) as app:
             if isasync:
                 asyncio.run(func(*args, **kwargs))
             else:
                 func(*args, **kwargs)
+            if app.function_invocations == 0:
+                print(
+                    "Warning: no remote function calls were made.\n"
+                    "Note that Modal functions run locally when called directly (e.g. `f()`).\n"
+                    "In order to run a function remotely, you may use `f.call()`. (See https://modal.com/docs/reference/modal.Function for other options)."
+                )
 
     with_click_options = _add_click_options(f, inspect.signature(func))
     return click.command(with_click_options)
