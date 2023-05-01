@@ -176,7 +176,7 @@ class _Provider(Generic[H]):
         self._load = load
         self._preload = preload
         self._rep = rep
-        self.is_persisted_ref = is_persisted_ref
+        self._is_persisted_ref = is_persisted_ref
 
     def __init__(
         self,
@@ -187,6 +187,10 @@ class _Provider(Generic[H]):
     ):
         # TODO(erikbern): this is semi-deprecated - subclasses should use _from_loader
         self._init(load, rep, is_persisted_ref, preload=preload)
+
+    def _init_from_other(self, other: "_Provider"):
+        # Transient use case, see Secret.__inint__
+        self._init(other._load, other._rep, other._is_persisted_ref, other._preload)
 
     @classmethod
     def _from_loader(

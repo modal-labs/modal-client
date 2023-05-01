@@ -13,6 +13,7 @@ pytest-asyncio @ git+https://github.com/modal-labs/pytest-asyncio.git@b535db05f6
 pytest-env~=0.6.2
 pytest-markdown-docs==0.4.3
 pytest-timeout~=2.1.0
+python-dotenv~=1.0.0;python_version>='3.8'
 ruff~=0.0.239
 synchronicity==0.4.1
 types-croniter~=1.0.8
