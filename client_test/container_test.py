@@ -7,7 +7,7 @@ import pytest
 import subprocess
 import sys
 import time
-from typing import List
+from typing import List, Optional
 
 from grpclib.exceptions import GRPCError
 
@@ -55,6 +55,7 @@ def _run_container(
     function_type=api_pb2.Function.FUNCTION_TYPE_FUNCTION,
     webhook_type=api_pb2.WEBHOOK_TYPE_UNSPECIFIED,
     definition_type=api_pb2.Function.DEFINITION_TYPE_FILE,
+    stub_name: Optional[str] = None,
 ) -> tuple[Client, list[api_pb2.FunctionPutOutputsItem]]:
     with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         if inputs is None:
@@ -78,6 +79,7 @@ def _run_container(
             function_type=function_type,
             webhook_config=webhook_config,
             definition_type=definition_type,
+            stub_name=stub_name or "",
         )
 
         container_args = api_pb2.ContainerArguments(
@@ -577,8 +579,47 @@ def test_cli(unix_servicer, event_loop):
     # assert stderr == ""  # TODO(erikbern): this doesn't work right now:
 
 
+def _run_e2e_function(
+    servicer,
+    module_name,
+    stub_var_name,
+    function_name,
+    *,
+    stub_name=None,
+    assert_result=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
+):
+    _load_stub(servicer, module_name, stub_var_name)
+    client, items = _run_container(servicer, module_name, function_name, stub_name=stub_name)
+    assert items[0].result.status == assert_result
+
+
 def test_function_hydration(unix_servicer):
-    _load_stub(unix_servicer, "modal_test_support.functions", "stub")
-    print(unix_servicer.app_objects["ap-1"])
-    client, items = _run_container(unix_servicer, "modal_test_support.functions", "check_sibling_hydration")
-    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    _run_e2e_function(unix_servicer, "modal_test_support.functions", "stub", "check_sibling_hydration")
+
+
+def test_multistub(unix_servicer, caplog):
+    _run_e2e_function(unix_servicer, "modal_test_support.multistub", "a", "a_func")
+    assert len(caplog.messages) == 0  # no need for a warning about double stubs here
+
+
+def test_multistub_privately_decorated(unix_servicer, caplog):
+    # function handle does not override the original function, so we can't find the stub
+    # and the two stubs are not named
+    _run_e2e_function(unix_servicer, "modal_test_support.multistub_privately_decorated", "stub", "foo")
+    assert "Could not determine the active stub" in caplog.text
+
+
+def test_multistub_privately_decorated_named_stub(unix_servicer, caplog):
+    # function handle does not override the original function, so we can't find the stub
+    # but we can use the names of the stubs to determine the active stub
+    _run_e2e_function(
+        unix_servicer, "modal_test_support.multistub_privately_decorated_named_stub", "stub", "foo", stub_name="dummy"
+    )
+    assert len(caplog.messages) == 0  # no warnings, since target stub is named
+
+
+def test_multistub_same_name_warning(unix_servicer, caplog):
+    # function handle does not override the original function, so we can't find the stub
+    # two stubs with the same name - warn since we won't know which one to hydrate
+    _run_e2e_function(unix_servicer, "modal_test_support.multistub_same_name", "stub", "foo", stub_name="dummy")
+    assert "You have more than one Stub with the same name" in caplog.text

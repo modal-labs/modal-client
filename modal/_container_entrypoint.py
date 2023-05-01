@@ -112,7 +112,12 @@ class _FunctionIOManager:
         self.current_input_id: Optional[str] = None
         self.current_input_started_at: Optional[float] = None
         self._client = synchronizer._translate_in(self.client)  # make it a _Client object
+        self._stub_name = self.function_def.stub_name
         assert isinstance(self._client, _Client)
+
+    @property
+    def stub_name(self):
+        return self._stub_name
 
     @wrap()
     async def initialize_app(self):
@@ -496,9 +501,35 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> Importe
         cls, fun = load_function_from_module(module, function_def.function_name)
 
     # The decorator is typically in global scope, but may have been applied independently
+    active_stub = None
     if isinstance(fun, (FunctionHandle, AioFunctionHandle)):
         _function_proxy = synchronizer._translate_in(fun)
         fun = _function_proxy.get_raw_f()
+        active_stub = _function_proxy._stub
+    elif module is not None:
+        # Look for stubs in the same module as the function
+        # This is not necessarily enough, and the active stub might not even be loaded, but it's a best effort
+        # TODO(elias): Use some kind of global "Stub registry" instead of looking at stubs in global scope of the module, or store which module the stub is declared in?
+        stubs: typing.List[_Stub] = []
+        for module_item in module.__dict__.values():
+            if isinstance(module_item, (Stub, AioStub)):
+                stubs.append(synchronizer._translate_in(module_item))
+        if len(stubs) == 1:
+            active_stub = stubs[0]
+        else:
+            for stub in stubs:
+                if stub.name == function_def.stub_name:
+                    if active_stub is not None:
+                        # already matched with a stub - i.e. there are more than one with the name we look for
+                        logger.warning(
+                            "You have more than one Stub with the same name. It's highly recommended to name all your Stubs uniquely."
+                        )
+                    active_stub = stub
+
+            if not active_stub:
+                logger.warning(
+                    "Could not determine the active stub, which may prevent you from calling into other functions. It's highly recommended to name all your Stubs uniquely and expose your stub as a variable in the module that declares your function."
+                )
 
     # Check this property before we turn it into a method (overriden by webhooks)
     is_async = get_is_async(fun)
@@ -513,35 +544,6 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> Importe
         fun = fun.__get__(obj, cls)
     else:
         obj = None
-
-    active_stub = None
-    if isinstance(fun, FunctionHandle):
-        active_stub = synchronizer._translate_in(fun._stub)
-        # there are two cases when imported functions are not FunctionHandles:
-        # * Serialized functions (The unpickled FunctionHandle only has object_id and handle_metadata)
-        # * Privately decorated functions - the FunctionHandle is in non-global scope or has a different name than the imported function
-    elif module is not None:
-        # Privately decorated function - determine the active stub by looking for any stubs in the imported module
-        # This is not necessarily enough, and the active stub might not even be loaded, but it's a best effort
-        stubs: typing.List[_Stub] = []
-        for module_item in module.__dict__.values():
-            if isinstance(module_item, (Stub, AioStub)):
-                stubs.append(synchronizer._translate_in(module_item))
-        if len(stubs) == 1:
-            active_stub = stubs[0]
-        else:
-            for stub in stubs:
-                if stub.name == function_def.stub_name:
-                    if active_stub is not None:
-                        logger.warning(
-                            "You have more than one stub with the same name in the target module. Function hydration might not work as expected. Either name all your Stubs distinctly, or use global function decoration."
-                        )
-                    active_stub = stub
-
-            if not active_stub:
-                logger.warning(
-                    "Could not determine the active stub. This might cause unexpected behavior if trying to call o ther functions. Try giving distinct names to each of your stubs."
-                )
 
     if function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP:
         # function returns an asgi_app, that we can use as a callable.
