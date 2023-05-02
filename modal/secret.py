@@ -45,7 +45,7 @@ class _Secret(_Provider[_SecretHandle]):
 
         Usage:
         ```python
-        @stub.function(secret=Secret.from_dict({"FOO": "bar"})
+        @stub.function(secret=modal.Secret.from_dict({"FOO": "bar"})
         def run():
             print(os.environ["FOO"])
         ```
@@ -85,7 +85,9 @@ class _Secret(_Provider[_SecretHandle]):
         If called with an argument, it will use that as a starting point for finding .env files.
         In particular, you can call it like this:
         ```python
-        Secret.from_dotenv(__file__)
+        @stub.function(secret=modal.Secret.from_dotenv(__file__))
+        def run():
+            print(os.environ["USERNAME"])  # Assumes USERNAME is defined in your .env file
         ```
         """
 
