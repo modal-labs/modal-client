@@ -65,7 +65,7 @@ modal secret create my-credentials username=john password=-
     if not env_dict:
         raise click.UsageError("You need to specify at least one key for your secret")
 
-    secret = modal.Secret(env_dict=env_dict)
+    secret = modal.Secret.from_dict(env_dict=env_dict)
     secret._deploy(secret_name, client=Client.from_env())
     console = Console()
 
