@@ -40,6 +40,15 @@ class _Secret(_Provider[_SecretHandle]):
         ] = {},  # dict of entries to be inserted as environment variables in functions using the secret
         template_type="",  # internal use only
     ):
+        """Create a secret from a str-str dictionary.
+
+        Usage:
+        ```python
+        @stub.function(secret=Secret.from_dict({"FOO": "bar"})
+        def run():
+            print(os.environ["FOO"])
+        ```
+        """
         if not isinstance(env_dict, dict) or not all(
             isinstance(k, str) and isinstance(v, str) for k, v in env_dict.items()
         ):
@@ -65,7 +74,14 @@ class _Secret(_Provider[_SecretHandle]):
         self._init_from_other(obj)
 
     @staticmethod
-    def from_dotenv(dotenv_path=None):
+    def from_dotenv(dotenv_path=None):  # If provided, location of a .env file
+        """Create secrets from a .env file automatically.
+
+        If no argument is provided, it will use the current working directory as the starting
+        point for finding a .env file. Note that it does not use the location of the module
+        calling .from_dotenv.
+        """
+
         async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _SecretHandle:
             try:
                 from dotenv import find_dotenv, dotenv_values
@@ -75,6 +91,8 @@ class _Secret(_Provider[_SecretHandle]):
                 )
 
             if dotenv_path is not None:
+                # TODO(erikbern): this is a path to the .env file, not the directory containing it
+                # We should support giving it a directory name and then walking the directory to the root
                 _dotenv_path = dotenv_path
             else:
                 # TODO(erikbern): dotenv tries to locate .env files based on the location of the file in the stack frame.

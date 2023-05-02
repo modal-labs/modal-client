@@ -106,7 +106,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.precreated_functions = set()
         self.app_functions = {}
         self.fcidx = 0
-        self.created_secrets = 0
+        self.secrets = {}
 
         self.function_serialized = None
         self.class_serialized = None
@@ -553,9 +553,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
     ### Secret
 
     async def SecretCreate(self, stream):
-        await stream.recv_message()
-        self.created_secrets += 1
-        await stream.send_message(api_pb2.SecretCreateResponse(secret_id="st-123"))
+        msg: SecretCreateRequest = await stream.recv_message()
+        secret_id = "st-" + str(len(self.secrets))
+        self.secrets[secret_id] = msg
+        await stream.send_message(api_pb2.SecretCreateResponse(secret_id=secret_id))
 
     async def SecretList(self, stream):
         await stream.recv_message()
