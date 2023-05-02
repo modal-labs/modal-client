@@ -2,17 +2,17 @@
 import modal
 
 
-stub = modal.Stub("dummy")
+stub = modal.Stub()
 
 
 def foo(i):
     return 1
 
 
-foo_handle = stub.function()(foo)
+foo_handle = stub.function(serialized=True)(foo)
 
 
-other_stub = modal.Stub("dummy")
+other_stub = modal.Stub()
 
 
 @other_stub.function()

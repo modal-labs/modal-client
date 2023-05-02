@@ -36,11 +36,12 @@ def _get_inputs(args=((42,), {})) -> list[api_pb2.FunctionGetInputsResponse]:
 
 
 def _load_stub(servicer, module_name, stub_name):
-    # loads stub in another process to prevent leaking objects from client to container process
+    # loads stub from another interpreter to prevent leaking state from client into a container process (apart from what goes through the servicer)
     env = {"MODAL_SERVER_URL": servicer.remote_addr}
     lib_dir = pathlib.Path(__file__).parent.parent
+
     subprocess.check_call(
-        [sys.executable, "-c", f"import {module_name}\nwith {module_name}.{stub_name}.run():\n\tpass"],
+        [sys.executable, "-c", f"import {module_name}\n{module_name}.{stub_name}.deploy('deploy-name')"],
         cwd=lib_dir,
         env=env,
     )
@@ -587,9 +588,12 @@ def _run_e2e_function(
     *,
     stub_name=None,
     assert_result=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
+    function_definition_type=api_pb2.Function.DEFINITION_TYPE_FILE,
 ):
     _load_stub(servicer, module_name, stub_var_name)
-    client, items = _run_container(servicer, module_name, function_name, stub_name=stub_name)
+    client, items = _run_container(
+        servicer, module_name, function_name, stub_name=stub_name, definition_type=function_definition_type
+    )
     assert items[0].result.status == assert_result
 
 
@@ -623,3 +627,19 @@ def test_multistub_same_name_warning(servicer, caplog):
     # two stubs with the same name - warn since we won't know which one to hydrate
     _run_e2e_function(servicer, "modal_test_support.multistub_same_name", "stub", "foo", stub_name="dummy")
     assert "You have more than one Stub with the same name" in caplog.text
+
+
+def test_multistub_serialized_func(servicer, caplog):
+    # serialized functions shouldn't warn about multiple/not finding stubs, since they shouldn't load the module to begin with
+    def dummy(x):
+        return x
+
+    servicer.function_serialized = serialize(dummy)
+    _run_e2e_function(
+        servicer,
+        "modal_test_support.multistub_serialized_func",
+        "stub",
+        "foo",
+        function_definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
+    )
+    assert len(caplog.messages) == 0

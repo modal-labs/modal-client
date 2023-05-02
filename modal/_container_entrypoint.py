@@ -507,9 +507,10 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> Importe
         fun = _function_proxy.get_raw_f()
         active_stub = _function_proxy._stub
     elif module is not None:
+        # This branch is reached in the special case that the imported function is 1) not serialized, and 2) isn't a FunctionHandle - i.e, not decorated at definition time
         # Look for stubs in the same module as the function
         # This is not necessarily enough, and the active stub might not even be loaded, but it's a best effort
-        # TODO(elias): Use some kind of global "Stub registry" instead of looking at stubs in global scope of the module, or store which module the stub is declared in?
+        # TODO(elias): Use some kind of global automatic "Stub registry" instead of looking at stubs in global scope of the module?
         stubs: typing.List[_Stub] = []
         for module_item in module.__dict__.values():
             if isinstance(module_item, (Stub, AioStub)):
@@ -522,13 +523,13 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> Importe
                     if active_stub is not None:
                         # already matched with a stub - i.e. there are more than one with the name we look for
                         logger.warning(
-                            "You have more than one Stub with the same name. It's highly recommended to name all your Stubs uniquely."
+                            "You have more than one Stub with the same name. It's recommended to name all your Stubs uniquely."
                         )
                     active_stub = stub
 
             if not active_stub:
                 logger.warning(
-                    "Could not determine the active stub, which may prevent you from calling into other functions. It's highly recommended to name all your Stubs uniquely and expose your stub as a variable in the module that declares your function."
+                    "Could not determine the active stub, which may prevent you from calling into other functions. It's recommended to name all your Stubs uniquely and expose your stub as a global variable in the module that declares your function."
                 )
 
     # Check this property before we turn it into a method (overriden by webhooks)
