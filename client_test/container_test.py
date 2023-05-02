@@ -7,7 +7,7 @@ import pytest
 import subprocess
 import sys
 import time
-from typing import List, Optional, Tuple, Dict
+from typing import List, Tuple, Dict
 
 from grpclib.exceptions import GRPCError
 
@@ -17,6 +17,7 @@ from modal._container_entrypoint import UserException, main
 from modal._serialization import deserialize, serialize
 from modal import Client
 from modal.exception import InvalidError
+from modal.stub import _Stub
 from modal_proto import api_pb2
 
 from .supports.skip import skip_windows_unix_socket
@@ -56,7 +57,7 @@ def _run_container(
     function_type=api_pb2.Function.FUNCTION_TYPE_FUNCTION,
     webhook_type=api_pb2.WEBHOOK_TYPE_UNSPECIFIED,
     definition_type=api_pb2.Function.DEFINITION_TYPE_FILE,
-    stub_name: Optional[str] = None,
+    stub_name: str = "",
     is_builder_function: bool = False,
 ) -> tuple[Client, list[api_pb2.FunctionPutOutputsItem]]:
     with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
@@ -588,13 +589,14 @@ def _run_e2e_function(
     stub_var_name,
     function_name,
     *,
-    stub_name=None,
+    stub_name="",
     assert_result=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
     function_definition_type=api_pb2.Function.DEFINITION_TYPE_FILE,
     inputs=None,
     is_builder_function: bool = False,
 ):
     # TODO(elias): make this a bit more prod-like in how it connects the load and run parts by returning function definitions from _load_stub so we don't have to double specifiy things like definition type
+    _Stub._all_stubs = {}  # reset _Stub tracking state between runs
     _load_stub(servicer, module_name, stub_var_name)
     client, items = _run_container(
         servicer,
@@ -614,14 +616,17 @@ def test_function_hydration(servicer):
 
 def test_multistub(servicer, caplog):
     _run_e2e_function(servicer, "modal_test_support.multistub", "a", "a_func")
-    assert len(caplog.messages) == 0  # no need for a warning about double stubs here
+    assert (
+        len(caplog.messages) == 1
+    )  # warns in case the user would use is_inside checks... Hydration should work regardless
+    assert "You have more than one unnamed stub" in caplog.text
 
 
 def test_multistub_privately_decorated(servicer, caplog):
     # function handle does not override the original function, so we can't find the stub
     # and the two stubs are not named
     _run_e2e_function(servicer, "modal_test_support.multistub_privately_decorated", "stub", "foo")
-    assert "Could not determine the active stub" in caplog.text
+    assert "You have more than one unnamed stub." in caplog.text
 
 
 def test_multistub_privately_decorated_named_stub(servicer, caplog):
@@ -637,7 +642,7 @@ def test_multistub_same_name_warning(servicer, caplog):
     # function handle does not override the original function, so we can't find the stub
     # two stubs with the same name - warn since we won't know which one to hydrate
     _run_e2e_function(servicer, "modal_test_support.multistub_same_name", "stub", "foo", stub_name="dummy")
-    assert "You have more than one Stub with the same name" in caplog.text
+    assert "You have more than one stub with the same name ('dummy')" in caplog.text
 
 
 def test_multistub_serialized_func(servicer, caplog):
@@ -667,3 +672,40 @@ def test_image_run_function_no_warn(servicer, caplog):
         is_builder_function=True,
     )
     assert len(caplog.messages) == 0
+
+
+def test_is_inside(servicer, caplog, capsys):
+    _run_e2e_function(
+        servicer,
+        "modal_test_support.is_inside",
+        "stub",
+        "foo",
+    )
+    assert len(caplog.messages) == 0
+    out, err = capsys.readouterr()
+    assert "in container!" in out
+    assert "in local" not in out
+
+
+def test_multistub_is_inside(servicer, caplog, capsys):
+    _run_e2e_function(servicer, "modal_test_support.multistub_is_inside", "a_stub", "foo", stub_name="a")
+    assert len(caplog.messages) == 0
+    out, err = capsys.readouterr()
+    assert "inside a" in out
+    assert "inside b" not in out
+
+
+def test_multistub_is_inside_warning(servicer, caplog, capsys):
+    _run_e2e_function(
+        servicer,
+        "modal_test_support.multistub_is_inside_warning",
+        "a_stub",
+        "foo",
+    )
+    assert len(caplog.messages) == 1
+    assert "You have more than one unnamed stub" in caplog.text
+    out, err = capsys.readouterr()
+    assert "inside a" in out
+    assert (
+        "inside b" in out
+    )  # can't determine which of two anonymous stubs is the active one at import time, so both will trigger

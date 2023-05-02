@@ -108,6 +108,7 @@ class _Stub:
     _local_entrypoints: Dict[str, LocalEntrypoint]
     _local_mounts: List[_Mount]
     _app: Optional[_App]
+    _all_stubs: typing.ClassVar[Dict[str, List["_Stub"]]] = {}
 
     @typechecked
     def __init__(
@@ -156,10 +157,22 @@ class _Stub:
         self._web_endpoints = []
 
         self._app = None
-        if not is_local():
-            # TODO(erikbern): in theory there could be multiple stubs defined.
-            # We should try to determine whether this is in fact the "right" one.
-            # We could probably do this by looking at the app's name.
+
+        string_name = self._name or ""
+        existing_stubs = self._all_stubs.setdefault(string_name, [])
+
+        if not is_local() and len(existing_stubs) == 1:
+            if self._name is None:
+                warning_sub_message = "unnamed stub"
+            else:
+                warning_sub_message = f"stub with the same name ('{self._name}')"
+            logger.warning(
+                f"You have more than one {warning_sub_message}. It's recommended to name all your Stubs uniquely when using multiple stubs"
+            )
+        self._all_stubs[string_name].append(self)
+
+        if not is_local() and _container_app._stub_name == string_name:
+            # note that all stubs with the correct name will get the container app assigned
             self._app = _container_app
 
     @property
