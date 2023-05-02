@@ -1114,6 +1114,7 @@ class _Image(_Provider[_ImageHandle]):
             timeout=timeout,
             cpu=cpu,
             cloud=cloud,
+            is_builder_function=True,
         )
         return self.extend(build_function=function, force_build=self.force_build or force_build)
 
