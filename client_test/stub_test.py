@@ -256,7 +256,7 @@ def test_registered_web_endpoints(client, servicer):
 def test_init_types():
     with pytest.raises(InvalidError):
         # singular secret to plural argument
-        Stub(secrets=modal.Secret())  # type: ignore
+        Stub(secrets=modal.Secret.from_dict())  # type: ignore
     with pytest.raises(InvalidError):
         # not a Secret Object
         Stub(secrets=[{"foo": "bar"}])  # type: ignore
@@ -265,11 +265,11 @@ def test_init_types():
         Stub(some_arg=5)  # type: ignore
     with pytest.raises(InvalidError):
         # should be an Image
-        Stub(image=modal.Secret())  # type: ignore
+        Stub(image=modal.Secret.from_dict())  # type: ignore
 
     Stub(
         image=modal.Image.debian_slim().pip_install("pandas"),
-        secrets=[modal.Secret()],
+        secrets=[modal.Secret.from_dict()],
         mounts=[modal.Mount.from_local_file(__file__)],
         some_dict=modal.Dict(),
         some_queue=modal.Queue(),

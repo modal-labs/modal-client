@@ -62,13 +62,13 @@ def test_image_python_packages(client, servicer):
 def test_image_kwargs_validation(servicer, client):
     stub = Stub()
     stub["image"] = Image.debian_slim().run_commands(
-        "echo hi", secrets=[Secret({"xyz": "123"}), Secret.from_name("foo")]
+        "echo hi", secrets=[Secret.from_dict({"xyz": "123"}), Secret.from_name("foo")]
     )
     with pytest.raises(InvalidError):
         stub["image"] = Image.debian_slim().run_commands(
             "echo hi",
             secrets=[
-                Secret({"xyz": "123"}),
+                Secret.from_dict({"xyz": "123"}),
                 Secret.from_name("foo"),
                 Mount.from_local_dir("/", remote_path="/"),
             ],  # Mount is not a valid Secret
@@ -79,7 +79,7 @@ def test_image_kwargs_validation(servicer, client):
     stub["image"] = Image.debian_slim().copy(Mount.from_name("foo"), remote_path="/dummy")
     with pytest.raises(InvalidError):
         # Secret is not a valid Mount
-        stub["image"] = Image.debian_slim().copy(Secret({"xyz": "123"}), remote_path="/dummy")  # type: ignore
+        stub["image"] = Image.debian_slim().copy(Secret.from_dict({"xyz": "123"}), remote_path="/dummy")  # type: ignore
 
 
 def test_wrong_type(servicer, client):
@@ -191,7 +191,10 @@ def test_image_pip_install_private_repos(servicer, client):
         "github.com/corp/private-one@1.0.0",
         "gitlab.com/corp2/private-two@0.0.2",
         git_user="erikbern",
-        secrets=[Secret({"GITHUB_TOKEN": "not-a-secret"}), Secret({"GITLAB_TOKEN": "not-a-secret"})],
+        secrets=[
+            Secret.from_dict({"GITHUB_TOKEN": "not-a-secret"}),
+            Secret.from_dict({"GITLAB_TOKEN": "not-a-secret"}),
+        ],
     )
 
     with stub.run(client=client) as running_app:
@@ -258,7 +261,7 @@ def test_ecr_install(servicer, client):
         image=Image.from_aws_ecr(
             image_tag,
             setup_dockerfile_commands=["RUN apt-get update"],
-            secret=Secret({"AWS_ACCESS_KEY_ID": "", "AWS_SECRET_ACCESS_KEY": ""}),
+            secret=Secret.from_dict({"AWS_ACCESS_KEY_ID": "", "AWS_SECRET_ACCESS_KEY": ""}),
         )
     )
 
@@ -279,13 +282,13 @@ def test_image_run_function(client, servicer):
     stub["image"] = (
         Image.debian_slim()
         .pip_install("pandas")
-        .run_function(run_f, secrets=[Secret({"xyz": "123"})], shared_volumes={"/foo": volume})
+        .run_function(run_f, secrets=[Secret.from_dict({"xyz": "123"})], shared_volumes={"/foo": volume})
     )
 
     with stub.run(client=client) as running_app:
         layers = get_image_layers(running_app["image"].object_id, servicer)
         assert "foo!" in layers[0].build_function_def
-        assert "Secret([xyz])" in layers[0].build_function_def
+        assert "Secret.from_dict([xyz])" in layers[0].build_function_def
         assert "Ref<SharedVolume()>(test-vol)" in layers[0].build_function_def
 
     function_id = servicer.image_build_function_ids[2]

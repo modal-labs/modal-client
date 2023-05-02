@@ -12,4 +12,5 @@ def pytest_markdown_docs_globals():
         "web_endpoint": modal.web_endpoint,
         "asgi_app": modal.asgi_app,
         "wsgi_app": modal.wsgi_app,
+        "__file__": "xyz.py",
     }
