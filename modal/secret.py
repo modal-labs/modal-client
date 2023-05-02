@@ -79,16 +79,19 @@ class _Secret(_Provider[_SecretHandle]):
         """Create secrets from a .env file automatically.
 
         If no argument is provided, it will use the current working directory as the starting
-        point for finding a .env file. Note that it does not use the location of the module
-        calling .from_dotenv.
+        point for finding a `.env` file. Note that it does not use the location of the module
+        calling `Secret.from_dotenv`.
 
-        If called with an argument, it will use that as a starting point for finding .env files.
+        If called with an argument, it will use that as a starting point for finding `.env` files.
         In particular, you can call it like this:
         ```python
         @stub.function(secret=modal.Secret.from_dotenv(__file__))
         def run():
             print(os.environ["USERNAME"])  # Assumes USERNAME is defined in your .env file
         ```
+
+        This will use the location of the script calling `modal.Secret.from_dotenv` as a
+        starting point for finding the `.env` file.
         """
 
         async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _SecretHandle:
