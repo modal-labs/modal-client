@@ -41,7 +41,7 @@ async def env_mount_files():
 
     filenames = []
     for _, mount in fn_info.get_mounts().items():
-        async for file_info in mount._get_files():
+        async for file_info in mount._get_files(mount.entries):
             filenames.append(file_info.mount_filename)
 
     return filenames
