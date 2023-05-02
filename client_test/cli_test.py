@@ -98,22 +98,25 @@ def test_app_deploy_no_such_module():
     assert "No module named 'does'" in str(res.exception)
 
 
-def test_secret_list(servicer, set_env_client):
-    res = _run(["secret", "list"])
-    assert "dummy-secret-0" not in res.stdout
-    servicer.created_secrets = 2
-
-    res = _run(["secret", "list"])
-    assert "dummy-secret-0" in res.stdout
-    assert "dummy-secret-1" in res.stdout
-
-
 def test_secret_create(servicer, set_env_client):
     # fail without any keys
     _run(["secret", "create", "foo"], 2, None)
 
     _run(["secret", "create", "foo", "bar=baz"])
-    assert servicer.created_secrets == 1
+    assert len(servicer.secrets) == 1
+
+
+def test_secret_list(servicer, set_env_client):
+    res = _run(["secret", "list"])
+    assert "dummy-secret-0" not in res.stdout
+
+    _run(["secret", "create", "foo", "bar=baz"])
+    _run(["secret", "create", "bar", "baz=buz"])
+
+    res = _run(["secret", "list"])
+    assert "dummy-secret-0" in res.stdout
+    assert "dummy-secret-1" in res.stdout
+    assert "dummy-secret-2" not in res.stdout
 
 
 def test_app_token_new(servicer, set_env_client, server_url_env):

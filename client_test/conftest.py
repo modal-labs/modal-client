@@ -553,14 +553,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
     ### Secret
 
     async def SecretCreate(self, stream):
-        msg: SecretCreateRequest = await stream.recv_message()
+        msg: api_pb2.SecretCreateRequest = await stream.recv_message()
         secret_id = "st-" + str(len(self.secrets))
         self.secrets[secret_id] = msg
         await stream.send_message(api_pb2.SecretCreateResponse(secret_id=secret_id))
 
     async def SecretList(self, stream):
         await stream.recv_message()
-        items = [api_pb2.SecretListItem(label=f"dummy-secret-{i}") for i in range(self.created_secrets)]
+        items = [api_pb2.SecretListItem(label=f"dummy-secret-{i}") for i, _ in enumerate(self.secrets)]
         await stream.send_message(api_pb2.SecretListResponse(items=items))
 
     ### Shared volume
