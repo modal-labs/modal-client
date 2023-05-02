@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import os
 from typing import Dict, Optional
 from datetime import date
 
@@ -74,33 +75,45 @@ class _Secret(_Provider[_SecretHandle]):
         self._init_from_other(obj)
 
     @staticmethod
-    def from_dotenv(dotenv_path=None):  # If provided, location of a .env file
+    def from_dotenv(path=None):
         """Create secrets from a .env file automatically.
 
         If no argument is provided, it will use the current working directory as the starting
         point for finding a .env file. Note that it does not use the location of the module
         calling .from_dotenv.
+
+        If called with an argument, it will use that as a starting point for finding .env files.
+        In particular, you can call it like this:
+        ```python
+        Secret.from_dotenv(__file__)
+        ```
         """
 
         async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _SecretHandle:
             try:
                 from dotenv import find_dotenv, dotenv_values
+                from dotenv.main import _walk_to_root
             except ImportError:
                 raise ImportError(
                     "Need the `dotenv` package installed. You can install it by running `pip install python-dotenv`."
                 )
 
-            if dotenv_path is not None:
-                # TODO(erikbern): this is a path to the .env file, not the directory containing it
-                # We should support giving it a directory name and then walking the directory to the root
-                _dotenv_path = dotenv_path
+            if path is not None:
+                # This basically implements the logic in find_dotenv
+                for dirname in _walk_to_root(path):
+                    check_path = os.path.join(dirname, ".env")
+                    if os.path.isfile(check_path):
+                        dotenv_path = check_path
+                        break
+                else:
+                    dotenv_path = ""
             else:
                 # TODO(erikbern): dotenv tries to locate .env files based on the location of the file in the stack frame.
                 # Since the modal code "intermediates" this, a .env file in the user's local directory won't be picked up.
-                # We avoid this by just using the cwd instead.
-                _dotenv_path = find_dotenv(usecwd=True)
+                # To simplify this, we just support the cwd and don't do any automatic path inference.
+                dotenv_path = find_dotenv(usecwd=True)
 
-            env_dict = dotenv_values(_dotenv_path)
+            env_dict = dotenv_values(dotenv_path)
 
             req = api_pb2.SecretCreateRequest(
                 app_id=resolver.app_id,

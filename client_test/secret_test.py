@@ -33,11 +33,10 @@ def test_secret_from_dict(servicer, client):
 @skip_old_py("python-dotenv requires python3.8 or higher", (3, 8))
 def test_secret_from_dotenv(servicer, client):
     with tempfile.TemporaryDirectory() as tmpdirname:
-        fn = os.path.join(tmpdirname, ".env")
-        with open(fn, "w") as f:
+        with open(os.path.join(tmpdirname, ".env"), "w") as f:
             f.write("# My settings\nUSER=user\nPASSWORD=abc123\n")
         stub = Stub()
-        stub.secret = Secret.from_dotenv(fn)
+        stub.secret = Secret.from_dotenv(tmpdirname)
         with stub.run(client=client) as running_app:
             assert running_app.secret.object_id == "st-0"
             assert servicer.secrets["st-0"].env_dict == {"USER": "user", "PASSWORD": "abc123"}
