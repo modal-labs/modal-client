@@ -593,33 +593,33 @@ def _run_e2e_function(
     assert items[0].result.status == assert_result
 
 
-def test_function_hydration(unix_servicer):
-    _run_e2e_function(unix_servicer, "modal_test_support.functions", "stub", "check_sibling_hydration")
+def test_function_hydration(servicer):
+    _run_e2e_function(servicer, "modal_test_support.functions", "stub", "check_sibling_hydration")
 
 
-def test_multistub(unix_servicer, caplog):
-    _run_e2e_function(unix_servicer, "modal_test_support.multistub", "a", "a_func")
+def test_multistub(servicer, caplog):
+    _run_e2e_function(servicer, "modal_test_support.multistub", "a", "a_func")
     assert len(caplog.messages) == 0  # no need for a warning about double stubs here
 
 
-def test_multistub_privately_decorated(unix_servicer, caplog):
+def test_multistub_privately_decorated(servicer, caplog):
     # function handle does not override the original function, so we can't find the stub
     # and the two stubs are not named
-    _run_e2e_function(unix_servicer, "modal_test_support.multistub_privately_decorated", "stub", "foo")
+    _run_e2e_function(servicer, "modal_test_support.multistub_privately_decorated", "stub", "foo")
     assert "Could not determine the active stub" in caplog.text
 
 
-def test_multistub_privately_decorated_named_stub(unix_servicer, caplog):
+def test_multistub_privately_decorated_named_stub(servicer, caplog):
     # function handle does not override the original function, so we can't find the stub
     # but we can use the names of the stubs to determine the active stub
     _run_e2e_function(
-        unix_servicer, "modal_test_support.multistub_privately_decorated_named_stub", "stub", "foo", stub_name="dummy"
+        servicer, "modal_test_support.multistub_privately_decorated_named_stub", "stub", "foo", stub_name="dummy"
     )
     assert len(caplog.messages) == 0  # no warnings, since target stub is named
 
 
-def test_multistub_same_name_warning(unix_servicer, caplog):
+def test_multistub_same_name_warning(servicer, caplog):
     # function handle does not override the original function, so we can't find the stub
     # two stubs with the same name - warn since we won't know which one to hydrate
-    _run_e2e_function(unix_servicer, "modal_test_support.multistub_same_name", "stub", "foo", stub_name="dummy")
+    _run_e2e_function(servicer, "modal_test_support.multistub_same_name", "stub", "foo", stub_name="dummy")
     assert "You have more than one Stub with the same name" in caplog.text
