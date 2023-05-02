@@ -1102,7 +1102,7 @@ class _Image(_Provider[_ImageHandle]):
         function = _Function(
             function_handle,
             info,
-            _stub=None,
+            stub=None,
             image=self,
             secret=secret,
             secrets=secrets,

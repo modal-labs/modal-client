@@ -739,7 +739,7 @@ class _Function(_Provider[_FunctionHandle]):
     """
 
     # TODO: more type annotations
-    _secrets: Collection[_Secret]
+    # _secrets: Collection[_Secret]
     _info: FunctionInfo
     _mounts: Collection[_Mount]
     _shared_volumes: Dict[str, _SharedVolume]
@@ -748,13 +748,14 @@ class _Function(_Provider[_FunctionHandle]):
     _gpu: Optional[GPU_T]
     _cloud: Optional[str]
     _function_handle: _FunctionHandle
-    _stub: "modal.stub._Stub"
+    # _stub: "modal.stub._Stub"
+    _tag: str
 
-    def __init__(
-        self,
+    @staticmethod
+    def from_args(
         function_handle: _FunctionHandle,
-        function_info: FunctionInfo,
-        _stub,
+        info: FunctionInfo,
+        stub,
         image=None,
         secret: Optional[_Secret] = None,
         secrets: Collection[_Secret] = (),
@@ -778,26 +779,20 @@ class _Function(_Provider[_FunctionHandle]):
         interactive: bool = False,
         name: Optional[str] = None,
         cloud: Optional[str] = None,
-        _cls: Optional[type] = None,
+        cls: Optional[type] = None,
     ) -> None:
         """mdmd:hidden"""
-        raw_f = function_info.raw_f
-        self._stub = _stub
+        raw_f = info.raw_f
         assert callable(raw_f)
-        self._info = function_info
         if schedule is not None:
-            if not self._info.is_nullary():
+            if not info.is_nullary():
                 raise InvalidError(
                     f"Function {raw_f} has a schedule, so it needs to support calling it with no arguments"
                 )
         # assert not synchronizer.is_synchronized(image)
 
-        self._raw_f = raw_f
-        self._image = image
         if secret:
-            self._secrets = [secret, *secrets]
-        else:
-            self._secrets = secrets
+            secrets = [secret, *secrets]
 
         if retries:
             if isinstance(retries, int):
@@ -805,256 +800,226 @@ class _Function(_Provider[_FunctionHandle]):
                     max_retries=retries,
                     initial_delay=1.0,
                     backoff_coefficient=1.0,
-                )
+                )._to_proto()
             elif isinstance(retries, Retries):
-                retry_policy = retries
+                retry_policy = retries._to_proto()
             else:
                 raise InvalidError(
                     f"Function {raw_f} retries must be an integer or instance of modal.Retries. Found: {type(retries)}"
                 )
-
-            if not (0 <= retry_policy.max_retries <= 10):
-                raise InvalidError(f"Function {raw_f} retries must be between 0 and 10.")
-
-            # TODO(Jonathon): Right now we can only support a maximum delay of 60 seconds
-            # b/c tasks can finish as early as after MIN_CONTAINER_IDLE_TIMEOUT seconds
-            if not (1 < retry_policy.max_delay.total_seconds() <= 60):
-                raise InvalidError(
-                    f"Invalid max_delay argument: {repr(retry_policy.max_delay)}. Must be between 1-60 seconds."
-                )
-
-            # initial_delay should be bounded by max_delay, but this is an extra defensive check.
-            if not (0 < retry_policy.initial_delay.total_seconds() <= 60):
-                raise InvalidError(
-                    f"Invalid initial_delay argument: {repr(retry_policy.initial_delay)}. Must be between 0-60 seconds."
-                )
         else:
             retry_policy = None
 
-        self._gpu = gpu
-        self._schedule = schedule
-        self._is_generator = is_generator
-        self._base_mounts = base_mounts
-        self._mounts = mounts
-        self._shared_volumes = shared_volumes
-        self._allow_cross_region_volumes = allow_cross_region_volumes
-        self._webhook_config = webhook_config
-        self._cpu = cpu
-        self._memory = memory
-        self._proxy = proxy
-        self._retry_policy = retry_policy
-        self._timeout = timeout
-        self._concurrency_limit = concurrency_limit
-        self._container_idle_timeout = container_idle_timeout
-        self._keep_warm = keep_warm
-        self._interactive = interactive
-        self._tag = self._info.get_tag()
-        self._gpu_config = parse_gpu_config(gpu)
-        self._cloud = cloud
-        self._cls = _cls
+        tag = info.get_tag()
+        gpu_config = parse_gpu_config(gpu)
 
         if cloud:
-            self._cloud_provider = parse_cloud_provider(cloud)
+            cloud_provider = parse_cloud_provider(cloud)
         else:
-            self._cloud_provider = None
+            cloud_provider = None
 
-        self._panel_items = [
+        panel_items = [
             str(i)
             for i in [
-                *self._mounts,
-                self._image,
-                *self._secrets,
-                *self._shared_volumes.values(),
+                *mounts,
+                image,
+                *secrets,
+                *shared_volumes.values(),
             ]
         ]
         if gpu:
-            self._panel_items.append(display_gpu_config(gpu))
+            panel_items.append(display_gpu_config(gpu))
         if cloud:
-            self._panel_items.append(f"Cloud({cloud.upper()})")
+            panel_items.append(f"Cloud({cloud.upper()})")
 
-        self._function_handle = function_handle
-
-        rep = f"Function({self._tag})"
-        super().__init__(self._load, rep, preload=self._preload_f)
-
-    async def _preload_f(self, resolver: Resolver, existing_object_id: Optional[str]) -> _FunctionHandle:
-        # TODO(erikbern): this is only called _preload_f to avoid a mypy confusion with the class annotation _preload
-        # We will get rid of this function very soon anyway (will make it an anonymous closure)
-        if self._is_generator:
-            function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
-        else:
-            function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
-
-        req = api_pb2.FunctionPrecreateRequest(
-            app_id=resolver.app_id,
-            function_name=self._info.function_name,
-            function_type=function_type,
-            webhook_config=self._webhook_config,
-            existing_function_id=existing_object_id,
-        )
-        response = await resolver.client.stub.FunctionPrecreate(req)
-        # Update the precreated function handle (todo: hack until we merge providers/handles)
-        self._function_handle._hydrate(resolver.client, response.function_id, response.handle_metadata)
-        return self._function_handle
-
-    async def _load(self, resolver: Resolver, existing_object_id: Optional[str]) -> _FunctionHandle:
-        status_row = resolver.add_status_row()
-        status_row.message(f"Creating {self._tag}...")
-
-        if self._proxy:
-            proxy_id = (await resolver.load(self._proxy)).object_id
+        if proxy and image:
             # HACK: remove this once we stop using ssh tunnels for this.
-            if self._image:
-                self._image = self._image.apt_install("autossh")
-        else:
-            proxy_id = None
+            image = image.apt_install("autossh")
 
-        # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
-        if self._image is not None:
-            if not isinstance(self._image, _Image):
-                raise InvalidError(f"Expected modal.Image object. Got {type(self._image)}.")
-            image_id = (await resolver.load(self._image)).object_id
-        else:
-            image_id = None  # Happens if it's a notebook function
-        secret_ids = []
-        for secret in self._secrets:
-            secret_id = (await resolver.load(secret)).object_id
-            secret_ids.append(secret_id)
-
-        mount_ids = []
-        for mount in [*self._base_mounts, *self._mounts]:
-            mount_ids.append((await resolver.load(mount)).object_id)
-
-        if not isinstance(self._shared_volumes, dict):
-            raise InvalidError("shared_volumes must be a dict[str, SharedVolume] where the keys are paths")
-        shared_volume_mounts = []
-        # Relies on dicts being ordered (true as of Python 3.6).
-        for path, shared_volume in self._shared_volumes.items():
-            path = PurePath(path).as_posix()
-            abs_path = posixpath.abspath(path)
-
-            if path != abs_path:
-                raise InvalidError(f"Shared volume {abs_path} must be a canonical, absolute path.")
-            elif abs_path == "/":
-                raise InvalidError(f"Shared volume {abs_path} cannot be mounted into root directory.")
-            elif abs_path == "/root":
-                raise InvalidError(f"Shared volume {abs_path} cannot be mounted at '/root'.")
-            elif abs_path == "/tmp":
-                raise InvalidError(f"Shared volume {abs_path} cannot be mounted at '/tmp'.")
-
-            shared_volume_mounts.append(
-                api_pb2.SharedVolumeMount(
-                    mount_path=path,
-                    shared_volume_id=(await resolver.load(shared_volume)).object_id,
-                    allow_cross_region=self._allow_cross_region_volumes,
-                )
-            )
-
-        if self._is_generator:
-            function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
-        else:
-            function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
-
-        retry_policy = self._retry_policy._to_proto() if self._retry_policy else None
-
-        if self._cpu is not None and self._cpu < 0.0:
-            raise InvalidError(f"Invalid fractional CPU value {self._cpu}. Cannot have negative CPU resources.")
-        milli_cpu = int(1000 * self._cpu) if self._cpu is not None else None
-
-        if self._interactive:
+        if interactive:
             pty_info = _pty.get_pty_info()
-            if self._concurrency_limit and self._concurrency_limit > 1:
+            if concurrency_limit and concurrency_limit > 1:
                 warnings.warn(
                     "Interactive functions require `concurrency_limit=1`. The concurrency limit will be overridden."
                 )
-            self._concurrency_limit = 1
+            concurrency_limit = 1
         else:
             pty_info = None
 
-        if self._keep_warm is True:
-            deprecation_warning(
-                date(2023, 3, 3),
-                "Setting `keep_warm=True` is deprecated. Pass an explicit warm pool size instead, e.g. `keep_warm=2`.",
-            )
-            warm_pool_size = 2
-        else:
-            warm_pool_size = self._keep_warm or 0
-
-        if self._info.is_serialized():
-            # Use cloudpickle. Used when working w/ Jupyter notebooks.
-            # serialize at _load time, not function decoration time
-            # otherwise we can't capture a surrounding class for lifetime methods etc.
-            function_serialized = self._info.serialized_function()
-            class_serialized = serialize(self._cls) if self._cls is not None else None
-        else:
-            function_serialized = None
-            class_serialized = None
-
-        stub_name = ""
-        if self._stub and self._stub.name:
-            stub_name = self._stub.name
-
-        # Create function remotely
-        function_definition = api_pb2.Function(
-            module_name=self._info.module_name,
-            function_name=self._info.function_name,
-            mount_ids=mount_ids,
-            secret_ids=secret_ids,
-            image_id=image_id,
-            definition_type=self._info.definition_type,
-            function_serialized=function_serialized,
-            class_serialized=class_serialized,
-            function_type=function_type,
-            resources=api_pb2.Resources(milli_cpu=milli_cpu, gpu_config=self._gpu_config, memory_mb=self._memory),
-            webhook_config=self._webhook_config,
-            shared_volume_mounts=shared_volume_mounts,
-            proxy_id=proxy_id,
-            retry_policy=retry_policy,
-            timeout_secs=self._timeout,
-            task_idle_timeout_secs=self._container_idle_timeout,
-            concurrency_limit=self._concurrency_limit,
-            pty_info=pty_info,
-            cloud_provider=self._cloud_provider,
-            warm_pool_size=warm_pool_size,
-            runtime=config.get("function_runtime"),
-            stub_name=stub_name,
-        )
-        request = api_pb2.FunctionCreateRequest(
-            app_id=resolver.app_id,
-            function=function_definition,
-            schedule=self._schedule.proto_message if self._schedule is not None else None,
-            existing_function_id=existing_object_id,
-        )
-        try:
-            response = await resolver.client.stub.FunctionCreate(request)
-        except GRPCError as exc:
-            if exc.status == Status.INVALID_ARGUMENT:
-                raise InvalidError(exc.message)
-            if exc.status == Status.FAILED_PRECONDITION:
-                raise InvalidError(exc.message)
-            raise
-
-        if response.web_url:
-            # Ensure terms used here match terms used in modal.com/docs/guide/webhook-urls doc.
-            if response.web_url_info.truncated:
-                suffix = " [grey70](label truncated)[/grey70]"
-            elif response.web_url_info.has_unique_hash:
-                suffix = " [grey70](label includes conflict-avoidance hash)[/grey70]"
-            elif response.web_url_info.label_stolen:
-                suffix = " [grey70](label stolen)[/grey70]"
+        async def preload(resolver: Resolver, existing_object_id: Optional[str]) -> _FunctionHandle:
+            if is_generator:
+                function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
             else:
-                suffix = ""
-            # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
-            status_row.finish(
-                f"Created {self._tag} => [magenta underline]{response.web_url}[/magenta underline]{suffix}"
-            )
-        else:
-            status_row.finish(f"Created {self._tag}.")
+                function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
 
-        # Instead of returning a new object, just return the precreated one
-        # TODO (elias): We should not have to run _hydrate in here since functions are preloaded. Needed for now due to some conflicts with builder_functions
-        self._function_handle._hydrate(resolver.client, response.function_id, response.handle_metadata)
-        return self._function_handle
+            req = api_pb2.FunctionPrecreateRequest(
+                app_id=resolver.app_id,
+                function_name=info.function_name,
+                function_type=function_type,
+                webhook_config=webhook_config,
+                existing_function_id=existing_object_id,
+            )
+            response = await resolver.client.stub.FunctionPrecreate(req)
+            # Update the precreated function handle (todo: hack until we merge providers/handles)
+            function_handle._hydrate(resolver.client, response.function_id, response.handle_metadata)
+            return function_handle
+
+        async def load(resolver: Resolver, existing_object_id: Optional[str]) -> _FunctionHandle:
+            status_row = resolver.add_status_row()
+            status_row.message(f"Creating {tag}...")
+
+            if proxy:
+                proxy_id = (await resolver.load(proxy)).object_id
+            else:
+                proxy_id = None
+
+            # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
+            if image is not None:
+                if not isinstance(image, _Image):
+                    raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
+                image_id = (await resolver.load(image)).object_id
+            else:
+                image_id = None  # Happens if it's a notebook function
+            secret_ids = []
+            for secret in secrets:
+                secret_id = (await resolver.load(secret)).object_id
+                secret_ids.append(secret_id)
+
+            mount_ids = []
+            for mount in [*base_mounts, *mounts]:
+                mount_ids.append((await resolver.load(mount)).object_id)
+
+            if not isinstance(shared_volumes, dict):
+                raise InvalidError("shared_volumes must be a dict[str, SharedVolume] where the keys are paths")
+            shared_volume_mounts = []
+            # Relies on dicts being ordered (true as of Python 3.6).
+            for path, shared_volume in shared_volumes.items():
+                path = PurePath(path).as_posix()
+                abs_path = posixpath.abspath(path)
+
+                if path != abs_path:
+                    raise InvalidError(f"Shared volume {abs_path} must be a canonical, absolute path.")
+                elif abs_path == "/":
+                    raise InvalidError(f"Shared volume {abs_path} cannot be mounted into root directory.")
+                elif abs_path == "/root":
+                    raise InvalidError(f"Shared volume {abs_path} cannot be mounted at '/root'.")
+                elif abs_path == "/tmp":
+                    raise InvalidError(f"Shared volume {abs_path} cannot be mounted at '/tmp'.")
+
+                shared_volume_mounts.append(
+                    api_pb2.SharedVolumeMount(
+                        mount_path=path,
+                        shared_volume_id=(await resolver.load(shared_volume)).object_id,
+                        allow_cross_region=allow_cross_region_volumes,
+                    )
+                )
+
+            if is_generator:
+                function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
+            else:
+                function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
+
+            if cpu is not None and cpu < 0.0:
+                raise InvalidError(f"Invalid fractional CPU value {cpu}. Cannot have negative CPU resources.")
+            milli_cpu = int(1000 * cpu) if cpu is not None else None
+
+            if keep_warm is True:
+                deprecation_warning(
+                    date(2023, 3, 3),
+                    "Setting `keep_warm=True` is deprecated. Pass an explicit warm pool size instead, e.g. `keep_warm=2`.",
+                )
+                warm_pool_size = 2
+            else:
+                warm_pool_size = keep_warm or 0
+
+            if info.is_serialized():
+                # Use cloudpickle. Used when working w/ Jupyter notebooks.
+                # serialize at _load time, not function decoration time
+                # otherwise we can't capture a surrounding class for lifetime methods etc.
+                function_serialized = info.serialized_function()
+                class_serialized = serialize(cls) if cls is not None else None
+            else:
+                function_serialized = None
+                class_serialized = None
+
+            stub_name = ""
+            if stub and stub.name:
+                stub_name = stub.name
+
+            # Create function remotely
+            function_definition = api_pb2.Function(
+                module_name=info.module_name,
+                function_name=info.function_name,
+                mount_ids=mount_ids,
+                secret_ids=secret_ids,
+                image_id=image_id,
+                definition_type=info.definition_type,
+                function_serialized=function_serialized,
+                class_serialized=class_serialized,
+                function_type=function_type,
+                resources=api_pb2.Resources(milli_cpu=milli_cpu, gpu_config=gpu_config, memory_mb=memory),
+                webhook_config=webhook_config,
+                shared_volume_mounts=shared_volume_mounts,
+                proxy_id=proxy_id,
+                retry_policy=retry_policy,
+                timeout_secs=timeout,
+                task_idle_timeout_secs=container_idle_timeout,
+                concurrency_limit=concurrency_limit,
+                pty_info=pty_info,
+                cloud_provider=cloud_provider,
+                warm_pool_size=warm_pool_size,
+                runtime=config.get("function_runtime"),
+                stub_name=stub_name,
+            )
+            request = api_pb2.FunctionCreateRequest(
+                app_id=resolver.app_id,
+                function=function_definition,
+                schedule=schedule.proto_message if schedule is not None else None,
+                existing_function_id=existing_object_id,
+            )
+            try:
+                response = await resolver.client.stub.FunctionCreate(request)
+            except GRPCError as exc:
+                if exc.status == Status.INVALID_ARGUMENT:
+                    raise InvalidError(exc.message)
+                if exc.status == Status.FAILED_PRECONDITION:
+                    raise InvalidError(exc.message)
+                raise
+
+            if response.web_url:
+                # Ensure terms used here match terms used in modal.com/docs/guide/webhook-urls doc.
+                if response.web_url_info.truncated:
+                    suffix = " [grey70](label truncated)[/grey70]"
+                elif response.web_url_info.has_unique_hash:
+                    suffix = " [grey70](label includes conflict-avoidance hash)[/grey70]"
+                elif response.web_url_info.label_stolen:
+                    suffix = " [grey70](label stolen)[/grey70]"
+                else:
+                    suffix = ""
+                # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
+                status_row.finish(f"Created {tag} => [magenta underline]{response.web_url}[/magenta underline]{suffix}")
+            else:
+                status_row.finish(f"Created {tag}.")
+
+            # Instead of returning a new object, just return the precreated one
+            # TODO (elias): We should not have to run _hydrate in here since functions are preloaded. Needed for now due to some conflicts with builder_functions
+            function_handle._hydrate(resolver.client, response.function_id, response.handle_metadata)
+            return function_handle
+
+        rep = f"Function({tag})"
+        obj = _Function._from_loader(load, rep, preload=preload)
+        obj._panel_items = panel_items
+        obj._secrets = secrets
+        obj._gpu = gpu
+        obj._mounts = mounts
+        obj._shared_volumes = shared_volumes
+        obj._tag = tag
+        obj._info = info
+        obj._function_handle = function_handle
+        obj._allow_cross_region_volumes = allow_cross_region_volumes
+        obj._image = image
+        obj._cloud = cloud
+        return obj
 
     def get_panel_items(self) -> List[str]:
         return self._panel_items

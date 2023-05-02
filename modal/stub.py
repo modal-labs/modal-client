@@ -647,10 +647,10 @@ class _Stub:
             else:
                 self._blueprint["_pty_input_stream"] = _Queue()
 
-        function = _Function(
+        function = _Function.from_args(
             function_handle,
             info,
-            _stub=self,
+            stub=self,
             image=image,
             secret=secret,
             secrets=secrets,
@@ -673,7 +673,7 @@ class _Stub:
             name=name,
             cloud=cloud,
             webhook_config=webhook_config,
-            _cls=_cls,
+            cls=_cls,
         )
 
         self._add_function(function, [*base_mounts, *mounts])
