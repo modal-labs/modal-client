@@ -65,7 +65,7 @@ class _Secret(_Provider[_SecretHandle]):
         self._init_from_other(obj)
 
     @staticmethod
-    def from_dotenv():
+    def from_dotenv(dotenv_path=None):
         async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _SecretHandle:
             try:
                 from dotenv import find_dotenv, dotenv_values
@@ -74,11 +74,15 @@ class _Secret(_Provider[_SecretHandle]):
                     "Need the `dotenv` package installed. You can install it by running `pip install python-dotenv`."
                 )
 
-            # TODO(erikbern): dotenv tries to locate .env files based on the location of the file in the stack frame.
-            # Since the modal code "intermediates" this, a .env file in the user's local directory won't be picked up.
-            # We avoid this by just using the cwd instead.
-            dotenv_path = find_dotenv(usecwd=True)
-            env_dict = dotenv_values(dotenv_path)
+            if dotenv_path is not None:
+                _dotenv_path = dotenv_path
+            else:
+                # TODO(erikbern): dotenv tries to locate .env files based on the location of the file in the stack frame.
+                # Since the modal code "intermediates" this, a .env file in the user's local directory won't be picked up.
+                # We avoid this by just using the cwd instead.
+                _dotenv_path = find_dotenv(usecwd=True)
+
+            env_dict = dotenv_values(_dotenv_path)
 
             req = api_pb2.SecretCreateRequest(
                 app_id=resolver.app_id,
