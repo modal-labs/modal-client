@@ -750,6 +750,7 @@ class _Function(_Provider[_FunctionHandle]):
     _function_handle: _FunctionHandle
     _stub: "modal.stub._Stub"
     _is_builder_function: bool
+    _retry_policy: Optional[api_pb2.FunctionRetryPolicy]
 
     def __init__(
         self,
@@ -802,21 +803,20 @@ class _Function(_Provider[_FunctionHandle]):
         else:
             self._secrets = secrets
 
-        if retries:
-            if isinstance(retries, int):
-                retry_policy = Retries(
-                    max_retries=retries,
-                    initial_delay=1.0,
-                    backoff_coefficient=1.0,
-                )
-            elif isinstance(retries, Retries):
-                retry_policy = retries
-            else:
-                raise InvalidError(
-                    f"Function {raw_f} retries must be an integer or instance of modal.Retries. Found: {type(retries)}"
-                )
+        if isinstance(retries, int):
+            self._retry_policy = Retries(
+                max_retries=retries,
+                initial_delay=1.0,
+                backoff_coefficient=1.0,
+            )._to_proto()
+        elif isinstance(retries, Retries):
+            self._retry_policy = retries._to_proto()
+        elif retries is None:
+            self._retry_policy = None
         else:
-            retry_policy = None
+            raise InvalidError(
+                f"Function {raw_f} retries must be an integer or instance of modal.Retries. Found: {type(retries)}"
+            )
 
         self._gpu = gpu
         self._schedule = schedule
@@ -829,7 +829,6 @@ class _Function(_Provider[_FunctionHandle]):
         self._cpu = cpu
         self._memory = memory
         self._proxy = proxy
-        self._retry_policy = retry_policy
         self._timeout = timeout
         self._concurrency_limit = concurrency_limit
         self._container_idle_timeout = container_idle_timeout
@@ -942,8 +941,6 @@ class _Function(_Provider[_FunctionHandle]):
         else:
             function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
 
-        retry_policy = self._retry_policy._to_proto() if self._retry_policy else None
-
         if self._cpu is not None and self._cpu < 0.0:
             raise InvalidError(f"Invalid fractional CPU value {self._cpu}. Cannot have negative CPU resources.")
         milli_cpu = int(1000 * self._cpu) if self._cpu is not None else None
@@ -996,7 +993,7 @@ class _Function(_Provider[_FunctionHandle]):
             webhook_config=self._webhook_config,
             shared_volume_mounts=shared_volume_mounts,
             proxy_id=proxy_id,
-            retry_policy=retry_policy,
+            retry_policy=self._retry_policy,
             timeout_secs=self._timeout,
             task_idle_timeout_secs=self._container_idle_timeout,
             concurrency_limit=self._concurrency_limit,
