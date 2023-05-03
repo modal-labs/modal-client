@@ -159,7 +159,7 @@ class _Stub:
         self._app = None
 
         string_name = self._name or ""
-        existing_stubs = self._all_stubs.setdefault(string_name, [])
+        existing_stubs = _Stub._all_stubs.setdefault(string_name, [])
 
         if not is_local() and _container_app._stub_name == string_name:
             if len(existing_stubs) == 1:  # warn the first time we reach a duplicate stub name for the active stub
@@ -173,7 +173,7 @@ class _Stub:
             # note that all stubs with the correct name will get the container app assigned
             self._app = _container_app
 
-        self._all_stubs[string_name].append(self)
+        _Stub._all_stubs[string_name].append(self)
 
     @property
     def name(self) -> Optional[str]:
