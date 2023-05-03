@@ -40,7 +40,7 @@ from ._traceback import append_modal_tb
 from .call_graph import InputInfo, _reconstruct_call_graph
 from .config import config, logger
 from .client import _Client
-from .exception import ExecutionError, InvalidError, RemoteError, deprecation_warning
+from .exception import ExecutionError, InvalidError, RemoteError, deprecation_error
 from .exception import TimeoutError as _TimeoutError
 from .gpu import GPU_T, parse_gpu_config, display_gpu_config
 from .image import _Image
@@ -776,7 +776,7 @@ class _Function(_Provider[_FunctionHandle]):
         concurrency_limit: Optional[int] = None,
         container_idle_timeout: Optional[int] = None,
         cpu: Optional[float] = None,
-        keep_warm: Union[bool, int, None] = None,
+        keep_warm: Optional[int] = None,
         interactive: bool = False,
         name: Optional[str] = None,
         cloud: Optional[str] = None,
@@ -827,6 +827,12 @@ class _Function(_Provider[_FunctionHandle]):
                 "Interactive functions require `concurrency_limit=1`. The concurrency limit will be overridden."
             )
             concurrency_limit = 1
+
+        if keep_warm is True:
+            deprecation_error(
+                date(2023, 3, 3),
+                "Setting `keep_warm=True` is deprecated. Pass an explicit warm pool size instead, e.g. `keep_warm=2`.",
+            )
 
         self._image = image
         self._gpu = gpu
@@ -958,15 +964,6 @@ class _Function(_Provider[_FunctionHandle]):
         else:
             pty_info = None
 
-        if self._keep_warm is True:
-            deprecation_warning(
-                date(2023, 3, 3),
-                "Setting `keep_warm=True` is deprecated. Pass an explicit warm pool size instead, e.g. `keep_warm=2`.",
-            )
-            warm_pool_size = 2
-        else:
-            warm_pool_size = self._keep_warm or 0
-
         if self._info.is_serialized():
             # Use cloudpickle. Used when working w/ Jupyter notebooks.
             # serialize at _load time, not function decoration time
@@ -1002,7 +999,7 @@ class _Function(_Provider[_FunctionHandle]):
             concurrency_limit=self._concurrency_limit,
             pty_info=pty_info,
             cloud_provider=self._cloud_provider,
-            warm_pool_size=warm_pool_size,
+            warm_pool_size=self._keep_warm,
             runtime=config.get("function_runtime"),
             stub_name=stub_name,
             is_builder_function=self._is_builder_function,
