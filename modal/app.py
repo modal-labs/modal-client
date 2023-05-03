@@ -53,6 +53,7 @@ class _App:
         app_page_url: str,
         tag_to_object: Optional[Dict[str, _Handle]] = None,
         tag_to_existing_id: Optional[Dict[str, str]] = None,
+        stub_name: Optional[str] = None,
     ):
         """mdmd:hidden This is the app constructor. Users should not call this directly."""
         self._app_id = app_id
@@ -61,6 +62,7 @@ class _App:
         self._tag_to_object = tag_to_object or {}
         self._tag_to_existing_id = tag_to_existing_id or {}
         self._function_invocations = 0
+        self._stub_name = stub_name
 
     @property
     def client(self) -> _Client:
@@ -147,9 +149,10 @@ class _App:
     def function_invocations(self):
         return self._function_invocations
 
-    async def _init_container(self, client: _Client, app_id: str):
+    async def _init_container(self, client: _Client, app_id: str, stub_name: str):
         self._client = client
         self._app_id = app_id
+        self._stub_name = stub_name
 
         req = api_pb2.AppGetObjectsRequest(app_id=app_id)
         resp = await retry_transient_errors(self._client.stub.AppGetObjects, req)
@@ -158,11 +161,11 @@ class _App:
             self._tag_to_object[item.tag] = obj
 
     @staticmethod
-    async def init_container(client: _Client, app_id: str) -> "_App":
+    async def init_container(client: _Client, app_id: str, stub_name: str = "") -> "_App":
         """Used by the container to bootstrap the app and all its objects. Not intended to be called by Modal users."""
         global _container_app, _is_container_app
         _is_container_app = True
-        await _container_app._init_container(client, app_id)
+        await _container_app._init_container(client, app_id, stub_name)
         return _container_app
 
     @staticmethod
