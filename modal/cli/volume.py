@@ -20,7 +20,7 @@ from rich.table import Table
 from typer import Typer
 
 import modal
-from modal._location import display_location, parse_cloud_provider
+from modal._location import display_location
 from modal._output import step_progress, step_completed
 from modal.client import AioClient
 from modal.shared_volume import _SharedVolumeHandle, _SharedVolume
@@ -67,11 +67,10 @@ def some_func():
 
 @volume_cli.command(name="create", help="Create a named shared volume.")
 def create(name: str, cloud: str = typer.Option("aws", help="Cloud provider to create the volume in. One of aws|gcp.")):
-    cloud_provider = parse_cloud_provider(cloud)
-    volume = modal.SharedVolume(cloud_provider=cloud_provider)
+    volume = modal.SharedVolume(cloud=cloud)
     volume._deploy(name)
     console = Console()
-    console.print(f"Created volume '{name}' in {display_location(cloud_provider)}. \n\nCode example:\n")
+    console.print(f"Created volume '{name}' in {cloud.upper()}. \n\nCode example:\n")
     usage = Syntax(gen_usage_code(name), "python")
     console.print(usage)
 
