@@ -9,6 +9,7 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis, ConcurrencyPool
 from modal_utils.grpc_utils import retry_transient_errors, unary_stream
 from modal_utils.hash_utils import get_sha256_hex
+from modal._location import parse_cloud_provider
 
 from ._blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
 from ._resolver import Resolver
@@ -180,7 +181,7 @@ class _SharedVolume(_Provider[_SharedVolumeHandle]):
     persist this object across app runs.
     """
 
-    def __init__(self, cloud_provider: Optional["api_pb2.CloudProvider.ValueType"] = None) -> None:
+    def __init__(self, cloud: Optional[str] = None) -> None:
         """Construct a new shared volume, which is empty by default."""
 
         async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _SharedVolumeHandle:
@@ -188,6 +189,8 @@ class _SharedVolume(_Provider[_SharedVolumeHandle]):
             if existing_object_id:
                 # Volume already exists; do nothing.
                 return _SharedVolumeHandle._from_id(existing_object_id, resolver.client, None)
+
+            cloud_provider = parse_cloud_provider(cloud) if cloud else None
 
             status_row.message("Creating shared volume...")
             req = api_pb2.SharedVolumeCreateRequest(app_id=resolver.app_id, cloud_provider=cloud_provider)
