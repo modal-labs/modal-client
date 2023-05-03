@@ -509,7 +509,7 @@ class _Stub:
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         interactive: bool = False,  # Whether to run the function in interactive mode.
-        keep_warm: Union[bool, int, None] = None,  # An optional number of containers to always keep warm.
+        keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
         name: Optional[str] = None,  # Sets the Modal name of the function within the stub
         is_generator: Optional[
             bool
@@ -540,7 +540,7 @@ class _Stub:
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         interactive: bool = False,  # Whether to run the function in interactive mode.
-        keep_warm: Union[bool, int, None] = None,  # An optional number of containers to always keep warm.
+        keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
         name: Optional[str] = None,  # Sets the Modal name of the function within the stub
         is_generator: Optional[
             bool
@@ -572,7 +572,7 @@ class _Stub:
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         interactive: bool = False,  # Whether to run the function in interactive mode.
-        keep_warm: Union[bool, int, None] = None,  # An optional number of containers to always keep warm.
+        keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
         name: Optional[str] = None,  # Sets the Modal name of the function within the stub
         is_generator: Optional[
             bool
@@ -866,7 +866,7 @@ class _Stub:
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         interactive: bool = False,  # Whether to run the function in interactive mode.
-        keep_warm: Union[bool, int, None] = None,  # An optional number of containers to always keep warm.
+        keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
     ) -> type:
         function_handles: Dict[str, _FunctionHandle] = {}
