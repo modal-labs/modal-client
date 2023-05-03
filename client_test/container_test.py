@@ -580,7 +580,7 @@ def test_cli(unix_servicer, event_loop):
         raise Exception(f"Failed with {ret.returncode} stdout: {stdout} stderr: {stderr}")
 
     assert stdout == ""
-    # assert stderr == ""  # TODO(erikbern): this doesn't work right now:
+    assert stderr == ""
 
 
 def _run_e2e_function(
