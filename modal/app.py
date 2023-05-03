@@ -149,7 +149,7 @@ class _App:
     def function_invocations(self):
         return self._function_invocations
 
-    async def _init_container(self, client: _Client, app_id: str, stub_name: Optional[str]):
+    async def _init_container(self, client: _Client, app_id: str, stub_name: str):
         self._client = client
         self._app_id = app_id
         self._stub_name = stub_name
@@ -161,7 +161,7 @@ class _App:
             self._tag_to_object[item.tag] = obj
 
     @staticmethod
-    async def init_container(client: _Client, app_id: str, stub_name: Optional[str] = None) -> "_App":
+    async def init_container(client: _Client, app_id: str, stub_name: str = "") -> "_App":
         """Used by the container to bootstrap the app and all its objects. Not intended to be called by Modal users."""
         global _container_app, _is_container_app
         _is_container_app = True

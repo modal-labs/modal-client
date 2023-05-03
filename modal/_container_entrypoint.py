@@ -11,13 +11,12 @@ import signal
 import sys
 import time
 import traceback
-import typing
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Callable, Optional
 
 from grpclib import Status
 
-from modal.stub import _Stub, Stub, AioStub
+from modal.stub import _Stub
 from modal_proto import api_pb2
 from modal_utils.async_utils import (
     TaskContext,
@@ -115,13 +114,9 @@ class _FunctionIOManager:
         self._stub_name = self.function_def.stub_name
         assert isinstance(self._client, _Client)
 
-    @property
-    def stub_name(self):
-        return self._stub_name
-
     @wrap()
     async def initialize_app(self):
-        return await _App.init_container(self._client, self.app_id)
+        return await _App.init_container(self._client, self.app_id, self._stub_name)
 
     async def _heartbeat(self):
         request = api_pb2.ContainerHeartbeatRequest()
@@ -508,29 +503,15 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> Importe
         active_stub = _function_proxy._stub
     elif module is not None and not function_def.is_builder_function:
         # This branch is reached in the special case that the imported function is 1) not serialized, and 2) isn't a FunctionHandle - i.e, not decorated at definition time
-        # Look for stubs in the same module as the function
-        # This is not necessarily enough, and the active stub might not even be loaded, but it's a best effort
-        # TODO(elias): Use some kind of global automatic "Stub registry" instead of looking at stubs in global scope of the module?
-        stubs: typing.List[_Stub] = []
-        for module_item in module.__dict__.values():
-            if isinstance(module_item, (Stub, AioStub)):
-                stubs.append(synchronizer._translate_in(module_item))
-        if len(stubs) == 1:
-            active_stub = stubs[0]
-        else:
-            for stub in stubs:
-                if stub.name == function_def.stub_name:
-                    if active_stub is not None:
-                        # already matched with a stub - i.e. there are more than one with the name we look for
-                        logger.warning(
-                            "You have more than one Stub with the same name. It's recommended to name all your Stubs uniquely."
-                        )
-                    active_stub = stub
-
-            if not active_stub:
-                logger.warning(
-                    "Could not determine the active stub, which may prevent you from calling into other functions. It's recommended to name all your Stubs uniquely and expose your stub as a global variable in the module that declares your function."
-                )
+        # Look at all instantiated stubs - if there is only one with the indicated name, use that one
+        matching_stubs = _Stub._all_stubs[function_def.stub_name]
+        if len(matching_stubs) > 1:
+            logger.warning(
+                "You have multiple stubs with the same name which may prevent you from calling into other functions or using stub.is_inside(). It's recommended to name all your Stubs uniquely."
+            )
+        elif len(matching_stubs) == 1:
+            active_stub = matching_stubs[0]
+        # there could also technically be zero found stubs, but that should probably never be an issue since that would mean user won't use is_inside or other function handles anyway
 
     # Check this property before we turn it into a method (overriden by webhooks)
     is_async = get_is_async(fun)
