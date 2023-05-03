@@ -797,7 +797,6 @@ class _Function(_Provider[_FunctionHandle]):
         # assert not synchronizer.is_synchronized(image)
 
         self._raw_f = raw_f
-        self._image = image
         if secret:
             self._secrets = [secret, *secrets]
         else:
@@ -818,6 +817,12 @@ class _Function(_Provider[_FunctionHandle]):
                 f"Function {raw_f} retries must be an integer or instance of modal.Retries. Found: {type(retries)}"
             )
 
+        if proxy:
+            # HACK: remove this once we stop using ssh tunnels for this.
+            if image:
+                image = image.apt_install("autossh")
+
+        self._image = image
         self._gpu = gpu
         self._schedule = schedule
         self._is_generator = is_generator
@@ -889,9 +894,6 @@ class _Function(_Provider[_FunctionHandle]):
 
         if self._proxy:
             proxy_id = (await resolver.load(self._proxy)).object_id
-            # HACK: remove this once we stop using ssh tunnels for this.
-            if self._image:
-                self._image = self._image.apt_install("autossh")
         else:
             proxy_id = None
 
