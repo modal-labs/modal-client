@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import os
 import asyncio
 import inspect
 import posixpath
@@ -742,7 +743,7 @@ class _Function(_Provider[_FunctionHandle]):
     _secrets: Collection[_Secret]
     _info: FunctionInfo
     _mounts: Collection[_Mount]
-    _shared_volumes: Dict[str, _SharedVolume]
+    _shared_volumes: Dict[Union[str, os.PathLike], _SharedVolume]
     _allow_cross_region_volumes: bool
     _image: Optional[_Image]
     _gpu: Optional[GPU_T]
@@ -766,7 +767,7 @@ class _Function(_Provider[_FunctionHandle]):
         # TODO: maybe break this out into a separate decorator for notebooks.
         base_mounts: Collection[_Mount] = (),
         mounts: Collection[_Mount] = (),
-        shared_volumes: Dict[str, _SharedVolume] = {},
+        shared_volumes: Dict[Union[str, os.PathLike], _SharedVolume] = {},
         allow_cross_region_volumes: bool = False,
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         memory: Optional[int] = None,
