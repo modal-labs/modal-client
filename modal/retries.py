@@ -64,11 +64,23 @@ class Retries:
         if max_retries < 1:
             raise InvalidError(f"Invalid retries number: {max_retries}. Function retries must be positive.")
 
+        if max_retries > 10:
+            raise InvalidError(f"Invalid retries number: {max_retries}. Retries must be between 0 and 10.")
+
         if max_delay < 1.0:
             raise InvalidError(f"Invalid max_delay: {max_delay}. max_delay must be at least 1 second.")
 
+        # TODO(Jonathon): Right now we can only support a maximum delay of 60 seconds
+        # b/c tasks can finish as early as after MIN_CONTAINER_IDLE_TIMEOUT seconds
+        if max_delay > 60:
+            raise InvalidError(f"Invalid max_delay argument: {max_delay}. Must be between 1-60 seconds.")
+
         if initial_delay < 0.0:
-            raise InvalidError(f"Invalid initial_delay argument: {repr(initial_delay)}. Delay must be positive.")
+            raise InvalidError(f"Invalid initial_delay argument: {initial_delay}. Delay must be positive.")
+
+        # initial_delay should be bounded by max_delay, but this is an extra defensive check.
+        if initial_delay > 60:
+            raise InvalidError(f"Invalid initial_delay argument: {initial_delay}. Must be between 0-60 seconds.")
 
         if not 1.0 <= backoff_coefficient <= 10.0:
             raise InvalidError(
