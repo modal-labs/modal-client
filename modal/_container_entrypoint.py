@@ -504,7 +504,7 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> Importe
     elif module is not None and not function_def.is_builder_function:
         # This branch is reached in the special case that the imported function is 1) not serialized, and 2) isn't a FunctionHandle - i.e, not decorated at definition time
         # Look at all instantiated stubs - if there is only one with the indicated name, use that one
-        matching_stubs = _Stub._all_stubs[function_def.stub_name]
+        matching_stubs = _Stub._all_stubs.get(function_def.stub_name, [])
         if len(matching_stubs) > 1:
             logger.warning(
                 "You have multiple stubs with the same name which may prevent you from calling into other functions or using stub.is_inside(). It's recommended to name all your Stubs uniquely."
