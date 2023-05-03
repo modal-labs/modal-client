@@ -218,3 +218,16 @@ class Cls:
     @method(is_generator=True)
     def generator(self, x):
         return self._generator(x)
+
+
+@stub.function()
+def check_sibling_hydration(x):
+    assert square.is_hydrated()
+    assert Cls().f.is_hydrated()
+    assert Cls().web.is_hydrated()
+    assert Cls().web.web_url
+    assert Cls().generator.is_hydrated()
+    assert Cls().generator.is_generator
+    assert fastapi_app.is_hydrated()
+    assert fun_returning_gen.is_hydrated()
+    assert fun_returning_gen.is_generator

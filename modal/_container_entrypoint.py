@@ -4,7 +4,6 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
-from dataclasses import dataclass
 import importlib
 import inspect
 import math
@@ -12,11 +11,12 @@ import signal
 import sys
 import time
 import traceback
+from dataclasses import dataclass
 from typing import Any, AsyncIterator, Callable, Optional
 
 from grpclib import Status
-from synchronicity.interface import Interface
 
+from modal.stub import _Stub
 from modal_proto import api_pb2
 from modal_utils.async_utils import (
     TaskContext,
@@ -25,7 +25,7 @@ from modal_utils.async_utils import (
     synchronizer,
 )
 from modal_utils.grpc_utils import retry_transient_errors
-
+from synchronicity.interface import Interface
 from ._asgi import asgi_app_wrapper, webhook_asgi_app, wsgi_app_wrapper
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._function_utils import load_function_from_module
@@ -111,11 +111,12 @@ class _FunctionIOManager:
         self.current_input_id: Optional[str] = None
         self.current_input_started_at: Optional[float] = None
         self._client = synchronizer._translate_in(self.client)  # make it a _Client object
+        self._stub_name = self.function_def.stub_name
         assert isinstance(self._client, _Client)
 
     @wrap()
     async def initialize_app(self):
-        await _App.init_container(self._client, self.app_id)
+        return await _App.init_container(self._client, self.app_id, self._stub_name)
 
     async def _heartbeat(self):
         request = api_pb2.ContainerHeartbeatRequest()
@@ -476,6 +477,7 @@ async def call_function_async(
 class ImportedFunction:
     obj: Any
     fun: Callable
+    stub: Optional[_Stub]
     is_async: bool
     is_generator: bool
 
@@ -484,7 +486,7 @@ class ImportedFunction:
 def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> ImportedFunction:
     # This is not in function_io_manager, so that any global scope code that runs during import
     # runs on the main thread.
-
+    module = None
     if ser_fun is not None:
         # This is a serialized function we already fetched from the server
         cls, fun = ser_cls, ser_fun
@@ -494,9 +496,22 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> Importe
         cls, fun = load_function_from_module(module, function_def.function_name)
 
     # The decorator is typically in global scope, but may have been applied independently
+    active_stub = None
     if isinstance(fun, (FunctionHandle, AioFunctionHandle)):
         _function_proxy = synchronizer._translate_in(fun)
         fun = _function_proxy.get_raw_f()
+        active_stub = _function_proxy._stub
+    elif module is not None and not function_def.is_builder_function:
+        # This branch is reached in the special case that the imported function is 1) not serialized, and 2) isn't a FunctionHandle - i.e, not decorated at definition time
+        # Look at all instantiated stubs - if there is only one with the indicated name, use that one
+        matching_stubs = _Stub._all_stubs[function_def.stub_name]
+        if len(matching_stubs) > 1:
+            logger.warning(
+                "You have multiple stubs with the same name which may prevent you from calling into other functions or using stub.is_inside(). It's recommended to name all your Stubs uniquely."
+            )
+        elif len(matching_stubs) == 1:
+            active_stub = matching_stubs[0]
+        # there could also technically be zero found stubs, but that should probably never be an issue since that would mean user won't use is_inside or other function handles anyway
 
     # Check this property before we turn it into a method (overriden by webhooks)
     is_async = get_is_async(fun)
@@ -507,7 +522,6 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> Importe
     # Instantiate the class if it's defined
     if cls:
         obj = cls()
-
         # Bind the function to the instance (using the descriptor protocol!)
         fun = fun.__get__(obj, cls)
     else:
@@ -532,7 +546,7 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> Importe
         is_async = True
         is_generator = True
 
-    return ImportedFunction(obj, fun, is_async, is_generator)
+    return ImportedFunction(obj, fun, active_stub, is_async, is_generator)
 
 
 def main(container_args: api_pb2.ContainerArguments, client: Client):
@@ -545,7 +559,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     _function_io_manager = _FunctionIOManager(container_args, client)
     function_io_manager, aio_function_io_manager = synchronize_apis(_function_io_manager)
 
-    function_io_manager.initialize_app()
+    container_app = function_io_manager.initialize_app()
 
     with function_io_manager.heartbeats():
         # If this is a serialized function, fetch the definition from the server
@@ -557,11 +571,13 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Initialize the function
         with function_io_manager.handle_user_exception():
             imp_fun = import_function(container_args.function_def, ser_cls, ser_fun)
+            if imp_fun.stub:
+                _container_app = synchronizer._translate_in(container_app)
+                _client = synchronizer._translate_in(client)
+                imp_fun.stub._hydrate_function_handles(_client, _container_app)
 
         if container_args.function_def.pty_info.enabled:
             # TODO(erikbern): there is no client test for this branch
-            from modal import container_app
-
             input_stream_unwrapped = synchronizer._translate_in(container_app._pty_input_stream)
             input_stream_blocking = synchronizer._translate_out(input_stream_unwrapped, Interface.BLOCKING)
             imp_fun.fun = run_in_pty(imp_fun.fun, input_stream_blocking, container_args.function_def.pty_info)

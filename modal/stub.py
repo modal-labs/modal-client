@@ -108,6 +108,7 @@ class _Stub:
     _local_entrypoints: Dict[str, LocalEntrypoint]
     _local_mounts: List[_Mount]
     _app: Optional[_App]
+    _all_stubs: typing.ClassVar[Dict[str, List["_Stub"]]] = {}
 
     @typechecked
     def __init__(
@@ -150,17 +151,29 @@ class _Stub:
         self._function_mounts = {}
         self._mounts = mounts
         self._secrets = secrets
-        self._function_handles = {}
+        self._function_handles: Dict[str, _FunctionHandle] = {}
         self._local_entrypoints = {}
         self._local_mounts = []
         self._web_endpoints = []
 
         self._app = None
-        if not is_local():
-            # TODO(erikbern): in theory there could be multiple stubs defined.
-            # We should try to determine whether this is in fact the "right" one.
-            # We could probably do this by looking at the app's name.
+
+        string_name = self._name or ""
+        existing_stubs = _Stub._all_stubs.setdefault(string_name, [])
+
+        if not is_local() and _container_app._stub_name == string_name:
+            if len(existing_stubs) == 1:  # warn the first time we reach a duplicate stub name for the active stub
+                if self._name is None:
+                    warning_sub_message = "unnamed stub"
+                else:
+                    warning_sub_message = f"stub with the same name ('{self._name}')"
+                logger.warning(
+                    f"You have more than one {warning_sub_message}. It's recommended to name all your Stubs uniquely when using multiple stubs"
+                )
+            # note that all stubs with the correct name will get the container app assigned
             self._app = _container_app
+
+        _Stub._all_stubs[string_name].append(self)
 
     @property
     def name(self) -> Optional[str]:
@@ -372,28 +385,20 @@ class _Stub:
         return mounts
 
     def _get_function_handle(self, info: FunctionInfo) -> _FunctionHandle:
+        """This can either return a hydrated or an unhydrated _FunctionHandle
+
+        If called from within a container_app that has this function handle,
+        it will return a Hydrated funciton handle, but in all other contexts
+        it will be unhydrated.
+        """
         tag = info.get_tag()
-        function_handle: Optional[_FunctionHandle] = None
-        if self._app:
-            # Grab the existing function handle from the running app
-            # TODO: handle missing items, or wrong types
-            try:
-                handle = self._app[tag]
-                if isinstance(handle, _FunctionHandle):
-                    function_handle = handle
-                else:
-                    logger.warning(f"Object {tag} has wrong type {type(handle)}")
-            except KeyError:
-                logger.warning(
-                    f"Could not find Modal function '{tag}' in app '{self.description}'. '{tag}' may still be invoked as local function: {tag}()"
-                )
+        if tag in self._function_handles:
+            return self._function_handles[tag]
 
-        if function_handle is None:
-            function_handle = _FunctionHandle._new()
-
+        function_handle = _FunctionHandle._new()
         function_handle._initialize_from_local(self, info)
         self._function_handles[tag] = function_handle
-        return function_handle
+        return function_handle  # note that the function handle is not yet hydrated at this point:
 
     def _add_function(self, function: _Function, mounts: List[_Mount]):
         if function.tag in self._blueprint:
@@ -892,6 +897,18 @@ class _Stub:
 
         _PartialFunction.initialize_cls(user_cls, function_handles)
         return user_cls
+
+    def _hydrate_function_handles(self, client: _Client, container_app: _App):
+        for tag, obj in container_app._tag_to_object.items():
+            if isinstance(obj, _FunctionHandle):
+                function_id = obj.object_id
+                handle_metadata = obj._get_handle_metadata()
+                if tag not in self._function_handles:
+                    # this could happen if a sibling function decoration is lazy loaded at a later than function import
+                    # assigning the app's hydrated function handle ensures it will be used for the later decoration return value
+                    self._function_handles[tag] = obj
+                else:
+                    self._function_handles[tag]._hydrate(client, function_id, handle_metadata)
 
 
 Stub, AioStub = synchronize_apis(_Stub)
