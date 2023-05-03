@@ -822,6 +822,12 @@ class _Function(_Provider[_FunctionHandle]):
             if image:
                 image = image.apt_install("autossh")
 
+        if interactive and concurrency_limit and concurrency_limit > 1:
+            warnings.warn(
+                "Interactive functions require `concurrency_limit=1`. The concurrency limit will be overridden."
+            )
+            concurrency_limit = 1
+
         self._image = image
         self._gpu = gpu
         self._schedule = schedule
@@ -949,11 +955,6 @@ class _Function(_Provider[_FunctionHandle]):
 
         if self._interactive:
             pty_info = _pty.get_pty_info()
-            if self._concurrency_limit and self._concurrency_limit > 1:
-                warnings.warn(
-                    "Interactive functions require `concurrency_limit=1`. The concurrency limit will be overridden."
-                )
-            self._concurrency_limit = 1
         else:
             pty_info = None
 
