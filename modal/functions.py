@@ -40,7 +40,7 @@ from ._traceback import append_modal_tb
 from .call_graph import InputInfo, _reconstruct_call_graph
 from .config import config, logger
 from .client import _Client
-from .exception import ExecutionError, InvalidError, RemoteError, deprecation_warning
+from .exception import ExecutionError, InvalidError, RemoteError, deprecation_error
 from .exception import TimeoutError as _TimeoutError
 from .gpu import GPU_T, parse_gpu_config, display_gpu_config
 from .image import _Image
@@ -776,7 +776,7 @@ class _Function(_Provider[_FunctionHandle]):
         concurrency_limit: Optional[int] = None,
         container_idle_timeout: Optional[int] = None,
         cpu: Optional[float] = None,
-        keep_warm: Union[bool, int, None] = None,
+        keep_warm: Optional[int] = None,
         interactive: bool = False,
         name: Optional[str] = None,
         cloud: Optional[str] = None,
@@ -797,7 +797,6 @@ class _Function(_Provider[_FunctionHandle]):
         # assert not synchronizer.is_synchronized(image)
 
         self._raw_f = raw_f
-        self._image = image
         if secret:
             self._secrets = [secret, *secrets]
         else:
@@ -818,6 +817,24 @@ class _Function(_Provider[_FunctionHandle]):
                 f"Function {raw_f} retries must be an integer or instance of modal.Retries. Found: {type(retries)}"
             )
 
+        if proxy:
+            # HACK: remove this once we stop using ssh tunnels for this.
+            if image:
+                image = image.apt_install("autossh")
+
+        if interactive and concurrency_limit and concurrency_limit > 1:
+            warnings.warn(
+                "Interactive functions require `concurrency_limit=1`. The concurrency limit will be overridden."
+            )
+            concurrency_limit = 1
+
+        if keep_warm is True:
+            deprecation_error(
+                date(2023, 3, 3),
+                "Setting `keep_warm=True` is deprecated. Pass an explicit warm pool size instead, e.g. `keep_warm=2`.",
+            )
+
+        self._image = image
         self._gpu = gpu
         self._schedule = schedule
         self._is_generator = is_generator
@@ -889,9 +906,6 @@ class _Function(_Provider[_FunctionHandle]):
 
         if self._proxy:
             proxy_id = (await resolver.load(self._proxy)).object_id
-            # HACK: remove this once we stop using ssh tunnels for this.
-            if self._image:
-                self._image = self._image.apt_install("autossh")
         else:
             proxy_id = None
 
@@ -947,22 +961,8 @@ class _Function(_Provider[_FunctionHandle]):
 
         if self._interactive:
             pty_info = _pty.get_pty_info()
-            if self._concurrency_limit and self._concurrency_limit > 1:
-                warnings.warn(
-                    "Interactive functions require `concurrency_limit=1`. The concurrency limit will be overridden."
-                )
-            self._concurrency_limit = 1
         else:
             pty_info = None
-
-        if self._keep_warm is True:
-            deprecation_warning(
-                date(2023, 3, 3),
-                "Setting `keep_warm=True` is deprecated. Pass an explicit warm pool size instead, e.g. `keep_warm=2`.",
-            )
-            warm_pool_size = 2
-        else:
-            warm_pool_size = self._keep_warm or 0
 
         if self._info.is_serialized():
             # Use cloudpickle. Used when working w/ Jupyter notebooks.
@@ -999,7 +999,7 @@ class _Function(_Provider[_FunctionHandle]):
             concurrency_limit=self._concurrency_limit,
             pty_info=pty_info,
             cloud_provider=self._cloud_provider,
-            warm_pool_size=warm_pool_size,
+            warm_pool_size=self._keep_warm,
             runtime=config.get("function_runtime"),
             stub_name=stub_name,
             is_builder_function=self._is_builder_function,
