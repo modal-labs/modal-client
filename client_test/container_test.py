@@ -595,7 +595,7 @@ def _run_e2e_function(
     inputs=None,
     is_builder_function: bool = False,
 ):
-    # TODO(elias): make this a bit more prod-like in how it connects the load and run parts by returning function definitions from _load_stub so we don't have to double specifiy things like definition type
+    # TODO(elias): make this a bit more prod-like in how it connects the load and run parts by returning function definitions from _load_stub so we don't have to double specify things like definition type
     _Stub._all_stubs = {}  # reset _Stub tracking state between runs
     _load_stub(servicer, module_name, stub_var_name)
     client, items = _run_container(
