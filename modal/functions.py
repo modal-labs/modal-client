@@ -815,22 +815,6 @@ class _Function(_Provider[_FunctionHandle]):
                 raise InvalidError(
                     f"Function {raw_f} retries must be an integer or instance of modal.Retries. Found: {type(retries)}"
                 )
-
-            if not (0 <= retry_policy.max_retries <= 10):
-                raise InvalidError(f"Function {raw_f} retries must be between 0 and 10.")
-
-            # TODO(Jonathon): Right now we can only support a maximum delay of 60 seconds
-            # b/c tasks can finish as early as after MIN_CONTAINER_IDLE_TIMEOUT seconds
-            if not (1 < retry_policy.max_delay.total_seconds() <= 60):
-                raise InvalidError(
-                    f"Invalid max_delay argument: {repr(retry_policy.max_delay)}. Must be between 1-60 seconds."
-                )
-
-            # initial_delay should be bounded by max_delay, but this is an extra defensive check.
-            if not (0 < retry_policy.initial_delay.total_seconds() <= 60):
-                raise InvalidError(
-                    f"Invalid initial_delay argument: {repr(retry_policy.initial_delay)}. Must be between 0-60 seconds."
-                )
         else:
             retry_policy = None
 
