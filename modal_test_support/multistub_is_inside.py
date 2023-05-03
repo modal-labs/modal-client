@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2023
 import modal
 
 a_stub = modal.Stub("a")

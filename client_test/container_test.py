@@ -286,7 +286,7 @@ def _get_web_inputs(path="/"):
         "http_version": "2",
     }
     body = b""
-    return _get_inputs(([scope, body], {}))
+    return _get_inputs(((scope, body), {}))
 
 
 @skip_windows_unix_socket
@@ -610,49 +610,55 @@ def _run_e2e_function(
     assert items[0].result.status == assert_result
 
 
-def test_function_hydration(servicer):
-    _run_e2e_function(servicer, "modal_test_support.functions", "stub", "check_sibling_hydration")
+@skip_windows_unix_socket
+def test_function_hydration(unix_servicer):
+    _run_e2e_function(unix_servicer, "modal_test_support.functions", "stub", "check_sibling_hydration")
 
 
-def test_multistub(servicer, caplog):
-    _run_e2e_function(servicer, "modal_test_support.multistub", "a", "a_func")
+@skip_windows_unix_socket
+def test_multistub(unix_servicer, caplog):
+    _run_e2e_function(unix_servicer, "modal_test_support.multistub", "a", "a_func")
     assert (
         len(caplog.messages) == 1
     )  # warns in case the user would use is_inside checks... Hydration should work regardless
     assert "You have more than one unnamed stub" in caplog.text
 
 
-def test_multistub_privately_decorated(servicer, caplog):
+@skip_windows_unix_socket
+def test_multistub_privately_decorated(unix_servicer, caplog):
     # function handle does not override the original function, so we can't find the stub
     # and the two stubs are not named
-    _run_e2e_function(servicer, "modal_test_support.multistub_privately_decorated", "stub", "foo")
+    _run_e2e_function(unix_servicer, "modal_test_support.multistub_privately_decorated", "stub", "foo")
     assert "You have more than one unnamed stub." in caplog.text
 
 
-def test_multistub_privately_decorated_named_stub(servicer, caplog):
+@skip_windows_unix_socket
+def test_multistub_privately_decorated_named_stub(unix_servicer, caplog):
     # function handle does not override the original function, so we can't find the stub
     # but we can use the names of the stubs to determine the active stub
     _run_e2e_function(
-        servicer, "modal_test_support.multistub_privately_decorated_named_stub", "stub", "foo", stub_name="dummy"
+        unix_servicer, "modal_test_support.multistub_privately_decorated_named_stub", "stub", "foo", stub_name="dummy"
     )
     assert len(caplog.messages) == 0  # no warnings, since target stub is named
 
 
-def test_multistub_same_name_warning(servicer, caplog):
+@skip_windows_unix_socket
+def test_multistub_same_name_warning(unix_servicer, caplog):
     # function handle does not override the original function, so we can't find the stub
     # two stubs with the same name - warn since we won't know which one to hydrate
-    _run_e2e_function(servicer, "modal_test_support.multistub_same_name", "stub", "foo", stub_name="dummy")
+    _run_e2e_function(unix_servicer, "modal_test_support.multistub_same_name", "stub", "foo", stub_name="dummy")
     assert "You have more than one stub with the same name ('dummy')" in caplog.text
 
 
-def test_multistub_serialized_func(servicer, caplog):
+@skip_windows_unix_socket
+def test_multistub_serialized_func(unix_servicer, caplog):
     # serialized functions shouldn't warn about multiple/not finding stubs, since they shouldn't load the module to begin with
     def dummy(x):
         return x
 
-    servicer.function_serialized = serialize(dummy)
+    unix_servicer.function_serialized = serialize(dummy)
     _run_e2e_function(
-        servicer,
+        unix_servicer,
         "modal_test_support.multistub_serialized_func",
         "stub",
         "foo",
@@ -661,10 +667,11 @@ def test_multistub_serialized_func(servicer, caplog):
     assert len(caplog.messages) == 0
 
 
-def test_image_run_function_no_warn(servicer, caplog):
+@skip_windows_unix_socket
+def test_image_run_function_no_warn(unix_servicer, caplog):
     # builder functions currently aren't tied to any modal stub, so they shouldn't need to warn if they can't determine a stub to use
     _run_e2e_function(
-        servicer,
+        unix_servicer,
         "modal_test_support.image_run_function",
         "stub",
         "builder_function",
@@ -674,9 +681,10 @@ def test_image_run_function_no_warn(servicer, caplog):
     assert len(caplog.messages) == 0
 
 
-def test_is_inside(servicer, caplog, capsys):
+@skip_windows_unix_socket
+def test_is_inside(unix_servicer, caplog, capsys):
     _run_e2e_function(
-        servicer,
+        unix_servicer,
         "modal_test_support.is_inside",
         "stub",
         "foo",
@@ -687,17 +695,19 @@ def test_is_inside(servicer, caplog, capsys):
     assert "in local" not in out
 
 
-def test_multistub_is_inside(servicer, caplog, capsys):
-    _run_e2e_function(servicer, "modal_test_support.multistub_is_inside", "a_stub", "foo", stub_name="a")
+@skip_windows_unix_socket
+def test_multistub_is_inside(unix_servicer, caplog, capsys):
+    _run_e2e_function(unix_servicer, "modal_test_support.multistub_is_inside", "a_stub", "foo", stub_name="a")
     assert len(caplog.messages) == 0
     out, err = capsys.readouterr()
     assert "inside a" in out
     assert "inside b" not in out
 
 
-def test_multistub_is_inside_warning(servicer, caplog, capsys):
+@skip_windows_unix_socket
+def test_multistub_is_inside_warning(unix_servicer, caplog, capsys):
     _run_e2e_function(
-        servicer,
+        unix_servicer,
         "modal_test_support.multistub_is_inside_warning",
         "a_stub",
         "foo",
