@@ -7,7 +7,7 @@ import pytest
 import subprocess
 import sys
 import time
-from typing import List, Optional
+from typing import List, Optional, Tuple, Dict
 
 from grpclib.exceptions import GRPCError
 
@@ -26,7 +26,7 @@ FUNCTION_CALL_ID = "fc-123"
 SLEEP_DELAY = 0.1
 
 
-def _get_inputs(args=((42,), {})) -> list[api_pb2.FunctionGetInputsResponse]:
+def _get_inputs(args: Tuple[Tuple, Dict] = ((42,), {})) -> list[api_pb2.FunctionGetInputsResponse]:
     input_pb = api_pb2.FunctionInput(args=serialize(args))
 
     return [
@@ -57,6 +57,7 @@ def _run_container(
     webhook_type=api_pb2.WEBHOOK_TYPE_UNSPECIFIED,
     definition_type=api_pb2.Function.DEFINITION_TYPE_FILE,
     stub_name: Optional[str] = None,
+    is_builder_function: bool = False,
 ) -> tuple[Client, list[api_pb2.FunctionPutOutputsItem]]:
     with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         if inputs is None:
@@ -81,6 +82,7 @@ def _run_container(
             webhook_config=webhook_config,
             definition_type=definition_type,
             stub_name=stub_name or "",
+            is_builder_function=is_builder_function,
         )
 
         container_args = api_pb2.ContainerArguments(
@@ -589,10 +591,19 @@ def _run_e2e_function(
     stub_name=None,
     assert_result=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
     function_definition_type=api_pb2.Function.DEFINITION_TYPE_FILE,
+    inputs=None,
+    is_builder_function: bool = False,
 ):
+    # TODO(elias): make this a bit more prod-like in how it connects the load and run parts by returning function definitions from _load_stub so we don't have to double specifiy things like definition type
     _load_stub(servicer, module_name, stub_var_name)
     client, items = _run_container(
-        servicer, module_name, function_name, stub_name=stub_name, definition_type=function_definition_type
+        servicer,
+        module_name,
+        function_name,
+        stub_name=stub_name,
+        definition_type=function_definition_type,
+        inputs=inputs,
+        is_builder_function=is_builder_function,
     )
     assert items[0].result.status == assert_result
 
@@ -641,5 +652,18 @@ def test_multistub_serialized_func(servicer, caplog):
         "stub",
         "foo",
         function_definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
+    )
+    assert len(caplog.messages) == 0
+
+
+def test_image_run_function_no_warn(servicer, caplog):
+    # builder functions currently aren't tied to any modal stub, so they shouldn't need to warn if they can't determine a stub to use
+    _run_e2e_function(
+        servicer,
+        "modal_test_support.image_run_function",
+        "stub",
+        "builder_function",
+        inputs=_get_inputs(((), {})),
+        is_builder_function=True,
     )
     assert len(caplog.messages) == 0

@@ -408,6 +408,8 @@ message Function {
   string runtime = 30;
 
   string stub_name = 31;
+
+  bool is_builder_function = 32;
 }
 
 message FunctionHandleMetadata {

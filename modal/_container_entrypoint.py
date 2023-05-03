@@ -506,7 +506,7 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> Importe
         _function_proxy = synchronizer._translate_in(fun)
         fun = _function_proxy.get_raw_f()
         active_stub = _function_proxy._stub
-    elif module is not None:
+    elif module is not None and not function_def.is_builder_function:
         # This branch is reached in the special case that the imported function is 1) not serialized, and 2) isn't a FunctionHandle - i.e, not decorated at definition time
         # Look for stubs in the same module as the function
         # This is not necessarily enough, and the active stub might not even be loaded, but it's a best effort

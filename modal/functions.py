@@ -749,6 +749,7 @@ class _Function(_Provider[_FunctionHandle]):
     _cloud: Optional[str]
     _function_handle: _FunctionHandle
     _stub: "modal.stub._Stub"
+    _is_builder_function: bool
 
     def __init__(
         self,
@@ -778,11 +779,13 @@ class _Function(_Provider[_FunctionHandle]):
         interactive: bool = False,
         name: Optional[str] = None,
         cloud: Optional[str] = None,
+        is_builder_function: bool = False,
         _cls: Optional[type] = None,
     ) -> None:
         """mdmd:hidden"""
         raw_f = function_info.raw_f
         self._stub = _stub
+        self._is_builder_function = is_builder_function
         assert callable(raw_f)
         self._info = function_info
         if schedule is not None:
@@ -1018,6 +1021,7 @@ class _Function(_Provider[_FunctionHandle]):
             warm_pool_size=warm_pool_size,
             runtime=config.get("function_runtime"),
             stub_name=stub_name,
+            is_builder_function=self._is_builder_function,
         )
         request = api_pb2.FunctionCreateRequest(
             app_id=resolver.app_id,
