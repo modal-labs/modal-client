@@ -499,7 +499,7 @@ class _Stub:
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Sequence[_Mount] = (),
-        shared_volumes: Dict[str, _SharedVolume] = {},
+        shared_volumes: Dict[Union[str, os.PathLike], _SharedVolume] = {},
         allow_cross_region_volumes: bool = False,  # Whether using shared volumes from other regions is allowed.
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
@@ -530,7 +530,7 @@ class _Stub:
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Sequence[_Mount] = (),
-        shared_volumes: Dict[str, _SharedVolume] = {},
+        shared_volumes: Dict[Union[str, os.PathLike], _SharedVolume] = {},
         allow_cross_region_volumes: bool = False,  # Whether using shared volumes from other regions is allowed.
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
@@ -562,7 +562,7 @@ class _Stub:
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Sequence[_Mount] = (),
-        shared_volumes: Dict[str, _SharedVolume] = {},
+        shared_volumes: Dict[Union[str, os.PathLike], _SharedVolume] = {},
         allow_cross_region_volumes: bool = False,  # Whether using shared volumes from other regions is allowed.
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
@@ -856,7 +856,7 @@ class _Stub:
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Sequence[_Mount] = (),
-        shared_volumes: Dict[str, _SharedVolume] = {},
+        shared_volumes: Dict[Union[str, os.PathLike], _SharedVolume] = {},
         allow_cross_region_volumes: bool = False,  # Whether using shared volumes from other regions is allowed.
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
