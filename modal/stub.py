@@ -15,7 +15,7 @@ from modal._types import typechecked
 from modal_proto import api_pb2
 
 from modal_utils.async_utils import synchronize_apis, synchronizer
-from modal_utils.decorator_utils import decorator_with_options_unsupported, decorator_with_options
+from modal_utils.decorator_utils import decorator_with_options
 from .retries import Retries
 
 from ._function_utils import FunctionInfo
@@ -846,10 +846,8 @@ class _Stub:
         async with self.run():
             await wrapped_fn.call(cmd)
 
-    @decorator_with_options_unsupported
     def cls(
         self,
-        user_cls: Optional[type] = None,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
         secrets: Sequence[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
@@ -868,35 +866,38 @@ class _Stub:
         interactive: bool = False,  # Whether to run the function in interactive mode.
         keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
-    ) -> type:
-        function_handles: Dict[str, _FunctionHandle] = {}
-        for k, v in user_cls.__dict__.items():
-            if isinstance(v, (PartialFunction, AioPartialFunction)):
-                partial_function = synchronizer._translate_in(v)  # TODO: remove need for?
-                function_handles[k] = self.function(
-                    _cls=user_cls,
-                    image=image,
-                    secret=secret,
-                    secrets=secrets,
-                    gpu=gpu,
-                    serialized=serialized,
-                    mounts=mounts,
-                    shared_volumes=shared_volumes,
-                    allow_cross_region_volumes=allow_cross_region_volumes,
-                    cpu=cpu,
-                    memory=memory,
-                    proxy=proxy,
-                    retries=retries,
-                    concurrency_limit=concurrency_limit,
-                    container_idle_timeout=container_idle_timeout,
-                    timeout=timeout,
-                    interactive=interactive,
-                    keep_warm=keep_warm,
-                    cloud=cloud,
-                )(partial_function)
+    ) -> Callable[[type], type]:
+        def wrapper(user_cls: type) -> type:
+            function_handles: Dict[str, _FunctionHandle] = {}
+            for k, v in user_cls.__dict__.items():
+                if isinstance(v, (PartialFunction, AioPartialFunction)):
+                    partial_function = synchronizer._translate_in(v)  # TODO: remove need for?
+                    function_handles[k] = self.function(
+                        _cls=user_cls,
+                        image=image,
+                        secret=secret,
+                        secrets=secrets,
+                        gpu=gpu,
+                        serialized=serialized,
+                        mounts=mounts,
+                        shared_volumes=shared_volumes,
+                        allow_cross_region_volumes=allow_cross_region_volumes,
+                        cpu=cpu,
+                        memory=memory,
+                        proxy=proxy,
+                        retries=retries,
+                        concurrency_limit=concurrency_limit,
+                        container_idle_timeout=container_idle_timeout,
+                        timeout=timeout,
+                        interactive=interactive,
+                        keep_warm=keep_warm,
+                        cloud=cloud,
+                    )(partial_function)
 
-        _PartialFunction.initialize_cls(user_cls, function_handles)
-        return user_cls
+            _PartialFunction.initialize_cls(user_cls, function_handles)
+            return user_cls
+
+        return wrapper
 
     def _hydrate_function_handles(self, client: _Client, container_app: _App):
         for tag, obj in container_app._tag_to_object.items():
