@@ -327,6 +327,7 @@ Mount, AioMount = synchronize_apis(_Mount)
 def _create_client_mount():
     # TODO(erikbern): make this a static method on the Mount class
     import modal
+    import synchronicity
 
     # Get the base_path because it also contains `modal_utils` and `modal_proto`.
     base_path, _ = os.path.split(modal.__path__[0])
@@ -338,7 +339,9 @@ def _create_client_mount():
     def condition(arg):
         return module_mount_condition(arg) and arg.startswith(prefix)
 
-    return _Mount.from_local_dir(base_path, remote_path="/pkg/", condition=condition, recursive=True)
+    return _Mount.from_local_dir(base_path, remote_path="/pkg/", condition=condition, recursive=True).add_local_dir(
+        synchronicity.__path__[0], remote_path="/pkg/synchronicity", condition=module_mount_condition, recursive=True
+    )
 
 
 _, aio_create_client_mount = synchronize_apis(_create_client_mount)
