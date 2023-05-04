@@ -238,7 +238,6 @@ class FunctionInfo:
                 else:
                     remote_path = ROOT_DIR / Path(path).name
 
-                print("Automatically mounting", path, m)
                 mounts[path] = _Mount.from_local_file(
                     path,
                     remote_path=remote_path,
