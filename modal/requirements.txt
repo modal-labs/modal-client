@@ -14,7 +14,6 @@ ipython>=7.34.0
 protobuf>=3.19.0
 python-multipart>=0.0.5
 rich==12.3.0
-synchronicity~=0.4.4
 tblib==1.7.0
 toml==0.10.2
 typer==0.6.1
