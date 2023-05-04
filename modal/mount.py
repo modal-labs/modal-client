@@ -339,8 +339,15 @@ def _create_client_mount():
     def condition(arg):
         return module_mount_condition(arg) and arg.startswith(prefix)
 
-    return _Mount.from_local_dir(base_path, remote_path="/pkg/", condition=condition, recursive=True).add_local_dir(
-        synchronicity.__path__[0], remote_path="/pkg/synchronicity", condition=module_mount_condition, recursive=True
+    return (
+        _Mount.from_local_dir(base_path, remote_path="/pkg/", condition=condition, recursive=True)
+        # Mount synchronicity, so version changes don't trigger image rebuilds for users.
+        .add_local_dir(
+            synchronicity.__path__[0],
+            remote_path="/pkg/synchronicity",
+            condition=module_mount_condition,
+            recursive=True,
+        )
     )
 
 
