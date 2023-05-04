@@ -19,6 +19,7 @@ from modal import Client
 from modal.exception import InvalidError
 from modal.stub import _Stub
 from modal_proto import api_pb2
+from .helpers import deploy_stub_externally
 
 from .supports.skip import skip_windows_unix_socket
 
@@ -34,18 +35,6 @@ def _get_inputs(args: Tuple[Tuple, Dict] = ((42,), {})) -> list[api_pb2.Function
         api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(input_id="in-xyz", input=input_pb)]),
         api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(kill_switch=True)]),
     ]
-
-
-def _load_stub(servicer, module_name, stub_name):
-    # loads stub from another interpreter to prevent leaking state from client into a container process (apart from what goes through the servicer)
-    env = {"MODAL_SERVER_URL": servicer.remote_addr}
-    lib_dir = pathlib.Path(__file__).parent.parent
-
-    subprocess.check_call(
-        [sys.executable, "-c", f"import {module_name}\n{module_name}.{stub_name}.deploy('deploy-name')"],
-        cwd=lib_dir,
-        env=env,
-    )
 
 
 def _run_container(
@@ -597,7 +586,7 @@ def _run_e2e_function(
 ):
     # TODO(elias): make this a bit more prod-like in how it connects the load and run parts by returning function definitions from _load_stub so we don't have to double specify things like definition type
     _Stub._all_stubs = {}  # reset _Stub tracking state between runs
-    _load_stub(servicer, module_name, stub_var_name)
+    deploy_stub_externally(servicer, module_name, stub_var_name)
     client, items = _run_container(
         servicer,
         module_name,

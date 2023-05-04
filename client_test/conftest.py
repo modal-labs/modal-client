@@ -81,6 +81,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         }
         self.n_inputs = 0
         self.n_queues = 0
+        self.n_mounts = 0
+        self.n_mount_files = 0
         self.files_name2sha = {}
         self.files_sha2data = {}
         self.function_id_for_function_call = {}
@@ -520,6 +522,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.MountPutFileRequest = await stream.recv_message()
         if request.WhichOneof("data_oneof") is not None:
             self.files_sha2data[request.sha256_hex] = {"data": request.data, "data_blob_id": request.data_blob_id}
+            self.n_mount_files += 1
             await stream.send_message(api_pb2.MountPutFileResponse(exists=True))
         else:
             await stream.send_message(api_pb2.MountPutFileResponse(exists=False))
@@ -528,6 +531,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.MountBuildRequest = await stream.recv_message()
         for file in request.files:
             self.files_name2sha[file.filename] = file.sha256_hex
+        self.n_mounts += 1
         await stream.send_message(api_pb2.MountBuildResponse(mount_id="mo-123"))
 
     ### Queue
