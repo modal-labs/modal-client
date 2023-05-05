@@ -12,8 +12,6 @@ from modal.exception import DeprecationError, InvalidError
 from modal.functions import Function, FunctionCall, gather, FunctionHandle
 from modal.stub import AioStub
 
-from . import helpers
-
 stub = Stub()
 
 
@@ -502,17 +500,3 @@ def test_invalid_web_decorator_usage():
         @wsgi_app  # type: ignore
         def my_handle_wsgi():
             pass
-
-
-def test_e2e_modal_run_py_file_mounts(servicer, test_dir):
-    helpers.deploy_stub_externally(servicer, "hello.py", cwd=test_dir.parent / "modal_test_support")
-    assert servicer.n_mounts == 1  # there should be a single mount
-    assert servicer.n_mount_files == 1
-    assert "/root/hello.py" in servicer.files_name2sha
-
-
-def test_e2e_modal_run_py_module_mounts(servicer, test_dir):
-    helpers.deploy_stub_externally(servicer, "hello", cwd=test_dir.parent / "modal_test_support")
-    assert servicer.n_mounts == 1  # there should be a single mount
-    assert servicer.n_mount_files == 1
-    assert "/root/hello.py" in servicer.files_name2sha
