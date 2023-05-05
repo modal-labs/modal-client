@@ -783,6 +783,7 @@ class _Function(_Provider[_FunctionHandle]):
         cloud: Optional[str] = None,
         is_builder_function: bool = False,
         _cls: Optional[type] = None,
+        _bound_args: Optional[inspect.BoundArguments] = None,
     ) -> None:
         """mdmd:hidden"""
         raw_f = function_info.raw_f
@@ -856,6 +857,7 @@ class _Function(_Provider[_FunctionHandle]):
         self._gpu_config = parse_gpu_config(gpu)
         self._cloud = cloud
         self._cls = _cls
+        self._bound_args = _bound_args
 
         if cloud:
             self._cloud_provider = parse_cloud_provider(cloud)

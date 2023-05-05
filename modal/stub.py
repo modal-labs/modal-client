@@ -579,6 +579,7 @@ class _Stub:
         ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
         _cls: Optional[type] = None,  # Used for methods only
+        _bound_args: Optional[inspect.BoundArguments] = None,  # Used for parameterized functions only
     ) -> Union[
         _FunctionHandle, Callable[[Union[_PartialFunction, Callable[..., Any]]], _FunctionHandle]
     ]:  # Function object - callable as a regular function within a Modal app
@@ -679,6 +680,7 @@ class _Stub:
             cloud=cloud,
             webhook_config=webhook_config,
             _cls=_cls,
+            _bound_args=_bound_args,
         )
 
         self._add_function(function, [*base_mounts, *mounts])
@@ -846,10 +848,30 @@ class _Stub:
         async with self.run():
             await wrapped_fn.call(cmd)
 
+    def _make_remote_cls(
+        self, user_cls: type, partial_functions: Dict[str, _PartialFunction], fn_kwargs: Dict[str, Any]
+    ):
+        original_sig = inspect.signature(user_cls.__init__)
+        new_parameters = [param for name, param in original_sig.parameters.items() if name != "self"]
+        sig = inspect.Signature(new_parameters)
+        # TODO: validate signature has only primitive types.
+
+        def __init__(_self, *args, **kwargs):
+            bound_args = sig.bind(*args, **kwargs)
+
+            function_handles: Dict[str, _FunctionHandle] = {}
+
+            for k, v in partial_functions.items():
+                function_handles[k] = self.function(**fn_kwargs, _bound_args=bound_args)(v)
+
+            _PartialFunction.initialize_cls(_self, function_handles)
+
+        return type(f"Remote{user_cls.__name__}", (user_cls,), {"__init__": __init__})
+
     @decorator_with_options_unsupported
     def cls(
         self,
-        user_cls: Optional[type] = None,
+        user_cls: type,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
         secrets: Sequence[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
@@ -870,32 +892,41 @@ class _Stub:
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
     ) -> type:
         function_handles: Dict[str, _FunctionHandle] = {}
+        partial_functions: Dict[str, _PartialFunction] = {}
+
+        if hasattr(user_cls, "remote"):
+            raise InvalidError(f"Class {user_cls} has an attribute named 'remote' [TODO: expand]")
+
+        kwargs = dict(
+            _cls=user_cls,
+            image=image,
+            secret=secret,
+            secrets=secrets,
+            gpu=gpu,
+            serialized=serialized,
+            mounts=mounts,
+            shared_volumes=shared_volumes,
+            allow_cross_region_volumes=allow_cross_region_volumes,
+            cpu=cpu,
+            memory=memory,
+            proxy=proxy,
+            retries=retries,
+            concurrency_limit=concurrency_limit,
+            container_idle_timeout=container_idle_timeout,
+            timeout=timeout,
+            interactive=interactive,
+            keep_warm=keep_warm,
+            cloud=cloud,
+        )
+
         for k, v in user_cls.__dict__.items():
             if isinstance(v, (PartialFunction, AioPartialFunction)):
-                partial_function = synchronizer._translate_in(v)  # TODO: remove need for?
-                function_handles[k] = self.function(
-                    _cls=user_cls,
-                    image=image,
-                    secret=secret,
-                    secrets=secrets,
-                    gpu=gpu,
-                    serialized=serialized,
-                    mounts=mounts,
-                    shared_volumes=shared_volumes,
-                    allow_cross_region_volumes=allow_cross_region_volumes,
-                    cpu=cpu,
-                    memory=memory,
-                    proxy=proxy,
-                    retries=retries,
-                    concurrency_limit=concurrency_limit,
-                    container_idle_timeout=container_idle_timeout,
-                    timeout=timeout,
-                    interactive=interactive,
-                    keep_warm=keep_warm,
-                    cloud=cloud,
-                )(partial_function)
+                partial_functions[k] = synchronizer._translate_in(v)  # TODO: remove need for?
+                function_handles[k] = self.function(**kwargs)(partial_functions[k])
 
         _PartialFunction.initialize_cls(user_cls, function_handles)
+
+        user_cls.remote = self._make_remote_cls(user_cls, partial_functions, kwargs)
         return user_cls
 
     def _hydrate_function_handles(self, client: _Client, container_app: _App):
