@@ -278,6 +278,7 @@ def test_serve(servicer, set_env_client, server_url_env, test_dir):
 
 def test_shell(servicer, set_env_client, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
+    webhook_stub_file = test_dir / "supports" / "app_run_tests" / "webhook.py"
 
     def mock_get_pty_info() -> api_pb2.PTYInfo:
         rows, cols = (64, 128)
@@ -301,10 +302,25 @@ def test_shell(servicer, set_env_client, test_dir):
         nonlocal ran_cmd
         ran_cmd = cmd
 
+    # Function is explicitly specified
     with mock.patch("rich.console.Console.is_terminal", True), mock.patch(
         "modal._pty.get_pty_info", mock_get_pty_info
     ), mock.patch("modal._pty.write_stdin_to_pty_stream", noop_async_context_manager):
         _run(["shell", stub_file.as_posix() + "::foo"])
+    assert ran_cmd == "/bin/bash"
+
+    # Function is explicitly specified
+    with mock.patch("rich.console.Console.is_terminal", True), mock.patch(
+        "modal._pty.get_pty_info", mock_get_pty_info
+    ), mock.patch("modal._pty.write_stdin_to_pty_stream", noop_async_context_manager):
+        _run(["shell", webhook_stub_file.as_posix() + "::foo"])
+    assert ran_cmd == "/bin/bash"
+
+    # Function must be inferred
+    with mock.patch("rich.console.Console.is_terminal", True), mock.patch(
+        "modal._pty.get_pty_info", mock_get_pty_info
+    ), mock.patch("modal._pty.write_stdin_to_pty_stream", noop_async_context_manager):
+        _run(["shell", webhook_stub_file.as_posix()])
     assert ran_cmd == "/bin/bash"
 
 
