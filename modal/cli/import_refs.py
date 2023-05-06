@@ -139,9 +139,11 @@ def choose_function_interactive(stub: _Stub, console: Console) -> str:
 
 
 def infer_function_or_help(
-    _stub: _Stub, interactive: bool, accept_local_entrypoint: bool
+    _stub: _Stub, interactive: bool, accept_local_entrypoint: bool, accept_webhook: bool
 ) -> Union[_FunctionHandle, LocalEntrypoint]:
-    function_choices = set(_stub.registered_functions.keys()) - set(_stub.registered_web_endpoints)
+    function_choices = set(_stub.registered_functions.keys())
+    if not accept_webhook:
+        function_choices -= set(_stub.registered_web_endpoints)
     if accept_local_entrypoint:
         function_choices |= set(_stub.registered_entrypoints.keys())
 
@@ -246,7 +248,7 @@ You would run foo as [bold green]{base_cmd} app.py::foo[/bold green]"""
 
 
 def import_function(
-    func_ref: str, base_cmd: str, accept_local_entrypoint=True, interactive=False
+    func_ref: str, base_cmd: str, accept_local_entrypoint=True, accept_webhook=False, interactive=False
 ) -> Union[_FunctionHandle, LocalEntrypoint]:
     import_ref = parse_import_ref(func_ref)
     try:
@@ -266,7 +268,7 @@ def import_function(
     if isinstance(stub_or_function, _Stub):
         # infer function or display help for how to select one
         _stub = stub_or_function
-        _function_handle = infer_function_or_help(_stub, interactive, accept_local_entrypoint)
+        _function_handle = infer_function_or_help(_stub, interactive, accept_local_entrypoint, accept_webhook)
         return _function_handle
     if isinstance(stub_or_function, _FunctionHandle):
         return stub_or_function

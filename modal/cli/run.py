@@ -248,7 +248,7 @@ def shell(
         raise click.UsageError("`modal shell` can only be run from a terminal.")
 
     _function_handle = import_function(
-        func_ref, accept_local_entrypoint=False, interactive=True, base_cmd="modal shell"
+        func_ref, accept_local_entrypoint=False, accept_webhook=True, interactive=True, base_cmd="modal shell"
     )
     assert isinstance(_function_handle, _FunctionHandle)  # ensured by accept_local_entrypoint=False
     _stub = _function_handle._stub
