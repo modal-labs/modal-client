@@ -17,7 +17,6 @@ def make_remote_cls_constructors(
 
     async def _remote(*args, **kwargs):
         params = sig.bind(*args, **kwargs)
-        params.apply_defaults()
 
         cls_dict = {}
         new_function_handles: Dict[str, _FunctionHandle] = {}
