@@ -277,6 +277,7 @@ message ContainerArguments {  // This is used to pass data from the worker to th
   Function function_def = 7;
   ProxyInfo proxy_info = 8;
   map<string, string> tracing_context = 9;
+  bytes serialized_params = 10;
 }
 
 message ContainerHeartbeatRequest {
@@ -440,6 +441,16 @@ message FunctionPrecreateRequest {
 
 message FunctionPrecreateResponse {
   string function_id = 1;
+  FunctionHandleMetadata handle_metadata = 2;
+}
+
+message FunctionBindParamsRequest {
+  string function_id = 1;
+  bytes serialized_params = 2;
+}
+
+message FunctionBindParamsResponse {
+  string bound_function_id = 1;
   FunctionHandleMetadata handle_metadata = 2;
 }
 
@@ -1044,18 +1055,19 @@ service ModalClient {
   rpc DictLen(DictLenRequest) returns (DictLenResponse);
 
   // Functions
-  rpc FunctionPrecreate(FunctionPrecreateRequest) returns (FunctionPrecreateResponse);
-  rpc FunctionCreate(FunctionCreateRequest) returns (FunctionCreateResponse);
-  rpc FunctionGetSerialized(FunctionGetSerializedRequest) returns (FunctionGetSerializedResponse);
-  rpc FunctionMap(FunctionMapRequest) returns (FunctionMapResponse);
-  rpc FunctionPutInputs(FunctionPutInputsRequest) returns (FunctionPutInputsResponse);
-  rpc FunctionPutOutputs(FunctionPutOutputsRequest) returns (google.protobuf.Empty);  // For containers to return result
-  rpc FunctionGetInputs(FunctionGetInputsRequest) returns (FunctionGetInputsResponse);  // For containers to request next call
-  rpc FunctionGetOutputs(FunctionGetOutputsRequest) returns (FunctionGetOutputsResponse);  // Returns the next result(s) for an entire function call (FunctionMap)
-  rpc FunctionGetCallGraph(FunctionGetCallGraphRequest) returns (FunctionGetCallGraphResponse);
+  rpc FunctionBindParams(FunctionBindParamsRequest) returns (FunctionBindParamsResponse);
   rpc FunctionCallCancel(FunctionCallCancelRequest) returns (google.protobuf.Empty);
   rpc FunctionCallList(FunctionCallListRequest) returns (FunctionCallListResponse);
+  rpc FunctionCreate(FunctionCreateRequest) returns (FunctionCreateResponse);
+  rpc FunctionGetCallGraph(FunctionGetCallGraphRequest) returns (FunctionGetCallGraphResponse);
   rpc FunctionGetCurrentStats(FunctionGetCurrentStatsRequest) returns (FunctionStats);
+  rpc FunctionGetInputs(FunctionGetInputsRequest) returns (FunctionGetInputsResponse);  // For containers to request next call
+  rpc FunctionGetOutputs(FunctionGetOutputsRequest) returns (FunctionGetOutputsResponse);  // Returns the next result(s) for an entire function call (FunctionMap)
+  rpc FunctionGetSerialized(FunctionGetSerializedRequest) returns (FunctionGetSerializedResponse);
+  rpc FunctionMap(FunctionMapRequest) returns (FunctionMapResponse);
+  rpc FunctionPrecreate(FunctionPrecreateRequest) returns (FunctionPrecreateResponse);
+  rpc FunctionPutInputs(FunctionPutInputsRequest) returns (FunctionPutInputsResponse);
+  rpc FunctionPutOutputs(FunctionPutOutputsRequest) returns (google.protobuf.Empty);  // For containers to return result
 
   // Images
   rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);
