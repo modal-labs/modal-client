@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import pickle
 import os
 import asyncio
 import inspect
@@ -494,6 +495,25 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         self._is_generator = handle_metadata.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
         self._web_url = handle_metadata.web_url
         self._function_name = handle_metadata.function_name
+
+    async def make_bound_function_handle(self, params: inspect.BoundArguments) -> "_FunctionHandle":
+        assert self.is_hydrated(), "Cannot make bound function handle from unhydrated handle."
+
+        if len(params.args) + len(params.kwargs) == 0:
+            # short circuit if no args, don't need a special object.
+            return self
+
+        new_handle = _FunctionHandle._new()
+        new_handle._initialize_from_local(self._stub, self._info)
+
+        serialized_params = pickle.dumps((params.args, params.kwargs))
+        req = api_pb2.FunctionBindParamsRequest(
+            function_id=self._object_id,
+            serialized_params=serialized_params,
+        )
+        response = await self._client.stub.FunctionBindParams(req)
+        new_handle._hydrate(self._client, response.bound_function_id, response.handle_metadata)
+        return new_handle
 
     def _get_handle_metadata(self):
         return api_pb2.FunctionHandleMetadata(

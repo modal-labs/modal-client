@@ -24,6 +24,7 @@ from ._output import OutputManager
 from ._pty import exec_cmd
 from .app import _App, _container_app, is_local
 from .client import _Client
+from .cls import make_remote_cls_constructors
 from .config import logger
 from .exception import InvalidError, deprecation_warning
 from .functions import _Function, _FunctionHandle, PartialFunction, AioPartialFunction, _PartialFunction
@@ -868,9 +869,12 @@ class _Stub:
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
     ) -> Callable[[type], type]:
         def wrapper(user_cls: type) -> type:
+            partial_functions: Dict[str, Union[PartialFunction, AioPartialFunction]] = {}
             function_handles: Dict[str, _FunctionHandle] = {}
+
             for k, v in user_cls.__dict__.items():
                 if isinstance(v, (PartialFunction, AioPartialFunction)):
+                    partial_functions[k] = v
                     partial_function = synchronizer._translate_in(v)  # TODO: remove need for?
                     function_handles[k] = self.function(
                         _cls=user_cls,
@@ -895,6 +899,10 @@ class _Stub:
                     )(partial_function)
 
             _PartialFunction.initialize_cls(user_cls, function_handles)
+            # TODO (akshat): remote.aio
+            (remote, aio_remote) = make_remote_cls_constructors(user_cls, partial_functions, function_handles)
+            user_cls.remote = remote
+            user_cls.aio_remote = aio_remote
             return user_cls
 
         return wrapper
