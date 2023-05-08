@@ -18,7 +18,6 @@ from .functions import (
 )
 from .image import AioImage
 from .mount import AioMount
-from .object import aio_lookup
 from .queue import AioQueue
 from .secret import AioSecret
 from .shared_volume import AioSharedVolume
@@ -40,7 +39,6 @@ __all__ = [
     "AioProxy",
     "AioFunctionHandle",  # noqa
     "aio_container_app",
-    "aio_lookup",
     "aio_method",
     "aio_asgi_app",
     "aio_web_endpoint",
