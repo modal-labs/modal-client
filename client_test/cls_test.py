@@ -52,14 +52,31 @@ class FooRemote(ClsMixin):
 
     @method()
     def bar(self, z: int):
-        pass  # Servicer doesn't use function body
+        return z**3
 
 
 def test_call_cls_remote_sync(client):
     with stub_remote.run(client=client):
         foo_remote = FooRemote.remote(3, "hello")
+        # Mock servicer just squares the argument
+        # This means remote function call is taking place.
         assert foo_remote.bar.call(8) == 64
         assert foo_remote.bar(8) == 64
+
+
+def test_call_cls_remote_invalid_type(client):
+    with stub_remote.run(client=client):
+        with pytest.raises(ValueError) as excinfo:
+            FooRemote.remote(object(), "hello")
+
+        exc = excinfo.value
+        assert "x=" in str(exc)
+
+        with pytest.raises(ValueError) as excinfo:
+            FooRemote.remote(42, {"hello": "world"})
+
+        exc = excinfo.value
+        assert "y=" in str(exc)
 
 
 aio_stub = AioStub()
@@ -120,7 +137,7 @@ class BarRemote(ClsMixin):
 
     @aio_method()
     def baz(self, z: int):
-        pass  # Servicer doesn't use function body
+        return z**3
 
 
 @pytest.mark.asyncio
@@ -129,6 +146,8 @@ async def test_call_cls_remote_async(client):
         coro = BarRemote.aio_remote(3, "hello")
         assert inspect.iscoroutine(coro)
         bar_remote = await coro
+        # Mock servicer just squares the argument
+        # This means remote function call is taking place.
         assert await bar_remote.baz.call(8) == 64
         assert await bar_remote.baz(8) == 64
 

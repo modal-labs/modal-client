@@ -3,6 +3,7 @@ import inspect
 from typing import Dict, Union
 from modal_utils.async_utils import synchronize_apis
 from .functions import _PartialFunction, PartialFunction, AioPartialFunction, _FunctionHandle
+from datetime import datetime
 
 
 class ClsMixin:
@@ -13,6 +14,9 @@ class ClsMixin:
     @staticmethod
     async def aio_remote(*args, **kwargs):
         ...
+
+
+ALLOWED_TYPES = (int, float, bool, str, bytes, type(None), datetime)
 
 
 def make_remote_cls_constructors(
@@ -27,6 +31,13 @@ def make_remote_cls_constructors(
 
     async def _remote(*args, **kwargs):
         params = sig.bind(*args, **kwargs)
+
+        for name, param in params.arguments.items():
+            if not isinstance(param, ALLOWED_TYPES):
+                raise ValueError(
+                    f"Only primitive types are allowed in remote class constructors. "
+                    f"Found {name}={param} of type {type(param)}."
+                )
 
         cls_dict = {}
         new_function_handles: Dict[str, _FunctionHandle] = {}
