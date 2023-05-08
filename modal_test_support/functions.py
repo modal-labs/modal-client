@@ -231,3 +231,14 @@ def check_sibling_hydration(x):
     assert fastapi_app.is_hydrated()
     assert fun_returning_gen.is_hydrated()
     assert fun_returning_gen.is_generator
+
+
+@stub.cls()
+class ParamCls:
+    def __init__(self, x: int, y: str) -> None:
+        self.x = x
+        self.y = y
+
+    @method()
+    def f(self, z: int):
+        return f"{self.x} {self.y} {z}"

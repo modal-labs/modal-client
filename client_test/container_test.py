@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 from __future__ import annotations
+import pickle
 import base64
 import json
 import pathlib
@@ -7,7 +8,7 @@ import pytest
 import subprocess
 import sys
 import time
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional
 
 from grpclib.exceptions import GRPCError
 
@@ -59,6 +60,7 @@ def _run_container(
     definition_type=api_pb2.Function.DEFINITION_TYPE_FILE,
     stub_name: str = "",
     is_builder_function: bool = False,
+    serialized_params: Optional[bytes] = None,
 ) -> tuple[Client, list[api_pb2.FunctionPutOutputsItem]]:
     with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         if inputs is None:
@@ -91,6 +93,7 @@ def _run_container(
             function_id="fu-123",
             app_id="ap-1",
             function_def=function_def,
+            serialized_params=serialized_params,
         )
 
         try:
@@ -483,6 +486,17 @@ def test_cls_function(unix_servicer, event_loop):
     assert len(items) == 1
     assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     assert items[0].result.data == serialize(42 * 111)
+
+
+@skip_windows_unix_socket
+def test_param_cls_function(unix_servicer, event_loop):
+    serialized_parmas = pickle.dumps(([111], {"y": "foo"}))
+    client, items = _run_container(
+        unix_servicer, "modal_test_support.functions", "ParamCls.f", serialized_params=serialized_parmas
+    )
+    assert len(items) == 1
+    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert items[0].result.data == serialize("111 foo 42")
 
 
 @skip_windows_unix_socket
