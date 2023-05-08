@@ -25,6 +25,10 @@ def dummy():
     pass
 
 
+def zero_retries():
+    pass
+
+
 def test_retries(client):
     stub = modal.Stub()
 
@@ -40,6 +44,8 @@ def test_retries(client):
     exponential_with_max_delay_modal = stub.function(
         retries=modal.Retries(max_retries=2, backoff_coefficient=2.0, max_delay=30.0)
     )(exponential_with_max_delay)
+
+    zero_retries_modal = stub.function(retries=0)(zero_retries)
 
     with pytest.raises(TypeError):
         # Reject no-args constructions, which is unreadable and harder to support long-term
@@ -58,3 +64,4 @@ def test_retries(client):
         fixed_delay_retries_modal.call()
         exponential_backoff_modal.call()
         exponential_with_max_delay_modal.call()
+        zero_retries_modal.call()

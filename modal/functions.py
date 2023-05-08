@@ -803,7 +803,9 @@ class _Function(_Provider[_FunctionHandle]):
         else:
             self._secrets = secrets
 
-        if isinstance(retries, int):
+        if retries is None or retries == 0:
+            self._retry_policy = None
+        elif isinstance(retries, int):
             self._retry_policy = Retries(
                 max_retries=retries,
                 initial_delay=1.0,
@@ -811,8 +813,6 @@ class _Function(_Provider[_FunctionHandle]):
             )._to_proto()
         elif isinstance(retries, Retries):
             self._retry_policy = retries._to_proto()
-        elif retries is None:
-            self._retry_policy = None
         else:
             raise InvalidError(
                 f"Function {raw_f} retries must be an integer or instance of modal.Retries. Found: {type(retries)}"
