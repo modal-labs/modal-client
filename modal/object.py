@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-from datetime import date
 import uuid
 from typing import Awaitable, Callable, Generic, Optional, Type, TypeVar
 
@@ -14,7 +13,7 @@ from modal_utils.grpc_utils import retry_transient_errors, get_proto_oneof
 from ._object_meta import ObjectMeta
 from ._resolver import Resolver
 from .client import _Client
-from .exception import InvalidError, NotFoundError, deprecation_error
+from .exception import InvalidError, NotFoundError
 
 H = TypeVar("H", bound="_Handle")
 
@@ -146,22 +145,6 @@ class _Handle(metaclass=ObjectMeta):
 
 Handle, AioHandle = synchronize_apis(_Handle)
 
-
-@typechecked
-async def _lookup(
-    app_name: str,
-    tag: Optional[str] = None,
-    namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
-    client: Optional[_Client] = None,
-):
-    """Deprecated. Use corresponding class methods instead," " e.g. modal.Secret.lookup, etc."""
-    deprecation_error(
-        date(2023, 2, 11),
-        _lookup.__doc__,
-    )
-
-
-lookup, aio_lookup = synchronize_apis(_lookup)
 
 P = TypeVar("P", bound="_Provider")
 
