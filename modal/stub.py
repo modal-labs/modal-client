@@ -62,6 +62,9 @@ def check_sequence(items: typing.Sequence[typing.Any], item_type: typing.Type[ty
         raise InvalidError(error_msg)
 
 
+CLS_T = typing.TypeVar("CLS_T", bound=typing.Type)
+
+
 class _Stub:
     """A `Stub` is a description of how to create a Modal application.
 
@@ -867,8 +870,8 @@ class _Stub:
         interactive: bool = False,  # Whether to run the function in interactive mode.
         keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
-    ) -> Callable[[type], type]:
-        def wrapper(user_cls: type) -> type:
+    ) -> Callable[[CLS_T], CLS_T]:
+        def wrapper(user_cls: CLS_T) -> CLS_T:
             partial_functions: Dict[str, Union[PartialFunction, AioPartialFunction]] = {}
             function_handles: Dict[str, _FunctionHandle] = {}
 

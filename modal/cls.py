@@ -1,18 +1,20 @@
 # Copyright Modal Labs 2022
 import inspect
-from typing import Dict, Union
+from typing import Dict, Union, TypeVar, Type
 from modal_utils.async_utils import synchronize_apis
 from .functions import _PartialFunction, PartialFunction, AioPartialFunction, _FunctionHandle
 from datetime import datetime
 
+T = TypeVar("T")
+
 
 class ClsMixin:
-    @staticmethod
-    def remote(*args, **kwargs):
+    @classmethod
+    def remote(cls: Type[T], *args, **kwargs) -> T:
         ...
 
-    @staticmethod
-    async def aio_remote(*args, **kwargs):
+    @classmethod
+    async def aio_remote(cls: Type[T], *args, **kwargs) -> T:
         ...
 
 
