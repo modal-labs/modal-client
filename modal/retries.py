@@ -61,8 +61,8 @@ class Retries:
         max_delay: float = 60.0,
     ):
         """Construct a new retries policy, supporting exponential and fixed-interval delays via a backoff coefficient."""
-        if max_retries < 1:
-            raise InvalidError(f"Invalid retries number: {max_retries}. Function retries must be positive.")
+        if max_retries < 0:
+            raise InvalidError(f"Invalid retries number: {max_retries}. Function retries must be non-negative.")
 
         if max_retries > 10:
             raise InvalidError(f"Invalid retries number: {max_retries}. Retries must be between 0 and 10.")
