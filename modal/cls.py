@@ -5,6 +5,16 @@ from modal_utils.async_utils import synchronize_apis
 from .functions import _PartialFunction, PartialFunction, AioPartialFunction, _FunctionHandle
 
 
+class ClsMixin:
+    @staticmethod
+    def remote(*args, **kwargs):
+        ...
+
+    @staticmethod
+    async def aio_remote(*args, **kwargs):
+        ...
+
+
 def make_remote_cls_constructors(
     user_cls: type,
     partial_functions: Dict[str, Union[PartialFunction, AioPartialFunction]],
@@ -22,6 +32,7 @@ def make_remote_cls_constructors(
         new_function_handles: Dict[str, _FunctionHandle] = {}
 
         for k, v in partial_functions.items():
+            print("HYDRAITNGJklli", k, function_handles[k])
             new_function_handles[k] = await function_handles[k].make_bound_function_handle(params)
             cls_dict[k] = v
 
