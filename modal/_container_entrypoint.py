@@ -5,6 +5,7 @@ import asyncio
 import base64
 import contextlib
 import importlib
+import pickle
 import inspect
 import math
 import signal
@@ -483,7 +484,7 @@ class ImportedFunction:
 
 
 @wrap()
-def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> ImportedFunction:
+def import_function(function_def: api_pb2.Function, ser_cls, ser_fun, ser_params: Optional[bytes]) -> ImportedFunction:
     # This is not in function_io_manager, so that any global scope code that runs during import
     # runs on the main thread.
     module = None
@@ -521,7 +522,11 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun) -> Importe
 
     # Instantiate the class if it's defined
     if cls:
-        obj = cls()
+        if ser_params:
+            args, kwargs = pickle.loads(ser_params)
+            obj = cls(*args, **kwargs)
+        else:
+            obj = cls()
         # Bind the function to the instance (using the descriptor protocol!)
         fun = fun.__get__(obj, cls)
     else:
@@ -570,7 +575,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         # Initialize the function
         with function_io_manager.handle_user_exception():
-            imp_fun = import_function(container_args.function_def, ser_cls, ser_fun)
+            imp_fun = import_function(container_args.function_def, ser_cls, ser_fun, container_args.serialized_params)
             if imp_fun.stub:
                 _container_app = synchronizer._translate_in(container_app)
                 _client = synchronizer._translate_in(client)

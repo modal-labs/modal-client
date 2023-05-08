@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import pickle
 import os
 import asyncio
 import inspect
@@ -469,6 +470,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
     _web_url: Optional[str]
     _info: Optional[FunctionInfo]
     _stub: Optional["modal.stub._Stub"]
+    _is_remote_cls_method: bool = False
 
     def _initialize_from_empty(self):
         self._progress = None
@@ -494,6 +496,26 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         self._is_generator = handle_metadata.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
         self._web_url = handle_metadata.web_url
         self._function_name = handle_metadata.function_name
+
+    async def make_bound_function_handle(self, params: inspect.BoundArguments) -> "_FunctionHandle":
+        assert self.is_hydrated(), "Cannot make bound function handle from unhydrated handle."
+
+        if len(params.args) + len(params.kwargs) == 0:
+            # short circuit if no args, don't need a special object.
+            return self
+
+        new_handle = _FunctionHandle._new()
+        new_handle._initialize_from_local(self._stub, self._info)
+
+        serialized_params = pickle.dumps((params.args, params.kwargs))
+        req = api_pb2.FunctionBindParamsRequest(
+            function_id=self._object_id,
+            serialized_params=serialized_params,
+        )
+        response = await self._client.stub.FunctionBindParams(req)
+        new_handle._hydrate(self._client, response.bound_function_id, response.handle_metadata)
+        new_handle._is_remote_cls_method = True
+        return new_handle
 
     def _get_handle_metadata(self):
         return api_pb2.FunctionHandleMetadata(
@@ -674,6 +696,9 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
             return self._call_function(args, kwargs)
 
     def __call__(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
+        if self._is_remote_cls_method:
+            return self.call(*args, **kwargs)
+
         if not self._info:
             msg = (
                 "The definition for this function is missing so it is not possible to invoke it locally. "
