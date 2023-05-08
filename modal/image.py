@@ -18,7 +18,7 @@ from ._function_utils import FunctionInfo
 from ._resolver import Resolver
 from .app import is_local
 from .config import config, logger
-from .exception import InvalidError, NotFoundError, RemoteError, deprecation_warning
+from .exception import InvalidError, NotFoundError, RemoteError, deprecation_error
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _get_client_mount, _Mount
 from .object import _Handle, _Provider
@@ -838,7 +838,7 @@ class _Image(_Provider[_ImageHandle]):
         requirements_path = _get_client_requirements_path()
 
         if setup_commands:
-            deprecation_warning(
+            deprecation_error(
                 date(2023, 3, 21),
                 "Setting `setup_commands` is deprecated in favor of the more general `setup_dockerfile_commands` argument. To migrate to this, prefix your existing commands with `RUN`.",
             )
@@ -940,7 +940,7 @@ class _Image(_Provider[_ImageHandle]):
         requirements_path = _get_client_requirements_path()
 
         if setup_commands:
-            deprecation_warning(
+            deprecation_error(
                 date(2023, 3, 21),
                 "Setting `setup_commands` is deprecated in favor of the more general `setup_dockerfile_commands` argument. To migrate to this, prefix your existing commands with `RUN`.",
             )
