@@ -124,6 +124,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.app_get_logs_initial_count = 0
         self.app_set_objects_count = 0
 
+        self.function2params = {}
+
         @self.function_body
         def default_function_body(*args, **kwargs):
             return sum(arg**2 for arg in args) + sum(value**2 for key, value in kwargs.items())
@@ -318,6 +320,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     ### Function
 
+    async def FunctionBindParams(self, stream):
+        request: api_pb2.FunctionBindParamsRequest = await stream.recv_message()
+        assert request.function_id
+        assert request.serialized_params
+        self.n_functions += 1
+        self.function2params[self.n_functions] = request.serialized_params
+        function_id = f"fu-{self.n_functions}"
+
+        await stream.send_message(api_pb2.FunctionBindParamsResponse(bound_function_id=function_id))
+
     async def FunctionGetInputs(self, stream):
         request: api_pb2.FunctionGetInputsRequest = await stream.recv_message()
         assert request.function_id
@@ -412,6 +424,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def FunctionGetOutputs(self, stream):
         request: api_pb2.FunctionGetOutputsRequest = await stream.recv_message()
+        print("HERE!", request)
         if request.clear_on_success:
             self.cleared_function_calls.add(request.function_call_id)
 
@@ -419,6 +432,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if client_calls and not self.function_is_running:
             popidx = len(client_calls) // 2  # simulate that results don't always come in order
             (idx, input_id), (args, kwargs) = client_calls.pop(popidx)
+            print("HERE", idx, input_id, args, kwargs)
             try:
                 res = self._function_body(*args, **kwargs)
             except Exception as exc:
