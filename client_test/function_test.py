@@ -419,13 +419,15 @@ with pytest.warns(DeprecationError):
 def test_raw_call():
     assert f(111) == 12321
     instance = Class()
-    assert instance.f(1111) == 1234321
+    with pytest.warns(DeprecationError):
+        assert instance.f(1111) == 1234321
 
 
 def test_method_call(client):
     instance = Class()
     with lc_stub.run(client=client):
-        assert instance.f.call(111) == 12321
+        with pytest.warns(DeprecationError):
+            assert instance.f.call(111) == 12321
 
 
 def test_allow_cross_region_volumes(client, servicer):

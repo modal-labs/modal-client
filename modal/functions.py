@@ -42,7 +42,7 @@ from ._traceback import append_modal_tb
 from .call_graph import InputInfo, _reconstruct_call_graph
 from .config import config, logger
 from .client import _Client
-from .exception import ExecutionError, InvalidError, RemoteError, deprecation_error
+from .exception import ExecutionError, InvalidError, RemoteError, deprecation_error, deprecation_warning
 from .exception import TimeoutError as _TimeoutError
 from .gpu import GPU_T, parse_gpu_config, display_gpu_config
 from .image import _Image
@@ -746,12 +746,22 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
             backlog=resp.backlog, num_active_runners=resp.num_active_tasks, num_total_runners=resp.num_total_tasks
         )
 
-    def __get__(self, obj, objtype=None) -> "_FunctionHandle":
+    def bind_obj(self, obj, objtype) -> "_FunctionHandle":
         # This is needed to bind "self" to methods for direct __call__
         self._self_obj = obj
+
         # TODO(erikbern): we're mutating self directly here, as opposed to returning a different _FunctionHandle
         # We should fix this in the future since it probably precludes using classmethods/staticmethods
         return self
+
+    def __get__(self, obj, objtype=None) -> "_FunctionHandle":
+        deprecation_warning(
+            date(2023, 5, 9),
+            "Using the `@stub.function` decorator on methods is deprecated."
+            " Use the @method decorator instead."
+            " See https://modal.com/docs/guide/lifecycle-functions",
+        )
+        return self.bind_obj(obj, objtype)
 
 
 FunctionHandle, AioFunctionHandle = synchronize_apis(_FunctionHandle)
@@ -1212,7 +1222,7 @@ class _PartialFunction:
             function_handle = obj._modal_function_handles[k]
         else:  # Cls.fun
             function_handle = objtype._modal_function_handles[k]
-        return function_handle.__get__(obj, objtype)
+        return function_handle.bind_obj(obj, objtype)
 
     def __del__(self):
         if self.wrapped is False:
