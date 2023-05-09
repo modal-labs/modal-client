@@ -7,8 +7,9 @@ import sys
 from pathlib import Path
 
 from modal._function_utils import FunctionInfo
+from . import helpers
 
-from .supports.skip import skip_windows
+from .supports.skip import skip_windows, skip_windows_unix_socket
 
 
 @pytest.fixture
@@ -173,3 +174,21 @@ def test_mounted_files_config(supports_dir, env_mount_files):
 
     # Assert just the script is there
     assert files == {"/root/script.py"}
+
+
+@skip_windows_unix_socket
+def test_e2e_modal_run_py_file_mounts(unix_servicer, test_dir):
+    helpers.deploy_stub_externally(unix_servicer, "hello.py", cwd=test_dir.parent / "modal_test_support")
+    assert len(unix_servicer.files_name2sha) == 1
+    assert unix_servicer.n_mounts == 1  # there should be a single mount
+    assert unix_servicer.n_mount_files == 1
+    assert "/root/hello.py" in unix_servicer.files_name2sha
+
+
+@skip_windows_unix_socket
+def test_e2e_modal_run_py_module_mounts(unix_servicer, test_dir):
+    helpers.deploy_stub_externally(unix_servicer, "hello", cwd=test_dir.parent / "modal_test_support")
+    assert len(unix_servicer.files_name2sha) == 1
+    assert unix_servicer.n_mounts == 1  # there should be a single mount
+    assert unix_servicer.n_mount_files == 1
+    assert "/root/hello.py" in unix_servicer.files_name2sha
