@@ -120,7 +120,7 @@ class FunctionInfo:
         elif hasattr(module, "__file__") and not serialized:
             # This generally covers the case where it's invoked with
             # python foo/bar/baz.py
-            self.file = inspect.getfile(f)
+            self.file = os.path.abspath(inspect.getfile(f))
             self.module_name = inspect.getmodulename(self.file)
             self.base_dir = os.path.dirname(self.file)
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
@@ -155,34 +155,37 @@ class FunctionInfo:
         return serialized_bytes
 
     def get_mounts(self) -> Dict[str, _Mount]:
-        if self.type == FunctionInfoType.PACKAGE:
-            mounts = {
-                self.base_dir: _Mount.from_local_dir(
-                    self.base_dir,
-                    remote_path=self.remote_dir,
-                    recursive=True,
-                    condition=package_mount_condition,
-                )
-            }
-        elif self.type == FunctionInfoType.FILE:
-            remote_path = ROOT_DIR / Path(self.file).name
-            mounts = {
-                self.file: _Mount.from_local_file(
-                    self.file,
-                    remote_path=remote_path,
-                )
-            }
-        elif self.type == FunctionInfoType.NOTEBOOK:
+        if self.type == FunctionInfoType.NOTEBOOK:
             # Don't auto-mount anything for notebooks.
             return {}
+
+        if config.get("automount"):
+            mounts = self._get_auto_mounts()
         else:
             mounts = {}
 
-        if not config.get("automount"):
-            return filter_safe_mounts(mounts)
+        # make sure the function's own entrypoint is included:
+        if self.type == FunctionInfoType.PACKAGE:
+            mounts[self.base_dir] = _Mount.from_local_dir(
+                self.base_dir,
+                remote_path=self.remote_dir,
+                recursive=True,
+                condition=package_mount_condition,
+            )
+        elif self.type == FunctionInfoType.FILE:
+            remote_path = ROOT_DIR / Path(self.file).name
+            mounts[self.file] = _Mount.from_local_file(
+                self.file,
+                remote_path=remote_path,
+            )
 
+        return filter_safe_mounts(mounts)
+
+    def _get_auto_mounts(self):
         # Auto-mount local modules that have been imported in global scope.
+        # This may or may not include the "entrypoint" of the function as well, depending on how modal is invoked
         # Note: sys.modules may change during the iteration
+        mounts = {}
         modules = []
         skip_prefixes = set()
         for name, module in sorted(sys.modules.items(), key=lambda kv: len(kv[0])):
@@ -234,11 +237,12 @@ class FunctionInfo:
                     remote_path = ROOT_DIR / relpath / Path(path).name
                 else:
                     remote_path = ROOT_DIR / Path(path).name
+
                 mounts[path] = _Mount.from_local_file(
                     path,
                     remote_path=remote_path,
                 )
-        return filter_safe_mounts(mounts)
+        return mounts
 
     def get_tag(self):
         return self.function_name
