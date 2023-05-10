@@ -46,7 +46,7 @@ from .exception import ExecutionError, InvalidError, RemoteError, deprecation_er
 from .exception import TimeoutError as _TimeoutError
 from .gpu import GPU_T, parse_gpu_config, display_gpu_config
 from .image import _Image
-from .mount import _Mount
+from .mount import _Mount, _get_client_mount
 from .object import _Handle, _Provider
 from .proxy import _Proxy
 from .retries import Retries
@@ -471,6 +471,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
     _info: Optional[FunctionInfo]
     _stub: Optional["modal.stub._Stub"]
     _is_remote_cls_method: bool = False
+    _function_name: Optional[str]
 
     def _initialize_from_empty(self):
         self._progress = None
@@ -790,7 +791,6 @@ class _Function(_Provider[_FunctionHandle]):
         is_generator=False,
         gpu: GPU_T = None,
         # TODO: maybe break this out into a separate decorator for notebooks.
-        base_mounts: Collection[_Mount] = (),
         mounts: Collection[_Mount] = (),
         shared_volumes: Dict[Union[str, os.PathLike], _SharedVolume] = {},
         allow_cross_region_volumes: bool = False,
@@ -864,7 +864,6 @@ class _Function(_Provider[_FunctionHandle]):
         self._gpu = gpu
         self._schedule = schedule
         self._is_generator = is_generator
-        self._base_mounts = base_mounts
         self._mounts = mounts
         self._shared_volumes = shared_volumes
         self._allow_cross_region_volumes = allow_cross_region_volumes
@@ -926,6 +925,13 @@ class _Function(_Provider[_FunctionHandle]):
         self._function_handle._hydrate(resolver.client, response.function_id, response.handle_metadata)
         return self._function_handle
 
+    def _all_mounts(self) -> List[_Mount]:
+        return [
+            _get_client_mount(),  # client
+            *self._info.get_mounts().values(),  # implicit mounts
+            *self._mounts,  # explicit mounts
+        ]
+
     async def _load(self, resolver: Resolver, existing_object_id: Optional[str]) -> _FunctionHandle:
         status_row = resolver.add_status_row()
         status_row.message(f"Creating {self._tag}...")
@@ -948,7 +954,8 @@ class _Function(_Provider[_FunctionHandle]):
             secret_ids.append(secret_id)
 
         mount_ids = []
-        for mount in [*self._base_mounts, *self._mounts]:
+
+        for mount in self._all_mounts():
             mount_ids.append((await resolver.load(mount)).object_id)
 
         if not isinstance(self._shared_volumes, dict):

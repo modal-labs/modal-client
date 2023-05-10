@@ -103,11 +103,11 @@ async def _serve_stub(
     client = await _Client.from_env()
 
     output_mgr = OutputManager(stdout, show_progress, "Running app...")
-
     if _watcher is not None:
         watcher = _watcher  # Only used by tests
     else:
-        watcher = watch(stub._local_mounts, output_mgr)
+        mounts_to_watch = stub._get_local_mounts()
+        watcher = watch(mounts_to_watch, output_mgr)
 
     async with run_stub(stub, client=client, output_mgr=output_mgr) as app:
         client.set_pre_stop(app.disconnect)

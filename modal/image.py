@@ -20,7 +20,7 @@ from .app import is_local
 from .config import config, logger
 from .exception import InvalidError, NotFoundError, RemoteError, deprecation_error
 from .gpu import GPU_T, parse_gpu_config
-from .mount import _get_client_mount, _Mount
+from .mount import _Mount
 from .object import _Handle, _Provider
 from .secret import _Secret
 from .shared_volume import _SharedVolume
@@ -1093,10 +1093,6 @@ class _Image(_Provider[_ImageHandle]):
         from .functions import _Function, _FunctionHandle
 
         info = FunctionInfo(raw_f)
-        base_mounts = [_get_client_mount()]
-        for key, mount in info.get_mounts().items():
-            base_mounts.append(mount)
-
         function_handle = _FunctionHandle._new()
 
         function = _Function(
@@ -1107,7 +1103,6 @@ class _Image(_Provider[_ImageHandle]):
             secret=secret,
             secrets=secrets,
             gpu=gpu,
-            base_mounts=base_mounts,
             mounts=mounts,
             shared_volumes=shared_volumes,
             memory=memory,
