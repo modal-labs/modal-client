@@ -272,11 +272,13 @@ class _Image(_Provider[_ImageHandle]):
                         raise exc
 
             if result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
-                raise RemoteError(result.exception)
+                raise RemoteError(f"Image build for {image_id} failed wtih the exception:\n{result.exception}")
             elif result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
-                raise RemoteError("Image build terminated due to external shut-down. Please try again.")
+                raise RemoteError(f"Image build for {image_id} terminated due to external shut-down. Please try again.")
             elif result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
-                raise RemoteError("Image build timed out. Please try again with a larger `timeout` parameter.")
+                raise RemoteError(
+                    f"Image build for {image_id} timed out. Please try again with a larger `timeout` parameter."
+                )
             elif result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
                 pass
             else:
