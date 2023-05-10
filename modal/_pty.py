@@ -156,7 +156,6 @@ async def write_stdin_to_pty_stream(queue: _QueueHandle):
 
     quit_pipe_read, quit_pipe_write = os.pipe()
 
-    print(f"{sys.stdin=}")
     set_nonblocking(sys.stdin.fileno())
 
     @asyncify

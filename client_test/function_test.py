@@ -10,6 +10,7 @@ from synchronicity.exceptions import UserCodeException
 from modal import Proxy, Stub, SharedVolume, web_endpoint, asgi_app, wsgi_app
 from modal.exception import DeprecationError, InvalidError
 from modal.functions import Function, FunctionCall, gather, FunctionHandle
+from modal.runner import deploy_stub
 from modal.stub import AioStub
 
 stub = Stub()
@@ -366,8 +367,7 @@ def test_from_id_internal(client, servicer):
     assert obj.object_id == "fc-123"
 
 
-@pytest.mark.asyncio
-async def test_from_id(client, servicer):
+def test_from_id(client, servicer):
     stub = Stub()
 
     @stub.function(serialized=True)
@@ -375,7 +375,7 @@ async def test_from_id(client, servicer):
     def foo():
         pass
 
-    stub.deploy("dummy", client=client)
+    deploy_stub(stub, "dummy", client=client)
 
     function_id = foo.object_id
     assert function_id

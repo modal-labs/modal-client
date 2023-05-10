@@ -330,7 +330,10 @@ class _Stub:
         show_progress=None,
         object_entity: str = "ap",
     ) -> _App:
-        """`stub.deploy` is deprecated. Use the `modal deploy` command instead."""
+        """`stub.deploy` is deprecated. Use the `modal deploy` command instead.
+
+        For programmatic usage, use `modal.runner.deploy_stub`
+        """
         deprecation_warning(
             date(2023, 5, 9),
             self.deploy.__doc__,
@@ -789,7 +792,10 @@ class _Stub:
         return self.function(web_endpoint, **function_args)
 
     async def interactive_shell(self, cmd=None, image=None, **kwargs):
-        """`stub.interactive_shell` is deprecated. Use the `modal shell` command instead."""
+        """`stub.interactive_shell` is deprecated. Use the `modal shell` command instead.
+
+        For programmatic usage, use `modal.runner.interactive_shell`
+        """
         deprecation_warning(
             date(2023, 5, 9),
             self.interactive_shell.__doc__,
