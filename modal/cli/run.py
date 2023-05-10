@@ -13,6 +13,7 @@ from synchronicity import Interface
 
 from modal.config import config
 from modal.exception import InvalidError
+from modal.runner import run_stub, deploy_stub, interactive_shell
 from modal.serving import serve_stub
 from modal.stub import LocalEntrypoint
 from modal_utils.async_utils import synchronizer
@@ -86,7 +87,7 @@ def _get_click_command_for_function(_stub, function_tag):
 
     @click.pass_context
     def f(ctx, *args, **kwargs):
-        with blocking_stub.run(detach=ctx.obj["detach"], show_progress=ctx.obj["show_progress"]) as app:
+        with run_stub(blocking_stub, detach=ctx.obj["detach"], show_progress=ctx.obj["show_progress"]) as app:
             _function_handle = app[function_tag]
             _function_handle.call(*args, **kwargs)
 
@@ -107,7 +108,7 @@ def _get_click_command_for_local_entrypoint(_stub, entrypoint: LocalEntrypoint):
                 "Note that running a local entrypoint in detached mode only keeps the last triggered Modal function alive after the parent process has been killed or disconnected."
             )
 
-        with blocking_stub.run(detach=ctx.obj["detach"], show_progress=ctx.obj["show_progress"]) as app:
+        with run_stub(blocking_stub, detach=ctx.obj["detach"], show_progress=ctx.obj["show_progress"]) as app:
             if isasync:
                 asyncio.run(func(*args, **kwargs))
             else:
@@ -193,7 +194,7 @@ def deploy(
         name = _stub.name
 
     blocking_stub = synchronizer._translate_out(_stub, interface=Interface.BLOCKING)
-    blocking_stub.deploy(name=name)
+    deploy_stub(blocking_stub, name=name)
 
 
 def serve(
@@ -256,9 +257,10 @@ def shell(
     blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
 
     if _function_handle is None:
-        blocking_stub.interactive_shell(cmd)
+        interactive_shell(blocking_stub, cmd)
     else:
-        blocking_stub.interactive_shell(
+        interactive_shell(
+            blocking_stub,
             cmd,
             mounts=_function._mounts,
             shared_volumes=_function._shared_volumes,

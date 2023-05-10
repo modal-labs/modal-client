@@ -3,7 +3,6 @@ import asyncio
 import typing
 from datetime import date
 import inspect
-from multiprocessing.synchronize import Event
 import os
 import sys
 import warnings
@@ -21,7 +20,6 @@ from .retries import Retries
 from ._function_utils import FunctionInfo
 from ._ipython import is_notebook
 from ._output import OutputManager
-from ._pty import exec_cmd
 from .app import _App, _container_app, is_local
 from .client import _Client
 from .cls import make_remote_cls_constructors
@@ -35,7 +33,7 @@ from .mount import _get_client_mount, _Mount
 from .object import _Provider
 from .proxy import _Proxy
 from .queue import _Queue
-from .runner import run_stub, deploy_stub, serve_update
+from .runner import _run_stub, _deploy_stub, _interactive_shell
 from .schedule import Schedule
 from .secret import _Secret
 from .shared_volume import _SharedVolume
@@ -295,7 +293,8 @@ class _Stub:
 
         See the documentation for the [`App`](modal.App) class for more details.
         """
-        async with run_stub(self, client, stdout, show_progress, detach, output_mgr) as app:
+        # TODO(erikbern): deprecate this one too?
+        async with _run_stub(self, client, stdout, show_progress, detach, output_mgr) as app:
             yield app
 
     async def serve(
@@ -316,15 +315,8 @@ class _Stub:
                 " Are you calling stub.serve() directly?"
                 " Consider using the `modal serve` shell command."
             )
-        async with run_stub(self, client=client, stdout=stdout, show_progress=show_progress):
+        async with _run_stub(self, client=client, stdout=stdout, show_progress=show_progress):
             await asyncio.sleep(timeout)
-
-    async def serve_update(
-        self,
-        existing_app_id: str,
-        is_ready: Event,
-    ) -> None:
-        await serve_update(self, existing_app_id, is_ready)
 
     @typechecked
     async def deploy(
@@ -338,28 +330,12 @@ class _Stub:
         show_progress=None,
         object_entity: str = "ap",
     ) -> _App:
-        """Deploy an app and export its objects persistently.
-
-        Typically, using the command-line tool `modal deploy <module or script>`
-        should be used, instead of this method.
-
-        **Usage:**
-
-        ```python
-        if __name__ == "__main__":
-            stub.deploy()
-        ```
-
-        Deployment has two primary purposes:
-
-        * Persists all of the objects in the app, allowing them to live past the
-          current app run. For schedules this enables headless "cron"-like
-          functionality where scheduled functions continue to be invoked after
-          the client has disconnected.
-        * Allows for certain kinds of these objects, _deployment objects_, to be
-          referred to and used by other apps.
-        """
-        return await deploy_stub(self, name, namespace, client, stdout, show_progress, object_entity)
+        """`stub.deploy` is deprecated. Use the `modal deploy` command instead."""
+        deprecation_warning(
+            date(2023, 5, 9),
+            self.deploy.__doc__,
+        )
+        return await _deploy_stub(self, name, namespace, client, stdout, show_progress, object_entity)
 
     def _get_default_image(self):
         if "image" in self._blueprint:
@@ -813,42 +789,12 @@ class _Stub:
         return self.function(web_endpoint, **function_args)
 
     async def interactive_shell(self, cmd=None, image=None, **kwargs):
-        """Run an interactive shell (like `bash`) within the image for this app.
-
-        This is useful for online debugging and interactive exploration of the
-        contents of this image. If `cmd` is optionally provided, it will be run
-        instead of the default shell inside this image.
-
-        **Example**
-
-        ```python
-        import modal
-
-        stub = modal.Stub(image=modal.Image.debian_slim().apt_install("vim"))
-
-        if __name__ == "__main__":
-            stub.interactive_shell("/bin/bash")
-        ```
-
-        Or alternatively:
-
-        ```python
-        import modal
-
-        stub = modal.Stub()
-        app_image = modal.Image.debian_slim().apt_install("vim")
-
-        if __name__ == "__main__":
-            stub.interactive_shell(cmd="/bin/bash", image=app_image)
-        ```
-        """
-        # TODO(erikbern): rewrite the docstring above to point the user towards `modal shell`
-        wrapped_fn = self.function(interactive=True, timeout=86400, image=image or self._get_default_image(), **kwargs)(
-            exec_cmd
+        """`stub.interactive_shell` is deprecated. Use the `modal shell` command instead."""
+        deprecation_warning(
+            date(2023, 5, 9),
+            self.interactive_shell.__doc__,
         )
-
-        async with self.run():
-            await wrapped_fn.call(cmd)
+        await _interactive_shell(self, cmd, image, **kwargs)
 
     def cls(
         self,
