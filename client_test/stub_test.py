@@ -12,6 +12,7 @@ import modal.app
 from modal import Client, Stub, web_endpoint, wsgi_app
 from modal.aio import AioDict, AioQueue, AioStub, AioImage
 from modal.exception import DeprecationError, InvalidError
+from modal.runner import aio_deploy_stub, deploy_stub
 from modal_proto import api_pb2
 from modal_test_support import module_1, module_2
 
@@ -68,13 +69,13 @@ async def test_redeploy(servicer, aio_client):
     stub.image = AioImage.debian_slim().pip_install("pandas")
 
     # Deploy app
-    app = await stub.deploy("my-app", client=aio_client)
+    app = await aio_deploy_stub(stub, "my-app", client=aio_client)
     assert app.app_id == "ap-1"
     assert servicer.app_objects["ap-1"]["square"] == "fu-1"
     assert servicer.app_state_history[app.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
 
     # Redeploy, make sure all ids are the same
-    app = await stub.deploy("my-app", client=aio_client)
+    app = await aio_deploy_stub(stub, "my-app", client=aio_client)
     assert app.app_id == "ap-1"
     assert servicer.app_objects["ap-1"]["square"] == "fu-1"
     assert servicer.app_state_history[app.app_id] == [
@@ -84,7 +85,7 @@ async def test_redeploy(servicer, aio_client):
     ]
 
     # Deploy to a different name, ids should change
-    app = await stub.deploy("my-app-xyz", client=aio_client)
+    app = await aio_deploy_stub(stub, "my-app-xyz", client=aio_client)
     assert app.app_id == "ap-2"
     assert servicer.app_objects["ap-2"]["square"] == "fu-2"
     assert servicer.app_state_history[app.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
@@ -111,13 +112,13 @@ def test_create_object_exception(servicer, client):
 
 def test_deploy_falls_back_to_app_name(servicer, client):
     named_stub = Stub(name="foo_app")
-    named_stub.deploy(client=client)
+    deploy_stub(named_stub, client=client)
     assert "foo_app" in servicer.deployed_apps
 
 
 def test_deploy_uses_deployment_name_if_specified(servicer, client):
     named_stub = Stub(name="foo_app")
-    named_stub.deploy("bar_app", client=client)
+    deploy_stub(named_stub, "bar_app", client=client)
     assert "bar_app" in servicer.deployed_apps
     assert "foo_app" not in servicer.deployed_apps
 
@@ -213,7 +214,7 @@ def test_run_state(client, servicer):
 
 def test_deploy_state(client, servicer):
     stub = Stub()
-    app = stub.deploy("foobar", client=client)
+    app = deploy_stub(stub, "foobar", client=client)
     assert servicer.app_state_history[app.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
 
 
@@ -295,12 +296,12 @@ async def test_redeploy_persist(servicer, aio_client):
     stub.d = AioDict()
 
     # Deploy app
-    app = await stub.deploy("my-app", client=aio_client)
+    app = await aio_deploy_stub(stub, "my-app", client=aio_client)
     assert app.app_id == "ap-1"
     assert servicer.app_objects["ap-1"]["d"] == "di-0"
 
     stub.d = AioDict().persist("my-dict")
     # Redeploy, make sure all ids are the same
-    app = await stub.deploy("my-app", client=aio_client)
+    app = await aio_deploy_stub(stub, "my-app", client=aio_client)
     assert app.app_id == "ap-1"
     assert servicer.app_objects["ap-1"]["d"] == "di-1"

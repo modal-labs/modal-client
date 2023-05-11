@@ -6,7 +6,7 @@ from typing import AsyncGenerator, Optional
 
 from modal_proto import api_pb2
 from modal_utils.app_utils import is_valid_app_name
-from modal_utils.async_utils import TaskContext
+from modal_utils.async_utils import TaskContext, synchronize_apis
 from modal_utils.grpc_utils import retry_transient_errors
 
 from . import _pty
@@ -27,7 +27,7 @@ async def _heartbeat(client, app_id):
 
 
 @contextlib.asynccontextmanager
-async def run_stub(
+async def _run_stub(
     stub,
     client: Optional[_Client] = None,
     stdout=None,
@@ -100,7 +100,7 @@ async def run_stub(
     output_mgr.print_if_visible(step_completed("App completed."))
 
 
-async def serve_update(
+async def _serve_update(
     stub,
     existing_app_id: str,
     is_ready: Event,
@@ -121,7 +121,7 @@ async def serve_update(
         pass
 
 
-async def deploy_stub(
+async def _deploy_stub(
     stub,
     name: str = None,
     namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
@@ -130,6 +130,27 @@ async def deploy_stub(
     show_progress=None,
     object_entity="ap",
 ) -> _App:
+    """Deploy an app and export its objects persistently.
+
+    Typically, using the command-line tool `modal deploy <module or script>`
+    should be used, instead of this method.
+
+    **Usage:**
+
+    ```python
+    if __name__ == "__main__":
+        deploy_stub(stub)
+    ```
+
+    Deployment has two primary purposes:
+
+    * Persists all of the objects in the app, allowing them to live past the
+      current app run. For schedules this enables headless "cron"-like
+      functionality where scheduled functions continue to be invoked after
+      the client has disconnected.
+    * Allows for certain kinds of these objects, _deployment objects_, to be
+      referred to and used by other apps.
+    """
     if not is_local():
         raise InvalidError("Cannot run a deploy from within a container.")
     if name is None:
@@ -173,3 +194,36 @@ async def deploy_stub(
     output_mgr.print_if_visible(step_completed("App deployed! 🎉"))
     output_mgr.print_if_visible(f"\nView Deployment: [magenta]{url}[/magenta]")
     return app
+
+
+async def _interactive_shell(stub, cmd=None, image=None, **kwargs):
+    """Run an interactive shell (like `bash`) within the image for this app.
+
+    This is useful for online debugging and interactive exploration of the
+    contents of this image. If `cmd` is optionally provided, it will be run
+    instead of the default shell inside this image.
+
+    **Example**
+
+    ```python
+    import modal
+
+    stub = modal.Stub(image=modal.Image.debian_slim().apt_install("vim"))
+    ```
+
+    You can now run this using
+
+    ```bash
+    modal shell script.py --cmd /bin/bash
+    ```
+    """
+    wrapped_fn = stub.function(interactive=True, timeout=86400, image=image, **kwargs)(_pty.exec_cmd)
+
+    async with _run_stub(stub):
+        await wrapped_fn.call(cmd)
+
+
+run_stub, aio_run_stub = synchronize_apis(_run_stub)
+serve_update, aio_serve_update = synchronize_apis(_serve_update)
+deploy_stub, aio_deploy_stub = synchronize_apis(_deploy_stub)
+interactive_shell, aio_interactive_shell = synchronize_apis(_interactive_shell)
