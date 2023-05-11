@@ -9,7 +9,7 @@ import typing
 import warnings
 from dataclasses import dataclass
 from pathlib import PurePath
-from typing import Any, AsyncIterable, Callable, Collection, Dict, List, Optional, Set, Union
+from typing import Any, AsyncGenerator, AsyncIterable, Awaitable, Callable, Collection, Dict, List, Optional, Set, Union
 
 from datetime import date
 from aiostream import pipe, stream
@@ -583,7 +583,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         kwargs={},  # any extra keyword arguments for the function
         order_outputs=None,  # defaults to True for regular functions, False for generators
         return_exceptions=False,  # whether to propogate exceptions (False) or aggregate them in the results list (True)
-    ):
+    ) -> AsyncGenerator[Any, None]:
         """Parallel map over a set of inputs.
 
         Takes one iterator argument per argument in the function being mapped over.
@@ -682,7 +682,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         self._track_function_invocation()
         return await _Invocation.create(self._object_id, args, kwargs, self._client)
 
-    def call(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
+    def call(self, *args, **kwargs) -> Union[Awaitable[Any], AsyncGenerator[Any, Any]]:  # TODO: Generics/TypeVars
         """
         Calls the function remotely, executing it with the given arguments and returning the execution's result.
         """
