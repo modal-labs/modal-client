@@ -17,14 +17,14 @@ from ._watcher import watch
 from .app import _App
 from .cli.import_refs import import_stub
 from .client import _Client
-from .runner import run_stub
+from .runner import _run_stub, serve_update
 
 
 def _run_serve(stub_ref: str, existing_app_id: str, is_ready: Event):
     # subprocess entrypoint
     _stub = import_stub(stub_ref)
     blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
-    blocking_stub.serve_update(existing_app_id, is_ready)
+    serve_update(blocking_stub, existing_app_id, is_ready)
 
 
 async def _restart_serve(stub_ref: str, existing_app_id: str, timeout: float = 5.0) -> SpawnProcess:
@@ -109,7 +109,7 @@ async def _serve_stub(
     else:
         watcher = watch(stub._local_mounts, output_mgr)
 
-    async with run_stub(stub, client=client, output_mgr=output_mgr) as app:
+    async with _run_stub(stub, client=client, output_mgr=output_mgr) as app:
         client.set_pre_stop(app.disconnect)
         async with TaskContext(grace=0.1) as tc:
             tc.create_task(_run_watch_loop(stub_ref, app.app_id, output_mgr, watcher))

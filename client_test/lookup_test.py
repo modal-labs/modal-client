@@ -4,13 +4,14 @@ import pytest
 from modal.aio import AioFunction, AioQueue, AioStub, aio_web_endpoint
 from modal.exception import NotFoundError
 from modal.queue import AioQueueHandle
+from modal.runner import aio_deploy_stub
 
 
 @pytest.mark.asyncio
 async def test_persistent_object(servicer, aio_client):
     stub = AioStub()
     stub["q_1"] = AioQueue()
-    await stub.deploy("my-queue", client=aio_client)
+    await aio_deploy_stub(stub, "my-queue", client=aio_client)
 
     q: AioQueueHandle = await AioQueue.lookup("my-queue", client=aio_client)
     # TODO: remove type annotation here after genstub gets better Generic base class support
@@ -31,7 +32,7 @@ async def test_lookup_function(servicer, aio_client):
     stub = AioStub()
 
     stub.function()(square)
-    await stub.deploy("my-function", client=aio_client)
+    await aio_deploy_stub(stub, "my-function", client=aio_client)
 
     f = await AioFunction.lookup("my-function", client=aio_client)
     assert f.object_id == "fu-1"
@@ -51,7 +52,7 @@ async def test_lookup_function(servicer, aio_client):
 async def test_webhook_lookup(servicer, aio_client):
     stub = AioStub()
     stub.function()(aio_web_endpoint(method="POST")(square))
-    await stub.deploy("my-webhook", client=aio_client)
+    await aio_deploy_stub(stub, "my-webhook", client=aio_client)
 
     f = await AioFunction.lookup("my-webhook", client=aio_client)
     assert f.web_url
