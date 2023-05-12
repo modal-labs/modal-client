@@ -292,7 +292,7 @@ class _FunctionIOManager:
         return serialized_tb, tb_line_cache
 
     @contextlib.asynccontextmanager
-    async def handle_user_exception(self):
+    async def handle_user_exception(self) -> AsyncGenerator[None, None]:
         """Sets the task as failed in a way where it's not retried
 
         Only used for importing user code atm
