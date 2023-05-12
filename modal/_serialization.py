@@ -19,6 +19,7 @@ def get_synchronicity_interface(obj) -> Optional[Interface]:
 
 
 def restore_synchronicity_interface(raw_obj, target_interface: Optional[Interface]):
+    print("Unpickling", raw_obj.object_id, "as", target_interface)
     if target_interface:
         return async_utils.synchronizer._translate_out(raw_obj, target_interface)
     return raw_obj
@@ -33,6 +34,7 @@ class Pickler(cloudpickle.Pickler):
             return
         if not obj.object_id:
             raise InvalidError(f"Can't serialize object {obj} which hasn't been created.")
+        print("Pickling", obj.object_id, "as", get_synchronicity_interface(obj))
         return (obj.object_id, get_synchronicity_interface(obj), obj._get_handle_metadata())
 
 
