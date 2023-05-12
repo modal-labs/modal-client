@@ -1,5 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
+import inspect
+import typing
 import pytest
 import time
 
@@ -179,7 +181,7 @@ async def test_generator(client, servicer):
     assert len(servicer.cleared_function_calls) == 0
     with stub.run(client=client):
         assert later_gen_modal.is_generator
-        res = later_gen_modal.call()
+        res: typing.Generator = later_gen_modal.call()  # type: ignore
         # Generators fulfil the *iterator protocol*, which requires both these methods.
         # https://docs.python.org/3/library/stdtypes.html#typeiter
         assert hasattr(res, "__iter__")  # strangely inspect.isgenerator returns false
@@ -277,7 +279,11 @@ async def test_function_exception_async(aio_client, servicer):
     failure_modal = stub.function()(servicer.function_body(failure))
     async with stub.run(client=aio_client):
         with pytest.raises(CustomException) as excinfo:
-            await failure_modal.call()
+            coro = failure_modal.call()
+            assert inspect.isawaitable(
+                coro
+            )  # mostly for mypy, since output could technically be an async generator which isn't awaitable in the same sense
+            await coro
         assert "foo!" in str(excinfo.value)
 
 
@@ -380,7 +386,7 @@ def test_from_id(client, servicer):
     function_id = foo.object_id
     assert function_id
     assert foo.web_url
-    rehydrated_function = FunctionHandle.from_id(function_id, client=client)
+    rehydrated_function: FunctionHandle = FunctionHandle.from_id(function_id, client=client)
     assert rehydrated_function.object_id == function_id
     assert rehydrated_function.web_url == foo.web_url
 

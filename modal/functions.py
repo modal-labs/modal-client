@@ -682,7 +682,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         self._track_function_invocation()
         return await _Invocation.create(self._object_id, args, kwargs, self._client)
 
-    def call(self, *args, **kwargs) -> Union[Awaitable[Any], AsyncGenerator[Any, Any]]:  # TODO: Generics/TypeVars
+    def call(self, *args, **kwargs) -> Awaitable[Any]:  # TODO: Generics/TypeVars
         """
         Calls the function remotely, executing it with the given arguments and returning the execution's result.
         """
@@ -692,7 +692,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
                 f"Invoke this function via its web url '{self._web_url}' or call it locally: {self._function_name}()."
             )
         if self._is_generator:
-            return self._call_generator(args, kwargs)
+            return self._call_generator(args, kwargs)  # type: ignore
         else:
             return self._call_function(args, kwargs)
 
