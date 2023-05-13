@@ -351,6 +351,7 @@ class _Stub:
             *self._mounts,
         ]
         for function_handle in self.registered_functions.values():
+            # TODO(elias): This is quite ugly and should be refactored once we merge Function/FunctionHandle
             function = self[function_handle._info.get_tag()]
             all_mounts.extend(function._all_mounts)
 
