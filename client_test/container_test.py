@@ -17,7 +17,7 @@ from modal._container_entrypoint import UserException, main
 # from modal_test_support import SLEEP_DELAY
 from modal._serialization import deserialize, serialize
 from modal import Client
-from modal.exception import InvalidError
+from modal.exception import DeprecationError, InvalidError
 from modal.stub import _Stub
 from modal_proto import api_pb2
 from .helpers import deploy_stub_externally
@@ -235,7 +235,8 @@ def test_startup_failure(unix_servicer, event_loop):
 
 @skip_windows_unix_socket
 def test_class_scoped_function(unix_servicer, event_loop):
-    client, items = _run_container(unix_servicer, "modal_test_support.functions", "Cube.f")
+    with pytest.warns(DeprecationError):
+        client, items = _run_container(unix_servicer, "modal_test_support.functions", "Cube.f")
     assert len(items) == 1
     assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     assert items[0].result.data == serialize(42**3)
@@ -247,7 +248,8 @@ def test_class_scoped_function(unix_servicer, event_loop):
 
 @skip_windows_unix_socket
 def test_class_scoped_function_async(unix_servicer, event_loop):
-    client, items = _run_container(unix_servicer, "modal_test_support.functions", "CubeAsync.f")
+    with pytest.warns(DeprecationError):
+        client, items = _run_container(unix_servicer, "modal_test_support.functions", "CubeAsync.f")
     assert len(items) == 1
     assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     assert items[0].result.data == serialize(42**3)
@@ -331,13 +333,14 @@ def test_webhook_old(unix_servicer, event_loop):
 @skip_windows_unix_socket
 def test_webhook_lifecycle(unix_servicer, event_loop):
     inputs = _get_web_inputs()
-    client, items = _run_container(
-        unix_servicer,
-        "modal_test_support.functions",
-        "WebhookLifecycleClass.webhook",
-        inputs=inputs,
-        webhook_type=api_pb2.WEBHOOK_TYPE_FUNCTION,
-    )
+    with pytest.warns(DeprecationError):
+        client, items = _run_container(
+            unix_servicer,
+            "modal_test_support.functions",
+            "WebhookLifecycleClass.webhook",
+            inputs=inputs,
+            webhook_type=api_pb2.WEBHOOK_TYPE_FUNCTION,
+        )
 
     assert len(items) == 3
     assert items[1].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
