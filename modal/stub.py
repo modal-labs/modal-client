@@ -14,7 +14,7 @@ from modal._types import typechecked
 from modal_proto import api_pb2
 
 from modal_utils.async_utils import synchronize_apis, synchronizer
-from modal_utils.decorator_utils import decorator_with_options
+from modal_utils.decorator_utils import decorator_with_options_unsupported
 from .retries import Retries
 
 from ._function_utils import FunctionInfo
@@ -417,7 +417,7 @@ class _Stub:
         """Names of web endpoint (ie. webhook) functions registered on the stub."""
         return self._web_endpoints
 
-    @decorator_with_options
+    @decorator_with_options_unsupported
     def local_entrypoint(self, raw_f=None, name: Optional[str] = None):
         """Decorate a function to be used as a CLI entrypoint for a Modal App.
 
@@ -470,69 +470,7 @@ class _Stub:
         entrypoint = self._local_entrypoints[tag] = LocalEntrypoint(raw_f, self)
         return entrypoint
 
-    @typing.overload
-    def function(
-        self,
-        f: None = None,  # The decorated function
-        *,
-        image: Optional[_Image] = None,  # The image to run as the container for the function
-        schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
-        secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
-        secrets: Sequence[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
-        gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
-        serialized: bool = False,  # Whether to send the function over using cloudpickle.
-        mounts: Sequence[_Mount] = (),
-        shared_volumes: Dict[Union[str, os.PathLike], _SharedVolume] = {},
-        allow_cross_region_volumes: bool = False,  # Whether using shared volumes from other regions is allowed.
-        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
-        memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
-        proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
-        retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
-        concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
-        container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
-        timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
-        interactive: bool = False,  # Whether to run the function in interactive mode.
-        keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
-        name: Optional[str] = None,  # Sets the Modal name of the function within the stub
-        is_generator: Optional[
-            bool
-        ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
-        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
-    ) -> Callable[[Union[_PartialFunction, Callable[..., Any]]], _FunctionHandle]:
-        ...
-
-    @typing.overload
-    def function(
-        self,
-        f: Union[_PartialFunction, Callable[..., Any]],  # The decorated function
-        *,
-        image: Optional[_Image] = None,  # The image to run as the container for the function
-        schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
-        secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
-        secrets: Sequence[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
-        gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
-        serialized: bool = False,  # Whether to send the function over using cloudpickle.
-        mounts: Sequence[_Mount] = (),
-        shared_volumes: Dict[Union[str, os.PathLike], _SharedVolume] = {},
-        allow_cross_region_volumes: bool = False,  # Whether using shared volumes from other regions is allowed.
-        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
-        memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
-        proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
-        retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
-        concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
-        container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
-        timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
-        interactive: bool = False,  # Whether to run the function in interactive mode.
-        keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
-        name: Optional[str] = None,  # Sets the Modal name of the function within the stub
-        is_generator: Optional[
-            bool
-        ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
-        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
-    ) -> _FunctionHandle:
-        ...
-
-    @decorator_with_options
+    @decorator_with_options_unsupported
     @typechecked
     def function(
         self,
@@ -717,7 +655,7 @@ class _Stub:
         deprecation_warning(date(2023, 4, 18), self.wsgi_app.__doc__)
         return _wsgi_app(label, wait_for_response)
 
-    @decorator_with_options
+    @decorator_with_options_unsupported
     @typechecked
     def webhook(
         self,
@@ -741,9 +679,9 @@ class _Stub:
             self.webhook.__doc__,
         )
         web_endpoint = _web_endpoint(method=method, label=label, wait_for_response=wait_for_response)(raw_f)
-        return self.function(web_endpoint, **function_args)
+        return self.function(**function_args)(web_endpoint)
 
-    @decorator_with_options
+    @decorator_with_options_unsupported
     @typechecked
     def asgi(
         self,
@@ -766,9 +704,9 @@ class _Stub:
             self.asgi.__doc__,
         )
         web_endpoint = _asgi_app(label=label, wait_for_response=wait_for_response)(raw_f)
-        return self.function(web_endpoint, **function_args)
+        return self.function(**function_args)(web_endpoint)
 
-    @decorator_with_options
+    @decorator_with_options_unsupported
     def wsgi(
         self,
         raw_f,
@@ -789,7 +727,7 @@ class _Stub:
             self.wsgi.__doc__,
         )
         web_endpoint = _wsgi_app(label=label, wait_for_response=wait_for_response)(raw_f)
-        return self.function(web_endpoint, **function_args)
+        return self.function(**function_args)(web_endpoint)
 
     async def interactive_shell(self, cmd=None, image=None, **kwargs):
         """`stub.interactive_shell` is deprecated. Use the `modal shell` command instead.

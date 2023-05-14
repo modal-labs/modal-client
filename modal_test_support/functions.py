@@ -117,7 +117,7 @@ def webhook(arg="world"):
 
 with pytest.warns(DeprecationError):
 
-    @stub.webhook
+    @stub.webhook()
     def webhook_old(arg="world"):
         return {"hello": arg}
 
