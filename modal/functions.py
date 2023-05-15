@@ -589,12 +589,14 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         Takes one iterator argument per argument in the function being mapped over.
 
         Example:
-        ```python notest
+        ```python
         @stub.function()
         def my_func(a):
             return a ** 2
 
-        assert list(my_func.map([1, 2, 3, 4])) == [1, 4, 9, 16]
+        @stub.local_entrypoint()
+        def main():
+            assert list(my_func.map([1, 2, 3, 4])) == [1, 4, 9, 16]
         ```
 
         If applied to a `stub.function`, `map()` returns one result per input and the output order
@@ -606,15 +608,17 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         as a "flat map".
 
         `return_exceptions` can be used to treat exceptions as successful results:
-        ```python notest
+        ```python
         @stub.function()
         def my_func(a):
             if a == 2:
                 raise Exception("ohno")
             return a ** 2
 
-        # [0, 1, UserCodeException(Exception('ohno'))]
-        print(list(my_func.map(range(3), return_exceptions=True)))
+        @stub.local_entrypoint()
+        def main():
+            # [0, 1, UserCodeException(Exception('ohno'))]
+            print(list(my_func.map(range(3), return_exceptions=True)))
         ```
         """
         if order_outputs is None:
@@ -642,12 +646,14 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         Assumes every input is a sequence (e.g. a tuple).
 
         Example:
-        ```python notest
+        ```python
         @stub.function()
         def my_func(a, b):
             return a + b
 
-        assert list(my_func.starmap([(1, 2), (3, 4)])) == [3, 7]
+        @stub.local_entrypoint()
+        def main():
+            assert list(my_func.starmap([(1, 2), (3, 4)])) == [3, 7]
         ```
         """
         if order_outputs is None:
