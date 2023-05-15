@@ -731,6 +731,7 @@ message ImageJoinStreamingResponse {
   GenericResult result = 1;
   repeated TaskLogs task_logs = 2;
   string entry_id = 3;
+  bool eof = 4;
 }
 
 message MountBuildRequest {
@@ -979,6 +980,7 @@ message TaskLogsBatch {
   string function_id = 11;
   string input_id = 12;
   string image_id = 13;  // Used for image logs
+  bool eof = 14;
 }
 
 message TaskResultRequest {
