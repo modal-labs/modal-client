@@ -46,7 +46,7 @@ from .exception import ExecutionError, InvalidError, RemoteError, deprecation_er
 from .exception import TimeoutError as _TimeoutError
 from .gpu import GPU_T, parse_gpu_config, display_gpu_config
 from .image import _Image
-from .mount import _Mount
+from .mount import _Mount, _get_client_mount
 from .object import _Handle, _Provider
 from .proxy import _Proxy
 from .retries import Retries
@@ -471,6 +471,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
     _info: Optional[FunctionInfo]
     _stub: Optional["modal.stub._Stub"]
     _is_remote_cls_method: bool = False
+    _function_name: Optional[str]
 
     def _initialize_from_empty(self):
         self._progress = None
@@ -800,7 +801,6 @@ class _Function(_Provider[_FunctionHandle]):
         is_generator=False,
         gpu: GPU_T = None,
         # TODO: maybe break this out into a separate decorator for notebooks.
-        base_mounts: Collection[_Mount] = (),
         mounts: Collection[_Mount] = (),
         shared_volumes: Dict[Union[str, os.PathLike], _SharedVolume] = {},
         allow_cross_region_volumes: bool = False,
@@ -827,7 +827,12 @@ class _Function(_Provider[_FunctionHandle]):
                 raise InvalidError(
                     f"Function {raw_f} has a schedule, so it needs to support calling it with no arguments"
                 )
-        # assert not synchronizer.is_synchronized(image)
+
+        all_mounts = [
+            _get_client_mount(),  # client
+            *info.get_mounts().values(),  # implicit mounts
+            *mounts,  # explicit mounts
+        ]
 
         if secret:
             secrets = [secret, *secrets]
@@ -846,6 +851,8 @@ class _Function(_Provider[_FunctionHandle]):
             raise InvalidError(
                 f"Function {raw_f} retries must be an integer or instance of modal.Retries. Found: {type(retries)}"
             )
+        tag = info.get_tag()
+        gpu_config = parse_gpu_config(gpu)
 
         if proxy:
             # HACK: remove this once we stop using ssh tunnels for this.
@@ -863,9 +870,6 @@ class _Function(_Provider[_FunctionHandle]):
                 date(2023, 3, 3),
                 "Setting `keep_warm=True` is deprecated. Pass an explicit warm pool size instead, e.g. `keep_warm=2`.",
             )
-
-        tag = info.get_tag()
-        gpu_config = parse_gpu_config(gpu)
 
         if cloud:
             cloud_provider = parse_cloud_provider(cloud)
@@ -926,7 +930,7 @@ class _Function(_Provider[_FunctionHandle]):
                 secret_ids.append(secret_id)
 
             mount_ids = []
-            for mount in [*base_mounts, *mounts]:
+            for mount in all_mounts:
                 mount_ids.append((await resolver.load(mount)).object_id)
 
             if not isinstance(shared_volumes, dict):
@@ -1059,6 +1063,7 @@ class _Function(_Provider[_FunctionHandle]):
         obj._secrets = secrets
         obj._shared_volumes = shared_volumes
         obj._tag = tag
+        obj._all_mounts = all_mounts  # needed for modal.serve file watching
         return obj
 
     def get_panel_items(self) -> List[str]:
