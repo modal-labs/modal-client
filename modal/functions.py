@@ -389,12 +389,13 @@ async def _map_invocation(
 
                 if is_generator:
                     # Mark this input completed if the generator completed successfully, or it crashed (exception, timeout, etc).
-                    if (
-                        item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE
-                        or item.result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-                    ):
+                    if item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
                         completed_outputs.add(item.input_id)
                         num_outputs += 1
+                    elif item.result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
+                        completed_outputs.add(item.input_id)
+                        num_outputs += 1
+                        yield item
                     else:
                         assert pending_outputs[item.input_id] == item.gen_index
                         pending_outputs[item.input_id] += 1
