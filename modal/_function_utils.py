@@ -43,8 +43,6 @@ class FunctionInfoType(Enum):
 class LocalFunctionError(InvalidError):
     """Raised if a function declared in a non-global scope is used in an impermissible way"""
 
-    pass
-
 
 def package_mount_condition(filename):
     if filename.startswith(sys.prefix):
@@ -96,15 +94,15 @@ class FunctionInfo:
             # This is a "real" module, eg. examples.logs.f
             # Get the package path
             # Note: __import__ always returns the top-level package.
-            module_file = os.path.abspath(module.__file__)
+            self.file = os.path.abspath(module.__file__)
             package_paths = set([os.path.abspath(p) for p in __import__(module.__package__).__path__])
             # There might be multiple package paths in some weird cases
             base_dirs = [
-                base_dir for base_dir in package_paths if os.path.commonpath((base_dir, module_file)) == base_dir
+                base_dir for base_dir in package_paths if os.path.commonpath((base_dir, self.file)) == base_dir
             ]
 
             if not base_dirs:
-                logger.info(f"Module files: {module_file}")
+                logger.info(f"Module files: {self.file}")
                 logger.info(f"Package paths: {package_paths}")
                 logger.info(f"Base dirs: {base_dirs}")
                 raise Exception("Wasn't able to find the package directory!")
@@ -155,6 +153,16 @@ class FunctionInfo:
         return serialized_bytes
 
     def get_mounts(self) -> Dict[str, _Mount]:
+        """
+        Includes:
+        * Implicit mount of the function itself (the module or package that the function is part of)
+        * "Auto mounted" mounts, i.e. all mounts in sys.modules that are *not* installed in site-packages.
+            These are typically local modules which are imported but not part of the running package
+
+        Does not include:
+        * Client mount
+        * Explicit mounts added to the stub or function declaration
+        """
         if self.type == FunctionInfoType.NOTEBOOK:
             # Don't auto-mount anything for notebooks.
             return {}
@@ -165,14 +173,14 @@ class FunctionInfo:
             mounts = {}
 
         # make sure the function's own entrypoint is included:
-        if self.type == FunctionInfoType.PACKAGE:
+        if self.type == FunctionInfoType.PACKAGE and config.get("automount"):
             mounts[self.base_dir] = _Mount.from_local_dir(
                 self.base_dir,
                 remote_path=self.remote_dir,
                 recursive=True,
                 condition=package_mount_condition,
             )
-        elif self.type == FunctionInfoType.FILE:
+        elif self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
             remote_path = ROOT_DIR / Path(self.file).name
             mounts[self.file] = _Mount.from_local_file(
                 self.file,
