@@ -351,7 +351,7 @@ def _create_client_mount():
     )
 
 
-_, aio_create_client_mount = synchronize_apis(_create_client_mount)
+create_client_mount, aio_create_client_mount = synchronize_apis(_create_client_mount)
 
 
 def _get_client_mount():
