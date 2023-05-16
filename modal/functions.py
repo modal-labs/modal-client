@@ -649,7 +649,9 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
             pass
 
     @warn_if_generator_is_not_consumed
-    async def starmap(self, input_iterator, kwargs={}, order_outputs=None, return_exceptions=False):
+    async def starmap(
+        self, input_iterator, kwargs={}, order_outputs=None, return_exceptions=False
+    ) -> AsyncGenerator[typing.Any, None]:
         """Like `map` but spreads arguments over multiple function arguments
 
         Assumes every input is a sequence (e.g. a tuple).
