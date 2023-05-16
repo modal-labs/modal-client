@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
-import modal.aio
+import modal
 
-stub = modal.aio.AioStub()
+stub = modal.Stub()
 
 
 @stub.function()

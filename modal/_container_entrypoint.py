@@ -13,7 +13,7 @@ import sys
 import time
 import traceback
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Callable, Optional
+from typing import Any, AsyncGenerator, AsyncIterator, Callable, Optional
 
 from grpclib import Status
 
@@ -292,7 +292,7 @@ class _FunctionIOManager:
         return serialized_tb, tb_line_cache
 
     @contextlib.asynccontextmanager
-    async def handle_user_exception(self):
+    async def handle_user_exception(self) -> AsyncGenerator[None, None]:
         """Sets the task as failed in a way where it's not retried
 
         Only used for importing user code atm
@@ -323,7 +323,7 @@ class _FunctionIOManager:
             raise UserException()
 
     @contextlib.asynccontextmanager
-    async def handle_input_exception(self, input_id, output_index: SequenceNumber):
+    async def handle_input_exception(self, input_id, output_index: SequenceNumber) -> AsyncGenerator[None, None]:
         try:
             with trace("input"):
                 set_span_tag("input_id", input_id)
@@ -378,7 +378,7 @@ class _FunctionIOManager:
 
 
 # just to mark the class as synchronized, we don't care about the interfaces
-FunctionIOManager, AioFunctionIOManager = synchronize_apis(_FunctionIOManager)
+FunctionIOManager, _ = synchronize_apis(_FunctionIOManager)
 
 
 def call_function_sync(
@@ -427,7 +427,7 @@ def call_function_sync(
 
 @wrap()
 async def call_function_async(
-    aio_function_io_manager,  #: AioFunctionIOManager,  # TODO: this one too
+    function_io_manager,  #: FunctionIOManager,  # TODO: this one too
     obj: Optional[Any],
     fun: Callable,
     is_generator: bool,
@@ -436,16 +436,16 @@ async def call_function_async(
     if obj is not None:
         if hasattr(obj, "__aenter__"):
             # Call a user-defined method
-            async with aio_function_io_manager.handle_user_exception():
+            async with function_io_manager.handle_user_exception.aio():
                 await obj.__aenter__()
         elif hasattr(obj, "__enter__"):
-            async with aio_function_io_manager.handle_user_exception():
+            async with function_io_manager.handle_user_exception.aio():
                 obj.__enter__()
 
     try:
-        async for input_id, args, kwargs in aio_function_io_manager.run_inputs_outputs():
+        async for input_id, args, kwargs in function_io_manager.run_inputs_outputs.aio():
             output_index = SequenceNumber(0)  # mutable number we can increase from the generator loop
-            async with aio_function_io_manager.handle_input_exception(input_id, output_index):
+            async with function_io_manager.handle_input_exception.aio(input_id, output_index):
                 res = fun(*args, **kwargs)
 
                 # TODO(erikbern): any exception below shouldn't be considered a user exception
@@ -453,9 +453,9 @@ async def call_function_async(
                     if not inspect.isasyncgen(res):
                         raise InvalidError(f"Async generator function returned value of type {type(res)}")
                     async for value in res:
-                        await aio_function_io_manager.enqueue_generator_value(input_id, output_index.value, value)
+                        await function_io_manager.enqueue_generator_value.aio(input_id, output_index.value, value)
                         output_index.increase()
-                    await aio_function_io_manager.enqueue_generator_eof(input_id, output_index.value)
+                    await function_io_manager.enqueue_generator_eof.aio(input_id, output_index.value)
                 else:
                     if not inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
                         raise InvalidError(
@@ -463,14 +463,14 @@ async def call_function_async(
                             " You might need to use @stub.function(..., is_generator=True)."
                         )
                     value = await res
-                    await aio_function_io_manager.enqueue_output(input_id, output_index.value, value)
+                    await function_io_manager.enqueue_output.aio(input_id, output_index.value, value)
     finally:
         if obj is not None:
             if hasattr(obj, "__aexit__"):
-                async with aio_function_io_manager.handle_user_exception():
+                async with function_io_manager.handle_user_exception.aio():
                     await obj.__aexit__(*sys.exc_info())
             elif hasattr(obj, "__exit__"):
-                async with aio_function_io_manager.handle_user_exception():
+                async with function_io_manager.handle_user_exception.aio():
                     obj.__exit__(*sys.exc_info())
 
 
@@ -562,7 +562,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     # This is a bit weird but we need both the blocking and async versions of FunctionIOManager.
     # At some point, we should fix that by having built-in support for running "user code"
     _function_io_manager = _FunctionIOManager(container_args, client)
-    function_io_manager, aio_function_io_manager = synchronize_apis(_function_io_manager)
+    function_io_manager, _ = synchronize_apis(_function_io_manager)
 
     container_app = function_io_manager.initialize_app()
 
@@ -591,7 +591,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             call_function_sync(function_io_manager, imp_fun.obj, imp_fun.fun, imp_fun.is_generator)
         else:
             run_with_signal_handler(
-                call_function_async(aio_function_io_manager, imp_fun.obj, imp_fun.fun, imp_fun.is_generator)
+                call_function_async(function_io_manager, imp_fun.obj, imp_fun.fun, imp_fun.is_generator)
             )
 
 
