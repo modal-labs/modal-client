@@ -33,7 +33,7 @@ def make_remote_cls_constructors(
         for name, param in params.arguments.items():
             try:
                 pickle.dumps(param)
-            except pickle.PicklingError:
+            except Exception:
                 raise ValueError(
                     f"Only pickle-able types are allowed in remote class constructors. "
                     f"Found {name}={param} of type {type(param)}."
