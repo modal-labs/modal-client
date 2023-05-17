@@ -508,7 +508,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         self._web_url = handle_metadata.web_url
         self._function_name = handle_metadata.function_name
 
-    async def make_bound_function_handle(self, params: inspect.BoundArguments) -> "_FunctionHandle":
+    async def _make_bound_function_handle(self, params: inspect.BoundArguments) -> "_FunctionHandle":
         assert self.is_hydrated(), "Cannot make bound function handle from unhydrated handle."
 
         if len(params.args) + len(params.kwargs) == 0:
@@ -715,10 +715,11 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
             return self._call_function(args, kwargs)
 
     @synchronizer.nowrap
-    def __call__(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
-        unwrapped_self = synchronizer._translate_in(self)
+    def __call__(wrapped_self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
+        unwrapped_self = synchronizer._translate_in(wrapped_self)
         if unwrapped_self._is_remote_cls_method:
-            return unwrapped_self.call(*args, **kwargs)
+            # note this uses the wrapped self instead, since this is a remote version of the function
+            return wrapped_self.call(*args, **kwargs)
 
         if not unwrapped_self._info:
             msg = (
