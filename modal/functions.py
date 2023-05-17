@@ -24,6 +24,7 @@ from modal_utils.async_utils import (
     queue_batch_iterator,
     synchronize_apis,
     warn_if_generator_is_not_consumed,
+    synchronizer,
 )
 from modal_utils.grpc_utils import retry_transient_errors
 
@@ -713,22 +714,24 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         else:
             return self._call_function(args, kwargs)
 
+    @synchronizer.nowrap
     def __call__(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
-        if self._is_remote_cls_method:
-            return self.call(*args, **kwargs)
+        unwrapped_self = synchronizer._translate_in(self)
+        if unwrapped_self._is_remote_cls_method:
+            return unwrapped_self.call(*args, **kwargs)
 
-        if not self._info:
+        if not unwrapped_self._info:
             msg = (
                 "The definition for this function is missing so it is not possible to invoke it locally. "
                 "If this function was retrieved via `Function.lookup` you need to use `.call()`."
             )
             raise AttributeError(msg)
 
-        if self._self_obj:
-            # This is a method on a class, so bind the self to the function
-            fun = self._info.raw_f.__get__(self._self_obj)
+        if unwrapped_self._self_obj:
+            # This is a method on a class, so bind the unwrapped_self to the function
+            fun = unwrapped_self._info.raw_f.__get__(unwrapped_self._self_obj)
         else:
-            fun = self._info.raw_f
+            fun = unwrapped_self._info.raw_f
         return fun(*args, **kwargs)
 
     async def spawn(self, *args, **kwargs) -> Optional["_FunctionCall"]:

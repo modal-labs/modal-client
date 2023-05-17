@@ -23,6 +23,11 @@ def foo(p, q):
     return p + q + 11  # not actually used in test (servicer returns sum of square of all args)
 
 
+@stub.function()
+async def async_foo(p, q):
+    return p + q + 12
+
+
 def dummy():
     pass  # not actually used in test (servicer returns sum of square of all args)
 
@@ -34,11 +39,17 @@ def test_run_function(client, servicer):
         assert len(servicer.cleared_function_calls) == 1
 
 
-def test_call_function_locally(client, servicer):
+@pytest.mark.asyncio
+async def test_call_function_locally(client, servicer):
     assert foo(22, 44) == 77  # call it locally
+    assert await async_foo(22, 44) == 78
+
     with stub.run(client=client):
         assert foo.call(2, 4) == 20
         assert foo(22, 55) == 88
+        assert await async_foo(22, 44) == 78
+        assert async_foo.call(2, 4) == 20
+        assert await async_foo.call.aio(2, 4) == 20
 
 
 @pytest.mark.parametrize("slow_put_inputs", [False, True])
