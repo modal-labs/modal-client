@@ -829,6 +829,9 @@ enum CloudProvider {
   CLOUD_PROVIDER_GCP = 2;
   CLOUD_PROVIDER_AUTO = 3;
   CLOUD_PROVIDER_OCI = 4;
+  // Hopefully temporary until we have a better plan for location specification.
+  CLOUD_PROVIDER_GCP_OCI = 5;
+  CLOUD_PROVIDER_AWS_OCI = 6;
 }
 
 message Schedule {
