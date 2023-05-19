@@ -9,7 +9,20 @@ import typing
 import warnings
 from dataclasses import dataclass
 from pathlib import PurePath
-from typing import Any, AsyncGenerator, AsyncIterable, Awaitable, Callable, Collection, Dict, List, Optional, Set, Union
+from typing import (
+    Any,
+    AsyncGenerator,
+    AsyncIterable,
+    Awaitable,
+    Callable,
+    Collection,
+    Dict,
+    List,
+    Optional,
+    Set,
+    Union,
+    Iterable,
+)
 
 from datetime import date
 from aiostream import pipe, stream
@@ -507,17 +520,18 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         self._web_url = handle_metadata.web_url
         self._function_name = handle_metadata.function_name
 
-    async def make_bound_function_handle(self, params: inspect.BoundArguments) -> "_FunctionHandle":
+    async def make_bound_function_handle(self, *args: Iterable[Any], **kwargs: Dict[str, Any]) -> "_FunctionHandle":
+        """mdmd:hidden"""
         assert self.is_hydrated(), "Cannot make bound function handle from unhydrated handle."
 
-        if len(params.args) + len(params.kwargs) == 0:
+        if len(args) + len(kwargs) == 0:
             # short circuit if no args, don't need a special object.
             return self
 
         new_handle = _FunctionHandle._new()
         new_handle._initialize_from_local(self._stub, self._info)
 
-        serialized_params = pickle.dumps((params.args, params.kwargs))
+        serialized_params = pickle.dumps((args, kwargs))
         req = api_pb2.FunctionBindParamsRequest(
             function_id=self._object_id,
             serialized_params=serialized_params,
