@@ -520,7 +520,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         self._web_url = handle_metadata.web_url
         self._function_name = handle_metadata.function_name
 
-    async def make_bound_function_handle(self, args: Iterable[Any], kwargs: Dict[str, Any]) -> "_FunctionHandle":
+    async def make_bound_function_handle(self, *args: Iterable[Any], **kwargs: Dict[str, Any]) -> "_FunctionHandle":
         """mdmd:hidden"""
         assert self.is_hydrated(), "Cannot make bound function handle from unhydrated handle."
 
