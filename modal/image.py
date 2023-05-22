@@ -18,7 +18,7 @@ from ._function_utils import FunctionInfo
 from ._resolver import Resolver
 from .app import is_local
 from .config import config, logger
-from .exception import InvalidError, NotFoundError, RemoteError, deprecation_error
+from .exception import InvalidError, NotFoundError, RemoteError, deprecation_error, deprecation_warning
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount
 from .object import _Handle, _Provider
@@ -314,7 +314,7 @@ class _Image(_Provider[_ImageHandle]):
         return _Image._from_args(base_images={"base": self}, **kwargs)
 
     @typechecked
-    def copy(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
+    def copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
         """Copy the entire contents of a `modal.Mount` into an image.
         Useful when files only available locally are required during the image
         build process.
@@ -326,7 +326,7 @@ class _Image(_Provider[_ImageHandle]):
         # place all static images in root of mount
         mount = modal.Mount.from_local_dir(static_images_dir, remote_path="/")
         # place mount's contents into /static directory of image.
-        image = modal.Image.debian_slim().copy(mount, remote_path="/static")
+        image = modal.Image.debian_slim().copy_mount(mount, remote_path="/static")
         ```
         """
         if not isinstance(mount, _Mount):
@@ -335,6 +335,28 @@ class _Image(_Provider[_ImageHandle]):
             dockerfile_commands=["FROM base", f"COPY . {remote_path}"],  # copy everything from the supplied mount
             context_mount=mount,
         )
+
+    def copy(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
+        deprecation_warning(
+            date(2023, 5, 21),
+            "`Image.copy` is deprecated in favor of `Image.copy_mount`, `Image.copy_local_file`,"
+            " and `Image.copy_local_dir`.",
+        )
+        return self.copy_mount(mount, remote_path)
+
+    def copy_local_file(self, local_path: Union[str, Path], remote_path: Union[str, Path] = ".") -> "_Image":
+        """Copy a file into the image as a part of building it.
+
+        This works in a similar way to `COPY` in a `Dockerfile`."""
+        mount = _Mount.from_local_file(local_path, remote_path="/")
+        return self.copy_mount(mount, remote_path)
+
+    def copy_local_dir(self, local_path: Union[str, Path], remote_path: Union[str, Path] = ".") -> "_Image":
+        """Copy a directory into the image as a part of building the image.
+
+        This works in a similar way to `COPY` in a `Dockerfile`."""
+        mount = _Mount.from_local_dir(local_path, remote_path="/")
+        return self.copy_mount(mount, remote_path)
 
     @typechecked
     def pip_install(
