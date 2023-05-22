@@ -50,7 +50,7 @@ __all__ = [
 deprecation_warning(
     datetime.date(2023, 5, 12),
     "The `modal.aio` module and `Aio*` classes will soon be deprecated.\n"
-    "For calling functions asyncronously, use `await some_function.aio(...)`\n"
+    "For calling functions asynchronously, use `await some_function.aio(...)`\n"
     "Instead of separate classes for async usage, the interface now only changes how to call the methods."
     "Where you would have previously used `await AioDict.lookup(...)` you now use "
     "`await Dict.lookup.aio(...)` instead.\nObjects that are themselves generators or context managers "
