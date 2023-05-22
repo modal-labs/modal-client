@@ -75,11 +75,11 @@ def test_image_kwargs_validation(servicer, client):
         )
 
     stub = Stub()
-    stub["image"] = Image.debian_slim().add_local_dir("/", remote_path="/dummy")
-    stub["image"] = Image.debian_slim().add_mount(Mount.from_name("foo"), remote_path="/dummy")
+    stub["image"] = Image.debian_slim().copy_local_dir("/", remote_path="/dummy")
+    stub["image"] = Image.debian_slim().copy_mount(Mount.from_name("foo"), remote_path="/dummy")
     with pytest.raises(InvalidError):
         # Secret is not a valid Mount
-        stub["image"] = Image.debian_slim().add_mount(Secret.from_dict({"xyz": "123"}), remote_path="/dummy")  # type: ignore
+        stub["image"] = Image.debian_slim().copy_mount(Secret.from_dict({"xyz": "123"}), remote_path="/dummy")  # type: ignore
 
 
 def test_wrong_type(servicer, client):
@@ -332,7 +332,7 @@ def test_image_build_with_context_mount(client, servicer, tmp_path):
     dockerfile.write("COPY . /dummy\n")
     dockerfile.close()
 
-    stub["copy"] = Image.debian_slim().add_local_dir(tmp_path, remote_path="/dummy")
+    stub["copy"] = Image.debian_slim().copy_local_dir(tmp_path, remote_path="/dummy")
     stub["from_dockerfile"] = Image.debian_slim().dockerfile_commands(["COPY . /dummy"], context_mount=data_mount)
     stub["dockerfile_commands"] = Image.debian_slim().from_dockerfile(dockerfile.name, context_mount=data_mount)
 

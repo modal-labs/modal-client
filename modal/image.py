@@ -314,7 +314,7 @@ class _Image(_Provider[_ImageHandle]):
         return _Image._from_args(base_images={"base": self}, **kwargs)
 
     @typechecked
-    def add_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
+    def copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
         """Copy the entire contents of a `modal.Mount` into an image.
         Useful when files only available locally are required during the image
         build process.
@@ -326,7 +326,7 @@ class _Image(_Provider[_ImageHandle]):
         # place all static images in root of mount
         mount = modal.Mount.from_local_dir(static_images_dir, remote_path="/")
         # place mount's contents into /static directory of image.
-        image = modal.Image.debian_slim().add_mount(mount, remote_path="/static")
+        image = modal.Image.debian_slim().copy_mount(mount, remote_path="/static")
         ```
         """
         if not isinstance(mount, _Mount):
@@ -339,20 +339,20 @@ class _Image(_Provider[_ImageHandle]):
     def copy(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
         deprecation_warning(
             date(2023, 5, 21),
-            "`Image.copy` is deprecated in favor of `Image.add_mount`, `Image.add_local_file`,"
-            " and `Image.add_local_dir`.",
+            "`Image.copy` is deprecated in favor of `Image.copy_mount`, `Image.copy_local_file`,"
+            " and `Image.copy_local_dir`.",
         )
-        return self.add_mount(mount, remote_path)
+        return self.copy_mount(mount, remote_path)
 
-    def add_local_file(self, local_path: Union[str, Path], remote_path: Union[str, Path]) -> "_Image":
+    def copy_local_file(self, local_path: Union[str, Path], remote_path: Union[str, Path]) -> "_Image":
         # TODO(erikbern): docstring
         mount = _Mount.from_local_file(local_path, remote_path="/")
-        return self.add_mount(mount, remote_path)
+        return self.copy_mount(mount, remote_path)
 
-    def add_local_dir(self, local_path: Union[str, Path], remote_path: Union[str, Path]) -> "_Image":
+    def copy_local_dir(self, local_path: Union[str, Path], remote_path: Union[str, Path]) -> "_Image":
         mount = _Mount.from_local_dir(local_path, remote_path="/")
         # TODO(erikbern): docstring
-        return self.add_mount(mount, remote_path)
+        return self.copy_mount(mount, remote_path)
 
     @typechecked
     def pip_install(
