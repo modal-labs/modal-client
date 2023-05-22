@@ -51,6 +51,7 @@ def main(argv):
     }
 
     response = httpx.get(url, headers=headers)
+    response.raise_for_status()
     reviews = response.json()
     approvals = [r for r in reviews if r["state"] == "APPROVED"]
     if len(approvals) > 0:
