@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2023
 """
 Auto-approve hotfix pull requests.
 
