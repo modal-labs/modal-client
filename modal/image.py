@@ -344,14 +344,18 @@ class _Image(_Provider[_ImageHandle]):
         )
         return self.copy_mount(mount, remote_path)
 
-    def copy_local_file(self, local_path: Union[str, Path], remote_path: Union[str, Path]) -> "_Image":
-        # TODO(erikbern): docstring
+    def copy_local_file(self, local_path: Union[str, Path], remote_path: Union[str, Path] = ".") -> "_Image":
+        """Copy a file into the image as a part of building it.
+
+        This works in a similar way to `COPY` in a `Dockerfile`."""
         mount = _Mount.from_local_file(local_path, remote_path="/")
         return self.copy_mount(mount, remote_path)
 
-    def copy_local_dir(self, local_path: Union[str, Path], remote_path: Union[str, Path]) -> "_Image":
+    def copy_local_dir(self, local_path: Union[str, Path], remote_path: Union[str, Path] = ".") -> "_Image":
+        """Copy a directory into the image as a part of building the image.
+
+        This works in a similar way to `COPY` in a `Dockerfile`."""
         mount = _Mount.from_local_dir(local_path, remote_path="/")
-        # TODO(erikbern): docstring
         return self.copy_mount(mount, remote_path)
 
     @typechecked
