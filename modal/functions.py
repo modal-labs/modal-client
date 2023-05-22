@@ -859,7 +859,7 @@ class _Function(_Provider[_FunctionHandle]):
 
         all_mounts = [
             _get_client_mount(),  # client
-            *info.get_mounts().values(),  # implicit mounts
+            *stub._get_function_mounts_cached(info.get_mounts()),  # implicit mounts
             *mounts,  # explicit mounts
         ]
 
