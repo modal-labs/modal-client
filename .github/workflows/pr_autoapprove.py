@@ -18,7 +18,7 @@ import sys
 import httpx
 
 owner = "modal-labs"
-repo = "modal"
+repo = "modal-client"
 
 
 def main(argv):
