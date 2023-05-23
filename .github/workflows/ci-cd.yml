@@ -89,6 +89,7 @@ jobs:
 
   publish-client:
     name: Publish client package
+    if: github.actor != 'github-actions' # && github.ref == 'refs/heads/main'
     # if: github.ref == 'refs/heads/main'
     # needs: [client-test]
     runs-on: ubuntu-20.04
