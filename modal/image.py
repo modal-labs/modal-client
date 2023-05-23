@@ -367,6 +367,8 @@ class _Image(_Provider[_ImageHandle]):
         extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
         pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
         force_build: bool = False,
+        secrets: Sequence[_Secret] = [],
+        gpu: GPU_T = None,
     ) -> "_Image":
         """Install a list of Python packages using pip.
 
@@ -397,14 +399,20 @@ class _Image(_Provider[_ImageHandle]):
             # However removing it at this point would cause image hashes to change.
             # Maybe let's remove it later when/if client requirements change.
         ]
-
-        return self.extend(dockerfile_commands=dockerfile_commands, force_build=self.force_build or force_build)
+        gpu_config = parse_gpu_config(gpu)
+        return self.extend(
+            dockerfile_commands=dockerfile_commands,
+            force_build=self.force_build or force_build,
+            gpu_config=gpu_config,
+            secrets=secrets,
+        )
 
     @typechecked
     def pip_install_private_repos(
         self,
         *repositories: str,
         git_user: str,
+        gpu: GPU_T = None,
         secrets: Sequence[_Secret] = [],
         force_build: bool = False,
     ) -> "_Image":
@@ -476,9 +484,13 @@ class _Image(_Provider[_ImageHandle]):
 
         dockerfile_commands.extend(["RUN apt-get update && apt-get install -y git"])
         dockerfile_commands.extend([f"RUN python3 -m pip install {url}" for url in install_urls])
+
+        gpu_config = parse_gpu_config(gpu)
+
         return self.extend(
             dockerfile_commands=dockerfile_commands,
             secrets=secrets,
+            gpu_config=gpu_config,
             force_build=self.force_build or force_build,
         )
 
@@ -488,6 +500,9 @@ class _Image(_Provider[_ImageHandle]):
         requirements_txt: str,  # Path to a requirements.txt file.
         find_links: Optional[str] = None,
         force_build: bool = False,
+        *,
+        secrets: Sequence[_Secret] = [],
+        gpu: GPU_T = None,
     ) -> "_Image":
         """Install a list of Python packages from a `requirements.txt` file."""
 
@@ -506,6 +521,8 @@ class _Image(_Provider[_ImageHandle]):
             dockerfile_commands=dockerfile_commands,
             context_files=context_files,
             force_build=self.force_build or force_build,
+            gpu_config=parse_gpu_config(gpu),
+            secrets=secrets,
         )
 
     @typechecked
@@ -514,6 +531,9 @@ class _Image(_Provider[_ImageHandle]):
         pyproject_toml: str,
         optional_dependencies: List[str] = [],
         force_build: bool = False,
+        *,
+        secrets: Sequence[_Secret] = [],
+        gpu: GPU_T = None,
     ) -> "_Image":
         """Install dependencies specified by a `pyproject.toml` file.
 
@@ -539,7 +559,7 @@ class _Image(_Provider[_ImageHandle]):
                 if dep_group_name in optionals:
                     dependencies.extend(optionals[dep_group_name])
 
-        return self.pip_install(*dependencies, force_build=self.force_build or force_build)
+        return self.pip_install(*dependencies, force_build=self.force_build or force_build, secrets=secrets, gpu=gpu)
 
     @typechecked
     def poetry_install_from_file(
@@ -554,6 +574,9 @@ class _Image(_Provider[_ImageHandle]):
         with_: List[str] = [],
         without: List[str] = [],
         only: List[str] = [],
+        *,
+        secrets: Sequence[_Secret] = [],
+        gpu: GPU_T = None,
     ) -> "_Image":
         """Install poetry *dependencies* specified by a pyproject.toml file.
 
@@ -611,6 +634,8 @@ class _Image(_Provider[_ImageHandle]):
             dockerfile_commands=dockerfile_commands,
             context_files=context_files,
             force_build=self.force_build or force_build,
+            secrets=secrets,
+            gpu_config=parse_gpu_config(gpu),
         )
 
     @typechecked
@@ -729,6 +754,8 @@ class _Image(_Provider[_ImageHandle]):
         *packages: Union[str, List[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
         channels: List[str] = [],  # A list of Conda channels, eg. ["conda-forge", "nvidia"]
         force_build: bool = False,
+        secrets: Sequence[_Secret] = [],
+        gpu: GPU_T = None,
     ) -> "_Image":
         """Install a list of additional packages using conda. Note that in most cases, using `Image.micromamba()`
         is recommended over `Image.conda()`, as it leads to significantly faster image build times."""
@@ -746,13 +773,22 @@ class _Image(_Provider[_ImageHandle]):
             "&& conda clean --yes --index-cache --tarballs --tempfiles --logfiles",
         ]
 
-        return self.extend(dockerfile_commands=dockerfile_commands, force_build=self.force_build or force_build)
+        gpu_config = parse_gpu_config(gpu)
+        return self.extend(
+            dockerfile_commands=dockerfile_commands,
+            force_build=self.force_build or force_build,
+            secrets=secrets,
+            gpu_config=gpu_config,
+        )
 
     @typechecked
     def conda_update_from_environment(
         self,
         environment_yml: str,
         force_build: bool = False,
+        *,
+        secrets: Sequence[_Secret] = [],
+        gpu: GPU_T = None,
     ) -> "_Image":
         """Update conda environment using dependencies from a given environment.yml file."""
 
@@ -771,6 +807,8 @@ class _Image(_Provider[_ImageHandle]):
             dockerfile_commands=dockerfile_commands,
             context_files=context_files,
             force_build=self.force_build or force_build,
+            secrets=secrets,
+            gpu_config=parse_gpu_config(gpu),
         )
 
     @staticmethod
@@ -798,6 +836,8 @@ class _Image(_Provider[_ImageHandle]):
         *packages: Union[str, List[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
         channels: List[str] = [],  # A list of Conda channels, eg. ["conda-forge", "nvidia"]
         force_build: bool = False,
+        secrets: Sequence[_Secret] = [],
+        gpu: GPU_T = None,
     ) -> "_Image":
         """Install a list of additional packages using micromamba."""
 
@@ -813,7 +853,12 @@ class _Image(_Provider[_ImageHandle]):
             f"RUN micromamba install {package_args}{channel_args} --yes",
         ]
 
-        return self.extend(dockerfile_commands=dockerfile_commands, force_build=self.force_build or force_build)
+        return self.extend(
+            dockerfile_commands=dockerfile_commands,
+            force_build=self.force_build or force_build,
+            secrets=secrets,
+            gpu_config=parse_gpu_config(gpu),
+        )
 
     @staticmethod
     def _registry_setup_commands(
@@ -987,6 +1032,9 @@ class _Image(_Provider[_ImageHandle]):
             _Mount
         ] = None,  # modal.Mount with local files to supply as build context for COPY commands
         force_build: bool = False,
+        *,
+        secrets: Sequence[_Secret] = [],
+        gpu: GPU_T = None,
     ) -> "_Image":
         """Build a Modal image from a local Dockerfile.
 
@@ -1003,7 +1051,13 @@ class _Image(_Provider[_ImageHandle]):
             with open(path) as f:
                 return f.read().split("\n")
 
-        base_image = _Image._from_args(dockerfile_commands=base_dockerfile_commands, context_mount=context_mount)
+        gpu_config = parse_gpu_config(gpu)
+        base_image = _Image._from_args(
+            dockerfile_commands=base_dockerfile_commands,
+            context_mount=context_mount,
+            gpu_config=gpu_config,
+            secrets=secrets,
+        )
 
         requirements_path = _get_client_requirements_path()
 
@@ -1050,6 +1104,8 @@ class _Image(_Provider[_ImageHandle]):
         self,
         *packages: Union[str, List[str]],  # A list of packages, e.g. ["ssh", "libpq-dev"]
         force_build: bool = False,
+        secrets: Sequence[_Secret] = [],
+        gpu: GPU_T = None,
     ) -> "_Image":
         """Install a list of Debian packages using `apt`.
 
@@ -1071,7 +1127,12 @@ class _Image(_Provider[_ImageHandle]):
             f"RUN apt-get install -y {package_args}",
         ]
 
-        return self.extend(dockerfile_commands=dockerfile_commands, force_build=self.force_build or force_build)
+        return self.extend(
+            dockerfile_commands=dockerfile_commands,
+            force_build=self.force_build or force_build,
+            gpu_config=parse_gpu_config(gpu),
+            secrets=secrets,
+        )
 
     @typechecked
     def run_function(
