@@ -8,3 +8,8 @@ stub = modal.Stub()
 def hello():
     print("hello")
     return "hello"
+
+
+@stub.function()
+def other():
+    return "other"
