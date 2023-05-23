@@ -857,5 +857,13 @@ class _Stub:
                 else:
                     self._function_handles[tag]._hydrate(client, function_id, handle_metadata)
 
+    def _get_deduplicated_function_mounts(self, mounts: Dict[str, _Mount]):
+        cached_mounts = []
+        for root_path, mount in mounts.items():
+            if root_path not in self._function_mounts:
+                self._function_mounts[root_path] = mount
+            cached_mounts.append(self._function_mounts[root_path])
+        return cached_mounts
+
 
 Stub, AioStub = synchronize_apis(_Stub)

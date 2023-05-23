@@ -859,9 +859,13 @@ class _Function(_Provider[_FunctionHandle]):
 
         all_mounts = [
             _get_client_mount(),  # client
-            *info.get_mounts().values(),  # implicit mounts
             *mounts,  # explicit mounts
         ]
+        # TODO (elias): Clean up mount logic, this is quite messy:
+        if stub:
+            all_mounts.extend(stub._get_deduplicated_function_mounts(info.get_mounts()))  # implicit mounts
+        else:
+            all_mounts.extend(info.get_mounts().values())  # this would typically only happen for builder functions
 
         if secret:
             secrets = [secret, *secrets]
