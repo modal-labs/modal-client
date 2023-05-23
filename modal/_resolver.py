@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2023
+import asyncio
 import contextlib
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypeVar
 
@@ -52,6 +53,7 @@ class Resolver:
 
         self._output_mgr = output_mgr
         self._local_uuid_to_object = {}
+        self._local_uuid_to_future = {}
         self._tree = Tree(step_progress("Creating objects..."), guide_style="gray50")
 
         # Accessible by objects
@@ -77,26 +79,34 @@ class Resolver:
         if cached_obj is not None:
             # We already created this object before, shortcut this method
             return cached_obj
+        cached_future = self._local_uuid_to_future.get(obj.local_uuid)
 
-        created_obj = await obj._load(self, existing_object_id)
+        if not cached_future:
 
-        if existing_object_id is not None and created_obj.object_id != existing_object_id:
-            # TODO(erikbern): ignoring images is an ugly fix to a problem that's on the server.
-            # Unlike every other object, images are not assigned random ids, but rather an
-            # id given by the hash of its contents. This means we can't _force_ an image to
-            # have a particular id. The better solution is probably to separate "images"
-            # from "image definitions" or something like that, but that's a big project.
-            #
-            # Persisted refs are ignored because their life cycle is managed independently.
-            # The same tag on an app can be pointed at different objects.
-            if not obj._is_persisted_ref and not existing_object_id.startswith("im-"):
-                raise Exception(
-                    f"Tried creating an object using existing id {existing_object_id}"
-                    f" but it has id {created_obj.object_id}"
-                )
+            async def loader():
+                created_obj = await obj._load(self, existing_object_id)
+                if existing_object_id is not None and created_obj.object_id != existing_object_id:
+                    # TODO(erikbern): ignoring images is an ugly fix to a problem that's on the server.
+                    # Unlike every other object, images are not assigned random ids, but rather an
+                    # id given by the hash of its contents. This means we can't _force_ an image to
+                    # have a particular id. The better solution is probably to separate "images"
+                    # from "image definitions" or something like that, but that's a big project.
+                    #
+                    # Persisted refs are ignored because their life cycle is managed independently.
+                    # The same tag on an app can be pointed at different objects.
+                    if not obj._is_persisted_ref and not existing_object_id.startswith("im-"):
+                        raise Exception(
+                            f"Tried creating an object using existing id {existing_object_id}"
+                            f" but it has id {created_obj.object_id}"
+                        )
 
-        self._local_uuid_to_object[obj.local_uuid] = created_obj
-        return created_obj
+                self._local_uuid_to_object[obj.local_uuid] = created_obj
+                return created_obj
+
+            cached_future = asyncio.create_task(loader())
+            self._local_uuid_to_future[obj.local_uuid] = cached_future
+
+        return await cached_future
 
     def objects(self) -> List:
         return list(self._local_uuid_to_object.values())
