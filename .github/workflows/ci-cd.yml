@@ -89,8 +89,8 @@ jobs:
 
   publish-client:
     name: Publish client package
-    if: github.ref == 'refs/heads/main'
-    needs: [client-test]
+    # if: github.ref == 'refs/heads/main'
+    # needs: [client-test]
     runs-on: ubuntu-20.04
     concurrency: publish-client
     steps:
@@ -109,36 +109,36 @@ jobs:
         with:
           version: "3.10"
 
-      - name: Bump the version number
-        run: inv update-build-number $GITHUB_RUN_NUMBER
+      # - name: Bump the version number
+      #   run: inv update-build-number $GITHUB_RUN_NUMBER
 
-      - uses: EndBug/add-and-commit@v9
-        with:
-          add: modal_version/_version_generated.py
-          message: "[auto-commit] Bump the build number"
-          pull: "--rebase --autostash"
+      # - uses: EndBug/add-and-commit@v9
+      #   with:
+      #     add: modal_version/_version_generated.py
+      #     message: "[auto-commit] Bump the build number"
+      #     pull: "--rebase --autostash"
 
-      - name: Build protobuf
-        run: inv protoc
+      # - name: Build protobuf
+      #   run: inv protoc
 
-      - name: Install all dependencies
-        run: pip install -e .
+      # - name: Install all dependencies
+      #   run: pip install -e .
 
-      - name: Build type stubs
-        run: inv type-stubs
+      # - name: Build type stubs
+      #   run: inv type-stubs
 
-      - name: Build wheel
-        run: python setup.py bdist_wheel
+      # - name: Build wheel
+      #   run: python setup.py bdist_wheel
 
-      - name: Publish client mount
-        env:
-          MODAL_LOGLEVEL: DEBUG
-          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
-          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-        run: python -m modal_base_images.client_mount
+      # - name: Publish client mount
+      #   env:
+      #     MODAL_LOGLEVEL: DEBUG
+      #     MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      #     MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      #   run: python -m modal_base_images.client_mount
 
-      - name: Upload to PyPI
-        env:
-          TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
-          TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
-        run: twine upload dist/* --non-interactive
+      # - name: Upload to PyPI
+      #   env:
+      #     TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
+      #     TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
+      #   run: twine upload dist/* --non-interactive
