@@ -89,10 +89,10 @@ jobs:
 
   publish-client:
     name: Publish client package
-    if: github.ref == 'refs/heads/main'
-    needs: [client-test]
+    # if: github.ref == 'refs/heads/main'
+    # needs: [client-test]
     runs-on: ubuntu-20.04
-    concurrency: publish-client
+    # concurrency: publish-client
     steps:
       - name: Generate token for Github PR Bot
         id: generate_token
@@ -119,27 +119,27 @@ jobs:
           pull: "--rebase --autostash"
           default_author: github_actions
 
-      - name: Build protobuf
-        run: inv protoc
+      # - name: Build protobuf
+      #   run: inv protoc
 
-      - name: Install all dependencies
-        run: pip install -e .
+      # - name: Install all dependencies
+      #   run: pip install -e .
 
-      - name: Build type stubs
-        run: inv type-stubs
+      # - name: Build type stubs
+      #   run: inv type-stubs
 
-      - name: Build wheel
-        run: python setup.py bdist_wheel
+      # - name: Build wheel
+      #   run: python setup.py bdist_wheel
 
-      - name: Publish client mount
-        env:
-          MODAL_LOGLEVEL: DEBUG
-          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
-          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-        run: python -m modal_base_images.client_mount
+      # - name: Publish client mount
+      #   env:
+      #     MODAL_LOGLEVEL: DEBUG
+      #     MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      #     MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      #   run: python -m modal_base_images.client_mount
 
-      - name: Upload to PyPI
-        env:
-          TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
-          TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
-        run: twine upload dist/* --non-interactive
+      # - name: Upload to PyPI
+      #   env:
+      #     TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
+      #     TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
+      #   run: twine upload dist/* --non-interactive
