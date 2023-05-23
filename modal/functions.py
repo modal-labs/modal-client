@@ -37,6 +37,7 @@ from modal_utils.async_utils import (
     queue_batch_iterator,
     synchronize_apis,
     warn_if_generator_is_not_consumed,
+    synchronizer,
 )
 from modal_utils.grpc_utils import retry_transient_errors
 
@@ -520,8 +521,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         self._web_url = handle_metadata.web_url
         self._function_name = handle_metadata.function_name
 
-    async def make_bound_function_handle(self, *args: Iterable[Any], **kwargs: Dict[str, Any]) -> "_FunctionHandle":
-        """mdmd:hidden"""
+    async def _make_bound_function_handle(self, *args: Iterable[Any], **kwargs: Dict[str, Any]) -> "_FunctionHandle":
         assert self.is_hydrated(), "Cannot make bound function handle from unhydrated handle."
 
         if len(args) + len(kwargs) == 0:
@@ -540,6 +540,15 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         new_handle._hydrate(self._client, response.bound_function_id, response.handle_metadata)
         new_handle._is_remote_cls_method = True
         return new_handle
+
+    def _get_is_remote_cls_method(self):
+        return self._is_remote_cls_method
+
+    def _get_info(self):
+        return self._info
+
+    def _get_self_obj(self):
+        return self._self_obj
 
     def _get_handle_metadata(self):
         return api_pb2.FunctionHandleMetadata(
@@ -663,7 +672,9 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
             pass
 
     @warn_if_generator_is_not_consumed
-    async def starmap(self, input_iterator, kwargs={}, order_outputs=None, return_exceptions=False):
+    async def starmap(
+        self, input_iterator, kwargs={}, order_outputs=None, return_exceptions=False
+    ) -> AsyncGenerator[typing.Any, None]:
         """Like `map` but spreads arguments over multiple function arguments
 
         Assumes every input is a sequence (e.g. a tuple).
@@ -725,22 +736,25 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         else:
             return self._call_function(args, kwargs)
 
+    @synchronizer.nowrap
     def __call__(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
-        if self._is_remote_cls_method:
+        if self._get_is_remote_cls_method():  # TODO(elias): change parametrization so this is isn't needed
             return self.call(*args, **kwargs)
 
-        if not self._info:
+        info = self._get_info()
+        if not info:
             msg = (
                 "The definition for this function is missing so it is not possible to invoke it locally. "
                 "If this function was retrieved via `Function.lookup` you need to use `.call()`."
             )
             raise AttributeError(msg)
 
-        if self._self_obj:
+        self_obj = self._get_self_obj()
+        if self_obj:
             # This is a method on a class, so bind the self to the function
-            fun = self._info.raw_f.__get__(self._self_obj)
+            fun = info.raw_f.__get__(self_obj)
         else:
-            fun = self._info.raw_f
+            fun = info.raw_f
         return fun(*args, **kwargs)
 
     async def spawn(self, *args, **kwargs) -> Optional["_FunctionCall"]:

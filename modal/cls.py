@@ -43,7 +43,7 @@ def make_remote_cls_constructors(
         new_function_handles: Dict[str, _FunctionHandle] = {}
 
         for k, v in partial_functions.items():
-            new_function_handles[k] = await function_handles[k].make_bound_function_handle(
+            new_function_handles[k] = await function_handles[k]._make_bound_function_handle(
                 *params.args, **params.kwargs
             )
             cls_dict[k] = v
