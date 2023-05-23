@@ -857,7 +857,7 @@ class _Stub:
                 else:
                     self._function_handles[tag]._hydrate(client, function_id, handle_metadata)
 
-    def _get_function_mounts_cached(self, mounts: Dict[str, _Mount]):
+    def _get_deduplicated_function_mounts(self, mounts: Dict[str, _Mount]):
         cached_mounts = []
         for root_path, mount in mounts.items():
             if root_path not in self._function_mounts:
