@@ -367,6 +367,8 @@ class _Image(_Provider[_ImageHandle]):
         extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
         pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
         force_build: bool = False,
+        secrets: Sequence[_Secret] = [],
+        gpu: GPU_T = None,
     ) -> "_Image":
         """Install a list of Python packages using pip.
 
@@ -397,8 +399,13 @@ class _Image(_Provider[_ImageHandle]):
             # However removing it at this point would cause image hashes to change.
             # Maybe let's remove it later when/if client requirements change.
         ]
-
-        return self.extend(dockerfile_commands=dockerfile_commands, force_build=self.force_build or force_build)
+        gpu_config = parse_gpu_config(gpu)
+        return self.extend(
+            dockerfile_commands=dockerfile_commands,
+            force_build=self.force_build or force_build,
+            gpu_config=gpu_config,
+            secrets=secrets,
+        )
 
     @typechecked
     def pip_install_private_repos(
@@ -729,6 +736,8 @@ class _Image(_Provider[_ImageHandle]):
         *packages: Union[str, List[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
         channels: List[str] = [],  # A list of Conda channels, eg. ["conda-forge", "nvidia"]
         force_build: bool = False,
+        secrets: Sequence[_Secret] = [],
+        gpu: GPU_T = None,
     ) -> "_Image":
         """Install a list of additional packages using conda. Note that in most cases, using `Image.micromamba()`
         is recommended over `Image.conda()`, as it leads to significantly faster image build times."""
@@ -746,7 +755,13 @@ class _Image(_Provider[_ImageHandle]):
             "&& conda clean --yes --index-cache --tarballs --tempfiles --logfiles",
         ]
 
-        return self.extend(dockerfile_commands=dockerfile_commands, force_build=self.force_build or force_build)
+        gpu_config = parse_gpu_config(gpu)
+        return self.extend(
+            dockerfile_commands=dockerfile_commands,
+            force_build=self.force_build or force_build,
+            secrets=secrets,
+            gpu_config=gpu_config,
+        )
 
     @typechecked
     def conda_update_from_environment(
@@ -987,6 +1002,9 @@ class _Image(_Provider[_ImageHandle]):
             _Mount
         ] = None,  # modal.Mount with local files to supply as build context for COPY commands
         force_build: bool = False,
+        *,
+        secrets: Sequence[_Secret] = [],
+        gpu: GPU_T = None,
     ) -> "_Image":
         """Build a Modal image from a local Dockerfile.
 
@@ -1003,7 +1021,13 @@ class _Image(_Provider[_ImageHandle]):
             with open(path) as f:
                 return f.read().split("\n")
 
-        base_image = _Image._from_args(dockerfile_commands=base_dockerfile_commands, context_mount=context_mount)
+        gpu_config = parse_gpu_config(gpu)
+        base_image = _Image._from_args(
+            dockerfile_commands=base_dockerfile_commands,
+            context_mount=context_mount,
+            gpu_config=gpu_config,
+            secrets=secrets,
+        )
 
         requirements_path = _get_client_requirements_path()
 
