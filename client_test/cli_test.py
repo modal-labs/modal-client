@@ -34,9 +34,9 @@ dummy_other_module_file = "x = 42"
 
 
 @pytest_asyncio.fixture
-async def set_env_client(aio_client):
+async def set_env_client(client):
     try:
-        Client.set_env_client(aio_client)
+        Client.set_env_client(client)
         yield
     finally:
         Client.set_env_client(None)
@@ -75,20 +75,6 @@ def test_app_deploy_with_name(servicer, mock_dir, set_env_client):
         _run(["deploy", "myapp.py", "--name", "my_app_foo"])
 
     assert "my_app_foo" in servicer.deployed_apps
-
-
-dummy_aio_app_file = """
-from modal.aio import AioStub
-
-stub = AioStub("my_aio_app")
-"""
-
-
-def test_aio_app_deploy_success(servicer, mock_dir, set_env_client):
-    with mock_dir({"myaioapp.py": dummy_aio_app_file}):
-        _run(["deploy", "myaioapp.py"])
-
-    assert "my_aio_app" in servicer.deployed_apps
 
 
 def test_app_deploy_no_such_module():
@@ -203,7 +189,7 @@ def test_run_custom_stub(servicer, set_env_client, test_dir):
     _run(["run", stub_file.as_posix() + "::foo"])
 
 
-def test_run_aiostub(servicer, set_env_client, test_dir):
+def test_run_aiofunc(servicer, set_env_client, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "async_stub.py"
     _run(["run", stub_file.as_posix()])
     assert len(servicer.client_calls) == 1

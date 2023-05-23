@@ -1,5 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
+import inspect
+import typing
 import pytest
 import time
 
@@ -21,6 +23,11 @@ def foo(p, q):
     return p + q + 11  # not actually used in test (servicer returns sum of square of all args)
 
 
+@stub.function()
+async def async_foo(p, q):
+    return p + q + 12
+
+
 def dummy():
     pass  # not actually used in test (servicer returns sum of square of all args)
 
@@ -32,11 +39,17 @@ def test_run_function(client, servicer):
         assert len(servicer.cleared_function_calls) == 1
 
 
-def test_call_function_locally(client, servicer):
+@pytest.mark.asyncio
+async def test_call_function_locally(client, servicer):
     assert foo(22, 44) == 77  # call it locally
+    assert await async_foo(22, 44) == 78
+
     with stub.run(client=client):
         assert foo.call(2, 4) == 20
         assert foo(22, 55) == 88
+        assert await async_foo(22, 44) == 78
+        assert async_foo.call(2, 4) == 20
+        assert await async_foo.call.aio(2, 4) == 20
 
 
 @pytest.mark.parametrize("slow_put_inputs", [False, True])
@@ -179,7 +192,7 @@ async def test_generator(client, servicer):
     assert len(servicer.cleared_function_calls) == 0
     with stub.run(client=client):
         assert later_gen_modal.is_generator
-        res = later_gen_modal.call()
+        res: typing.Generator = later_gen_modal.call()  # type: ignore
         # Generators fulfil the *iterator protocol*, which requires both these methods.
         # https://docs.python.org/3/library/stdtypes.html#typeiter
         assert hasattr(res, "__iter__")  # strangely inspect.isgenerator returns false
@@ -222,6 +235,85 @@ async def test_generator_future(client, servicer):
     later_gen_modal = stub.function()(later_gen)
     with stub.run(client=client):
         assert later_gen_modal.spawn() is None  # until we have a nice interface for polling generator futures
+
+
+def gen_with_arg(i):
+    yield "foo"
+
+
+@pytest.mark.asyncio
+async def test_generator_map_success(client, servicer):
+    stub = Stub()
+
+    gen_with_arg_modal = stub.function()(gen_with_arg)
+
+    def dummy(i):
+        yield i, "bar"
+        yield i, "baz"
+
+    servicer.function_body(dummy)
+
+    assert len(servicer.cleared_function_calls) == 0
+    with stub.run(client=client):
+        assert gen_with_arg_modal.is_generator
+        res = set(gen_with_arg_modal.map([1, 2, 3]))
+        assert res == {(1, "bar"), (1, "baz"), (2, "bar"), (2, "baz"), (3, "bar"), (3, "baz")}
+
+
+@pytest.mark.asyncio
+async def test_generator_map_exception(client, servicer):
+    stub = Stub()
+
+    gen_with_arg_modal = stub.function()(gen_with_arg)
+
+    def dummy(i):
+        yield i, "bar"
+        if i == 2:
+            raise CustomException("boo!")
+        yield i, "baz"
+
+    servicer.function_body(dummy)
+
+    assert len(servicer.cleared_function_calls) == 0
+    with stub.run(client=client):
+        assert gen_with_arg_modal.is_generator
+
+        with pytest.raises(CustomException) as exc_info:
+            list(gen_with_arg_modal.map([1, 2, 3]))
+        assert exc_info.value.args == ("boo!",)
+
+
+@pytest.mark.asyncio
+async def test_generator_map_return_exceptions(client, servicer):
+    stub = Stub()
+
+    gen_with_arg_modal = stub.function()(gen_with_arg)
+
+    def dummy(i):
+        yield i, "bar"
+        if i == 2:
+            raise CustomException("boo!")
+        yield i, "baz"
+
+    servicer.function_body(dummy)
+
+    assert len(servicer.cleared_function_calls) == 0
+    with stub.run(client=client):
+        assert gen_with_arg_modal.is_generator
+
+        results = set()
+        received_exc = False
+        for result in gen_with_arg_modal.map([1, 2, 3], return_exceptions=True):
+            # TODO: this should just be CustomException directly.
+            if isinstance(result, UserCodeException):
+                assert isinstance(result.exc, CustomException)
+                assert result.exc.args == ("boo!",)
+                received_exc = True
+            else:
+                results.add(result)
+
+        assert received_exc
+        assert results == {(1, "bar"), (1, "baz"), (2, "bar"), (3, "bar"), (3, "baz")}
 
 
 async def slo1(sleep_seconds):
@@ -277,7 +369,11 @@ async def test_function_exception_async(aio_client, servicer):
     failure_modal = stub.function()(servicer.function_body(failure))
     async with stub.run(client=aio_client):
         with pytest.raises(CustomException) as excinfo:
-            await failure_modal.call()
+            coro = failure_modal.call()
+            assert inspect.isawaitable(
+                coro
+            )  # mostly for mypy, since output could technically be an async generator which isn't awaitable in the same sense
+            await coro
         assert "foo!" in str(excinfo.value)
 
 
@@ -380,7 +476,7 @@ def test_from_id(client, servicer):
     function_id = foo.object_id
     assert function_id
     assert foo.web_url
-    rehydrated_function = FunctionHandle.from_id(function_id, client=client)
+    rehydrated_function: FunctionHandle = FunctionHandle.from_id(function_id, client=client)
     assert rehydrated_function.object_id == function_id
     assert rehydrated_function.web_url == foo.web_url
 

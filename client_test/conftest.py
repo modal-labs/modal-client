@@ -426,7 +426,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def FunctionGetOutputs(self, stream):
         request: api_pb2.FunctionGetOutputsRequest = await stream.recv_message()
-        print("HERE!", request)
         if request.clear_on_success:
             self.cleared_function_calls.add(request.function_call_id)
 
@@ -434,9 +433,18 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if client_calls and not self.function_is_running:
             popidx = len(client_calls) // 2  # simulate that results don't always come in order
             (idx, input_id), (args, kwargs) = client_calls.pop(popidx)
-            print("HERE", idx, input_id, args, kwargs)
+            results = []
+            output_exc = None
             try:
                 res = self._function_body(*args, **kwargs)
+
+                if inspect.iscoroutine(res):
+                    results = [await res]
+                elif inspect.isgenerator(res):
+                    for item in res:
+                        results.append(item)
+                else:
+                    results = [res]
             except Exception as exc:
                 serialized_exc = cloudpickle.dumps(exc)
                 result = api_pb2.GenericResult(
@@ -445,16 +453,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     exception=repr(exc),
                     traceback="".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
                 )
-                output = api_pb2.FunctionGetOutputsItem(input_id=input_id, idx=idx, result=result, gen_index=0)
-                await stream.send_message(api_pb2.FunctionGetOutputsResponse(outputs=[output]))
-                return
-
-            if inspect.iscoroutine(res):
-                results = [await res]
-            elif inspect.isgenerator(res):
-                results = list(res)
-            else:
-                results = [res]
+                output_exc = api_pb2.FunctionGetOutputsItem(input_id=input_id, idx=idx, result=result, gen_index=0)
 
             outputs = []
             for index, value in enumerate(results):
@@ -475,7 +474,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 )
                 outputs.append(item)
 
-            if inspect.isgenerator(res):
+            if output_exc:
+                outputs.append(output_exc)
+            elif inspect.isgenerator(res):
                 finish_item = api_pb2.FunctionGetOutputsItem(
                     input_id=input_id,
                     idx=idx,

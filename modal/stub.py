@@ -29,7 +29,7 @@ from .functions import _Function, _FunctionHandle, PartialFunction, AioPartialFu
 from .functions import _asgi_app, _web_endpoint, _wsgi_app
 from .gpu import GPU_T
 from .image import _Image, _ImageHandle
-from .mount import _get_client_mount, _Mount
+from .mount import _Mount
 from .object import _Provider
 from .proxy import _Proxy
 from .queue import _Queue
@@ -101,14 +101,12 @@ class _Stub:
     _description: str
     _app_id: str
     _blueprint: Dict[str, _Provider]
-    _client_mount: Optional[_Mount]
     _function_mounts: Dict[str, _Mount]
     _mounts: Sequence[_Mount]
     _secrets: Sequence[_Secret]
     _function_handles: Dict[str, _FunctionHandle]
     _web_endpoints: List[str]  # Used by the CLI
     _local_entrypoints: Dict[str, LocalEntrypoint]
-    _local_mounts: List[_Mount]
     _app: Optional[_App]
     _all_stubs: typing.ClassVar[Dict[str, List["_Stub"]]] = {}
 
@@ -149,13 +147,11 @@ class _Stub:
         if image is not None:
             self._blueprint["image"] = image  # backward compatibility since "image" used to be on the blueprint
 
-        self._client_mount = None
         self._function_mounts = {}
         self._mounts = mounts
         self._secrets = secrets
         self._function_handles: Dict[str, _FunctionHandle] = {}
         self._local_entrypoints = {}
-        self._local_mounts = []
         self._web_endpoints = []
 
         self._app = None
@@ -350,22 +346,16 @@ class _Stub:
     def _pty_input_stream(self):
         return self._blueprint.get("_pty_input_stream", None)
 
-    def _get_function_mounts(self, function_info: FunctionInfo):
-        # Get the common mounts for the stub.
-        mounts = list(self._mounts)
+    def _get_watch_mounts(self):
+        all_mounts = [
+            *self._mounts,
+        ]
+        for function_handle in self.registered_functions.values():
+            # TODO(elias): This is quite ugly and should be refactored once we merge Function/FunctionHandle
+            function = self[function_handle._info.get_tag()]
+            all_mounts.extend(function._all_mounts)
 
-        # Create client mount
-        if self._client_mount is None:
-            self._client_mount = _get_client_mount()
-        mounts.append(self._client_mount)
-
-        # Create function mounts
-        for key, mount in function_info.get_mounts().items():
-            if key not in self._function_mounts:
-                self._function_mounts[key] = mount
-            mounts.append(self._function_mounts[key])
-
-        return mounts
+        return [m for m in all_mounts if m.is_local()]
 
     def _get_function_handle(self, info: FunctionInfo) -> _FunctionHandle:
         """This can either return a hydrated or an unhydrated _FunctionHandle
@@ -383,7 +373,7 @@ class _Stub:
         self._function_handles[tag] = function_handle
         return function_handle  # note that the function handle is not yet hydrated at this point:
 
-    def _add_function(self, function: _Function, mounts: List[_Mount]):
+    def _add_function(self, function: _Function):
         if function.tag in self._blueprint:
             old_function = self._blueprint[function.tag]
             if isinstance(old_function, _Function):
@@ -396,11 +386,6 @@ class _Stub:
             else:
                 logger.warning(f"Warning: tag {function.tag} exists but is overridden by function")
         self._blueprint[function.tag] = function
-
-        # Track all mounts. This is needed for file watching
-        for mount in mounts:
-            if mount.is_local():
-                self._local_mounts.append(mount)
 
     @property
     def registered_functions(self) -> Dict[str, _FunctionHandle]:
@@ -538,7 +523,6 @@ class _Stub:
             )
 
         function_handle = self._get_function_handle(info)
-        base_mounts = self._get_function_mounts(info)
         secrets = [*self._secrets, *secrets]
 
         if is_generator is None:
@@ -583,8 +567,7 @@ class _Stub:
             schedule=schedule,
             is_generator=is_generator,
             gpu=gpu,
-            base_mounts=base_mounts,
-            mounts=mounts,
+            mounts=[*self._mounts, *mounts],
             shared_volumes=shared_volumes,
             allow_cross_region_volumes=allow_cross_region_volumes,
             memory=memory,
@@ -602,7 +585,7 @@ class _Stub:
             cls=_cls,
         )
 
-        self._add_function(function, [*base_mounts, *mounts])
+        self._add_function(function)
         return function_handle
 
     @typechecked
@@ -811,6 +794,14 @@ class _Stub:
                     self._function_handles[tag] = obj
                 else:
                     self._function_handles[tag]._hydrate(client, function_id, handle_metadata)
+
+    def _get_deduplicated_function_mounts(self, mounts: Dict[str, _Mount]):
+        cached_mounts = []
+        for root_path, mount in mounts.items():
+            if root_path not in self._function_mounts:
+                self._function_mounts[root_path] = mount
+            cached_mounts.append(self._function_mounts[root_path])
+        return cached_mounts
 
 
 Stub, AioStub = synchronize_apis(_Stub)

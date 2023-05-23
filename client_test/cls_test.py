@@ -66,14 +66,12 @@ def test_call_cls_remote_sync(client):
 
 def test_call_cls_remote_invalid_type(client):
     with stub_remote.run(client=client):
-        with pytest.raises(ValueError) as excinfo:
-            FooRemote.remote(object(), "hello")
 
-        exc = excinfo.value
-        assert "x=" in str(exc)
+        def my_function():
+            print("Hello, world!")
 
         with pytest.raises(ValueError) as excinfo:
-            FooRemote.remote(42, {"hello": "world"})
+            FooRemote.remote(42, my_function)
 
         exc = excinfo.value
         assert "y=" in str(exc)

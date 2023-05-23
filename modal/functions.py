@@ -9,7 +9,20 @@ import typing
 import warnings
 from dataclasses import dataclass
 from pathlib import PurePath
-from typing import Any, AsyncIterable, Callable, Collection, Dict, List, Optional, Set, Union
+from typing import (
+    Any,
+    AsyncGenerator,
+    AsyncIterable,
+    Awaitable,
+    Callable,
+    Collection,
+    Dict,
+    List,
+    Optional,
+    Set,
+    Union,
+    Iterable,
+)
 
 from datetime import date
 from aiostream import pipe, stream
@@ -24,6 +37,7 @@ from modal_utils.async_utils import (
     queue_batch_iterator,
     synchronize_apis,
     warn_if_generator_is_not_consumed,
+    synchronizer,
 )
 from modal_utils.grpc_utils import retry_transient_errors
 
@@ -46,7 +60,7 @@ from .exception import ExecutionError, InvalidError, RemoteError, deprecation_er
 from .exception import TimeoutError as _TimeoutError
 from .gpu import GPU_T, parse_gpu_config, display_gpu_config
 from .image import _Image
-from .mount import _Mount
+from .mount import _Mount, _get_client_mount
 from .object import _Handle, _Provider
 from .proxy import _Proxy
 from .retries import Retries
@@ -378,15 +392,24 @@ async def _map_invocation(
             last_entry_id = response.last_entry_id
             for item in response.outputs:
                 pending_outputs.setdefault(item.input_id, 0)
-                if item.input_id in completed_outputs or item.gen_index < pending_outputs[item.input_id]:
-                    # this means the output has already been processed and is likely received due
-                    # to a duplicate output enqueue on the server
+                if item.input_id in completed_outputs or (
+                    item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
+                    and item.gen_index < pending_outputs[item.input_id]
+                ):
+                    # If this input is already completed, or if it's a generator output and we've already seen a later
+                    # output, it means the output has already been processed and was received again due
+                    # to a duplicate output enqueue on the server.
                     continue
 
                 if is_generator:
+                    # Mark this input completed if the generator completed successfully, or it crashed (exception, timeout, etc).
                     if item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
                         completed_outputs.add(item.input_id)
                         num_outputs += 1
+                    elif item.result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
+                        completed_outputs.add(item.input_id)
+                        num_outputs += 1
+                        yield item
                     else:
                         assert pending_outputs[item.input_id] == item.gen_index
                         pending_outputs[item.input_id] += 1
@@ -471,6 +494,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
     _info: Optional[FunctionInfo]
     _stub: Optional["modal.stub._Stub"]
     _is_remote_cls_method: bool = False
+    _function_name: Optional[str]
 
     def _initialize_from_empty(self):
         self._progress = None
@@ -497,17 +521,17 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         self._web_url = handle_metadata.web_url
         self._function_name = handle_metadata.function_name
 
-    async def make_bound_function_handle(self, params: inspect.BoundArguments) -> "_FunctionHandle":
+    async def _make_bound_function_handle(self, *args: Iterable[Any], **kwargs: Dict[str, Any]) -> "_FunctionHandle":
         assert self.is_hydrated(), "Cannot make bound function handle from unhydrated handle."
 
-        if len(params.args) + len(params.kwargs) == 0:
+        if len(args) + len(kwargs) == 0:
             # short circuit if no args, don't need a special object.
             return self
 
         new_handle = _FunctionHandle._new()
         new_handle._initialize_from_local(self._stub, self._info)
 
-        serialized_params = pickle.dumps((params.args, params.kwargs))
+        serialized_params = pickle.dumps((args, kwargs))
         req = api_pb2.FunctionBindParamsRequest(
             function_id=self._object_id,
             serialized_params=serialized_params,
@@ -516,6 +540,15 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         new_handle._hydrate(self._client, response.bound_function_id, response.handle_metadata)
         new_handle._is_remote_cls_method = True
         return new_handle
+
+    def _get_is_remote_cls_method(self):
+        return self._is_remote_cls_method
+
+    def _get_info(self):
+        return self._info
+
+    def _get_self_obj(self):
+        return self._self_obj
 
     def _get_handle_metadata(self):
         return api_pb2.FunctionHandleMetadata(
@@ -582,18 +615,20 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         kwargs={},  # any extra keyword arguments for the function
         order_outputs=None,  # defaults to True for regular functions, False for generators
         return_exceptions=False,  # whether to propogate exceptions (False) or aggregate them in the results list (True)
-    ):
+    ) -> AsyncGenerator[Any, None]:
         """Parallel map over a set of inputs.
 
         Takes one iterator argument per argument in the function being mapped over.
 
         Example:
-        ```python notest
+        ```python
         @stub.function()
         def my_func(a):
             return a ** 2
 
-        assert list(my_func.map([1, 2, 3, 4])) == [1, 4, 9, 16]
+        @stub.local_entrypoint()
+        def main():
+            assert list(my_func.map([1, 2, 3, 4])) == [1, 4, 9, 16]
         ```
 
         If applied to a `stub.function`, `map()` returns one result per input and the output order
@@ -605,15 +640,17 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         as a "flat map".
 
         `return_exceptions` can be used to treat exceptions as successful results:
-        ```python notest
+        ```python
         @stub.function()
         def my_func(a):
             if a == 2:
                 raise Exception("ohno")
             return a ** 2
 
-        # [0, 1, UserCodeException(Exception('ohno'))]
-        print(list(my_func.map(range(3), return_exceptions=True)))
+        @stub.local_entrypoint()
+        def main():
+            # [0, 1, UserCodeException(Exception('ohno'))]
+            print(list(my_func.map(range(3), return_exceptions=True)))
         ```
         """
         if order_outputs is None:
@@ -635,18 +672,22 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
             pass
 
     @warn_if_generator_is_not_consumed
-    async def starmap(self, input_iterator, kwargs={}, order_outputs=None, return_exceptions=False):
+    async def starmap(
+        self, input_iterator, kwargs={}, order_outputs=None, return_exceptions=False
+    ) -> AsyncGenerator[typing.Any, None]:
         """Like `map` but spreads arguments over multiple function arguments
 
         Assumes every input is a sequence (e.g. a tuple).
 
         Example:
-        ```python notest
+        ```python
         @stub.function()
         def my_func(a, b):
             return a + b
 
-        assert list(my_func.starmap([(1, 2), (3, 4)])) == [3, 7]
+        @stub.local_entrypoint()
+        def main():
+            assert list(my_func.starmap([(1, 2), (3, 4)])) == [3, 7]
         ```
         """
         if order_outputs is None:
@@ -681,7 +722,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         self._track_function_invocation()
         return await _Invocation.create(self._object_id, args, kwargs, self._client)
 
-    def call(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
+    def call(self, *args, **kwargs) -> Awaitable[Any]:  # TODO: Generics/TypeVars
         """
         Calls the function remotely, executing it with the given arguments and returning the execution's result.
         """
@@ -691,26 +732,29 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
                 f"Invoke this function via its web url '{self._web_url}' or call it locally: {self._function_name}()."
             )
         if self._is_generator:
-            return self._call_generator(args, kwargs)
+            return self._call_generator(args, kwargs)  # type: ignore
         else:
             return self._call_function(args, kwargs)
 
+    @synchronizer.nowrap
     def __call__(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
-        if self._is_remote_cls_method:
+        if self._get_is_remote_cls_method():  # TODO(elias): change parametrization so this is isn't needed
             return self.call(*args, **kwargs)
 
-        if not self._info:
+        info = self._get_info()
+        if not info:
             msg = (
                 "The definition for this function is missing so it is not possible to invoke it locally. "
                 "If this function was retrieved via `Function.lookup` you need to use `.call()`."
             )
             raise AttributeError(msg)
 
-        if self._self_obj:
+        self_obj = self._get_self_obj()
+        if self_obj:
             # This is a method on a class, so bind the self to the function
-            fun = self._info.raw_f.__get__(self._self_obj)
+            fun = info.raw_f.__get__(self_obj)
         else:
-            fun = self._info.raw_f
+            fun = info.raw_f
         return fun(*args, **kwargs)
 
     async def spawn(self, *args, **kwargs) -> Optional["_FunctionCall"]:
@@ -800,7 +844,6 @@ class _Function(_Provider[_FunctionHandle]):
         is_generator=False,
         gpu: GPU_T = None,
         # TODO: maybe break this out into a separate decorator for notebooks.
-        base_mounts: Collection[_Mount] = (),
         mounts: Collection[_Mount] = (),
         shared_volumes: Dict[Union[str, os.PathLike], _SharedVolume] = {},
         allow_cross_region_volumes: bool = False,
@@ -827,7 +870,16 @@ class _Function(_Provider[_FunctionHandle]):
                 raise InvalidError(
                     f"Function {raw_f} has a schedule, so it needs to support calling it with no arguments"
                 )
-        # assert not synchronizer.is_synchronized(image)
+
+        all_mounts = [
+            _get_client_mount(),  # client
+            *mounts,  # explicit mounts
+        ]
+        # TODO (elias): Clean up mount logic, this is quite messy:
+        if stub:
+            all_mounts.extend(stub._get_deduplicated_function_mounts(info.get_mounts()))  # implicit mounts
+        else:
+            all_mounts.extend(info.get_mounts().values())  # this would typically only happen for builder functions
 
         if secret:
             secrets = [secret, *secrets]
@@ -846,6 +898,8 @@ class _Function(_Provider[_FunctionHandle]):
             raise InvalidError(
                 f"Function {raw_f} retries must be an integer or instance of modal.Retries. Found: {type(retries)}"
             )
+        tag = info.get_tag()
+        gpu_config = parse_gpu_config(gpu)
 
         if proxy:
             # HACK: remove this once we stop using ssh tunnels for this.
@@ -863,9 +917,6 @@ class _Function(_Provider[_FunctionHandle]):
                 date(2023, 3, 3),
                 "Setting `keep_warm=True` is deprecated. Pass an explicit warm pool size instead, e.g. `keep_warm=2`.",
             )
-
-        tag = info.get_tag()
-        gpu_config = parse_gpu_config(gpu)
 
         if cloud:
             cloud_provider = parse_cloud_provider(cloud)
@@ -926,7 +977,7 @@ class _Function(_Provider[_FunctionHandle]):
                 secret_ids.append(secret_id)
 
             mount_ids = []
-            for mount in [*base_mounts, *mounts]:
+            for mount in all_mounts:
                 mount_ids.append((await resolver.load(mount)).object_id)
 
             if not isinstance(shared_volumes, dict):
@@ -1059,6 +1110,7 @@ class _Function(_Provider[_FunctionHandle]):
         obj._secrets = secrets
         obj._shared_volumes = shared_volumes
         obj._tag = tag
+        obj._all_mounts = all_mounts  # needed for modal.serve file watching
         return obj
 
     def get_panel_items(self) -> List[str]:
