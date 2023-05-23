@@ -102,8 +102,8 @@ jobs:
           private_key: ${{ secrets.GH_PRBOT_APP_PRIVATE_KEY }}
 
       - uses: actions/checkout@v3
-        env:
-          GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
+        with:
+          token: ${{ steps.generate_token.outputs.token }}
 
       - uses: ./.github/actions/setup-cached-python
         with:
@@ -118,8 +118,6 @@ jobs:
           message: "[auto-commit] Bump the build number"
           pull: "--rebase --autostash"
           default_author: github_actions
-        env:
-          GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
 
       - name: Build protobuf
         run: inv protoc
