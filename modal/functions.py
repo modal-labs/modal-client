@@ -965,25 +965,30 @@ class _Function(_Provider[_FunctionHandle]):
                 proxy_id = None
 
             # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
-            if image is not None:
-                if not isinstance(image, _Image):
-                    raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
-                image_id = (await resolver.load(image)).object_id
-            else:
-                image_id = None  # Happens if it's a notebook function
-            secret_ids = []
-            for secret in secrets:
-                secret_id = (await resolver.load(secret)).object_id
-                secret_ids.append(secret_id)
+            async def image_loader():
+                if image is not None:
+                    if not isinstance(image, _Image):
+                        raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
+                    image_id = (await resolver.load(image)).object_id
+                else:
+                    image_id = None  # Happens if it's a notebook function
+                return image_id
 
-            mount_ids = []
-            for mount in all_mounts:
-                mount_ids.append((await resolver.load(mount)).object_id)
+            async def secrets_loader():
+                secret_ids = []
+                for secret in secrets:
+                    secret_id = (await resolver.load(secret)).object_id
+                    secret_ids.append(secret_id)
+                return secret_ids
 
+            async def mount_loader():
+                loaded_mounts = await asyncio.gather(*[resolver.load(mount) for mount in all_mounts])
+                return [mount.object_id for mount in loaded_mounts]
+
+            # validation
             if not isinstance(shared_volumes, dict):
                 raise InvalidError("shared_volumes must be a dict[str, SharedVolume] where the keys are paths")
-            shared_volume_mounts = []
-            # Relies on dicts being ordered (true as of Python 3.6).
+            validated_shared_volumes = []
             for path, shared_volume in shared_volumes.items():
                 path = PurePath(path).as_posix()
                 abs_path = posixpath.abspath(path)
@@ -996,14 +1001,20 @@ class _Function(_Provider[_FunctionHandle]):
                     raise InvalidError(f"Shared volume {abs_path} cannot be mounted at '/root'.")
                 elif abs_path == "/tmp":
                     raise InvalidError(f"Shared volume {abs_path} cannot be mounted at '/tmp'.")
+                validated_shared_volumes.append((path, shared_volume))
 
-                shared_volume_mounts.append(
-                    api_pb2.SharedVolumeMount(
-                        mount_path=path,
-                        shared_volume_id=(await resolver.load(shared_volume)).object_id,
-                        allow_cross_region=allow_cross_region_volumes,
+            async def shared_volume_loader():
+                shared_volume_mounts = []
+                # Relies on dicts being ordered (true as of Python 3.6).
+                for path, shared_volume in validated_shared_volumes:
+                    shared_volume_mounts.append(
+                        api_pb2.SharedVolumeMount(
+                            mount_path=path,
+                            shared_volume_id=(await resolver.load(shared_volume)).object_id,
+                            allow_cross_region=allow_cross_region_volumes,
+                        )
                     )
-                )
+                return shared_volume_mounts
 
             if is_generator:
                 function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
@@ -1032,6 +1043,10 @@ class _Function(_Provider[_FunctionHandle]):
             stub_name = ""
             if stub and stub.name:
                 stub_name = stub.name
+
+            mount_ids, secret_ids, image_id, shared_volume_mounts = await asyncio.gather(
+                mount_loader(), secrets_loader(), image_loader(), shared_volume_loader()
+            )
 
             # Create function remotely
             function_definition = api_pb2.Function(
