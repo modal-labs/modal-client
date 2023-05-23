@@ -541,6 +541,15 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         new_handle._is_remote_cls_method = True
         return new_handle
 
+    def _get_is_remote_cls_method(self):
+        return self._is_remote_cls_method
+
+    def _get_info(self):
+        return self._info
+
+    def _get_self_obj(self):
+        return self._self_obj
+
     def _get_handle_metadata(self):
         return api_pb2.FunctionHandleMetadata(
             function_name=self._function_name,
@@ -728,24 +737,24 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
             return self._call_function(args, kwargs)
 
     @synchronizer.nowrap
-    def __call__(wrapped_self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
-        unwrapped_self = synchronizer._translate_in(wrapped_self)
-        if unwrapped_self._is_remote_cls_method:
-            # note this uses the wrapped self instead, since this is a remote version of the function
-            return wrapped_self.call(*args, **kwargs)
+    def __call__(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
+        if self._get_is_remote_cls_method():  # TODO(elias): change parametrization so this is isn't needed
+            return self.call(*args, **kwargs)
 
-        if not unwrapped_self._info:
+        info = self._get_info()
+        if not info:
             msg = (
                 "The definition for this function is missing so it is not possible to invoke it locally. "
                 "If this function was retrieved via `Function.lookup` you need to use `.call()`."
             )
             raise AttributeError(msg)
 
-        if unwrapped_self._self_obj:
-            # This is a method on a class, so bind the unwrapped_self to the function
-            fun = unwrapped_self._info.raw_f.__get__(unwrapped_self._self_obj)
+        self_obj = self._get_self_obj()
+        if self_obj:
+            # This is a method on a class, so bind the self to the function
+            fun = info.raw_f.__get__(self_obj)
         else:
-            fun = unwrapped_self._info.raw_f
+            fun = info.raw_f
         return fun(*args, **kwargs)
 
     async def spawn(self, *args, **kwargs) -> Optional["_FunctionCall"]:
