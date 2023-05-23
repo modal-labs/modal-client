@@ -521,7 +521,7 @@ class _Image(_Provider[_ImageHandle]):
             dockerfile_commands=dockerfile_commands,
             context_files=context_files,
             force_build=self.force_build or force_build,
-            gpu=parse_gpu_config(gpu),
+            gpu_config=parse_gpu_config(gpu),
             secrets=secrets,
         )
 
@@ -635,7 +635,7 @@ class _Image(_Provider[_ImageHandle]):
             context_files=context_files,
             force_build=self.force_build or force_build,
             secrets=secrets,
-            gpu=parse_gpu_config(gpu),
+            gpu_config=parse_gpu_config(gpu),
         )
 
     @typechecked
@@ -808,7 +808,7 @@ class _Image(_Provider[_ImageHandle]):
             context_files=context_files,
             force_build=self.force_build or force_build,
             secrets=secrets,
-            gpu=parse_gpu_config(gpu),
+            gpu_config=parse_gpu_config(gpu),
         )
 
     @staticmethod
@@ -857,7 +857,7 @@ class _Image(_Provider[_ImageHandle]):
             dockerfile_commands=dockerfile_commands,
             force_build=self.force_build or force_build,
             secrets=secrets,
-            gpu=parse_gpu_config(gpu),
+            gpu_config=parse_gpu_config(gpu),
         )
 
     @staticmethod
@@ -1130,7 +1130,7 @@ class _Image(_Provider[_ImageHandle]):
         return self.extend(
             dockerfile_commands=dockerfile_commands,
             force_build=self.force_build or force_build,
-            gpu=parse_gpu_config(gpu),
+            gpu_config=parse_gpu_config(gpu),
             secrets=secrets,
         )
 
