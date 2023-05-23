@@ -956,6 +956,7 @@ class _Function(_Provider[_FunctionHandle]):
             return function_handle
 
         async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _FunctionHandle:
+            # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
             status_row = resolver.add_status_row()
             status_row.message(f"Creating {tag}...")
 
@@ -964,7 +965,10 @@ class _Function(_Provider[_FunctionHandle]):
             else:
                 proxy_id = None
 
-            # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
+            async def _load_ids(providers) -> typing.List[str]:
+                loaded_handles = await asyncio.gather(*[resolver.load(provider) for provider in providers])
+                return [handle.object_id for handle in loaded_handles]
+
             async def image_loader():
                 if image is not None:
                     if not isinstance(image, _Image):
@@ -973,17 +977,6 @@ class _Function(_Provider[_FunctionHandle]):
                 else:
                     image_id = None  # Happens if it's a notebook function
                 return image_id
-
-            async def secrets_loader():
-                secret_ids = []
-                for secret in secrets:
-                    secret_id = (await resolver.load(secret)).object_id
-                    secret_ids.append(secret_id)
-                return secret_ids
-
-            async def mount_loader():
-                loaded_mounts = await asyncio.gather(*[resolver.load(mount) for mount in all_mounts])
-                return [mount.object_id for mount in loaded_mounts]
 
             # validation
             if not isinstance(shared_volumes, dict):
@@ -1005,12 +998,13 @@ class _Function(_Provider[_FunctionHandle]):
 
             async def shared_volume_loader():
                 shared_volume_mounts = []
+                volume_ids = await _load_ids([vol for _, vol in validated_shared_volumes])
                 # Relies on dicts being ordered (true as of Python 3.6).
-                for path, shared_volume in validated_shared_volumes:
+                for ((path, _), volume_id) in zip(validated_shared_volumes, volume_ids):
                     shared_volume_mounts.append(
                         api_pb2.SharedVolumeMount(
                             mount_path=path,
-                            shared_volume_id=(await resolver.load(shared_volume)).object_id,
+                            shared_volume_id=volume_id,
                             allow_cross_region=allow_cross_region_volumes,
                         )
                     )
@@ -1045,7 +1039,7 @@ class _Function(_Provider[_FunctionHandle]):
                 stub_name = stub.name
 
             mount_ids, secret_ids, image_id, shared_volume_mounts = await asyncio.gather(
-                mount_loader(), secrets_loader(), image_loader(), shared_volume_loader()
+                _load_ids(all_mounts), _load_ids(secrets), image_loader(), shared_volume_loader()
             )
 
             # Create function remotely
