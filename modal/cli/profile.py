@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import typer
 
-from modal.config import _env, config_envs, config_set_active_profile
+from modal.config import _profile, config_profiles, config_set_active_profile
 
 profile_cli = typer.Typer(name="profile", help="Set the current environment.", no_args_is_help=True)
 
@@ -13,10 +13,10 @@ def activate(profile: str = typer.Argument(..., help="Modal environment to activ
 
 @profile_cli.command(help="Print the active Modal environment.")
 def current():
-    print(_env)
+    print(_profile)
 
 
 @profile_cli.command(help="List all Modal environments that are defined.")
 def list():
-    for env in config_envs():
-        print(f"{env} [active]" if _env == env else env)
+    for env in config_profiles():
+        print(f"{env} [active]" if _profile == env else env)

@@ -67,7 +67,7 @@ Some "meta-options" are set using environment variables only:
 
 * ``MODAL_CONFIG_PATH`` lets you override the location of the .toml file,
   by default ``~/.modal.toml``.
-* ``MODAL_ENV`` lets you use multiple sections in the .toml file
+* ``MODAL_PROFILE`` lets you use multiple sections in the .toml file
   and switch between them. It defaults to "default".
 """
 
@@ -75,11 +75,13 @@ import logging
 import os
 import typing
 import warnings
+from datetime import date
 
 import toml
 
 
 from ._traceback import setup_rich_traceback
+from .exception import deprecation_warning
 
 # Locate config file and read it
 
@@ -97,12 +99,12 @@ def _read_user_config():
 _user_config = _read_user_config()
 
 
-def config_envs():
-    """List the available modal envs in the .modal.toml file."""
+def config_profiles():
+    """List the available modal profiles in the .modal.toml file."""
     return _user_config.keys()
 
 
-def _config_active_env():
+def _config_active_profile():
     for key, values in _user_config.items():
         if values.get("active", False) is True:
             return key
@@ -111,7 +113,7 @@ def _config_active_env():
 
 
 def config_set_active_profile(env: str):
-    """Set the user's active modal env by writing it to the `.modal.toml` file."""
+    """Set the user's active modal profile by writing it to the `.modal.toml` file."""
     if env not in _user_config:
         raise KeyError(env)
 
@@ -122,7 +124,10 @@ def config_set_active_profile(env: str):
     _write_user_config(_user_config)
 
 
-_env = os.environ.get("MODAL_ENV", _config_active_env())
+if "MODAL_ENV" in os.environ:
+    deprecation_warning(date(2023, 5, 24), "MODAL_ENV will soon be deprecated. Use MODAL_PROFILE instead")
+
+_profile = os.environ.get("MODAL_PROFILE", os.environ.get("MODAL_ENV", _config_active_profile()))
 
 # Define settings
 
@@ -168,7 +173,7 @@ class Config:
         3. The default value of the setting
         """
         if env is None:
-            env = _env
+            env = _profile
         s = _SETTINGS[key]
         env_var_key = "MODAL_" + key.upper()
         if env_var_key in os.environ:
@@ -203,7 +208,7 @@ logger.addHandler(ch)
 def _store_user_config(new_settings, env=None):
     """Internal method, used by the CLI to set tokens."""
     if env is None:
-        env = _env
+        env = _profile
     user_config = _read_user_config()
     user_config.setdefault(env, {}).update(**new_settings)
     _write_user_config(user_config)
