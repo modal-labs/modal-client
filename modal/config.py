@@ -110,7 +110,7 @@ def _config_active_env():
         return "default"
 
 
-def config_set_active_env(env: str):
+def config_set_active_profile(env: str):
     """Set the user's active modal env by writing it to the `.modal.toml` file."""
     if env not in _user_config:
         raise KeyError(env)
