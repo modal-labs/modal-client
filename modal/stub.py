@@ -130,6 +130,7 @@ class _Stub:
         @stub.function()
         def store_something(key: str, value: str):
             stub.app.key_value_store.put(key, value)
+        ```
         """
 
         self._name = name
