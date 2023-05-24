@@ -248,7 +248,7 @@ def test_registered_web_endpoints(client, servicer):
     stub = Stub()
     stub.function()(square)
     with pytest.warns(DeprecationError):
-        stub.webhook(web1)
+        stub.webhook()(web1)
     stub.function()(web_endpoint()(web2))
 
     assert stub.registered_web_endpoints == ["web1", "web2"]
