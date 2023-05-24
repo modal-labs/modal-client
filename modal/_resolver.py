@@ -76,11 +76,9 @@ class Resolver:
 
     async def load(self, obj, existing_object_id: Optional[str] = None):
         cached_future = self._local_uuid_to_future.get(obj.local_uuid)
-        if cached_future.done():
-            return cached_future.result()
 
         if not cached_future:
-
+            # don't run any awaits within this if-block to prevent race conditions
             async def loader():
                 created_obj = await obj._load(self, existing_object_id)
                 if existing_object_id is not None and created_obj.object_id != existing_object_id:
@@ -102,6 +100,9 @@ class Resolver:
 
             cached_future = asyncio.create_task(loader())
             self._local_uuid_to_future[obj.local_uuid] = cached_future
+
+        if cached_future.done():
+            return cached_future.result()
 
         return await cached_future
 
