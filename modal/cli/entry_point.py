@@ -9,6 +9,7 @@ from .env import env_cli
 from .secret import secret_cli
 from .token import token_cli
 from .volume import volume_cli
+from .profile import profile_cli
 
 
 def version_callback(value: bool):
@@ -43,6 +44,7 @@ def modal(
 entrypoint_cli_typer.add_typer(app_cli)
 entrypoint_cli_typer.add_typer(config_cli)
 entrypoint_cli_typer.add_typer(env_cli)
+entrypoint_cli_typer.add_typer(profile_cli)
 entrypoint_cli_typer.add_typer(secret_cli)
 entrypoint_cli_typer.add_typer(token_cli)
 entrypoint_cli_typer.add_typer(volume_cli)
