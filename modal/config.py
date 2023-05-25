@@ -205,12 +205,12 @@ logger.addHandler(ch)
 # Utils to write config
 
 
-def _store_user_config(new_settings, env=None):
+def _store_user_config(new_settings, profile=None):
     """Internal method, used by the CLI to set tokens."""
-    if env is None:
-        env = _profile
+    if profile is None:
+        profile = _profile
     user_config = _read_user_config()
-    user_config.setdefault(env, {}).update(**new_settings)
+    user_config.setdefault(profile, {}).update(**new_settings)
     _write_user_config(user_config)
 
 
