@@ -4,7 +4,7 @@ import os
 import pytest
 from unittest import mock
 
-from modal import App, FunctionHandle, Image, Stub, container_app
+from modal import App, FunctionHandle, Image, Stub
 from modal.exception import InvalidError
 
 from .supports.skip import skip_windows_unix_socket
@@ -48,7 +48,7 @@ async def test_container_function_initialization(unix_servicer, container_client
     # Now, let's create my_f_2 after the app started running
     # This might happen if some local module is imported lazily
     my_f_2_container = stub.function()(my_f_2)
-    assert await my_f_2_container.call(42) == 1764  # type: ignore
+    assert await my_f_2_container.call.aio(42) == 1764  # type: ignore
 
 
 @skip_windows_unix_socket
@@ -109,9 +109,9 @@ async def test_is_inside_default_image(servicer, unix_servicer, client, containe
 
     from modal.stub import _default_image
 
-    app = await App._init_new(client)
+    app = await App._init_new.aio(client)
     app_id = app.app_id
-    default_image_handle = await app.create_one_object(_default_image)
+    default_image_handle = await app.create_one_object.aio(_default_image)
     default_image_id = default_image_handle.object_id
 
     # Copy the app objects to the container servicer

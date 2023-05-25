@@ -8,8 +8,7 @@ from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 
 import modal.app
-from modal import Client, Stub, web_endpoint, wsgi_app
-from modal import Dict, Queue, Stub, Image
+from modal import Client, Dict, Image, Queue, Stub, web_endpoint, wsgi_app
 from modal.exception import DeprecationError, InvalidError
 from modal.runner import deploy_stub
 from modal_proto import api_pb2

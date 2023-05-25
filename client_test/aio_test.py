@@ -1,6 +1,7 @@
+# Copyright Modal Labs 2023
 import pytest
 
-from modal.exception import DeprecationError, InvalidError
+from modal.exception import DeprecationError
 
 
 @pytest.mark.asyncio
@@ -10,7 +11,7 @@ async def test_deprecated(servicer, client):
 
     stub = AioStub()
 
-    async with stub.run(client=client) as app:
+    async with stub.run(client=client):
         pass
 
 
@@ -20,5 +21,5 @@ async def test_new(servicer, client):
 
     stub = Stub()
 
-    async with stub.run(client=client) as app:
+    async with stub.run(client=client):
         pass
