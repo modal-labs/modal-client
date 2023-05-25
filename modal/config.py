@@ -164,7 +164,7 @@ class Config:
     def __init__(self):
         pass
 
-    def get(self, key, env=None):
+    def get(self, key, profile=None):
         """Looks up a configuration value.
 
         Will check (in decreasing order of priority):
@@ -172,14 +172,14 @@ class Config:
         2. Settings in the user's .toml configuration file
         3. The default value of the setting
         """
-        if env is None:
-            env = _profile
+        if profile is None:
+            profile = _profile
         s = _SETTINGS[key]
         env_var_key = "MODAL_" + key.upper()
         if env_var_key in os.environ:
             return s.transform(os.environ[env_var_key])
-        elif env in _user_config and key in _user_config[env]:
-            return s.transform(_user_config[env][key])
+        elif profile in _user_config and key in _user_config[profile]:
+            return s.transform(_user_config[profile][key])
         else:
             return s.default
 
