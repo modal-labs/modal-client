@@ -4,6 +4,7 @@ import datetime
 import inspect
 import sys
 import time
+import warnings
 from typing import Optional
 
 import click
@@ -115,7 +116,7 @@ def _get_click_command_for_local_entrypoint(_stub, entrypoint: LocalEntrypoint):
                 func(*args, **kwargs)
             if app.function_invocations == 0:
                 # TODO: better formatting for the warning message
-                print(
+                warnings.warn(
                     "Warning: no remote function calls were made.\n"
                     "Note that Modal functions run locally when called directly (e.g. `f()`).\n"
                     "In order to run a function remotely, you may use `f.call()`. (See https://modal.com/docs/reference/modal.Function for other options)."
