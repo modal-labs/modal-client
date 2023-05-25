@@ -3,7 +3,6 @@ import inspect
 import pytest
 
 from modal import Stub, method
-from modal.aio import AioStub, aio_method
 from modal.functions import FunctionHandle
 from modal_proto import api_pb2
 from modal._serialization import deserialize
@@ -77,21 +76,21 @@ def test_call_cls_remote_invalid_type(client):
         assert "y=" in str(exc)
 
 
-aio_stub = AioStub()
+stub_2 = Stub()
 
 
-@aio_stub.cls(cpu=42)
+@stub_2.cls(cpu=42)
 class Bar:
-    @aio_method()
+    @method()
     def baz(self, x):
         return x**3
 
 
 @pytest.mark.asyncio
-async def test_call_class_async(aio_client, servicer):
-    async with aio_stub.run(client=aio_client):
+async def test_call_class_async(client, servicer):
+    async with stub_2.run(client=client):
         bar = Bar()
-        assert await bar.baz.call(42) == 1764
+        assert await bar.baz.call.aio(42) == 1764
 
 
 def test_run_class_serialized(client, servicer):
@@ -124,30 +123,30 @@ def test_run_class_serialized(client, servicer):
     assert meth(100) == 1000000
 
 
-aio_stub_remote = AioStub()
+stub_remote_2 = Stub()
 
 
-@aio_stub_remote.cls(cpu=42)
+@stub_remote_2.cls(cpu=42)
 class BarRemote(ClsMixin):
     def __init__(self, x: int, y: str) -> None:
         self.x = x
         self.y = y
 
-    @aio_method()
+    @method()
     def baz(self, z: int):
         return z**3
 
 
 @pytest.mark.asyncio
 async def test_call_cls_remote_async(client):
-    async with aio_stub_remote.run(client=client):
-        coro = BarRemote.aio_remote(3, "hello")
+    async with stub_remote_2.run(client=client):
+        coro = BarRemote.remote.aio(3, "hello")
         assert inspect.iscoroutine(coro)
         bar_remote = await coro
         # Mock servicer just squares the argument
         # This means remote function call is taking place.
-        assert await bar_remote.baz.call(8) == 64
-        assert await bar_remote.baz(8) == 64
+        assert await bar_remote.baz.call.aio(8) == 64
+        assert bar_remote.baz(8) == 64
 
 
 stub_local = Stub()

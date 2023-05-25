@@ -4,9 +4,8 @@ from unittest import mock
 import pytest
 
 import modal
-import modal.aio
 from modal.exception import InvalidError
-from modal.shared_volume import SharedVolumeHandle, AioSharedVolumeHandle
+from modal.shared_volume import SharedVolumeHandle
 
 from .supports.skip import skip_windows
 
@@ -97,15 +96,15 @@ async def test_shared_volume_handle_dir(client, tmp_path, servicer):
 @pytest.mark.asyncio
 async def test_shared_volume_handle_big_file(client, tmp_path, servicer, blob_server, *args):
     with mock.patch("modal.shared_volume.LARGE_FILE_LIMIT", 10):
-        stub = modal.aio.AioStub()
-        stub.vol = modal.aio.AioSharedVolume()
+        stub = modal.Stub()
+        stub.vol = modal.SharedVolume()
         local_file_path = tmp_path / "bigfile"
         local_file_path.write_text("hello world, this is a lot of text")
 
         async with stub.run(client=client) as app:
             handle = app.vol
-            assert isinstance(handle, AioSharedVolumeHandle)
-            await handle.add_local_file(local_file_path)
+            assert isinstance(handle, SharedVolumeHandle)
+            await handle.add_local_file.aio(local_file_path)
 
         assert servicer.shared_volume_files[handle.object_id].keys() == {"/bigfile"}
         assert servicer.shared_volume_files[handle.object_id]["/bigfile"].data == b""

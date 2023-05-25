@@ -5,7 +5,6 @@ from google.protobuf.empty_pb2 import Empty
 
 import modal.exception
 from modal import Client
-from modal.aio import AioClient
 from modal.exception import AuthError, ConnectionError, VersionError
 from modal_proto import api_pb2
 
@@ -23,7 +22,7 @@ async def test_client(servicer, client):
 
 @pytest.mark.asyncio
 @skip_windows_unix_socket
-async def test_container_client(unix_servicer, aio_container_client):
+async def test_container_client(unix_servicer, container_client):
     assert len(unix_servicer.requests) == 1  # no heartbeat, just ClientHello
     assert isinstance(unix_servicer.requests[0], Empty)
     assert unix_servicer.client_create_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CONTAINER)
@@ -33,7 +32,7 @@ async def test_container_client(unix_servicer, aio_container_client):
 @pytest.mark.timeout(TEST_TIMEOUT)
 async def test_client_dns_failure():
     with pytest.raises(ConnectionError) as excinfo:
-        async with AioClient("https://xyz.invalid", api_pb2.CLIENT_TYPE_CONTAINER, None):
+        async with Client("https://xyz.invalid", api_pb2.CLIENT_TYPE_CONTAINER, None):
             pass
     assert excinfo.value
 
@@ -43,7 +42,7 @@ async def test_client_dns_failure():
 @skip_windows_unix_socket
 async def test_client_connection_failure():
     with pytest.raises(ConnectionError) as excinfo:
-        async with AioClient("https://localhost:443", api_pb2.CLIENT_TYPE_CONTAINER, None):
+        async with Client("https://localhost:443", api_pb2.CLIENT_TYPE_CONTAINER, None):
             pass
     assert excinfo.value
 
@@ -53,7 +52,7 @@ async def test_client_connection_failure():
 @skip_windows_unix_socket
 async def test_client_connection_failure_unix_socket():
     with pytest.raises(ConnectionError) as excinfo:
-        async with AioClient("unix:/tmp/xyz.txt", api_pb2.CLIENT_TYPE_CONTAINER, None):
+        async with Client("unix:/tmp/xyz.txt", api_pb2.CLIENT_TYPE_CONTAINER, None):
             pass
     assert excinfo.value
 
@@ -65,7 +64,7 @@ async def test_client_connection_timeout(unix_servicer, monkeypatch):
     monkeypatch.setattr("modal.client.CLIENT_CREATE_ATTEMPT_TIMEOUT", 1.0)
     monkeypatch.setattr("modal.client.CLIENT_CREATE_TOTAL_TIMEOUT", 3.0)
     with pytest.raises(ConnectionError) as excinfo:
-        async with AioClient(unix_servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, None, version="timeout"):
+        async with Client(unix_servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, None, version="timeout"):
             pass
 
     # The HTTP lookup will return 400 because the GRPC server rejects the http request
@@ -76,7 +75,7 @@ async def test_client_connection_timeout(unix_servicer, monkeypatch):
 @pytest.mark.timeout(TEST_TIMEOUT)
 async def test_client_server_error(servicer):
     with pytest.raises(ConnectionError) as excinfo:
-        async with AioClient("https://github.com", api_pb2.CLIENT_TYPE_CLIENT, None):
+        async with Client("https://github.com", api_pb2.CLIENT_TYPE_CLIENT, None):
             pass
     # Can't connect over gRPC, but the HTTP lookup should succeed
     assert "HTTP status: 200" in str(excinfo.value)
@@ -85,16 +84,14 @@ async def test_client_server_error(servicer):
 @pytest.mark.asyncio
 async def test_client_old_version(servicer):
     with pytest.raises(VersionError):
-        async with AioClient(
-            servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret"), version="0.0.0"
-        ):
+        async with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret"), version="0.0.0"):
             pass
 
 
 @pytest.mark.asyncio
 async def test_client_deprecated(servicer):
     with pytest.warns(modal.exception.DeprecationError):
-        async with AioClient(
+        async with Client(
             servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret"), version="deprecated"
         ):
             pass
@@ -103,7 +100,7 @@ async def test_client_deprecated(servicer):
 @pytest.mark.asyncio
 async def test_client_unauthenticated(servicer):
     with pytest.raises(AuthError):
-        async with AioClient(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, None, version="unauthenticated"):
+        async with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, None, version="unauthenticated"):
             pass
 
 

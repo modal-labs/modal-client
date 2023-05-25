@@ -2,11 +2,11 @@
 import pytest
 
 from modal._serialization import deserialize, serialize
-from modal.aio import AioQueue, AioStub
+from modal import Queue, Stub
 
-stub = AioStub()
+stub = Stub()
 
-stub.q = AioQueue()
+stub.q = Queue()
 
 
 @pytest.mark.asyncio

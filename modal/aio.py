@@ -55,5 +55,4 @@ deprecation_warning(
     "Where you would have previously used `await AioDict.lookup(...)` you now use "
     "`await Dict.lookup.aio(...)` instead.\nObjects that are themselves generators or context managers "
     "now conform to both the blocking and async interfaces, and returned objects of all functions/methods",
-    pending=True,
 )
