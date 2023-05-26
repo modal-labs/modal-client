@@ -1,12 +1,12 @@
 # Copyright Modal Labs 2022
 import pytest
 
-from modal._blob_utils import blob_download, blob_upload
+from modal._blob_utils import blob_download as _blob_download, blob_upload as _blob_upload
 from modal.exception import ExecutionError
 from modal_utils.async_utils import synchronize_apis
 
-blob_upload, _ = synchronize_apis(blob_upload)
-blob_download, _ = synchronize_apis(blob_download)
+blob_upload, _ = synchronize_apis(_blob_upload)
+blob_download, _ = synchronize_apis(_blob_download)
 
 
 @pytest.mark.asyncio
