@@ -140,7 +140,7 @@ class BarRemote(ClsMixin):
 @pytest.mark.asyncio
 async def test_call_cls_remote_async(client):
     async with stub_remote_2.run(client=client):
-        coro = BarRemote.remote.aio(3, "hello")
+        coro = BarRemote.remote.aio(3, "hello")  # type: ignore
         assert inspect.iscoroutine(coro)
         bar_remote = await coro
         # Mock servicer just squares the argument

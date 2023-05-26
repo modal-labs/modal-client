@@ -61,14 +61,14 @@ async def test_webhook_lookup(servicer, client):
 @pytest.mark.asyncio
 async def test_deploy_exists(servicer, client):
     assert not await Queue._exists.aio("my-queue", client=client)  # type: ignore
-    h1 = await Queue()._deploy.aio("my-queue", client=client)
+    h1: QueueHandle = await Queue()._deploy.aio("my-queue", client=client)
     assert await Queue._exists.aio("my-queue", client=client)  # type: ignore
-    h2 = await Queue().lookup.aio("my-queue", client=client)  # type: ignore
+    h2: QueueHandle = await Queue().lookup.aio("my-queue", client=client)  # type: ignore
     assert h1.object_id == h2.object_id
 
 
 @pytest.mark.asyncio
 async def test_deploy_retain_id(servicer, client):
-    h1 = await Queue()._deploy.aio("my-queue", client=client)
-    h2 = await Queue()._deploy.aio("my-queue", client=client)
+    h1: QueueHandle = await Queue()._deploy.aio("my-queue", client=client)
+    h2: QueueHandle = await Queue()._deploy.aio("my-queue", client=client)
     assert h1.object_id == h2.object_id
