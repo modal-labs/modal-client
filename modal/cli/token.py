@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+from datetime import date
 import getpass
 from typing import Optional
 import webbrowser
@@ -12,10 +13,16 @@ from modal.config import _store_user_config, config, user_config_path
 
 token_cli = typer.Typer(name="token", help="Manage tokens.", no_args_is_help=True)
 
-env_option = typer.Option(
+profile_option = typer.Option(
     None,
-    help="Modal environment to set credentials for. You can switch the currently active Modal environment with the `modal env` command. If unspecified, uses `default` environment.",
+    help="Modal profile to set credentials for. You can switch the currently active Modal profile with the `modal profile` command. If unspecified, uses `default` profile.",
 )
+
+
+def env_profile_deprecation():
+    from modal.exception import deprecation_warning
+
+    deprecation_warning(date(2023, 5, 25), "--env will soon be deprecated, use --profile instead", pending=True)
 
 
 @token_cli.command(
@@ -24,29 +31,36 @@ env_option = typer.Option(
 def set(
     token_id: Optional[str] = typer.Option(None, help="Account token ID."),
     token_secret: Optional[str] = typer.Option(None, help="Account token secret."),
-    env: Optional[str] = env_option,
+    env: Optional[str] = profile_option,
+    profile: Optional[str] = profile_option,
     no_verify: bool = False,
 ):
+    if env:
+        env_profile_deprecation()
+        profile = env
     if token_id is None:
         token_id = getpass.getpass("Token ID:")
     if token_secret is None:
         token_secret = getpass.getpass("Token secret:")
 
     if not no_verify:
-        server_url = config.get("server_url", env=env)
+        server_url = config.get("server_url", profile=profile)
         rich.print(f"Verifying token against [blue]{server_url}[/blue]")
         Client.verify(server_url, (token_id, token_secret))
         rich.print("[green]Token verified successfully[/green]")
 
-    _store_user_config({"token_id": token_id, "token_secret": token_secret}, env=env)
+    _store_user_config({"token_id": token_id, "token_secret": token_secret}, profile=profile)
     rich.print(f"Token written to {user_config_path}")
 
 
 @token_cli.command(help="Creates a new token by using an authenticated web session.")
-def new(env: Optional[str] = env_option, no_verify: bool = False):
-    server_url = config.get("server_url", env=env)
+def new(env: Optional[str] = profile_option, profile: Optional[str] = profile_option, no_verify: bool = False):
+    if env:
+        env_profile_deprecation()
+        profile = env
+    server_url = config.get("server_url", profile=profile)
 
-    with Client.unauthenticated_client(env, server_url) as client:
+    with Client.unauthenticated_client(server_url) as client:
         token_flow_id, web_url = client.start_token_flow()
         console = Console()
         with console.status("Waiting for authentication in the web browser...", spinner="dots"):
@@ -69,5 +83,5 @@ def new(env: Optional[str] = env_option, no_verify: bool = False):
         Client.verify(server_url, (token_id, token_secret))
         rich.print("[green]Token verified successfully[/green]")
 
-    _store_user_config({"token_id": token_id, "token_secret": token_secret}, env=env)
+    _store_user_config({"token_id": token_id, "token_secret": token_secret}, profile=profile)
     rich.print(f"Token written to {user_config_path}")
