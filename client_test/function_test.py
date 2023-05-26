@@ -203,7 +203,7 @@ async def test_generator(client, servicer):
 
 
 @pytest.mark.asyncio
-async def test_generator_async(aio_client, servicer):
+async def test_generator_async(client, servicer):
     stub = AioStub()
 
     later_gen_modal = stub.function()(async_later_gen)
@@ -215,7 +215,7 @@ async def test_generator_async(aio_client, servicer):
     servicer.function_body(async_dummy)
 
     assert len(servicer.cleared_function_calls) == 0
-    async with stub.run(client=aio_client):
+    async with stub.run(client=client):
         assert later_gen_modal.is_generator
         res = later_gen_modal.call()
         # Async generators fulfil the *asynchronous iterator protocol*, which requires both these methods.
@@ -363,11 +363,11 @@ def test_function_exception(client, servicer):
 
 
 @pytest.mark.asyncio
-async def test_function_exception_async(aio_client, servicer):
+async def test_function_exception_async(client, servicer):
     stub = AioStub()
 
     failure_modal = stub.function()(servicer.function_body(failure))
-    async with stub.run(client=aio_client):
+    async with stub.run(client=client):
         with pytest.raises(CustomException) as excinfo:
             coro = failure_modal.call()
             assert inspect.isawaitable(
