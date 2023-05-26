@@ -1,26 +1,26 @@
 # Copyright Modal Labs 2022
 import pytest
 
-from modal.aio import AioQueue, AioStub
+from modal import Queue, Stub
 from modal.exception import InvalidError
 
 
 @pytest.mark.asyncio
-async def test_async_factory(aio_client):
-    stub = AioStub()
-    stub["my_factory"] = AioQueue()
-    async with stub.run(client=aio_client) as running_app:
-        # assert isinstance(running_app["my_factory"], AioQueue)  # TODO(erikbern(): is a handle now
+async def test_async_factory(client):
+    stub = Stub()
+    stub["my_factory"] = Queue()
+    async with stub.run(client=client) as running_app:
+        # assert isinstance(running_app["my_factory"], Queue)  # TODO(erikbern(): is a handle now
         assert running_app["my_factory"].object_id == "qu-1"
 
 
 @pytest.mark.asyncio
-async def test_use_object(aio_client):
-    stub = AioStub()
-    q = AioQueue.from_name("foo-queue")
-    assert isinstance(q, AioQueue)
+async def test_use_object(client):
+    stub = Stub()
+    q = Queue.from_name("foo-queue")
+    assert isinstance(q, Queue)
     stub["my_q"] = q
-    async with stub.run(client=aio_client) as running_app:
+    async with stub.run(client=client) as running_app:
         assert running_app["my_q"].object_id == "qu-foo"
 
 

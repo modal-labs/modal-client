@@ -4,7 +4,7 @@ import os
 import pytest
 from unittest import mock
 
-from modal.aio import AioApp, AioFunctionHandle, AioImage, AioStub, aio_container_app
+from modal import App, FunctionHandle, Image, Stub
 from modal.exception import InvalidError
 
 from .supports.skip import skip_windows_unix_socket
@@ -21,23 +21,23 @@ def my_f_2(x):
 
 @skip_windows_unix_socket
 @pytest.mark.asyncio
-async def test_container_function_initialization(unix_servicer, aio_container_client):
+async def test_container_function_initialization(unix_servicer, container_client):
     unix_servicer.app_objects["ap-123"] = {
         "my_f_1": "fu-123",
         "my_f_2": "fu-456",
     }
 
-    container_app = await AioApp.init_container(aio_container_client, "ap-123")
+    container_app = await App.init_container.aio(container_client, "ap-123")
 
-    stub = AioStub()
-    stub._hydrate_function_handles(aio_container_client, container_app)
+    stub = Stub()
+    stub._hydrate_function_handles(container_client, container_app)
     # my_f_1_container = stub.function()(my_f_1)
 
     # Make sure these functions exist and have the right type
-    my_f_1_app = aio_container_app["my_f_1"]
-    my_f_2_app = aio_container_app["my_f_1"]
-    assert isinstance(my_f_1_app, AioFunctionHandle)
-    assert isinstance(my_f_2_app, AioFunctionHandle)
+    my_f_1_app = container_app["my_f_1"]
+    my_f_2_app = container_app["my_f_1"]
+    assert isinstance(my_f_1_app, FunctionHandle)
+    assert isinstance(my_f_2_app, FunctionHandle)
 
     # Make sure we can call my_f_1 inside the container
     # assert await my_f_1_container.call(42) == 1764
@@ -48,22 +48,22 @@ async def test_container_function_initialization(unix_servicer, aio_container_cl
     # Now, let's create my_f_2 after the app started running
     # This might happen if some local module is imported lazily
     my_f_2_container = stub.function()(my_f_2)
-    assert await my_f_2_container.call(42) == 1764  # type: ignore
+    assert await my_f_2_container.call.aio(42) == 1764  # type: ignore
 
 
 @skip_windows_unix_socket
 @pytest.mark.asyncio
-async def test_is_inside(servicer, unix_servicer, aio_client, aio_container_client):
-    image_1 = AioImage.debian_slim().pip_install(["abc"])
-    image_2 = AioImage.debian_slim().pip_install(["def"])
+async def test_is_inside(servicer, unix_servicer, client, container_client):
+    image_1 = Image.debian_slim().pip_install(["abc"])
+    image_2 = Image.debian_slim().pip_install(["def"])
 
     def get_stub():
-        return AioStub(image=image_1, image_2=image_2)
+        return Stub(image=image_1, image_2=image_2)
 
     stub = get_stub()
 
     # Run container
-    async with stub.run(client=aio_client) as app:
+    async with stub.run(client=client) as app:
         # We're not inside the container (yet)
         assert not stub.is_inside()
         assert not stub.is_inside(image_1)
@@ -77,7 +77,7 @@ async def test_is_inside(servicer, unix_servicer, aio_client, aio_container_clie
         unix_servicer.app_objects[app_id] = servicer.app_objects[app_id]
 
         # Pretend that we're inside the container
-        await AioApp.init_container(aio_container_client, app_id)
+        await App.init_container.aio(container_client, app_id)
 
         # Create a new stub (TODO: tie it to the previous stub through name or similar)
         stub = get_stub()
@@ -101,26 +101,26 @@ def f():
 
 @skip_windows_unix_socket
 @pytest.mark.asyncio
-async def test_is_inside_default_image(servicer, unix_servicer, aio_client, aio_container_client):
-    stub = AioStub()
+async def test_is_inside_default_image(servicer, unix_servicer, client, container_client):
+    stub = Stub()
     stub.function()(f)
 
     assert not stub.is_inside()
 
     from modal.stub import _default_image
 
-    app = await AioApp._init_new(aio_client)
+    app = await App._init_new.aio(client)
     app_id = app.app_id
-    default_image_handle = await app.create_one_object(_default_image)
+    default_image_handle = await app.create_one_object.aio(_default_image)
     default_image_id = default_image_handle.object_id
 
     # Copy the app objects to the container servicer
     unix_servicer.app_objects[app_id] = servicer.app_objects[app_id]
 
-    await AioApp.init_container(aio_container_client, app_id)
+    await App.init_container.aio(container_client, app_id)
 
     # Create a new stub (TODO: tie it to the previous stub through name or similar)
-    stub = AioStub()
+    stub = Stub()
 
     with mock.patch.dict(os.environ, {"MODAL_IMAGE_ID": default_image_id}):
         assert stub.is_inside()

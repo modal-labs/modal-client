@@ -8,13 +8,12 @@ import pytest
 
 from modal import App, Stub, create_package_mounts
 from modal._blob_utils import LARGE_FILE_LIMIT
-from modal.aio import AioApp
 from modal.exception import NotFoundError
-from modal.mount import AioMount, Mount
+from modal.mount import Mount
 
 
 @pytest.mark.asyncio
-async def test_get_files(servicer, aio_client, tmpdir):
+async def test_get_files(servicer, client, tmpdir):
     small_content = b"# not much here"
     large_content = b"a" * (LARGE_FILE_LIMIT + 1)
 
@@ -23,8 +22,8 @@ async def test_get_files(servicer, aio_client, tmpdir):
     tmpdir.join("fluff").write("hello")
 
     files = {}
-    m = AioMount.from_local_dir(Path(tmpdir), remote_path="/", condition=lambda fn: fn.endswith(".py"), recursive=True)
-    async for upload_spec in AioMount._get_files(m.entries):
+    m = Mount.from_local_dir(Path(tmpdir), remote_path="/", condition=lambda fn: fn.endswith(".py"), recursive=True)
+    async for upload_spec in Mount._get_files.aio(m.entries):
         files[upload_spec.mount_filename] = upload_spec
 
     assert "/small.py" in files
@@ -38,8 +37,8 @@ async def test_get_files(servicer, aio_client, tmpdir):
     assert files["/large.py"].content is None
     assert files["/large.py"].sha256_hex == hashlib.sha256(large_content).hexdigest()
 
-    app = await AioApp._init_new(aio_client)
-    await app.create_one_object(m)
+    app = await App._init_new.aio(client)
+    await app.create_one_object.aio(m)
     blob_id = max(servicer.blobs.keys())  # last uploaded one
     assert len(servicer.blobs[blob_id]) == len(large_content)
     assert servicer.blobs[blob_id] == large_content
