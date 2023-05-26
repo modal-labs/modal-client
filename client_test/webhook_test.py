@@ -22,14 +22,14 @@ with pytest.warns(DeprecationError):
 
     @stub.function(cpu=42)
     @stub.web_endpoint(method="POST")
-    async def h(x):
+    async def g(x):
         return {"square": x**2}
 
 
-with pytest.warns(DeprecationError):
+with pytest.raises(DeprecationError):
 
     @stub.webhook(method="PUT", cpu=42)
-    async def g(x):
+    async def h(x):
         return {"square": x**2}
 
 

@@ -163,7 +163,7 @@ class _Client:
             pass  # Will call ClientHello
 
     @classmethod
-    async def unauthenticated_client(cls, env: str, server_url: str):
+    async def unauthenticated_client(cls, server_url: str):
         # Create a connection with no credentials
         # To be used with the token flow
         return _Client(server_url, api_pb2.CLIENT_TYPE_CLIENT, None, no_verify=True)

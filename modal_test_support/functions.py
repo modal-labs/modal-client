@@ -117,13 +117,6 @@ def webhook(arg="world"):
 
 with pytest.warns(DeprecationError):
 
-    @stub.webhook
-    def webhook_old(arg="world"):
-        return {"hello": arg}
-
-
-with pytest.warns(DeprecationError):
-
     class WebhookLifecycleClass:
         _events: list[str] = []
 
