@@ -317,20 +317,6 @@ def test_webhook(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_webhook_old(unix_servicer, event_loop):
-    inputs = _get_web_inputs()
-    client, items = _run_container(
-        unix_servicer,
-        "modal_test_support.functions",
-        "webhook_old",
-        inputs=inputs,
-        webhook_type=api_pb2.WEBHOOK_TYPE_FUNCTION,
-    )
-
-    assert len(items) == 3
-
-
-@skip_windows_unix_socket
 def test_webhook_lifecycle(unix_servicer, event_loop):
     inputs = _get_web_inputs()
     with pytest.warns(DeprecationError):
