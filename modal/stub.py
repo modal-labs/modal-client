@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-import asyncio
 import typing
 from datetime import date
 import inspect
@@ -24,7 +23,7 @@ from .app import _App, _container_app, is_local
 from .client import _Client
 from .cls import make_remote_cls_constructors
 from .config import logger
-from .exception import InvalidError, deprecation_warning
+from .exception import InvalidError, deprecation_error, deprecation_warning
 from .functions import _Function, _FunctionHandle, PartialFunction, AioPartialFunction, _PartialFunction
 from .functions import _asgi_app, _web_endpoint, _wsgi_app
 from .gpu import GPU_T
@@ -300,20 +299,15 @@ class _Stub:
         stdout=None,
         show_progress: Optional[bool] = None,
         timeout: float = 1e10,
-    ) -> None:
-        """Deprecated. Use the `modal serve` CLI command instead."""
-        deprecation_warning(
+    ):
+        """Deprecated. Use the `modal serve` CLI command instead.
+
+        For programmatic usage, use `modal.serving.serve_stub`
+        """
+        deprecation_error(
             date(2023, 2, 28),
             self.serve.__doc__,
         )
-        if self._app is not None:
-            raise InvalidError(
-                "The stub already has an app running."
-                " Are you calling stub.serve() directly?"
-                " Consider using the `modal serve` shell command."
-            )
-        async with _run_stub(self, client=client, stdout=stdout, show_progress=show_progress):
-            await asyncio.sleep(timeout)
 
     @typechecked
     async def deploy(
@@ -639,17 +633,11 @@ class _Stub:
         deprecation_warning(date(2023, 4, 18), self.wsgi_app.__doc__)
         return _wsgi_app(label, wait_for_response)
 
-    @decorator_with_options_unsupported
-    @typechecked
     def webhook(
         self,
-        raw_f=None,
-        *,
-        method: str = "GET",
-        label: Optional[str] = None,
-        wait_for_response: bool = True,
-        **function_args,
-    ) -> _FunctionHandle:
+        *args,
+        **kwargs,
+    ):
         """`stub.webhook` is deprecated. Use `stub.function` in combination with `modal.web_endpoint` instead. Usage:
 
         ```python
@@ -658,23 +646,16 @@ class _Stub:
         def my_function():
            ...
         ```"""
-        deprecation_warning(
+        deprecation_error(
             date(2023, 4, 3),
             self.webhook.__doc__,
         )
-        web_endpoint = _web_endpoint(method=method, label=label, wait_for_response=wait_for_response)(raw_f)
-        return self.function(**function_args)(web_endpoint)
 
-    @decorator_with_options_unsupported
-    @typechecked
     def asgi(
         self,
-        raw_f,
-        *,
-        label: Optional[str] = None,
-        wait_for_response: bool = True,
-        **function_args,
-    ) -> _FunctionHandle:
+        *args,
+        **kwargs,
+    ):
         """`stub.asgi` is deprecated. Use `stub.function` in combination with `modal.asgi_app` instead. Usage:
 
         ```python
@@ -683,21 +664,16 @@ class _Stub:
         def my_asgi_app():
             ...
         ```"""
-        deprecation_warning(
+        deprecation_error(
             date(2023, 4, 3),
             self.asgi.__doc__,
         )
-        web_endpoint = _asgi_app(label=label, wait_for_response=wait_for_response)(raw_f)
-        return self.function(**function_args)(web_endpoint)
 
-    @decorator_with_options_unsupported
     def wsgi(
         self,
-        raw_f,
-        label: Optional[str] = None,
-        wait_for_response: bool = True,
-        **function_args,
-    ) -> _FunctionHandle:
+        *args,
+        **kwargs,
+    ):
         """`stub.wsgi` is deprecated. Use stub.function in combination with `modal.wsgi_app` instead. Usage:
 
         ```
@@ -706,12 +682,10 @@ class _Stub:
         def my_wsgi_app():
             ...
         ```"""
-        deprecation_warning(
+        deprecation_error(
             date(2023, 4, 3),
             self.wsgi.__doc__,
         )
-        web_endpoint = _wsgi_app(label=label, wait_for_response=wait_for_response)(raw_f)
-        return self.function(**function_args)(web_endpoint)
 
     async def interactive_shell(self, cmd=None, image=None, **kwargs):
         """`stub.interactive_shell` is deprecated. Use the `modal shell` command instead.

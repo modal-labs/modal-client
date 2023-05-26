@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
 import logging
-import os
 
 import pytest
 
@@ -9,9 +8,9 @@ from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 
 import modal.app
-from modal import Client, Stub, web_endpoint, wsgi_app
+from modal import Stub, web_endpoint
 from modal.aio import AioDict, AioQueue, AioStub, AioImage
-from modal.exception import DeprecationError, InvalidError
+from modal.exception import InvalidError
 from modal.runner import aio_deploy_stub, deploy_stub
 from modal_proto import api_pb2
 from modal_test_support import module_1, module_2
@@ -164,48 +163,6 @@ def test_same_function_name(caplog):
     assert "square" in caplog.text
 
 
-skip_in_github = pytest.mark.skipif(
-    os.environ.get("GITHUB_ACTIONS") == "true",
-    reason="Broken in GitHub Actions",
-)
-
-
-@skip_in_github
-def test_serve(client):
-    stub = Stub()
-
-    stub.function()(wsgi_app()(dummy))
-    with pytest.warns(DeprecationError):
-        stub.serve(client=client, timeout=1)
-
-
-@skip_in_github
-def test_serve_teardown(client, servicer):
-    stub = Stub()
-    with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
-        stub.function()(wsgi_app()(dummy))
-        with pytest.warns(DeprecationError):
-            stub.serve(client=client, timeout=1)
-
-    disconnect_reqs = [s for s in servicer.requests if isinstance(s, api_pb2.AppClientDisconnectRequest)]
-    assert len(disconnect_reqs) == 1
-
-
-# Required as failing to raise could cause test to never return.
-@skip_in_github
-@pytest.mark.timeout(7)
-def test_nested_serve_invocation(client):
-    stub = Stub()
-
-    stub.function()(wsgi_app()(dummy))
-    with pytest.raises(InvalidError) as excinfo:
-        with stub.run(client=client):
-            # This nested call creates a second web endpoint!
-            with pytest.warns(DeprecationError):
-                stub.serve(client=client)
-    assert "running" in str(excinfo.value)
-
-
 def test_run_state(client, servicer):
     stub = Stub()
     with stub.run(client=client) as app:
@@ -247,8 +204,7 @@ async def web2(x):
 def test_registered_web_endpoints(client, servicer):
     stub = Stub()
     stub.function()(square)
-    with pytest.warns(DeprecationError):
-        stub.webhook()(web1)
+    stub.function()(web_endpoint()(web1))
     stub.function()(web_endpoint()(web2))
 
     assert stub.registered_web_endpoints == ["web1", "web2"]
