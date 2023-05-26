@@ -267,7 +267,9 @@ class _Mount(_Provider[_MountHandle]):
             )
 
             remote_filename = file_spec.mount_filename
-            mount_file = api_pb2.MountFile(filename=remote_filename, sha256_hex=file_spec.sha256_hex)
+            mount_file = api_pb2.MountFile(
+                filename=remote_filename, sha256_hex=file_spec.sha256_hex, size=file_spec.size
+            )
 
             if file_spec.sha256_hex in uploaded_hashes:
                 return mount_file
