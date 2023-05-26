@@ -52,8 +52,8 @@ jobs:
         run: pytest -v -s client_test
 
       - name: Run docstring tests
-        run: pytest -s --markdown-docs -m markdown-docs modal
-       
+        run: pytest -s --markdown-docs -m markdown-docs modal --ignore modal/aio.py
+
 
   publish-base-images:
     name: |

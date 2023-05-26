@@ -8,48 +8,47 @@ from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 
 import modal.app
-from modal import Stub, web_endpoint
-from modal.aio import AioDict, AioQueue, AioStub, AioImage
+from modal import Dict, Image, Queue, Stub, web_endpoint
 from modal.exception import InvalidError
-from modal.runner import aio_deploy_stub, deploy_stub
+from modal.runner import deploy_stub
 from modal_proto import api_pb2
 from modal_test_support import module_1, module_2
 
 
 @pytest.mark.asyncio
-async def test_kwargs(servicer, aio_client):
-    stub = AioStub(
-        d=AioDict(),
-        q=AioQueue(),
+async def test_kwargs(servicer, client):
+    stub = Stub(
+        d=Dict(),
+        q=Queue(),
     )
-    async with stub.run(client=aio_client) as app:
+    async with stub.run(client=client) as app:
         # TODO: interface to get type safe objects from live apps
-        await app["d"].put("foo", "bar")  # type: ignore
-        await app["q"].put("baz")  # type: ignore
-        assert await app["d"].get("foo") == "bar"  # type: ignore
-        assert await app["q"].get() == "baz"  # type: ignore
+        await app["d"].put.aio("foo", "bar")  # type: ignore
+        await app["q"].put.aio("baz")  # type: ignore
+        assert await app["d"].get.aio("foo") == "bar"  # type: ignore
+        assert await app["q"].get.aio() == "baz"  # type: ignore
 
 
 @pytest.mark.asyncio
-async def test_attrs(servicer, aio_client):
-    stub = AioStub()
-    stub.d = AioDict()
-    stub.q = AioQueue()
-    async with stub.run(client=aio_client) as app:
-        await app.d.put("foo", "bar")  # type: ignore
-        await app.q.put("baz")  # type: ignore
-        assert await app.d.get("foo") == "bar"  # type: ignore
-        assert await app.q.get() == "baz"  # type: ignore
+async def test_attrs(servicer, client):
+    stub = Stub()
+    stub.d = Dict()
+    stub.q = Queue()
+    async with stub.run(client=client) as app:
+        await app.d.put.aio("foo", "bar")  # type: ignore
+        await app.q.put.aio("baz")  # type: ignore
+        assert await app.d.get.aio("foo") == "bar"  # type: ignore
+        assert await app.q.get.aio() == "baz"  # type: ignore
 
 
 @pytest.mark.asyncio
-async def test_stub_type_validation(servicer, aio_client):
+async def test_stub_type_validation(servicer, client):
     with pytest.raises(InvalidError):
-        stub = AioStub(
+        stub = Stub(
             foo=4242,  # type: ignore
         )
 
-    stub = AioStub()
+    stub = Stub()
 
     with pytest.raises(InvalidError) as excinfo:
         stub.bar = 4242  # type: ignore
@@ -62,19 +61,19 @@ def square(x):
 
 
 @pytest.mark.asyncio
-async def test_redeploy(servicer, aio_client):
-    stub = AioStub()
+async def test_redeploy(servicer, client):
+    stub = Stub()
     stub.function()(square)
-    stub.image = AioImage.debian_slim().pip_install("pandas")
+    stub.image = Image.debian_slim().pip_install("pandas")
 
     # Deploy app
-    app = await aio_deploy_stub(stub, "my-app", client=aio_client)
+    app = await deploy_stub.aio(stub, "my-app", client=client)
     assert app.app_id == "ap-1"
     assert servicer.app_objects["ap-1"]["square"] == "fu-1"
     assert servicer.app_state_history[app.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
 
     # Redeploy, make sure all ids are the same
-    app = await aio_deploy_stub(stub, "my-app", client=aio_client)
+    app = await deploy_stub.aio(stub, "my-app", client=client)
     assert app.app_id == "ap-1"
     assert servicer.app_objects["ap-1"]["square"] == "fu-1"
     assert servicer.app_state_history[app.app_id] == [
@@ -84,7 +83,7 @@ async def test_redeploy(servicer, aio_client):
     ]
 
     # Deploy to a different name, ids should change
-    app = await aio_deploy_stub(stub, "my-app-xyz", client=aio_client)
+    app = await deploy_stub.aio(stub, "my-app-xyz", client=client)
     assert app.app_id == "ap-2"
     assert servicer.app_objects["ap-2"]["square"] == "fu-2"
     assert servicer.app_state_history[app.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
@@ -182,9 +181,9 @@ def test_detach_state(client, servicer):
 
 
 @pytest.mark.asyncio
-async def test_grpc_protocol(aio_client, servicer):
-    stub = AioStub()
-    async with stub.run(client=aio_client):
+async def test_grpc_protocol(client, servicer):
+    stub = Stub()
+    async with stub.run(client=client):
         await asyncio.sleep(0.01)  # wait for heartbeat
     assert len(servicer.requests) == 4
     assert isinstance(servicer.requests[0], Empty)  # ClientHello
@@ -244,20 +243,20 @@ def test_set_image_on_stub_as_attribute():
 
 
 @pytest.mark.asyncio
-async def test_redeploy_persist(servicer, aio_client):
-    stub = AioStub()
+async def test_redeploy_persist(servicer, client):
+    stub = Stub()
     stub.function()(square)
-    stub.image = AioImage.debian_slim().pip_install("pandas")
+    stub.image = Image.debian_slim().pip_install("pandas")
 
-    stub.d = AioDict()
+    stub.d = Dict()
 
     # Deploy app
-    app = await aio_deploy_stub(stub, "my-app", client=aio_client)
+    app = await deploy_stub.aio(stub, "my-app", client=client)
     assert app.app_id == "ap-1"
     assert servicer.app_objects["ap-1"]["d"] == "di-0"
 
-    stub.d = AioDict().persist("my-dict")
+    stub.d = Dict().persist("my-dict")
     # Redeploy, make sure all ids are the same
-    app = await aio_deploy_stub(stub, "my-app", client=aio_client)
+    app = await deploy_stub.aio(stub, "my-app", client=client)
     assert app.app_id == "ap-1"
     assert servicer.app_objects["ap-1"]["d"] == "di-1"

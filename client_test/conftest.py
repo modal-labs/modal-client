@@ -26,7 +26,7 @@ from grpclib import GRPCError, Status
 
 from modal import __version__
 from modal.app import _App
-from modal.client import AioClient, Client
+from modal.client import Client
 from modal.image import _dockerhub_python_version
 from modal.mount import client_mount_name
 from modal_proto import api_grpc, api_pb2
@@ -722,20 +722,14 @@ async def unix_servicer(servicer_factory):
 
 
 @pytest_asyncio.fixture(scope="function")
-async def aio_client(servicer):
-    async with AioClient(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
-        yield client
-
-
-@pytest_asyncio.fixture(scope="function")
 async def client(servicer):
     with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
         yield client
 
 
 @pytest_asyncio.fixture(scope="function")
-async def aio_container_client(unix_servicer):
-    async with AioClient(unix_servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
+async def container_client(unix_servicer):
+    async with Client(unix_servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         yield client
 
 
@@ -747,7 +741,7 @@ async def server_url_env(servicer, monkeypatch):
 
 @pytest_asyncio.fixture(scope="function", autouse=True)
 async def reset_default_client():
-    AioClient.set_env_client(None)
+    Client.set_env_client(None)
 
 
 @pytest.fixture(name="mock_dir", scope="session")

@@ -5,15 +5,15 @@ import subprocess
 import sys
 
 from modal_proto import api_pb2
-from modal.aio import AioApp, AioStub, aio_web_endpoint, aio_asgi_app, aio_wsgi_app
-from modal.functions import AioFunctionHandle
+from modal import App, Stub, web_endpoint, asgi_app, wsgi_app
+from modal.functions import FunctionHandle
 from modal.exception import DeprecationError, InvalidError
 
-stub = AioStub()
+stub = Stub()
 
 
 @stub.function(cpu=42)
-@aio_web_endpoint(method="PATCH")
+@web_endpoint(method="PATCH")
 async def f(x):
     return {"square": x**2}
 
@@ -34,8 +34,8 @@ with pytest.raises(DeprecationError):
 
 
 @pytest.mark.asyncio
-async def test_webhook(servicer, aio_client):
-    async with stub.run(client=aio_client) as app:
+async def test_webhook(servicer, client):
+    async with stub.run(client=client) as app:
         assert f.web_url
         assert g.web_url
 
@@ -49,9 +49,9 @@ async def test_webhook(servicer, aio_client):
         assert await f(100) == {"square": 10000}
 
         # Make sure the container gets the app id as well
-        container_app = await AioApp.init_container(aio_client, app.app_id)
-        assert isinstance(container_app.f, AioFunctionHandle)
-        assert isinstance(container_app.g, AioFunctionHandle)
+        container_app = await App.init_container.aio(client, app.app_id)
+        assert isinstance(container_app.f, FunctionHandle)
+        assert isinstance(container_app.g, FunctionHandle)
         assert container_app.f.web_url
         assert container_app.g.web_url
 
@@ -80,12 +80,12 @@ def test_webhook_cors():
 
 
 def test_webhook_generator():
-    stub = AioStub()
+    stub = Stub()
 
     with pytest.raises(InvalidError) as excinfo:
 
         @stub.function(serialized=True)
-        @aio_web_endpoint()
+        @web_endpoint()
         def web_gen():
             yield None
 
@@ -93,7 +93,7 @@ def test_webhook_generator():
 
 
 @pytest.mark.asyncio
-async def test_webhook_forgot_function(servicer, aio_client):
+async def test_webhook_forgot_function(servicer, client):
     lib_dir = pathlib.Path(__file__).parent.parent
     args = [sys.executable, "-m", "modal_test_support.webhook_forgot_function"]
     ret = subprocess.run(args, cwd=lib_dir, stderr=subprocess.PIPE)
@@ -103,12 +103,12 @@ async def test_webhook_forgot_function(servicer, aio_client):
 
 
 @pytest.mark.asyncio
-async def test_webhook_decorator_in_wrong_order(servicer, aio_client):
-    stub = AioStub()
+async def test_webhook_decorator_in_wrong_order(servicer, client):
+    stub = Stub()
 
     with pytest.raises(InvalidError) as excinfo:
 
-        @aio_web_endpoint()
+        @web_endpoint()
         @stub.function(serialized=True)
         async def g(x):
             pass
@@ -117,20 +117,20 @@ async def test_webhook_decorator_in_wrong_order(servicer, aio_client):
 
 
 @pytest.mark.asyncio
-async def test_asgi_wsgi(servicer, aio_client):
-    stub = AioStub()
+async def test_asgi_wsgi(servicer, client):
+    stub = Stub()
 
     @stub.function(serialized=True)
-    @aio_asgi_app()
+    @asgi_app()
     async def my_asgi(x):
         pass
 
     @stub.function(serialized=True)
-    @aio_wsgi_app()
+    @wsgi_app()
     async def my_wsgi(x):
         pass
 
-    async with stub.run(client=aio_client):
+    async with stub.run(client=client):
         pass
 
     assert len(servicer.app_functions) == 2
