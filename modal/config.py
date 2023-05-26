@@ -164,7 +164,7 @@ class Config:
     def __init__(self):
         pass
 
-    def get(self, key, env=None):
+    def get(self, key, profile=None):
         """Looks up a configuration value.
 
         Will check (in decreasing order of priority):
@@ -172,14 +172,14 @@ class Config:
         2. Settings in the user's .toml configuration file
         3. The default value of the setting
         """
-        if env is None:
-            env = _profile
+        if profile is None:
+            profile = _profile
         s = _SETTINGS[key]
         env_var_key = "MODAL_" + key.upper()
         if env_var_key in os.environ:
             return s.transform(os.environ[env_var_key])
-        elif env in _user_config and key in _user_config[env]:
-            return s.transform(_user_config[env][key])
+        elif profile in _user_config and key in _user_config[profile]:
+            return s.transform(_user_config[profile][key])
         else:
             return s.default
 
@@ -205,12 +205,12 @@ logger.addHandler(ch)
 # Utils to write config
 
 
-def _store_user_config(new_settings, env=None):
+def _store_user_config(new_settings, profile=None):
     """Internal method, used by the CLI to set tokens."""
-    if env is None:
-        env = _profile
+    if profile is None:
+        profile = _profile
     user_config = _read_user_config()
-    user_config.setdefault(env, {}).update(**new_settings)
+    user_config.setdefault(profile, {}).update(**new_settings)
     _write_user_config(user_config)
 
 
