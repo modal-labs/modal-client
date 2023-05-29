@@ -115,7 +115,7 @@ PIPE_PATH = Path("-")
 
 @volume_cli.command(
     name="put",
-    help="""Upload a file to a shared volume.
+    help="""Upload a file or directory to a shared volume.
 
 Remote parent directories will be created as needed.
 
