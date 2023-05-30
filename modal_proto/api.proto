@@ -167,6 +167,7 @@ message AppStats {
   int32 n_running_tasks = 8;
   string object_entity = 9;
   string name = 10;
+  string environment = 11;
 }
 
 message AppListResponse {
@@ -179,6 +180,7 @@ message AppLookupObjectRequest {
   string object_tag = 4;
   string object_id = 5;
   string object_entity = 6;
+  string environment = 7;
 }
 
 message AppLookupObjectResponse {

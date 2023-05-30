@@ -126,6 +126,7 @@ class _Handle(metaclass=ObjectMeta):
             object_tag=tag,
             namespace=namespace,
             object_entity=cls._type_prefix,
+            environment="default",
         )
         try:
             response = await retry_transient_errors(client.stub.AppLookupObject, request)
