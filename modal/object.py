@@ -213,6 +213,7 @@ class _Provider(Generic[H]):
         label: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
+        environment: str = "default",
     ) -> H:
         """
         Note 1: this uses the single-object app method, which we're planning to get rid of later
@@ -225,7 +226,7 @@ class _Provider(Generic[H]):
 
         handle_cls = self._get_handle_cls()
         object_entity = handle_cls._type_prefix
-        app = await _App._init_from_name(client, label, namespace)
+        app = await _App._init_from_name(client, label, namespace, environment=environment)
         handle = await app.create_one_object(self)
         await app.deploy(label, namespace, object_entity)  # TODO(erikbern): not needed if the app already existed
         return handle

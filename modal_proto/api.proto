@@ -98,6 +98,7 @@ message AppCreateRequest {
   string description = 2;    // Human readable label for the website
   bool detach = 3; // deprecated, but needed until 0.48 is the minimum version
   bool initializing = 4; // deprecated, but needed until 0.48 is the minimum version
+  string environment = 5;
 }
 
 message AppCreateResponse {
@@ -124,6 +125,7 @@ message AppGetByDeploymentNameRequest {
   DeploymentNamespace namespace = 1;
   string name = 2;
   reserved 3;
+  string environment = 4;
 }
 
 message AppGetByDeploymentNameResponse {
