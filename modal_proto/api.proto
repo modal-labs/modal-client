@@ -206,6 +206,10 @@ message AppHeartbeatRequest {
   string app_id = 1;
 }
 
+message EnvironmentCreateRequest {
+  string name = 1;
+}
+
 enum RegistryType {
   DOCKERHUB = 0;
   ECR = 1;
@@ -1059,6 +1063,9 @@ service ModalClient {
   rpc DictPop(DictPopRequest) returns (DictPopResponse);
   rpc DictContains(DictContainsRequest) returns (DictContainsResponse);
   rpc DictLen(DictLenRequest) returns (DictLenResponse);
+
+  // Environments
+  rpc EnvironmentCreate(EnvironmentCreateRequest) returns (google.protobuf.Empty);
 
   // Functions
   rpc FunctionBindParams(FunctionBindParamsRequest) returns (FunctionBindParamsResponse);
