@@ -91,12 +91,38 @@ build_number = {new_build_number}
 def create_alias_package(ctx):
     from modal_version import __version__
 
+    os.makedirs("alias-package", exist_ok=True)
     with open("alias-package/setup.py", "w") as f:
         f.write(
             f"""\
 {copyright_header_full}
 from setuptools import setup
 setup(version="{__version__}")
+"""
+        )
+    with open("alias-package/setup.cfg", "w") as f:
+        f.write(
+            f"""\
+[metadata]
+name = modal
+author = Modal Labs
+author_email = erik@modal.com
+description = Dummy alias that requires modal-client
+long_description = This package is a dummy package that just requires the modal-client package.
+project_urls =
+    Homepage = https://modal.com
+
+[options]
+install_requires =
+    modal-client=={__version__}
+"""
+        )
+    with open("alias-package/pyproject.toml", "w") as f:
+        f.write(
+            """\
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
 """
         )
 
