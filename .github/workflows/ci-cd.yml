@@ -132,6 +132,13 @@ jobs:
       - name: Build wheel
         run: python setup.py bdist_wheel
 
+      - name: Create alias package
+        run: inv create-alias-package
+
+      - name: Build alias package
+        working-directory: alias-package
+        run: python setup.py bdist_wheel
+
       - name: Publish client mount
         env:
           MODAL_LOGLEVEL: DEBUG
@@ -143,4 +150,11 @@ jobs:
         env:
           TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
           TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
+        run: twine upload dist/* --non-interactive
+
+      - name: Upload alias package to PyPI
+        env:
+          TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
+          TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
+        working-directory: alias-package
         run: twine upload dist/* --non-interactive
