@@ -96,7 +96,7 @@ def create_alias_package(ctx):
             f"""\
 {copyright_header_full}
 from setuptools import setup
-setup(version={__version__})
+setup(version="{__version__}")
 """
         )
 
