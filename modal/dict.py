@@ -52,10 +52,6 @@ class _DictHandle(_Handle, type_prefix="di"):
         resp = await retry_transient_errors(self._client.stub.DictLen, req)
         return resp.len
 
-    async def __getitem__(self, key: Any) -> Any:
-        """Get an item from the dictionary."""
-        return await self.get(key)
-
     async def update(self, **kwargs) -> None:
         """Update the dictionary with additional items."""
         serialized = _serialize_dict(kwargs)
@@ -69,13 +65,6 @@ class _DictHandle(_Handle, type_prefix="di"):
         req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized)
         await retry_transient_errors(self._client.stub.DictUpdate, req)
 
-    async def __setitem__(self, key: Any, value: Any) -> None:
-        """Set a specific key-value pair in the dictionary.
-
-        This function only works in a synchronous context.
-        """
-        return await self.put(key, value)
-
     async def pop(self, key: Any) -> Any:
         """Remove a key from the dictionary, returning the value if it exists."""
         req = api_pb2.DictPopRequest(dict_id=self.object_id, key=serialize(key))
@@ -83,6 +72,17 @@ class _DictHandle(_Handle, type_prefix="di"):
         if not resp.found:
             raise KeyError(f"KeyError: {key} not in dict {self.object_id}")
         return deserialize(resp.value, self._client)
+
+    async def __getitem__(self, key: Any) -> Any:
+        """Get an item from the dictionary."""
+        return await self.get(key)
+
+    async def __setitem__(self, key: Any, value: Any) -> None:
+        """Set a specific key-value pair in the dictionary.
+
+        This function only works in a synchronous context.
+        """
+        return await self.put(key, value)
 
     async def __delitem__(self, key: Any) -> Any:
         """Delete a key from the dictionary.

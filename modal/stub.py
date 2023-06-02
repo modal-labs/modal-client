@@ -109,6 +109,10 @@ class _Stub:
     _app: Optional[_App]
     _all_stubs: typing.ClassVar[Dict[str, List["_Stub"]]] = {}
 
+    def _validate_blueprint_value(self, key: str, value: Any):
+        if not isinstance(value, _Provider):
+            raise InvalidError(f"Stub attribute {key} with value {value} is not a valid Modal object")
+
     @typechecked
     def __init__(
         self,
@@ -183,15 +187,6 @@ class _Stub:
         """Reference to the currently running app, if any."""
         return self._app
 
-    @property
-    def description(self) -> str:
-        """The Stub's `name`, if available, or a fallback descriptive identifier."""
-        return self._description or self._infer_app_desc()
-
-    def _validate_blueprint_value(self, key: str, value: Any):
-        if not isinstance(value, _Provider):
-            raise InvalidError(f"Stub attribute {key} with value {value} is not a valid Modal object")
-
     def _infer_app_desc(self):
         if is_notebook():
             # when running from a notebook the sys.argv for the kernel will
@@ -207,31 +202,10 @@ class _Stub:
             # instead of displaying "_container_entrypoint.py [base64 garbage]"
             return "[unnamed app]"
 
-    def __getitem__(self, tag: str):
-        # Deprecated? Note: this is currently the only way to refer to lifecycled methods on the stub, since they have . in the tag
-        return self._blueprint[tag]
-
-    def __setitem__(self, tag: str, obj: _Provider):
-        self._validate_blueprint_value(tag, obj)
-        # Deprecated ?
-        self._blueprint[tag] = obj
-
-    def __getattr__(self, tag: str) -> _Provider:
-        assert isinstance(tag, str)
-        if tag.startswith("__"):
-            # Hacky way to avoid certain issues, e.g. pickle will try to look this up
-            raise AttributeError(f"Stub has no member {tag}")
-        # Return a reference to an object that will be created in the future
-        return self._blueprint[tag]
-
-    def __setattr__(self, tag: str, obj: _Provider):
-        # Note that only attributes defined in __annotations__ are set on the object itself,
-        # everything else is registered on the blueprint
-        if tag in self.__annotations__:
-            object.__setattr__(self, tag, obj)
-        else:
-            self._validate_blueprint_value(tag, obj)
-            self._blueprint[tag] = obj
+    @property
+    def description(self) -> str:
+        """The Stub's `name`, if available, or a fallback descriptive identifier."""
+        return self._description or self._infer_app_desc()
 
     @typechecked
     def is_inside(self, image: Optional[_Image] = None) -> bool:
@@ -777,6 +751,32 @@ class _Stub:
                 self._function_mounts[root_path] = mount
             cached_mounts.append(self._function_mounts[root_path])
         return cached_mounts
+
+    def __getattr__(self, tag: str) -> _Provider:
+        assert isinstance(tag, str)
+        if tag.startswith("__"):
+            # Hacky way to avoid certain issues, e.g. pickle will try to look this up
+            raise AttributeError(f"Stub has no member {tag}")
+        # Return a reference to an object that will be created in the future
+        return self._blueprint[tag]
+
+    def __setattr__(self, tag: str, obj: _Provider):
+        # Note that only attributes defined in __annotations__ are set on the object itself,
+        # everything else is registered on the blueprint
+        if tag in self.__annotations__:
+            object.__setattr__(self, tag, obj)
+        else:
+            self._validate_blueprint_value(tag, obj)
+            self._blueprint[tag] = obj
+
+    def __getitem__(self, tag: str):
+        # Deprecated? Note: this is currently the only way to refer to lifecycled methods on the stub, since they have . in the tag
+        return self._blueprint[tag]
+
+    def __setitem__(self, tag: str, obj: _Provider):
+        self._validate_blueprint_value(tag, obj)
+        # Deprecated ?
+        self._blueprint[tag] = obj
 
 
 Stub, AioStub = synchronize_apis(_Stub)

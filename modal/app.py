@@ -15,6 +15,8 @@ if TYPE_CHECKING:
 else:
     Tree = TypeVar("Tree")
 
+_is_container_app = False
+
 
 class _App:
     """Apps are the user representation of an actively running Modal process.
@@ -135,13 +137,6 @@ class _App:
     def log_url(self):
         return self._app_page_url
 
-    def __getitem__(self, tag: str) -> _Handle:
-        # Deprecated?
-        return self._tag_to_object[tag]
-
-    def __getattr__(self, tag: str) -> _Handle:
-        return self._tag_to_object[tag]
-
     def track_function_invocation(self):
         self._function_invocations += 1
 
@@ -239,10 +234,15 @@ class _App:
         _is_container_app = False
         _container_app.__init__(None, None, None, None)  # type: ignore
 
+    def __getattr__(self, tag: str) -> _Handle:
+        return self._tag_to_object[tag]
+
+    def __getitem__(self, tag: str) -> _Handle:
+        # Deprecated?
+        return self._tag_to_object[tag]
+
 
 App, AioApp = synchronize_apis(_App)
-
-_is_container_app = False
 _container_app = _App(None, None, None, None)
 container_app, aio_container_app = synchronize_apis(_container_app)
 assert isinstance(container_app, App)

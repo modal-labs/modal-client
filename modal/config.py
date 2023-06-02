@@ -112,6 +112,11 @@ def _config_active_profile():
         return "default"
 
 
+def _write_user_config(user_config):
+    with open(user_config_path, "w") as f:
+        toml.dump(user_config, f)
+
+
 def config_set_active_profile(env: str):
     """Set the user's active modal profile by writing it to the `.modal.toml` file."""
     if env not in _user_config:
@@ -212,11 +217,6 @@ def _store_user_config(new_settings, profile=None):
     user_config = _read_user_config()
     user_config.setdefault(profile, {}).update(**new_settings)
     _write_user_config(user_config)
-
-
-def _write_user_config(user_config):
-    with open(user_config_path, "w") as f:
-        toml.dump(user_config, f)
 
 
 # Make sure all deprecation warnings are shown

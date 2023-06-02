@@ -42,6 +42,27 @@ async def list():
     console.print(table)
 
 
+def get_text_from_editor(key) -> str:
+    with NamedTemporaryFile("w+", prefix="secret_buffer", suffix=".txt") as bufferfile:
+        if platform.system() != "Windows":
+            editor = os.getenv("EDITOR", "vi")
+            input(f"Pressing enter will open an external editor ({editor}) for editing '{key}'...")
+            status_code = subprocess.call([editor, bufferfile.name])
+        else:
+            # not tested, but according to https://stackoverflow.com/questions/1442841/lauch-default-editor-like-webbrowser-module
+            # this should open an editor on Windows...
+            input("Pressing enter will open an external editor to allow you to edit the secret value...")
+            status_code = os.system(bufferfile.name)
+
+        if status_code != 0:
+            raise ValueError(
+                "Something went wrong with the external editor. Try again, or use '--' as the value to pass input through stdin instead"
+            )
+
+        bufferfile.seek(0)
+        return bufferfile.read()
+
+
 @secret_cli.command("create", help="Create a new secret, or overwrite an existing one.")
 def create(secret_name, keyvalues: List[str] = typer.Argument(..., help="Space-separated KEY=VALUE items")):
     env_dict = {}
@@ -83,24 +104,3 @@ def some_function():
 
     console.print("\nUse it in to your Modal app using:\n")
     console.print(Syntax(example_code, "python"))
-
-
-def get_text_from_editor(key) -> str:
-    with NamedTemporaryFile("w+", prefix="secret_buffer", suffix=".txt") as bufferfile:
-        if platform.system() != "Windows":
-            editor = os.getenv("EDITOR", "vi")
-            input(f"Pressing enter will open an external editor ({editor}) for editing '{key}'...")
-            status_code = subprocess.call([editor, bufferfile.name])
-        else:
-            # not tested, but according to https://stackoverflow.com/questions/1442841/lauch-default-editor-like-webbrowser-module
-            # this should open an editor on Windows...
-            input("Pressing enter will open an external editor to allow you to edit the secret value...")
-            status_code = os.system(bufferfile.name)
-
-        if status_code != 0:
-            raise ValueError(
-                "Something went wrong with the external editor. Try again, or use '--' as the value to pass input through stdin instead"
-            )
-
-        bufferfile.seek(0)
-        return bufferfile.read()

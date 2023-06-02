@@ -148,15 +148,6 @@ class _Client:
         except (OSError, asyncio.TimeoutError) as exc:
             raise ConnectionError(str(exc))
 
-    async def __aenter__(self):
-        await self._open()
-        if not self.no_verify:
-            await self._verify()
-        return self
-
-    async def __aexit__(self, exc_type, exc, tb):
-        await self._close()
-
     @classmethod
     async def verify(cls, server_url, credentials):
         async with _Client(server_url, api_pb2.CLIENT_TYPE_CLIENT, credentials):
@@ -241,6 +232,15 @@ class _Client:
     def set_env_client(cls, client):
         """Just used from tests."""
         cls._client_from_env = client
+
+    async def __aenter__(self):
+        await self._open()
+        if not self.no_verify:
+            await self._verify()
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        await self._close()
 
 
 Client, AioClient = synchronize_apis(_Client)

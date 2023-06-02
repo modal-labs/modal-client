@@ -46,6 +46,11 @@ class RemoteTraceback(Exception):
         return self.tb
 
 
+def rebuild_exc(exc, tb):
+    exc.__cause__ = RemoteTraceback(tb)
+    return exc
+
+
 class ExceptionWithTraceback:
     def __init__(self, exc, tb):
         tb = traceback.format_exception(type(exc), exc, tb)
@@ -55,11 +60,6 @@ class ExceptionWithTraceback:
 
     def __reduce__(self):
         return rebuild_exc, (self.exc, self.tb)
-
-
-def rebuild_exc(exc, tb):
-    exc.__cause__ = RemoteTraceback(tb)
-    return exc
 
 
 @aio_pymc_stub.function()
@@ -182,6 +182,13 @@ class _ModalSampler:
         self._seeds = seeds
         self._start_points = start_points
 
+    def __enter__(self):
+        self._in_context = True
+        return self
+
+    def __exit__(self, *args):
+        pass
+
     async def __aiter__(self):
         samplers = [
             sample_process(
@@ -215,13 +222,6 @@ class _ModalSampler:
                     self._progress.update(self._total_draws)
 
                 yield Draw(chain, is_last, draw, tuning, stats, point, warns)
-
-    def __enter__(self):
-        self._in_context = True
-        return self
-
-    def __exit__(self, *args):
-        pass
 
 
 ModalSampler, _ = synchronize_apis(_ModalSampler)

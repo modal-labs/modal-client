@@ -152,43 +152,6 @@ class FunctionInfo:
         logger.debug(f"Serializing {self.raw_f.__qualname__}, size is {len(serialized_bytes)}")
         return serialized_bytes
 
-    def get_mounts(self) -> Dict[str, _Mount]:
-        """
-        Includes:
-        * Implicit mount of the function itself (the module or package that the function is part of)
-        * "Auto mounted" mounts, i.e. all mounts in sys.modules that are *not* installed in site-packages.
-            These are typically local modules which are imported but not part of the running package
-
-        Does not include:
-        * Client mount
-        * Explicit mounts added to the stub or function declaration
-        """
-        if self.type == FunctionInfoType.NOTEBOOK:
-            # Don't auto-mount anything for notebooks.
-            return {}
-
-        if config.get("automount"):
-            mounts = self._get_auto_mounts()
-        else:
-            mounts = {}
-
-        # make sure the function's own entrypoint is included:
-        if self.type == FunctionInfoType.PACKAGE and config.get("automount"):
-            mounts[self.base_dir] = _Mount.from_local_dir(
-                self.base_dir,
-                remote_path=self.remote_dir,
-                recursive=True,
-                condition=package_mount_condition,
-            )
-        elif self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
-            remote_path = ROOT_DIR / Path(self.file).name
-            mounts[self.file] = _Mount.from_local_file(
-                self.file,
-                remote_path=remote_path,
-            )
-
-        return filter_safe_mounts(mounts)
-
     def _get_auto_mounts(self):
         # Auto-mount local modules that have been imported in global scope.
         # This may or may not include the "entrypoint" of the function as well, depending on how modal is invoked
@@ -251,6 +214,43 @@ class FunctionInfo:
                     remote_path=remote_path,
                 )
         return mounts
+
+    def get_mounts(self) -> Dict[str, _Mount]:
+        """
+        Includes:
+        * Implicit mount of the function itself (the module or package that the function is part of)
+        * "Auto mounted" mounts, i.e. all mounts in sys.modules that are *not* installed in site-packages.
+            These are typically local modules which are imported but not part of the running package
+
+        Does not include:
+        * Client mount
+        * Explicit mounts added to the stub or function declaration
+        """
+        if self.type == FunctionInfoType.NOTEBOOK:
+            # Don't auto-mount anything for notebooks.
+            return {}
+
+        if config.get("automount"):
+            mounts = self._get_auto_mounts()
+        else:
+            mounts = {}
+
+        # make sure the function's own entrypoint is included:
+        if self.type == FunctionInfoType.PACKAGE and config.get("automount"):
+            mounts[self.base_dir] = _Mount.from_local_dir(
+                self.base_dir,
+                remote_path=self.remote_dir,
+                recursive=True,
+                condition=package_mount_condition,
+            )
+        elif self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
+            remote_path = ROOT_DIR / Path(self.file).name
+            mounts[self.file] = _Mount.from_local_file(
+                self.file,
+                remote_path=remote_path,
+            )
+
+        return filter_safe_mounts(mounts)
 
     def get_tag(self):
         return self.function_name

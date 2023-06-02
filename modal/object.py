@@ -47,6 +47,10 @@ class _Handle(metaclass=ObjectMeta):
     def _initialize_from_empty(self):
         pass  # default implementation
 
+    def _hydrate_metadata(self, handle_metadata: Message):
+        # override this is subclasses that need additional data (other than an object_id) for a functioning Handle
+        pass
+
     def _hydrate(self, client: _Client, object_id: str, handle_metadata: Optional[Message]):
         self._client = client
         self._object_id = object_id
@@ -58,10 +62,6 @@ class _Handle(metaclass=ObjectMeta):
         # A hydrated Handle is fully functional and linked to a live object in an app
         # To hydrate Handles, run an app using stub.run() or look up the object from a running app using <HandleClass>.lookup()
         return self._is_hydrated
-
-    def _hydrate_metadata(self, handle_metadata: Message):
-        # override this is subclasses that need additional data (other than an object_id) for a functioning Handle
-        pass
 
     def _get_handle_metadata(self) -> Optional[Message]:
         # return the necessary metadata from this handle to be able to re-hydrate in another context if one is needed
@@ -199,9 +199,6 @@ class _Provider(Generic[H]):
         (base,) = cls.__orig_bases__  # type: ignore
         (handle_cls,) = base.__args__
         return handle_cls
-
-    def __repr__(self):
-        return self._rep
 
     @property
     def local_uuid(self):
@@ -342,6 +339,9 @@ class _Provider(Generic[H]):
                 return False
             else:
                 raise
+
+    def __repr__(self):
+        return self._rep
 
 
 # Dumb but needed becauase it's in the hierarchy

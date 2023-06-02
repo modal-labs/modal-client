@@ -171,6 +171,26 @@ class _OutputValue:
     value: Any
 
 
+_current_input_id: Optional[str] = None
+
+
+def current_input_id() -> str:
+    """Returns the input ID for the currently processed input.
+
+    Can only be called from Modal function (i.e. in a container context).
+
+    ```python
+    from modal import current_input_id
+
+    @stub.function()
+    def process_stuff():
+        print(f"Starting to process {current_input_id()}")
+    ```
+    """
+    global _current_input_id
+    return _current_input_id
+
+
 class _Invocation:
     """Internal client representation of a single-input call to a Modal Function or Generator"""
 
@@ -487,6 +507,47 @@ class FunctionStats:
     num_total_runners: int
 
 
+class _FunctionCall(_Handle, type_prefix="fc"):
+    """A reference to an executed function call.
+
+    Constructed using `.spawn(...)` on a Modal function with the same
+    arguments that a function normally takes. Acts as a reference to
+    an ongoing function call that can be passed around and used to
+    poll or fetch function results at some later time.
+
+    Conceptually similar to a Future/Promise/AsyncResult in other contexts and languages.
+    """
+
+    def _invocation(self):
+        assert self._client
+        return _Invocation(self._client.stub, self.object_id, self._client)
+
+    async def get(self, timeout: Optional[float] = None):
+        """Gets the result of the function call
+
+        Raises `TimeoutError` if no results are returned within `timeout` seconds.
+        Setting `timeout` to None (the default) waits indefinitely until there is a result
+        """
+        return await self._invocation().poll_function(timeout=timeout)
+
+    async def get_call_graph(self) -> List[InputInfo]:
+        """Returns a structure representing the call graph from a given root
+        call ID, along with the status of execution for each node.
+
+        See [`modal.call_graph`](/docs/reference/modal.call_graph) reference page
+        for documentation on the structure of the returned `InputInfo` items.
+        """
+        assert self._client and self._client.stub
+        request = api_pb2.FunctionGetCallGraphRequest(function_call_id=self.object_id)
+        response = await retry_transient_errors(self._client.stub.FunctionGetCallGraph, request)
+        return _reconstruct_call_graph(response)
+
+    async def cancel(self):
+        request = api_pb2.FunctionCallCancelRequest(function_call_id=self.object_id)
+        assert self._client and self._client.stub
+        await self._client.stub.FunctionCallCancel(request)
+
+
 class _FunctionHandle(_Handle, type_prefix="fu"):
     """Interact with a Modal Function of a live app."""
 
@@ -495,6 +556,15 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
     _stub: Optional["modal.stub._Stub"]
     _is_remote_cls_method: bool = False
     _function_name: Optional[str]
+
+    def __get__(self, obj, objtype=None) -> "_FunctionHandle":
+        deprecation_warning(
+            date(2023, 5, 9),
+            "Using the `@stub.function` decorator on methods is deprecated."
+            " Use the @method decorator instead."
+            " See https://modal.com/docs/guide/lifecycle-functions",
+        )
+        return self.bind_obj(obj, objtype)
 
     def _initialize_from_empty(self):
         self._progress = None
@@ -736,27 +806,6 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         else:
             return self._call_function(args, kwargs)
 
-    @synchronizer.nowrap
-    def __call__(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
-        if self._get_is_remote_cls_method():  # TODO(elias): change parametrization so this is isn't needed
-            return self.call(*args, **kwargs)
-
-        info = self._get_info()
-        if not info:
-            msg = (
-                "The definition for this function is missing so it is not possible to invoke it locally. "
-                "If this function was retrieved via `Function.lookup` you need to use `.call()`."
-            )
-            raise AttributeError(msg)
-
-        self_obj = self._get_self_obj()
-        if self_obj:
-            # This is a method on a class, so bind the self to the function
-            fun = info.raw_f.__get__(self_obj)
-        else:
-            fun = info.raw_f
-        return fun(*args, **kwargs)
-
     async def spawn(self, *args, **kwargs) -> Optional["_FunctionCall"]:
         """Calls the function with the given arguments, without waiting for the results.
 
@@ -798,14 +847,26 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         # We should fix this in the future since it probably precludes using classmethods/staticmethods
         return self
 
-    def __get__(self, obj, objtype=None) -> "_FunctionHandle":
-        deprecation_warning(
-            date(2023, 5, 9),
-            "Using the `@stub.function` decorator on methods is deprecated."
-            " Use the @method decorator instead."
-            " See https://modal.com/docs/guide/lifecycle-functions",
-        )
-        return self.bind_obj(obj, objtype)
+    @synchronizer.nowrap
+    def __call__(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
+        if self._get_is_remote_cls_method():  # TODO(elias): change parametrization so this is isn't needed
+            return self.call(*args, **kwargs)
+
+        info = self._get_info()
+        if not info:
+            msg = (
+                "The definition for this function is missing so it is not possible to invoke it locally. "
+                "If this function was retrieved via `Function.lookup` you need to use `.call()`."
+            )
+            raise AttributeError(msg)
+
+        self_obj = self._get_self_obj()
+        if self_obj:
+            # This is a method on a class, so bind the self to the function
+            fun = info.raw_f.__get__(self_obj)
+        else:
+            fun = info.raw_f
+        return fun(*args, **kwargs)
 
 
 FunctionHandle, AioFunctionHandle = synchronize_apis(_FunctionHandle)
@@ -1138,47 +1199,6 @@ class _Function(_Provider[_FunctionHandle]):
 Function, AioFunction = synchronize_apis(_Function)
 
 
-class _FunctionCall(_Handle, type_prefix="fc"):
-    """A reference to an executed function call.
-
-    Constructed using `.spawn(...)` on a Modal function with the same
-    arguments that a function normally takes. Acts as a reference to
-    an ongoing function call that can be passed around and used to
-    poll or fetch function results at some later time.
-
-    Conceptually similar to a Future/Promise/AsyncResult in other contexts and languages.
-    """
-
-    def _invocation(self):
-        assert self._client
-        return _Invocation(self._client.stub, self.object_id, self._client)
-
-    async def get(self, timeout: Optional[float] = None):
-        """Gets the result of the function call
-
-        Raises `TimeoutError` if no results are returned within `timeout` seconds.
-        Setting `timeout` to None (the default) waits indefinitely until there is a result
-        """
-        return await self._invocation().poll_function(timeout=timeout)
-
-    async def get_call_graph(self) -> List[InputInfo]:
-        """Returns a structure representing the call graph from a given root
-        call ID, along with the status of execution for each node.
-
-        See [`modal.call_graph`](/docs/reference/modal.call_graph) reference page
-        for documentation on the structure of the returned `InputInfo` items.
-        """
-        assert self._client and self._client.stub
-        request = api_pb2.FunctionGetCallGraphRequest(function_call_id=self.object_id)
-        response = await retry_transient_errors(self._client.stub.FunctionGetCallGraph, request)
-        return _reconstruct_call_graph(response)
-
-    async def cancel(self):
-        request = api_pb2.FunctionCallCancelRequest(function_call_id=self.object_id)
-        assert self._client and self._client.stub
-        await self._client.stub.FunctionCallCancel(request)
-
-
 FunctionCall, AioFunctionCall = synchronize_apis(_FunctionCall)
 
 
@@ -1209,26 +1229,6 @@ async def _gather(*function_calls: _FunctionCall):
 gather, aio_gather = synchronize_apis(_gather)
 
 
-_current_input_id: Optional[str] = None
-
-
-def current_input_id() -> str:
-    """Returns the input ID for the currently processed input.
-
-    Can only be called from Modal function (i.e. in a container context).
-
-    ```python
-    from modal import current_input_id
-
-    @stub.function()
-    def process_stuff():
-        print(f"Starting to process {current_input_id()}")
-    ```
-    """
-    global _current_input_id
-    return _current_input_id
-
-
 def _set_current_input_id(input_id: Optional[str]):
     global _current_input_id
     _current_input_id = input_id
@@ -1236,10 +1236,6 @@ def _set_current_input_id(input_id: Optional[str]):
 
 class _PartialFunction:
     """Intermediate function, produced by @method or @web_endpoint"""
-
-    @staticmethod
-    def initialize_cls(user_cls: type, function_handles: Dict[str, _FunctionHandle]):
-        user_cls._modal_function_handles = function_handles
 
     def __init__(
         self,
@@ -1252,6 +1248,13 @@ class _PartialFunction:
         self.is_generator = is_generator
         self.wrapped = False  # Make sure that this was converted into a FunctionHandle
 
+    def __del__(self):
+        if self.wrapped is False:
+            logger.warning(
+                f"Method or web function {self.raw_f} was never turned into a function."
+                " Did you forget a @stub.function or @stub.cls decorator?"
+            )
+
     def __get__(self, obj, objtype=None) -> _FunctionHandle:
         k = self.raw_f.__name__
         if obj:  # Cls().fun
@@ -1260,12 +1263,9 @@ class _PartialFunction:
             function_handle = objtype._modal_function_handles[k]
         return function_handle.bind_obj(obj, objtype)
 
-    def __del__(self):
-        if self.wrapped is False:
-            logger.warning(
-                f"Method or web function {self.raw_f} was never turned into a function."
-                " Did you forget a @stub.function or @stub.cls decorator?"
-            )
+    @staticmethod
+    def initialize_cls(user_cls: type, function_handles: Dict[str, _FunctionHandle]):
+        user_cls._modal_function_handles = function_handles
 
 
 PartialFunction, AioPartialFunction = synchronize_apis(_PartialFunction)

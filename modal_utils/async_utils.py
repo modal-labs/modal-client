@@ -109,10 +109,6 @@ class TaskContext:
         self._tasks: set[asyncio.Task] = set()
         self._exited: asyncio.Event = asyncio.Event()  # Used to stop infinite loops
 
-    async def __aenter__(self):
-        await self.start()
-        return self
-
     async def stop(self):
         self._exited.set()
         await asyncio.sleep(0)  # Causes any just-created tasks to get started
@@ -146,9 +142,6 @@ class TaskContext:
 
                 logger.warning(f"Canceling remaining unfinished task {task}")
                 task.cancel()
-
-    async def __aexit__(self, exc_type, value, tb):
-        await self.stop()
 
     def create_task(self, coro_or_task) -> asyncio.Task:
         if isinstance(coro_or_task, asyncio.Task):
@@ -216,6 +209,13 @@ class TaskContext:
                 if task in self._tasks:
                     self._tasks.remove(task)
 
+    async def __aenter__(self):
+        await self.start()
+        return self
+
+    async def __aexit__(self, exc_type, value, tb):
+        await self.stop()
+
 
 def run_coro_blocking(coro):
     """Fairly hacky thing that's needed in some extreme cases.
@@ -261,6 +261,15 @@ class _WarnIfGeneratorIsNotConsumed:
         self.iterated = False
         self.warned = False
 
+    def __del__(self):
+        if not self.iterated and not self.warned:
+            self.warned = True
+            name = self.gen_f.__name__
+            logger.warning(
+                f"Warning: the results of a call to {name} was not consumed, so the call will never be executed."
+                f" Consider a for-loop like `for x in {name}(...)` or unpacking the generator using `list(...)`"
+            )
+
     def __aiter__(self):
         self.iterated = True
         return self.gen
@@ -271,15 +280,6 @@ class _WarnIfGeneratorIsNotConsumed:
 
     def __repr__(self):
         return repr(self.gen)
-
-    def __del__(self):
-        if not self.iterated and not self.warned:
-            self.warned = True
-            name = self.gen_f.__name__
-            logger.warning(
-                f"Warning: the results of a call to {name} was not consumed, so the call will never be executed."
-                f" Consider a for-loop like `for x in {name}(...)` or unpacking the generator using `list(...)`"
-            )
 
 
 synchronize_apis(_WarnIfGeneratorIsNotConsumed)
