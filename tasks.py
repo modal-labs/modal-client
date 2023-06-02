@@ -109,6 +109,9 @@ author = Modal Labs
 author_email = erik@modal.com
 description = Dummy alias that requires modal-client
 long_description = This package is a dummy package that just requires the modal-client package.
+            If you're looking for the active learning framework [modAL](https://modal-python.readthedocs.io/en/latest/),
+            it's now available using the package name `modAL-python`.
+long_description_content_type = text/markdown
 project_urls =
     Homepage = https://modal.com
 
