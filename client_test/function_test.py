@@ -260,6 +260,10 @@ async def test_generator_map_success(client, servicer):
         assert res == {(1, "bar"), (1, "baz"), (2, "bar"), (2, "baz"), (3, "bar"), (3, "baz")}
 
 
+class CustomException(Exception):
+    pass
+
+
 @pytest.mark.asyncio
 async def test_generator_map_exception(client, servicer):
     stub = Stub()
@@ -342,10 +346,6 @@ def test_proxy(client, servicer):
     stub.function(proxy=Proxy.from_name("my-proxy"))(dummy)
     with stub.run(client=client):
         pass
-
-
-class CustomException(Exception):
-    pass
 
 
 def failure():
