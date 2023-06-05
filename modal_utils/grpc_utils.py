@@ -86,6 +86,10 @@ class ChannelPool(grpclib.client.Channel):
         self._max_lifetime = max_lifetime
         super().__init__(*args, **kwargs)
 
+    def __del__(self) -> None:
+        if len(self._subchannels) > 0:
+            logger.warning("Channel pool not properly closed")
+
     async def __connect__(self):
         now = time.time()
         # Remove any closed subchannels
@@ -122,10 +126,6 @@ class ChannelPool(grpclib.client.Channel):
     def close(self) -> None:
         while len(self._subchannels) > 0:
             self._subchannels.pop(0).protocol.processor.close()
-
-    def __del__(self) -> None:
-        if len(self._subchannels) > 0:
-            logger.warning("Channel pool not properly closed")
 
 
 _SendType = TypeVar("_SendType")

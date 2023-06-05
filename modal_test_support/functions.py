@@ -194,8 +194,6 @@ def fastapi_app():
 
 @stub.cls()
 class Cls:
-    def __enter__(self):
-        self._k = 111
 
     @method()
     def f(self, x):
@@ -211,6 +209,8 @@ class Cls:
     @method(is_generator=True)
     def generator(self, x):
         return self._generator(x)
+    def __enter__(self):
+        self._k = 111
 
 
 @stub.function()
