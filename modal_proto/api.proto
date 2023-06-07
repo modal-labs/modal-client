@@ -98,7 +98,7 @@ message AppCreateRequest {
   string description = 2;    // Human readable label for the website
   bool detach = 3; // deprecated, but needed until 0.48 is the minimum version
   bool initializing = 4; // deprecated, but needed until 0.48 is the minimum version
-  string environment = 5;
+  string environment_name = 5;
 }
 
 message AppCreateResponse {
@@ -125,7 +125,7 @@ message AppGetByDeploymentNameRequest {
   DeploymentNamespace namespace = 1;
   string name = 2;
   reserved 3;
-  string environment = 4;
+  string environment_name = 4;
 }
 
 message AppGetByDeploymentNameResponse {
@@ -167,7 +167,7 @@ message AppStats {
   int32 n_running_tasks = 8;
   string object_entity = 9;
   string name = 10;
-  string environment = 11;
+  string environment_name = 11;
 }
 
 message AppListResponse {
@@ -180,7 +180,7 @@ message AppLookupObjectRequest {
   string object_tag = 4;
   string object_id = 5;
   string object_entity = 6;
-  string environment = 7;
+  string environment_name = 7;
 }
 
 message AppLookupObjectResponse {
