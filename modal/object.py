@@ -19,7 +19,7 @@ H = TypeVar("H", bound="_Handle")
 
 _BLOCKING_H, _ASYNC_H = synchronize_apis(H)
 
-DEFAULT_ENVIRONMENT_NAME = "default"
+DEFAULT_ENVIRONMENT_NAME: str = "default"
 
 
 class _Handle(metaclass=ObjectMeta):
