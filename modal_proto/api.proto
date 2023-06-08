@@ -210,6 +210,14 @@ message EnvironmentCreateRequest {
   string name = 1;
 }
 
+message EnvironmentDeleteRequest {
+  string name = 1;
+}
+
+message EnvironmentListResponse {
+  repeated string names = 1;
+}
+
 enum RegistryType {
   DOCKERHUB = 0;
   ECR = 1;
@@ -863,16 +871,19 @@ message SecretCreateRequest {
   string app_id = 2;
   string template_type = 3;
   string existing_secret_id = 4;
+  string environment_name = 5;
 }
 
 message SecretCreateResponse {
   string secret_id = 1;
 }
 
+
 message SecretListItem {
   string label = 1;
   double created_at = 2;
   double last_used_at = 3;
+  string environment_name = 4;
 }
 
 message SecretListResponse {
@@ -1066,6 +1077,8 @@ service ModalClient {
 
   // Environments
   rpc EnvironmentCreate(EnvironmentCreateRequest) returns (google.protobuf.Empty);
+  rpc EnvironmentList(google.protobuf.Empty) returns (EnvironmentListResponse);
+  rpc EnvironmentDelete(EnvironmentDeleteRequest) returns (google.protobuf.Empty);
 
   // Functions
   rpc FunctionBindParams(FunctionBindParamsRequest) returns (FunctionBindParamsResponse);
