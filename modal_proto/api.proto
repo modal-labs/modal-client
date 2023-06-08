@@ -446,6 +446,8 @@ message Function {
   string stub_name = 31;
 
   bool is_builder_function = 32;
+
+  repeated VolumeMount volume_mounts = 33;
 }
 
 message FunctionHandleMetadata {
@@ -1060,6 +1062,31 @@ message TokenFlowWaitResponse {
   bool timeout = 3;
 }
 
+message VolumeCreateRequest {
+  string app_id = 1;
+}
+
+message VolumeCreateResponse {
+  string volume_id = 1;
+}
+
+message VolumeCommitRequest {
+  // NOTE(staffan): Mounting a volume in multiple locations is not supported, so volume_id alone uniquely identifies
+  // a volume mount.
+  string volume_id = 1;
+}
+
+message VolumeReloadRequest {
+  // NOTE(staffan): Mounting a volume in multiple locations is not supported, so volume_id alone uniquely identifies
+  // a volume mount.
+  string volume_id = 1;
+}
+
+message VolumeMount {
+  string volume_id = 1;
+  string mount_path = 2;
+}
+
 message WebhookConfig {
   WebhookType type = 1;
   string method = 2;
@@ -1162,4 +1189,9 @@ service ModalClient {
   // Tokens (web auth flow)
   rpc TokenFlowCreate(TokenFlowCreateRequest) returns (TokenFlowCreateResponse);
   rpc TokenFlowWait(TokenFlowWaitRequest) returns (TokenFlowWaitResponse);
+
+  // Volumes
+  rpc VolumeCreate(VolumeCreateRequest) returns (VolumeCreateResponse);
+  rpc VolumeCommit(VolumeCommitRequest) returns (google.protobuf.Empty);
+  rpc VolumeReload(VolumeReloadRequest) returns (google.protobuf.Empty);
 }

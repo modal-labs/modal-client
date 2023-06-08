@@ -34,6 +34,7 @@ from .runner import _run_stub
 from .schedule import Schedule
 from .secret import _Secret
 from .shared_volume import _SharedVolume
+from .volume import _Volume
 
 _default_image: _Image = _Image.debian_slim()
 
@@ -462,6 +463,7 @@ class _Stub:
         mounts: Sequence[_Mount] = (),
         shared_volumes: Dict[Union[str, os.PathLike], _SharedVolume] = {},
         allow_cross_region_volumes: bool = False,  # Whether using shared volumes from other regions is allowed.
+        volumes: Dict[Union[str, os.PathLike], _Volume] = {},  # Experimental. Do not use!
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
@@ -545,6 +547,7 @@ class _Stub:
                 mounts=[*self._mounts, *mounts],
                 shared_volumes=shared_volumes,
                 allow_cross_region_volumes=allow_cross_region_volumes,
+                volumes=volumes,
                 memory=memory,
                 proxy=proxy,
                 retries=retries,
@@ -686,6 +689,7 @@ class _Stub:
         mounts: Sequence[_Mount] = (),
         shared_volumes: Dict[Union[str, os.PathLike], _SharedVolume] = {},
         allow_cross_region_volumes: bool = False,  # Whether using shared volumes from other regions is allowed.
+        volumes: Dict[Union[str, os.PathLike], _Volume] = {},  # Experimental. Do not use!
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
@@ -715,6 +719,7 @@ class _Stub:
                         mounts=mounts,
                         shared_volumes=shared_volumes,
                         allow_cross_region_volumes=allow_cross_region_volumes,
+                        volumes=volumes,
                         cpu=cpu,
                         memory=memory,
                         proxy=proxy,
