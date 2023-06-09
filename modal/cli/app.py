@@ -2,7 +2,7 @@
 import asyncio
 
 import typer
-from click import ClickException, UsageError
+from click import UsageError
 from google.protobuf import empty_pb2
 from grpclib import GRPCError, Status
 from rich.console import Console
@@ -15,33 +15,6 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
 
 app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_args_is_help=True)
-
-
-@app_cli.command(
-    "run",
-    help="[Moved] Run a Modal function.",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)
-def run():
-    raise ClickException("Use the `modal run ...` command instead (no longer nested under `app`)")
-
-
-@app_cli.command(
-    "deploy",
-    help="[Moved] Deploy a Modal stub as an application.",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)
-def deploy():
-    raise ClickException("Use the `modal deploy ...` command instead (no longer nested under `app`)")
-
-
-@app_cli.command(
-    "shell",
-    help="[Moved] Start a shell session in a Modal container",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)
-def shell():
-    raise ClickException("Use the `modal shell ...` command instead (no longer nested under `app`)")
 
 
 @app_cli.command("list")
