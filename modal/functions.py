@@ -1129,7 +1129,6 @@ class _Function(_Provider[_FunctionHandle]):
         kwargs = dict(
             secrets=repr(self._secrets),
             gpu_config=repr(self._gpu_config),
-            mounts=repr(self._mounts),
             shared_volumes=repr(self._shared_volumes),
         )
         return f"{inspect.getsource(self._raw_f)}\n{repr(kwargs)}"
