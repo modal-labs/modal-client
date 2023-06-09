@@ -871,7 +871,6 @@ message SecretCreateRequest {
   string app_id = 2;
   string template_type = 3;
   string existing_secret_id = 4;
-  string environment_name = 5;
 }
 
 message SecretCreateResponse {
