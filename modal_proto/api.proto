@@ -188,6 +188,7 @@ message AppLookupObjectResponse {
   string error_message = 2;
   oneof handle_metadata_oneof {
     FunctionHandleMetadata function = 3;
+    MountHandleMetadata mount_handle_metadata = 4;
   }
 }
 
@@ -758,6 +759,11 @@ message MountBuildRequest {
 
 message MountBuildResponse {
   string mount_id = 1;
+  MountHandleMetadata handle_metadata = 2;
+}
+
+message MountHandleMetadata {
+  string content_checksum_sha256_hex = 1;
 }
 
 message MountFile {
