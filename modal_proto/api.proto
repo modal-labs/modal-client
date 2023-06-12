@@ -188,6 +188,7 @@ message AppLookupObjectResponse {
   string error_message = 2;
   oneof handle_metadata_oneof {
     FunctionHandleMetadata function = 3;
+    MountHandleMetadata mount_handle_metadata = 4;
   }
 }
 
