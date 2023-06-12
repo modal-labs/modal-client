@@ -196,11 +196,13 @@ class _Image(_Provider[_ImageHandle]):
                     context_file_pb2s.append(api_pb2.ImageContextFile(filename=filename, data=f.read()))
 
             if build_function:
-                build_function_def = build_function.get_build_def()
                 build_function_id = (await resolver.load(build_function)).object_id
+                build_function_def = build_function.get_build_def()
+                build_function_mount_ids = [(await resolver.load(mount)).object_id for mount in build_function._mounts]
             else:
                 build_function_def = None
                 build_function_id = None
+                build_function_mount_ids = None
 
             dockerfile_commands_list: List[str]
             if callable(dockerfile_commands):
@@ -226,6 +228,7 @@ class _Image(_Provider[_ImageHandle]):
                 image_registry_config=await image_registry_config.resolve(
                     resolver
                 ),  # Resolves private registry secret.
+                build_function_mount_ids=build_function_mount_ids,
             )
 
             req = api_pb2.ImageGetOrCreateRequest(

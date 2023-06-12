@@ -1121,7 +1121,7 @@ class _Function(_Provider[_FunctionHandle]):
         """mdmd:hidden"""
         return self._tag
 
-    def get_build_def(self):
+    async def get_build_def(self, resolver: Resolver):
         """mdmd:hidden"""
         # Used to check whether we should rebuild an image using run_function
         # Plaintext source and arg definition for the function, so it's part of the image
@@ -1129,7 +1129,6 @@ class _Function(_Provider[_FunctionHandle]):
         kwargs = dict(
             secrets=repr(self._secrets),
             gpu_config=repr(self._gpu_config),
-            mounts=repr(self._mounts),
             shared_volumes=repr(self._shared_volumes),
         )
         return f"{inspect.getsource(self._raw_f)}\n{repr(kwargs)}"
