@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Dict, Optional, TypeVar
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
-from modal_utils.grpc_utils import retry_transient_errors
+from modal_utils.grpc_utils import get_proto_oneof, retry_transient_errors
 
 from ._resolver import Resolver
 from .client import _Client
@@ -157,7 +157,8 @@ class _App:
         req = api_pb2.AppGetObjectsRequest(app_id=app_id)
         resp = await retry_transient_errors(self._client.stub.AppGetObjects, req)
         for item in resp.items:
-            obj = _Handle._from_id(item.object_id, self._client, item.function)
+            handle_metadata = get_proto_oneof(item, "handle_metadata_oneof")
+            obj = _Handle._from_id(item.object_id, self._client, handle_metadata)
             self._tag_to_object[item.tag] = obj
 
     @staticmethod

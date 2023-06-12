@@ -149,8 +149,9 @@ message AppGetObjectsRequest {
 message AppGetObjectsItem {
   string tag = 1;
   string object_id = 2;
-  oneof object_oneof {
+  oneof handle_metadata_oneof {
     FunctionHandleMetadata function = 3;
+    MountHandleMetadata mount_handle_metadata = 4;
   }
 }
 
