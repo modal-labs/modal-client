@@ -138,9 +138,8 @@ class _Handle(metaclass=ObjectMeta):
             else:
                 raise
 
-        proto = response.function  # TODO: handle different object types
-        handle: H = cls._from_id(response.object_id, client, proto)
-        return handle
+        handle_metadata = get_proto_oneof(response, "handle_metadata_oneof")
+        return cls._from_id(response.object_id, client, handle_metadata)
 
 
 Handle, AioHandle = synchronize_apis(_Handle)
