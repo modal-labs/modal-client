@@ -199,8 +199,8 @@ class _Image(_Provider[_ImageHandle]):
                 build_function_def = build_function.get_build_def()
                 build_function_id = (await resolver.load(build_function)).object_id
             else:
-                build_function_id = None
                 build_function_def = None
+                build_function_id = None
 
             dockerfile_commands_list: List[str]
             if callable(dockerfile_commands):
