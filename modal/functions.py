@@ -1121,15 +1121,21 @@ class _Function(_Provider[_FunctionHandle]):
         """mdmd:hidden"""
         return self._tag
 
-    def get_build_def(self):
+    async def get_build_def(self, resolver: Resolver):
         """mdmd:hidden"""
         # Used to check whether we should rebuild an image using run_function
         # Plaintext source and arg definition for the function, so it's part of the image
         # hash. We can't use the cloudpickle hash because it's not very stable.
+        
+        # Mounts should be cached objects on the resolver
+        mount_checksums = [
+            (await resolver.load(mount))._content_checksum_sha256_hex
+            for mount in self._mounts
+        ]
         kwargs = dict(
             secrets=repr(self._secrets),
             gpu_config=repr(self._gpu_config),
-            mounts=repr(self._mounts),
+            mount_checksums=repr(sorted(mount_checksums)),
             shared_volumes=repr(self._shared_volumes),
         )
         return f"{inspect.getsource(self._raw_f)}\n{repr(kwargs)}"

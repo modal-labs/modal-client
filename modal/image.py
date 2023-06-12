@@ -196,11 +196,11 @@ class _Image(_Provider[_ImageHandle]):
                     context_file_pb2s.append(api_pb2.ImageContextFile(filename=filename, data=f.read()))
 
             if build_function:
-                build_function_def = build_function.get_build_def()
                 build_function_id = (await resolver.load(build_function)).object_id
+                build_function_def = await build_function.get_build_def(resolver)
             else:
-                build_function_def = None
                 build_function_id = None
+                build_function_def = None
 
             dockerfile_commands_list: List[str]
             if callable(dockerfile_commands):
