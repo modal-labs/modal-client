@@ -19,6 +19,8 @@ H = TypeVar("H", bound="_Handle")
 
 _BLOCKING_H, _ASYNC_H = synchronize_apis(H)
 
+DEFAULT_ENVIRONMENT_NAME: str = "default"
+
 
 class _Handle(metaclass=ObjectMeta):
     """mdmd:hidden The shared base class of any synced/distributed object in Modal.
@@ -126,6 +128,7 @@ class _Handle(metaclass=ObjectMeta):
             object_tag=tag,
             namespace=namespace,
             object_entity=cls._type_prefix,
+            environment_name=DEFAULT_ENVIRONMENT_NAME,
         )
         try:
             response = await retry_transient_errors(client.stub.AppLookupObject, request)
@@ -225,7 +228,7 @@ class _Provider(Generic[H]):
 
         handle_cls = self._get_handle_cls()
         object_entity = handle_cls._type_prefix
-        app = await _App._init_from_name(client, label, namespace)
+        app = await _App._init_from_name(client, label, namespace, environment_name=DEFAULT_ENVIRONMENT_NAME)
         handle = await app.create_one_object(self)
         await app.deploy(label, namespace, object_entity)  # TODO(erikbern): not needed if the app already existed
         return handle
