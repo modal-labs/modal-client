@@ -4,7 +4,7 @@ import shlex
 import sys
 import typing
 from datetime import date
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Dict, List, Optional, Union, Sequence, Tuple
 
 import toml
@@ -344,26 +344,23 @@ class _Image(_Provider[_ImageHandle]):
         )
         return self.copy_mount(mount, remote_path)
 
-    def copy_local_file(self, local_path: Union[str, Path], remote_path: Union[str, Path] = "./") -> "_Image":
+    def copy_local_file(
+        self, local_path: Union[str, Path], remote_path: Union[str, PurePosixPath, None] = None
+    ) -> "_Image":
         """Copy a file into the image as a part of building it.
 
         This works in a similar way to `COPY` in a `Dockerfile`."""
-        basename = str(Path(local_path).name)
-        mount = _Mount.from_local_file(local_path, remote_path=f"/{basename}")
-        return self.extend(
-            dockerfile_commands=["FROM base", f"COPY {basename} {remote_path}"],
-            context_mount=mount,
-        )
+        mount = _Mount.from_local_file(local_path, remote_path=remote_path)
+        return self.copy_mount(mount, remote_path=".")
 
-    def copy_local_dir(self, local_path: Union[str, Path], remote_path: Union[str, Path] = ".") -> "_Image":
+    def copy_local_dir(
+        self, local_path: Union[str, Path], remote_path: Union[str, PurePosixPath, None] = None
+    ) -> "_Image":
         """Copy a directory into the image as a part of building the image.
 
         This works in a similar way to `COPY` in a `Dockerfile`."""
-        mount = _Mount.from_local_dir(local_path, remote_path="/")
-        return self.extend(
-            dockerfile_commands=["FROM base", f"COPY . {remote_path}"],
-            context_mount=mount,
-        )
+        mount = _Mount.from_local_dir(local_path, remote_path=remote_path)
+        return self.copy_mount(mount, remote_path=".")
 
     @typechecked
     def pip_install(
