@@ -758,6 +758,11 @@ message MountBuildRequest {
 
 message MountBuildResponse {
   string mount_id = 1;
+  MountHandleMetadata handle_metadata = 2;
+}
+
+message MountHandleMetadata {
+  string content_checksum_sha256_hex = 1;
 }
 
 message MountFile {
