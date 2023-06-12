@@ -1126,12 +1126,9 @@ class _Function(_Provider[_FunctionHandle]):
         # Used to check whether we should rebuild an image using run_function
         # Plaintext source and arg definition for the function, so it's part of the image
         # hash. We can't use the cloudpickle hash because it's not very stable.
-        
+
         # Mounts should be cached objects on the resolver
-        mount_checksums = [
-            (await resolver.load(mount))._content_checksum_sha256_hex
-            for mount in self._mounts
-        ]
+        mount_checksums = [(await resolver.load(mount))._content_checksum_sha256_hex for mount in self._mounts]
         kwargs = dict(
             secrets=repr(self._secrets),
             gpu_config=repr(self._gpu_config),
