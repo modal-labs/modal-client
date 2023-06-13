@@ -108,6 +108,7 @@ class _Stub:
     _local_entrypoints: Dict[str, LocalEntrypoint]
     _app: Optional[_App]
     _all_stubs: typing.ClassVar[Dict[str, List["_Stub"]]] = {}
+    _is_running_flag: bool = False  # used to prevent double runs locally, do not use container-side
 
     @typechecked
     def __init__(
@@ -271,6 +272,14 @@ class _Stub:
             yield
         finally:
             self._app = None
+
+    def _set_running(self, is_running: bool):
+        # mdmd:hidden
+        self._is_running_flag = is_running
+
+    def _is_running(self) -> bool:
+        # mdmd:hidden
+        return self._is_running_flag
 
     @asynccontextmanager
     async def run(

@@ -43,6 +43,13 @@ async def _run_stub(
             " Are you calling stub.run() directly?"
             " Consider using the `modal run` shell command."
         )
+    if stub._is_running():
+        raise InvalidError(
+            "App is already running and can't be started again.\n"
+            "You should not use `stub.run` or `run_stub` within a Modal local_entrypoint"
+        )
+    stub._set_running(True)
+
     if client is None:
         client = await _Client.from_env()
     if output_mgr is None:
@@ -98,6 +105,7 @@ async def _run_stub(
                 )
         finally:
             await app.disconnect()
+            stub._set_running(False)
 
     output_mgr.print_if_visible(step_completed("App completed."))
 
