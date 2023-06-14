@@ -297,8 +297,11 @@ class _Invocation:
             await self.stub.FunctionGetOutputs(request)
 
 
+# Send inputs to server in batches
 MAP_INVOCATION_CHUNK_SIZE = 100
 
+# Maximum number of unfinished inputs for maps
+MAP_INVOCATION_CONCURRENCY = 20000
 
 async def _map_invocation(
     function_id: str,
@@ -355,6 +358,11 @@ async def _map_invocation(
             logger.debug(
                 f"Pushing {len(items)} inputs to server. Num queued inputs awaiting push is {input_queue.qsize()}."
             )
+
+            # Wait for inputs to be finished before continuing, as server will deny put inputs request
+            while len(pending_outputs) - len(completed_outputs) + len(items) > MAP_INVOCATION_CONCURRENCY:
+                await asyncio.sleep(0.5)
+
             resp = await retry_transient_errors(
                 client.stub.FunctionPutInputs,
                 request,
