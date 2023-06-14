@@ -208,6 +208,15 @@ def test_run_local_entrypoint(servicer, set_env_client, test_dir):
     assert len(servicer.client_calls) == 4
 
 
+def test_run_local_entrypoint_invalid_with_stub_run(servicer, set_env_client, test_dir):
+    stub_file = test_dir / "supports" / "app_run_tests" / "local_entrypoint_invalid.py"
+
+    res = _run(["run", stub_file.as_posix()], expected_exit_code=1)
+    assert "app is already running" in str(res.exception).lower()
+    assert "unreachable" not in res.stdout
+    assert len(servicer.client_calls) == 0
+
+
 def test_run_parse_args(servicer, set_env_client, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "cli_args.py"
     res = _run(["run", stub_file.as_posix()], expected_exit_code=2, expected_stderr=None)
