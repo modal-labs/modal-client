@@ -15,7 +15,6 @@ from .app import _App, is_local
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config
 from .exception import InvalidError
-from .object import DEFAULT_ENVIRONMENT_NAME
 from .queue import _QueueHandle
 
 
@@ -35,7 +34,7 @@ async def _run_stub(
     show_progress: Optional[bool] = None,
     detach: bool = False,
     output_mgr: Optional[OutputManager] = None,
-    environment: str = DEFAULT_ENVIRONMENT_NAME,
+    environment: str = "",
 ) -> AsyncGenerator[_App, None]:
     if not is_local():
         raise InvalidError(
@@ -175,7 +174,7 @@ async def _deploy_stub(
     if client is None:
         client = await _Client.from_env()
 
-    app = await _App._init_from_name(client, name, namespace, environment_name=DEFAULT_ENVIRONMENT_NAME)
+    app = await _App._init_from_name(client, name, namespace, environment_name="")
 
     output_mgr = OutputManager(stdout, show_progress)
 
