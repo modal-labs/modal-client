@@ -303,6 +303,7 @@ MAP_INVOCATION_CHUNK_SIZE = 100
 # Maximum number of unfinished inputs for maps
 MAP_INVOCATION_CONCURRENCY = 20000
 
+
 async def _map_invocation(
     function_id: str,
     input_stream: AsyncIterable[Any],
