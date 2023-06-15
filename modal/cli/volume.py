@@ -11,7 +11,6 @@ from typing import Optional, Tuple
 
 import typer
 from click import UsageError
-from google.protobuf import empty_pb2
 from grpclib import GRPCError, Status
 from rich.console import Console
 from rich.live import Live
@@ -37,7 +36,9 @@ volume_cli = Typer(name="volume", help="Read and edit shared volumes.", no_args_
 @synchronizer.create_blocking
 async def list():
     client = await AioClient.from_env()
-    response = await retry_transient_errors(client.stub.SharedVolumeList, empty_pb2.Empty())
+    response = await retry_transient_errors(
+        client.stub.SharedVolumeList, api_pb2.SharedVolumeListRequest(environment_name="")
+    )
     if sys.stdout.isatty():
         table = Table(title="Shared Volumes")
         table.add_column("Name")

@@ -7,7 +7,6 @@ from typing import List
 
 import click
 import typer
-from google.protobuf import empty_pb2
 from rich.console import Console
 from rich.syntax import Syntax
 from rich.table import Table
@@ -15,6 +14,7 @@ from rich.table import Table
 import modal
 from modal.cli.utils import timestamp_to_local
 from modal.client import Client, _Client
+from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
 from modal_utils.grpc_utils import retry_transient_errors
 
@@ -25,7 +25,7 @@ secret_cli = typer.Typer(name="secret", help="Manage secrets.", no_args_is_help=
 @synchronizer.create_blocking
 async def list():
     client = await _Client.from_env()
-    response = await retry_transient_errors(client.stub.SecretList, empty_pb2.Empty())
+    response = await retry_transient_errors(client.stub.SecretList, api_pb2.SecretListRequest(environment_name=""))
     table = Table()
     table.add_column("Name")
     table.add_column("Created at", justify="right")

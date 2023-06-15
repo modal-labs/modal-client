@@ -3,7 +3,6 @@ import asyncio
 
 import typer
 from click import UsageError
-from google.protobuf import empty_pb2
 from grpclib import GRPCError, Status
 from rich.console import Console
 from rich.table import Table
@@ -22,7 +21,7 @@ app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_a
 async def list_apps():
     """List all running or recently running Modal apps for the current account"""
     aio_client = await AioClient.from_env()
-    res: api_pb2.AppListResponse = await aio_client.stub.AppList(empty_pb2.Empty())
+    res: api_pb2.AppListResponse = await aio_client.stub.AppList(api_pb2.AppListRequest(environment_name=""))
     console = Console()
     table = Table("App ID", "Description", "State", "Creation time", "Stop time")
     for app_stats in res.apps:
