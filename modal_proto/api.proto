@@ -216,8 +216,12 @@ message EnvironmentDeleteRequest {
   string name = 1;
 }
 
+message EnvironmentListItem {
+  string name = 1;
+}
+
 message EnvironmentListResponse {
-  repeated string names = 1;
+  repeated EnvironmentListItem items = 2;
 }
 
 enum RegistryType {
