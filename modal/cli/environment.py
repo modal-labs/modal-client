@@ -1,4 +1,5 @@
 import json
+from typing_extensions import Annotated
 
 import typer
 
@@ -40,11 +41,13 @@ ENVIRONMENT_CREATE_HELP = """Create a new environment in the current workspace""
 
 @environment_cli.command(name="create", help=ENVIRONMENT_CREATE_HELP)
 @synchronizer.create_blocking
-async def create(name: str = typer.Argument(help="Name of the new environment. Must be unique. Case sensitive")):
+async def create(
+    name: Annotated[str, typer.Argument(help="Name of the new environment. Must be unique. Case sensitive")]
+):
     client = await _Client.from_env()
     stub = client.stub
     await stub.EnvironmentCreate(api_pb2.EnvironmentCreateRequest(name=name))
-    typer.echo("Environment created")
+    typer.echo(f"Environment created: {name}")
 
 
 ENVIRONMENT_DELETE_HELP = """Delete an environment in the current workspace
@@ -62,12 +65,11 @@ async def delete(
     client = await _Client.from_env()
     stub = client.stub
     if not confirm:
-        res = typer.confirm(
-            f"Are you sure you want to irrevocably delete the environment [red]{name}[/red] and all its associated apps and secrets?",
+        typer.confirm(
+            f"Are you sure you want to irrevocably delete the environment '{name}' and all its associated apps and secrets?",
             default=False,
+            abort=True,
         )
-        if not res:
-            return
 
     await stub.EnvironmentDelete(api_pb2.EnvironmentDeleteRequest(name=name))
-    typer.echo("Environment deleted")
+    typer.echo(f"Environment deleted: {name}")
