@@ -926,8 +926,13 @@ message SharedVolumeListItem {
   CloudProvider cloud_provider = 4;
 }
 
+message SharedVolumeListRequest {
+  string environment_name = 1;
+}
+
 message SharedVolumeListResponse {
   repeated SharedVolumeListItem items = 1;
+  string environment_name = 2;
 }
 
 message SharedVolumeListFilesRequest {
@@ -1135,7 +1140,7 @@ service ModalClient {
 
   // SharedVolumes
   rpc SharedVolumeCreate(SharedVolumeCreateRequest) returns (SharedVolumeCreateResponse);
-  rpc SharedVolumeList(google.protobuf.Empty) returns (SharedVolumeListResponse);
+  rpc SharedVolumeList(SharedVolumeListRequest) returns (SharedVolumeListResponse);
   rpc SharedVolumeListFiles(SharedVolumeListFilesRequest) returns (SharedVolumeListFilesResponse);
   rpc SharedVolumeListFilesStream(SharedVolumeListFilesRequest) returns (stream SharedVolumeListFilesResponse);
   rpc SharedVolumePutFile(SharedVolumePutFileRequest) returns (SharedVolumePutFileResponse);
