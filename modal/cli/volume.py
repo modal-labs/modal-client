@@ -21,7 +21,9 @@ from typer import Typer
 import modal
 from modal._location import display_location
 from modal._output import step_progress, step_completed
+from modal.cli.environment import ENV_OPTION_HELP
 from modal.client import AioClient
+from modal.config import config
 from modal.shared_volume import _SharedVolumeHandle, _SharedVolume
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
@@ -34,13 +36,16 @@ volume_cli = Typer(name="volume", help="Read and edit shared volumes.", no_args_
 
 @volume_cli.command(name="list", help="List the names of all shared volumes.")
 @synchronizer.create_blocking
-async def list():
+async def list(env: Optional[str] = typer.Option(default=None, help=ENV_OPTION_HELP)):
+    if env is None:
+        env = config.get("environment")
+
     client = await AioClient.from_env()
     response = await retry_transient_errors(
-        client.stub.SharedVolumeList, api_pb2.SharedVolumeListRequest(environment_name="")
+        client.stub.SharedVolumeList, api_pb2.SharedVolumeListRequest(environment_name=env)
     )
     if sys.stdout.isatty():
-        table = Table(title="Shared Volumes")
+        table = Table(title=f"Shared Volumes - '{response.environment_name}'")
         table.add_column("Name")
         table.add_column("Location")
         table.add_column("Created at", justify="right")
@@ -67,16 +72,22 @@ def some_func():
 
 
 @volume_cli.command(name="create", help="Create a named shared volume.")
-def create(name: str, cloud: str = typer.Option("aws", help="Cloud provider to create the volume in. One of aws|gcp.")):
+def create(
+    name: str,
+    cloud: str = typer.Option("aws", help="Cloud provider to create the volume in. One of aws|gcp."),
+    env: Optional[str] = typer.Option(None, help=ENV_OPTION_HELP),
+):
+    if env is None:
+        env = config.get("environment")
     volume = modal.SharedVolume(cloud=cloud)
-    volume._deploy(name)
+    volume._deploy(name, environment_name=env)
     console = Console()
     console.print(f"Created volume '{name}' in {cloud.upper()}. \n\nCode example:\n")
     usage = Syntax(gen_usage_code(name), "python")
     console.print(usage)
 
 
-async def volume_from_name(deployment_name) -> _SharedVolumeHandle:
+async def volume_from_name(deployment_name: str, environment_name: str) -> _SharedVolumeHandle:
     shared_volume = await _SharedVolume.lookup(deployment_name)
     if not isinstance(shared_volume, _SharedVolumeHandle):
         raise Exception("The specified app entity is not a shared volume")
