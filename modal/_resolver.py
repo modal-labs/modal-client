@@ -1,6 +1,8 @@
 # Copyright Modal Labs 2023
+import asyncio
 import contextlib
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypeVar
+from asyncio import Future
+from typing import TYPE_CHECKING, Dict, List, Optional, TypeVar
 
 from modal_proto import api_pb2
 
@@ -44,14 +46,14 @@ class Resolver:
     # Unfortunately we can't use type annotations much in this file,
     # since that leads to circular dependencies
     _tree: Tree
-    _local_uuid_to_object: Dict[str, Any]
+    _local_uuid_to_future: Dict[str, Future]
 
     def __init__(self, output_mgr, client, app_id: Optional[str] = None):
         from ._output import step_progress
         from rich.tree import Tree
 
         self._output_mgr = output_mgr
-        self._local_uuid_to_object = {}
+        self._local_uuid_to_future = {}
         self._tree = Tree(step_progress("Creating objects..."), guide_style="gray50")
 
         # Accessible by objects
@@ -73,33 +75,45 @@ class Resolver:
             return await obj._preload(self, existing_object_id)
 
     async def load(self, obj, existing_object_id: Optional[str] = None):
-        cached_obj = self._local_uuid_to_object.get(obj.local_uuid)
-        if cached_obj is not None:
-            # We already created this object before, shortcut this method
-            return cached_obj
+        cached_future = self._local_uuid_to_future.get(obj.local_uuid)
 
-        created_obj = await obj._load(self, existing_object_id)
+        if not cached_future:
+            # don't run any awaits within this if-block to prevent race conditions
+            async def loader():
+                created_obj = await obj._load(self, existing_object_id)
+                if existing_object_id is not None and created_obj.object_id != existing_object_id:
+                    # TODO(erikbern): ignoring images is an ugly fix to a problem that's on the server.
+                    # Unlike every other object, images are not assigned random ids, but rather an
+                    # id given by the hash of its contents. This means we can't _force_ an image to
+                    # have a particular id. The better solution is probably to separate "images"
+                    # from "image definitions" or something like that, but that's a big project.
+                    #
+                    # Persisted refs are ignored because their life cycle is managed independently.
+                    # The same tag on an app can be pointed at different objects.
+                    if not obj._is_persisted_ref and not existing_object_id.startswith("im-"):
+                        raise Exception(
+                            f"Tried creating an object using existing id {existing_object_id}"
+                            f" but it has id {created_obj.object_id}"
+                        )
 
-        if existing_object_id is not None and created_obj.object_id != existing_object_id:
-            # TODO(erikbern): ignoring images is an ugly fix to a problem that's on the server.
-            # Unlike every other object, images are not assigned random ids, but rather an
-            # id given by the hash of its contents. This means we can't _force_ an image to
-            # have a particular id. The better solution is probably to separate "images"
-            # from "image definitions" or something like that, but that's a big project.
-            #
-            # Persisted refs are ignored because their life cycle is managed independently.
-            # The same tag on an app can be pointed at different objects.
-            if not obj._is_persisted_ref and not existing_object_id.startswith("im-"):
-                raise Exception(
-                    f"Tried creating an object using existing id {existing_object_id}"
-                    f" but it has id {created_obj.object_id}"
-                )
+                return created_obj
 
-        self._local_uuid_to_object[obj.local_uuid] = created_obj
-        return created_obj
+            cached_future = asyncio.create_task(loader())
+            self._local_uuid_to_future[obj.local_uuid] = cached_future
+
+        if cached_future.done():
+            return cached_future.result()
+
+        return await cached_future
 
     def objects(self) -> List:
-        return list(self._local_uuid_to_object.values())
+        for fut in self._local_uuid_to_future.values():
+            if not fut.done():
+                # this will raise an exception if not all loads have been awaited, but that *should* never happen
+                raise RuntimeError(
+                    "All loaded objects have not been resolved yet, can't get all objects for the resolver!"
+                )
+        return [fut.result() for fut in self._local_uuid_to_future.values()]
 
     @contextlib.contextmanager
     def display(self):

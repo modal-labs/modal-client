@@ -958,6 +958,7 @@ class _Function(_Provider[_FunctionHandle]):
             return function_handle
 
         async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _FunctionHandle:
+            # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
             status_row = resolver.add_status_row()
             status_row.message(f"Creating {tag}...")
 
@@ -966,26 +967,23 @@ class _Function(_Provider[_FunctionHandle]):
             else:
                 proxy_id = None
 
-            # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
-            if image is not None:
-                if not isinstance(image, _Image):
-                    raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
-                image_id = (await resolver.load(image)).object_id
-            else:
-                image_id = None  # Happens if it's a notebook function
-            secret_ids = []
-            for secret in secrets:
-                secret_id = (await resolver.load(secret)).object_id
-                secret_ids.append(secret_id)
+            async def _load_ids(providers) -> typing.List[str]:
+                loaded_handles = await asyncio.gather(*[resolver.load(provider) for provider in providers])
+                return [handle.object_id for handle in loaded_handles]
 
-            mount_ids = []
-            for mount in all_mounts:
-                mount_ids.append((await resolver.load(mount)).object_id)
+            async def image_loader():
+                if image is not None:
+                    if not isinstance(image, _Image):
+                        raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
+                    image_id = (await resolver.load(image)).object_id
+                else:
+                    image_id = None  # Happens if it's a notebook function
+                return image_id
 
+            # validation
             if not isinstance(shared_volumes, dict):
                 raise InvalidError("shared_volumes must be a dict[str, SharedVolume] where the keys are paths")
-            shared_volume_mounts = []
-            # Relies on dicts being ordered (true as of Python 3.6).
+            validated_shared_volumes = []
             for path, shared_volume in shared_volumes.items():
                 path = PurePath(path).as_posix()
                 abs_path = posixpath.abspath(path)
@@ -998,14 +996,21 @@ class _Function(_Provider[_FunctionHandle]):
                     raise InvalidError(f"Shared volume {abs_path} cannot be mounted at '/root'.")
                 elif abs_path == "/tmp":
                     raise InvalidError(f"Shared volume {abs_path} cannot be mounted at '/tmp'.")
+                validated_shared_volumes.append((path, shared_volume))
 
-                shared_volume_mounts.append(
-                    api_pb2.SharedVolumeMount(
-                        mount_path=path,
-                        shared_volume_id=(await resolver.load(shared_volume)).object_id,
-                        allow_cross_region=allow_cross_region_volumes,
+            async def shared_volume_loader():
+                shared_volume_mounts = []
+                volume_ids = await _load_ids([vol for _, vol in validated_shared_volumes])
+                # Relies on dicts being ordered (true as of Python 3.6).
+                for ((path, _), volume_id) in zip(validated_shared_volumes, volume_ids):
+                    shared_volume_mounts.append(
+                        api_pb2.SharedVolumeMount(
+                            mount_path=path,
+                            shared_volume_id=volume_id,
+                            allow_cross_region=allow_cross_region_volumes,
+                        )
                     )
-                )
+                return shared_volume_mounts
 
             if is_generator:
                 function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
@@ -1034,6 +1039,10 @@ class _Function(_Provider[_FunctionHandle]):
             stub_name = ""
             if stub and stub.name:
                 stub_name = stub.name
+
+            mount_ids, secret_ids, image_id, shared_volume_mounts = await asyncio.gather(
+                _load_ids(all_mounts), _load_ids(secrets), image_loader(), shared_volume_loader()
+            )
 
             # Create function remotely
             function_definition = api_pb2.Function(
