@@ -7,6 +7,7 @@ from grpclib import GRPCError, Status
 from rich.console import Console
 from rich.table import Table
 
+from modal.config import config
 from modal._output import OutputManager, get_app_logs_loop
 from modal.cli.utils import timestamp_to_local
 from modal.client import AioClient, _Client
@@ -16,13 +17,24 @@ from modal_utils.async_utils import synchronizer
 app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_args_is_help=True)
 
 
+ENV_HELP = """Environment to interact with
+
+If none is specified, Modal will use the default environment of your current profile (can also be specified via the environment variable MODAL_DEFAULT_ENVIRONMENT).
+If neither is set, Modal will assume there is only one environment in the active workspace and use that one, or raise an error if there are multiple environments.
+"""
+
+
 @app_cli.command("list")
 @synchronizer.create_blocking
-async def list_apps():
+async def list_apps(env: typer.Option(None, ENV_HELP)):
     """List all running or recently running Modal apps for the current account"""
+    if env is None:
+        env = config.get("default_environment")
+
     aio_client = await AioClient.from_env()
-    res: api_pb2.AppListResponse = await aio_client.stub.AppList(api_pb2.AppListRequest(environment_name=""))
+    res: api_pb2.AppListResponse = await aio_client.stub.AppList(api_pb2.AppListRequest(environment_name=env))
     console = Console()
+    console.print(f"Listing apps in environment '{res.environment_name}'")
     table = Table("App ID", "Description", "State", "Creation time", "Stop time")
     for app_stats in res.apps:
         if app_stats.state == api_pb2.AppState.APP_STATE_DETACHED:
@@ -78,7 +90,7 @@ def app_logs(app_id: str):
 
 @app_cli.command("stop")
 @synchronizer.create_blocking
-async def list_stops(app_id: str):
+async def stop(app_id: str):
     """Stop an app."""
     aio_client = await AioClient.from_env()
     req = api_pb2.AppStopRequest(app_id=app_id)

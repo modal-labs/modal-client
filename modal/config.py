@@ -155,6 +155,7 @@ _SETTINGS = {
     "profiling_enabled": _Setting(False, transform=lambda x: x not in ("", "0")),
     "heartbeat_interval": _Setting(15, float),
     "function_runtime": _Setting(),
+    "default_environment": _Setting(),
 }
 
 

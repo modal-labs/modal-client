@@ -22,7 +22,6 @@ from modal_utils.async_utils import synchronizer
 from .import_refs import import_function, import_stub
 from ..functions import _FunctionHandle
 
-run_cli = typer.Typer(name="run")
 
 # Why do we need to support both types and the strings? Because something weird with
 # how __annotations__ works in Python (which inspect.signature uses). See #220.
@@ -185,22 +184,34 @@ def run(ctx, detach, quiet):
     ctx.obj["show_progress"] = False if quiet else None
 
 
+ENV_HELP = """Environment to run the app in
+
+If none is specified, Modal will use the default environment of your current profile (can also be specified via the environment variable MODAL_DEFAULT_ENVIRONMENT).
+If neither is set, Modal will assume there is only one environment in the active workspace and use that one, or raise an error if there are multiple environments.
+"""
+
+
 def deploy(
     stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
     name: str = typer.Option(None, help="Name of the deployment."),
+    env: str = typer.Option(None, help=ENV_HELP),
 ):
+    if env is None:
+        env = config.get("default_environment")
+
     _stub = import_stub(stub_ref)
 
     if name is None:
         name = _stub.name
 
     blocking_stub = synchronizer._translate_out(_stub, interface=Interface.BLOCKING)
-    deploy_stub(blocking_stub, name=name)
+    deploy_stub(blocking_stub, name=name, env=env)
 
 
 def serve(
     stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
     timeout: Optional[float] = None,
+    env: str = typer.Option(None, help=ENV_HELP),
 ):
     """Run a web endpoint(s) associated with a Modal stub and hot-reload code.
 
@@ -210,7 +221,10 @@ def serve(
     modal serve hello_world.py
     ```
     """
-    with serve_stub(stub_ref):
+    if env is None:
+        env = config.get("default_environment")
+
+    with serve_stub(stub_ref, env=env):
         if timeout is None:
             timeout = config["serve_timeout"]
         if timeout is None:
@@ -226,6 +240,7 @@ def shell(
         ..., help="Path to a Python file with a Stub or Modal function whose container to run.", metavar="FUNC_REF"
     ),
     cmd: str = typer.Option(default="/bin/bash", help="Command to run inside the Modal image."),
+    env: str = typer.Option(None, help=ENV_HELP),
 ):
     """Run an interactive shell inside a Modal image.
 
@@ -245,6 +260,9 @@ def shell(
     modal shell hello_world.py --cmd=python
     ```
     """
+    if env is None:
+        env = config.get("default_environment")
+
     console = Console()
     if not console.is_terminal:
         raise click.UsageError("`modal shell` can only be run from a terminal.")
@@ -258,7 +276,7 @@ def shell(
     blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
 
     if _function_handle is None:
-        interactive_shell(blocking_stub, cmd)
+        interactive_shell(blocking_stub, cmd, env=env)
     else:
         interactive_shell(
             blocking_stub,
@@ -270,4 +288,5 @@ def shell(
             secrets=_function._secrets,
             gpu=_function._gpu,
             cloud=_function._cloud,
+            env=env,
         )
