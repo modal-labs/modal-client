@@ -13,6 +13,7 @@ from modal_utils.grpc_utils import retry_transient_errors, get_proto_oneof
 from ._object_meta import ObjectMeta
 from ._resolver import Resolver
 from .client import _Client
+from .config import config
 from .exception import InvalidError, NotFoundError
 
 H = TypeVar("H", bound="_Handle")
@@ -212,6 +213,7 @@ class _Provider(Generic[H]):
         label: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
+        environment_name: str = "",
     ) -> H:
         """
         Note 1: this uses the single-object app method, which we're planning to get rid of later
@@ -224,13 +226,15 @@ class _Provider(Generic[H]):
 
         handle_cls = self._get_handle_cls()
         object_entity = handle_cls._type_prefix
-        app = await _App._init_from_name(client, label, namespace)
+        app = await _App._init_from_name(client, label, namespace, environment_name=environment_name)
         handle = await app.create_one_object(self)
         await app.deploy(label, namespace, object_entity)  # TODO(erikbern): not needed if the app already existed
         return handle
 
     @typechecked
-    def persist(self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE):
+    def persist(
+        self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
+    ):
         """Deploy a Modal app containing this object. This object can then be imported from other apps using
         the returned reference, or by calling `modal.SharedVolume.from_name(label)` (or the equivalent method
         on respective class).
@@ -251,9 +255,11 @@ class _Provider(Generic[H]):
         ```
 
         """
+        if environment_name is None:
+            environment_name = config.get("environment")
 
         async def _load_persisted(resolver: Resolver, existing_object_id: Optional[str]) -> H:
-            return await self._deploy(label, namespace, resolver.client)
+            return await self._deploy(label, namespace, resolver.client, environment_name=environment_name)
 
         cls = type(self)
         rep = f"PersistedRef<{self}>({label})"

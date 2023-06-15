@@ -18,6 +18,7 @@ from modal.runner import run_stub, deploy_stub, interactive_shell
 from modal.serving import serve_stub
 from modal.stub import LocalEntrypoint
 from modal_utils.async_utils import synchronizer
+from .environment import ENV_OPTION_HELP
 
 from .import_refs import import_function, import_stub
 from ..functions import _FunctionHandle
@@ -184,20 +185,13 @@ def run(ctx, detach, quiet):
     ctx.obj["show_progress"] = False if quiet else None
 
 
-ENV_HELP = """Environment to run the app in
-
-If none is specified, Modal will use the default environment of your current profile (can also be specified via the environment variable MODAL_DEFAULT_ENVIRONMENT).
-If neither is set, Modal will assume there is only one environment in the active workspace and use that one, or raise an error if there are multiple environments.
-"""
-
-
 def deploy(
     stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
     name: str = typer.Option(None, help="Name of the deployment."),
-    env: str = typer.Option(None, help=ENV_HELP),
+    env: str = typer.Option(None, help=ENV_OPTION_HELP),
 ):
     if env is None:
-        env = config.get("default_environment")
+        env = config.get("environment")
 
     _stub = import_stub(stub_ref)
 
@@ -211,7 +205,7 @@ def deploy(
 def serve(
     stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
     timeout: Optional[float] = None,
-    env: str = typer.Option(None, help=ENV_HELP),
+    env: str = typer.Option(None, help=ENV_OPTION_HELP),
 ):
     """Run a web endpoint(s) associated with a Modal stub and hot-reload code.
 
@@ -222,7 +216,7 @@ def serve(
     ```
     """
     if env is None:
-        env = config.get("default_environment")
+        env = config.get("environment")
 
     with serve_stub(stub_ref, env=env):
         if timeout is None:
@@ -240,7 +234,7 @@ def shell(
         ..., help="Path to a Python file with a Stub or Modal function whose container to run.", metavar="FUNC_REF"
     ),
     cmd: str = typer.Option(default="/bin/bash", help="Command to run inside the Modal image."),
-    env: str = typer.Option(None, help=ENV_HELP),
+    env: str = typer.Option(None, help=ENV_OPTION_HELP),
 ):
     """Run an interactive shell inside a Modal image.
 
@@ -261,7 +255,7 @@ def shell(
     ```
     """
     if env is None:
-        env = config.get("default_environment")
+        env = config.get("environment")
 
     console = Console()
     if not console.is_terminal:

@@ -3,7 +3,7 @@ import os
 import platform
 import subprocess
 from tempfile import NamedTemporaryFile
-from typing import List
+from typing import List, Optional
 
 import click
 import typer
@@ -12,8 +12,10 @@ from rich.syntax import Syntax
 from rich.table import Table
 
 import modal
+from modal.cli.environment import ENV_OPTION_HELP
 from modal.cli.utils import timestamp_to_local
 from modal.client import Client, _Client
+from modal.config import config
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
 from modal_utils.grpc_utils import retry_transient_errors
@@ -23,9 +25,12 @@ secret_cli = typer.Typer(name="secret", help="Manage secrets.", no_args_is_help=
 
 @secret_cli.command("list", help="List your published secrets.")
 @synchronizer.create_blocking
-async def list():
+async def list(env: Optional[str] = typer.Option(None, help=ENV_OPTION_HELP)):
+    if env is None:
+        env = config.get("environment")
+
     client = await _Client.from_env()
-    response = await retry_transient_errors(client.stub.SecretList, api_pb2.SecretListRequest(environment_name=""))
+    response = await retry_transient_errors(client.stub.SecretList, api_pb2.SecretListRequest(environment_name=env))
     table = Table()
     table.add_column("Name")
     table.add_column("Created at", justify="right")
@@ -39,6 +44,7 @@ async def list():
         )
 
     console = Console()
+    console.print(f"Listing secrets in environment '{response.environment_name}'")
     console.print(table)
 
 

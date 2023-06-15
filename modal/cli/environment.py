@@ -19,6 +19,14 @@ Typical use cases for environments include having one for development and one fo
 production, to prevent overwriting production apps when developing new features
 while still being able to deploy changes to a live environment.
 """
+
+ENV_OPTION_HELP = """Environment to interact with
+
+If none is specified, Modal will use the default environment of your current profile (can also be specified via the environment variable MODAL_ENVIRONMENT).
+If neither is set, Modal will assume there is only one environment in the active workspace and use that one, or raise an error if there are multiple environments.
+"""
+
+
 environment_cli = typer.Typer(name="environment", help=ENVIRONMENT_HELP_TEXT, no_args_is_help=True)
 
 
