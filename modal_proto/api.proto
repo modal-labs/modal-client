@@ -171,8 +171,13 @@ message AppStats {
   string environment_name = 11;
 }
 
+message AppListRequest {
+  string environment_name = 1;
+}
+
 message AppListResponse {
   repeated AppStats apps = 1;
+  string environment_name = 2;
 }
 
 message AppLookupObjectRequest {
@@ -896,8 +901,13 @@ message SecretListItem {
   string environment_name = 4;
 }
 
+message SecretListRequest {
+  string environment_name = 1; // leaving empty will assume a singular environment
+}
+
 message SecretListResponse {
   repeated SecretListItem items = 1;
+  string environment_name = 2; // the environment that was listed (useful when relying on "default" logic)
 }
 
 message SharedVolumeCreateRequest {
@@ -916,8 +926,13 @@ message SharedVolumeListItem {
   CloudProvider cloud_provider = 4;
 }
 
+message SharedVolumeListRequest {
+  string environment_name = 1;
+}
+
 message SharedVolumeListResponse {
   repeated SharedVolumeListItem items = 1;
+  string environment_name = 2;
 }
 
 message SharedVolumeListFilesRequest {
@@ -1058,7 +1073,7 @@ service ModalClient {
   rpc AppGetLogs(AppGetLogsRequest) returns (stream TaskLogsBatch);
   rpc AppSetObjects(AppSetObjectsRequest) returns (google.protobuf.Empty);
   rpc AppGetObjects(AppGetObjectsRequest) returns (AppGetObjectsResponse);
-  rpc AppList(google.protobuf.Empty) returns (AppListResponse);
+  rpc AppList(AppListRequest) returns (AppListResponse);
   rpc AppLookupObject(AppLookupObjectRequest) returns (AppLookupObjectResponse);
   rpc AppDeploy(AppDeployRequest) returns (AppDeployResponse);
   rpc AppGetByDeploymentName(AppGetByDeploymentNameRequest) returns (AppGetByDeploymentNameResponse);
@@ -1121,11 +1136,11 @@ service ModalClient {
 
   // Secrets
   rpc SecretCreate(SecretCreateRequest) returns (SecretCreateResponse);
-  rpc SecretList(google.protobuf.Empty) returns (SecretListResponse);
+  rpc SecretList(SecretListRequest) returns (SecretListResponse);
 
   // SharedVolumes
   rpc SharedVolumeCreate(SharedVolumeCreateRequest) returns (SharedVolumeCreateResponse);
-  rpc SharedVolumeList(google.protobuf.Empty) returns (SharedVolumeListResponse);
+  rpc SharedVolumeList(SharedVolumeListRequest) returns (SharedVolumeListResponse);
   rpc SharedVolumeListFiles(SharedVolumeListFilesRequest) returns (SharedVolumeListFilesResponse);
   rpc SharedVolumeListFilesStream(SharedVolumeListFilesRequest) returns (stream SharedVolumeListFilesResponse);
   rpc SharedVolumePutFile(SharedVolumePutFileRequest) returns (SharedVolumePutFileResponse);
