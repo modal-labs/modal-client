@@ -98,6 +98,7 @@ message AppCreateRequest {
   string description = 2;    // Human readable label for the website
   bool detach = 3; // deprecated, but needed until 0.48 is the minimum version
   bool initializing = 4; // deprecated, but needed until 0.48 is the minimum version
+  string environment_name = 5;
 }
 
 message AppCreateResponse {
@@ -124,6 +125,7 @@ message AppGetByDeploymentNameRequest {
   DeploymentNamespace namespace = 1;
   string name = 2;
   reserved 3;
+  string environment_name = 4;
 }
 
 message AppGetByDeploymentNameResponse {
@@ -147,8 +149,9 @@ message AppGetObjectsRequest {
 message AppGetObjectsItem {
   string tag = 1;
   string object_id = 2;
-  oneof object_oneof {
+  oneof handle_metadata_oneof {
     FunctionHandleMetadata function = 3;
+    MountHandleMetadata mount_handle_metadata = 4;
   }
 }
 
@@ -165,6 +168,7 @@ message AppStats {
   int32 n_running_tasks = 8;
   string object_entity = 9;
   string name = 10;
+  string environment_name = 11;
 }
 
 message AppListResponse {
@@ -177,6 +181,7 @@ message AppLookupObjectRequest {
   string object_tag = 4;
   string object_id = 5;
   string object_entity = 6;
+  string environment_name = 7;
 }
 
 message AppLookupObjectResponse {
@@ -184,6 +189,7 @@ message AppLookupObjectResponse {
   string error_message = 2;
   oneof handle_metadata_oneof {
     FunctionHandleMetadata function = 3;
+    MountHandleMetadata mount_handle_metadata = 4;
   }
 }
 
@@ -200,6 +206,18 @@ message AppSetObjectsRequest {
 
 message AppHeartbeatRequest {
   string app_id = 1;
+}
+
+message EnvironmentCreateRequest {
+  string name = 1;
+}
+
+message EnvironmentDeleteRequest {
+  string name = 1;
+}
+
+message EnvironmentListResponse {
+  repeated string names = 1;
 }
 
 enum RegistryType {
@@ -742,6 +760,11 @@ message MountBuildRequest {
 
 message MountBuildResponse {
   string mount_id = 1;
+  MountHandleMetadata handle_metadata = 2;
+}
+
+message MountHandleMetadata {
+  string content_checksum_sha256_hex = 1;
 }
 
 message MountFile {
@@ -861,10 +884,12 @@ message SecretCreateResponse {
   string secret_id = 1;
 }
 
+
 message SecretListItem {
   string label = 1;
   double created_at = 2;
   double last_used_at = 3;
+  string environment_name = 4;
 }
 
 message SecretListResponse {
@@ -1055,6 +1080,11 @@ service ModalClient {
   rpc DictPop(DictPopRequest) returns (DictPopResponse);
   rpc DictContains(DictContainsRequest) returns (DictContainsResponse);
   rpc DictLen(DictLenRequest) returns (DictLenResponse);
+
+  // Environments
+  rpc EnvironmentCreate(EnvironmentCreateRequest) returns (google.protobuf.Empty);
+  rpc EnvironmentList(google.protobuf.Empty) returns (EnvironmentListResponse);
+  rpc EnvironmentDelete(EnvironmentDeleteRequest) returns (google.protobuf.Empty);
 
   // Functions
   rpc FunctionBindParams(FunctionBindParamsRequest) returns (FunctionBindParamsResponse);

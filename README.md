@@ -1,7 +1,7 @@
 # Modal Python Library
 
 The Modal Python Library provides convenient, on-demand access to serverless
-cloud compute from Python scripts on your local computer!
+cloud compute from Python scripts on your local computer.
 
 ## Documentation
 

@@ -15,6 +15,7 @@ from .app import _App, is_local
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config
 from .exception import InvalidError
+from .object import DEFAULT_ENVIRONMENT_NAME
 from .queue import _QueueHandle
 
 
@@ -34,6 +35,7 @@ async def _run_stub(
     show_progress: Optional[bool] = None,
     detach: bool = False,
     output_mgr: Optional[OutputManager] = None,
+    environment: str = DEFAULT_ENVIRONMENT_NAME,
 ) -> AsyncGenerator[_App, None]:
     if not is_local():
         raise InvalidError(
@@ -41,12 +43,18 @@ async def _run_stub(
             " Are you calling stub.run() directly?"
             " Consider using the `modal run` shell command."
         )
+    if stub.app:
+        raise InvalidError(
+            "App is already running and can't be started again.\n"
+            "You should not use `stub.run` or `run_stub` within a Modal local_entrypoint"
+        )
+
     if client is None:
         client = await _Client.from_env()
     if output_mgr is None:
         output_mgr = OutputManager(stdout, show_progress, "Running app...")
     post_init_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
-    app = await _App._init_new(client, stub.description, detach=detach, deploying=False)
+    app = await _App._init_new(client, stub.description, detach=detach, deploying=False, environment_name=environment)
     async with stub._set_app(app), TaskContext(grace=config["logs_timeout"]) as tc:
         # Start heartbeats loop to keep the client alive
         tc.infinite_loop(lambda: _heartbeat(client, app.app_id), sleep=HEARTBEAT_INTERVAL)
@@ -173,7 +181,7 @@ async def _deploy_stub(
     if client is None:
         client = await _Client.from_env()
 
-    app = await _App._init_from_name(client, name, namespace)
+    app = await _App._init_from_name(client, name, namespace, environment_name=DEFAULT_ENVIRONMENT_NAME)
 
     output_mgr = OutputManager(stdout, show_progress)
 

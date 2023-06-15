@@ -81,7 +81,7 @@ import toml
 
 
 from ._traceback import setup_rich_traceback
-from .exception import deprecation_warning
+from .exception import deprecation_error
 
 # Locate config file and read it
 
@@ -125,9 +125,9 @@ def config_set_active_profile(env: str):
 
 
 if "MODAL_ENV" in os.environ:
-    deprecation_warning(date(2023, 5, 24), "MODAL_ENV will soon be deprecated. Use MODAL_PROFILE instead")
+    deprecation_error(date(2023, 5, 24), "MODAL_ENV has been replaced with MODAL_PROFILE")
 
-_profile = os.environ.get("MODAL_PROFILE", os.environ.get("MODAL_ENV", _config_active_profile()))
+_profile = os.environ.get("MODAL_PROFILE", _config_active_profile())
 
 # Define settings
 

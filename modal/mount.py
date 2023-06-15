@@ -12,6 +12,7 @@ from pathlib import Path, PurePosixPath
 from typing import AsyncGenerator, Callable, List, Optional, Union, Tuple, Sequence
 
 import aiostream
+from google.protobuf.message import Message
 from modal._types import typechecked
 
 import modal.exception
@@ -102,7 +103,13 @@ class _MountDir(_MountEntry):
 
 
 class _MountHandle(_Handle, type_prefix="mo"):
-    pass
+    """Store content checksum for uploaded Mount"""
+
+    _content_checksum_sha256_hex: Optional[str]
+
+    def _hydrate_metadata(self, handle_metadata: Message):
+        assert isinstance(handle_metadata, api_pb2.MountHandleMetadata)
+        self._content_checksum_sha256_hex = handle_metadata.content_checksum_sha256_hex
 
 
 MountHandle, AioMountHandle = synchronize_apis(_MountHandle)
@@ -318,7 +325,7 @@ class _Mount(_Provider[_MountHandle]):
         status_row.finish(f"Created mount {message_label}")
 
         logger.debug(f"Uploaded {len(uploaded_hashes)}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
-        return _MountHandle._from_id(resp.mount_id, resolver.client, None)
+        return _MountHandle._from_id(resp.mount_id, resolver.client, resp.handle_metadata)
 
 
 Mount, AioMount = synchronize_apis(_Mount)

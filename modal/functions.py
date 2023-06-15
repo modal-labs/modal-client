@@ -359,6 +359,8 @@ async def _map_invocation(
                 client.stub.FunctionPutInputs,
                 request,
                 max_retries=None,
+                max_delay=10,
+                additional_status_codes=[Status.RESOURCE_EXHAUSTED],
             )
             for item in resp.inputs:
                 pending_outputs.setdefault(item.input_id, 0)

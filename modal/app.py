@@ -3,12 +3,12 @@ from typing import TYPE_CHECKING, Dict, Optional, TypeVar
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_apis
-from modal_utils.grpc_utils import retry_transient_errors
+from modal_utils.grpc_utils import get_proto_oneof, retry_transient_errors
 
 from ._resolver import Resolver
 from .client import _Client
 from .config import logger
-from .object import _Handle, _Provider
+from .object import _Handle, _Provider, DEFAULT_ENVIRONMENT_NAME
 
 if TYPE_CHECKING:
     from rich.tree import Tree
@@ -157,7 +157,8 @@ class _App:
         req = api_pb2.AppGetObjectsRequest(app_id=app_id)
         resp = await retry_transient_errors(self._client.stub.AppGetObjects, req)
         for item in resp.items:
-            obj = _Handle._from_id(item.object_id, self._client, item.function)
+            handle_metadata = get_proto_oneof(item, "handle_metadata_oneof")
+            obj = _Handle._from_id(item.object_id, self._client, handle_metadata)
             self._tag_to_object[item.tag] = obj
 
     @staticmethod
@@ -179,7 +180,11 @@ class _App:
 
     @staticmethod
     async def _init_new(
-        client: _Client, description: Optional[str] = None, detach: bool = False, deploying: bool = False
+        client: _Client,
+        description: Optional[str] = None,
+        detach: bool = False,
+        deploying: bool = False,
+        environment_name: str = DEFAULT_ENVIRONMENT_NAME,
     ) -> "_App":
         # Start app
         # TODO(erikbern): maybe this should happen outside of this method?
@@ -187,6 +192,7 @@ class _App:
             description=description,
             initializing=deploying,
             detach=detach,
+            environment_name=environment_name,
         )
         app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
         app_page_url = app_resp.app_logs_url
@@ -194,9 +200,11 @@ class _App:
         return _App(client, app_resp.app_id, app_page_url)
 
     @staticmethod
-    async def _init_from_name(client: _Client, name: str, namespace):
+    async def _init_from_name(client: _Client, name: str, namespace, environment_name: str):
         # Look up any existing deployment
-        app_req = api_pb2.AppGetByDeploymentNameRequest(name=name, namespace=namespace)
+        app_req = api_pb2.AppGetByDeploymentNameRequest(
+            name=name, namespace=namespace, environment_name=environment_name
+        )
         app_resp = await retry_transient_errors(client.stub.AppGetByDeploymentName, app_req)
         existing_app_id = app_resp.app_id or None
 
@@ -204,7 +212,7 @@ class _App:
         if existing_app_id is not None:
             return await _App._init_existing(client, existing_app_id)
         else:
-            return await _App._init_new(client, name, detach=False, deploying=True)
+            return await _App._init_new(client, name, detach=False, deploying=True, environment_name=environment_name)
 
     async def create_one_object(self, provider: _Provider) -> _Handle:
         existing_object_id: Optional[str] = self._tag_to_existing_id.get("_object")
