@@ -2,6 +2,7 @@
 import typer
 
 from modal.cli import run
+from modal.cli.environment import environment_cli
 
 from .app import app_cli
 from .config import config_cli
@@ -44,6 +45,7 @@ def modal(
 entrypoint_cli_typer.add_typer(app_cli)
 entrypoint_cli_typer.add_typer(config_cli)
 entrypoint_cli_typer.add_typer(env_cli)
+entrypoint_cli_typer.add_typer(environment_cli)
 entrypoint_cli_typer.add_typer(profile_cli)
 entrypoint_cli_typer.add_typer(secret_cli)
 entrypoint_cli_typer.add_typer(token_cli)
