@@ -1,3 +1,5 @@
+import json
+
 import typer
 
 from modal.client import _Client
@@ -21,7 +23,7 @@ environment_cli = typer.Typer(name="environment", help=ENVIRONMENT_HELP_TEXT, no
 
 def display_results(items, fields):
     for item in items:
-        typer.echo({field_name: getattr(item, field_name) for field_name in fields})
+        typer.echo(json.dumps({field_name: getattr(item, field_name) for field_name in fields}))
 
 
 @environment_cli.command(name="list", help="List all environments in the current workspace")
