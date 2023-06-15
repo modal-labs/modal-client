@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2023
 import json
 from typing import Optional
 
