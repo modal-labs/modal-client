@@ -1,9 +1,12 @@
 import json
+from typing import Optional
+
 from typing_extensions import Annotated
 
 import typer
 
 from modal.client import _Client
+from modal.config import config
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
 from google.protobuf.empty_pb2 import Empty
@@ -28,6 +31,19 @@ If neither is set, Modal will assume there is only one environment in the active
 
 
 environment_cli = typer.Typer(name="environment", help=ENVIRONMENT_HELP_TEXT, no_args_is_help=True)
+
+
+def ensure_env(environment_name: Optional[str] = None) -> str:
+    """Override config environment with environment from environment_name
+
+    This is necessary since a cli command that runs Modal code, e.g. `modal.lookup()` without
+    explicit environment specification wouldn't pick up the environment specified in a command
+    line flag otherwise, e.g. when doing `modal run --env=foo`
+    """
+    if environment_name is not None:
+        config.override_locally("environment", environment_name)
+
+    return config.get("environment")
 
 
 def display_results(items, fields):

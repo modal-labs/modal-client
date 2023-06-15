@@ -184,6 +184,12 @@ class Config:
         else:
             return s.default
 
+    def override_locally(self, key: str, value: str):
+        # Override setting in this process by overriding environment variable for the setting
+        #
+        # Does NOT write back to settings file etc.
+        os.environ["MODAL_" + key.upper()] = value
+
     def __getitem__(self, key):
         return self.get(key)
 

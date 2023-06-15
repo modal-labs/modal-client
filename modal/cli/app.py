@@ -8,8 +8,7 @@ from grpclib import GRPCError, Status
 from rich.console import Console
 from rich.table import Table
 
-from modal.cli.environment import ENV_OPTION_HELP
-from modal.config import config
+from modal.cli.environment import ENV_OPTION_HELP, ensure_env
 from modal._output import OutputManager, get_app_logs_loop
 from modal.cli.utils import timestamp_to_local
 from modal.client import AioClient, _Client
@@ -21,10 +20,9 @@ app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_a
 
 @app_cli.command("list")
 @synchronizer.create_blocking
-async def list_apps(env: Optional[str] = typer.Option(default=None, help=ENV_OPTION_HELP)):
+async def list(env: Optional[str] = typer.Option(default=None, help=ENV_OPTION_HELP)):
     """List all running or recently running Modal apps for the current account"""
-    if env is None:
-        env = config.get("environment")
+    env = ensure_env(env)
 
     aio_client = await AioClient.from_env()
     res: api_pb2.AppListResponse = await aio_client.stub.AppList(api_pb2.AppListRequest(environment_name=env))

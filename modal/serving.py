@@ -95,6 +95,7 @@ async def _serve_stub(
     stdout: Optional[io.TextIOWrapper] = None,
     show_progress: bool = True,
     _watcher: Optional[AsyncGenerator[None, None]] = None,  # for testing
+    env: str = "",
 ) -> AsyncGenerator[_App, None]:
     stub = import_stub(stub_ref)
     if stub._description is None:
@@ -109,7 +110,7 @@ async def _serve_stub(
         mounts_to_watch = stub._get_watch_mounts()
         watcher = watch(mounts_to_watch, output_mgr)
 
-    async with _run_stub(stub, client=client, output_mgr=output_mgr) as app:
+    async with _run_stub(stub, client=client, output_mgr=output_mgr, env=env) as app:
         client.set_pre_stop(app.disconnect)
         async with TaskContext(grace=0.1) as tc:
             tc.create_task(_run_watch_loop(stub_ref, app.app_id, output_mgr, watcher))

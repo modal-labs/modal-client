@@ -118,8 +118,12 @@ class _Handle(metaclass=ObjectMeta):
         tag: Optional[str] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
     ) -> H:
         """Returns a handle to a tagged object in a deployment on Modal."""
+        if environment_name is None:
+            environment_name = config.get("environment")
+
         if client is None:
             client = await _Client.from_env()
         request = api_pb2.AppLookupObjectRequest(
@@ -127,6 +131,7 @@ class _Handle(metaclass=ObjectMeta):
             object_tag=tag,
             namespace=namespace,
             object_entity=cls._type_prefix,
+            environment_name=environment_name,
         )
         try:
             response = await retry_transient_errors(client.stub.AppLookupObject, request)
@@ -271,6 +276,7 @@ class _Provider(Generic[H]):
         app_name: str,
         tag: Optional[str] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        environment_name: Optional[str] = None,
     ) -> P:
         """Returns a reference to an Modal object of any type
 
@@ -289,7 +295,9 @@ class _Provider(Generic[H]):
 
         async def _load_remote(resolver: Resolver, existing_object_id: Optional[str]) -> H:
             handle_cls = cls._get_handle_cls()
-            handle: H = await handle_cls.from_app(app_name, tag, namespace, client=resolver.client)
+            handle: H = await handle_cls.from_app(
+                app_name, tag, namespace, client=resolver.client, environment_name=environment_name
+            )
             return handle
 
         rep = f"Ref({app_name})"
@@ -302,6 +310,7 @@ class _Provider(Generic[H]):
         tag: Optional[str] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
     ) -> H:
         """
         General purpose method to retrieve Modal objects such as
@@ -316,7 +325,7 @@ class _Provider(Generic[H]):
         ```
         """
         handle_cls = cls._get_handle_cls()
-        handle: H = await handle_cls.from_app(app_name, tag, namespace, client)
+        handle: H = await handle_cls.from_app(app_name, tag, namespace, client, environment_name=environment_name)
         return handle
 
     @classmethod
