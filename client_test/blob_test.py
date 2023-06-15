@@ -3,10 +3,10 @@ import pytest
 
 from modal._blob_utils import blob_download as _blob_download, blob_upload as _blob_upload
 from modal.exception import ExecutionError
-from modal_utils.async_utils import synchronize_apis
+from modal_utils.async_utils import synchronize_api
 
-blob_upload, _ = synchronize_apis(_blob_upload)
-blob_download, _ = synchronize_apis(_blob_download)
+blob_upload = synchronize_api(_blob_upload)
+blob_download = synchronize_api(_blob_download)
 
 
 @pytest.mark.asyncio

@@ -9,7 +9,7 @@ from rich.table import Table
 
 from modal._output import OutputManager, get_app_logs_loop
 from modal.cli.utils import timestamp_to_local
-from modal.client import AioClient, _Client
+from modal.client import _Client
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
 
@@ -20,8 +20,8 @@ app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_a
 @synchronizer.create_blocking
 async def list_apps():
     """List all running or recently running Modal apps for the current account"""
-    aio_client = await AioClient.from_env()
-    res: api_pb2.AppListResponse = await aio_client.stub.AppList(api_pb2.AppListRequest(environment_name=""))
+    client = await _Client.from_env()
+    res: api_pb2.AppListResponse = await client.stub.AppList(api_pb2.AppListRequest(environment_name=""))
     console = Console()
     table = Table("App ID", "Description", "State", "Creation time", "Stop time")
     for app_stats in res.apps:
@@ -57,11 +57,11 @@ def app_logs(app_id: str):
 
     @synchronizer.create_blocking
     async def sync_command():
-        aio_client = await _Client.from_env()
+        client = await _Client.from_env()
         output_mgr = OutputManager(None, None, "Tailing logs for {app_id}")
         try:
             with output_mgr.show_status_spinner():
-                await get_app_logs_loop(app_id, aio_client, output_mgr)
+                await get_app_logs_loop(app_id, client, output_mgr)
         except asyncio.CancelledError:
             pass
 
@@ -80,6 +80,6 @@ def app_logs(app_id: str):
 @synchronizer.create_blocking
 async def list_stops(app_id: str):
     """Stop an app."""
-    aio_client = await AioClient.from_env()
+    client = await _Client.from_env()
     req = api_pb2.AppStopRequest(app_id=app_id)
-    await aio_client.stub.AppStop(req)
+    await client.stub.AppStop(req)

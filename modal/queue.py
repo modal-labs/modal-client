@@ -5,7 +5,7 @@ import warnings
 from typing import Any, List, Optional
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_apis
+from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors
 
 from ._resolver import Resolver
@@ -126,7 +126,7 @@ class _QueueHandle(_Handle, type_prefix="qu"):
         await retry_transient_errors(self._client.stub.QueuePut, request)
 
 
-QueueHandle, AioQueueHandle = synchronize_apis(_QueueHandle)
+QueueHandle = synchronize_api(_QueueHandle)
 
 
 class _Queue(_Provider[_QueueHandle]):
@@ -144,4 +144,4 @@ class _Queue(_Provider[_QueueHandle]):
         super().__init__(_load, "Queue()")
 
 
-Queue, AioQueue = synchronize_apis(_Queue)
+Queue = synchronize_api(_Queue)

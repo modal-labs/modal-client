@@ -30,7 +30,7 @@ from modal.client import Client
 from modal.image import _dockerhub_python_version
 from modal.mount import client_mount_name
 from modal_proto import api_grpc, api_pb2
-from modal_utils.async_utils import synchronize_apis
+from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import find_free_port, patch_mock_servicer
 from modal_utils.http_utils import run_temporary_http_server
 
@@ -692,14 +692,14 @@ async def servicer_factory(blob_server):
             server.close()
             await server.wait_closed()
 
-        _, aio_start_servicer = synchronize_apis(_start_servicer)
-        _, aio_stop_servicer = synchronize_apis(_stop_servicer)
+        start_servicer = synchronize_api(_start_servicer)
+        stop_servicer = synchronize_api(_stop_servicer)
 
-        await aio_start_servicer()
+        await start_servicer.aio()
         try:
             yield servicer
         finally:
-            await aio_stop_servicer()
+            await stop_servicer.aio()
 
     yield create_server
 
