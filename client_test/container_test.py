@@ -234,32 +234,6 @@ def test_startup_failure(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_class_scoped_function(unix_servicer, event_loop):
-    with pytest.warns(DeprecationError):
-        client, items = _run_container(unix_servicer, "modal_test_support.functions", "Cube.f")
-    assert len(items) == 1
-    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert items[0].result.data == serialize(42**3)
-
-    Cube = sys.modules["modal_test_support.functions"].Cube  # don't redefine
-
-    assert Cube._events == ["init", "enter", "call", "exit"]
-
-
-@skip_windows_unix_socket
-def test_class_scoped_function_async(unix_servicer, event_loop):
-    with pytest.warns(DeprecationError):
-        client, items = _run_container(unix_servicer, "modal_test_support.functions", "CubeAsync.f")
-    assert len(items) == 1
-    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert items[0].result.data == serialize(42**3)
-
-    CubeAsync = sys.modules["modal_test_support.functions"].CubeAsync
-
-    assert CubeAsync._events == ["init", "enter", "call", "exit"]
-
-
-@skip_windows_unix_socket
 def test_create_package_mounts_inside_container(unix_servicer, event_loop):
     """`create_package_mounts` shouldn't actually run inside the container, because it's possible
     that there are modules that were present locally for the user that didn't get mounted into
@@ -314,25 +288,6 @@ def test_webhook(unix_servicer, event_loop):
     # Check EOF
     assert items[2].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     assert items[2].result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE
-
-
-@skip_windows_unix_socket
-def test_webhook_lifecycle(unix_servicer, event_loop):
-    inputs = _get_web_inputs()
-    with pytest.warns(DeprecationError):
-        client, items = _run_container(
-            unix_servicer,
-            "modal_test_support.functions",
-            "WebhookLifecycleClass.webhook",
-            inputs=inputs,
-            webhook_type=api_pb2.WEBHOOK_TYPE_FUNCTION,
-        )
-
-    assert len(items) == 3
-    assert items[1].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert items[1].result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
-    second_message = deserialize(items[1].result.data, client)
-    assert json.loads(second_message["body"]) == {"hello": "space"}
 
 
 @skip_windows_unix_socket

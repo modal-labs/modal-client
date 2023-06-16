@@ -64,76 +64,10 @@ def deprecated_function(x):
     return x**2
 
 
-# TODO(erikbern): once we remove support for the "old" lifecycle method syntax,
-# let's consolidate some tests - Cube, CubeAsync, and Cls pretty much test
-# the same things (but currently only Cls uses the "new" syntax).
-
-
-with pytest.warns(DeprecationError):
-
-    class Cube:
-        _events: list[str] = []
-
-        def __init__(self):
-            self._events.append("init")
-
-        def __enter__(self):
-            self._events.append("enter")
-
-        def __exit__(self, typ, exc, tb):
-            self._events.append("exit")
-
-        @stub.function()  # Will trigger deprecation warning
-        def f(self, x):
-            self._events.append("call")
-            return x**3
-
-
-with pytest.warns(DeprecationError):
-
-    class CubeAsync:
-        _events: list[str] = []
-
-        def __init__(self):
-            self._events.append("init")
-
-        async def __aenter__(self):
-            self._events.append("enter")
-
-        async def __aexit__(self, typ, exc, tb):
-            self._events.append("exit")
-
-        @stub.function()  # Will trigger deprecation warning
-        async def f(self, x):
-            self._events.append("call")
-            return x**3
-
-
 @stub.function()
 @web_endpoint()
 def webhook(arg="world"):
     return {"hello": arg}
-
-
-with pytest.warns(DeprecationError):
-
-    class WebhookLifecycleClass:
-        _events: list[str] = []
-
-        def __init__(self):
-            self._events.append("init")
-
-        async def __aenter__(self):
-            self._events.append("enter")
-
-        async def __aexit__(self, typ, exc, tb):
-            self._events.append("exit")
-
-        @stub.function()  # Will trigger deprecation warning
-        @web_endpoint()
-        def webhook(self, arg="world"):
-            self._events.append("call")
-            return {"hello": arg}
 
 
 def stream():

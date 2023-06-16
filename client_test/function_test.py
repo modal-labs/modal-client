@@ -503,26 +503,12 @@ def f(x):
     return x**2
 
 
-with pytest.warns(DeprecationError):
+with pytest.raises(DeprecationError):
 
     class Class:
         @lc_stub.function()
         def f(self, x):
             return x**2
-
-
-def test_raw_call():
-    assert f(111) == 12321
-    instance = Class()
-    with pytest.warns(DeprecationError):
-        assert instance.f(1111) == 1234321
-
-
-def test_method_call(client):
-    instance = Class()
-    with lc_stub.run(client=client):
-        with pytest.warns(DeprecationError):
-            assert instance.f.call(111) == 12321
 
 
 def test_allow_cross_region_volumes(client, servicer):
