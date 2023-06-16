@@ -17,7 +17,7 @@ from modal._container_entrypoint import UserException, main
 # from modal_test_support import SLEEP_DELAY
 from modal._serialization import deserialize, serialize
 from modal import Client
-from modal.exception import DeprecationError, InvalidError
+from modal.exception import InvalidError
 from modal.stub import _Stub
 from modal_proto import api_pb2
 from .helpers import deploy_stub_externally

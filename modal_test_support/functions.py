@@ -4,10 +4,9 @@ import asyncio
 from datetime import date
 import time
 
-import pytest
 
 from modal import Stub, method, web_endpoint, asgi_app
-from modal.exception import DeprecationError, deprecation_warning
+from modal.exception import deprecation_warning
 
 SLEEP_DELAY = 0.1
 

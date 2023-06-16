@@ -23,16 +23,15 @@ from .app import _App, _container_app, is_local
 from .client import _Client
 from .cls import make_remote_cls_constructors
 from .config import logger
-from .exception import InvalidError, deprecation_error, deprecation_warning
+from .exception import InvalidError, deprecation_error
 from .functions import _Function, _FunctionHandle, PartialFunction, _PartialFunction
-from .functions import _asgi_app, _web_endpoint, _wsgi_app
 from .gpu import GPU_T
 from .image import _Image, _ImageHandle
 from .mount import _Mount
 from .object import _Provider
 from .proxy import _Proxy
 from .queue import _Queue
-from .runner import _run_stub, _deploy_stub, _interactive_shell
+from .runner import _run_stub
 from .schedule import Schedule
 from .secret import _Secret
 from .shared_volume import _SharedVolume
