@@ -2,7 +2,7 @@
 from typing import TYPE_CHECKING, Dict, Optional, TypeVar
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_apis
+from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import get_proto_oneof, retry_transient_errors
 
 from ._resolver import Resolver
@@ -248,13 +248,12 @@ class _App:
         _container_app.__init__(None, None, None, None)  # type: ignore
 
 
-App, AioApp = synchronize_apis(_App)
+App = synchronize_api(_App)
 
 _is_container_app = False
 _container_app = _App(None, None, None, None)
-container_app, aio_container_app = synchronize_apis(_container_app)
+container_app = synchronize_api(_container_app)
 assert isinstance(container_app, App)
-assert isinstance(aio_container_app, AioApp)
 __doc__container_app = """A reference to the running `modal.App`, accessible from within a running Modal function.
 Useful for accessing object handles for any Modal objects declared on the stub, e.g:
 

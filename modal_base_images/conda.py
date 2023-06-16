@@ -1,12 +1,12 @@
 # Copyright Modal Labs 2022
 import asyncio
 
-from modal.aio import AioImage, AioStub
+from modal import Image, Stub
 
 
 async def main(client=None):
-    stub = AioStub(image=AioImage.conda())
-    async with stub.run(client=client):
+    stub = Stub(image=Image.conda())
+    async with stub.run.aio(client=client):
         pass
 
 

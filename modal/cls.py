@@ -1,9 +1,9 @@
 # Copyright Modal Labs 2022
 import inspect
 import pickle
-from typing import Dict, Union, TypeVar, Type
-from modal_utils.async_utils import synchronize_apis
-from .functions import _PartialFunction, PartialFunction, AioPartialFunction, _FunctionHandle
+from typing import Dict, TypeVar, Type
+from modal_utils.async_utils import synchronize_api
+from .functions import _PartialFunction, PartialFunction, _FunctionHandle
 
 T = TypeVar("T")
 
@@ -20,7 +20,7 @@ class ClsMixin:
 
 def make_remote_cls_constructors(
     user_cls: type,
-    partial_functions: Dict[str, Union[PartialFunction, AioPartialFunction]],
+    partial_functions: Dict[str, PartialFunction],
     function_handles: Dict[str, _FunctionHandle],
 ):
     original_sig = inspect.signature(user_cls.__init__)  # type: ignore
@@ -52,4 +52,4 @@ def make_remote_cls_constructors(
         _PartialFunction.initialize_cls(cls, new_function_handles)
         return cls()
 
-    return synchronize_apis(_remote)
+    return synchronize_api(_remote)

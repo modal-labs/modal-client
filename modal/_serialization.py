@@ -9,7 +9,7 @@ from modal_utils import async_utils
 from synchronicity import Interface
 from synchronicity.synchronizer import TARGET_INTERFACE_ATTR
 from .exception import InvalidError
-from .object import _Handle, Handle, AioHandle
+from .object import _Handle, Handle
 
 PICKLE_PROTOCOL = 4  # Support older Python versions.
 
@@ -29,7 +29,7 @@ class Pickler(cloudpickle.Pickler):
         super().__init__(buf, protocol=PICKLE_PROTOCOL)
 
     def persistent_id(self, obj):
-        if not isinstance(obj, (_Handle, Handle, AioHandle)):
+        if not isinstance(obj, (_Handle, Handle)):
             return
         if not obj.object_id:
             raise InvalidError(f"Can't serialize object {obj} which hasn't been created.")

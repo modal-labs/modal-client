@@ -6,13 +6,8 @@ from modal.exception import DeprecationError
 
 @pytest.mark.asyncio
 async def test_deprecated(servicer, client):
-    with pytest.warns(DeprecationError):
-        from modal.aio import AioStub
-
-    stub = AioStub()
-
-    async with stub.run(client=client):
-        pass
+    with pytest.raises(DeprecationError):
+        import modal.aio  # noqa
 
 
 @pytest.mark.asyncio

@@ -5,7 +5,6 @@ import tempfile
 
 from modal import Secret, Stub
 from modal.exception import DeprecationError, InvalidError
-from modal.secret import AioSecret
 
 from .supports.skip import skip_old_py
 
@@ -45,6 +44,3 @@ def test_secret_from_dotenv(servicer, client):
 def test_init_types():
     with pytest.raises(InvalidError):
         Secret.from_dict({"foo": None})  # type: ignore
-
-    with pytest.raises(InvalidError):
-        AioSecret.from_dict({"foo": None})  # type: ignore
