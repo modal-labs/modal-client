@@ -12,7 +12,7 @@ from modal._types import typechecked
 
 from modal_proto import api_pb2
 
-from modal_utils.async_utils import synchronize_apis, synchronizer
+from modal_utils.async_utils import synchronize_api, synchronizer
 from modal_utils.decorator_utils import decorator_with_options_unsupported
 from .retries import Retries
 
@@ -24,7 +24,7 @@ from .client import _Client
 from .cls import make_remote_cls_constructors
 from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
-from .functions import _Function, _FunctionHandle, PartialFunction, AioPartialFunction, _PartialFunction
+from .functions import _Function, _FunctionHandle, PartialFunction, _PartialFunction
 from .functions import _asgi_app, _web_endpoint, _wsgi_app
 from .gpu import GPU_T
 from .image import _Image, _ImageHandle
@@ -720,11 +720,11 @@ class _Stub:
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
     ) -> Callable[[CLS_T], CLS_T]:
         def wrapper(user_cls: CLS_T) -> CLS_T:
-            partial_functions: Dict[str, Union[PartialFunction, AioPartialFunction]] = {}
+            partial_functions: Dict[str, PartialFunction] = {}
             function_handles: Dict[str, _FunctionHandle] = {}
 
             for k, v in user_cls.__dict__.items():
-                if isinstance(v, (PartialFunction, AioPartialFunction)):
+                if isinstance(v, PartialFunction):
                     partial_functions[k] = v
                     partial_function = synchronizer._translate_in(v)  # TODO: remove need for?
                     function_handles[k] = self.function(
@@ -750,10 +750,8 @@ class _Stub:
                     )(partial_function)
 
             _PartialFunction.initialize_cls(user_cls, function_handles)
-            # TODO (akshat): remote.aio
-            (remote, aio_remote) = make_remote_cls_constructors(user_cls, partial_functions, function_handles)
+            remote = make_remote_cls_constructors(user_cls, partial_functions, function_handles)
             user_cls.remote = remote
-            user_cls.aio_remote = aio_remote
             return user_cls
 
         return wrapper
@@ -779,4 +777,4 @@ class _Stub:
         return cached_mounts
 
 
-Stub, AioStub = synchronize_apis(_Stub)
+Stub = synchronize_api(_Stub)

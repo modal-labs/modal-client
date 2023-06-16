@@ -21,7 +21,7 @@ from typer import Typer
 import modal
 from modal._location import display_location
 from modal._output import step_progress, step_completed
-from modal.client import AioClient
+from modal.client import _Client
 from modal.shared_volume import _SharedVolumeHandle, _SharedVolume
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
@@ -35,7 +35,7 @@ volume_cli = Typer(name="volume", help="Read and edit shared volumes.", no_args_
 @volume_cli.command(name="list", help="List the names of all shared volumes.")
 @synchronizer.create_blocking
 async def list():
-    client = await AioClient.from_env()
+    client = await _Client.from_env()
     response = await retry_transient_errors(
         client.stub.SharedVolumeList, api_pb2.SharedVolumeListRequest(environment_name="")
     )

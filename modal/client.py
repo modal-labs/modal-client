@@ -10,7 +10,7 @@ from grpclib import GRPCError, Status
 
 from modal_proto import api_grpc, api_pb2
 from modal_utils import async_utils
-from modal_utils.async_utils import synchronize_apis
+from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import create_channel, retry_transient_errors
 from modal_utils.http_utils import http_client_with_tls
 from modal_version import __version__
@@ -243,4 +243,4 @@ class _Client:
         cls._client_from_env = client
 
 
-Client, AioClient = synchronize_apis(_Client)
+Client = synchronize_api(_Client)

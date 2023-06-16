@@ -12,7 +12,7 @@ from grpclib.exceptions import GRPCError, StreamTerminatedError
 
 from modal._types import typechecked
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_apis
+from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, unary_stream
 from ._function_utils import FunctionInfo
 from ._resolver import Resolver
@@ -1225,5 +1225,5 @@ class _Image(_Provider[_ImageHandle]):
         )
 
 
-ImageHandle, AioImageHandle = synchronize_apis(_ImageHandle)
-Image, AioImage = synchronize_apis(_Image)
+ImageHandle = synchronize_api(_ImageHandle)
+Image = synchronize_api(_Image)

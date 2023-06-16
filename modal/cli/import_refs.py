@@ -20,7 +20,7 @@ from rich.prompt import Prompt
 
 import modal
 from modal.functions import _Function, _FunctionHandle
-from modal.stub import AioStub, LocalEntrypoint, Stub, _Stub
+from modal.stub import LocalEntrypoint, Stub, _Stub
 from modal_utils.async_utils import synchronizer
 
 
@@ -93,7 +93,7 @@ def get_by_object_path(obj: Any, obj_path: str):
     for segment in obj_path.split("."):
         attr = prefix + segment
         try:
-            if isinstance(obj, (Stub, AioStub)):
+            if isinstance(obj, Stub):
                 if attr in obj.registered_entrypoints:
                     # local entrypoints are not on stub blueprint
                     obj = obj.registered_entrypoints[attr]

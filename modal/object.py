@@ -7,7 +7,7 @@ from grpclib import GRPCError, Status
 from modal._types import typechecked
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_apis
+from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors, get_proto_oneof
 
 from ._object_meta import ObjectMeta
@@ -17,7 +17,7 @@ from .exception import InvalidError, NotFoundError
 
 H = TypeVar("H", bound="_Handle")
 
-_BLOCKING_H, _ASYNC_H = synchronize_apis(H)
+_BLOCKING_H = synchronize_api(H)
 
 
 class _Handle(metaclass=ObjectMeta):
@@ -142,12 +142,12 @@ class _Handle(metaclass=ObjectMeta):
         return cls._from_id(response.object_id, client, handle_metadata)
 
 
-Handle, AioHandle = synchronize_apis(_Handle)
+Handle = synchronize_api(_Handle)
 
 
 P = TypeVar("P", bound="_Provider")
 
-_BLOCKING_P, _ASYNC_P = synchronize_apis(P)
+_BLOCKING_P = synchronize_api(P)
 
 
 class _Provider(Generic[H]):
@@ -344,5 +344,5 @@ class _Provider(Generic[H]):
 
 
 # Dumb but needed becauase it's in the hierarchy
-synchronize_apis(Generic, __name__)  # erases base Generic type...
-Provider, AioProvider = synchronize_apis(_Provider, target_module=__name__)
+synchronize_api(Generic, __name__)  # erases base Generic type...
+Provider = synchronize_api(_Provider, target_module=__name__)

@@ -6,7 +6,7 @@ from typing import AsyncIterator, BinaryIO, List, Optional, Union
 
 import modal
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_apis, ConcurrencyPool
+from modal_utils.async_utils import synchronize_api, ConcurrencyPool
 from modal_utils.grpc_utils import retry_transient_errors, unary_stream
 from modal_utils.hash_utils import get_sha256_hex
 from modal._location import parse_cloud_provider
@@ -149,7 +149,7 @@ class _SharedVolumeHandle(_Handle, type_prefix="sv"):
         await retry_transient_errors(self._client.stub.SharedVolumeRemoveFile, req)
 
 
-SharedVolumeHandle, AioSharedVolumeHandle = synchronize_apis(_SharedVolumeHandle)
+SharedVolumeHandle = synchronize_api(_SharedVolumeHandle)
 
 
 class _SharedVolume(_Provider[_SharedVolumeHandle]):
@@ -202,4 +202,4 @@ class _SharedVolume(_Provider[_SharedVolumeHandle]):
         super().__init__(_load, rep)
 
 
-SharedVolume, AioSharedVolume = synchronize_apis(_SharedVolume)
+SharedVolume = synchronize_api(_SharedVolume)

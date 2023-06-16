@@ -6,7 +6,7 @@ from datetime import date
 from modal._types import typechecked
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_apis
+from modal_utils.async_utils import synchronize_api
 
 from ._resolver import Resolver
 from .exception import InvalidError, deprecation_warning
@@ -17,7 +17,7 @@ class _SecretHandle(_Handle, type_prefix="st"):
     pass
 
 
-SecretHandle, AioSecretHandle = synchronize_apis(_SecretHandle)
+SecretHandle = synchronize_api(_SecretHandle)
 
 
 ENV_DICT_WRONG_TYPE_ERR = "the env_dict argument to Secret has to be a dict[str, str]"
@@ -131,4 +131,4 @@ class _Secret(_Provider[_SecretHandle]):
         return _Secret._from_loader(_load, "Secret.from_dotenv()")
 
 
-Secret, AioSecret = synchronize_apis(_Secret)
+Secret = synchronize_api(_Secret)
