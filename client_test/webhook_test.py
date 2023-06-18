@@ -18,7 +18,7 @@ async def f(x):
     return {"square": x**2}
 
 
-with pytest.warns(DeprecationError):
+with pytest.raises(DeprecationError):
 
     @stub.function(cpu=42)
     @stub.web_endpoint(method="POST")
@@ -37,11 +37,9 @@ with pytest.raises(DeprecationError):
 async def test_webhook(servicer, client):
     async with stub.run(client=client) as app:
         assert f.web_url
-        assert g.web_url
 
         assert servicer.app_functions["fu-1"].webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION
         assert servicer.app_functions["fu-1"].webhook_config.method == "PATCH"
-        assert servicer.app_functions["fu-2"].webhook_config.method == "POST"
 
         # Make sure we can call the webhooks
         # TODO: reinstate `.call` check when direct webhook fn invocation is fixed.
@@ -51,9 +49,7 @@ async def test_webhook(servicer, client):
         # Make sure the container gets the app id as well
         container_app = await App.init_container.aio(client, app.app_id)
         assert isinstance(container_app.f, FunctionHandle)
-        assert isinstance(container_app.g, FunctionHandle)
         assert container_app.f.web_url
-        assert container_app.g.web_url
 
 
 def test_webhook_cors():
