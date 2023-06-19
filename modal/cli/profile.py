@@ -35,4 +35,4 @@ when running a command that requires an environment.
 @profile_cli.command(help=SET_DEFAULT_ENV_HELP)
 def set_default_environment(name: str):
     _store_user_config({"environment": name})
-    typer.echo("Done")
+    typer.echo("New default environment: {name}")

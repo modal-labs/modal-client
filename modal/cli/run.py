@@ -18,7 +18,7 @@ from modal.runner import run_stub, deploy_stub, interactive_shell
 from modal.serving import serve_stub
 from modal.stub import LocalEntrypoint
 from modal_utils.async_utils import synchronizer
-from .environment import ENV_OPTION_HELP
+from .environment import ENV_OPTION_HELP, ensure_env
 
 from .import_refs import import_function, import_stub
 from ..functions import _FunctionHandle
@@ -190,8 +190,7 @@ def deploy(
     name: str = typer.Option(None, help="Name of the deployment."),
     env: str = typer.Option(None, help=ENV_OPTION_HELP),
 ):
-    if env is None:
-        env = config.get("environment")
+    env = ensure_env(env)
 
     _stub = import_stub(stub_ref)
 
@@ -215,8 +214,7 @@ def serve(
     modal serve hello_world.py
     ```
     """
-    if env is None:
-        env = config.get("environment")
+    env = ensure_env(env)
 
     with serve_stub(stub_ref, env=env):
         if timeout is None:
@@ -254,8 +252,7 @@ def shell(
     modal shell hello_world.py --cmd=python
     ```
     """
-    if env is None:
-        env = config.get("environment")
+    env = ensure_env(env)
 
     console = Console()
     if not console.is_terminal:
