@@ -36,4 +36,4 @@ when running a command that requires an environment.
 def set_environment(environment_name: str):
     _store_user_config({"environment": environment_name})
     active_profile = _config_active_profile()
-    typer.echo(f"New default environment for profile {active_profile}: {environment_name}")
+    typer.echo(f"Default environment for profile '{active_profile}': '{environment_name}'")
