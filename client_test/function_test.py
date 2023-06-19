@@ -13,7 +13,6 @@ from modal import Proxy, Stub, SharedVolume, web_endpoint, asgi_app, wsgi_app
 from modal.exception import DeprecationError, InvalidError
 from modal.functions import Function, FunctionCall, gather, FunctionHandle
 from modal.runner import deploy_stub
-from modal.stub import AioStub
 
 stub = Stub()
 
@@ -152,19 +151,19 @@ def test_function_future(client, servicer):
 
 @pytest.mark.asyncio
 async def test_function_future_async(client, servicer):
-    stub = AioStub()
+    stub = Stub()
 
     later_modal = stub.function()(servicer.function_body(later))
 
     async with stub.run(client=client):
-        future = await later_modal.spawn()
+        future = await later_modal.spawn.aio()
         servicer.function_is_running = True
 
         with pytest.raises(TimeoutError):
-            await future.get(0.01)
+            await future.get.aio(0.01)
 
         servicer.function_is_running = False
-        assert await future.get(0.01) == "hello"
+        assert await future.get.aio(0.01) == "hello"
         assert future.object_id not in servicer.cleared_function_calls  # keep results around a bit longer for futures
 
 
@@ -204,7 +203,7 @@ async def test_generator(client, servicer):
 
 @pytest.mark.asyncio
 async def test_generator_async(client, servicer):
-    stub = AioStub()
+    stub = Stub()
 
     later_gen_modal = stub.function()(async_later_gen)
 
@@ -217,7 +216,7 @@ async def test_generator_async(client, servicer):
     assert len(servicer.cleared_function_calls) == 0
     async with stub.run(client=client):
         assert later_gen_modal.is_generator
-        res = later_gen_modal.call()
+        res = later_gen_modal.call.aio()
         # Async generators fulfil the *asynchronous iterator protocol*, which requires both these methods.
         # https://peps.python.org/pep-0525/#support-for-asynchronous-iteration-protocol
         assert hasattr(res, "__aiter__")
@@ -364,12 +363,12 @@ def test_function_exception(client, servicer):
 
 @pytest.mark.asyncio
 async def test_function_exception_async(client, servicer):
-    stub = AioStub()
+    stub = Stub()
 
     failure_modal = stub.function()(servicer.function_body(failure))
     async with stub.run(client=client):
         with pytest.raises(CustomException) as excinfo:
-            coro = failure_modal.call()
+            coro = failure_modal.call.aio()
             assert inspect.isawaitable(
                 coro
             )  # mostly for mypy, since output could technically be an async generator which isn't awaitable in the same sense
@@ -504,26 +503,12 @@ def f(x):
     return x**2
 
 
-with pytest.warns(DeprecationError):
+with pytest.raises(DeprecationError):
 
     class Class:
         @lc_stub.function()
         def f(self, x):
             return x**2
-
-
-def test_raw_call():
-    assert f(111) == 12321
-    instance = Class()
-    with pytest.warns(DeprecationError):
-        assert instance.f(1111) == 1234321
-
-
-def test_method_call(client):
-    instance = Class()
-    with lc_stub.run(client=client):
-        with pytest.warns(DeprecationError):
-            assert instance.f.call(111) == 12321
 
 
 def test_allow_cross_region_volumes(client, servicer):

@@ -35,7 +35,7 @@ from modal_proto import api_pb2
 from modal._types import typechecked
 from modal_utils.async_utils import (
     queue_batch_iterator,
-    synchronize_apis,
+    synchronize_api,
     warn_if_generator_is_not_consumed,
     synchronizer,
 )
@@ -810,7 +810,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         return self.bind_obj(obj, objtype)
 
 
-FunctionHandle, AioFunctionHandle = synchronize_apis(_FunctionHandle)
+FunctionHandle = synchronize_api(_FunctionHandle)
 
 
 class _Function(_Provider[_FunctionHandle]):
@@ -1146,7 +1146,7 @@ class _Function(_Provider[_FunctionHandle]):
         return f"{inspect.getsource(self._raw_f)}\n{repr(kwargs)}"
 
 
-Function, AioFunction = synchronize_apis(_Function)
+Function = synchronize_api(_Function)
 
 
 class _FunctionCall(_Handle, type_prefix="fc"):
@@ -1190,7 +1190,7 @@ class _FunctionCall(_Handle, type_prefix="fc"):
         await self._client.stub.FunctionCallCancel(request)
 
 
-FunctionCall, AioFunctionCall = synchronize_apis(_FunctionCall)
+FunctionCall = synchronize_api(_FunctionCall)
 
 
 async def _gather(*function_calls: _FunctionCall):
@@ -1217,7 +1217,7 @@ async def _gather(*function_calls: _FunctionCall):
         raise exc
 
 
-gather, aio_gather = synchronize_apis(_gather)
+gather = synchronize_api(_gather)
 
 
 _current_input_id: Optional[str] = None
@@ -1279,7 +1279,7 @@ class _PartialFunction:
             )
 
 
-PartialFunction, AioPartialFunction = synchronize_apis(_PartialFunction)
+PartialFunction = synchronize_api(_PartialFunction)
 
 
 def _method(
@@ -1451,7 +1451,7 @@ def _wsgi_app(
     return wrapper
 
 
-method, aio_method = synchronize_apis(_method)
-web_endpoint, aio_web_endpoint = synchronize_apis(_web_endpoint)
-asgi_app, aio_asgi_app = synchronize_apis(_asgi_app)
-wsgi_app, aio_wsgi_app = synchronize_apis(_wsgi_app)
+method = synchronize_api(_method)
+web_endpoint = synchronize_api(_web_endpoint)
+asgi_app = synchronize_api(_asgi_app)
+wsgi_app = synchronize_api(_wsgi_app)

@@ -2,7 +2,7 @@
 from typing import Any, Optional
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_apis
+from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors
 
 from ._resolver import Resolver
@@ -99,7 +99,7 @@ class _DictHandle(_Handle, type_prefix="di"):
         return await self.contains(key)
 
 
-DictHandle, AioDictHandle = synchronize_apis(_DictHandle)
+DictHandle = synchronize_api(_DictHandle)
 
 
 class _Dict(_Provider[_DictHandle]):
@@ -149,4 +149,4 @@ class _Dict(_Provider[_DictHandle]):
         super().__init__(_load, "Dict()")
 
 
-Dict, AioDict = synchronize_apis(_Dict)
+Dict = synchronize_api(_Dict)

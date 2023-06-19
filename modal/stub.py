@@ -12,7 +12,7 @@ from modal._types import typechecked
 
 from modal_proto import api_pb2
 
-from modal_utils.async_utils import synchronize_apis, synchronizer
+from modal_utils.async_utils import synchronize_api, synchronizer
 from modal_utils.decorator_utils import decorator_with_options_unsupported
 from .retries import Retries
 
@@ -23,16 +23,15 @@ from .app import _App, _container_app, is_local
 from .client import _Client
 from .cls import make_remote_cls_constructors
 from .config import logger
-from .exception import InvalidError, deprecation_error, deprecation_warning
-from .functions import _Function, _FunctionHandle, PartialFunction, AioPartialFunction, _PartialFunction
-from .functions import _asgi_app, _web_endpoint, _wsgi_app
+from .exception import InvalidError, deprecation_error
+from .functions import _Function, _FunctionHandle, PartialFunction, _PartialFunction
 from .gpu import GPU_T
 from .image import _Image, _ImageHandle
 from .mount import _Mount
 from .object import _Provider
 from .proxy import _Proxy
 from .queue import _Queue
-from .runner import _run_stub, _deploy_stub, _interactive_shell
+from .runner import _run_stub
 from .schedule import Schedule
 from .secret import _Secret
 from .shared_volume import _SharedVolume
@@ -321,15 +320,14 @@ class _Stub:
         show_progress=None,
         object_entity: str = "ap",
     ) -> _App:
-        """`stub.deploy` is deprecated. Use the `modal deploy` command instead.
+        """`stub.deploy` is deprecated and no longer supported. Use the `modal deploy` command instead.
 
         For programmatic usage, use `modal.runner.deploy_stub`
         """
-        deprecation_warning(
+        deprecation_error(
             date(2023, 5, 9),
             self.deploy.__doc__,
         )
-        return await _deploy_stub(self, name, namespace, client, stdout, show_progress, object_entity)
 
     def _get_default_image(self):
         if "image" in self._blueprint:
@@ -501,10 +499,12 @@ class _Stub:
             raw_f = f
 
         if not _cls and not info.is_serialized() and "." in info.function_name:  # This is a method
-            deprecation_warning(
+            deprecation_error(
                 date(2023, 4, 20),
                 inspect.cleandoc(
-                    """@stub.function on methods is deprecated. Use the @stub.cls and @method decorators. Usage:
+                    """@stub.function on methods is deprecated and no longer supported.
+
+                    Use the @stub.cls and @method decorators. Usage:
 
                     ```
                     @stub.cls(cpu=8)
@@ -592,7 +592,7 @@ class _Stub:
         ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
     ):
-        """`stub.web_endpoint` is deprecated. Use `modal.web_endpoint` instead. Usage:
+        """`stub.web_endpoint` is deprecated and no longer supported. Use `modal.web_endpoint` instead. Usage:
 
         ```python
         from modal import Stub, web_endpoint
@@ -603,11 +603,10 @@ class _Stub:
         def my_function():
             ...
         ```"""
-        deprecation_warning(
+        deprecation_error(
             date(2023, 4, 18),
             self.web_endpoint.__doc__,
         )
-        return _web_endpoint(method, label, wait_for_response)
 
     @typechecked
     def asgi_app(
@@ -617,9 +616,8 @@ class _Stub:
         ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
     ):
-        """`stub.asgi_app` is deprecated. Use `modal.asgi_app` instead."""
-        deprecation_warning(date(2023, 4, 18), self.asgi_app.__doc__)
-        return _asgi_app(label, wait_for_response)
+        """`stub.asgi_app` is deprecated and no longer supported. Use `modal.asgi_app` instead."""
+        deprecation_error(date(2023, 4, 18), self.asgi_app.__doc__)
 
     @typechecked
     def wsgi_app(
@@ -629,9 +627,8 @@ class _Stub:
         ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
     ):
-        """`stub.wsgi_app` is deprecated. Use `modal.wsgi_app` instead."""
-        deprecation_warning(date(2023, 4, 18), self.wsgi_app.__doc__)
-        return _wsgi_app(label, wait_for_response)
+        """`stub.wsgi_app` is deprecated and no longer supported. Use `modal.wsgi_app` instead."""
+        deprecation_error(date(2023, 4, 18), self.wsgi_app.__doc__)
 
     def webhook(
         self,
@@ -688,15 +685,14 @@ class _Stub:
         )
 
     async def interactive_shell(self, cmd=None, image=None, **kwargs):
-        """`stub.interactive_shell` is deprecated. Use the `modal shell` command instead.
+        """`stub.interactive_shell` is deprecated and no longer supported. Use the `modal shell` command instead.
 
         For programmatic usage, use `modal.runner.interactive_shell`
         """
-        deprecation_warning(
+        deprecation_error(
             date(2023, 5, 9),
             self.interactive_shell.__doc__,
         )
-        await _interactive_shell(self, cmd, image, **kwargs)
 
     def cls(
         self,
@@ -720,11 +716,11 @@ class _Stub:
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
     ) -> Callable[[CLS_T], CLS_T]:
         def wrapper(user_cls: CLS_T) -> CLS_T:
-            partial_functions: Dict[str, Union[PartialFunction, AioPartialFunction]] = {}
+            partial_functions: Dict[str, PartialFunction] = {}
             function_handles: Dict[str, _FunctionHandle] = {}
 
             for k, v in user_cls.__dict__.items():
-                if isinstance(v, (PartialFunction, AioPartialFunction)):
+                if isinstance(v, PartialFunction):
                     partial_functions[k] = v
                     partial_function = synchronizer._translate_in(v)  # TODO: remove need for?
                     function_handles[k] = self.function(
@@ -750,10 +746,8 @@ class _Stub:
                     )(partial_function)
 
             _PartialFunction.initialize_cls(user_cls, function_handles)
-            # TODO (akshat): remote.aio
-            (remote, aio_remote) = make_remote_cls_constructors(user_cls, partial_functions, function_handles)
+            remote = make_remote_cls_constructors(user_cls, partial_functions, function_handles)
             user_cls.remote = remote
-            user_cls.aio_remote = aio_remote
             return user_cls
 
         return wrapper
@@ -779,4 +773,4 @@ class _Stub:
         return cached_mounts
 
 
-Stub, AioStub = synchronize_apis(_Stub)
+Stub = synchronize_api(_Stub)

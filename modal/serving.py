@@ -10,7 +10,7 @@ from typing import AsyncGenerator, Optional
 
 from synchronicity import Interface
 
-from modal_utils.async_utils import TaskContext, asyncify, synchronize_apis, synchronizer
+from modal_utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
 
 from ._output import OutputManager
 from ._watcher import watch
@@ -117,4 +117,4 @@ async def _serve_stub(
             yield app
 
 
-serve_stub, aio_serve_stub = synchronize_apis(_serve_stub)
+serve_stub = synchronize_api(_serve_stub)

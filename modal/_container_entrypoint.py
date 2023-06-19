@@ -22,7 +22,7 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import (
     TaskContext,
     queue_batch_iterator,
-    synchronize_apis,
+    synchronize_api,
     synchronizer,
 )
 from modal_utils.grpc_utils import retry_transient_errors
@@ -39,7 +39,7 @@ from .app import _App
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .config import logger
 from .exception import InvalidError
-from .functions import AioFunctionHandle, FunctionHandle, _set_current_input_id  # type: ignore
+from .functions import FunctionHandle, _set_current_input_id  # type: ignore
 
 MAX_OUTPUT_BATCH_SIZE = 100
 
@@ -378,7 +378,7 @@ class _FunctionIOManager:
 
 
 # just to mark the class as synchronized, we don't care about the interfaces
-FunctionIOManager, _ = synchronize_apis(_FunctionIOManager)
+FunctionIOManager = synchronize_api(_FunctionIOManager)
 
 
 def call_function_sync(
@@ -498,7 +498,7 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun, ser_params
 
     # The decorator is typically in global scope, but may have been applied independently
     active_stub = None
-    if isinstance(fun, (FunctionHandle, AioFunctionHandle)):
+    if isinstance(fun, FunctionHandle):
         _function_proxy = synchronizer._translate_in(fun)
         fun = _function_proxy.get_raw_f()
         active_stub = _function_proxy._stub
@@ -562,7 +562,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     # This is a bit weird but we need both the blocking and async versions of FunctionIOManager.
     # At some point, we should fix that by having built-in support for running "user code"
     _function_io_manager = _FunctionIOManager(container_args, client)
-    function_io_manager, _ = synchronize_apis(_function_io_manager)
+    function_io_manager = synchronize_api(_function_io_manager)
 
     container_app = function_io_manager.initialize_app()
 

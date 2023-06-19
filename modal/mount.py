@@ -17,7 +17,7 @@ from modal._types import typechecked
 
 import modal.exception
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_apis
+from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors
 from modal_utils.package_utils import get_module_mount_info, module_mount_condition
 from modal_version import __version__
@@ -112,7 +112,7 @@ class _MountHandle(_Handle, type_prefix="mo"):
         self._content_checksum_sha256_hex = handle_metadata.content_checksum_sha256_hex
 
 
-MountHandle, AioMountHandle = synchronize_apis(_MountHandle)
+MountHandle = synchronize_api(_MountHandle)
 
 
 class _Mount(_Provider[_MountHandle]):
@@ -328,7 +328,7 @@ class _Mount(_Provider[_MountHandle]):
         return _MountHandle._from_id(resp.mount_id, resolver.client, resp.handle_metadata)
 
 
-Mount, AioMount = synchronize_apis(_Mount)
+Mount = synchronize_api(_Mount)
 
 
 def _create_client_mount():
@@ -358,7 +358,7 @@ def _create_client_mount():
     )
 
 
-create_client_mount, aio_create_client_mount = synchronize_apis(_create_client_mount)
+create_client_mount = synchronize_api(_create_client_mount)
 
 
 def _get_client_mount():
@@ -426,4 +426,4 @@ def _create_package_mounts(module_names: Sequence[str]) -> List[_Mount]:
     return mounts
 
 
-create_package_mounts, aio_create_package_mounts = synchronize_apis(_create_package_mounts)
+create_package_mounts = synchronize_api(_create_package_mounts)

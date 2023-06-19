@@ -6,7 +6,7 @@ from typing import AsyncGenerator, Optional
 
 from modal_proto import api_pb2
 from modal_utils.app_utils import is_valid_app_name
-from modal_utils.async_utils import TaskContext, synchronize_apis
+from modal_utils.async_utils import TaskContext, synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors
 
 from . import _pty
@@ -231,7 +231,7 @@ async def _interactive_shell(stub, cmd=None, image=None, env="", **kwargs):
         await wrapped_fn.call(cmd)
 
 
-run_stub, aio_run_stub = synchronize_apis(_run_stub)
-serve_update, aio_serve_update = synchronize_apis(_serve_update)
-deploy_stub, aio_deploy_stub = synchronize_apis(_deploy_stub)
-interactive_shell, aio_interactive_shell = synchronize_apis(_interactive_shell)
+run_stub = synchronize_api(_run_stub)
+serve_update = synchronize_api(_serve_update)
+deploy_stub = synchronize_api(_deploy_stub)
+interactive_shell = synchronize_api(_interactive_shell)
