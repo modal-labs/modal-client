@@ -194,7 +194,10 @@ class Config:
         return self.get(key)
 
     def __repr__(self):
-        return repr({key: self.get(key) for key in _SETTINGS.keys()})
+        return repr(self.to_dict())
+
+    def to_dict(self):
+        return {key: self.get(key) for key in _SETTINGS.keys()}
 
 
 config = Config()
