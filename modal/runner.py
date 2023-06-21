@@ -142,7 +142,7 @@ async def _deploy_stub(
     stdout=None,
     show_progress=None,
     object_entity="ap",
-    environment_name="",
+    environment_name: Optional[str] = None,
 ) -> _App:
     """Deploy an app and export its objects persistently.
 
@@ -165,6 +165,9 @@ async def _deploy_stub(
     * Allows for certain kinds of these objects, _deployment objects_, to be
       referred to and used by other apps.
     """
+    if environment_name is None:
+        environment_name = config.get("environment")
+
     if not is_local():
         raise InvalidError("Cannot run a deploy from within a container.")
     if name is None:
@@ -199,7 +202,7 @@ async def _deploy_stub(
         post_init_state = api_pb2.APP_STATE_UNSPECIFIED
 
         # Create all members
-        await app._create_all_objects(stub._blueprint, output_mgr, post_init_state)
+        await app._create_all_objects(stub._blueprint, output_mgr, post_init_state, environment_name=environment_name)
 
         # Deploy app
         # TODO(erikbern): not needed if the app already existed

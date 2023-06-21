@@ -89,7 +89,10 @@ def _get_click_command_for_function(_stub, function_tag):
     @click.pass_context
     def f(ctx, *args, **kwargs):
         with run_stub(
-            blocking_stub, detach=ctx.obj["detach"], show_progress=ctx.obj["show_progress"], env=ctx.obj["env"]
+            blocking_stub,
+            detach=ctx.obj["detach"],
+            show_progress=ctx.obj["show_progress"],
+            environment_name=ctx.obj["env"],
         ) as app:
             _function_handle = app[function_tag]
             _function_handle.call(*args, **kwargs)
@@ -112,7 +115,10 @@ def _get_click_command_for_local_entrypoint(_stub, entrypoint: LocalEntrypoint):
             )
 
         with run_stub(
-            blocking_stub, detach=ctx.obj["detach"], show_progress=ctx.obj["show_progress"], env=ctx.obj["env"]
+            blocking_stub,
+            detach=ctx.obj["detach"],
+            show_progress=ctx.obj["show_progress"],
+            environment_name=ctx.obj["env"],
         ) as app:
             if isasync:
                 asyncio.run(func(*args, **kwargs))
@@ -196,7 +202,9 @@ def deploy(
     name: str = typer.Option(None, help="Name of the deployment."),
     env: str = typer.Option(None, help=ENV_OPTION_HELP),
 ):
-    env = ensure_env(env)
+    env = ensure_env(
+        env
+    )  # this ensures that `modal.lookup()` without environment specification uses the same env as specified
 
     _stub = import_stub(stub_ref)
 
@@ -204,7 +212,7 @@ def deploy(
         name = _stub.name
 
     blocking_stub = synchronizer._translate_out(_stub, interface=Interface.BLOCKING)
-    deploy_stub(blocking_stub, name=name, env=env)
+    deploy_stub(blocking_stub, name=name, environment_name=env)
 
 
 def serve(
@@ -222,7 +230,7 @@ def serve(
     """
     env = ensure_env(env)
 
-    with serve_stub(stub_ref, env=env):
+    with serve_stub(stub_ref, environment_name=env):
         if timeout is None:
             timeout = config["serve_timeout"]
         if timeout is None:
@@ -273,7 +281,7 @@ def shell(
     blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
 
     if _function_handle is None:
-        interactive_shell(blocking_stub, cmd, env=env)
+        interactive_shell(blocking_stub, cmd, environment_name=env)
     else:
         interactive_shell(
             blocking_stub,
