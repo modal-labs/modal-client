@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2023
 import modal
 from modal.runner import run_stub
 

@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2023
 import contextlib
 import inspect
 from collections import deque, defaultdict
