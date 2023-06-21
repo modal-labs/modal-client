@@ -31,7 +31,8 @@ from modal.image import _dockerhub_python_version
 from modal.mount import client_mount_name
 from modal_proto import api_grpc, api_pb2
 from modal_utils.async_utils import synchronize_api
-from modal_utils.grpc_utils import find_free_port, patch_mock_servicer
+from modal_utils.grpc_utils import find_free_port
+from modal_utils.grpc_testing import patch_mock_servicer
 from modal_utils.http_utils import run_temporary_http_server
 
 
