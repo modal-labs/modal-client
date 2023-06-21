@@ -271,22 +271,6 @@ def find_free_port() -> int:
         return s.getsockname()[1]
 
 
-def patch_mock_servicer(cls):
-    """Patches all unimplemented abstract methods in a mock servicer."""
-
-    async def fallback(self, stream) -> None:
-        raise GRPCError(Status.UNIMPLEMENTED, "Not implemented in mock servicer " + repr(cls))
-
-    # Fill in the remaining methods on the class
-    for name in dir(cls):
-        method = getattr(cls, name)
-        if getattr(method, "__isabstractmethod__", False):
-            setattr(cls, name, fallback)
-
-    cls.__abstractmethods__ = frozenset()
-    return cls
-
-
 def get_proto_oneof(message: Message, oneof_group: str) -> Optional[Message]:
     oneof_field = message.WhichOneof(oneof_group)
     if oneof_field is None:
