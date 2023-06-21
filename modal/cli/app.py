@@ -20,7 +20,7 @@ app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_a
 
 @app_cli.command("list")
 @synchronizer.create_blocking
-async def list(env: Optional[str] = typer.Option(default=None, help=ENV_OPTION_HELP)):
+async def list(env: Optional[str] = typer.Option(default=None, help=ENV_OPTION_HELP, hidden=True)):
     """List all running or recently running Modal apps for the current account"""
     client = await _Client.from_env()
     env = ensure_env(env)
@@ -52,7 +52,8 @@ async def list(env: Optional[str] = typer.Option(default=None, help=ENV_OPTION_H
             timestamp_to_local(app_stats.stopped_at),
         )
 
-    console.print(f"Listing apps in environment '{res.environment_name}'")
+    env_part = f" in environment '{env}'" if env else ""
+    console.print(f"Listing apps{env_part}")
     console.print(table)
 
 

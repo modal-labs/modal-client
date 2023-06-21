@@ -35,7 +35,7 @@ volume_cli = Typer(name="volume", help="Read and edit shared volumes.", no_args_
 
 @volume_cli.command(name="list", help="List the names of all shared volumes.")
 @synchronizer.create_blocking
-async def list(env: Optional[str] = typer.Option(default=None, help=ENV_OPTION_HELP)):
+async def list(env: Optional[str] = typer.Option(default=None, help=ENV_OPTION_HELP, hidden=True)):
     env = ensure_env(env)
 
     client = await _Client.from_env()
@@ -43,7 +43,8 @@ async def list(env: Optional[str] = typer.Option(default=None, help=ENV_OPTION_H
         client.stub.SharedVolumeList, api_pb2.SharedVolumeListRequest(environment_name=env)
     )
     if sys.stdout.isatty():
-        table = Table(title=f"Shared Volumes - '{response.environment_name}'")
+        env_part = f" in environment '{env}'" if env else ""
+        table = Table(title=f"Shared Volumes{env_part}")
         table.add_column("Name")
         table.add_column("Location")
         table.add_column("Created at", justify="right")
