@@ -111,7 +111,7 @@ async def test_is_inside_default_image(servicer, unix_servicer, client, containe
 
     app = await App._init_new.aio(client)
     app_id = app.app_id
-    default_image_handle = await app.create_one_object.aio(_default_image)
+    default_image_handle = await app.create_one_object.aio(_default_image, "")
     default_image_id = default_image_handle.object_id
 
     # Copy the app objects to the container servicer
