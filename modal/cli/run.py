@@ -88,7 +88,9 @@ def _get_click_command_for_function(_stub, function_tag):
 
     @click.pass_context
     def f(ctx, *args, **kwargs):
-        with run_stub(blocking_stub, detach=ctx.obj["detach"], show_progress=ctx.obj["show_progress"]) as app:
+        with run_stub(
+            blocking_stub, detach=ctx.obj["detach"], show_progress=ctx.obj["show_progress"], env=ctx.obj["env"]
+        ) as app:
             _function_handle = app[function_tag]
             _function_handle.call(*args, **kwargs)
 
@@ -109,7 +111,9 @@ def _get_click_command_for_local_entrypoint(_stub, entrypoint: LocalEntrypoint):
                 "Note that running a local entrypoint in detached mode only keeps the last triggered Modal function alive after the parent process has been killed or disconnected."
             )
 
-        with run_stub(blocking_stub, detach=ctx.obj["detach"], show_progress=ctx.obj["show_progress"]) as app:
+        with run_stub(
+            blocking_stub, detach=ctx.obj["detach"], show_progress=ctx.obj["show_progress"], env=ctx.obj["env"]
+        ) as app:
             if isasync:
                 asyncio.run(func(*args, **kwargs))
             else:
@@ -149,8 +153,9 @@ class RunGroup(click.Group):
 )
 @click.option("-q", "--quiet", is_flag=True, help="Don't show Modal progress indicators.")
 @click.option("-d", "--detach", is_flag=True, help="Don't stop the app if the local process dies or disconnects.")
+@click.option("-e", "--env", help=ENV_OPTION_HELP, default="")
 @click.pass_context
-def run(ctx, detach, quiet):
+def run(ctx, detach, quiet, env):
     """Run a Modal function or local entrypoint
 
     `FUNC_REF` should be of the format `{file or module}::{function name}`.
@@ -183,6 +188,7 @@ def run(ctx, detach, quiet):
     ctx.ensure_object(dict)
     ctx.obj["detach"] = detach  # if subcommand would be a click command...
     ctx.obj["show_progress"] = False if quiet else None
+    ctx.obj["env"] = env
 
 
 def deploy(
