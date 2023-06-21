@@ -1,7 +1,7 @@
 import contextlib
 import inspect
 from collections import deque, defaultdict
-from typing import Any, Optional
+from typing import Any, Optional, List, Tuple
 
 from grpclib import GRPCError, Status
 
@@ -77,13 +77,13 @@ def patch_mock_servicer(cls):
 
 class InterceptionContext:
     def __init__(self):
-        self.calls: list[tuple[str, Any]] = []  # list[tuple[method_name, message]]
-        self.custom_responses: dict[str, deque[list[Any]]] = defaultdict(deque)
+        self.calls: List[Tuple[str, Any]] = []  # List[Tuple[method_name, message]]
+        self.custom_responses: dict[str, deque[List[Any]]] = defaultdict(deque)
 
     def add_recv(self, method_name: str, msg):
         self.calls.append((method_name, msg))
 
-    def add_response(self, method_name: str, custom_response: Optional[list[Any]] = None):
+    def add_response(self, method_name: str, custom_response: Optional[List[Any]] = None):
         # adds one response to a queue of responses for
         if custom_response is not None:
             assert isinstance(
