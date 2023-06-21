@@ -293,5 +293,5 @@ def shell(
             secrets=_function._secrets,
             gpu=_function._gpu,
             cloud=_function._cloud,
-            env=env,
+            environment_name=env,
         )
