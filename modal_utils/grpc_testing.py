@@ -85,7 +85,7 @@ class InterceptionContext:
         self.calls.append((method_name, msg))
 
     def add_response(self, method_name: str, custom_response: Optional[List[Any]] = None):
-        # adds one response to a queue of responses for
+        # adds one response to a queue of responses for method method_name
         if custom_response is not None:
             assert isinstance(
                 custom_response, list

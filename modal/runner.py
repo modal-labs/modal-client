@@ -34,8 +34,11 @@ async def _run_stub(
     show_progress: Optional[bool] = None,
     detach: bool = False,
     output_mgr: Optional[OutputManager] = None,
-    env: str = "",
+    environment_name: Optional[str] = None,
 ) -> AsyncGenerator[_App, None]:
+    if environment_name is None:
+        environment_name = config.get("environment")
+
     if not is_local():
         raise InvalidError(
             "Can not run an app from within a container."
@@ -53,7 +56,9 @@ async def _run_stub(
     if output_mgr is None:
         output_mgr = OutputManager(stdout, show_progress, "Running app...")
     post_init_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
-    app = await _App._init_new(client, stub.description, detach=detach, deploying=False, environment_name=env)
+    app = await _App._init_new(
+        client, stub.description, detach=detach, deploying=False, environment_name=environment_name
+    )
     async with stub._set_app(app), TaskContext(grace=config["logs_timeout"]) as tc:
         # Start heartbeats loop to keep the client alive
         tc.infinite_loop(lambda: _heartbeat(client, app.app_id), sleep=HEARTBEAT_INTERVAL)
@@ -136,7 +141,7 @@ async def _deploy_stub(
     stdout=None,
     show_progress=None,
     object_entity="ap",
-    env="",
+    environment_name="",
 ) -> _App:
     """Deploy an app and export its objects persistently.
 
@@ -181,7 +186,7 @@ async def _deploy_stub(
     if client is None:
         client = await _Client.from_env()
 
-    app = await _App._init_from_name(client, name, namespace, environment_name=env)
+    app = await _App._init_from_name(client, name, namespace, environment_name=environment_name)
 
     output_mgr = OutputManager(stdout, show_progress)
 
@@ -204,7 +209,7 @@ async def _deploy_stub(
     return app
 
 
-async def _interactive_shell(stub, cmd=None, image=None, env="", **kwargs):
+async def _interactive_shell(stub, cmd=None, image=None, environment_name="", **kwargs):
     """Run an interactive shell (like `bash`) within the image for this app.
 
     This is useful for online debugging and interactive exploration of the
@@ -227,7 +232,7 @@ async def _interactive_shell(stub, cmd=None, image=None, env="", **kwargs):
     """
     wrapped_fn = stub.function(interactive=True, timeout=86400, image=image, **kwargs)(_pty.exec_cmd)
 
-    async with _run_stub(stub, env=env):
+    async with _run_stub(stub, environment_name=environment_name):
         await wrapped_fn.call(cmd)
 
 
