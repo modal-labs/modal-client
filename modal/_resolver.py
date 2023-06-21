@@ -47,8 +47,9 @@ class Resolver:
     # since that leads to circular dependencies
     _tree: Tree
     _local_uuid_to_future: Dict[str, Future]
+    _environment_name: str
 
-    def __init__(self, output_mgr, client, app_id: Optional[str] = None):
+    def __init__(self, output_mgr, client, environment_name: str, app_id: Optional[str] = None):
         from ._output import step_progress
         from rich.tree import Tree
 
@@ -59,6 +60,7 @@ class Resolver:
         # Accessible by objects
         self._client = client
         self._app_id = app_id
+        self._environment_name = environment_name
 
     @property
     def app_id(self) -> str:

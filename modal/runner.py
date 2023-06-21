@@ -73,7 +73,7 @@ async def _run_stub(
 
         try:
             # Create all members
-            await app._create_all_objects(stub._blueprint, output_mgr, post_init_state)
+            await app._create_all_objects(stub._blueprint, output_mgr, post_init_state, environment_name)
 
             # Update all functions client-side to have the output mgr
             for tag, obj in stub._function_handles.items():
@@ -116,6 +116,7 @@ async def _serve_update(
     stub,
     existing_app_id: str,
     is_ready: Event,
+    environment_name: str,
 ) -> None:
     # Used by child process to reinitialize a served app
     client = await _Client.from_env()
@@ -124,7 +125,7 @@ async def _serve_update(
         app = await _App._init_existing(client, existing_app_id)
 
         # Create objects
-        await app._create_all_objects(stub._blueprint, output_mgr, api_pb2.APP_STATE_UNSPECIFIED)
+        await app._create_all_objects(stub._blueprint, output_mgr, api_pb2.APP_STATE_UNSPECIFIED, environment_name)
 
         # Communicate to the parent process
         is_ready.set()

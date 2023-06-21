@@ -218,7 +218,7 @@ class _Provider(Generic[H]):
         label: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
-        environment_name: str = "",
+        environment_name: Optional[str] = None,
     ) -> H:
         """
         Note 1: this uses the single-object app method, which we're planning to get rid of later
@@ -226,13 +226,16 @@ class _Provider(Generic[H]):
         """
         from .app import _App
 
+        if environment_name is None:
+            environment_name = config.get("environment")
+
         if client is None:
             client = await _Client.from_env()
 
         handle_cls = self._get_handle_cls()
         object_entity = handle_cls._type_prefix
         app = await _App._init_from_name(client, label, namespace, environment_name=environment_name)
-        handle = await app.create_one_object(self)
+        handle = await app.create_one_object(self, environment_name)
         await app.deploy(label, namespace, object_entity)  # TODO(erikbern): not needed if the app already existed
         return handle
 
@@ -294,7 +297,13 @@ class _Provider(Generic[H]):
         """
 
         async def _load_remote(resolver: Resolver, existing_object_id: Optional[str]) -> H:
+            nonlocal environment_name
             handle_cls = cls._get_handle_cls()
+            if environment_name is None:
+                # resolver always has an environment name, associated with the current app setup
+                # fall back on that one if no explicit environment was set in the call itself
+                environment_name = resolver._environment_name
+
             handle: H = await handle_cls.from_app(
                 app_name, tag, namespace, client=resolver.client, environment_name=environment_name
             )

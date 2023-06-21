@@ -55,10 +55,14 @@ def test_run_stub_profile_env_with_refs(servicer, client, monkeypatch):
 def test_run_stub_custom_env_with_refs(servicer, client, monkeypatch):
     monkeypatch.setenv("MODAL_ENVIRONMENT", "profile_env")
     dummy_stub = modal.Stub()
-    dummy_stub.ref = modal.Secret.from_name("some_secret")
+    dummy_stub.own_env_secret = modal.Secret.from_name("own_env_secret")
+    dummy_stub.other_env_secret = modal.Secret.from_name(
+        "other_env_secret", environment_name="third"
+    )  # explicit lookup
 
     with servicer.intercept() as ctx:
         ctx.add_response("AppLookupObject", [api_pb2.AppLookupObjectResponse(object_id="st-123")])
+        ctx.add_response("AppLookupObject", [api_pb2.AppLookupObjectResponse(object_id="st-456")])
         with run_stub(dummy_stub, client=client, environment_name="custom"):
             pass
 
@@ -70,3 +74,6 @@ def test_run_stub_custom_env_with_refs(servicer, client, monkeypatch):
 
     app_lookup_object, remaining_calls = pop_message(remaining_calls, api_pb2.AppLookupObjectRequest)
     assert app_lookup_object.environment_name == "custom"
+
+    app_lookup_object, remaining_calls = pop_message(remaining_calls, api_pb2.AppLookupObjectRequest)
+    assert app_lookup_object.environment_name == "third"

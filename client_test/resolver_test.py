@@ -13,7 +13,7 @@ from modal.object import _Provider
 @pytest.mark.asyncio
 async def test_multi_resolve_sequential_loads_once():
     output_manager = OutputManager(None, show_progress=False)
-    resolver = Resolver(output_manager, client=None, app_id=None)
+    resolver = Resolver(output_manager, client=None, environment_name="", app_id=None)
 
     load_count = 0
 
@@ -39,7 +39,7 @@ async def test_multi_resolve_sequential_loads_once():
 @pytest.mark.asyncio
 async def test_multi_resolve_concurrent_loads_once():
     output_manager = OutputManager(None, show_progress=False)
-    resolver = Resolver(output_manager, client=None, app_id=None)
+    resolver = Resolver(output_manager, client=None, environment_name="", app_id=None)
 
     load_count = 0
 
