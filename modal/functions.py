@@ -989,13 +989,13 @@ class _Function(_Provider[_FunctionHandle]):
                 abs_path = posixpath.abspath(path)
 
                 if path != abs_path:
-                    raise InvalidError(f"Shared volume {abs_path} must be a canonical, absolute path.")
+                    raise InvalidError(f"Shared volume {path!r} must be a canonical, absolute path.")
                 elif abs_path == "/":
-                    raise InvalidError(f"Shared volume {abs_path} cannot be mounted into root directory.")
+                    raise InvalidError(f"Shared volume {path!r} cannot be mounted into root directory.")
                 elif abs_path == "/root":
-                    raise InvalidError(f"Shared volume {abs_path} cannot be mounted at '/root'.")
+                    raise InvalidError(f"Shared volume {path!r} cannot be mounted at '/root'.")
                 elif abs_path == "/tmp":
-                    raise InvalidError(f"Shared volume {abs_path} cannot be mounted at '/tmp'.")
+                    raise InvalidError(f"Shared volume {path!r} cannot be mounted at '/tmp'.")
                 validated_shared_volumes.append((path, shared_volume))
 
             async def shared_volume_loader():
