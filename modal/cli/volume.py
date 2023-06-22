@@ -21,6 +21,7 @@ from typer import Typer
 import modal
 from modal._location import display_location
 from modal._output import step_progress, step_completed
+from modal.cli.environment import ENV_OPTION_HELP, ensure_env
 from modal.client import _Client
 from modal.shared_volume import _SharedVolumeHandle, _SharedVolume
 from modal_proto import api_pb2
@@ -34,13 +35,16 @@ volume_cli = Typer(name="volume", help="Read and edit shared volumes.", no_args_
 
 @volume_cli.command(name="list", help="List the names of all shared volumes.")
 @synchronizer.create_blocking
-async def list():
+async def list(env: Optional[str] = typer.Option(default=None, help=ENV_OPTION_HELP, hidden=True)):
+    env = ensure_env(env)
+
     client = await _Client.from_env()
     response = await retry_transient_errors(
-        client.stub.SharedVolumeList, api_pb2.SharedVolumeListRequest(environment_name="")
+        client.stub.SharedVolumeList, api_pb2.SharedVolumeListRequest(environment_name=env)
     )
     if sys.stdout.isatty():
-        table = Table(title="Shared Volumes")
+        env_part = f" in environment '{env}'" if env else ""
+        table = Table(title=f"Shared Volumes{env_part}")
         table.add_column("Name")
         table.add_column("Location")
         table.add_column("Created at", justify="right")
@@ -67,17 +71,24 @@ def some_func():
 
 
 @volume_cli.command(name="create", help="Create a named shared volume.")
-def create(name: str, cloud: str = typer.Option("aws", help="Cloud provider to create the volume in. One of aws|gcp.")):
+def create(
+    name: str,
+    cloud: str = typer.Option("aws", help="Cloud provider to create the volume in. One of aws|gcp."),
+    env: Optional[str] = typer.Option(None, help=ENV_OPTION_HELP),
+):
+    ensure_env(env)
     volume = modal.SharedVolume(cloud=cloud)
-    volume._deploy(name)
+    volume._deploy(name, environment_name=env)
     console = Console()
     console.print(f"Created volume '{name}' in {cloud.upper()}. \n\nCode example:\n")
     usage = Syntax(gen_usage_code(name), "python")
     console.print(usage)
 
 
-async def volume_from_name(deployment_name) -> _SharedVolumeHandle:
-    shared_volume = await _SharedVolume.lookup(deployment_name)
+async def _volume_from_name(deployment_name: str) -> _SharedVolumeHandle:
+    shared_volume = await _SharedVolume.lookup(
+        deployment_name, environment_name=None
+    )  # environment None will take value from config
     if not isinstance(shared_volume, _SharedVolumeHandle):
         raise Exception("The specified app entity is not a shared volume")
     return shared_volume
@@ -85,8 +96,13 @@ async def volume_from_name(deployment_name) -> _SharedVolumeHandle:
 
 @volume_cli.command(name="ls", help="List files and directories in a shared volume.")
 @synchronizer.create_blocking
-async def ls(volume_name: str, path: str = typer.Argument(default="/")):
-    volume = await volume_from_name(volume_name)
+async def ls(
+    volume_name: str,
+    path: str = typer.Argument(default="/"),
+    env: Optional[str] = typer.Option(None, help=ENV_OPTION_HELP),
+):
+    ensure_env(env)
+    volume = await _volume_from_name(volume_name)
     try:
         entries = await volume.listdir(path)
     except GRPCError as exc:
@@ -128,8 +144,10 @@ async def put(
     volume_name: str,
     local_path: str,
     remote_path: str = typer.Argument(default="/"),
+    env: Optional[str] = typer.Option(None, help=ENV_OPTION_HELP),
 ):
-    volume = await volume_from_name(volume_name)
+    ensure_env(env)
+    volume = await _volume_from_name(volume_name)
     if remote_path.endswith("/"):
         remote_path = remote_path + os.path.basename(local_path)
     console = Console()
@@ -203,7 +221,13 @@ async def _glob_download(volume: _SharedVolumeHandle, remote_glob_path: str, loc
 
 @volume_cli.command(name="get")
 @synchronizer.create_blocking
-async def get(volume_name: str, remote_path: str, local_destination: str = typer.Argument("."), force: bool = False):
+async def get(
+    volume_name: str,
+    remote_path: str,
+    local_destination: str = typer.Argument("."),
+    force: bool = False,
+    env: Optional[str] = typer.Option(None, help=ENV_OPTION_HELP),
+):
     """Download a file from a shared volume.
 
     Specifying a glob pattern (using any `*` or `**` patterns) as the `remote_path` will download all matching *files*, preserving
@@ -217,8 +241,9 @@ async def get(volume_name: str, remote_path: str, local_destination: str = typer
 
     Use "-" (a hyphen) as LOCAL_DESTINATION to write contents of file to stdout (only for non-glob paths).
     """
+    ensure_env(env)
     destination = Path(local_destination)
-    volume = await volume_from_name(volume_name)
+    volume = await _volume_from_name(volume_name)
 
     if "*" in remote_path:
         try:
@@ -266,8 +291,10 @@ async def rm(
     volume_name: str,
     remote_path: str,
     recursive: bool = typer.Option(False, "-r", "--recursive", help="Delete directory recursively"),
+    env: Optional[str] = typer.Option(None, help=ENV_OPTION_HELP),
 ):
-    volume = await volume_from_name(volume_name)
+    ensure_env(env)
+    volume = await _volume_from_name(volume_name)
     try:
         await volume.remove_file(remote_path, recursive=recursive)
     except GRPCError as exc:

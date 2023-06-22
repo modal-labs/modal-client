@@ -2,10 +2,10 @@
 import typer
 
 from modal.cli import run
+from modal.cli.environment import environment_cli
 
 from .app import app_cli
 from .config import config_cli
-from .env import env_cli
 from .secret import secret_cli
 from .token import token_cli
 from .volume import volume_cli
@@ -43,13 +43,12 @@ def modal(
 
 entrypoint_cli_typer.add_typer(app_cli)
 entrypoint_cli_typer.add_typer(config_cli)
-entrypoint_cli_typer.add_typer(env_cli)
+entrypoint_cli_typer.add_typer(environment_cli, hidden=True)
 entrypoint_cli_typer.add_typer(profile_cli)
 entrypoint_cli_typer.add_typer(secret_cli)
 entrypoint_cli_typer.add_typer(token_cli)
 entrypoint_cli_typer.add_typer(volume_cli)
 
-# entrypoint_cli_typer.command("run", help="Run a Modal function.", context_settings={"allow_extra_args": True})(run.run)
 entrypoint_cli_typer.command("deploy", help="Deploy a Modal stub as an application.", no_args_is_help=True)(run.deploy)
 entrypoint_cli_typer.command("serve", no_args_is_help=True)(run.serve)
 entrypoint_cli_typer.command("shell", no_args_is_help=True)(run.shell)

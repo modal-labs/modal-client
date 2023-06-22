@@ -75,10 +75,10 @@ class _App:
         return self._app_id
 
     async def _create_all_objects(
-        self, blueprint: Dict[str, _Provider], output_mgr, new_app_state: int
+        self, blueprint: Dict[str, _Provider], output_mgr, new_app_state: int, environment_name: str
     ):  # api_pb2.AppState.V
         """Create objects that have been defined but not created on the server."""
-        resolver = Resolver(output_mgr, self._client, self.app_id)
+        resolver = Resolver(output_mgr, self._client, environment_name, self.app_id)
         with resolver.display():
             # Preload all functions to make sure they have ids assigned before they are loaded.
             # This is important to make sure any enclosed function handle references in serialized
@@ -214,9 +214,9 @@ class _App:
         else:
             return await _App._init_new(client, name, detach=False, deploying=True, environment_name=environment_name)
 
-    async def create_one_object(self, provider: _Provider) -> _Handle:
+    async def create_one_object(self, provider: _Provider, environment_name: str) -> _Handle:
         existing_object_id: Optional[str] = self._tag_to_existing_id.get("_object")
-        resolver = Resolver(None, self._client, self.app_id)
+        resolver = Resolver(None, self._client, environment_name, self.app_id)
         handle = await resolver.load(provider, existing_object_id)
         indexed_object_ids = {"_object": handle.object_id}
         unindexed_object_ids = [obj.object_id for obj in resolver.objects() if obj is not handle]

@@ -17,20 +17,23 @@ from ._watcher import watch
 from .app import _App
 from .cli.import_refs import import_stub
 from .client import _Client
+from .config import config
 from .runner import _run_stub, serve_update
 
 
-def _run_serve(stub_ref: str, existing_app_id: str, is_ready: Event):
+def _run_serve(stub_ref: str, existing_app_id: str, is_ready: Event, environment_name: str):
     # subprocess entrypoint
     _stub = import_stub(stub_ref)
     blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
-    serve_update(blocking_stub, existing_app_id, is_ready)
+    serve_update(blocking_stub, existing_app_id, is_ready, environment_name)
 
 
-async def _restart_serve(stub_ref: str, existing_app_id: str, timeout: float = 5.0) -> SpawnProcess:
+async def _restart_serve(
+    stub_ref: str, existing_app_id: str, environment_name: str, timeout: float = 5.0
+) -> SpawnProcess:
     ctx = multiprocessing.get_context("spawn")  # Needed to reload the interpreter
     is_ready = ctx.Event()
-    p = ctx.Process(target=_run_serve, args=(stub_ref, existing_app_id, is_ready))
+    p = ctx.Process(target=_run_serve, args=(stub_ref, existing_app_id, is_ready, environment_name))
     p.start()
     await asyncify(is_ready.wait)(timeout)
     # TODO(erikbern): we don't fail if the above times out, but that's somewhat intentional, since
@@ -55,7 +58,9 @@ async def _terminate(proc: Optional[SpawnProcess], output_mgr: OutputManager, ti
         pass  # Child process already finished
 
 
-async def _run_watch_loop(stub_ref: str, app_id: str, output_mgr: OutputManager, watcher: AsyncGenerator[None, None]):
+async def _run_watch_loop(
+    stub_ref: str, app_id: str, output_mgr: OutputManager, watcher: AsyncGenerator[None, None], environment_name: str
+):
     unsupported_msg = None
     if platform.system() == "Windows":
         unsupported_msg = "Live-reload skipped. This feature is currently unsupported on Windows"
@@ -74,7 +79,7 @@ async def _run_watch_loop(stub_ref: str, app_id: str, output_mgr: OutputManager,
         try:
             async for _ in watcher:
                 await _terminate(curr_proc, output_mgr)
-                curr_proc = await _restart_serve(stub_ref, existing_app_id=app_id)
+                curr_proc = await _restart_serve(stub_ref, existing_app_id=app_id, environment_name=environment_name)
         finally:
             await _terminate(curr_proc, output_mgr)
 
@@ -95,7 +100,11 @@ async def _serve_stub(
     stdout: Optional[io.TextIOWrapper] = None,
     show_progress: bool = True,
     _watcher: Optional[AsyncGenerator[None, None]] = None,  # for testing
+    environment_name: Optional[str] = None,
 ) -> AsyncGenerator[_App, None]:
+    if environment_name is None:
+        environment_name = config.get("environment")
+
     stub = import_stub(stub_ref)
     if stub._description is None:
         stub._description = _get_clean_stub_description(stub_ref)
@@ -109,10 +118,10 @@ async def _serve_stub(
         mounts_to_watch = stub._get_watch_mounts()
         watcher = watch(mounts_to_watch, output_mgr)
 
-    async with _run_stub(stub, client=client, output_mgr=output_mgr) as app:
+    async with _run_stub(stub, client=client, output_mgr=output_mgr, environment_name=environment_name) as app:
         client.set_pre_stop(app.disconnect)
         async with TaskContext(grace=0.1) as tc:
-            tc.create_task(_run_watch_loop(stub_ref, app.app_id, output_mgr, watcher))
+            tc.create_task(_run_watch_loop(stub_ref, app.app_id, output_mgr, watcher, environment_name))
             yield app
 
 
