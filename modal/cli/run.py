@@ -159,7 +159,7 @@ class RunGroup(click.Group):
 )
 @click.option("-q", "--quiet", is_flag=True, help="Don't show Modal progress indicators.")
 @click.option("-d", "--detach", is_flag=True, help="Don't stop the app if the local process dies or disconnects.")
-@click.option("-e", "--env", help=ENV_OPTION_HELP, default="")
+@click.option("-e", "--env", help=ENV_OPTION_HELP, default="", hidden=True)
 @click.pass_context
 def run(ctx, detach, quiet, env):
     """Run a Modal function or local entrypoint
@@ -200,7 +200,7 @@ def run(ctx, detach, quiet, env):
 def deploy(
     stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
     name: str = typer.Option(None, help="Name of the deployment."),
-    env: str = typer.Option(None, help=ENV_OPTION_HELP),
+    env: str = typer.Option(None, help=ENV_OPTION_HELP, hidden=True),
 ):
     env = ensure_env(
         env
@@ -218,7 +218,7 @@ def deploy(
 def serve(
     stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
     timeout: Optional[float] = None,
-    env: str = typer.Option(None, help=ENV_OPTION_HELP),
+    env: str = typer.Option(None, help=ENV_OPTION_HELP, hidden=True),
 ):
     """Run a web endpoint(s) associated with a Modal stub and hot-reload code.
 
@@ -246,7 +246,7 @@ def shell(
         ..., help="Path to a Python file with a Stub or Modal function whose container to run.", metavar="FUNC_REF"
     ),
     cmd: str = typer.Option(default="/bin/bash", help="Command to run inside the Modal image."),
-    env: str = typer.Option(None, help=ENV_OPTION_HELP),
+    env: str = typer.Option(None, help=ENV_OPTION_HELP, hidden=True),
 ):
     """Run an interactive shell inside a Modal image.
 

@@ -74,7 +74,7 @@ def some_func():
 def create(
     name: str,
     cloud: str = typer.Option("aws", help="Cloud provider to create the volume in. One of aws|gcp."),
-    env: Optional[str] = typer.Option(None, help=ENV_OPTION_HELP),
+    env: Optional[str] = typer.Option(None, help=ENV_OPTION_HELP, hidden=True),
 ):
     ensure_env(env)
     volume = modal.SharedVolume(cloud=cloud)
@@ -99,7 +99,7 @@ async def _volume_from_name(deployment_name: str) -> _SharedVolumeHandle:
 async def ls(
     volume_name: str,
     path: str = typer.Argument(default="/"),
-    env: Optional[str] = typer.Option(None, help=ENV_OPTION_HELP),
+    env: Optional[str] = typer.Option(None, help=ENV_OPTION_HELP, hidden=True),
 ):
     ensure_env(env)
     volume = await _volume_from_name(volume_name)
@@ -144,7 +144,7 @@ async def put(
     volume_name: str,
     local_path: str,
     remote_path: str = typer.Argument(default="/"),
-    env: Optional[str] = typer.Option(None, help=ENV_OPTION_HELP),
+    env: Optional[str] = typer.Option(None, help=ENV_OPTION_HELP, hidden=True),
 ):
     ensure_env(env)
     volume = await _volume_from_name(volume_name)
@@ -226,7 +226,7 @@ async def get(
     remote_path: str,
     local_destination: str = typer.Argument("."),
     force: bool = False,
-    env: Optional[str] = typer.Option(None, help=ENV_OPTION_HELP),
+    env: Optional[str] = typer.Option(None, help=ENV_OPTION_HELP, hidden=True),
 ):
     """Download a file from a shared volume.
 
@@ -291,7 +291,7 @@ async def rm(
     volume_name: str,
     remote_path: str,
     recursive: bool = typer.Option(False, "-r", "--recursive", help="Delete directory recursively"),
-    env: Optional[str] = typer.Option(None, help=ENV_OPTION_HELP),
+    env: Optional[str] = typer.Option(None, help=ENV_OPTION_HELP, hidden=True),
 ):
     ensure_env(env)
     volume = await _volume_from_name(volume_name)
