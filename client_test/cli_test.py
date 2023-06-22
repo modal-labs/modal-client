@@ -107,7 +107,7 @@ def test_secret_list(servicer, set_env_client):
 
 def test_app_token_new(servicer, set_env_client, server_url_env):
     with unittest.mock.patch("webbrowser.open_new_tab", lambda url: False):
-        _run(["token", "new", "--env", "_test"])
+        _run(["token", "new", "--profile", "_test"])
 
 
 def test_run(servicer, set_env_client, test_dir):
@@ -359,3 +359,8 @@ def test_volume_get(set_env_client):
         _run(["volume", "get", volume_name, "test.txt", tmpdir])
         with open(os.path.join(tmpdir, "test.txt"), "r") as f:
             assert f.read() == "foo bar baz"
+
+
+def test_environment_flag(set_env_client, test_dir, servicer):
+    stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
+    _run(["run", "--env=staging", str(stub_file)])

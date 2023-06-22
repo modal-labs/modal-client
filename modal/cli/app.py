@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
+from typing import Optional
 
 import typer
 from click import UsageError
@@ -7,6 +8,7 @@ from grpclib import GRPCError, Status
 from rich.console import Console
 from rich.table import Table
 
+from modal.cli.environment import ENV_OPTION_HELP, ensure_env
 from modal._output import OutputManager, get_app_logs_loop
 from modal.cli.utils import timestamp_to_local
 from modal.client import _Client
@@ -18,11 +20,13 @@ app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_a
 
 @app_cli.command("list")
 @synchronizer.create_blocking
-async def list_apps():
+async def list(env: Optional[str] = typer.Option(default=None, help=ENV_OPTION_HELP, hidden=True)):
     """List all running or recently running Modal apps for the current account"""
     client = await _Client.from_env()
-    res: api_pb2.AppListResponse = await client.stub.AppList(api_pb2.AppListRequest(environment_name=""))
+    env = ensure_env(env)
+    res: api_pb2.AppListResponse = await client.stub.AppList(api_pb2.AppListRequest(environment_name=env))
     console = Console()
+
     table = Table("App ID", "Description", "State", "Creation time", "Stop time")
     for app_stats in res.apps:
         if app_stats.state == api_pb2.AppState.APP_STATE_DETACHED:
@@ -48,6 +52,8 @@ async def list_apps():
             timestamp_to_local(app_stats.stopped_at),
         )
 
+    env_part = f" in environment '{env}'" if env else ""
+    console.print(f"Listing apps{env_part}")
     console.print(table)
 
 
@@ -78,7 +84,7 @@ def app_logs(app_id: str):
 
 @app_cli.command("stop")
 @synchronizer.create_blocking
-async def list_stops(app_id: str):
+async def stop(app_id: str):
     """Stop an app."""
     client = await _Client.from_env()
     req = api_pb2.AppStopRequest(app_id=app_id)

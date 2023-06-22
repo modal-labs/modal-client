@@ -13,6 +13,7 @@ from modal_utils.grpc_utils import retry_transient_errors, get_proto_oneof
 from ._object_meta import ObjectMeta
 from ._resolver import Resolver
 from .client import _Client
+from .config import config
 from .exception import InvalidError, NotFoundError
 
 H = TypeVar("H", bound="_Handle")
@@ -117,8 +118,12 @@ class _Handle(metaclass=ObjectMeta):
         tag: Optional[str] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
     ) -> H:
         """Returns a handle to a tagged object in a deployment on Modal."""
+        if environment_name is None:
+            environment_name = config.get("environment")
+
         if client is None:
             client = await _Client.from_env()
         request = api_pb2.AppLookupObjectRequest(
@@ -126,6 +131,7 @@ class _Handle(metaclass=ObjectMeta):
             object_tag=tag,
             namespace=namespace,
             object_entity=cls._type_prefix,
+            environment_name=environment_name,
         )
         try:
             response = await retry_transient_errors(client.stub.AppLookupObject, request)
@@ -212,6 +218,7 @@ class _Provider(Generic[H]):
         label: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
     ) -> H:
         """
         Note 1: this uses the single-object app method, which we're planning to get rid of later
@@ -219,18 +226,23 @@ class _Provider(Generic[H]):
         """
         from .app import _App
 
+        if environment_name is None:
+            environment_name = config.get("environment")
+
         if client is None:
             client = await _Client.from_env()
 
         handle_cls = self._get_handle_cls()
         object_entity = handle_cls._type_prefix
-        app = await _App._init_from_name(client, label, namespace)
-        handle = await app.create_one_object(self)
+        app = await _App._init_from_name(client, label, namespace, environment_name=environment_name)
+        handle = await app.create_one_object(self, environment_name)
         await app.deploy(label, namespace, object_entity)  # TODO(erikbern): not needed if the app already existed
         return handle
 
     @typechecked
-    def persist(self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE):
+    def persist(
+        self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
+    ):
         """Deploy a Modal app containing this object. This object can then be imported from other apps using
         the returned reference, or by calling `modal.SharedVolume.from_name(label)` (or the equivalent method
         on respective class).
@@ -251,9 +263,11 @@ class _Provider(Generic[H]):
         ```
 
         """
+        if environment_name is None:
+            environment_name = config.get("environment")
 
         async def _load_persisted(resolver: Resolver, existing_object_id: Optional[str]) -> H:
-            return await self._deploy(label, namespace, resolver.client)
+            return await self._deploy(label, namespace, resolver.client, environment_name=environment_name)
 
         cls = type(self)
         rep = f"PersistedRef<{self}>({label})"
@@ -265,6 +279,7 @@ class _Provider(Generic[H]):
         app_name: str,
         tag: Optional[str] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        environment_name: Optional[str] = None,
     ) -> P:
         """Returns a reference to an Modal object of any type
 
@@ -282,8 +297,16 @@ class _Provider(Generic[H]):
         """
 
         async def _load_remote(resolver: Resolver, existing_object_id: Optional[str]) -> H:
+            nonlocal environment_name
             handle_cls = cls._get_handle_cls()
-            handle: H = await handle_cls.from_app(app_name, tag, namespace, client=resolver.client)
+            if environment_name is None:
+                # resolver always has an environment name, associated with the current app setup
+                # fall back on that one if no explicit environment was set in the call itself
+                environment_name = resolver._environment_name
+
+            handle: H = await handle_cls.from_app(
+                app_name, tag, namespace, client=resolver.client, environment_name=environment_name
+            )
             return handle
 
         rep = f"Ref({app_name})"
@@ -296,6 +319,7 @@ class _Provider(Generic[H]):
         tag: Optional[str] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
     ) -> H:
         """
         General purpose method to retrieve Modal objects such as
@@ -310,7 +334,7 @@ class _Provider(Generic[H]):
         ```
         """
         handle_cls = cls._get_handle_cls()
-        handle: H = await handle_cls.from_app(app_name, tag, namespace, client)
+        handle: H = await handle_cls.from_app(app_name, tag, namespace, client, environment_name=environment_name)
         return handle
 
     @classmethod

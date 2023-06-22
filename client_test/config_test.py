@@ -58,7 +58,7 @@ def test_config_store_user(servicer):
     _cli(["token", "set", "--token-id", "abc", "--token-secret", "xyz"], env=env)
 
     # Set creds to foo / bar1 for the prof_1 profile
-    _cli(["token", "set", "--token-id", "foo", "--token-secret", "bar1", "--env", "prof_1"], env=env)
+    _cli(["token", "set", "--token-id", "foo", "--token-secret", "bar1", "--profile", "prof_1"], env=env)
 
     # Set creds to foo / bar2 for the prof_2 profile (given as an env var)
     _cli(["token", "set", "--token-id", "foo", "--token-secret", "bar2"], env={"MODAL_PROFILE": "prof_2", **env})

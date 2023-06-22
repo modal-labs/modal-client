@@ -155,6 +155,7 @@ _SETTINGS = {
     "profiling_enabled": _Setting(False, transform=lambda x: x not in ("", "0")),
     "heartbeat_interval": _Setting(15, float),
     "function_runtime": _Setting(),
+    "environment": _Setting(),
 }
 
 
@@ -183,11 +184,20 @@ class Config:
         else:
             return s.default
 
+    def override_locally(self, key: str, value: str):
+        # Override setting in this process by overriding environment variable for the setting
+        #
+        # Does NOT write back to settings file etc.
+        os.environ["MODAL_" + key.upper()] = value
+
     def __getitem__(self, key):
         return self.get(key)
 
     def __repr__(self):
-        return repr({key: self.get(key) for key in _SETTINGS.keys()})
+        return repr(self.to_dict())
+
+    def to_dict(self):
+        return {key: self.get(key) for key in _SETTINGS.keys()}
 
 
 config = Config()
