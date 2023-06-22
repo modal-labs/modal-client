@@ -391,6 +391,6 @@ def test_environment_flag(test_dir, servicer, command):
     assert app_lookup_object.app_name.startswith("modal-client-mount")
     assert app_lookup_object.namespace == api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL
 
-    app_lookup_object: api_pb2.AppLookupObjectRequest = ctx.pop_request("AppLookupObject")
-    assert app_lookup_object.app_name == "volume_app"
-    assert app_lookup_object.environment_name == "staging"
+    app_lookup_object2: api_pb2.AppLookupObjectRequest = ctx.pop_request("AppLookupObject")
+    assert app_lookup_object2.app_name == "volume_app"
+    assert app_lookup_object2.environment_name == "staging"
