@@ -18,7 +18,7 @@ Environments are sub-divisons of workspaces, allowing you to deploy the same app
 in different namespaces. Each environment has their own set of Secrets and any
 lookups performed from an app in an environment will by default look for entities
 in the same environment.
-<b
+
 Typical use cases for environments include having one for development and one for
 production, to prevent overwriting production apps when developing new features
 while still being able to deploy changes to a live environment.
