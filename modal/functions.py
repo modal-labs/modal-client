@@ -1017,8 +1017,8 @@ class _Function(_Provider[_FunctionHandle]):
             else:
                 function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
 
-            if cpu is not None and cpu < 0.0:
-                raise InvalidError(f"Invalid fractional CPU value {cpu}. Cannot have negative CPU resources.")
+            if cpu is not None and cpu < 0.25:
+                raise InvalidError(f"Invalid fractional CPU value {cpu}. Cannot have less than 0.25 CPU resources.")
             milli_cpu = int(1000 * cpu) if cpu is not None else None
 
             if interactive:
