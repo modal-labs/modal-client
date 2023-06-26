@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+from datetime import date
 from typing import Any, Optional
 
 from modal_proto import api_pb2
@@ -7,7 +8,9 @@ from modal_utils.grpc_utils import retry_transient_errors
 
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
+from ._types import typechecked
 from .config import logger
+from .exception import deprecation_warning
 from .object import _Handle, _Provider
 
 
@@ -19,7 +22,7 @@ class _DictHandle(_Handle, type_prefix="di"):
     """Handle for interacting with the contents of a `Dict`
 
     ```python
-    stub.some_dict = modal.Dict()
+    stub.some_dict = modal.Dict.new()
 
     if __name__ == "__main__":
         with stub.run() as app:
@@ -124,7 +127,7 @@ class _Dict(_Provider[_DictHandle]):
     import modal
 
     stub = modal.Stub()
-    stub.some_dict = modal.Dict()
+    stub.some_dict = modal.Dict.new()
     # stub.some_dict["message"] = "hello world" # TypeError!
 
     if __name__ == "__main__":
@@ -134,7 +137,9 @@ class _Dict(_Provider[_DictHandle]):
     ```
     """
 
-    def __init__(self, data={}):
+    @typechecked
+    @staticmethod
+    def new(data={}):
         """Create a new dictionary, optionally filled with initial data."""
 
         async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _DictHandle:
@@ -146,7 +151,13 @@ class _Dict(_Provider[_DictHandle]):
             logger.debug("Created dict with id %s" % response.dict_id)
             return _DictHandle._from_id(response.dict_id, resolver.client, None)
 
-        super().__init__(_load, "Dict()")
+        return _Dict._from_loader(_load, "Dict()")
+
+    def __init__(self, data={}):
+        """`Dict({...})` is deprecated. Please use `Dict.new({...})` instead."""
+        deprecation_warning(date(2023, 6, 27), self.__init__.__doc__)
+        obj = _Dict.new(data)
+        self._init_from_other(obj)
 
 
 Dict = synchronize_api(_Dict)
