@@ -276,7 +276,7 @@ class _Stub:
         self,
         client: Optional[_Client] = None,
         stdout=None,
-        show_progress: Optional[bool] = None,
+        show_progress: bool = True,
         detach: bool = False,
         output_mgr: Optional[OutputManager] = None,
     ) -> AsyncGenerator[_App, None]:
@@ -296,7 +296,7 @@ class _Stub:
         self,
         client: Optional[_Client] = None,
         stdout=None,
-        show_progress: Optional[bool] = None,
+        show_progress: bool = True,
         timeout: float = 1e10,
     ):
         """Deprecated. Use the `modal serve` CLI command instead.
@@ -317,7 +317,7 @@ class _Stub:
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client=None,
         stdout=None,
-        show_progress=None,
+        show_progress=True,
         object_entity: str = "ap",
     ) -> _App:
         """`stub.deploy` is deprecated and no longer supported. Use the `modal deploy` command instead.
