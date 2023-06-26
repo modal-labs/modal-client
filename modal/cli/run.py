@@ -193,7 +193,7 @@ def run(ctx, detach, quiet, env):
     """
     ctx.ensure_object(dict)
     ctx.obj["detach"] = detach  # if subcommand would be a click command...
-    ctx.obj["show_progress"] = False if quiet else None
+    ctx.obj["show_progress"] = False if quiet else True
     ctx.obj["env"] = env
 
 
