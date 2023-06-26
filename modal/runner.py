@@ -31,7 +31,7 @@ async def _run_stub(
     stub,
     client: Optional[_Client] = None,
     stdout=None,
-    show_progress: Optional[bool] = None,
+    show_progress: bool = True,
     detach: bool = False,
     output_mgr: Optional[OutputManager] = None,
     environment_name: Optional[str] = None,
@@ -121,7 +121,7 @@ async def _serve_update(
     # Used by child process to reinitialize a served app
     client = await _Client.from_env()
     try:
-        output_mgr = OutputManager(None, None)
+        output_mgr = OutputManager(None, True)
         app = await _App._init_existing(client, existing_app_id)
 
         # Create objects
@@ -140,7 +140,7 @@ async def _deploy_stub(
     namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
     client=None,
     stdout=None,
-    show_progress=None,
+    show_progress=True,
     object_entity="ap",
     environment_name: Optional[str] = None,
 ) -> _App:

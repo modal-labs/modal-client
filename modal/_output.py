@@ -31,7 +31,6 @@ from rich.text import Text
 from modal_proto import api_pb2
 from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, unary_stream
 
-from ._ipython import is_notebook
 from .client import _Client
 from .config import logger
 
@@ -130,15 +129,10 @@ class OutputManager:
     _status_spinner: Spinner
     _app_page_url: Optional[str]
 
-    def __init__(
-        self, stdout: io.TextIOWrapper, show_progress: Optional[bool], status_spinner_text: str = "Running app..."
-    ):
+    def __init__(self, stdout: io.TextIOWrapper, show_progress: bool, status_spinner_text: str = "Running app..."):
         self.stdout = stdout or sys.stdout
-        if show_progress is None:
-            self._visible_progress = self.stdout.isatty() or is_notebook(self.stdout)
-        else:
-            self._visible_progress = show_progress
 
+        self._visible_progress = show_progress
         self._console = Console(file=stdout, highlight=False)
         self._task_states = {}
         self._task_progress_items = {}
