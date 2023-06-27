@@ -13,7 +13,6 @@ from modal._types import typechecked
 from modal_proto import api_pb2
 
 from modal_utils.async_utils import synchronize_api, synchronizer
-from modal_utils.decorator_utils import decorator_with_options_unsupported
 from .retries import Retries
 
 from ._function_utils import FunctionInfo
@@ -395,8 +394,7 @@ class _Stub:
         """Names of web endpoint (ie. webhook) functions registered on the stub."""
         return self._web_endpoints
 
-    @decorator_with_options_unsupported
-    def local_entrypoint(self, raw_f=None, name: Optional[str] = None):
+    def local_entrypoint(self, name: Optional[str] = None) -> Callable[[Callable[..., Any]], None]:
         """Decorate a function to be used as a CLI entrypoint for a Modal App.
 
         These functions can be used to define code that runs locally to set up the app,
@@ -444,16 +442,17 @@ class _Stub:
         information on usage.
 
         """
-        tag = name if name is not None else raw_f.__qualname__
-        entrypoint = self._local_entrypoints[tag] = LocalEntrypoint(raw_f, self)
-        return entrypoint
 
-    @decorator_with_options_unsupported
+        def wrapped(raw_f: Callable[..., Any]) -> None:
+            tag = name if name is not None else raw_f.__qualname__
+            entrypoint = self._local_entrypoints[tag] = LocalEntrypoint(raw_f, self)
+            return entrypoint
+
+        return wrapped
+
     @typechecked
     def function(
         self,
-        f: Optional[Union[_PartialFunction, Callable[..., Any]]] = None,  # The decorated function
-        *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
         secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
@@ -478,110 +477,93 @@ class _Stub:
         ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
         _cls: Optional[type] = None,  # Used for methods only
-    ) -> Union[
-        _FunctionHandle, Callable[[Union[_PartialFunction, Callable[..., Any]]], _FunctionHandle]
-    ]:  # Function object - callable as a regular function within a Modal app
+    ) -> Callable[[Union[_PartialFunction, Callable[..., Any]]], _FunctionHandle]:
         """Decorator to register a new Modal function with this stub."""
         if image is None:
             image = self._get_default_image()
 
-        if isinstance(f, _PartialFunction):
-            f.wrapped = True
-            info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
-            raw_f = f.raw_f
-            webhook_config = f.webhook_config
-            is_generator = f.is_generator
-            if webhook_config:
-                self._web_endpoints.append(info.get_tag())
-        else:
-            info = FunctionInfo(f, serialized=serialized, name_override=name)
-            webhook_config = None
-            raw_f = f
-
-        if not _cls and not info.is_serialized() and "." in info.function_name:  # This is a method
-            deprecation_error(
-                date(2023, 4, 20),
-                inspect.cleandoc(
-                    """@stub.function on methods is deprecated and no longer supported.
-
-                    Use the @stub.cls and @method decorators. Usage:
-
-                    ```
-                    @stub.cls(cpu=8)
-                    class MyCls:
-                        @method()
-                        def f(self):
-                            ...
-                    ```
-                    """
-                ),
-            )
-
-        function_handle = self._get_function_handle(info)
         secrets = [*self._secrets, *secrets]
 
-        if is_generator is None:
-            is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
+        def wrapped(f: Union[_PartialFunction, Callable[..., Any]]) -> _FunctionHandle:
+            is_generator_override: Optional[bool] = is_generator
 
-        if is_generator and webhook_config:
-            if webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
-                raise InvalidError(
+            if isinstance(f, _PartialFunction):
+                f.wrapped = True
+                info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
+                raw_f = f.raw_f
+                webhook_config = f.webhook_config
+                is_generator_override = f.is_generator
+                if webhook_config:
+                    self._web_endpoints.append(info.get_tag())
+            else:
+                info = FunctionInfo(f, serialized=serialized, name_override=name)
+                webhook_config = None
+                raw_f = f
+
+            if not _cls and not info.is_serialized() and "." in info.function_name:  # This is a method
+                deprecation_error(
+                    date(2023, 4, 20),
                     inspect.cleandoc(
-                        """Webhooks cannot be generators. If you want to streaming response, use `fastapi.responses.StreamingResponse`. Usage:
+                        """@stub.function on methods is deprecated and no longer supported.
 
-                        def my_iter():
-                            for x in range(10):
-                                time.sleep(1.0)
-                                yield str(i)
+                        Use the @stub.cls and @method decorators. Usage:
 
-                        @stub.function()
-                        @web_endpoint()
-                        def web():
-                            return StreamingResponse(my_iter())
+                        ```
+                        @stub.cls(cpu=8)
+                        class MyCls:
+                            @method()
+                            def f(self):
+                                ...
+                        ```
                         """
+                    ),
+                )
+
+            function_handle = self._get_function_handle(info)
+
+            if is_generator_override is None:
+                is_generator_override = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
+
+            if interactive:
+                if self._pty_input_stream:
+                    warnings.warn(
+                        "Running multiple interactive functions at the same time is not fully supported, and could lead to unexpected behavior."
                     )
-                )
-            else:
-                raise InvalidError("Webhooks cannot be generators")
+                else:
+                    self._blueprint["_pty_input_stream"] = _Queue()
 
-        if interactive:
-            if self._pty_input_stream:
-                warnings.warn(
-                    "Running multiple interactive functions at the same time is not fully supported, and could lead to unexpected behavior."
-                )
-            else:
-                self._blueprint["_pty_input_stream"] = _Queue()
+            function = _Function.from_args(
+                function_handle,
+                info,
+                stub=self,
+                image=image,
+                secret=secret,
+                secrets=secrets,
+                schedule=schedule,
+                is_generator=is_generator_override,
+                gpu=gpu,
+                mounts=[*self._mounts, *mounts],
+                shared_volumes=shared_volumes,
+                allow_cross_region_volumes=allow_cross_region_volumes,
+                memory=memory,
+                proxy=proxy,
+                retries=retries,
+                concurrency_limit=concurrency_limit,
+                container_idle_timeout=container_idle_timeout,
+                timeout=timeout,
+                cpu=cpu,
+                interactive=interactive,
+                keep_warm=keep_warm,
+                name=name,
+                cloud=cloud,
+                webhook_config=webhook_config,
+                cls=_cls,
+            )
 
-        function = _Function.from_args(
-            function_handle,
-            info,
-            stub=self,
-            image=image,
-            secret=secret,
-            secrets=secrets,
-            schedule=schedule,
-            is_generator=is_generator,
-            gpu=gpu,
-            mounts=[*self._mounts, *mounts],
-            shared_volumes=shared_volumes,
-            allow_cross_region_volumes=allow_cross_region_volumes,
-            memory=memory,
-            proxy=proxy,
-            retries=retries,
-            concurrency_limit=concurrency_limit,
-            container_idle_timeout=container_idle_timeout,
-            timeout=timeout,
-            cpu=cpu,
-            interactive=interactive,
-            keep_warm=keep_warm,
-            name=name,
-            cloud=cloud,
-            webhook_config=webhook_config,
-            cls=_cls,
-        )
+            self._add_function(function)
+            return function_handle
 
-        self._add_function(function)
-        return function_handle
+        return wrapped
 
     @typechecked
     def web_endpoint(
