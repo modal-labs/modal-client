@@ -1035,6 +1035,16 @@ class _Function(_Provider[_FunctionHandle]):
             if not isinstance(volumes, dict):
                 raise InvalidError("volumes must be a dict[str, Volume] where the keys are paths")
             validated_volumes = _validate_mount_points("Volume", volumes)
+            # We don't support mounting a volume in more than one location
+            volume_to_paths = {}
+            for (path, volume) in validated_volumes:
+                volume_to_paths.setdefault(volume, []).append(path)
+            for paths in volume_to_paths.values():
+                if len(paths) > 1:
+                    conflicting = ", ".join(paths)
+                    raise InvalidError(
+                        f"The same Volume cannot be mounted in multiple locations for the same function: {conflicting}"
+                    )
 
             async def volume_loader():
                 volume_mounts = []
