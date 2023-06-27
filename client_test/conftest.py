@@ -129,6 +129,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.function2params = {}
 
+        self.volume_counter = 0
+        # Volume-id -> commit/reload count
+        self.volume_commits: Dict[str, int] = defaultdict(lambda: 0)
+        self.volume_reloads: Dict[str, int] = defaultdict(lambda: 0)
+
         @self.function_body
         def default_function_body(*args, **kwargs):
             return sum(arg**2 for arg in args) + sum(value**2 for key, value in kwargs.items())
@@ -625,6 +630,21 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 token_secret="xyz",
             )
         )
+
+    async def VolumeCreate(self, stream):
+        await stream.recv_message()
+        self.volume_counter += 1
+        await stream.send_message(api_pb2.VolumeCreateResponse(volume_id=f"vo-{self.volume_counter}"))
+
+    async def VolumeCommit(self, stream):
+        req = await stream.recv_message()
+        self.volume_commits[req.volume_id] += 1
+        await stream.send_message(Empty())
+
+    async def VolumeReload(self, stream):
+        req = await stream.recv_message()
+        self.volume_reloads[req.volume_id] += 1
+        await stream.send_message(Empty())
 
 
 @pytest_asyncio.fixture
