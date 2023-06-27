@@ -530,7 +530,7 @@ class _Stub:
                         "Running multiple interactive functions at the same time is not fully supported, and could lead to unexpected behavior."
                     )
                 else:
-                    self._blueprint["_pty_input_stream"] = _Queue()
+                    self._blueprint["_pty_input_stream"] = _Queue.new()
 
             function = _Function.from_args(
                 function_handle,

@@ -184,7 +184,7 @@ class _Provider(Generic[H]):
         self._init(load, rep, is_persisted_ref, preload=preload)
 
     def _init_from_other(self, other: "_Provider"):
-        # Transient use case, see Secret.__inint__
+        # Transient use case, see Queue.__init__ and Dict.__init__
         self._init(other._load, other._rep, other._is_persisted_ref, other._preload)
 
     @classmethod

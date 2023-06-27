@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import queue  # The system library
+from datetime import date
 import time
 import warnings
 from typing import Any, List, Optional
@@ -10,6 +11,8 @@ from modal_utils.grpc_utils import retry_transient_errors
 
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
+from ._types import typechecked
+from .exception import deprecation_warning
 from .object import _Handle, _Provider
 
 
@@ -17,7 +20,7 @@ class _QueueHandle(_Handle, type_prefix="qu"):
     """Handle for interacting with the contents of a `Queue`
 
     ```python
-    stub.some_dict = modal.Queue()
+    stub.some_dict = modal.Queue.new()
 
     if __name__ == "__main__":
         with stub.run() as app:
@@ -135,13 +138,21 @@ class _Queue(_Provider[_QueueHandle]):
     The queue can contain any object serializable by `cloudpickle`.
     """
 
-    def __init__(self):
+    @typechecked
+    @staticmethod
+    def new():
         async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _QueueHandle:
             request = api_pb2.QueueCreateRequest(app_id=resolver.app_id, existing_queue_id=existing_object_id)
             response = await resolver.client.stub.QueueCreate(request)
             return _QueueHandle._from_id(response.queue_id, resolver.client, None)
 
-        super().__init__(_load, "Queue()")
+        return _Queue._from_loader(_load, "Queue()")
+
+    def __init__(self):
+        """`Queue({...})` is deprecated. Please use `Queue.new({...})` instead."""
+        deprecation_warning(date(2023, 6, 27), self.__init__.__doc__)
+        obj = _Queue.new()
+        self._init_from_other(obj)
 
 
 Queue = synchronize_api(_Queue)
