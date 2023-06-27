@@ -991,13 +991,13 @@ class _Function(_Provider[_FunctionHandle]):
                     abs_path = posixpath.abspath(path)
 
                     if path != abs_path:
-                        raise InvalidError(f"{display_name} {abs_path} must be a canonical, absolute path.")
+                        raise InvalidError(f"{display_name} {path} must be a canonical, absolute path.")
                     elif abs_path == "/":
-                        raise InvalidError(f"{display_name} {abs_path} cannot be mounted into root directory.")
+                        raise InvalidError(f"{display_name} {path} cannot be mounted into root directory.")
                     elif abs_path == "/root":
-                        raise InvalidError(f"{display_name} {abs_path} cannot be mounted at '/root'.")
+                        raise InvalidError(f"{display_name} {path} cannot be mounted at '/root'.")
                     elif abs_path == "/tmp":
-                        raise InvalidError(f"{display_name} {abs_path} cannot be mounted at '/tmp'.")
+                        raise InvalidError(f"{display_name} {path} cannot be mounted at '/tmp'.")
                     validated.append((path, vol))
                 return validated
 
