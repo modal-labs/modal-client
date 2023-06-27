@@ -20,6 +20,7 @@ from typing import (
     List,
     Optional,
     Set,
+    Tuple,
     Union,
     Iterable,
 )
@@ -982,8 +983,8 @@ class _Function(_Provider[_FunctionHandle]):
 
             # Mount point path validation for volumes and shared volumes
             def _validate_mount_points(
-                display_name: str, volume_likes: typing.Dict[str, typing.Union[_Volume, _SharedVolume]]
-            ) -> typing.List[typing.Tuple[str, typing.Union[_Volume, _SharedVolume]]]:
+                display_name: str, volume_likes: Dict[Union[str, os.PathLike], Any]
+            ) -> List[Tuple[str, Any]]:
                 validated = []
                 for path, vol in volume_likes.items():
                     path = PurePath(path).as_posix()
@@ -1036,7 +1037,7 @@ class _Function(_Provider[_FunctionHandle]):
                 raise InvalidError("volumes must be a dict[str, Volume] where the keys are paths")
             validated_volumes = _validate_mount_points("Volume", volumes)
             # We don't support mounting a volume in more than one location
-            volume_to_paths = {}
+            volume_to_paths: Dict[_Volume, List[str]] = {}
             for (path, volume) in validated_volumes:
                 volume_to_paths.setdefault(volume, []).append(path)
             for paths in volume_to_paths.values():
