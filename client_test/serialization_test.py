@@ -6,7 +6,7 @@ from modal import Queue, Stub
 
 stub = Stub()
 
-stub.q = Queue()
+stub.q = Queue.new()
 
 
 @pytest.mark.asyncio

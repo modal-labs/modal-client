@@ -8,7 +8,7 @@ from modal.exception import InvalidError
 @pytest.mark.asyncio
 async def test_async_factory(client):
     stub = Stub()
-    stub["my_factory"] = Queue()
+    stub["my_factory"] = Queue.new()
     async with stub.run(client=client) as running_app:
         # assert isinstance(running_app["my_factory"], Queue)  # TODO(erikbern(): is a handle now
         assert running_app["my_factory"].object_id == "qu-1"

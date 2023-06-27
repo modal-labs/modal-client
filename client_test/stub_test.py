@@ -18,8 +18,8 @@ from modal_test_support import module_1, module_2
 @pytest.mark.asyncio
 async def test_kwargs(servicer, client):
     stub = Stub(
-        d=Dict(),
-        q=Queue(),
+        d=Dict.new(),
+        q=Queue.new(),
     )
     async with stub.run(client=client) as app:
         # TODO: interface to get type safe objects from live apps
@@ -32,8 +32,8 @@ async def test_kwargs(servicer, client):
 @pytest.mark.asyncio
 async def test_attrs(servicer, client):
     stub = Stub()
-    stub.d = Dict()
-    stub.q = Queue()
+    stub.d = Dict.new()
+    stub.q = Queue.new()
     async with stub.run(client=client) as app:
         await app.d.put.aio("foo", "bar")  # type: ignore
         await app.q.put.aio("baz")  # type: ignore
@@ -227,8 +227,8 @@ def test_init_types():
         image=modal.Image.debian_slim().pip_install("pandas"),
         secrets=[modal.Secret.from_dict()],
         mounts=[modal.Mount.from_local_file(__file__)],
-        some_dict=modal.Dict(),
-        some_queue=modal.Queue(),
+        some_dict=modal.Dict.new(),
+        some_queue=modal.Queue.new(),
     )
 
 
@@ -248,14 +248,14 @@ async def test_redeploy_persist(servicer, client):
     stub.function()(square)
     stub.image = Image.debian_slim().pip_install("pandas")
 
-    stub.d = Dict()
+    stub.d = Dict.new()
 
     # Deploy app
     app = await deploy_stub.aio(stub, "my-app", client=client)
     assert app.app_id == "ap-1"
     assert servicer.app_objects["ap-1"]["d"] == "di-0"
 
-    stub.d = Dict().persist("my-dict")
+    stub.d = Dict.new().persist("my-dict")
     # Redeploy, make sure all ids are the same
     app = await deploy_stub.aio(stub, "my-app", client=client)
     assert app.app_id == "ap-1"
