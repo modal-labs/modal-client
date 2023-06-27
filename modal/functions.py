@@ -1027,7 +1027,7 @@ class _Function(_Provider[_FunctionHandle]):
 
             if not isinstance(volumes, dict):
                 raise InvalidError("volumes must be a dict[str, Volume] where the keys are paths")
-            volume_mounts = []
+            validated_volumes = []
             # Relies on dicts being ordered (true as of Python 3.6).
             for path, volume in volumes.items():
                 path = PurePath(path).as_posix()
@@ -1041,13 +1041,19 @@ class _Function(_Provider[_FunctionHandle]):
                     raise InvalidError(f"Volume {abs_path} cannot be mounted at '/root'.")
                 elif abs_path == "/tmp":
                     raise InvalidError(f"Volume {abs_path} cannot be mounted at '/tmp'.")
+                validated_volumes.append((path, volume))
 
-                volume_mounts.append(
-                    api_pb2.VolumeMount(
-                        mount_path=path,
-                        volume_id=(await resolver.load(volume)).object_id,
+            async def volume_loader():
+                volume_mounts = []
+                volume_ids = await _load_ids([vol for _, vol in validated_volumes])
+                for ((path, _), volume_id) in zip(validated_volumes, volume_ids):
+                    volume_mounts.append(
+                        api_pb2.VolumeMount(
+                            mount_path=path,
+                            volume_id=volume_id,
+                        )
                     )
-                )
+                return volume_mounts
 
             if is_generator:
                 function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
@@ -1077,8 +1083,12 @@ class _Function(_Provider[_FunctionHandle]):
             if stub and stub.name:
                 stub_name = stub.name
 
-            mount_ids, secret_ids, image_id, shared_volume_mounts = await asyncio.gather(
-                _load_ids(all_mounts), _load_ids(secrets), image_loader(), shared_volume_loader()
+            mount_ids, secret_ids, image_id, shared_volume_mounts, volume_mounts = await asyncio.gather(
+                _load_ids(all_mounts),
+                _load_ids(secrets),
+                image_loader(),
+                shared_volume_loader(),
+                volume_loader(),
             )
 
             # Create function remotely
