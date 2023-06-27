@@ -85,7 +85,7 @@ def test_webhook_generator():
         def web_gen():
             yield None
 
-    assert "StreamingResponse" in str(excinfo.value)
+    assert "streaming" in str(excinfo.value).lower()
 
 
 @pytest.mark.asyncio

@@ -939,6 +939,15 @@ class _Function(_Provider[_FunctionHandle]):
         if cloud:
             panel_items.append(f"Cloud({cloud.upper()})")
 
+        if is_generator and webhook_config:
+            if webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
+                raise InvalidError(
+                    """Webhooks cannot be generators. If you want a streaming response, see https://modal.com/docs/guide/streaming-endpoints
+                    """
+                )
+            else:
+                raise InvalidError("Webhooks cannot be generators")
+
         async def _preload(resolver: Resolver, existing_object_id: Optional[str]) -> _FunctionHandle:
             if is_generator:
                 function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR

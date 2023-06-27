@@ -523,27 +523,6 @@ class _Stub:
         if is_generator is None:
             is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
 
-        if is_generator and webhook_config:
-            if webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
-                raise InvalidError(
-                    inspect.cleandoc(
-                        """Webhooks cannot be generators. If you want to streaming response, use `fastapi.responses.StreamingResponse`. Usage:
-
-                        def my_iter():
-                            for x in range(10):
-                                time.sleep(1.0)
-                                yield str(i)
-
-                        @stub.function()
-                        @web_endpoint()
-                        def web():
-                            return StreamingResponse(my_iter())
-                        """
-                    )
-                )
-            else:
-                raise InvalidError("Webhooks cannot be generators")
-
         if interactive:
             if self._pty_input_stream:
                 warnings.warn(
