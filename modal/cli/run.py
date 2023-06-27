@@ -279,16 +279,11 @@ def shell(
     _stub = _function_handle._stub
     _function = _function_handle._get_function()
     blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
+    blocking_function = synchronizer._translate_out(_function, Interface.BLOCKING)
 
     interactive_shell(
         blocking_stub,
         cmd,
-        mounts=_function._mounts,
-        shared_volumes=_function._shared_volumes,
-        allow_cross_region_volumes=_function._allow_cross_region_volumes,
-        image=_function._image,
-        secrets=_function._secrets,
-        gpu=_function._gpu,
-        cloud=_function._cloud,
+        blocking_function,
         environment_name=env,
     )
