@@ -146,5 +146,6 @@ def type_stubs(ctx):
         "modal.secret",
         "modal.shared_volume",
         "modal.stub",
+        "modal.volume",
     ]
     subprocess.check_call(["python", "-m", "synchronicity.type_stubs", *modules])
