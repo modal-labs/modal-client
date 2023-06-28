@@ -20,6 +20,7 @@ from typing import (
     List,
     Optional,
     Set,
+    Tuple,
     Union,
     Iterable,
 )
@@ -67,6 +68,7 @@ from .retries import Retries
 from .schedule import Schedule
 from .secret import _Secret
 from .shared_volume import _SharedVolume
+from .volume import _Volume
 
 ATTEMPT_TIMEOUT_GRACE_PERIOD = 5  # seconds
 
@@ -826,6 +828,7 @@ class _Function(_Provider[_FunctionHandle]):
     _mounts: Collection[_Mount]
     _shared_volumes: Dict[Union[str, os.PathLike], _SharedVolume]
     _allow_cross_region_volumes: bool
+    _volumes: Dict[Union[str, os.PathLike], _Volume]
     _image: Optional[_Image]
     _gpu: Optional[GPU_T]
     _cloud: Optional[str]
@@ -849,6 +852,7 @@ class _Function(_Provider[_FunctionHandle]):
         mounts: Collection[_Mount] = (),
         shared_volumes: Dict[Union[str, os.PathLike], _SharedVolume] = {},
         allow_cross_region_volumes: bool = False,
+        volumes: Dict[Union[str, os.PathLike], _Volume] = {},
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         memory: Optional[int] = None,
         proxy: Optional[_Proxy] = None,
@@ -932,6 +936,7 @@ class _Function(_Provider[_FunctionHandle]):
                 image,
                 *secrets,
                 *shared_volumes.values(),
+                *volumes.values(),
             ]
         ]
         if gpu:
@@ -976,6 +981,26 @@ class _Function(_Provider[_FunctionHandle]):
             else:
                 proxy_id = None
 
+            # Mount point path validation for volumes and shared volumes
+            def _validate_mount_points(
+                display_name: str, volume_likes: Dict[Union[str, os.PathLike], Union[_Volume, _SharedVolume]]
+            ) -> List[Tuple[str, Union[_Volume, _SharedVolume]]]:
+                validated = []
+                for path, vol in volume_likes.items():
+                    path = PurePath(path).as_posix()
+                    abs_path = posixpath.abspath(path)
+
+                    if path != abs_path:
+                        raise InvalidError(f"{display_name} {path} must be a canonical, absolute path.")
+                    elif abs_path == "/":
+                        raise InvalidError(f"{display_name} {path} cannot be mounted into root directory.")
+                    elif abs_path == "/root":
+                        raise InvalidError(f"{display_name} {path} cannot be mounted at '/root'.")
+                    elif abs_path == "/tmp":
+                        raise InvalidError(f"{display_name} {path} cannot be mounted at '/tmp'.")
+                    validated.append((path, vol))
+                return validated
+
             async def _load_ids(providers) -> typing.List[str]:
                 loaded_handles = await asyncio.gather(*[resolver.load(provider) for provider in providers])
                 return [handle.object_id for handle in loaded_handles]
@@ -992,20 +1017,7 @@ class _Function(_Provider[_FunctionHandle]):
             # validation
             if not isinstance(shared_volumes, dict):
                 raise InvalidError("shared_volumes must be a dict[str, SharedVolume] where the keys are paths")
-            validated_shared_volumes = []
-            for path, shared_volume in shared_volumes.items():
-                path = PurePath(path).as_posix()
-                abs_path = posixpath.abspath(path)
-
-                if path != abs_path:
-                    raise InvalidError(f"Shared volume {abs_path} must be a canonical, absolute path.")
-                elif abs_path == "/":
-                    raise InvalidError(f"Shared volume {abs_path} cannot be mounted into root directory.")
-                elif abs_path == "/root":
-                    raise InvalidError(f"Shared volume {abs_path} cannot be mounted at '/root'.")
-                elif abs_path == "/tmp":
-                    raise InvalidError(f"Shared volume {abs_path} cannot be mounted at '/tmp'.")
-                validated_shared_volumes.append((path, shared_volume))
+            validated_shared_volumes = _validate_mount_points("Shared volume", shared_volumes)
 
             async def shared_volume_loader():
                 shared_volume_mounts = []
@@ -1020,6 +1032,33 @@ class _Function(_Provider[_FunctionHandle]):
                         )
                     )
                 return shared_volume_mounts
+
+            if not isinstance(volumes, dict):
+                raise InvalidError("volumes must be a dict[str, Volume] where the keys are paths")
+            validated_volumes = _validate_mount_points("Volume", volumes)
+            # We don't support mounting a volume in more than one location
+            volume_to_paths: Dict[_Volume, List[str]] = {}
+            for (path, volume) in validated_volumes:
+                volume_to_paths.setdefault(volume, []).append(path)
+            for paths in volume_to_paths.values():
+                if len(paths) > 1:
+                    conflicting = ", ".join(paths)
+                    raise InvalidError(
+                        f"The same Volume cannot be mounted in multiple locations for the same function: {conflicting}"
+                    )
+
+            async def volume_loader():
+                volume_mounts = []
+                volume_ids = await _load_ids([vol for _, vol in validated_volumes])
+                # Relies on dicts being ordered (true as of Python 3.6).
+                for ((path, _), volume_id) in zip(validated_volumes, volume_ids):
+                    volume_mounts.append(
+                        api_pb2.VolumeMount(
+                            mount_path=path,
+                            volume_id=volume_id,
+                        )
+                    )
+                return volume_mounts
 
             if is_generator:
                 function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
@@ -1049,8 +1088,12 @@ class _Function(_Provider[_FunctionHandle]):
             if stub and stub.name:
                 stub_name = stub.name
 
-            mount_ids, secret_ids, image_id, shared_volume_mounts = await asyncio.gather(
-                _load_ids(all_mounts), _load_ids(secrets), image_loader(), shared_volume_loader()
+            mount_ids, secret_ids, image_id, shared_volume_mounts, volume_mounts = await asyncio.gather(
+                _load_ids(all_mounts),
+                _load_ids(secrets),
+                image_loader(),
+                shared_volume_loader(),
+                volume_loader(),
             )
 
             # Create function remotely
@@ -1067,6 +1110,7 @@ class _Function(_Provider[_FunctionHandle]):
                 resources=api_pb2.Resources(milli_cpu=milli_cpu, gpu_config=gpu_config, memory_mb=memory),
                 webhook_config=webhook_config,
                 shared_volume_mounts=shared_volume_mounts,
+                volume_mounts=volume_mounts,
                 proxy_id=proxy_id,
                 retry_policy=retry_policy,
                 timeout_secs=timeout,
