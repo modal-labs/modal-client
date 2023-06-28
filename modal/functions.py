@@ -983,8 +983,8 @@ class _Function(_Provider[_FunctionHandle]):
 
             # Mount point path validation for volumes and shared volumes
             def _validate_mount_points(
-                display_name: str, volume_likes: Dict[Union[str, os.PathLike], Any]
-            ) -> List[Tuple[str, Any]]:
+                display_name: str, volume_likes: Dict[Union[str, os.PathLike], Union[_Volume, _SharedVolume]]
+            ) -> List[Tuple[str, Union[_Volume, _SharedVolume]]]:
                 validated = []
                 for path, vol in volume_likes.items():
                     path = PurePath(path).as_posix()
