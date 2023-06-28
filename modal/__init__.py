@@ -16,6 +16,7 @@ from .schedule import Cron, Period
 from .secret import Secret
 from .shared_volume import SharedVolume
 from .stub import Stub
+from .volume import Volume
 
 __all__ = [
     "__version__",
@@ -35,6 +36,7 @@ __all__ = [
     "Secret",
     "SharedVolume",
     "Stub",
+    "Volume",
     "asgi_app",
     "container_app",
     "create_package_mounts",
