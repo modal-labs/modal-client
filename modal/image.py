@@ -147,7 +147,7 @@ class _Image(_Provider[_ImageHandle]):
         image_registry_config: Optional[_ImageRegistryConfig] = None,
         force_build: bool = False,
         # For internal use only.
-        _namespace: api_pb2.DeploymentNamespace.ValueType = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        _namespace: "api_pb2.DeploymentNamespace.ValueType" = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
     ):
         if gpu_config is None:
             gpu_config = api_pb2.GPUConfig()
