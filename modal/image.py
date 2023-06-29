@@ -146,6 +146,8 @@ class _Image(_Provider[_ImageHandle]):
         context_mount: Optional[_Mount] = None,
         image_registry_config: Optional[_ImageRegistryConfig] = None,
         force_build: bool = False,
+        # For internal use only.
+        _namespace: api_pb2.DeploymentNamespace.ValueType = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
     ):
         if gpu_config is None:
             gpu_config = api_pb2.GPUConfig()
@@ -234,7 +236,7 @@ class _Image(_Provider[_ImageHandle]):
                 existing_image_id=existing_object_id,  # TODO: ignored
                 build_function_id=build_function_id,
                 force_build=force_build,
-                namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+                namespace=_namespace,
             )
             resp = await resolver.client.stub.ImageGetOrCreate(req)
             image_id = resp.image_id
@@ -745,6 +747,7 @@ class _Image(_Provider[_ImageHandle]):
             dockerfile_commands=dockerfile_commands,
             context_files={"/modal_requirements.txt": requirements_path},
             force_build=force_build,
+            _namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
         ).dockerfile_commands(
             [
                 "ENV CONDA_EXE=/usr/local/bin/conda",
@@ -836,6 +839,7 @@ class _Image(_Provider[_ImageHandle]):
                 f"RUN micromamba install -n base -y python={python_version} pip -c conda-forge",
             ],
             force_build=force_build,
+            _namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
         )
 
     @typechecked
@@ -1105,6 +1109,7 @@ class _Image(_Provider[_ImageHandle]):
             dockerfile_commands=dockerfile_commands,
             context_files={"/modal_requirements.txt": requirements_path},
             force_build=force_build,
+            _namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
         )
 
     @typechecked
