@@ -234,6 +234,7 @@ class _Image(_Provider[_ImageHandle]):
                 existing_image_id=existing_object_id,  # TODO: ignored
                 build_function_id=build_function_id,
                 force_build=force_build,
+                namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
             )
             resp = await resolver.client.stub.ImageGetOrCreate(req)
             image_id = resp.image_id
