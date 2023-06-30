@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+from datetime import date
 import uuid
 from typing import Awaitable, Callable, Generic, Optional, Type, TypeVar
 
@@ -14,7 +15,7 @@ from ._object_meta import ObjectMeta
 from ._resolver import Resolver
 from .client import _Client
 from .config import config
-from .exception import InvalidError, NotFoundError
+from .exception import InvalidError, NotFoundError, deprecation_error
 
 H = TypeVar("H", bound="_Handle")
 
@@ -184,7 +185,7 @@ class _Provider(Generic[H]):
         self._init(load, rep, is_persisted_ref, preload=preload)
 
     def _init_from_other(self, other: "_Provider"):
-        # Transient use case, see Queue.__init__ and Dict.__init__
+        # Transient use case, see Dict, Queue, and SharedVolume
         self._init(other._load, other._rep, other._is_persisted_ref, other._preload)
 
     @classmethod
@@ -239,8 +240,18 @@ class _Provider(Generic[H]):
         await app.deploy(label, namespace, object_entity)  # TODO(erikbern): not needed if the app already existed
         return handle
 
-    @typechecked
     def persist(
+        self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
+    ):
+        """`Provider.persist` is deprecated for generic objects. See `SharedVolume.persisted` or `Dict.persisted`."""
+        # Note: this method is overridden in SharedVolume in Dict to print a warning
+        deprecation_error(
+            date(2023, 6, 30),
+            self.persist.__doc__,
+        )
+
+    @typechecked
+    def _persist(
         self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
     ):
         """Deploy a Modal app containing this object. This object can then be imported from other apps using

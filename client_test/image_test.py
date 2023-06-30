@@ -278,7 +278,7 @@ def run_f():
 
 def test_image_run_function(client, servicer):
     stub = Stub()
-    volume = SharedVolume().persist("test-vol")
+    volume = SharedVolume.persisted("test-vol")
     stub["image"] = (
         Image.debian_slim()
         .pip_install("pandas")

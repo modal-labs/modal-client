@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import os
+from datetime import date
 import time
 from pathlib import Path, PurePosixPath
 from typing import AsyncIterator, BinaryIO, List, Optional, Union
@@ -13,6 +14,8 @@ from modal._location import parse_cloud_provider
 
 from ._blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
 from ._resolver import Resolver
+from ._types import typechecked
+from .exception import deprecation_warning
 from .object import _Handle, _Provider
 
 SHARED_VOLUME_PUT_FILE_CLIENT_TIMEOUT = (
@@ -163,7 +166,7 @@ class _SharedVolume(_Provider[_SharedVolumeHandle]):
     ```python
     import modal
 
-    volume = modal.SharedVolume()
+    volume = modal.SharedVolume.new()
     stub = modal.Stub()
 
     @stub.function(shared_volumes={"/root/foo": volume})
@@ -181,7 +184,9 @@ class _SharedVolume(_Provider[_SharedVolumeHandle]):
     persist this object across app runs.
     """
 
-    def __init__(self, cloud: Optional[str] = None) -> None:
+    @typechecked
+    @staticmethod
+    def new(cloud: Optional[str] = None) -> "_SharedVolume":
         """Construct a new shared volume, which is empty by default."""
 
         async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _SharedVolumeHandle:
@@ -198,8 +203,33 @@ class _SharedVolume(_Provider[_SharedVolumeHandle]):
             status_row.finish("Created shared volume.")
             return _SharedVolumeHandle._from_id(resp.shared_volume_id, resolver.client, None)
 
-        rep = "SharedVolume()"
-        super().__init__(_load, rep)
+        return _SharedVolume._from_loader(_load, "SharedVolume()")
+
+    def __init__(self, cloud: Optional[str] = None) -> None:
+        """`SharedVolume(...)` is deprecated. Please use `SharedVolume.new(...)` instead."""
+        deprecation_warning(date(2023, 6, 30), self.__init__.__doc__)
+        obj = _SharedVolume.new(cloud)
+        self._init_from_other(obj)
+
+    @staticmethod
+    def persisted(
+        label: str,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        environment_name: Optional[str] = None,
+        cloud: Optional[str] = None,
+    ) -> "_SharedVolume":
+        return _SharedVolume.new(cloud)._persist(label, namespace, environment_name)
+
+    def persist(
+        self,
+        label: str,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        environment_name: Optional[str] = None,
+        cloud: Optional[str] = None,
+    ) -> "_SharedVolume":
+        """`SharedVolume().persist("my-volume")` is deprecated. Use `SharedVolume.persisted("my-volume")` instead."""
+        deprecation_warning(date(2023, 6, 30), self.persist.__doc__)
+        return self.persisted(label, namespace, environment_name, cloud)
 
 
 SharedVolume = synchronize_api(_SharedVolume)
