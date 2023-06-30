@@ -117,16 +117,20 @@ async def update(
     if set_name is None and set_web_suffix is None:
         raise UsageError("You need to at least one new property (using --set-name or --set-web-suffix")
 
-    payload_args = dict(current_name=current_name)
+    new_name = None
+    new_web_suffix = None
+
     if set_name is not None:
         if len(set_name) < 1:
             raise UsageError("The environment name cannot be empty")
 
-        payload_args["name"] = StringValue(value=set_name)
+        new_name = StringValue(value=set_name)
     if set_web_suffix is not None:
-        payload_args["web_suffix"] = StringValue(value=set_web_suffix)
+        new_web_suffix = StringValue(value=set_web_suffix)
 
-    update_payload = api_pb2.EnvironmentUpdateRequest(**payload_args)
+    update_payload = api_pb2.EnvironmentUpdateRequest(
+        current_name=current_name, name=new_name, web_suffix=new_web_suffix
+    )
     client = await _Client.from_env()
     stub = client.stub
     await stub.EnvironmentUpdate(update_payload)
