@@ -15,6 +15,7 @@ from .app import _App, is_local
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config
 from .exception import InvalidError
+from .functions import _Function
 from .queue import _QueueHandle
 
 
@@ -31,7 +32,7 @@ async def _run_stub(
     stub,
     client: Optional[_Client] = None,
     stdout=None,
-    show_progress: Optional[bool] = None,
+    show_progress: bool = True,
     detach: bool = False,
     output_mgr: Optional[OutputManager] = None,
     environment_name: Optional[str] = None,
@@ -121,7 +122,7 @@ async def _serve_update(
     # Used by child process to reinitialize a served app
     client = await _Client.from_env()
     try:
-        output_mgr = OutputManager(None, None)
+        output_mgr = OutputManager(None, True)
         app = await _App._init_existing(client, existing_app_id)
 
         # Create objects
@@ -140,7 +141,7 @@ async def _deploy_stub(
     namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
     client=None,
     stdout=None,
-    show_progress=None,
+    show_progress=True,
     object_entity="ap",
     environment_name: Optional[str] = None,
 ) -> _App:
@@ -213,7 +214,7 @@ async def _deploy_stub(
     return app
 
 
-async def _interactive_shell(stub, cmd=None, image=None, environment_name="", **kwargs):
+async def _interactive_shell(stub, cmd: str, function: _Function, environment_name: str = ""):
     """Run an interactive shell (like `bash`) within the image for this app.
 
     This is useful for online debugging and interactive exploration of the
@@ -234,7 +235,18 @@ async def _interactive_shell(stub, cmd=None, image=None, environment_name="", **
     modal shell script.py --cmd /bin/bash
     ```
     """
-    wrapped_fn = stub.function(interactive=True, timeout=86400, image=image, **kwargs)(_pty.exec_cmd)
+
+    wrapped_fn = stub.function(
+        interactive=True,
+        timeout=86400,
+        mounts=function._mounts,
+        shared_volumes=function._shared_volumes,
+        allow_cross_region_volumes=function._allow_cross_region_volumes,
+        image=function._image,
+        secrets=function._secrets,
+        gpu=function._gpu,
+        cloud=function._cloud,
+    )(_pty.exec_cmd)
 
     async with _run_stub(stub, environment_name=environment_name):
         await wrapped_fn.call(cmd)

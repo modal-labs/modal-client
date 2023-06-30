@@ -159,7 +159,7 @@ class RunGroup(click.Group):
 )
 @click.option("-q", "--quiet", is_flag=True, help="Don't show Modal progress indicators.")
 @click.option("-d", "--detach", is_flag=True, help="Don't stop the app if the local process dies or disconnects.")
-@click.option("-e", "--env", help=ENV_OPTION_HELP, default="")
+@click.option("-e", "--env", help=ENV_OPTION_HELP, default="", hidden=True)
 @click.pass_context
 def run(ctx, detach, quiet, env):
     """Run a Modal function or local entrypoint
@@ -193,14 +193,14 @@ def run(ctx, detach, quiet, env):
     """
     ctx.ensure_object(dict)
     ctx.obj["detach"] = detach  # if subcommand would be a click command...
-    ctx.obj["show_progress"] = False if quiet else None
+    ctx.obj["show_progress"] = False if quiet else True
     ctx.obj["env"] = env
 
 
 def deploy(
     stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
     name: str = typer.Option(None, help="Name of the deployment."),
-    env: str = typer.Option(None, help=ENV_OPTION_HELP),
+    env: str = typer.Option(None, help=ENV_OPTION_HELP, hidden=True),
 ):
     env = ensure_env(
         env
@@ -218,7 +218,7 @@ def deploy(
 def serve(
     stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
     timeout: Optional[float] = None,
-    env: str = typer.Option(None, help=ENV_OPTION_HELP),
+    env: str = typer.Option(None, help=ENV_OPTION_HELP, hidden=True),
 ):
     """Run a web endpoint(s) associated with a Modal stub and hot-reload code.
 
@@ -246,7 +246,7 @@ def shell(
         ..., help="Path to a Python file with a Stub or Modal function whose container to run.", metavar="FUNC_REF"
     ),
     cmd: str = typer.Option(default="/bin/bash", help="Command to run inside the Modal image."),
-    env: str = typer.Option(None, help=ENV_OPTION_HELP),
+    env: str = typer.Option(None, help=ENV_OPTION_HELP, hidden=True),
 ):
     """Run an interactive shell inside a Modal image.
 
@@ -279,19 +279,11 @@ def shell(
     _stub = _function_handle._stub
     _function = _function_handle._get_function()
     blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
+    blocking_function = synchronizer._translate_out(_function, Interface.BLOCKING)
 
-    if _function_handle is None:
-        interactive_shell(blocking_stub, cmd, environment_name=env)
-    else:
-        interactive_shell(
-            blocking_stub,
-            cmd,
-            mounts=_function._mounts,
-            shared_volumes=_function._shared_volumes,
-            allow_cross_region_volumes=_function._allow_cross_region_volumes,
-            image=_function._image,
-            secrets=_function._secrets,
-            gpu=_function._gpu,
-            cloud=_function._cloud,
-            environment_name=env,
-        )
+    interactive_shell(
+        blocking_stub,
+        cmd,
+        blocking_function,
+        environment_name=env,
+    )

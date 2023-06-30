@@ -9,7 +9,7 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
 
 from ._resolver import Resolver
-from .exception import InvalidError, deprecation_warning
+from .exception import InvalidError, deprecation_error
 from .object import _Handle, _Provider
 
 
@@ -70,9 +70,7 @@ class _Secret(_Provider[_SecretHandle]):
 
     def __init__(self, env_dict: Dict[str, str]):
         """`Secret({...})` is deprecated. Please use `Secret.from_dict({...})` instead."""
-        deprecation_warning(date(2023, 5, 1), self.__init__.__doc__)
-        obj = _Secret.from_dict(env_dict)
-        self._init_from_other(obj)
+        deprecation_error(date(2023, 5, 1), self.__init__.__doc__)
 
     @staticmethod
     def from_dotenv(path=None):
