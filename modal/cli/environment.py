@@ -60,7 +60,7 @@ async def list():
     client = await _Client.from_env()
     stub = client.stub
     resp = await stub.EnvironmentList(Empty())
-    display_results(resp.items, ["name"])
+    display_results(resp.items, ["name", "webhook_suffix"])
 
 
 ENVIRONMENT_CREATE_HELP = """Create a new environment in the current workspace"""
