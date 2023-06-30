@@ -28,7 +28,7 @@ from .shared_volume import _SharedVolume
 
 def _validate_python_version(version: str) -> None:
     components = version.split(".")
-    supported_versions = {"3.10", "3.9", "3.8", "3.7"}
+    supported_versions = {"3.11", "3.10", "3.9", "3.8", "3.7"}
     if len(components) == 2 and version in supported_versions:
         return
     elif len(components) == 3:
