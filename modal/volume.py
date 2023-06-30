@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2023
+import asyncio
 from typing import Optional
 
 from modal_proto import api_pb2
@@ -12,6 +13,12 @@ from .object import _Handle, _Provider
 class _VolumeHandle(_Handle, type_prefix="vo"):
     """mdmd:hidden Handle to a `Volume` object."""
 
+    _lock: asyncio.Lock
+
+    def _initialize_from_empty(self):
+        # To prevent multiple concurrent operations on the same volume.
+        self._lock = asyncio.Lock()
+
     async def commit(self):
         """Commit changes to the volume and fetch any other changes made to the volume by other tasks.
 
@@ -21,10 +28,11 @@ class _VolumeHandle(_Handle, type_prefix="vo"):
 
         Committing will fail if there are open files for the volume.
         """
-        req = api_pb2.VolumeCommitRequest(volume_id=self.object_id)
-        _ = await retry_transient_errors(self._client.stub.VolumeCommit, req)
-        # Reload changes on successful commit.
-        await self.reload()
+        async with self._lock:
+            req = api_pb2.VolumeCommitRequest(volume_id=self.object_id)
+            _ = await retry_transient_errors(self._client.stub.VolumeCommit, req)
+            # Reload changes on successful commit.
+            await self._do_reload(lock=False)
 
     async def reload(self):
         """Make changes made by other tasks/functions visible in the volume.
@@ -35,8 +43,17 @@ class _VolumeHandle(_Handle, type_prefix="vo"):
 
         Reloading will fail if there are open files for the volume.
         """
-        req = api_pb2.VolumeReloadRequest(volume_id=self.object_id)
-        _ = await retry_transient_errors(self._client.stub.VolumeReload, req)
+        await self._do_reload()
+
+    async def _do_reload(self, lock=True):
+        if lock:
+            await self._lock.acquire()
+        try:
+            req = api_pb2.VolumeReloadRequest(volume_id=self.object_id)
+            _ = await retry_transient_errors(self._client.stub.VolumeReload, req)
+        finally:
+            if lock:
+                self._lock.release()
 
 
 VolumeHandle = synchronize_api(_VolumeHandle)
