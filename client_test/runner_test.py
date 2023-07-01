@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2023
 import typing
-from typing import List, Any, Tuple
 
 import pytest
 
@@ -11,23 +10,15 @@ from modal_proto import api_pb2
 T = typing.TypeVar("T")
 
 
-def pop_message(calls: List[Tuple[str, Any]], message_type: typing.Type[T]) -> Tuple[T, List[Tuple[str, Any]]]:
-    for i, (_, msg) in enumerate(calls):
-        if isinstance(msg, message_type):
-            return msg, calls[i + 1 :]
-
-    raise Exception("No message of that type in call list")
-
-
 def test_run_stub(servicer, client):
     dummy_stub = modal.Stub()
     with servicer.intercept() as ctx:
         with run_stub(dummy_stub, client=client):
             pass
 
-    _, remaining_calls = pop_message(ctx.calls, api_pb2.AppCreateRequest)
-    _, remaining_calls = pop_message(remaining_calls, api_pb2.AppSetObjectsRequest)
-    _, remaining_calls = pop_message(remaining_calls, api_pb2.AppClientDisconnectRequest)
+    ctx.pop_request("AppCreate")
+    ctx.pop_request("AppSetObjects")
+    ctx.pop_request("AppClientDisconnect")
 
 
 def test_run_stub_profile_env_with_refs(servicer, client, monkeypatch):
@@ -38,17 +29,17 @@ def test_run_stub_profile_env_with_refs(servicer, client, monkeypatch):
     assert ctx.calls == []  # all calls should be deferred
 
     with servicer.intercept() as ctx:
-        ctx.add_response("AppLookupObject", [api_pb2.AppLookupObjectResponse(object_id="st-123")])
+        ctx.add_response("AppLookupObject", api_pb2.AppLookupObjectResponse(object_id="st-123"))
         with run_stub(dummy_stub, client=client):
             pass
 
     with pytest.raises(Exception):
-        pop_message(ctx.calls, api_pb2.SecretCreateRequest)  # should not create a new secret...
+        ctx.pop_request("SecretCreate")  # should not create a new secret...
 
-    app_create, remaining_calls = pop_message(ctx.calls, api_pb2.AppCreateRequest)
+    app_create = ctx.pop_request("AppCreate")
     assert app_create.environment_name == "profile_env"
 
-    app_lookup_object, remaining_calls = pop_message(remaining_calls, api_pb2.AppLookupObjectRequest)
+    app_lookup_object = ctx.pop_request("AppLookupObject")
     assert app_lookup_object.environment_name == "profile_env"
 
 
@@ -61,19 +52,19 @@ def test_run_stub_custom_env_with_refs(servicer, client, monkeypatch):
     )  # explicit lookup
 
     with servicer.intercept() as ctx:
-        ctx.add_response("AppLookupObject", [api_pb2.AppLookupObjectResponse(object_id="st-123")])
-        ctx.add_response("AppLookupObject", [api_pb2.AppLookupObjectResponse(object_id="st-456")])
+        ctx.add_response("AppLookupObject", api_pb2.AppLookupObjectResponse(object_id="st-123"))
+        ctx.add_response("AppLookupObject", api_pb2.AppLookupObjectResponse(object_id="st-456"))
         with run_stub(dummy_stub, client=client, environment_name="custom"):
             pass
 
     with pytest.raises(Exception):
-        pop_message(ctx.calls, api_pb2.SecretCreateRequest)
+        ctx.pop_request("SecretCreate")
 
-    app_create, remaining_calls = pop_message(ctx.calls, api_pb2.AppCreateRequest)
+    app_create = ctx.pop_request("AppCreate")
     assert app_create.environment_name == "custom"
 
-    app_lookup_object, remaining_calls = pop_message(remaining_calls, api_pb2.AppLookupObjectRequest)
+    app_lookup_object = ctx.pop_request("AppLookupObject")
     assert app_lookup_object.environment_name == "custom"
 
-    app_lookup_object, remaining_calls = pop_message(remaining_calls, api_pb2.AppLookupObjectRequest)
-    assert app_lookup_object.environment_name == "third"
+    app_lookup_object2 = ctx.pop_request("AppLookupObject")
+    assert app_lookup_object2.environment_name == "third"
