@@ -272,10 +272,8 @@ def test_serve(servicer, set_env_client, server_url_env, test_dir):
     _run(["serve", stub_file.as_posix(), "--timeout", "3"], expected_exit_code=0)
 
 
-def test_shell(servicer, set_env_client, test_dir):
-    stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
-    webhook_stub_file = test_dir / "supports" / "app_run_tests" / "webhook.py"
-
+@pytest.fixture
+def mock_shell_pty():
     def mock_get_pty_info() -> api_pb2.PTYInfo:
         rows, cols = (64, 128)
         return api_pb2.PTYInfo(
@@ -291,6 +289,17 @@ def test_shell(servicer, set_env_client, test_dir):
     async def noop_async_context_manager(*args, **kwargs):
         yield
 
+    with mock.patch("rich.console.Console.is_terminal", True), mock.patch(
+        "modal._pty.get_pty_info", mock_get_pty_info
+    ), mock.patch("modal._pty.write_stdin_to_pty_stream", noop_async_context_manager):
+        yield
+
+
+@pytest.mark.usefixtures("mock_shell_pty")
+def test_shell(servicer, set_env_client, test_dir):
+    stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
+    webhook_stub_file = test_dir / "supports" / "app_run_tests" / "webhook.py"
+
     ran_cmd = None
 
     @servicer.function_body
@@ -299,24 +308,15 @@ def test_shell(servicer, set_env_client, test_dir):
         ran_cmd = cmd
 
     # Function is explicitly specified
-    with mock.patch("rich.console.Console.is_terminal", True), mock.patch(
-        "modal._pty.get_pty_info", mock_get_pty_info
-    ), mock.patch("modal._pty.write_stdin_to_pty_stream", noop_async_context_manager):
-        _run(["shell", stub_file.as_posix() + "::foo"])
+    _run(["shell", stub_file.as_posix() + "::foo"])
     assert ran_cmd == "/bin/bash"
 
     # Function is explicitly specified
-    with mock.patch("rich.console.Console.is_terminal", True), mock.patch(
-        "modal._pty.get_pty_info", mock_get_pty_info
-    ), mock.patch("modal._pty.write_stdin_to_pty_stream", noop_async_context_manager):
-        _run(["shell", webhook_stub_file.as_posix() + "::foo"])
+    _run(["shell", webhook_stub_file.as_posix() + "::foo"])
     assert ran_cmd == "/bin/bash"
 
     # Function must be inferred
-    with mock.patch("rich.console.Console.is_terminal", True), mock.patch(
-        "modal._pty.get_pty_info", mock_get_pty_info
-    ), mock.patch("modal._pty.write_stdin_to_pty_stream", noop_async_context_manager):
-        _run(["shell", webhook_stub_file.as_posix()])
+    _run(["shell", webhook_stub_file.as_posix()])
     assert ran_cmd == "/bin/bash"
 
 
@@ -361,6 +361,36 @@ def test_volume_get(set_env_client):
             assert f.read() == "foo bar baz"
 
 
-def test_environment_flag(set_env_client, test_dir, servicer):
-    stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
-    _run(["run", "--env=staging", str(stub_file)])
+@pytest.mark.parametrize("command", [["run"], ["deploy"], ["serve", "--timeout=1"], ["shell"]])
+@pytest.mark.usefixtures("set_env_client", "mock_shell_pty")
+def test_environment_flag(test_dir, servicer, command):
+    @servicer.function_body
+    def nothing(
+        arg=None,
+    ):  # hacky - compatible with both argless modal run and interactive mode which always sends an arg...
+        pass
+
+    stub_file = test_dir / "supports" / "app_run_tests" / "app_with_lookups.py"
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "AppLookupObject",
+            api_pb2.AppLookupObjectResponse(object_id="mo-123"),
+            request_filter=lambda req: req.app_name.startswith("modal-client-mount"),
+        )  # built-in client lookup
+        ctx.add_response(
+            "AppLookupObject",
+            api_pb2.AppLookupObjectResponse(object_id="sv-123"),
+            request_filter=lambda req: req.app_name == "volume_app",
+        )
+        _run(command + ["--env=staging", str(stub_file)])
+
+    app_create: api_pb2.AppCreateRequest = ctx.pop_request("AppCreate")
+    assert app_create.environment_name == "staging"
+
+    app_lookup_object: api_pb2.AppLookupObjectRequest = ctx.pop_request("AppLookupObject")
+    assert app_lookup_object.app_name.startswith("modal-client-mount")
+    assert app_lookup_object.namespace == api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL
+
+    app_lookup_object2: api_pb2.AppLookupObjectRequest = ctx.pop_request("AppLookupObject")
+    assert app_lookup_object2.app_name == "volume_app"
+    assert app_lookup_object2.environment_name == "staging"
