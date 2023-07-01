@@ -18,7 +18,7 @@ from ._function_utils import FunctionInfo
 from ._resolver import Resolver
 from .app import is_local
 from .config import config, logger
-from .exception import InvalidError, NotFoundError, RemoteError, deprecation_error, deprecation_warning
+from .exception import InvalidError, NotFoundError, RemoteError, deprecation_warning
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount
 from .object import _Handle, _Provider
@@ -873,13 +873,10 @@ class _Image(_Provider[_ImageHandle]):
         )
 
     @staticmethod
-    def _registry_setup_commands(
-        tag: str, setup_dockerfile_commands: List[str], setup_commands: List[str]
-    ) -> List[str]:
+    def _registry_setup_commands(tag: str, setup_dockerfile_commands: List[str]) -> List[str]:
         return [
             f"FROM {tag}",
             *setup_dockerfile_commands,
-            *(f"RUN {cmd}" for cmd in setup_commands),
             "COPY /modal_requirements.txt /modal_requirements.txt",
             "RUN python -m pip install --upgrade pip",
             "RUN python -m pip install -r /modal_requirements.txt",
@@ -890,7 +887,6 @@ class _Image(_Provider[_ImageHandle]):
     def from_dockerhub(
         tag: str,
         setup_dockerfile_commands: List[str] = [],
-        setup_commands: List[str] = [],
         force_build: bool = False,
         **kwargs,
     ) -> "_Image":
@@ -917,14 +913,7 @@ class _Image(_Provider[_ImageHandle]):
         ```
         """
         requirements_path = _get_client_requirements_path()
-
-        if setup_commands:
-            deprecation_error(
-                date(2023, 3, 21),
-                "Setting `setup_commands` is deprecated in favor of the more general `setup_dockerfile_commands` argument. To migrate to this, prefix your existing commands with `RUN`.",
-            )
-
-        dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands, setup_commands)
+        dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands)
 
         return _Image._from_args(
             dockerfile_commands=dockerfile_commands,
@@ -970,7 +959,7 @@ class _Image(_Provider[_ImageHandle]):
         """
         requirements_path = _get_client_requirements_path()
 
-        dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands, [])
+        dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands)
 
         return _Image._from_args(
             dockerfile_commands=dockerfile_commands,
@@ -986,7 +975,6 @@ class _Image(_Provider[_ImageHandle]):
         tag: str,
         secret: Optional[_Secret] = None,
         setup_dockerfile_commands: List[str] = [],
-        setup_commands: List[str] = [],
         force_build: bool = False,
         **kwargs,
     ) -> "_Image":
@@ -1019,14 +1007,7 @@ class _Image(_Provider[_ImageHandle]):
         ```
         """
         requirements_path = _get_client_requirements_path()
-
-        if setup_commands:
-            deprecation_error(
-                date(2023, 3, 21),
-                "Setting `setup_commands` is deprecated in favor of the more general `setup_dockerfile_commands` argument. To migrate to this, prefix your existing commands with `RUN`.",
-            )
-
-        dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands, setup_commands)
+        dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands)
 
         return _Image._from_args(
             dockerfile_commands=dockerfile_commands,

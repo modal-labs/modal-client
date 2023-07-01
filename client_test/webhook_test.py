@@ -26,13 +26,6 @@ with pytest.raises(DeprecationError):
         return {"square": x**2}
 
 
-with pytest.raises(DeprecationError):
-
-    @stub.webhook(method="PUT", cpu=42)
-    async def h(x):
-        return {"square": x**2}
-
-
 @pytest.mark.asyncio
 async def test_webhook(servicer, client):
     async with stub.run(client=client) as app:
