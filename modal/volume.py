@@ -3,7 +3,7 @@ import asyncio
 from typing import Optional
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_api
+from modal_utils.async_utils import synchronize_api, asyncnullcontext
 from modal_utils.grpc_utils import retry_transient_errors
 
 from ._resolver import Resolver
@@ -46,14 +46,9 @@ class _VolumeHandle(_Handle, type_prefix="vo"):
         await self._do_reload()
 
     async def _do_reload(self, lock=True):
-        if lock:
-            await self._lock.acquire()
-        try:
+        async with self._lock if lock else asyncnullcontext():
             req = api_pb2.VolumeReloadRequest(volume_id=self.object_id)
             _ = await retry_transient_errors(self._client.stub.VolumeReload, req)
-        finally:
-            if lock:
-                self._lock.release()
 
 
 VolumeHandle = synchronize_api(_VolumeHandle)
