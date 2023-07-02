@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2023
-import json
 from typing import Optional
 
 from typing_extensions import Annotated
@@ -8,6 +7,7 @@ import typer
 
 from modal.client import _Client
 from modal.config import config
+from modal.cli.utils import display_selection
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
 from google.protobuf.empty_pb2 import Empty
@@ -47,18 +47,14 @@ def ensure_env(environment_name: Optional[str] = None) -> str:
     return config.get("environment")
 
 
-def display_results(items, fields):
-    for item in items:
-        typer.echo(json.dumps({field_name: getattr(item, field_name) for field_name in fields}))
-
-
 @environment_cli.command(name="list", help="List all environments in the current workspace")
 @synchronizer.create_blocking
-async def list():
+async def list(json: Optional[bool] = False):
     client = await _Client.from_env()
     stub = client.stub
     resp = await stub.EnvironmentList(Empty())
-    display_results(resp.items, ["name"])
+    envs = [item.name for item in resp.items]
+    display_selection(envs, config.get("environment"), json)
 
 
 ENVIRONMENT_CREATE_HELP = """Create a new environment in the current workspace"""
