@@ -17,6 +17,16 @@ from modal_utils.async_utils import synchronizer
 
 app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_args_is_help=True)
 
+APP_STATE_TO_MESSAGE = {
+    api_pb2.APP_STATE_DEPLOYED: "[green]deployed[/green]",
+    api_pb2.APP_STATE_DETACHED: "[green]running (detached)[/green]",
+    api_pb2.APP_STATE_DISABLED: "[grey]disabled[/grey]",
+    api_pb2.APP_STATE_EPHEMERAL: "[green]running[/green]",
+    api_pb2.APP_STATE_INITIALIZING: "[green]initializing...[/green]",
+    api_pb2.APP_STATE_STOPPED: "[blue]stopped[/blue]",
+    api_pb2.APP_STATE_STOPPING: "[blue]stopping...[/blue]",
+}
+
 
 @app_cli.command("list")
 @synchronizer.create_blocking
@@ -27,22 +37,9 @@ async def list(env: Optional[str] = typer.Option(default=None, help=ENV_OPTION_H
     res: api_pb2.AppListResponse = await client.stub.AppList(api_pb2.AppListRequest(environment_name=env))
     console = Console()
 
-    table = Table("App ID", "Description", "State", "Creation time", "Stop time")
+    table = Table("App ID", "Name", "State", "Creation time", "Stop time")
     for app_stats in res.apps:
-        if app_stats.state == api_pb2.AppState.APP_STATE_DETACHED:
-            state = "[green]running (detached)[/green]"
-        elif app_stats.state == api_pb2.AppState.APP_STATE_EPHEMERAL:
-            state = "[green]running[/green]"
-        elif app_stats.state == api_pb2.AppState.APP_STATE_INITIALIZING:
-            state = "[green]initializing...[/green]"
-        elif app_stats.state == api_pb2.AppState.APP_STATE_DEPLOYED:
-            state = "[green]deployed[/green]"
-        elif app_stats.state == api_pb2.AppState.APP_STATE_STOPPING:
-            state = "[blue]stopping...[/blue]"
-        elif app_stats.state == api_pb2.AppState.APP_STATE_STOPPED:
-            state = "[blue]stopped[/blue]"
-        else:
-            state = "[grey]unknown[/grey]"
+        state = APP_STATE_TO_MESSAGE.get(app_stats.state, "[grey]unknown[/grey]")
 
         table.add_row(
             app_stats.app_id,
