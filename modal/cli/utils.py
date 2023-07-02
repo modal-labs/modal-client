@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 from datetime import datetime
-from typing import Union
+from typing import Union, List
 
 from rich.console import Console
 from rich.table import Table
@@ -21,7 +21,7 @@ def _plain(text: Union[Text, str]) -> str:
     return text.plain if isinstance(text, Text) else text
 
 
-def display_table(column_names: list[str], rows: list[list[Union[Text, str]]], json: bool, title: str = None):
+def display_table(column_names: List[str], rows: List[List[Union[Text, str]]], json: bool, title: str = None):
     console = Console()
     if json:
         json_data = [{col: _plain(row[i]) for i, col in enumerate(column_names)} for row in rows]
@@ -33,7 +33,7 @@ def display_table(column_names: list[str], rows: list[list[Union[Text, str]]], j
         console.print(table)
 
 
-def display_selection(choices: list[str], active: str, json: bool):
+def display_selection(choices: List[str], active: str, json: bool):
     console = Console()
     if json:
         json_data = [{"name": choice, "active": choice == active} for choice in choices]
