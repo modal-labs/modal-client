@@ -43,8 +43,7 @@ async def list(
 
     console = Console()
     env_part = f" in environment '{env}'" if env else ""
-    console.print(f"Listing secrets{env_part}")
-    display_table(column_names, rows, json, console)
+    display_table(column_names, rows, json, console, title=f"Secrets{env_part}")
 
 
 @secret_cli.command("create", help="Create a new secret, or overwrite an existing one.")

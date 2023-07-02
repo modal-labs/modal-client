@@ -55,8 +55,7 @@ async def list(
         )
 
     env_part = f" in environment '{env}'" if env else ""
-    console.print(f"Listing apps{env_part}")
-    display_table(column_names, rows, json, console)
+    display_table(column_names, rows, json, console, title=f"Apps{env_part}")
 
 
 @app_cli.command("logs")
