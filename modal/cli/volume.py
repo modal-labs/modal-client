@@ -22,6 +22,7 @@ import modal
 from modal._location import display_location
 from modal._output import step_progress, step_completed
 from modal.cli.environment import ENV_OPTION_HELP, ensure_env
+from modal.cli.utils import display_table
 from modal.client import _Client
 from modal.shared_volume import _SharedVolumeHandle, _SharedVolume
 from modal_proto import api_pb2
@@ -35,31 +36,28 @@ volume_cli = Typer(name="volume", help="Read and edit shared volumes.", no_args_
 
 @volume_cli.command(name="list", help="List the names of all shared volumes.")
 @synchronizer.create_blocking
-async def list(env: Optional[str] = typer.Option(default=None, help=ENV_OPTION_HELP, hidden=True)):
+async def list(
+    env: Optional[str] = typer.Option(default=None, help=ENV_OPTION_HELP, hidden=True), json: Optional[bool] = False
+):
     env = ensure_env(env)
 
     client = await _Client.from_env()
     response = await retry_transient_errors(
         client.stub.SharedVolumeList, api_pb2.SharedVolumeListRequest(environment_name=env)
     )
-    if sys.stdout.isatty():
-        env_part = f" in environment '{env}'" if env else ""
-        table = Table(title=f"Shared Volumes{env_part}")
-        table.add_column("Name")
-        table.add_column("Location")
-        table.add_column("Created at", justify="right")
-        locale_tz = datetime.now().astimezone().tzinfo
-        for item in response.items:
-            table.add_row(
+    env_part = f" in environment '{env}'" if env else ""
+    column_names = ["Name", "Location", "Created at"]
+    rows = []
+    locale_tz = datetime.now().astimezone().tzinfo
+    for item in response.items:
+        rows.append(
+            [
                 item.label,
                 display_location(item.cloud_provider),
                 str(datetime.fromtimestamp(item.created_at, tz=locale_tz)),
-            )
-        console = Console()
-        console.print(table)
-    else:
-        for item in response.items:
-            print(item.label)
+            ]
+        )
+    display_table(column_names, rows, json, title=f"Shared Volumes{env_part}")
 
 
 def gen_usage_code(label):

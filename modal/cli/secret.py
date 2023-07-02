@@ -9,11 +9,10 @@ import click
 import typer
 from rich.console import Console
 from rich.syntax import Syntax
-from rich.table import Table
 
 import modal
 from modal.cli.environment import ENV_OPTION_HELP, ensure_env
-from modal.cli.utils import timestamp_to_local
+from modal.cli.utils import timestamp_to_local, display_table
 from modal.client import Client, _Client
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
@@ -24,26 +23,26 @@ secret_cli = typer.Typer(name="secret", help="Manage secrets.", no_args_is_help=
 
 @secret_cli.command("list", help="List your published secrets.")
 @synchronizer.create_blocking
-async def list(env: Optional[str] = typer.Option(None, help=ENV_OPTION_HELP, hidden=True)):
+async def list(
+    env: Optional[str] = typer.Option(None, help=ENV_OPTION_HELP, hidden=True), json: Optional[bool] = False
+):
     env = ensure_env(env)
     client = await _Client.from_env()
     response = await retry_transient_errors(client.stub.SecretList, api_pb2.SecretListRequest(environment_name=env))
-    table = Table()
-    table.add_column("Name")
-    table.add_column("Created at", justify="right")
-    table.add_column("Last used at", justify="right")
+    column_names = ["Name", "Created at", "Last used at"]
+    rows = []
 
     for item in response.items:
-        table.add_row(
-            item.label,
-            timestamp_to_local(item.created_at),
-            timestamp_to_local(item.last_used_at) if item.last_used_at else "-",
+        rows.append(
+            [
+                item.label,
+                timestamp_to_local(item.created_at),
+                timestamp_to_local(item.last_used_at) if item.last_used_at else "-",
+            ]
         )
 
-    console = Console()
     env_part = f" in environment '{env}'" if env else ""
-    console.print(f"Listing secrets{env_part}")
-    console.print(table)
+    display_table(column_names, rows, json, title=f"Secrets{env_part}")
 
 
 @secret_cli.command("create", help="Create a new secret, or overwrite an existing one.")
