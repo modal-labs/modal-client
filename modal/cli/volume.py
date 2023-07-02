@@ -57,8 +57,7 @@ async def list(
                 str(datetime.fromtimestamp(item.created_at, tz=locale_tz)),
             ]
         )
-    console = Console()
-    display_table(column_names, rows, json, console, title=f"Shared Volumes{env_part}")
+    display_table(column_names, rows, json, title=f"Shared Volumes{env_part}")
 
 
 def gen_usage_code(label):

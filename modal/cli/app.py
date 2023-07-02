@@ -5,7 +5,6 @@ from typing import Optional, List, Union
 import typer
 from click import UsageError
 from grpclib import GRPCError, Status
-from rich.console import Console
 from rich.text import Text
 
 from modal.cli.environment import ENV_OPTION_HELP, ensure_env
@@ -37,7 +36,6 @@ async def list(
     client = await _Client.from_env()
     env = ensure_env(env)
     res: api_pb2.AppListResponse = await client.stub.AppList(api_pb2.AppListRequest(environment_name=env))
-    console = Console()
 
     column_names = ["App ID", "Name", "State", "Creation time", "Stop time"]
     rows: List[List[Union[Text, str]]] = []
@@ -55,7 +53,7 @@ async def list(
         )
 
     env_part = f" in environment '{env}'" if env else ""
-    display_table(column_names, rows, json, console, title=f"Apps{env_part}")
+    display_table(column_names, rows, json, title=f"Apps{env_part}")
 
 
 @app_cli.command("logs")
