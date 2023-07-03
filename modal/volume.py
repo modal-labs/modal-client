@@ -16,7 +16,10 @@ class _VolumeHandle(_Handle, type_prefix="vo"):
     _lock: asyncio.Lock
 
     def _initialize_from_empty(self):
-        # To prevent multiple concurrent operations on the same volume.
+        # To (mostly*) prevent multiple concurrent operations on the same volume, which can cause problems under
+        # some unlikely circumstances.
+        # *: You can bypass this by creating multiple handles to the same volume, e.g. via lookup. But this
+        # covers the typical case = good enough.
         self._lock = asyncio.Lock()
 
     async def commit(self):
