@@ -247,26 +247,6 @@ class _Provider(Generic[H]):
     def _persist(
         self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
     ):
-        """Deploy a Modal app containing this object. This object can then be imported from other apps using
-        the returned reference, or by calling `modal.SharedVolume.from_name(label)` (or the equivalent method
-        on respective class).
-
-        **Example Usage**
-
-        ```python
-        import modal
-
-        volume = modal.SharedVolume().persist("my-volume")
-
-        stub = modal.Stub()
-
-        # Volume refers to the same object, even across instances of `stub`.
-        @stub.function(shared_volumes={"/vol": volume})
-        def f():
-            pass
-        ```
-
-        """
         if environment_name is None:
             environment_name = config.get("environment")
 
