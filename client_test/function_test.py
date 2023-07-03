@@ -513,7 +513,7 @@ with pytest.raises(DeprecationError):
 
 def test_allow_cross_region_volumes(client, servicer):
     stub = Stub()
-    vol1, vol2 = SharedVolume(), SharedVolume()
+    vol1, vol2 = SharedVolume.new(), SharedVolume.new()
     # Should pass flag for all the function's SharedVolumeMounts
     stub.function(shared_volumes={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(dummy)
 
@@ -528,7 +528,7 @@ def test_allow_cross_region_volumes(client, servicer):
 def test_allow_cross_region_volumes_webhook(client, servicer):
     # TODO(erikbern): this stest seems a bit redundant
     stub = Stub()
-    vol1, vol2 = SharedVolume(), SharedVolume()
+    vol1, vol2 = SharedVolume.new(), SharedVolume.new()
     # Should pass flag for all the function's SharedVolumeMounts
     stub.function(shared_volumes={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(web_endpoint()(dummy))
 

@@ -139,7 +139,7 @@ class _Dict(_Provider[_DictHandle]):
 
     @typechecked
     @staticmethod
-    def new(data={}):
+    def new(data={}) -> "_Dict":
         """Create a new dictionary, optionally filled with initial data."""
 
         async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _DictHandle:
@@ -158,6 +158,19 @@ class _Dict(_Provider[_DictHandle]):
         deprecation_warning(date(2023, 6, 27), self.__init__.__doc__)
         obj = _Dict.new(data)
         self._init_from_other(obj)
+
+    @staticmethod
+    def persisted(
+        label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
+    ) -> "_Dict":
+        return _Dict.new()._persist(label, namespace, environment_name)
+
+    def persist(
+        self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
+    ) -> "_Dict":
+        """`Dict().persist("my-dict")` is deprecated. Use `Dict.persisted("my-dict")` instead."""
+        deprecation_warning(date(2023, 6, 30), self.persist.__doc__)
+        return self.persisted(label, namespace, environment_name)
 
 
 Dict = synchronize_api(_Dict)

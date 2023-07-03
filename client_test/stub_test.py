@@ -255,7 +255,7 @@ async def test_redeploy_persist(servicer, client):
     assert app.app_id == "ap-1"
     assert servicer.app_objects["ap-1"]["d"] == "di-0"
 
-    stub.d = Dict.new().persist("my-dict")
+    stub.d = Dict.persisted("my-dict")
     # Redeploy, make sure all ids are the same
     app = await deploy_stub.aio(stub, "my-app", client=client)
     assert app.app_id == "ap-1"
