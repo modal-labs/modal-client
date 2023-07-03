@@ -1,5 +1,11 @@
 # Copyright Modal Labs 2022
 from datetime import datetime
+from typing import Union, List
+
+from rich.console import Console
+from rich.table import Table
+from rich.text import Text
+from rich.json import JSON
 
 
 def timestamp_to_local(ts: float) -> str:
@@ -9,3 +15,30 @@ def timestamp_to_local(ts: float) -> str:
         return dt.isoformat(sep=" ", timespec="seconds")
     else:
         return None
+
+
+def _plain(text: Union[Text, str]) -> str:
+    return text.plain if isinstance(text, Text) else text
+
+
+def display_table(column_names: List[str], rows: List[List[Union[Text, str]]], json: bool, title: str = None):
+    console = Console()
+    if json:
+        json_data = [{col: _plain(row[i]) for i, col in enumerate(column_names)} for row in rows]
+        console.print(JSON.from_data(json_data))
+    else:
+        table = Table(*column_names, title=title)
+        for row in rows:
+            table.add_row(*row)
+        console.print(table)
+
+
+def display_selection(choices: List[str], active: str, json: bool):
+    console = Console()
+    if json:
+        json_data = [{"name": choice, "active": choice == active} for choice in choices]
+        console.print(JSON.from_data(json_data))
+    else:
+        for choice in choices:
+            text = Text(f"{choice} [active]", style="green") if active == choice else Text(choice, style="dim")
+            console.print(text)

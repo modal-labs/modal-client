@@ -15,7 +15,6 @@ def dummy():
 
 def test_volume_mount(client, servicer):
     stub = modal.Stub()
-    stub.vol = modal.Volume()
 
     _ = stub.function(
         volumes={"/root/foo": modal.Volume()},

@@ -1,8 +1,9 @@
 # Copyright Modal Labs 2023
 import contextlib
 import inspect
-from collections import deque, defaultdict
-from typing import Any, Optional, List, Tuple
+import logging
+from collections import defaultdict, Counter
+from typing import Any, List, Tuple, Callable, Dict
 
 from grpclib import GRPCError, Status
 
@@ -43,6 +44,7 @@ def patch_mock_servicer(cls):
         ctx = InterceptionContext()
         servicer.interception_context = ctx
         yield ctx
+        ctx.assert_responses_consumed()
         servicer.interception_context = None
 
     cls.intercept = intercept
@@ -52,8 +54,8 @@ def patch_mock_servicer(cls):
         async def intercepted_method(servicer_self, stream):
             ctx = servicer_self.interception_context
             if ctx:
-                intercepted_stream = InterceptedStream(ctx, method_name, stream)
-                custom_responder = ctx.next_custom_responder(method_name)
+                intercepted_stream = await InterceptedStream(ctx, method_name, stream).initialize()
+                custom_responder = ctx.next_custom_responder(method_name, intercepted_stream.request_message)
                 if custom_responder:
                     return await custom_responder(servicer_self, intercepted_stream)
                 else:
@@ -76,36 +78,73 @@ def patch_mock_servicer(cls):
     return cls
 
 
+class ResponseNotConsumed(Exception):
+    def __init__(self, unconsumed_requests: List[str]):
+        self.unconsumed_requests = unconsumed_requests
+        request_count = Counter(unconsumed_requests)
+        super().__init__(f"Expected but did not receive the following requests: {request_count}")
+
+
 class InterceptionContext:
     def __init__(self):
         self.calls: List[Tuple[str, Any]] = []  # List[Tuple[method_name, message]]
-        self.custom_responses: dict[str, deque[List[Any]]] = defaultdict(deque)
+        self.custom_responses: Dict[str, List[Tuple[Callable[[Any], bool], List[Any]]]] = defaultdict(list)
 
     def add_recv(self, method_name: str, msg):
         self.calls.append((method_name, msg))
 
-    def add_response(self, method_name: str, custom_response: Optional[List[Any]] = None):
-        # adds one response to a queue of responses for method method_name
-        if custom_response is not None:
-            assert isinstance(
-                custom_response, list
-            ), "custom_response should be a list of messages sent back by the servicer"
+    def add_response(
+        self, method_name: str, first_payload, *, request_filter: Callable[[Any], bool] = lambda req: True
+    ):
+        # adds one response to a queue of responses for requests of the specified type
+        self.custom_responses[method_name].append((request_filter, [first_payload]))
 
-        if custom_response:
-            self.custom_responses[method_name].append(custom_response)
-
-    def next_custom_responder(self, method_name):
+    def next_custom_responder(self, method_name, request):
         method_responses = self.custom_responses[method_name]
-        if not method_responses:
+
+        for i, (request_filter, response_messages) in enumerate(method_responses):
+            try:
+                request_matches = request_filter(request)
+            except Exception:
+                logging.exception("Error when filtering requests")
+                raise
+
+            if request_matches:
+                next_response_messages = response_messages
+                self.custom_responses[method_name] = method_responses[:i] + method_responses[i + 1 :]
+                break
+        else:
             return None
-        next_response_messages = method_responses.popleft()
 
         async def responder(servicer_self, stream):
-            await stream.recv_message()  # get the input message so we can track that
-            for msg in next_response_messages:
-                await stream.send_message(msg)
+            try:
+                await stream.recv_message()  # get the input message so we can track that
+                for msg in next_response_messages:
+                    await stream.send_message(msg)
+            except Exception:
+                logging.exception("Error when sending response")
+                raise
 
         return responder
+
+    def assert_responses_consumed(self):
+        unconsumed = []
+        for method_name, queued_responses in self.custom_responses.items():
+            unconsumed += [method_name] * len(queued_responses)
+
+        if unconsumed:
+            raise ResponseNotConsumed(unconsumed)
+
+    def pop_request(self, method_name):
+        # fast forward to the next request of type method_name
+        # dropping any preceding requests if there is a match
+        # returns the payload of the request
+        for i, (_method_name, msg) in enumerate(self.calls):
+            if _method_name == method_name:
+                self.calls = self.calls[i + 1 :]
+                return msg
+
+        raise Exception(f"No message of that type in call list: {self.calls}")
 
 
 class InterceptedStream:
@@ -113,8 +152,18 @@ class InterceptedStream:
         self.interception_context = interception_context
         self.method_name = method_name
         self.stream = stream
+        self.request_message = None
+
+    async def initialize(self):
+        self.request_message = await self.recv_message()
+        return self
 
     async def recv_message(self):
+        if self.request_message:
+            ret = self.request_message
+            self.request_message = None
+            return ret
+
         msg = await self.stream.recv_message()
         self.interception_context.add_recv(self.method_name, msg)
         return msg

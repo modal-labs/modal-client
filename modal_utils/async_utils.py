@@ -5,6 +5,7 @@ import functools
 import inspect
 import time
 import typing
+from contextlib import asynccontextmanager
 from typing import Any, Awaitable, Callable, List, Optional, Set, TypeVar
 from typing_extensions import ParamSpec
 
@@ -328,3 +329,16 @@ class ConcurrencyPool:
                 return await coro
 
         return await asyncio.gather(*coros, return_exceptions=return_exceptions)
+
+
+@asynccontextmanager
+async def asyncnullcontext(*args, **kwargs):
+    """Async noop context manager.
+
+    Note that for Python 3.10+ you can use contextlib.nullcontext() instead.
+
+    Usage:
+    async with asyncnullcontext():
+        pass
+    """
+    yield
