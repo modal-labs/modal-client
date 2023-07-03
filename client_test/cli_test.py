@@ -390,3 +390,41 @@ def test_environment_flag(test_dir, servicer, command):
     app_lookup_object2: api_pb2.AppLookupObjectRequest = ctx.pop_request("AppLookupObject")
     assert app_lookup_object2.app_name == "volume_app"
     assert app_lookup_object2.environment_name == "staging"
+
+
+@pytest.mark.parametrize("command", [["run"], ["deploy"], ["serve", "--timeout=1"], ["shell"]])
+@pytest.mark.usefixtures("set_env_client", "mock_shell_pty")
+def test_environment_noflag(test_dir, servicer, command, monkeypatch):
+    monkeypatch.setenv("MODAL_ENVIRONMENT", "some_weird_default_env")
+
+    @servicer.function_body
+    def nothing(
+        arg=None,
+    ):  # hacky - compatible with both argless modal run and interactive mode which always sends an arg...
+        pass
+
+    stub_file = test_dir / "supports" / "app_run_tests" / "app_with_lookups.py"
+
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "AppLookupObject",
+            api_pb2.AppLookupObjectResponse(object_id="mo-123"),
+            request_filter=lambda req: req.app_name.startswith("modal-client-mount"),
+        )  # built-in client lookup
+        ctx.add_response(
+            "AppLookupObject",
+            api_pb2.AppLookupObjectResponse(object_id="sv-123"),
+            request_filter=lambda req: req.app_name == "volume_app",
+        )
+        _run(command + [str(stub_file)])
+
+    app_create: api_pb2.AppCreateRequest = ctx.pop_request("AppCreate")
+    assert app_create.environment_name == "some_weird_default_env"
+
+    app_lookup_object: api_pb2.AppLookupObjectRequest = ctx.pop_request("AppLookupObject")
+    assert app_lookup_object.app_name.startswith("modal-client-mount")
+    assert app_lookup_object.namespace == api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL
+
+    app_lookup_object2: api_pb2.AppLookupObjectRequest = ctx.pop_request("AppLookupObject")
+    assert app_lookup_object2.app_name == "volume_app"
+    assert app_lookup_object2.environment_name == "some_weird_default_env"
