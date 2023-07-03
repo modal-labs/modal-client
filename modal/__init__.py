@@ -14,7 +14,7 @@ from .queue import Queue
 from .retries import Retries
 from .schedule import Cron, Period
 from .secret import Secret
-from .shared_volume import SharedVolume
+from .network_file_system import NetworkFileSystem
 from .stub import Stub
 from .volume import Volume
 
@@ -29,12 +29,12 @@ __all__ = [
     "FunctionHandle",
     "Image",
     "Mount",
+    "NetworkFileSystem",
     "Period",
     "Proxy",
     "Queue",
     "Retries",
     "Secret",
-    "SharedVolume",
     "Stub",
     "Volume",
     "asgi_app",

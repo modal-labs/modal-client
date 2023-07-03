@@ -33,7 +33,7 @@ from .queue import _Queue
 from .runner import _run_stub
 from .schedule import Schedule
 from .secret import _Secret
-from .shared_volume import _SharedVolume
+from .network_file_system import _NetworkFileSystem
 from .volume import _Volume
 
 _default_image: _Image = _Image.debian_slim()
@@ -445,7 +445,7 @@ class _Stub:
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Sequence[_Mount] = (),
-        shared_volumes: Dict[Union[str, os.PathLike], _SharedVolume] = {},
+        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         allow_cross_region_volumes: bool = False,  # Whether using shared volumes from other regions is allowed.
         volumes: Dict[Union[str, os.PathLike], _Volume] = {},  # Experimental. Do not use!
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
@@ -529,7 +529,7 @@ class _Stub:
                 is_generator=is_generator_override,
                 gpu=gpu,
                 mounts=[*self._mounts, *mounts],
-                shared_volumes=shared_volumes,
+                network_file_systems=network_file_systems,
                 allow_cross_region_volumes=allow_cross_region_volumes,
                 volumes=volumes,
                 memory=memory,
@@ -617,7 +617,7 @@ class _Stub:
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Sequence[_Mount] = (),
-        shared_volumes: Dict[Union[str, os.PathLike], _SharedVolume] = {},
+        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         allow_cross_region_volumes: bool = False,  # Whether using shared volumes from other regions is allowed.
         volumes: Dict[Union[str, os.PathLike], _Volume] = {},  # Experimental. Do not use!
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
@@ -647,7 +647,7 @@ class _Stub:
                         gpu=gpu,
                         serialized=serialized,
                         mounts=mounts,
-                        shared_volumes=shared_volumes,
+                        network_file_systems=network_file_systems,
                         allow_cross_region_volumes=allow_cross_region_volumes,
                         volumes=volumes,
                         cpu=cpu,

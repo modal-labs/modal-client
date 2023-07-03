@@ -23,7 +23,7 @@ from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount
 from .object import _Handle, _Provider
 from .secret import _Secret
-from .shared_volume import _SharedVolume
+from .network_file_system import _NetworkFileSystem
 
 
 def _validate_python_version(version: str) -> None:
@@ -1137,7 +1137,7 @@ class _Image(_Provider[_ImageHandle]):
         secrets: Sequence[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         mounts: Sequence[_Mount] = (),
-        shared_volumes: Dict[Union[str, os.PathLike], _SharedVolume] = {},
+        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         timeout: Optional[int] = 86400,  # Maximum execution time of the function in seconds.
@@ -1145,7 +1145,7 @@ class _Image(_Provider[_ImageHandle]):
         force_build: bool = False,
     ) -> "_Image":
         """Run user-defined function `raw_function` as an image build step. The function runs just like an ordinary Modal
-        function, and any kwargs accepted by `@stub.function` (such as `Mount`s, `SharedVolume`s, and resource requests) can
+        function, and any kwargs accepted by `@stub.function` (such as `Mount`s, `NetworkFileSystem`s, and resource requests) can
         be supplied to it. After it finishes execution, a snapshot of the resulting container file system is saved as an image.
 
         **Note**
@@ -1183,7 +1183,7 @@ class _Image(_Provider[_ImageHandle]):
             secrets=secrets,
             gpu=gpu,
             mounts=mounts,
-            shared_volumes=shared_volumes,
+            network_file_systems=network_file_systems,
             memory=memory,
             timeout=timeout,
             cpu=cpu,

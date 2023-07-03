@@ -23,11 +23,11 @@ SHARED_VOLUME_PUT_FILE_CLIENT_TIMEOUT = (
 )  # 10 min max for transferring files (does not include upload time to s3)
 
 
-class _SharedVolumeHandle(_Handle, type_prefix="sv"):
-    """Handle to a `SharedVolume` object.
+class _NetworkFileSystemHandle(_Handle, type_prefix="sv"):
+    """Handle to a `NetworkFileSystem` object.
 
     Should typically not be used directly in a Modal function,
-    and instead referenced through the file system, see `modal.SharedVolume`.
+    and instead referenced through the file system, see `modal.NetworkFileSystem`.
 
     Also see the CLI methods for accessing shared volumes:
 
@@ -35,7 +35,7 @@ class _SharedVolumeHandle(_Handle, type_prefix="sv"):
     modal volume --help
     ```
 
-    A SharedVolumeHandle *can* however be useful for some local scripting scenarios, e.g.:
+    A NetworkFileSystemHandle *can* however be useful for some local scripting scenarios, e.g.:
 
     ```python notest
     vol = modal.lookup("my-shared-volume")
@@ -152,10 +152,10 @@ class _SharedVolumeHandle(_Handle, type_prefix="sv"):
         await retry_transient_errors(self._client.stub.SharedVolumeRemoveFile, req)
 
 
-SharedVolumeHandle = synchronize_api(_SharedVolumeHandle)
+NetworkFileSystemHandle = synchronize_api(_NetworkFileSystemHandle)
 
 
-class _SharedVolume(_Provider[_SharedVolumeHandle]):
+class _NetworkFileSystem(_Provider[_NetworkFileSystemHandle]):
     """A shared, writable file system accessible by one or more Modal functions.
 
     By attaching this file system as a mount to one or more functions, they can
@@ -166,7 +166,7 @@ class _SharedVolume(_Provider[_SharedVolumeHandle]):
     ```python
     import modal
 
-    volume = modal.SharedVolume.new()
+    volume = modal.NetworkFileSystem.new()
     stub = modal.Stub()
 
     @stub.function(shared_volumes={"/root/foo": volume})
@@ -186,14 +186,14 @@ class _SharedVolume(_Provider[_SharedVolumeHandle]):
 
     @typechecked
     @staticmethod
-    def new(cloud: Optional[str] = None) -> "_SharedVolume":
+    def new(cloud: Optional[str] = None) -> "_NetworkFileSystem":
         """Construct a new shared volume, which is empty by default."""
 
-        async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _SharedVolumeHandle:
+        async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _NetworkFileSystemHandle:
             status_row = resolver.add_status_row()
             if existing_object_id:
                 # Volume already exists; do nothing.
-                return _SharedVolumeHandle._from_id(existing_object_id, resolver.client, None)
+                return _NetworkFileSystemHandle._from_id(existing_object_id, resolver.client, None)
 
             cloud_provider = parse_cloud_provider(cloud) if cloud else None
 
@@ -201,14 +201,14 @@ class _SharedVolume(_Provider[_SharedVolumeHandle]):
             req = api_pb2.SharedVolumeCreateRequest(app_id=resolver.app_id, cloud_provider=cloud_provider)
             resp = await retry_transient_errors(resolver.client.stub.SharedVolumeCreate, req)
             status_row.finish("Created shared volume.")
-            return _SharedVolumeHandle._from_id(resp.shared_volume_id, resolver.client, None)
+            return _NetworkFileSystemHandle._from_id(resp.shared_volume_id, resolver.client, None)
 
-        return _SharedVolume._from_loader(_load, "SharedVolume()")
+        return _NetworkFileSystem._from_loader(_load, "NetworkFileSystem()")
 
     def __init__(self, cloud: Optional[str] = None) -> None:
-        """`SharedVolume(...)` is deprecated. Please use `SharedVolume.new(...)` instead."""
+        """`NetworkFileSystem(...)` is deprecated. Please use `NetworkFileSystem.new(...)` instead."""
         deprecation_warning(date(2023, 6, 30), self.__init__.__doc__)
-        obj = _SharedVolume.new(cloud)
+        obj = _NetworkFileSystem.new(cloud)
         self._init_from_other(obj)
 
     @staticmethod
@@ -217,9 +217,9 @@ class _SharedVolume(_Provider[_SharedVolumeHandle]):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         cloud: Optional[str] = None,
-    ) -> "_SharedVolume":
+    ) -> "_NetworkFileSystem":
         """Deploy a Modal app containing this object. This object can then be imported from other apps using
-        the returned reference, or by calling `modal.SharedVolume.from_name(label)` (or the equivalent method
+        the returned reference, or by calling `modal.NetworkFileSystem.from_name(label)` (or the equivalent method
         on respective class).
 
         **Example Usage**
@@ -227,7 +227,7 @@ class _SharedVolume(_Provider[_SharedVolumeHandle]):
         ```python
         import modal
 
-        volume = modal.SharedVolume.persisted("my-volume")
+        volume = modal.NetworkFileSystem.persisted("my-volume")
 
         stub = modal.Stub()
 
@@ -238,7 +238,7 @@ class _SharedVolume(_Provider[_SharedVolumeHandle]):
         ```
 
         """
-        return _SharedVolume.new(cloud)._persist(label, namespace, environment_name)
+        return _NetworkFileSystem.new(cloud)._persist(label, namespace, environment_name)
 
     def persist(
         self,
@@ -246,10 +246,10 @@ class _SharedVolume(_Provider[_SharedVolumeHandle]):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         cloud: Optional[str] = None,
-    ) -> "_SharedVolume":
-        """`SharedVolume().persist("my-volume")` is deprecated. Use `SharedVolume.persisted("my-volume")` instead."""
+    ) -> "_NetworkFileSystem":
+        """`NetworkFileSystem().persist("my-volume")` is deprecated. Use `NetworkFileSystem.persisted("my-volume")` instead."""
         deprecation_warning(date(2023, 6, 30), self.persist.__doc__)
         return self.persisted(label, namespace, environment_name, cloud)
 
 
-SharedVolume = synchronize_api(_SharedVolume)
+NetworkFileSystem = synchronize_api(_NetworkFileSystem)
