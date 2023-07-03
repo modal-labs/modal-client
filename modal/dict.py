@@ -164,7 +164,10 @@ class _Dict(_Provider[_DictHandle]):
         label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
     ) -> "_Dict":
         """See `SharedVolume.persisted`."""
-        return _Dict.new()._persist(label, namespace, environment_name)
+        async def _load_persisted(resolver: Resolver, existing_object_id: Optional[str]) -> H:
+            return await self._deploy(label, namespace, resolver.client, environment_name=environment_name)
+
+        return _Dict._from_loader(_load, "Dict()", is_persisted_ref=True)
 
     def persist(
         self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None

@@ -243,20 +243,6 @@ class _Provider(Generic[H]):
             self.persist.__doc__,
         )
 
-    @typechecked
-    def _persist(
-        self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
-    ):
-        if environment_name is None:
-            environment_name = config.get("environment")
-
-        async def _load_persisted(resolver: Resolver, existing_object_id: Optional[str]) -> H:
-            return await self._deploy(label, namespace, resolver.client, environment_name=environment_name)
-
-        cls = type(self)
-        rep = f"PersistedRef<{self}>({label})"
-        return cls._from_loader(_load_persisted, rep, is_persisted_ref=True)
-
     @classmethod
     def from_name(
         cls: Type[P],

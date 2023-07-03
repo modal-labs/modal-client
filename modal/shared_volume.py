@@ -238,7 +238,11 @@ class _SharedVolume(_Provider[_SharedVolumeHandle]):
         ```
 
         """
-        return _SharedVolume.new(cloud)._persist(label, namespace, environment_name)
+
+        async def _load_persisted(resolver: Resolver, existing_object_id: Optional[str]) -> H:
+            return await self._deploy(label, namespace, resolver.client, environment_name=environment_name)
+
+        return _SharedVolume._from_loader(_load, "SharedVolume()", is_persisted_ref=True)
 
     def persist(
         self,

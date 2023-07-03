@@ -156,7 +156,10 @@ class _Queue(_Provider[_QueueHandle]):
     def persisted(
         label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
     ) -> "_Queue":
-        return _Queue.new()._persist(label, namespace, environment_name)
+        async def _load_persisted(resolver: Resolver, existing_object_id: Optional[str]) -> H:
+            return await self._deploy(label, namespace, resolver.client, environment_name=environment_name)
+
+        return _Queue._from_loader(_load, "Queue()", is_persisted_ref=True)
 
 
 Queue = synchronize_api(_Queue)
