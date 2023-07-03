@@ -240,7 +240,7 @@ async def _interactive_shell(stub, cmd: str, function: _Function, environment_na
         interactive=True,
         timeout=86400,
         mounts=function._mounts,
-        shared_volumes=function._shared_volumes,
+        network_file_systems=function._network_file_systems,
         allow_cross_region_volumes=function._allow_cross_region_volumes,
         image=function._image,
         secrets=function._secrets,

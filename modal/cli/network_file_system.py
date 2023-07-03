@@ -24,17 +24,17 @@ from modal._output import step_progress, step_completed
 from modal.environments import ensure_env
 from modal.cli.utils import display_table, ENV_OPTION
 from modal.client import _Client
-from modal.shared_volume import _SharedVolumeHandle, _SharedVolume
+from modal.network_file_system import _NetworkFileSystemHandle, _NetworkFileSystem
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
 from modal_utils.grpc_utils import retry_transient_errors
 
 FileType = api_pb2.SharedVolumeListFilesEntry.FileType
 
-volume_cli = Typer(name="volume", help="Read and edit shared volumes.", no_args_is_help=True)
+nfs_cli = Typer(name="nfs", help="Read and edit shared volumes.", no_args_is_help=True)
 
 
-@volume_cli.command(name="list", help="List the names of all shared volumes.")
+@nfs_cli.command(name="list", help="List the names of all shared volumes.")
 @synchronizer.create_blocking
 async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     env = ensure_env(env)
@@ -60,20 +60,20 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
 
 def gen_usage_code(label):
     return f"""
-@stub.function(shared_volumes={{"/my_vol": modal.SharedVolume.from_name("{label}")}})
+@stub.function(network_file_systems={{"/my_vol": modal.NetworkFileSystem.from_name("{label}")}})
 def some_func():
     os.listdir("/my_vol")
 """
 
 
-@volume_cli.command(name="create", help="Create a named shared volume.")
+@nfs_cli.command(name="create", help="Create a named shared volume.")
 def create(
     name: str,
     cloud: str = typer.Option("aws", help="Cloud provider to create the volume in. One of aws|gcp."),
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
-    volume = modal.SharedVolume.new(cloud=cloud)
+    volume = modal.NetworkFileSystem.new(cloud=cloud)
     volume._deploy(name, environment_name=env)
     console = Console()
     console.print(f"Created volume '{name}' in {cloud.upper()}. \n\nCode example:\n")
@@ -81,16 +81,16 @@ def create(
     console.print(usage)
 
 
-async def _volume_from_name(deployment_name: str) -> _SharedVolumeHandle:
-    shared_volume = await _SharedVolume.lookup(
+async def _volume_from_name(deployment_name: str) -> _NetworkFileSystemHandle:
+    network_file_system = await _NetworkFileSystem.lookup(
         deployment_name, environment_name=None
     )  # environment None will take value from config
-    if not isinstance(shared_volume, _SharedVolumeHandle):
+    if not isinstance(network_file_system, _NetworkFileSystemHandle):
         raise Exception("The specified app entity is not a shared volume")
-    return shared_volume
+    return network_file_system
 
 
-@volume_cli.command(name="ls", help="List files and directories in a shared volume.")
+@nfs_cli.command(name="ls", help="List files and directories in a shared volume.")
 @synchronizer.create_blocking
 async def ls(
     volume_name: str,
@@ -126,7 +126,7 @@ async def ls(
 PIPE_PATH = Path("-")
 
 
-@volume_cli.command(
+@nfs_cli.command(
     name="put",
     help="""Upload a file or directory to a shared volume.
 
@@ -170,7 +170,7 @@ class CliError(Exception):
         self.message = message
 
 
-async def _glob_download(volume: _SharedVolumeHandle, remote_glob_path: str, local_destination: Path, overwrite: bool):
+async def _glob_download(volume: _NetworkFileSystemHandle, remote_glob_path: str, local_destination: Path, overwrite: bool):
     q: asyncio.Queue[Tuple[Optional[Path], Optional[api_pb2.SharedVolumeListFilesEntry]]] = asyncio.Queue()
 
     async def producer():
@@ -215,7 +215,7 @@ async def _glob_download(volume: _SharedVolumeHandle, remote_glob_path: str, loc
     await asyncio.gather(*tasks)
 
 
-@volume_cli.command(name="get")
+@nfs_cli.command(name="get")
 @synchronizer.create_blocking
 async def get(
     volume_name: str,
@@ -281,7 +281,7 @@ async def get(
         print(f"Wrote {b} bytes to '{destination}'", file=sys.stderr)
 
 
-@volume_cli.command(name="rm", help="Delete a file or directory from a shared volume.")
+@nfs_cli.command(name="rm", help="Delete a file or directory from a shared volume.")
 @synchronizer.create_blocking
 async def rm(
     volume_name: str,
