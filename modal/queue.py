@@ -11,7 +11,6 @@ from modal_utils.grpc_utils import retry_transient_errors
 
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
-from ._types import typechecked
 from .exception import deprecation_warning
 from .object import _Handle, _Provider
 
@@ -138,7 +137,6 @@ class _Queue(_Provider[_QueueHandle]):
     The queue can contain any object serializable by `cloudpickle`.
     """
 
-    @typechecked
     @staticmethod
     def new():
         async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _QueueHandle:
@@ -153,6 +151,12 @@ class _Queue(_Provider[_QueueHandle]):
         deprecation_warning(date(2023, 6, 27), self.__init__.__doc__)
         obj = _Queue.new()
         self._init_from_other(obj)
+
+    @staticmethod
+    def persisted(
+        label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
+    ) -> "_Queue":
+        return _Queue.new()._persist(label, namespace, environment_name)
 
 
 Queue = synchronize_api(_Queue)
