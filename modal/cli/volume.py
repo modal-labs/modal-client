@@ -75,7 +75,7 @@ def create(
     env: Optional[str] = typer.Option(None, help=ENV_OPTION_HELP, hidden=True),
 ):
     ensure_env(env)
-    volume = modal.SharedVolume(cloud=cloud)
+    volume = modal.SharedVolume.new(cloud=cloud)
     volume._deploy(name, environment_name=env)
     console = Console()
     console.print(f"Created volume '{name}' in {cloud.upper()}. \n\nCode example:\n")

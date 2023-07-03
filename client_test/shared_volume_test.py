@@ -4,7 +4,7 @@ from unittest import mock
 import pytest
 
 import modal
-from modal.exception import InvalidError
+from modal.exception import DeprecationError, InvalidError
 from modal.shared_volume import SharedVolumeHandle
 
 from .supports.skip import skip_windows
@@ -18,7 +18,7 @@ def test_shared_volume_files(client, test_dir, servicer):
     stub = modal.Stub()
 
     dummy_modal = stub.function(
-        shared_volumes={"/root/foo": modal.SharedVolume()},
+        shared_volumes={"/root/foo": modal.SharedVolume.new()},
     )(dummy)
 
     with stub.run(client=client):
@@ -32,17 +32,17 @@ def test_shared_volume_bad_paths(client, test_dir, servicer):
     def _f():
         pass
 
-    dummy_modal = stub.function(shared_volumes={"/root/../../foo": modal.SharedVolume()})(dummy)
+    dummy_modal = stub.function(shared_volumes={"/root/../../foo": modal.SharedVolume.new()})(dummy)
     with pytest.raises(InvalidError):
         with stub.run(client=client):
             dummy_modal.call()
 
-    dummy_modal = stub.function(shared_volumes={"/": modal.SharedVolume()})(dummy)
+    dummy_modal = stub.function(shared_volumes={"/": modal.SharedVolume.new()})(dummy)
     with pytest.raises(InvalidError):
         with stub.run(client=client):
             dummy_modal.call()
 
-    dummy_modal = stub.function(shared_volumes={"/tmp/": modal.SharedVolume()})(dummy)
+    dummy_modal = stub.function(shared_volumes={"/tmp/": modal.SharedVolume.new()})(dummy)
     with pytest.raises(InvalidError):
         with stub.run(client=client):
             dummy_modal.call()
@@ -50,7 +50,7 @@ def test_shared_volume_bad_paths(client, test_dir, servicer):
 
 def test_shared_volume_handle_single_file(client, tmp_path, servicer):
     stub = modal.Stub()
-    stub.vol = modal.SharedVolume()
+    stub.vol = modal.SharedVolume.new()
     local_file_path = tmp_path / "some_file"
     local_file_path.write_text("hello world")
 
@@ -71,7 +71,7 @@ def test_shared_volume_handle_single_file(client, tmp_path, servicer):
 @pytest.mark.asyncio
 async def test_shared_volume_handle_dir(client, tmp_path, servicer):
     stub = modal.Stub()
-    stub.vol = modal.SharedVolume()
+    stub.vol = modal.SharedVolume.new()
     local_dir = tmp_path / "some_dir"
     local_dir.mkdir()
     (local_dir / "smol").write_text("###")
@@ -97,7 +97,7 @@ async def test_shared_volume_handle_dir(client, tmp_path, servicer):
 async def test_shared_volume_handle_big_file(client, tmp_path, servicer, blob_server, *args):
     with mock.patch("modal.shared_volume.LARGE_FILE_LIMIT", 10):
         stub = modal.Stub()
-        stub.vol = modal.SharedVolume()
+        stub.vol = modal.SharedVolume.new()
         local_file_path = tmp_path / "bigfile"
         local_file_path.write_text("hello world, this is a lot of text")
 
@@ -112,3 +112,12 @@ async def test_shared_volume_handle_big_file(client, tmp_path, servicer, blob_se
 
         _, blobs = blob_server
         assert blobs["bl-1"] == b"hello world, this is a lot of text"
+
+
+def test_old_syntax(client, servicer):
+    stub = modal.Stub()
+    with pytest.warns(DeprecationError):
+        stub.vol = modal.SharedVolume()
+    with stub.run(client=client) as app:
+        handle = app.vol
+        assert isinstance(handle, SharedVolumeHandle)

@@ -18,15 +18,14 @@ async def test_multi_resolve_sequential_loads_once():
     load_count = 0
 
     class DumbObject(_Provider):
-        def __init__(self):
-            async def _load(resolver: Resolver, existing_object_id: Optional[str]):
-                nonlocal load_count
-                load_count += 1
-                await asyncio.sleep(0.1)
+        pass
 
-            super().__init__(_load, "DumbObject()")
+    async def _load(resolver: Resolver, existing_object_id: Optional[str]):
+        nonlocal load_count
+        load_count += 1
+        await asyncio.sleep(0.1)
 
-    obj = DumbObject()
+    obj = DumbObject._from_loader(_load, "DumbObject()")
 
     t0 = time.monotonic()
     await resolver.load(obj)
@@ -44,15 +43,14 @@ async def test_multi_resolve_concurrent_loads_once():
     load_count = 0
 
     class DumbObject(_Provider):
-        def __init__(self):
-            async def _load(resolver: Resolver, existing_object_id: Optional[str]):
-                nonlocal load_count
-                load_count += 1
-                await asyncio.sleep(0.1)
+        pass
 
-            super().__init__(_load, "DumbObject()")
+    async def _load(resolver: Resolver, existing_object_id: Optional[str]):
+        nonlocal load_count
+        load_count += 1
+        await asyncio.sleep(0.1)
 
-    obj = DumbObject()
+    obj = DumbObject._from_loader(_load, "DumbObject()")
     t0 = time.monotonic()
     await asyncio.gather(resolver.load(obj), resolver.load(obj))
     assert 0.1 < time.monotonic() - t0 < 0.15
