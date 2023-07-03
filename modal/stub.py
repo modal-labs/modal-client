@@ -292,22 +292,6 @@ class _Stub:
         async with _run_stub(self, client, stdout, show_progress, detach, output_mgr) as app:
             yield app
 
-    async def serve(
-        self,
-        client: Optional[_Client] = None,
-        stdout=None,
-        show_progress: bool = True,
-        timeout: float = 1e10,
-    ):
-        """Deprecated. Use the `modal serve` CLI command instead.
-
-        For programmatic usage, use `modal.serving.serve_stub`
-        """
-        deprecation_error(
-            date(2023, 2, 28),
-            self.serve.__doc__,
-        )
-
     @typechecked
     async def deploy(
         self,
@@ -614,60 +598,6 @@ class _Stub:
     ):
         """`stub.wsgi_app` is deprecated and no longer supported. Use `modal.wsgi_app` instead."""
         deprecation_error(date(2023, 4, 18), self.wsgi_app.__doc__)
-
-    def webhook(
-        self,
-        *args,
-        **kwargs,
-    ):
-        """`stub.webhook` is deprecated. Use `stub.function` in combination with `modal.web_endpoint` instead. Usage:
-
-        ```python
-        @stub.function(cpu=42)
-        @web_endpoint(method="POST")
-        def my_function():
-           ...
-        ```"""
-        deprecation_error(
-            date(2023, 4, 3),
-            self.webhook.__doc__,
-        )
-
-    def asgi(
-        self,
-        *args,
-        **kwargs,
-    ):
-        """`stub.asgi` is deprecated. Use `stub.function` in combination with `modal.asgi_app` instead. Usage:
-
-        ```python
-        @stub.function(cpu=42)
-        @asgi_app()
-        def my_asgi_app():
-            ...
-        ```"""
-        deprecation_error(
-            date(2023, 4, 3),
-            self.asgi.__doc__,
-        )
-
-    def wsgi(
-        self,
-        *args,
-        **kwargs,
-    ):
-        """`stub.wsgi` is deprecated. Use stub.function in combination with `modal.wsgi_app` instead. Usage:
-
-        ```
-        @stub.function(cpu=42)
-        @wsgi_app()
-        def my_wsgi_app():
-            ...
-        ```"""
-        deprecation_error(
-            date(2023, 4, 3),
-            self.wsgi.__doc__,
-        )
 
     async def interactive_shell(self, cmd=None, image=None, **kwargs):
         """`stub.interactive_shell` is deprecated and no longer supported. Use the `modal shell` command instead.
