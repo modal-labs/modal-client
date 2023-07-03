@@ -56,7 +56,7 @@ def webhook_asgi_app(fn: Callable, method: str):
     from fastapi import FastAPI
     from fastapi.middleware.cors import CORSMiddleware
 
-    app = FastAPI()
+    app = FastAPI(docs_url=None, redoc_url=None)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
