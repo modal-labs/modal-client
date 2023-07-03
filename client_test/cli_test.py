@@ -1,10 +1,9 @@
-# Copyright Modal Labs 2022
+# Copyright Modal Labs 2022-2023
 import os
 import sys
 import tempfile
 import traceback
 import unittest.mock
-from contextlib import asynccontextmanager
 from unittest import mock
 from typing import List, Optional
 
@@ -16,6 +15,7 @@ import pytest_asyncio
 from modal.cli.entry_point import entrypoint_cli
 from modal import Client
 from modal_proto import api_pb2
+from modal_utils.async_utils import asyncnullcontext
 
 dummy_app_file = """
 import modal
@@ -285,13 +285,9 @@ def mock_shell_pty():
             env_term_program=os.environ.get("TERM_PROGRAM"),
         )
 
-    @asynccontextmanager
-    async def noop_async_context_manager(*args, **kwargs):
-        yield
-
     with mock.patch("rich.console.Console.is_terminal", True), mock.patch(
         "modal._pty.get_pty_info", mock_get_pty_info
-    ), mock.patch("modal._pty.write_stdin_to_pty_stream", noop_async_context_manager):
+    ), mock.patch("modal._pty.write_stdin_to_pty_stream", asyncnullcontext):
         yield
 
 
