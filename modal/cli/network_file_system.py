@@ -170,7 +170,9 @@ class CliError(Exception):
         self.message = message
 
 
-async def _glob_download(volume: _NetworkFileSystemHandle, remote_glob_path: str, local_destination: Path, overwrite: bool):
+async def _glob_download(
+    volume: _NetworkFileSystemHandle, remote_glob_path: str, local_destination: Path, overwrite: bool
+):
     q: asyncio.Queue[Tuple[Optional[Path], Optional[api_pb2.SharedVolumeListFilesEntry]]] = asyncio.Queue()
 
     async def producer():

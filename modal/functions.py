@@ -1016,7 +1016,9 @@ class _Function(_Provider[_FunctionHandle]):
 
             # validation
             if not isinstance(network_file_systems, dict):
-                raise InvalidError("network_file_systems must be a dict[str, NetworkFileSystem] where the keys are paths")
+                raise InvalidError(
+                    "network_file_systems must be a dict[str, NetworkFileSystem] where the keys are paths"
+                )
             validated_network_file_systems = _validate_mount_points("Shared volume", network_file_systems)
 
             async def network_file_system_loader():

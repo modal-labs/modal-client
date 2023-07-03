@@ -530,7 +530,9 @@ def test_allow_cross_region_volumes_webhook(client, servicer):
     stub = Stub()
     vol1, vol2 = NetworkFileSystem.new(), NetworkFileSystem.new()
     # Should pass flag for all the function's NetworkFileSystemMounts
-    stub.function(network_file_systems={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(web_endpoint()(dummy))
+    stub.function(network_file_systems={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(
+        web_endpoint()(dummy)
+    )
 
     with stub.run(client=client):
         assert len(servicer.app_functions) == 1
