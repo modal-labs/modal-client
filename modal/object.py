@@ -161,6 +161,9 @@ class _Provider(Generic[H]):
     _load: Callable[[Resolver, Optional[str]], Awaitable[H]]
     _preload: Optional[Callable[[Resolver, Optional[str]], Awaitable[H]]]
 
+    def __init__(self):
+        raise Exception("__init__ disallowed, use proper classmethods")
+
     def _init(
         self,
         load: Callable[[Resolver, Optional[str]], Awaitable[H]],
@@ -173,16 +176,6 @@ class _Provider(Generic[H]):
         self._preload = preload
         self._rep = rep
         self._is_persisted_ref = is_persisted_ref
-
-    def __init__(
-        self,
-        load: Callable[[Resolver, Optional[str]], Awaitable[H]],
-        rep: str,
-        is_persisted_ref: bool = False,
-        preload: Optional[Callable[[Resolver, Optional[str]], Awaitable[H]]] = None,
-    ):
-        # TODO(erikbern): this is semi-deprecated - subclasses should use _from_loader
-        self._init(load, rep, is_persisted_ref, preload=preload)
 
     def _init_from_other(self, other: "_Provider"):
         # Transient use case, see Dict, Queue, and SharedVolume

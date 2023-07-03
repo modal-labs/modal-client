@@ -83,7 +83,7 @@ class _Volume(_Provider[_VolumeHandle]):
     import modal
 
     stub = modal.Stub()
-    stub.volume = modal.Volume()
+    stub.volume = modal.Volume.new()
 
     @stub.function(volumes={"/root/foo": stub.volume})
     def f():
@@ -99,7 +99,8 @@ class _Volume(_Provider[_VolumeHandle]):
     ```
     """
 
-    def __init__(self) -> None:
+    @staticmethod
+    def new() -> "_Volume":
         """Construct a new volume, which is empty by default."""
 
         async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _VolumeHandle:
@@ -114,8 +115,7 @@ class _Volume(_Provider[_VolumeHandle]):
             status_row.finish("Created volume.")
             return _VolumeHandle._from_id(resp.volume_id, resolver.client, None)
 
-        rep = "Volume()"
-        super().__init__(_load, rep)
+        return _Volume._from_loader(_load, "Volume()")
 
 
 Volume = synchronize_api(_Volume)

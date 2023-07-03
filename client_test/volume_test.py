@@ -17,7 +17,7 @@ def test_volume_mount(client, servicer):
     stub = modal.Stub()
 
     _ = stub.function(
-        volumes={"/root/foo": modal.Volume()},
+        volumes={"/root/foo": modal.Volume.new()},
     )(dummy)
 
     with stub.run(client=client):
@@ -28,17 +28,17 @@ def test_volume_mount(client, servicer):
 def test_volume_bad_paths(client, servicer):
     stub = modal.Stub()
 
-    _ = stub.function(volumes={"/root/../../foo": modal.Volume()})(dummy)
+    _ = stub.function(volumes={"/root/../../foo": modal.Volume.new()})(dummy)
     with pytest.raises(InvalidError):
         with stub.run(client=client):
             pass
 
-    _ = stub.function(volumes={"/": modal.Volume()})(dummy)
+    _ = stub.function(volumes={"/": modal.Volume.new()})(dummy)
     with pytest.raises(InvalidError):
         with stub.run(client=client):
             pass
 
-    _ = stub.function(volumes={"/tmp/": modal.Volume()})(dummy)
+    _ = stub.function(volumes={"/tmp/": modal.Volume.new()})(dummy)
     with pytest.raises(InvalidError):
         with stub.run(client=client):
             pass
@@ -47,7 +47,7 @@ def test_volume_bad_paths(client, servicer):
 def test_volume_duplicate_mount(client, servicer):
     stub = modal.Stub()
 
-    volume = modal.Volume()
+    volume = modal.Volume.new()
     _ = stub.function(volumes={"/foo": volume, "/bar": volume})(dummy)
     with pytest.raises(InvalidError):
         with stub.run(client=client):
@@ -56,7 +56,7 @@ def test_volume_duplicate_mount(client, servicer):
 
 def test_volume_commit(client, servicer):
     stub = modal.Stub()
-    stub.vol = modal.Volume()
+    stub.vol = modal.Volume.new()
 
     with stub.run(client=client) as app:
         handle = app.vol
@@ -71,7 +71,7 @@ def test_volume_commit(client, servicer):
 
 def test_volume_reload(client, servicer):
     stub = modal.Stub()
-    stub.vol = modal.Volume()
+    stub.vol = modal.Volume.new()
 
     with stub.run(client=client) as app:
         handle = app.vol
