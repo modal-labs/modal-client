@@ -3,11 +3,14 @@ import pathlib
 import pytest
 import subprocess
 import sys
+from fastapi.testclient import TestClient
 
 from modal_proto import api_pb2
 from modal import App, Stub, web_endpoint, asgi_app, wsgi_app
 from modal.functions import FunctionHandle
 from modal.exception import DeprecationError, InvalidError
+from modal._asgi import webhook_asgi_app
+
 
 stub = Stub()
 
@@ -46,10 +49,6 @@ async def test_webhook(servicer, client):
 
 
 def test_webhook_cors():
-    from fastapi.testclient import TestClient
-
-    from modal._asgi import webhook_asgi_app
-
     def handler():
         return {"message": "Hello, World!"}
 
@@ -66,6 +65,22 @@ def test_webhook_cors():
 
     assert client.get("/").json() == {"message": "Hello, World!"}
     assert client.post("/").status_code == 405  # Method Not Allowed
+
+
+@pytest.mark.asyncio
+async def test_webhook_no_docs():
+    # FastAPI automatically sets docs URLs for apps, which we disable because it
+    # can be unexpected for users who are unfamilar with FastAPI.
+    #
+    # https://fastapi.tiangolo.com/tutorial/metadata/#docs-urls
+
+    def handler():
+        return {"message": "Hello, World!"}
+
+    app = webhook_asgi_app(handler, method="GET")
+    client = TestClient(app)
+    assert client.get("/docs").status_code == 404
+    assert client.get("/redoc").status_code == 404
 
 
 def test_webhook_generator():
