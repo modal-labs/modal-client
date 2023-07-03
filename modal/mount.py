@@ -7,7 +7,6 @@ import functools
 import os
 import time
 import typing
-from datetime import date
 from pathlib import Path, PurePosixPath
 from typing import AsyncGenerator, Callable, List, Optional, Union, Tuple, Sequence
 
@@ -24,7 +23,7 @@ from modal_version import __version__
 from ._blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec
 from ._resolver import Resolver
 from .config import config, logger
-from .exception import NotFoundError, deprecation_error
+from .exception import NotFoundError
 from .object import _Handle, _Provider
 
 MOUNT_PUT_FILE_CLIENT_TIMEOUT = 10 * 60  # 10 min max for transferring files
@@ -137,13 +136,6 @@ class _Mount(_Provider[_MountHandle]):
     """
 
     _entries: List[_MountEntry]
-
-    def __init__(self, *args, **kwargs):
-        """The Mount constructor is deprecated. Use static factory method Mount.from_local_dir or Mount.from_local_file"""
-        deprecation_error(
-            date(2023, 2, 8),
-            self.__init__.__doc__,
-        )
 
     @staticmethod
     def _from_entries(*entries: _MountEntry) -> "_Mount":
