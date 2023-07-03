@@ -163,6 +163,7 @@ class _Dict(_Provider[_DictHandle]):
     def persisted(
         label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
     ) -> "_Dict":
+        """See `SharedVolume.persisted`."""
         return _Dict.new()._persist(label, namespace, environment_name)
 
     def persist(
