@@ -18,12 +18,10 @@ from modal.runner import run_stub, deploy_stub, interactive_shell
 from modal.serving import serve_stub
 from modal.stub import LocalEntrypoint
 from modal_utils.async_utils import synchronizer
-from .environment import ENV_OPTION_HELP
 from ..environments import ensure_env
-
 from .import_refs import import_function, import_stub
+from .utils import ENV_OPTION, ENV_OPTION_HELP
 from ..functions import _FunctionHandle
-
 
 # Why do we need to support both types and the strings? Because something weird with
 # how __annotations__ works in Python (which inspect.signature uses). See #220.
@@ -201,7 +199,7 @@ def run(ctx, detach, quiet, env):
 def deploy(
     stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
     name: str = typer.Option(None, help="Name of the deployment."),
-    env: str = typer.Option(None, help=ENV_OPTION_HELP, hidden=True),
+    env: str = ENV_OPTION,
 ):
     env = ensure_env(
         env
@@ -219,7 +217,7 @@ def deploy(
 def serve(
     stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
     timeout: Optional[float] = None,
-    env: str = typer.Option(None, help=ENV_OPTION_HELP, hidden=True),
+    env: str = ENV_OPTION,
 ):
     """Run a web endpoint(s) associated with a Modal stub and hot-reload code.
 
@@ -247,7 +245,7 @@ def shell(
         ..., help="Path to a Python file with a Stub or Modal function whose container to run.", metavar="FUNC_REF"
     ),
     cmd: str = typer.Option(default="/bin/bash", help="Command to run inside the Modal image."),
-    env: str = typer.Option(None, help=ENV_OPTION_HELP, hidden=True),
+    env: str = ENV_OPTION,
 ):
     """Run an interactive shell inside a Modal image.
 

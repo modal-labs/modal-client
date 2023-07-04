@@ -43,7 +43,7 @@ def modal(
 
 entrypoint_cli_typer.add_typer(app_cli)
 entrypoint_cli_typer.add_typer(config_cli)
-entrypoint_cli_typer.add_typer(environment_cli, hidden=True)
+entrypoint_cli_typer.add_typer(environment_cli)
 entrypoint_cli_typer.add_typer(profile_cli)
 entrypoint_cli_typer.add_typer(secret_cli)
 entrypoint_cli_typer.add_typer(token_cli)

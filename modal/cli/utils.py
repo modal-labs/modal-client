@@ -2,6 +2,7 @@
 from datetime import datetime
 from typing import Union, List
 
+import typer
 from rich.console import Console
 from rich.table import Table
 from rich.text import Text
@@ -42,3 +43,11 @@ def display_selection(choices: List[str], active: str, json: bool):
         for choice in choices:
             text = Text(f"{choice} [active]", style="green") if active == choice else Text(choice, style="dim")
             console.print(text)
+
+
+ENV_OPTION_HELP = """Environment to interact with
+
+If none is specified, Modal will use the default environment of your current profile (can also be specified via the environment variable MODAL_ENVIRONMENT).
+If neither is set, Modal will assume there is only one environment in the active workspace and use that one, or raise an error if there are multiple environments.
+"""
+ENV_OPTION = typer.Option(default=None, help=ENV_OPTION_HELP)
