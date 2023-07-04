@@ -18,7 +18,8 @@ from modal.runner import run_stub, deploy_stub, interactive_shell
 from modal.serving import serve_stub
 from modal.stub import LocalEntrypoint
 from modal_utils.async_utils import synchronizer
-from .environment import ENV_OPTION_HELP, ensure_env
+from .environment import ENV_OPTION_HELP
+from ..environments import ensure_env
 
 from .import_refs import import_function, import_stub
 from ..functions import _FunctionHandle

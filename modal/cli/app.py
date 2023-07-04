@@ -7,7 +7,8 @@ from click import UsageError
 from grpclib import GRPCError, Status
 from rich.text import Text
 
-from modal.cli.environment import ENV_OPTION_HELP, ensure_env
+from modal.cli.environment import ENV_OPTION_HELP
+from modal.environments import ensure_env
 from modal._output import OutputManager, get_app_logs_loop
 from modal.cli.utils import timestamp_to_local, display_table
 from modal.client import _Client
