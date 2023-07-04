@@ -159,7 +159,7 @@ class RunGroup(click.Group):
 )
 @click.option("-q", "--quiet", is_flag=True, help="Don't show Modal progress indicators.")
 @click.option("-d", "--detach", is_flag=True, help="Don't stop the app if the local process dies or disconnects.")
-@click.option("-e", "--env", help=ENV_OPTION_HELP, default="", hidden=True)
+@click.option("-e", "--env", help=ENV_OPTION_HELP, default=None, hidden=True)
 @click.pass_context
 def run(ctx, detach, quiet, env):
     """Run a Modal function or local entrypoint
