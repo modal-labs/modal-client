@@ -1,18 +1,14 @@
 # Copyright Modal Labs 2023
+import json
 from typing import Optional
 
+import typer
 from click import UsageError
-from google.protobuf.wrappers_pb2 import StringValue
 from typing_extensions import Annotated
 
-import typer
-
-from modal.client import _Client
+from modal import environments
+from modal.cli.utils import display_table
 from modal.config import config
-from modal.cli.utils import display_selection
-from modal_proto import api_pb2
-from modal_utils.async_utils import synchronizer
-from google.protobuf.empty_pb2 import Empty
 
 ENVIRONMENT_HELP_TEXT = """Create and interact with Environments
 
@@ -36,40 +32,34 @@ If neither is set, Modal will assume there is only one environment in the active
 environment_cli = typer.Typer(name="environment", help=ENVIRONMENT_HELP_TEXT, no_args_is_help=True)
 
 
-def ensure_env(environment_name: Optional[str] = None) -> str:
-    """Override config environment with environment from environment_name
+class RenderableBool:
+    def __init__(self, value: bool):
+        self.value = value
 
-    This is necessary since a cli command that runs Modal code, e.g. `modal.lookup()` without
-    explicit environment specification wouldn't pick up the environment specified in a command
-    line flag otherwise, e.g. when doing `modal run --env=foo`
-    """
-    if environment_name is not None:
-        config.override_locally("environment", environment_name)
+    def __rich__(self):
+        return repr(self.value)
 
-    return config.get("environment")
+    def __json__(self):
+        return json.dumps(self.value)
 
 
 @environment_cli.command(name="list", help="List all environments in the current workspace")
-@synchronizer.create_blocking
-async def list(json: Optional[bool] = False):
-    client = await _Client.from_env()
-    stub = client.stub
-    resp = await stub.EnvironmentList(Empty())
-    envs = [item.name for item in resp.items]
-    display_selection(envs, config.get("environment"), json)
+def list(json: Optional[bool] = False):
+    envs = environments.list_environments()
+    table_data = []
+    for item in envs:
+        is_active = item.name == config.get("environment")
+        row = [item.name, item.webhook_suffix, is_active if json else RenderableBool(is_active)]
+        table_data.append(row)
+    display_table(["name", "web suffix", "active"], table_data, json=json)
 
 
 ENVIRONMENT_CREATE_HELP = """Create a new environment in the current workspace"""
 
 
 @environment_cli.command(name="create", help=ENVIRONMENT_CREATE_HELP)
-@synchronizer.create_blocking
-async def create(
-    name: Annotated[str, typer.Argument(help="Name of the new environment. Must be unique. Case sensitive")]
-):
-    client = await _Client.from_env()
-    stub = client.stub
-    await stub.EnvironmentCreate(api_pb2.EnvironmentCreateRequest(name=name))
+def create(name: Annotated[str, typer.Argument(help="Name of the new environment. Must be unique. Case sensitive")]):
+    environments.create_environment(name)
     typer.echo(f"Environment created: {name}")
 
 
@@ -80,13 +70,10 @@ Deletes all apps in the selected environment and deletes the environment irrevoc
 
 
 @environment_cli.command(name="delete", help=ENVIRONMENT_DELETE_HELP)
-@synchronizer.create_blocking
-async def delete(
+def delete(
     name: str = typer.Argument(help="Name of the environment to be deleted. Case sensitive"),
     confirm: bool = typer.Option(default=False, help="Set this flag to delete without prompting for confirmation"),
 ):
-    client = await _Client.from_env()
-    stub = client.stub
     if not confirm:
         typer.confirm(
             f"Are you sure you want to irrevocably delete the environment '{name}' and all its associated apps and secrets?",
@@ -94,7 +81,7 @@ async def delete(
             abort=True,
         )
 
-    await stub.EnvironmentDelete(api_pb2.EnvironmentDeleteRequest(name=name))
+    environments.delete_environment(name)
     typer.echo(f"Environment deleted: {name}")
 
 
@@ -102,8 +89,7 @@ ENVIRONMENT_UPDATE_HELP = """Update the name or web suffix of an environment"""
 
 
 @environment_cli.command(name="update", help=ENVIRONMENT_UPDATE_HELP, hidden=True)
-@synchronizer.create_blocking
-async def update(
+def update(
     current_name: str,
     set_name: Optional[str] = typer.Option(default=None, help="New name of the environment"),
     set_web_suffix: Optional[str] = typer.Option(
@@ -113,21 +99,5 @@ async def update(
     if set_name is None and set_web_suffix is None:
         raise UsageError("You need to at least one new property (using --set-name or --set-web-suffix")
 
-    new_name = None
-    new_web_suffix = None
-
-    if set_name is not None:
-        if len(set_name) < 1:
-            raise UsageError("The environment name cannot be empty")
-
-        new_name = StringValue(value=set_name)
-    if set_web_suffix is not None:
-        new_web_suffix = StringValue(value=set_web_suffix)
-
-    update_payload = api_pb2.EnvironmentUpdateRequest(
-        current_name=current_name, name=new_name, web_suffix=new_web_suffix
-    )
-    client = await _Client.from_env()
-    stub = client.stub
-    await stub.EnvironmentUpdate(update_payload)
+    environments.update_environment(current_name, new_name=set_name, new_web_suffix=set_web_suffix)
     typer.echo("Environment updated")

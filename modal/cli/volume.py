@@ -21,7 +21,8 @@ from typer import Typer
 import modal
 from modal._location import display_location
 from modal._output import step_progress, step_completed
-from modal.cli.environment import ENV_OPTION_HELP, ensure_env
+from modal.cli.environment import ENV_OPTION_HELP
+from modal.environments import ensure_env
 from modal.cli.utils import display_table
 from modal.client import _Client
 from modal.shared_volume import _SharedVolumeHandle, _SharedVolume

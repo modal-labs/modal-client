@@ -11,7 +11,8 @@ from rich.console import Console
 from rich.syntax import Syntax
 
 import modal
-from modal.cli.environment import ENV_OPTION_HELP, ensure_env
+from modal.cli.environment import ENV_OPTION_HELP
+from modal.environments import ensure_env
 from modal.cli.utils import timestamp_to_local, display_table
 from modal.client import Client, _Client
 from modal_proto import api_pb2
