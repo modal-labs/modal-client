@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2023
 from typing import Optional, List
 
 from google.protobuf.empty_pb2 import Empty
