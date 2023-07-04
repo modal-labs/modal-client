@@ -1,6 +1,8 @@
 # Copyright Modal Labs 2023
 from typing import Optional
 
+from click import UsageError
+from google.protobuf.wrappers_pb2 import StringValue
 from typing_extensions import Annotated
 
 import typer
@@ -94,3 +96,38 @@ async def delete(
 
     await stub.EnvironmentDelete(api_pb2.EnvironmentDeleteRequest(name=name))
     typer.echo(f"Environment deleted: {name}")
+
+
+ENVIRONMENT_UPDATE_HELP = """Update the name or web suffix of an environment"""
+
+
+@environment_cli.command(name="update", help=ENVIRONMENT_UPDATE_HELP, hidden=True)
+@synchronizer.create_blocking
+async def update(
+    current_name: str,
+    set_name: Optional[str] = typer.Option(default=None, help="New name of the environment"),
+    set_web_suffix: Optional[str] = typer.Option(
+        default=None, help="New web suffix of environment (empty string is no suffix)"
+    ),
+):
+    if set_name is None and set_web_suffix is None:
+        raise UsageError("You need to at least one new property (using --set-name or --set-web-suffix")
+
+    new_name = None
+    new_web_suffix = None
+
+    if set_name is not None:
+        if len(set_name) < 1:
+            raise UsageError("The environment name cannot be empty")
+
+        new_name = StringValue(value=set_name)
+    if set_web_suffix is not None:
+        new_web_suffix = StringValue(value=set_web_suffix)
+
+    update_payload = api_pb2.EnvironmentUpdateRequest(
+        current_name=current_name, name=new_name, web_suffix=new_web_suffix
+    )
+    client = await _Client.from_env()
+    stub = client.stub
+    await stub.EnvironmentUpdate(update_payload)
+    typer.echo("Environment updated")
