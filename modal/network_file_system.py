@@ -18,7 +18,7 @@ from ._types import typechecked
 from .exception import deprecation_warning
 from .object import _Handle, _Provider
 
-SHARED_VOLUME_PUT_FILE_CLIENT_TIMEOUT = (
+NETWORK_FILE_SYSTEM_PUT_FILE_CLIENT_TIMEOUT = (
     10 * 60
 )  # 10 min max for transferring files (does not include upload time to s3)
 
@@ -38,7 +38,7 @@ class _NetworkFileSystemHandle(_Handle, type_prefix="sv"):
     A NetworkFileSystemHandle *can* however be useful for some local scripting scenarios, e.g.:
 
     ```python notest
-    vol = modal.lookup("my-shared-volume")
+    vol = modal.lookup("my-network-file-system")
     for chunk in vol.read_file("my_db_dump.csv"):
         ...
     ```
@@ -72,7 +72,7 @@ class _NetworkFileSystemHandle(_Handle, type_prefix="sv"):
             )
 
         t0 = time.monotonic()
-        while time.monotonic() - t0 < SHARED_VOLUME_PUT_FILE_CLIENT_TIMEOUT:
+        while time.monotonic() - t0 < NETWORK_FILE_SYSTEM_PUT_FILE_CLIENT_TIMEOUT:
             response = await retry_transient_errors(self._client.stub.SharedVolumePutFile, req)
             if response.exists:
                 break
@@ -169,11 +169,11 @@ class _NetworkFileSystem(_Provider[_NetworkFileSystemHandle]):
     volume = modal.NetworkFileSystem.new()
     stub = modal.Stub()
 
-    @stub.function(shared_volumes={"/root/foo": volume})
+    @stub.function(network_file_systems={"/root/foo": volume})
     def f():
         pass
 
-    @stub.function(shared_volumes={"/root/goo": volume})
+    @stub.function(network_file_systems={"/root/goo": volume})
     def g():
         pass
     ```
@@ -232,7 +232,7 @@ class _NetworkFileSystem(_Provider[_NetworkFileSystemHandle]):
         stub = modal.Stub()
 
         # Volume refers to the same object, even across instances of `stub`.
-        @stub.function(shared_volumes={"/vol": volume})
+        @stub.function(network_file_systems={"/vol": volume})
         def f():
             pass
         ```
