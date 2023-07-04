@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2023
-import json
 from typing import Optional
 
 import typer
@@ -38,9 +37,6 @@ class RenderableBool:
 
     def __rich__(self):
         return repr(self.value)
-
-    def __json__(self):
-        return json.dumps(self.value)
 
 
 @environment_cli.command(name="list", help="List all environments in the current workspace")
