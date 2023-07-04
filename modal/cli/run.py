@@ -18,9 +18,9 @@ from modal.runner import run_stub, deploy_stub, interactive_shell
 from modal.serving import serve_stub
 from modal.stub import LocalEntrypoint
 from modal_utils.async_utils import synchronizer
+from .utils import cli_grpc_errors, ENV_OPTION, ENV_OPTION_HELP
 from ..environments import ensure_env
 from .import_refs import import_function, import_stub
-from .utils import ENV_OPTION, ENV_OPTION_HELP
 from ..functions import _FunctionHandle
 
 # Why do we need to support both types and the strings? Because something weird with
@@ -87,14 +87,15 @@ def _get_click_command_for_function(_stub, function_tag):
 
     @click.pass_context
     def f(ctx, *args, **kwargs):
-        with run_stub(
-            blocking_stub,
-            detach=ctx.obj["detach"],
-            show_progress=ctx.obj["show_progress"],
-            environment_name=ctx.obj["env"],
-        ) as app:
-            _function_handle = app[function_tag]
-            _function_handle.call(*args, **kwargs)
+        with cli_grpc_errors():
+            with run_stub(
+                blocking_stub,
+                detach=ctx.obj["detach"],
+                show_progress=ctx.obj["show_progress"],
+                environment_name=ctx.obj["env"],
+            ) as app:
+                _function_handle = app[function_tag]
+                _function_handle.call(*args, **kwargs)
 
     # TODO: handle `self` when raw_func is an unbound method (e.g. method on lifecycle class)
     with_click_options = _add_click_options(f, inspect.signature(raw_func))
@@ -112,24 +113,24 @@ def _get_click_command_for_local_entrypoint(_stub, entrypoint: LocalEntrypoint):
             print(
                 "Note that running a local entrypoint in detached mode only keeps the last triggered Modal function alive after the parent process has been killed or disconnected."
             )
-
-        with run_stub(
-            blocking_stub,
-            detach=ctx.obj["detach"],
-            show_progress=ctx.obj["show_progress"],
-            environment_name=ctx.obj["env"],
-        ) as app:
-            if isasync:
-                asyncio.run(func(*args, **kwargs))
-            else:
-                func(*args, **kwargs)
-            if app.function_invocations == 0:
-                # TODO: better formatting for the warning message
-                warnings.warn(
-                    "Warning: no remote function calls were made.\n"
-                    "Note that Modal functions run locally when called directly (e.g. `f()`).\n"
-                    "In order to run a function remotely, you may use `f.call()`. (See https://modal.com/docs/reference/modal.Function for other options)."
-                )
+        with cli_grpc_errors():
+            with run_stub(
+                blocking_stub,
+                detach=ctx.obj["detach"],
+                show_progress=ctx.obj["show_progress"],
+                environment_name=ctx.obj["env"],
+            ) as app:
+                if isasync:
+                    asyncio.run(func(*args, **kwargs))
+                else:
+                    func(*args, **kwargs)
+                if app.function_invocations == 0:
+                    # TODO: better formatting for the warning message
+                    warnings.warn(
+                        "Warning: no remote function calls were made.\n"
+                        "Note that Modal functions run locally when called directly (e.g. `f()`).\n"
+                        "In order to run a function remotely, you may use `f.call()`. (See https://modal.com/docs/reference/modal.Function for other options)."
+                    )
 
     with_click_options = _add_click_options(f, inspect.signature(func))
     return click.command(with_click_options)
@@ -211,7 +212,8 @@ def deploy(
         name = _stub.name
 
     blocking_stub = synchronizer._translate_out(_stub, interface=Interface.BLOCKING)
-    deploy_stub(blocking_stub, name=name, environment_name=env)
+    with cli_grpc_errors():
+        deploy_stub(blocking_stub, name=name, environment_name=env)
 
 
 def serve(
@@ -279,10 +281,10 @@ def shell(
     _function = _function_handle._get_function()
     blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
     blocking_function = synchronizer._translate_out(_function, Interface.BLOCKING)
-
-    interactive_shell(
-        blocking_stub,
-        cmd,
-        blocking_function,
-        environment_name=env,
-    )
+    with cli_grpc_errors():
+        interactive_shell(
+            blocking_stub,
+            cmd,
+            blocking_function,
+            environment_name=env,
+        )

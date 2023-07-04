@@ -3,13 +3,11 @@ import asyncio
 from typing import Optional, List, Union
 
 import typer
-from click import UsageError
-from grpclib import GRPCError, Status
 from rich.text import Text
 
 from modal._output import OutputManager, get_app_logs_loop
 from modal.environments import ensure_env
-from modal.cli.utils import timestamp_to_local, display_table, ENV_OPTION
+from modal.cli.utils import timestamp_to_local, display_table, ENV_OPTION, cli_grpc_errors
 from modal.client import _Client
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
@@ -33,7 +31,8 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     """List all running or recently running Modal apps for the current account"""
     client = await _Client.from_env()
     env = ensure_env(env)
-    res: api_pb2.AppListResponse = await client.stub.AppList(api_pb2.AppListRequest(environment_name=env))
+    with cli_grpc_errors():
+        res: api_pb2.AppListResponse = await client.stub.AppList(api_pb2.AppListRequest(environment_name=env))
 
     column_names = ["App ID", "Name", "State", "Creation time", "Stop time"]
     rows: List[List[Union[Text, str]]] = []
@@ -68,15 +67,8 @@ def app_logs(app_id: str):
         except asyncio.CancelledError:
             pass
 
-    try:
+    with cli_grpc_errors():
         sync_command()
-    except GRPCError as exc:
-        if exc.status in (Status.INVALID_ARGUMENT, Status.NOT_FOUND):
-            raise UsageError(exc.message)
-        else:
-            raise
-    except KeyboardInterrupt:
-        pass
 
 
 @app_cli.command("stop")
@@ -84,5 +76,6 @@ def app_logs(app_id: str):
 async def stop(app_id: str):
     """Stop an app."""
     client = await _Client.from_env()
-    req = api_pb2.AppStopRequest(app_id=app_id)
-    await client.stub.AppStop(req)
+    with cli_grpc_errors():
+        req = api_pb2.AppStopRequest(app_id=app_id)
+        await client.stub.AppStop(req)

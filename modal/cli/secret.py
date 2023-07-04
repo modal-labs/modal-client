@@ -12,7 +12,7 @@ from rich.syntax import Syntax
 
 import modal
 from modal.environments import ensure_env
-from modal.cli.utils import timestamp_to_local, display_table, ENV_OPTION
+from modal.cli.utils import timestamp_to_local, display_table, ENV_OPTION, cli_grpc_errors
 from modal.client import Client, _Client
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
@@ -26,7 +26,8 @@ secret_cli = typer.Typer(name="secret", help="Manage secrets.", no_args_is_help=
 async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     env = ensure_env(env)
     client = await _Client.from_env()
-    response = await retry_transient_errors(client.stub.SecretList, api_pb2.SecretListRequest(environment_name=env))
+    with cli_grpc_errors():
+        response = await retry_transient_errors(client.stub.SecretList, api_pb2.SecretListRequest(environment_name=env))
     column_names = ["Name", "Created at", "Last used at"]
     rows = []
 
@@ -71,7 +72,8 @@ modal secret create my-credentials username=john password=-
         raise click.UsageError("You need to specify at least one key for your secret")
 
     secret = modal.Secret.from_dict(env_dict=env_dict)
-    secret._deploy(secret_name, client=Client.from_env(), environment_name=env)
+    with cli_grpc_errors():
+        secret._deploy(secret_name, client=Client.from_env(), environment_name=env)
     console = Console()
 
     env_var_code = "\n    ".join(f'os.getenv("{name}")' for name in env_dict.keys()) if env_dict else "..."

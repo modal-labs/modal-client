@@ -1,12 +1,18 @@
 # Copyright Modal Labs 2022
+from contextlib import contextmanager
 from datetime import datetime
 from typing import Union, List
+
+import click
+from grpclib import GRPCError, Status
 
 import typer
 from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 from rich.json import JSON
+
+from modal.exception import NotFoundError
 
 
 def timestamp_to_local(ts: float) -> str:
@@ -51,3 +57,18 @@ If none is specified, Modal will use the default environment of your current pro
 If neither is set, Modal will assume there is only one environment in the active workspace and use that one, or raise an error if there are multiple environments.
 """
 ENV_OPTION = typer.Option(default=None, help=ENV_OPTION_HELP)
+
+
+@contextmanager
+def cli_grpc_errors():
+    try:
+        yield
+    except GRPCError as exc:
+        if exc.status == Status.INVALID_ARGUMENT:
+            # makes longer/formatted errors easier to read
+            raise click.UsageError(exc.message)
+        elif exc.status == Status.NOT_FOUND:
+            raise click.ClickException(f"Not found: {exc.message}")
+        raise
+    except NotFoundError as exc:
+        raise click.ClickException(f"Not found: {str(exc)}")

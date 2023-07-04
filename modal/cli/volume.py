@@ -22,7 +22,7 @@ import modal
 from modal._location import display_location
 from modal._output import step_progress, step_completed
 from modal.environments import ensure_env
-from modal.cli.utils import display_table, ENV_OPTION
+from modal.cli.utils import display_table, cli_grpc_errors, ENV_OPTION
 from modal.client import _Client
 from modal.shared_volume import _SharedVolumeHandle, _SharedVolume
 from modal_proto import api_pb2
@@ -40,9 +40,10 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     env = ensure_env(env)
 
     client = await _Client.from_env()
-    response = await retry_transient_errors(
-        client.stub.SharedVolumeList, api_pb2.SharedVolumeListRequest(environment_name=env)
-    )
+    with cli_grpc_errors():
+        response = await retry_transient_errors(
+            client.stub.SharedVolumeList, api_pb2.SharedVolumeListRequest(environment_name=env)
+        )
     env_part = f" in environment '{env}'" if env else ""
     column_names = ["Name", "Location", "Created at"]
     rows = []
@@ -74,17 +75,17 @@ def create(
 ):
     ensure_env(env)
     volume = modal.SharedVolume.new(cloud=cloud)
-    volume._deploy(name, environment_name=env)
+    with cli_grpc_errors():
+        volume._deploy(name, environment_name=env)
     console = Console()
     console.print(f"Created volume '{name}' in {cloud.upper()}. \n\nCode example:\n")
     usage = Syntax(gen_usage_code(name), "python")
     console.print(usage)
 
 
-async def _volume_from_name(deployment_name: str) -> _SharedVolumeHandle:
-    shared_volume = await _SharedVolume.lookup(
-        deployment_name, environment_name=None
-    )  # environment None will take value from config
+async def _volume_from_name(deployment_name: str, environment_name: Optional[str]) -> _SharedVolumeHandle:
+    with cli_grpc_errors():
+        shared_volume = await _SharedVolume.lookup(deployment_name, environment_name=environment_name)
     if not isinstance(shared_volume, _SharedVolumeHandle):
         raise Exception("The specified app entity is not a shared volume")
     return shared_volume
@@ -98,7 +99,7 @@ async def ls(
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
-    volume = await _volume_from_name(volume_name)
+    volume = await _volume_from_name(volume_name, env)
     try:
         entries = await volume.listdir(path)
     except GRPCError as exc:
@@ -143,7 +144,7 @@ async def put(
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
-    volume = await _volume_from_name(volume_name)
+    volume = await _volume_from_name(volume_name, env)
     if remote_path.endswith("/"):
         remote_path = remote_path + os.path.basename(local_path)
     console = Console()
@@ -239,7 +240,7 @@ async def get(
     """
     ensure_env(env)
     destination = Path(local_destination)
-    volume = await _volume_from_name(volume_name)
+    volume = await _volume_from_name(volume_name, env)
 
     if "*" in remote_path:
         try:
@@ -290,7 +291,7 @@ async def rm(
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
-    volume = await _volume_from_name(volume_name)
+    volume = await _volume_from_name(volume_name, env)
     try:
         await volume.remove_file(remote_path, recursive=recursive)
     except GRPCError as exc:
