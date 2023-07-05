@@ -10,7 +10,7 @@ import cloudpickle
 from synchronicity.exceptions import UserCodeException
 
 from modal import Proxy, Stub, NetworkFileSystem, web_endpoint, asgi_app, wsgi_app
-from modal.exception import DeprecationError, PendingDeprecationError, InvalidError
+from modal.exception import DeprecationError, InvalidError
 from modal.functions import Function, FunctionCall, gather, FunctionHandle
 from modal.runner import deploy_stub
 
@@ -545,7 +545,7 @@ def test_allow_cross_region_volumes_webhook(client, servicer):
 def test_shared_volumes(client, servicer):
     stub = Stub()
     vol = NetworkFileSystem.new()
-    with pytest.warns(PendingDeprecationError):
+    with pytest.warns(DeprecationError):
         stub.function(shared_volumes={"/sv-1": vol})(dummy)
 
     with stub.run(client=client):
