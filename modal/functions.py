@@ -924,6 +924,8 @@ class _Function(_Provider[_FunctionHandle]):
                 "Setting `keep_warm=True` is deprecated. Pass an explicit warm pool size instead, e.g. `keep_warm=2`.",
             )
 
+        if not cloud:
+            cloud = config.get("default_cloud")
         if cloud:
             cloud_provider = parse_cloud_provider(cloud)
         else:
