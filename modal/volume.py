@@ -137,7 +137,7 @@ class _Volume(_Provider[_VolumeHandle]):
         stub = modal.Stub()
 
         # Volume refers to the same object, even across instances of `stub`.
-        @stub.function(shared_volumes={"/vol": volume})
+        @stub.function(volumes={"/vol": volume})
         def f():
             pass
         ```
