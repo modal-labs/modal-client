@@ -4,7 +4,7 @@ from unittest import mock
 import pytest
 
 import modal
-from modal.exception import DeprecationError, InvalidError
+from modal.exception import PendingDeprecationError, InvalidError
 from modal.network_file_system import NetworkFileSystemHandle
 
 from .supports.skip import skip_windows
@@ -116,9 +116,9 @@ async def test_network_file_system_handle_big_file(client, tmp_path, servicer, b
 
 def test_old_syntax(client, servicer):
     stub = modal.Stub()
-    with pytest.warns(DeprecationError):
+    with pytest.warns(PendingDeprecationError):
         stub.vol1 = modal.SharedVolume()
-    with pytest.warns(DeprecationError):
+    with pytest.warns(PendingDeprecationError):
         stub.vol2 = modal.SharedVolume.new()
     stub.vol3 = modal.NetworkFileSystem.new()
     with stub.run(client=client) as app:

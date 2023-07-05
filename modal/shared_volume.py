@@ -10,20 +10,20 @@ from .network_file_system import _NetworkFileSystem
 class _SharedVolume(_NetworkFileSystem):
     def __init__(self, *args, **kwargs) -> None:
         """`SharedVolume(...)` is deprecated. Please use `NetworkFileSystem.new(...)` instead."""
-        deprecation_warning(date(2023, 7, 5), _SharedVolume.__init__.__doc__)
+        deprecation_warning(date(2023, 7, 5), _SharedVolume.__init__.__doc__, pending=True)
         obj = _NetworkFileSystem.new(*args, **kwargs)
         self._init_from_other(obj)
 
     @staticmethod
     def new(*args, **kwargs) -> "_NetworkFileSystem":
         """`SharedVolume.new(...)` is deprecated. Please use `NetworkFileSystem.new(...)` instead."""
-        deprecation_warning(date(2023, 7, 5), _SharedVolume.new.__doc__)
+        deprecation_warning(date(2023, 7, 5), _SharedVolume.new.__doc__, pending=True)
         return _NetworkFileSystem.new(*args, **kwargs)
 
     @staticmethod
     def persisted(*args, **kwargs) -> _NetworkFileSystem:
         """`SharedVolume.persisted(...)` is deprecated. Please use `NetworkFileSystem.persisted(...)` instead."""
-        deprecation_warning(date(2023, 7, 5), _SharedVolume.persisted.__doc__)
+        deprecation_warning(date(2023, 7, 5), _SharedVolume.persisted.__doc__, pending=True)
         return _NetworkFileSystem.persisted(*args, **kwargs)
 
 
