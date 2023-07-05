@@ -1179,7 +1179,6 @@ class _Image(_Provider[_ImageHandle]):
             deprecation_warning(
                 date(2023, 7, 5),
                 "`shared_volumes` is deprecated. Use the argument `network_file_systems` instead.",
-                pending=True,
             )
             network_file_systems = {**network_file_systems, **shared_volumes}
 
