@@ -9,6 +9,8 @@ import cloudpickle
 
 from synchronicity.exceptions import UserCodeException
 
+from modal_proto import api_pb2
+
 from modal import Proxy, Stub, NetworkFileSystem, web_endpoint, asgi_app, wsgi_app
 from modal.exception import DeprecationError, PendingDeprecationError, InvalidError
 from modal.functions import Function, FunctionCall, gather, FunctionHandle
@@ -595,3 +597,14 @@ def test_invalid_web_decorator_usage():
         @wsgi_app  # type: ignore
         def my_handle_wsgi():
             pass
+
+
+def test_default_cloud_provider(client, servicer, monkeypatch):
+    stub = Stub()
+
+    monkeypatch.setenv("MODAL_DEFAULT_CLOUD", "oci")
+    stub.function()(dummy)
+    with stub.run(client=client) as app:
+        f = servicer.app_functions[app.dummy.object_id]
+
+    assert f.cloud_provider == api_pb2.CLOUD_PROVIDER_OCI
