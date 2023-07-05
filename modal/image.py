@@ -47,11 +47,11 @@ def _dockerhub_python_version(python_version=None):
     # We use the same major/minor version, but the highest micro version
     # See https://hub.docker.com/_/python
     latest_micro_version = {
-        "3.11": "0",
-        "3.10": "8",
-        "3.9": "15",
-        "3.8": "15",
-        "3.7": "15",
+        "3.11": "4",
+        "3.10": "12",
+        "3.9": "17",
+        "3.8": "17",
+        "3.7": "17",
     }
     major_minor_version = ".".join(python_version.split(".")[:2])
     python_version = major_minor_version + "." + latest_micro_version[major_minor_version]
@@ -710,7 +710,7 @@ class _Image(_Provider[_ImageHandle]):
         # issues (https://github.com/ContinuumIO/docker-images/issues) and building our own is more flexible.
         conda_install_script = "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh"
         dockerfile_commands = [
-            "FROM debian:bullseye",  # the -slim images lack files required by Conda.
+            "FROM debian:bookworm",  # the -slim images lack files required by Conda.
             # Temporarily add utility packages for conda installation.
             "RUN apt-get --quiet update && apt-get --quiet --yes install curl bzip2 \\",
             f"&& curl --silent --show-error --location {conda_install_script} --output /tmp/miniconda.sh \\",
@@ -832,7 +832,7 @@ class _Image(_Provider[_ImageHandle]):
         _validate_python_version(python_version)
 
         return _Image.from_dockerhub(
-            "mambaorg/micromamba:1.3.1-bullseye-slim",
+            "mambaorg/micromamba:1.4.6-bookworm-slim",
             setup_dockerfile_commands=[
                 'SHELL ["/usr/local/bin/_dockerfile_shell.sh"]',
                 "ENV MAMBA_DOCKERFILE_ACTIVATE=1",
@@ -1070,12 +1070,12 @@ class _Image(_Provider[_ImageHandle]):
     @staticmethod
     @typechecked
     def debian_slim(python_version: Optional[str] = None, force_build: bool = False) -> "_Image":
-        """Default image, based on the official `python:X.Y.Z-slim-bullseye` Docker images."""
+        """Default image, based on the official `python:X.Y.Z-slim-bookworm` Docker images."""
         python_version = _dockerhub_python_version(python_version)
 
         requirements_path = _get_client_requirements_path()
         dockerfile_commands = [
-            f"FROM python:{python_version}-slim-bullseye",
+            f"FROM python:{python_version}-slim-bookworm",
             "COPY /modal_requirements.txt /modal_requirements.txt",
             "RUN apt-get update",
             "RUN apt-get install -y gcc gfortran build-essential",
