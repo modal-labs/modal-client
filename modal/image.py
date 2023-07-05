@@ -1137,6 +1137,7 @@ class _Image(_Provider[_ImageHandle]):
         secrets: Sequence[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         mounts: Sequence[_Mount] = (),
+        shared_volumes: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
@@ -1173,6 +1174,14 @@ class _Image(_Provider[_ImageHandle]):
 
         info = FunctionInfo(raw_f)
         function_handle = _FunctionHandle._new()
+
+        if shared_volumes:
+            deprecation_warning(
+                date(2023, 7, 5),
+                "`shared_volumes` is deprecated. Use the argument `network_file_systems` instead.",
+                pending=True,
+            )
+            network_file_systems = {**network_file_systems, **shared_volumes}
 
         function = _Function.from_args(
             function_handle,
