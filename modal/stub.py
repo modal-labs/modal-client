@@ -445,7 +445,9 @@ class _Stub:
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Sequence[_Mount] = (),
-        shared_volumes: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},  # Deprecated, use `network_file_systems` instead
+        shared_volumes: Dict[
+            Union[str, os.PathLike], _NetworkFileSystem
+        ] = {},  # Deprecated, use `network_file_systems` instead
         network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         allow_cross_region_volumes: bool = False,  # Whether using shared volumes from other regions is allowed.
         volumes: Dict[Union[str, os.PathLike], _Volume] = {},  # Experimental. Do not use!
@@ -472,7 +474,9 @@ class _Stub:
         secrets = [*self._secrets, *secrets]
 
         if shared_volumes:
-            deprecation_warning(date(2023, 7, 5), "`shared_volumes` is deprecated. Use the argument `network_file_systems` instead.")
+            deprecation_warning(
+                date(2023, 7, 5), "`shared_volumes` is deprecated. Use the argument `network_file_systems` instead."
+            )
             network_file_systems = {**network_file_systems, **shared_volumes}
 
         def wrapped(f: Union[_PartialFunction, Callable[..., Any]]) -> _FunctionHandle:
@@ -622,7 +626,9 @@ class _Stub:
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Sequence[_Mount] = (),
-        shared_volumes: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},  # Deprecated, use `network_file_systems` instead
+        shared_volumes: Dict[
+            Union[str, os.PathLike], _NetworkFileSystem
+        ] = {},  # Deprecated, use `network_file_systems` instead
         network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         allow_cross_region_volumes: bool = False,  # Whether using shared volumes from other regions is allowed.
         volumes: Dict[Union[str, os.PathLike], _Volume] = {},  # Experimental. Do not use!

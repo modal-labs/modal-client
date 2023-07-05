@@ -6,6 +6,7 @@ from modal_utils.async_utils import synchronize_api
 from .exception import deprecation_warning
 from .network_file_system import _NetworkFileSystem
 
+
 class _SharedVolume(_NetworkFileSystem):
     def __init__(self, *args, **kwargs) -> None:
         """`SharedVolume(...)` is deprecated. Please use `NetworkFileSystem.new(...)` instead."""
