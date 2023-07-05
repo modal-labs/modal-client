@@ -6,7 +6,7 @@ from modal.cli.environment import environment_cli
 
 from .app import app_cli
 from .config import config_cli
-from .network_file_system import nfs_cli
+from .network_file_system import nfs_cli, vol_cli
 from .secret import secret_cli
 from .token import token_cli
 from .profile import profile_cli
@@ -45,6 +45,7 @@ entrypoint_cli_typer.add_typer(app_cli)
 entrypoint_cli_typer.add_typer(config_cli)
 entrypoint_cli_typer.add_typer(environment_cli)
 entrypoint_cli_typer.add_typer(nfs_cli)
+entrypoint_cli_typer.add_typer(vol_cli)
 entrypoint_cli_typer.add_typer(profile_cli)
 entrypoint_cli_typer.add_typer(secret_cli)
 entrypoint_cli_typer.add_typer(token_cli)
