@@ -15,6 +15,7 @@ from .retries import Retries
 from .schedule import Cron, Period
 from .secret import Secret
 from .network_file_system import NetworkFileSystem
+from .shared_volume import SharedVolume
 from .stub import Stub
 from .volume import Volume
 
@@ -35,6 +36,7 @@ __all__ = [
     "Queue",
     "Retries",
     "Secret",
+    "SharedVolume",
     "Stub",
     "Volume",
     "asgi_app",

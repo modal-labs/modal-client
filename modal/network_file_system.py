@@ -1,4 +1,4 @@
-# Copyright Modal Labs 2022
+# Copyright Modal Labs 2023
 import os
 from datetime import date
 import time
@@ -204,12 +204,6 @@ class _NetworkFileSystem(_Provider[_NetworkFileSystemHandle]):
             return _NetworkFileSystemHandle._from_id(resp.shared_volume_id, resolver.client, None)
 
         return _NetworkFileSystem._from_loader(_load, "NetworkFileSystem()")
-
-    def __init__(self, cloud: Optional[str] = None) -> None:
-        """`NetworkFileSystem(...)` is deprecated. Please use `NetworkFileSystem.new(...)` instead."""
-        deprecation_warning(date(2023, 6, 30), self.__init__.__doc__)
-        obj = _NetworkFileSystem.new(cloud)
-        self._init_from_other(obj)
 
     @staticmethod
     def persisted(
