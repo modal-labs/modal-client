@@ -542,6 +542,16 @@ def test_allow_cross_region_volumes_webhook(client, servicer):
                 assert svm.allow_cross_region
 
 
+def test_shared_volumes(client, servicer):
+    stub = Stub()
+    vol = NetworkFileSystem.new()
+    with pytest.warns(DeprecationError):
+        stub.function(shared_volumes={"/sv-1": vol})(dummy)
+
+    with stub.run(client=client):
+        assert len(servicer.app_functions) == 1
+
+
 def test_serialize_deserialize_function_handle(servicer, client):
     from modal._serialization import serialize, deserialize
 

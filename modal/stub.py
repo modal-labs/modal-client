@@ -22,7 +22,7 @@ from .app import _App, _container_app, is_local
 from .client import _Client
 from .cls import make_remote_cls_constructors
 from .config import logger
-from .exception import InvalidError, deprecation_error
+from .exception import InvalidError, deprecation_error, deprecation_warning
 from .functions import _Function, _FunctionHandle, PartialFunction, _PartialFunction
 from .gpu import GPU_T
 from .image import _Image, _ImageHandle
@@ -445,6 +445,7 @@ class _Stub:
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Sequence[_Mount] = (),
+        shared_volumes: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},  # Deprecated, use `network_file_systems` instead
         network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         allow_cross_region_volumes: bool = False,  # Whether using shared volumes from other regions is allowed.
         volumes: Dict[Union[str, os.PathLike], _Volume] = {},  # Experimental. Do not use!
@@ -469,6 +470,10 @@ class _Stub:
             image = self._get_default_image()
 
         secrets = [*self._secrets, *secrets]
+
+        if shared_volumes:
+            deprecation_warning(date(2023, 7, 5), "`shared_volumes` is deprecated. Use the argument `network_file_systems` instead.")
+            network_file_systems = {**network_file_systems, **shared_volumes}
 
         def wrapped(f: Union[_PartialFunction, Callable[..., Any]]) -> _FunctionHandle:
             is_generator_override: Optional[bool] = is_generator
@@ -617,6 +622,7 @@ class _Stub:
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Sequence[_Mount] = (),
+        shared_volumes: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},  # Deprecated, use `network_file_systems` instead
         network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         allow_cross_region_volumes: bool = False,  # Whether using shared volumes from other regions is allowed.
         volumes: Dict[Union[str, os.PathLike], _Volume] = {},  # Experimental. Do not use!
@@ -647,6 +653,7 @@ class _Stub:
                         gpu=gpu,
                         serialized=serialized,
                         mounts=mounts,
+                        shared_volumes=shared_volumes,
                         network_file_systems=network_file_systems,
                         allow_cross_region_volumes=allow_cross_region_volumes,
                         volumes=volumes,

@@ -18,7 +18,7 @@ class _SharedVolume(_NetworkFileSystem):
         """`SharedVolume.new(...)` is deprecated. Please use `NetworkFileSystem.new(...)` instead."""
         deprecation_warning(date(2023, 7, 5), _SharedVolume.new.__doc__)
         return _NetworkFileSystem.new(*args, **kwargs)
-        
+
     @staticmethod
     def persisted(*args, **kwargs) -> _NetworkFileSystem:
         """`SharedVolume.persisted(...)` is deprecated. Please use `NetworkFileSystem.persisted(...)` instead."""
