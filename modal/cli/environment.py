@@ -21,13 +21,6 @@ production, to prevent overwriting production apps when developing new features
 while still being able to deploy changes to a live environment.
 """
 
-ENV_OPTION_HELP = """Environment to interact with
-
-If none is specified, Modal will use the default environment of your current profile (can also be specified via the environment variable MODAL_ENVIRONMENT).
-If neither is set, Modal will assume there is only one environment in the active workspace and use that one, or raise an error if there are multiple environments.
-"""
-
-
 environment_cli = typer.Typer(name="environment", help=ENVIRONMENT_HELP_TEXT, no_args_is_help=True)
 
 
@@ -84,7 +77,7 @@ def delete(
 ENVIRONMENT_UPDATE_HELP = """Update the name or web suffix of an environment"""
 
 
-@environment_cli.command(name="update", help=ENVIRONMENT_UPDATE_HELP, hidden=True)
+@environment_cli.command(name="update", help=ENVIRONMENT_UPDATE_HELP)
 def update(
     current_name: str,
     set_name: Optional[str] = typer.Option(default=None, help="New name of the environment"),

@@ -7,10 +7,9 @@ from click import UsageError
 from grpclib import GRPCError, Status
 from rich.text import Text
 
-from modal.cli.environment import ENV_OPTION_HELP
-from modal.environments import ensure_env
 from modal._output import OutputManager, get_app_logs_loop
-from modal.cli.utils import timestamp_to_local, display_table
+from modal.environments import ensure_env
+from modal.cli.utils import timestamp_to_local, display_table, ENV_OPTION
 from modal.client import _Client
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
@@ -30,9 +29,7 @@ APP_STATE_TO_MESSAGE = {
 
 @app_cli.command("list")
 @synchronizer.create_blocking
-async def list(
-    env: Optional[str] = typer.Option(default=None, help=ENV_OPTION_HELP, hidden=True), json: Optional[bool] = False
-):
+async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     """List all running or recently running Modal apps for the current account"""
     client = await _Client.from_env()
     env = ensure_env(env)
