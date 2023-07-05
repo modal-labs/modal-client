@@ -67,7 +67,7 @@ from .proxy import _Proxy
 from .retries import Retries
 from .schedule import Schedule
 from .secret import _Secret
-from .shared_volume import _SharedVolume
+from .network_file_system import _NetworkFileSystem
 from .volume import _Volume
 
 ATTEMPT_TIMEOUT_GRACE_PERIOD = 5  # seconds
@@ -826,7 +826,7 @@ class _Function(_Provider[_FunctionHandle]):
     _secrets: Collection[_Secret]
     _info: FunctionInfo
     _mounts: Collection[_Mount]
-    _shared_volumes: Dict[Union[str, os.PathLike], _SharedVolume]
+    _network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem]
     _allow_cross_region_volumes: bool
     _volumes: Dict[Union[str, os.PathLike], _Volume]
     _image: Optional[_Image]
@@ -850,7 +850,7 @@ class _Function(_Provider[_FunctionHandle]):
         gpu: GPU_T = None,
         # TODO: maybe break this out into a separate decorator for notebooks.
         mounts: Collection[_Mount] = (),
-        shared_volumes: Dict[Union[str, os.PathLike], _SharedVolume] = {},
+        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         allow_cross_region_volumes: bool = False,
         volumes: Dict[Union[str, os.PathLike], _Volume] = {},
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
@@ -935,7 +935,7 @@ class _Function(_Provider[_FunctionHandle]):
                 *mounts,
                 image,
                 *secrets,
-                *shared_volumes.values(),
+                *network_file_systems.values(),
                 *volumes.values(),
             ]
         ]
@@ -983,8 +983,8 @@ class _Function(_Provider[_FunctionHandle]):
 
             # Mount point path validation for volumes and shared volumes
             def _validate_mount_points(
-                display_name: str, volume_likes: Dict[Union[str, os.PathLike], Union[_Volume, _SharedVolume]]
-            ) -> List[Tuple[str, Union[_Volume, _SharedVolume]]]:
+                display_name: str, volume_likes: Dict[Union[str, os.PathLike], Union[_Volume, _NetworkFileSystem]]
+            ) -> List[Tuple[str, Union[_Volume, _NetworkFileSystem]]]:
                 validated = []
                 for path, vol in volume_likes.items():
                     path = PurePath(path).as_posix()
@@ -1015,23 +1015,25 @@ class _Function(_Provider[_FunctionHandle]):
                 return image_id
 
             # validation
-            if not isinstance(shared_volumes, dict):
-                raise InvalidError("shared_volumes must be a dict[str, SharedVolume] where the keys are paths")
-            validated_shared_volumes = _validate_mount_points("Shared volume", shared_volumes)
+            if not isinstance(network_file_systems, dict):
+                raise InvalidError(
+                    "network_file_systems must be a dict[str, NetworkFileSystem] where the keys are paths"
+                )
+            validated_network_file_systems = _validate_mount_points("Shared volume", network_file_systems)
 
-            async def shared_volume_loader():
-                shared_volume_mounts = []
-                volume_ids = await _load_ids([vol for _, vol in validated_shared_volumes])
+            async def network_file_system_loader():
+                network_file_system_mounts = []
+                volume_ids = await _load_ids([vol for _, vol in validated_network_file_systems])
                 # Relies on dicts being ordered (true as of Python 3.6).
-                for ((path, _), volume_id) in zip(validated_shared_volumes, volume_ids):
-                    shared_volume_mounts.append(
+                for ((path, _), volume_id) in zip(validated_network_file_systems, volume_ids):
+                    network_file_system_mounts.append(
                         api_pb2.SharedVolumeMount(
                             mount_path=path,
                             shared_volume_id=volume_id,
                             allow_cross_region=allow_cross_region_volumes,
                         )
                     )
-                return shared_volume_mounts
+                return network_file_system_mounts
 
             if not isinstance(volumes, dict):
                 raise InvalidError("volumes must be a dict[str, Volume] where the keys are paths")
@@ -1088,11 +1090,11 @@ class _Function(_Provider[_FunctionHandle]):
             if stub and stub.name:
                 stub_name = stub.name
 
-            mount_ids, secret_ids, image_id, shared_volume_mounts, volume_mounts = await asyncio.gather(
+            mount_ids, secret_ids, image_id, network_file_system_mounts, volume_mounts = await asyncio.gather(
                 _load_ids(all_mounts),
                 _load_ids(secrets),
                 image_loader(),
-                shared_volume_loader(),
+                network_file_system_loader(),
                 volume_loader(),
             )
 
@@ -1109,7 +1111,7 @@ class _Function(_Provider[_FunctionHandle]):
                 function_type=function_type,
                 resources=api_pb2.Resources(milli_cpu=milli_cpu, gpu_config=gpu_config, memory_mb=memory),
                 webhook_config=webhook_config,
-                shared_volume_mounts=shared_volume_mounts,
+                shared_volume_mounts=network_file_system_mounts,
                 volume_mounts=volume_mounts,
                 proxy_id=proxy_id,
                 retry_policy=retry_policy,
@@ -1172,7 +1174,7 @@ class _Function(_Provider[_FunctionHandle]):
         obj._panel_items = panel_items
         obj._raw_f = raw_f
         obj._secrets = secrets
-        obj._shared_volumes = shared_volumes
+        obj._network_file_systems = network_file_systems
         obj._tag = tag
         obj._all_mounts = all_mounts  # needed for modal.serve file watching
         return obj
@@ -1194,7 +1196,7 @@ class _Function(_Provider[_FunctionHandle]):
             secrets=repr(self._secrets),
             gpu_config=repr(self._gpu_config),
             mounts=repr(self._mounts),
-            shared_volumes=repr(self._shared_volumes),
+            network_file_systems=repr(self._network_file_systems),
         )
         return f"{inspect.getsource(self._raw_f)}\n{repr(kwargs)}"
 
