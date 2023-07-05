@@ -37,7 +37,7 @@ def depr_cmd(cmd):
 
 
 nfs_cli = Typer(name="nfs", help="Read and edit shared volumes.", no_args_is_help=True)
-vol_cli = Typer(name="volume", help=depr_cmd("modal nfs"), no_args_is_help=True)
+vol_cli = Typer(name="volume", help=depr_cmd("modal nfs"), no_args_is_help=True, hidden=True)
 
 
 @vol_cli.command(name="list", help=depr_cmd("modal nfs list"), deprecated=True)
