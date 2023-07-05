@@ -11,9 +11,8 @@ from rich.console import Console
 from rich.syntax import Syntax
 
 import modal
-from modal.cli.environment import ENV_OPTION_HELP
 from modal.environments import ensure_env
-from modal.cli.utils import timestamp_to_local, display_table
+from modal.cli.utils import timestamp_to_local, display_table, ENV_OPTION
 from modal.client import Client, _Client
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
@@ -24,9 +23,7 @@ secret_cli = typer.Typer(name="secret", help="Manage secrets.", no_args_is_help=
 
 @secret_cli.command("list", help="List your published secrets.")
 @synchronizer.create_blocking
-async def list(
-    env: Optional[str] = typer.Option(None, help=ENV_OPTION_HELP, hidden=True), json: Optional[bool] = False
-):
+async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     env = ensure_env(env)
     client = await _Client.from_env()
     response = await retry_transient_errors(client.stub.SecretList, api_pb2.SecretListRequest(environment_name=env))
@@ -50,7 +47,7 @@ async def list(
 def create(
     secret_name,
     keyvalues: List[str] = typer.Argument(..., help="Space-separated KEY=VALUE items"),
-    env: Optional[str] = typer.Option(None, help=ENV_OPTION_HELP, hidden=True),
+    env: Optional[str] = ENV_OPTION,
 ):
     env = ensure_env(env)
     env_dict = {}

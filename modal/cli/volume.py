@@ -21,9 +21,8 @@ from typer import Typer
 import modal
 from modal._location import display_location
 from modal._output import step_progress, step_completed
-from modal.cli.environment import ENV_OPTION_HELP
 from modal.environments import ensure_env
-from modal.cli.utils import display_table
+from modal.cli.utils import display_table, ENV_OPTION
 from modal.client import _Client
 from modal.shared_volume import _SharedVolumeHandle, _SharedVolume
 from modal_proto import api_pb2
@@ -37,9 +36,7 @@ volume_cli = Typer(name="volume", help="Read and edit shared volumes.", no_args_
 
 @volume_cli.command(name="list", help="List the names of all shared volumes.")
 @synchronizer.create_blocking
-async def list(
-    env: Optional[str] = typer.Option(default=None, help=ENV_OPTION_HELP, hidden=True), json: Optional[bool] = False
-):
+async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     env = ensure_env(env)
 
     client = await _Client.from_env()
@@ -73,7 +70,7 @@ def some_func():
 def create(
     name: str,
     cloud: str = typer.Option("aws", help="Cloud provider to create the volume in. One of aws|gcp."),
-    env: Optional[str] = typer.Option(None, help=ENV_OPTION_HELP, hidden=True),
+    env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
     volume = modal.SharedVolume.new(cloud=cloud)
@@ -98,7 +95,7 @@ async def _volume_from_name(deployment_name: str) -> _SharedVolumeHandle:
 async def ls(
     volume_name: str,
     path: str = typer.Argument(default="/"),
-    env: Optional[str] = typer.Option(None, help=ENV_OPTION_HELP, hidden=True),
+    env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
     volume = await _volume_from_name(volume_name)
@@ -143,7 +140,7 @@ async def put(
     volume_name: str,
     local_path: str,
     remote_path: str = typer.Argument(default="/"),
-    env: Optional[str] = typer.Option(None, help=ENV_OPTION_HELP, hidden=True),
+    env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
     volume = await _volume_from_name(volume_name)
@@ -225,7 +222,7 @@ async def get(
     remote_path: str,
     local_destination: str = typer.Argument("."),
     force: bool = False,
-    env: Optional[str] = typer.Option(None, help=ENV_OPTION_HELP, hidden=True),
+    env: Optional[str] = ENV_OPTION,
 ):
     """Download a file from a shared volume.
 
@@ -290,7 +287,7 @@ async def rm(
     volume_name: str,
     remote_path: str,
     recursive: bool = typer.Option(False, "-r", "--recursive", help="Delete directory recursively"),
-    env: Optional[str] = typer.Option(None, help=ENV_OPTION_HELP, hidden=True),
+    env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
     volume = await _volume_from_name(volume_name)
