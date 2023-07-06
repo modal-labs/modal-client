@@ -368,6 +368,16 @@ class _Image(_Provider[_ImageHandle]):
             context_mount=mount,
         )
 
+    def copy_local_python_packages(self, *module_names: str):
+        """Copy local Python packages into an importable path
+
+        The destination path is currently "/pkg", which is on the default PYTHONPATH of the Modal container runtime
+        """
+
+        # the Mount below will have all files already under /pkg, so we COPY it to /
+        mount = _Mount.from_local_python_packages(*module_names)
+        return self.copy_mount(mount, "/")
+
     @typechecked
     def pip_install(
         self,

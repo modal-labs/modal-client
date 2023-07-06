@@ -5,10 +5,12 @@ import sys
 from tempfile import NamedTemporaryFile
 from typing import List
 
+import modal
 from modal import Image, Mount, Secret, NetworkFileSystem, Stub, gpu
 from modal.exception import InvalidError, NotFoundError
 from modal.image import _dockerhub_python_version
 from modal_proto import api_pb2
+import modal.runner
 
 
 def test_python_version():
@@ -344,6 +346,33 @@ def test_image_build_with_context_mount(client, servicer, tmp_path):
 
         files = {f.mount_filename: f.content for f in Mount._get_files(data_mount.entries)}
         assert files == {"/data.txt": b"hello", "/data/sub": b"world"}
+
+
+def test_image_build_with_local_packages(client, servicer, tmp_path, monkeypatch):
+    monkeypatch.setenv(
+        "MODAL_AUTOMOUNT", "0"
+    )  # to ensure we don't accidentally pass the test due to other test imports
+    stub = modal.Stub("dummy")
+    stub.image = modal.Image.debian_slim().copy_local_python_packages("modal_test_support")
+
+    def expected_mount_request(build_request: api_pb2.MountBuildRequest):
+        return any(f for f in build_request.files if f.filename == "/pkg/modal_test_support/module_1.py")
+
+    def expected_image_request(req: api_pb2.ImageGetOrCreateRequest):
+        return req.image.context_mount_id == "mo-1337" and "COPY . /" in req.image.dockerfile_commands
+
+    with servicer.intercept() as ctx:
+        # The context manager will raise exceptions if the following expected requests aren't received by the servicer:
+        ctx.add_response(
+            "MountBuild", api_pb2.MountBuildResponse(mount_id="mo-1337"), request_filter=expected_mount_request
+        )
+        ctx.add_response(
+            "ImageGetOrCreate",
+            api_pb2.ImageGetOrCreateResponse(image_id="im-123"),
+            request_filter=expected_image_request,
+        )
+
+        modal.runner.deploy_stub(stub, client=client)
 
 
 def test_image_env(client, servicer):
