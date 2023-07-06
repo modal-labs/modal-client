@@ -20,6 +20,7 @@ from typing import (
     List,
     Optional,
     Set,
+    Tuple,
     Union,
     Iterable,
 )
@@ -35,7 +36,7 @@ from modal_proto import api_pb2
 from modal._types import typechecked
 from modal_utils.async_utils import (
     queue_batch_iterator,
-    synchronize_apis,
+    synchronize_api,
     warn_if_generator_is_not_consumed,
     synchronizer,
 )
@@ -66,7 +67,8 @@ from .proxy import _Proxy
 from .retries import Retries
 from .schedule import Schedule
 from .secret import _Secret
-from .shared_volume import _SharedVolume
+from .network_file_system import _NetworkFileSystem
+from .volume import _Volume
 
 ATTEMPT_TIMEOUT_GRACE_PERIOD = 5  # seconds
 
@@ -359,6 +361,8 @@ async def _map_invocation(
                 client.stub.FunctionPutInputs,
                 request,
                 max_retries=None,
+                max_delay=10,
+                additional_status_codes=[Status.RESOURCE_EXHAUSTED],
             )
             for item in resp.inputs:
                 pending_outputs.setdefault(item.input_id, 0)
@@ -592,7 +596,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
             raise ValueError("Can't return ordered results for a generator")
 
         count_update_callback = (
-            self._output_mgr.function_progress_callback(self._function_name) if self._output_mgr else None
+            self._output_mgr.function_progress_callback(self._function_name, total=None) if self._output_mgr else None
         )
 
         self._track_function_invocation()
@@ -808,7 +812,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         return self.bind_obj(obj, objtype)
 
 
-FunctionHandle, AioFunctionHandle = synchronize_apis(_FunctionHandle)
+FunctionHandle = synchronize_api(_FunctionHandle)
 
 
 class _Function(_Provider[_FunctionHandle]):
@@ -822,8 +826,9 @@ class _Function(_Provider[_FunctionHandle]):
     _secrets: Collection[_Secret]
     _info: FunctionInfo
     _mounts: Collection[_Mount]
-    _shared_volumes: Dict[Union[str, os.PathLike], _SharedVolume]
+    _network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem]
     _allow_cross_region_volumes: bool
+    _volumes: Dict[Union[str, os.PathLike], _Volume]
     _image: Optional[_Image]
     _gpu: Optional[GPU_T]
     _cloud: Optional[str]
@@ -845,8 +850,9 @@ class _Function(_Provider[_FunctionHandle]):
         gpu: GPU_T = None,
         # TODO: maybe break this out into a separate decorator for notebooks.
         mounts: Collection[_Mount] = (),
-        shared_volumes: Dict[Union[str, os.PathLike], _SharedVolume] = {},
+        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         allow_cross_region_volumes: bool = False,
+        volumes: Dict[Union[str, os.PathLike], _Volume] = {},
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         memory: Optional[int] = None,
         proxy: Optional[_Proxy] = None,
@@ -918,6 +924,8 @@ class _Function(_Provider[_FunctionHandle]):
                 "Setting `keep_warm=True` is deprecated. Pass an explicit warm pool size instead, e.g. `keep_warm=2`.",
             )
 
+        if not cloud:
+            cloud = config.get("default_cloud")
         if cloud:
             cloud_provider = parse_cloud_provider(cloud)
         else:
@@ -929,13 +937,23 @@ class _Function(_Provider[_FunctionHandle]):
                 *mounts,
                 image,
                 *secrets,
-                *shared_volumes.values(),
+                *network_file_systems.values(),
+                *volumes.values(),
             ]
         ]
         if gpu:
             panel_items.append(display_gpu_config(gpu))
         if cloud:
             panel_items.append(f"Cloud({cloud.upper()})")
+
+        if is_generator and webhook_config:
+            if webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
+                raise InvalidError(
+                    """Webhooks cannot be generators. If you want a streaming response, see https://modal.com/docs/guide/streaming-endpoints
+                    """
+                )
+            else:
+                raise InvalidError("Webhooks cannot be generators")
 
         async def _preload(resolver: Resolver, existing_object_id: Optional[str]) -> _FunctionHandle:
             if is_generator:
@@ -956,6 +974,7 @@ class _Function(_Provider[_FunctionHandle]):
             return function_handle
 
         async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _FunctionHandle:
+            # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
             status_row = resolver.add_status_row()
             status_row.message(f"Creating {tag}...")
 
@@ -964,54 +983,94 @@ class _Function(_Provider[_FunctionHandle]):
             else:
                 proxy_id = None
 
-            # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
-            if image is not None:
-                if not isinstance(image, _Image):
-                    raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
-                image_id = (await resolver.load(image)).object_id
-            else:
-                image_id = None  # Happens if it's a notebook function
-            secret_ids = []
-            for secret in secrets:
-                secret_id = (await resolver.load(secret)).object_id
-                secret_ids.append(secret_id)
+            # Mount point path validation for volumes and shared volumes
+            def _validate_mount_points(
+                display_name: str, volume_likes: Dict[Union[str, os.PathLike], Union[_Volume, _NetworkFileSystem]]
+            ) -> List[Tuple[str, Union[_Volume, _NetworkFileSystem]]]:
+                validated = []
+                for path, vol in volume_likes.items():
+                    path = PurePath(path).as_posix()
+                    abs_path = posixpath.abspath(path)
 
-            mount_ids = []
-            for mount in all_mounts:
-                mount_ids.append((await resolver.load(mount)).object_id)
+                    if path != abs_path:
+                        raise InvalidError(f"{display_name} {path} must be a canonical, absolute path.")
+                    elif abs_path == "/":
+                        raise InvalidError(f"{display_name} {path} cannot be mounted into root directory.")
+                    elif abs_path == "/root":
+                        raise InvalidError(f"{display_name} {path} cannot be mounted at '/root'.")
+                    elif abs_path == "/tmp":
+                        raise InvalidError(f"{display_name} {path} cannot be mounted at '/tmp'.")
+                    validated.append((path, vol))
+                return validated
 
-            if not isinstance(shared_volumes, dict):
-                raise InvalidError("shared_volumes must be a dict[str, SharedVolume] where the keys are paths")
-            shared_volume_mounts = []
-            # Relies on dicts being ordered (true as of Python 3.6).
-            for path, shared_volume in shared_volumes.items():
-                path = PurePath(path).as_posix()
-                abs_path = posixpath.abspath(path)
+            async def _load_ids(providers) -> typing.List[str]:
+                loaded_handles = await asyncio.gather(*[resolver.load(provider) for provider in providers])
+                return [handle.object_id for handle in loaded_handles]
 
-                if path != abs_path:
-                    raise InvalidError(f"Shared volume {abs_path} must be a canonical, absolute path.")
-                elif abs_path == "/":
-                    raise InvalidError(f"Shared volume {abs_path} cannot be mounted into root directory.")
-                elif abs_path == "/root":
-                    raise InvalidError(f"Shared volume {abs_path} cannot be mounted at '/root'.")
-                elif abs_path == "/tmp":
-                    raise InvalidError(f"Shared volume {abs_path} cannot be mounted at '/tmp'.")
+            async def image_loader():
+                if image is not None:
+                    if not isinstance(image, _Image):
+                        raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
+                    image_id = (await resolver.load(image)).object_id
+                else:
+                    image_id = None  # Happens if it's a notebook function
+                return image_id
 
-                shared_volume_mounts.append(
-                    api_pb2.SharedVolumeMount(
-                        mount_path=path,
-                        shared_volume_id=(await resolver.load(shared_volume)).object_id,
-                        allow_cross_region=allow_cross_region_volumes,
-                    )
+            # validation
+            if not isinstance(network_file_systems, dict):
+                raise InvalidError(
+                    "network_file_systems must be a dict[str, NetworkFileSystem] where the keys are paths"
                 )
+            validated_network_file_systems = _validate_mount_points("Shared volume", network_file_systems)
+
+            async def network_file_system_loader():
+                network_file_system_mounts = []
+                volume_ids = await _load_ids([vol for _, vol in validated_network_file_systems])
+                # Relies on dicts being ordered (true as of Python 3.6).
+                for ((path, _), volume_id) in zip(validated_network_file_systems, volume_ids):
+                    network_file_system_mounts.append(
+                        api_pb2.SharedVolumeMount(
+                            mount_path=path,
+                            shared_volume_id=volume_id,
+                            allow_cross_region=allow_cross_region_volumes,
+                        )
+                    )
+                return network_file_system_mounts
+
+            if not isinstance(volumes, dict):
+                raise InvalidError("volumes must be a dict[str, Volume] where the keys are paths")
+            validated_volumes = _validate_mount_points("Volume", volumes)
+            # We don't support mounting a volume in more than one location
+            volume_to_paths: Dict[_Volume, List[str]] = {}
+            for (path, volume) in validated_volumes:
+                volume_to_paths.setdefault(volume, []).append(path)
+            for paths in volume_to_paths.values():
+                if len(paths) > 1:
+                    conflicting = ", ".join(paths)
+                    raise InvalidError(
+                        f"The same Volume cannot be mounted in multiple locations for the same function: {conflicting}"
+                    )
+
+            async def volume_loader():
+                volume_mounts = []
+                volume_ids = await _load_ids([vol for _, vol in validated_volumes])
+                # Relies on dicts being ordered (true as of Python 3.6).
+                for ((path, _), volume_id) in zip(validated_volumes, volume_ids):
+                    volume_mounts.append(
+                        api_pb2.VolumeMount(
+                            mount_path=path,
+                            volume_id=volume_id,
+                        )
+                    )
+                return volume_mounts
 
             if is_generator:
                 function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
             else:
                 function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
 
-            if cpu is not None and cpu < 0.0:
-                raise InvalidError(f"Invalid fractional CPU value {cpu}. Cannot have negative CPU resources.")
+            if cpu is not None and cpu < 0.25:
+                raise InvalidError(f"Invalid fractional CPU value {cpu}. Cannot have less than 0.25 CPU resources.")
             milli_cpu = int(1000 * cpu) if cpu is not None else None
 
             if interactive:
@@ -1033,6 +1092,14 @@ class _Function(_Provider[_FunctionHandle]):
             if stub and stub.name:
                 stub_name = stub.name
 
+            mount_ids, secret_ids, image_id, network_file_system_mounts, volume_mounts = await asyncio.gather(
+                _load_ids(all_mounts),
+                _load_ids(secrets),
+                image_loader(),
+                network_file_system_loader(),
+                volume_loader(),
+            )
+
             # Create function remotely
             function_definition = api_pb2.Function(
                 module_name=info.module_name,
@@ -1046,7 +1113,8 @@ class _Function(_Provider[_FunctionHandle]):
                 function_type=function_type,
                 resources=api_pb2.Resources(milli_cpu=milli_cpu, gpu_config=gpu_config, memory_mb=memory),
                 webhook_config=webhook_config,
-                shared_volume_mounts=shared_volume_mounts,
+                shared_volume_mounts=network_file_system_mounts,
+                volume_mounts=volume_mounts,
                 proxy_id=proxy_id,
                 retry_policy=retry_policy,
                 timeout_secs=timeout,
@@ -1108,7 +1176,7 @@ class _Function(_Provider[_FunctionHandle]):
         obj._panel_items = panel_items
         obj._raw_f = raw_f
         obj._secrets = secrets
-        obj._shared_volumes = shared_volumes
+        obj._network_file_systems = network_file_systems
         obj._tag = tag
         obj._all_mounts = all_mounts  # needed for modal.serve file watching
         return obj
@@ -1130,12 +1198,12 @@ class _Function(_Provider[_FunctionHandle]):
             secrets=repr(self._secrets),
             gpu_config=repr(self._gpu_config),
             mounts=repr(self._mounts),
-            shared_volumes=repr(self._shared_volumes),
+            network_file_systems=repr(self._network_file_systems),
         )
         return f"{inspect.getsource(self._raw_f)}\n{repr(kwargs)}"
 
 
-Function, AioFunction = synchronize_apis(_Function)
+Function = synchronize_api(_Function)
 
 
 class _FunctionCall(_Handle, type_prefix="fc"):
@@ -1179,7 +1247,7 @@ class _FunctionCall(_Handle, type_prefix="fc"):
         await self._client.stub.FunctionCallCancel(request)
 
 
-FunctionCall, AioFunctionCall = synchronize_apis(_FunctionCall)
+FunctionCall = synchronize_api(_FunctionCall)
 
 
 async def _gather(*function_calls: _FunctionCall):
@@ -1206,7 +1274,7 @@ async def _gather(*function_calls: _FunctionCall):
         raise exc
 
 
-gather, aio_gather = synchronize_apis(_gather)
+gather = synchronize_api(_gather)
 
 
 _current_input_id: Optional[str] = None
@@ -1268,7 +1336,7 @@ class _PartialFunction:
             )
 
 
-PartialFunction, AioPartialFunction = synchronize_apis(_PartialFunction)
+PartialFunction = synchronize_api(_PartialFunction)
 
 
 def _method(
@@ -1440,7 +1508,7 @@ def _wsgi_app(
     return wrapper
 
 
-method, aio_method = synchronize_apis(_method)
-web_endpoint, aio_web_endpoint = synchronize_apis(_web_endpoint)
-asgi_app, aio_asgi_app = synchronize_apis(_asgi_app)
-wsgi_app, aio_wsgi_app = synchronize_apis(_wsgi_app)
+method = synchronize_api(_method)
+web_endpoint = synchronize_api(_web_endpoint)
+asgi_app = synchronize_api(_asgi_app)
+wsgi_app = synchronize_api(_wsgi_app)

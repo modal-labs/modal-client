@@ -2,13 +2,13 @@
 from typing import TYPE_CHECKING, Dict, Optional, TypeVar
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_apis
-from modal_utils.grpc_utils import retry_transient_errors
+from modal_utils.async_utils import synchronize_api
+from modal_utils.grpc_utils import get_proto_oneof, retry_transient_errors
 
 from ._resolver import Resolver
 from .client import _Client
 from .config import logger
-from .object import _Handle, _Provider, DEFAULT_ENVIRONMENT_NAME
+from .object import _Handle, _Provider
 
 if TYPE_CHECKING:
     from rich.tree import Tree
@@ -75,10 +75,10 @@ class _App:
         return self._app_id
 
     async def _create_all_objects(
-        self, blueprint: Dict[str, _Provider], output_mgr, new_app_state: int
+        self, blueprint: Dict[str, _Provider], output_mgr, new_app_state: int, environment_name: str
     ):  # api_pb2.AppState.V
         """Create objects that have been defined but not created on the server."""
-        resolver = Resolver(output_mgr, self._client, self.app_id)
+        resolver = Resolver(output_mgr, self._client, environment_name, self.app_id)
         with resolver.display():
             # Preload all functions to make sure they have ids assigned before they are loaded.
             # This is important to make sure any enclosed function handle references in serialized
@@ -157,7 +157,8 @@ class _App:
         req = api_pb2.AppGetObjectsRequest(app_id=app_id)
         resp = await retry_transient_errors(self._client.stub.AppGetObjects, req)
         for item in resp.items:
-            obj = _Handle._from_id(item.object_id, self._client, item.function)
+            handle_metadata = get_proto_oneof(item, "handle_metadata_oneof")
+            obj = _Handle._from_id(item.object_id, self._client, handle_metadata)
             self._tag_to_object[item.tag] = obj
 
     @staticmethod
@@ -183,7 +184,7 @@ class _App:
         description: Optional[str] = None,
         detach: bool = False,
         deploying: bool = False,
-        environment_name: str = DEFAULT_ENVIRONMENT_NAME,
+        environment_name: str = "",
     ) -> "_App":
         # Start app
         # TODO(erikbern): maybe this should happen outside of this method?
@@ -199,7 +200,7 @@ class _App:
         return _App(client, app_resp.app_id, app_page_url)
 
     @staticmethod
-    async def _init_from_name(client: _Client, name: str, namespace, environment_name: str):
+    async def _init_from_name(client: _Client, name: str, namespace, environment_name: str = ""):
         # Look up any existing deployment
         app_req = api_pb2.AppGetByDeploymentNameRequest(
             name=name, namespace=namespace, environment_name=environment_name
@@ -213,9 +214,9 @@ class _App:
         else:
             return await _App._init_new(client, name, detach=False, deploying=True, environment_name=environment_name)
 
-    async def create_one_object(self, provider: _Provider) -> _Handle:
+    async def create_one_object(self, provider: _Provider, environment_name: str) -> _Handle:
         existing_object_id: Optional[str] = self._tag_to_existing_id.get("_object")
-        resolver = Resolver(None, self._client, self.app_id)
+        resolver = Resolver(None, self._client, environment_name, self.app_id)
         handle = await resolver.load(provider, existing_object_id)
         indexed_object_ids = {"_object": handle.object_id}
         unindexed_object_ids = [obj.object_id for obj in resolver.objects() if obj is not handle]
@@ -247,13 +248,12 @@ class _App:
         _container_app.__init__(None, None, None, None)  # type: ignore
 
 
-App, AioApp = synchronize_apis(_App)
+App = synchronize_api(_App)
 
 _is_container_app = False
 _container_app = _App(None, None, None, None)
-container_app, aio_container_app = synchronize_apis(_container_app)
+container_app = synchronize_api(_container_app)
 assert isinstance(container_app, App)
-assert isinstance(aio_container_app, AioApp)
 __doc__container_app = """A reference to the running `modal.App`, accessible from within a running Modal function.
 Useful for accessing object handles for any Modal objects declared on the stub, e.g:
 

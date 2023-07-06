@@ -1,13 +1,16 @@
 # Copyright Modal Labs 2022
+from datetime import date
 from typing import Any, Optional
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_apis
+from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors
 
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
+from ._types import typechecked
 from .config import logger
+from .exception import deprecation_warning
 from .object import _Handle, _Provider
 
 
@@ -19,7 +22,7 @@ class _DictHandle(_Handle, type_prefix="di"):
     """Handle for interacting with the contents of a `Dict`
 
     ```python
-    stub.some_dict = modal.Dict()
+    stub.some_dict = modal.Dict.new()
 
     if __name__ == "__main__":
         with stub.run() as app:
@@ -99,7 +102,7 @@ class _DictHandle(_Handle, type_prefix="di"):
         return await self.contains(key)
 
 
-DictHandle, AioDictHandle = synchronize_apis(_DictHandle)
+DictHandle = synchronize_api(_DictHandle)
 
 
 class _Dict(_Provider[_DictHandle]):
@@ -124,7 +127,7 @@ class _Dict(_Provider[_DictHandle]):
     import modal
 
     stub = modal.Stub()
-    stub.some_dict = modal.Dict()
+    stub.some_dict = modal.Dict.new()
     # stub.some_dict["message"] = "hello world" # TypeError!
 
     if __name__ == "__main__":
@@ -134,7 +137,9 @@ class _Dict(_Provider[_DictHandle]):
     ```
     """
 
-    def __init__(self, data={}):
+    @typechecked
+    @staticmethod
+    def new(data={}) -> "_Dict":
         """Create a new dictionary, optionally filled with initial data."""
 
         async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _DictHandle:
@@ -146,7 +151,27 @@ class _Dict(_Provider[_DictHandle]):
             logger.debug("Created dict with id %s" % response.dict_id)
             return _DictHandle._from_id(response.dict_id, resolver.client, None)
 
-        super().__init__(_load, "Dict()")
+        return _Dict._from_loader(_load, "Dict()")
+
+    def __init__(self, data={}):
+        """`Dict({...})` is deprecated. Please use `Dict.new({...})` instead."""
+        deprecation_warning(date(2023, 6, 27), self.__init__.__doc__)
+        obj = _Dict.new(data)
+        self._init_from_other(obj)
+
+    @staticmethod
+    def persisted(
+        label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
+    ) -> "_Dict":
+        """See `SharedVolume.persisted`."""
+        return _Dict.new()._persist(label, namespace, environment_name)
+
+    def persist(
+        self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
+    ) -> "_Dict":
+        """`Dict().persist("my-dict")` is deprecated. Use `Dict.persisted("my-dict")` instead."""
+        deprecation_warning(date(2023, 6, 30), self.persist.__doc__)
+        return self.persisted(label, namespace, environment_name)
 
 
-Dict, AioDict = synchronize_apis(_Dict)
+Dict = synchronize_api(_Dict)

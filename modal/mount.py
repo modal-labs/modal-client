@@ -7,23 +7,23 @@ import functools
 import os
 import time
 import typing
-from datetime import date
 from pathlib import Path, PurePosixPath
 from typing import AsyncGenerator, Callable, List, Optional, Union, Tuple, Sequence
 
 import aiostream
+from google.protobuf.message import Message
 from modal._types import typechecked
 
 import modal.exception
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_apis
+from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors
 from modal_utils.package_utils import get_module_mount_info, module_mount_condition
 from modal_version import __version__
 from ._blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec
 from ._resolver import Resolver
 from .config import config, logger
-from .exception import NotFoundError, deprecation_error
+from .exception import NotFoundError
 from .object import _Handle, _Provider
 
 MOUNT_PUT_FILE_CLIENT_TIMEOUT = 10 * 60  # 10 min max for transferring files
@@ -102,10 +102,16 @@ class _MountDir(_MountEntry):
 
 
 class _MountHandle(_Handle, type_prefix="mo"):
-    pass
+    """Store content checksum for uploaded Mount"""
+
+    _content_checksum_sha256_hex: Optional[str]
+
+    def _hydrate_metadata(self, handle_metadata: Message):
+        assert isinstance(handle_metadata, api_pb2.MountHandleMetadata)
+        self._content_checksum_sha256_hex = handle_metadata.content_checksum_sha256_hex
 
 
-MountHandle, AioMountHandle = synchronize_apis(_MountHandle)
+MountHandle = synchronize_api(_MountHandle)
 
 
 class _Mount(_Provider[_MountHandle]):
@@ -130,13 +136,6 @@ class _Mount(_Provider[_MountHandle]):
     """
 
     _entries: List[_MountEntry]
-
-    def __init__(self, *args, **kwargs):
-        """The Mount constructor is deprecated. Use static factory method Mount.from_local_dir or Mount.from_local_file"""
-        deprecation_error(
-            date(2023, 2, 8),
-            self.__init__.__doc__,
-        )
 
     @staticmethod
     def _from_entries(*entries: _MountEntry) -> "_Mount":
@@ -318,10 +317,10 @@ class _Mount(_Provider[_MountHandle]):
         status_row.finish(f"Created mount {message_label}")
 
         logger.debug(f"Uploaded {len(uploaded_hashes)}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
-        return _MountHandle._from_id(resp.mount_id, resolver.client, None)
+        return _MountHandle._from_id(resp.mount_id, resolver.client, resp.handle_metadata)
 
 
-Mount, AioMount = synchronize_apis(_Mount)
+Mount = synchronize_api(_Mount)
 
 
 def _create_client_mount():
@@ -351,7 +350,7 @@ def _create_client_mount():
     )
 
 
-create_client_mount, aio_create_client_mount = synchronize_apis(_create_client_mount)
+create_client_mount = synchronize_api(_create_client_mount)
 
 
 def _get_client_mount():
@@ -419,4 +418,4 @@ def _create_package_mounts(module_names: Sequence[str]) -> List[_Mount]:
     return mounts
 
 
-create_package_mounts, aio_create_package_mounts = synchronize_apis(_create_package_mounts)
+create_package_mounts = synchronize_api(_create_package_mounts)

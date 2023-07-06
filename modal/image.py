@@ -12,23 +12,23 @@ from grpclib.exceptions import GRPCError, StreamTerminatedError
 
 from modal._types import typechecked
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_apis
+from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, unary_stream
 from ._function_utils import FunctionInfo
 from ._resolver import Resolver
 from .app import is_local
 from .config import config, logger
-from .exception import InvalidError, NotFoundError, RemoteError, deprecation_error, deprecation_warning
+from .exception import InvalidError, NotFoundError, RemoteError, deprecation_warning
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount
 from .object import _Handle, _Provider
 from .secret import _Secret
-from .shared_volume import _SharedVolume
+from .network_file_system import _NetworkFileSystem
 
 
 def _validate_python_version(version: str) -> None:
     components = version.split(".")
-    supported_versions = {"3.10", "3.9", "3.8", "3.7"}
+    supported_versions = {"3.11", "3.10", "3.9", "3.8", "3.7"}
     if len(components) == 2 and version in supported_versions:
         return
     elif len(components) == 3:
@@ -146,6 +146,8 @@ class _Image(_Provider[_ImageHandle]):
         context_mount: Optional[_Mount] = None,
         image_registry_config: Optional[_ImageRegistryConfig] = None,
         force_build: bool = False,
+        # For internal use only.
+        _namespace: "api_pb2.DeploymentNamespace.ValueType" = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
     ):
         if gpu_config is None:
             gpu_config = api_pb2.GPUConfig()
@@ -234,6 +236,7 @@ class _Image(_Provider[_ImageHandle]):
                 existing_image_id=existing_object_id,  # TODO: ignored
                 build_function_id=build_function_id,
                 force_build=force_build,
+                namespace=_namespace,
             )
             resp = await resolver.client.stub.ImageGetOrCreate(req)
             image_id = resp.image_id
@@ -741,6 +744,7 @@ class _Image(_Provider[_ImageHandle]):
             dockerfile_commands=dockerfile_commands,
             context_files={"/modal_requirements.txt": requirements_path},
             force_build=force_build,
+            _namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
         ).dockerfile_commands(
             [
                 "ENV CONDA_EXE=/usr/local/bin/conda",
@@ -832,6 +836,7 @@ class _Image(_Provider[_ImageHandle]):
                 f"RUN micromamba install -n base -y python={python_version} pip -c conda-forge",
             ],
             force_build=force_build,
+            _namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
         )
 
     @typechecked
@@ -865,13 +870,10 @@ class _Image(_Provider[_ImageHandle]):
         )
 
     @staticmethod
-    def _registry_setup_commands(
-        tag: str, setup_dockerfile_commands: List[str], setup_commands: List[str]
-    ) -> List[str]:
+    def _registry_setup_commands(tag: str, setup_dockerfile_commands: List[str]) -> List[str]:
         return [
             f"FROM {tag}",
             *setup_dockerfile_commands,
-            *(f"RUN {cmd}" for cmd in setup_commands),
             "COPY /modal_requirements.txt /modal_requirements.txt",
             "RUN python -m pip install --upgrade pip",
             "RUN python -m pip install -r /modal_requirements.txt",
@@ -882,7 +884,6 @@ class _Image(_Provider[_ImageHandle]):
     def from_dockerhub(
         tag: str,
         setup_dockerfile_commands: List[str] = [],
-        setup_commands: List[str] = [],
         force_build: bool = False,
         **kwargs,
     ) -> "_Image":
@@ -909,14 +910,7 @@ class _Image(_Provider[_ImageHandle]):
         ```
         """
         requirements_path = _get_client_requirements_path()
-
-        if setup_commands:
-            deprecation_error(
-                date(2023, 3, 21),
-                "Setting `setup_commands` is deprecated in favor of the more general `setup_dockerfile_commands` argument. To migrate to this, prefix your existing commands with `RUN`.",
-            )
-
-        dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands, setup_commands)
+        dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands)
 
         return _Image._from_args(
             dockerfile_commands=dockerfile_commands,
@@ -962,7 +956,7 @@ class _Image(_Provider[_ImageHandle]):
         """
         requirements_path = _get_client_requirements_path()
 
-        dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands, [])
+        dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands)
 
         return _Image._from_args(
             dockerfile_commands=dockerfile_commands,
@@ -978,7 +972,6 @@ class _Image(_Provider[_ImageHandle]):
         tag: str,
         secret: Optional[_Secret] = None,
         setup_dockerfile_commands: List[str] = [],
-        setup_commands: List[str] = [],
         force_build: bool = False,
         **kwargs,
     ) -> "_Image":
@@ -1011,14 +1004,7 @@ class _Image(_Provider[_ImageHandle]):
         ```
         """
         requirements_path = _get_client_requirements_path()
-
-        if setup_commands:
-            deprecation_error(
-                date(2023, 3, 21),
-                "Setting `setup_commands` is deprecated in favor of the more general `setup_dockerfile_commands` argument. To migrate to this, prefix your existing commands with `RUN`.",
-            )
-
-        dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands, setup_commands)
+        dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands)
 
         return _Image._from_args(
             dockerfile_commands=dockerfile_commands,
@@ -1101,6 +1087,7 @@ class _Image(_Provider[_ImageHandle]):
             dockerfile_commands=dockerfile_commands,
             context_files={"/modal_requirements.txt": requirements_path},
             force_build=force_build,
+            _namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
         )
 
     @typechecked
@@ -1147,7 +1134,8 @@ class _Image(_Provider[_ImageHandle]):
         secrets: Sequence[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         mounts: Sequence[_Mount] = (),
-        shared_volumes: Dict[Union[str, os.PathLike], _SharedVolume] = {},
+        shared_volumes: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
+        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         timeout: Optional[int] = 86400,  # Maximum execution time of the function in seconds.
@@ -1155,7 +1143,7 @@ class _Image(_Provider[_ImageHandle]):
         force_build: bool = False,
     ) -> "_Image":
         """Run user-defined function `raw_function` as an image build step. The function runs just like an ordinary Modal
-        function, and any kwargs accepted by `@stub.function` (such as `Mount`s, `SharedVolume`s, and resource requests) can
+        function, and any kwargs accepted by `@stub.function` (such as `Mount`s, `NetworkFileSystem`s, and resource requests) can
         be supplied to it. After it finishes execution, a snapshot of the resulting container file system is saved as an image.
 
         **Note**
@@ -1184,6 +1172,13 @@ class _Image(_Provider[_ImageHandle]):
         info = FunctionInfo(raw_f)
         function_handle = _FunctionHandle._new()
 
+        if shared_volumes:
+            deprecation_warning(
+                date(2023, 7, 5),
+                "`shared_volumes` is deprecated. Use the argument `network_file_systems` instead.",
+            )
+            network_file_systems = {**network_file_systems, **shared_volumes}
+
         function = _Function.from_args(
             function_handle,
             info,
@@ -1193,7 +1188,7 @@ class _Image(_Provider[_ImageHandle]):
             secrets=secrets,
             gpu=gpu,
             mounts=mounts,
-            shared_volumes=shared_volumes,
+            network_file_systems=network_file_systems,
             memory=memory,
             timeout=timeout,
             cpu=cpu,
@@ -1222,5 +1217,5 @@ class _Image(_Provider[_ImageHandle]):
         )
 
 
-ImageHandle, AioImageHandle = synchronize_apis(_ImageHandle)
-Image, AioImage = synchronize_apis(_Image)
+ImageHandle = synchronize_api(_ImageHandle)
+Image = synchronize_api(_Image)

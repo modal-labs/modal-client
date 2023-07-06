@@ -6,7 +6,7 @@ from typing import AsyncGenerator, Optional
 
 from modal_proto import api_pb2
 from modal_utils.app_utils import is_valid_app_name
-from modal_utils.async_utils import TaskContext, synchronize_apis
+from modal_utils.async_utils import TaskContext, synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors
 
 from . import _pty
@@ -15,7 +15,7 @@ from .app import _App, is_local
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config
 from .exception import InvalidError
-from .object import DEFAULT_ENVIRONMENT_NAME
+from .functions import _Function
 from .queue import _QueueHandle
 
 
@@ -32,23 +32,34 @@ async def _run_stub(
     stub,
     client: Optional[_Client] = None,
     stdout=None,
-    show_progress: Optional[bool] = None,
+    show_progress: bool = True,
     detach: bool = False,
     output_mgr: Optional[OutputManager] = None,
-    environment: str = DEFAULT_ENVIRONMENT_NAME,
+    environment_name: Optional[str] = None,
 ) -> AsyncGenerator[_App, None]:
+    if environment_name is None:
+        environment_name = config.get("environment")
+
     if not is_local():
         raise InvalidError(
             "Can not run an app from within a container."
             " Are you calling stub.run() directly?"
             " Consider using the `modal run` shell command."
         )
+    if stub.app:
+        raise InvalidError(
+            "App is already running and can't be started again.\n"
+            "You should not use `stub.run` or `run_stub` within a Modal local_entrypoint"
+        )
+
     if client is None:
         client = await _Client.from_env()
     if output_mgr is None:
         output_mgr = OutputManager(stdout, show_progress, "Running app...")
     post_init_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
-    app = await _App._init_new(client, stub.description, detach=detach, deploying=False, environment_name=environment)
+    app = await _App._init_new(
+        client, stub.description, detach=detach, deploying=False, environment_name=environment_name
+    )
     async with stub._set_app(app), TaskContext(grace=config["logs_timeout"]) as tc:
         # Start heartbeats loop to keep the client alive
         tc.infinite_loop(lambda: _heartbeat(client, app.app_id), sleep=HEARTBEAT_INTERVAL)
@@ -63,7 +74,7 @@ async def _run_stub(
 
         try:
             # Create all members
-            await app._create_all_objects(stub._blueprint, output_mgr, post_init_state)
+            await app._create_all_objects(stub._blueprint, output_mgr, post_init_state, environment_name)
 
             # Update all functions client-side to have the output mgr
             for tag, obj in stub._function_handles.items():
@@ -106,15 +117,16 @@ async def _serve_update(
     stub,
     existing_app_id: str,
     is_ready: Event,
+    environment_name: str,
 ) -> None:
     # Used by child process to reinitialize a served app
     client = await _Client.from_env()
     try:
-        output_mgr = OutputManager(None, None)
+        output_mgr = OutputManager(None, True)
         app = await _App._init_existing(client, existing_app_id)
 
         # Create objects
-        await app._create_all_objects(stub._blueprint, output_mgr, api_pb2.APP_STATE_UNSPECIFIED)
+        await app._create_all_objects(stub._blueprint, output_mgr, api_pb2.APP_STATE_UNSPECIFIED, environment_name)
 
         # Communicate to the parent process
         is_ready.set()
@@ -129,8 +141,9 @@ async def _deploy_stub(
     namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
     client=None,
     stdout=None,
-    show_progress=None,
+    show_progress=True,
     object_entity="ap",
+    environment_name: Optional[str] = None,
 ) -> _App:
     """Deploy an app and export its objects persistently.
 
@@ -153,6 +166,9 @@ async def _deploy_stub(
     * Allows for certain kinds of these objects, _deployment objects_, to be
       referred to and used by other apps.
     """
+    if environment_name is None:
+        environment_name = config.get("environment")
+
     if not is_local():
         raise InvalidError("Cannot run a deploy from within a container.")
     if name is None:
@@ -175,7 +191,7 @@ async def _deploy_stub(
     if client is None:
         client = await _Client.from_env()
 
-    app = await _App._init_from_name(client, name, namespace, environment_name=DEFAULT_ENVIRONMENT_NAME)
+    app = await _App._init_from_name(client, name, namespace, environment_name=environment_name)
 
     output_mgr = OutputManager(stdout, show_progress)
 
@@ -187,7 +203,7 @@ async def _deploy_stub(
         post_init_state = api_pb2.APP_STATE_UNSPECIFIED
 
         # Create all members
-        await app._create_all_objects(stub._blueprint, output_mgr, post_init_state)
+        await app._create_all_objects(stub._blueprint, output_mgr, post_init_state, environment_name=environment_name)
 
         # Deploy app
         # TODO(erikbern): not needed if the app already existed
@@ -198,7 +214,7 @@ async def _deploy_stub(
     return app
 
 
-async def _interactive_shell(stub, cmd=None, image=None, **kwargs):
+async def _interactive_shell(stub, cmd: str, function: _Function, environment_name: str = ""):
     """Run an interactive shell (like `bash`) within the image for this app.
 
     This is useful for online debugging and interactive exploration of the
@@ -219,13 +235,24 @@ async def _interactive_shell(stub, cmd=None, image=None, **kwargs):
     modal shell script.py --cmd /bin/bash
     ```
     """
-    wrapped_fn = stub.function(interactive=True, timeout=86400, image=image, **kwargs)(_pty.exec_cmd)
 
-    async with _run_stub(stub):
+    wrapped_fn = stub.function(
+        interactive=True,
+        timeout=86400,
+        mounts=function._mounts,
+        network_file_systems=function._network_file_systems,
+        allow_cross_region_volumes=function._allow_cross_region_volumes,
+        image=function._image,
+        secrets=function._secrets,
+        gpu=function._gpu,
+        cloud=function._cloud,
+    )(_pty.exec_cmd)
+
+    async with _run_stub(stub, environment_name=environment_name):
         await wrapped_fn.call(cmd)
 
 
-run_stub, aio_run_stub = synchronize_apis(_run_stub)
-serve_update, aio_serve_update = synchronize_apis(_serve_update)
-deploy_stub, aio_deploy_stub = synchronize_apis(_deploy_stub)
-interactive_shell, aio_interactive_shell = synchronize_apis(_interactive_shell)
+run_stub = synchronize_api(_run_stub)
+serve_update = synchronize_api(_serve_update)
+deploy_stub = synchronize_api(_deploy_stub)
+interactive_shell = synchronize_api(_interactive_shell)

@@ -5,6 +5,7 @@ import functools
 import inspect
 import time
 import typing
+from contextlib import asynccontextmanager
 from typing import Any, Awaitable, Callable, List, Optional, Set, TypeVar
 from typing_extensions import ParamSpec
 
@@ -16,25 +17,18 @@ synchronizer = synchronicity.Synchronizer()
 # atexit.register(synchronizer.close)
 
 
-def synchronize_apis(obj, target_module=None):
+def synchronize_api(obj, target_module=None):
     if inspect.isclass(obj):
         blocking_name = obj.__name__.lstrip("_")
-        async_name = "Aio" + blocking_name
     elif inspect.isfunction(object):
         blocking_name = obj.__name__.lstrip("_")
-        async_name = "aio_" + blocking_name
     elif isinstance(obj, TypeVar):
         blocking_name = "_BLOCKING_" + obj.__name__
-        async_name = "_ASYNC_" + obj.__name__
     else:
         blocking_name = None
-        async_name = None
     if target_module is None:
         target_module = obj.__module__
-    return (
-        synchronizer.create_blocking(obj, blocking_name, target_module=target_module),
-        synchronizer.create_async(obj, async_name, target_module=target_module),
-    )
+    return synchronizer.create_blocking(obj, blocking_name, target_module=target_module)
 
 
 def retry(direct_fn=None, *, n_attempts=3, base_delay=0, delay_factor=2, timeout=90):
@@ -282,7 +276,7 @@ class _WarnIfGeneratorIsNotConsumed:
             )
 
 
-synchronize_apis(_WarnIfGeneratorIsNotConsumed)
+synchronize_api(_WarnIfGeneratorIsNotConsumed)
 
 
 def warn_if_generator_is_not_consumed(gen_f):
@@ -335,3 +329,16 @@ class ConcurrencyPool:
                 return await coro
 
         return await asyncio.gather(*coros, return_exceptions=return_exceptions)
+
+
+@asynccontextmanager
+async def asyncnullcontext(*args, **kwargs):
+    """Async noop context manager.
+
+    Note that for Python 3.10+ you can use contextlib.nullcontext() instead.
+
+    Usage:
+    async with asyncnullcontext():
+        pass
+    """
+    yield

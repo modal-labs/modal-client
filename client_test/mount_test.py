@@ -38,7 +38,7 @@ async def test_get_files(servicer, client, tmpdir):
     assert files["/large.py"].sha256_hex == hashlib.sha256(large_content).hexdigest()
 
     app = await App._init_new.aio(client)
-    await app.create_one_object.aio(m)
+    await app.create_one_object.aio(m, "")
     blob_id = max(servicer.blobs.keys())  # last uploaded one
     assert len(servicer.blobs[blob_id]) == len(large_content)
     assert servicer.blobs[blob_id] == large_content
@@ -59,7 +59,7 @@ def test_create_mount(servicer, client):
     m = Mount.from_local_dir(local_dir, remote_path="/foo", condition=condition)
 
     app = App._init_new(client)
-    obj = app.create_one_object(m)
+    obj = app.create_one_object(m, "")
 
     assert obj.object_id == "mo-123"
     assert f"/foo/{cur_filename}" in servicer.files_name2sha
@@ -73,13 +73,13 @@ def test_create_mount_file_errors(servicer, tmpdir, client):
     app = App._init_new(client)
     m = Mount.from_local_dir(Path(tmpdir) / "xyz", remote_path="/xyz")
     with pytest.raises(FileNotFoundError):
-        app.create_one_object(m)
+        app.create_one_object(m, "")
 
     with open(tmpdir / "abc", "w"):
         pass
     m = Mount.from_local_dir(Path(tmpdir) / "abc", remote_path="/abc")
     with pytest.raises(NotADirectoryError):
-        app.create_one_object(m)
+        app.create_one_object(m, "")
 
 
 def dummy():

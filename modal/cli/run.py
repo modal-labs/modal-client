@@ -18,11 +18,10 @@ from modal.runner import run_stub, deploy_stub, interactive_shell
 from modal.serving import serve_stub
 from modal.stub import LocalEntrypoint
 from modal_utils.async_utils import synchronizer
-
+from ..environments import ensure_env
 from .import_refs import import_function, import_stub
+from .utils import ENV_OPTION, ENV_OPTION_HELP
 from ..functions import _FunctionHandle
-
-run_cli = typer.Typer(name="run")
 
 # Why do we need to support both types and the strings? Because something weird with
 # how __annotations__ works in Python (which inspect.signature uses). See #220.
@@ -88,7 +87,12 @@ def _get_click_command_for_function(_stub, function_tag):
 
     @click.pass_context
     def f(ctx, *args, **kwargs):
-        with run_stub(blocking_stub, detach=ctx.obj["detach"], show_progress=ctx.obj["show_progress"]) as app:
+        with run_stub(
+            blocking_stub,
+            detach=ctx.obj["detach"],
+            show_progress=ctx.obj["show_progress"],
+            environment_name=ctx.obj["env"],
+        ) as app:
             _function_handle = app[function_tag]
             _function_handle.call(*args, **kwargs)
 
@@ -109,7 +113,12 @@ def _get_click_command_for_local_entrypoint(_stub, entrypoint: LocalEntrypoint):
                 "Note that running a local entrypoint in detached mode only keeps the last triggered Modal function alive after the parent process has been killed or disconnected."
             )
 
-        with run_stub(blocking_stub, detach=ctx.obj["detach"], show_progress=ctx.obj["show_progress"]) as app:
+        with run_stub(
+            blocking_stub,
+            detach=ctx.obj["detach"],
+            show_progress=ctx.obj["show_progress"],
+            environment_name=ctx.obj["env"],
+        ) as app:
             if isasync:
                 asyncio.run(func(*args, **kwargs))
             else:
@@ -149,8 +158,9 @@ class RunGroup(click.Group):
 )
 @click.option("-q", "--quiet", is_flag=True, help="Don't show Modal progress indicators.")
 @click.option("-d", "--detach", is_flag=True, help="Don't stop the app if the local process dies or disconnects.")
+@click.option("-e", "--env", help=ENV_OPTION_HELP, default=None, hidden=True)
 @click.pass_context
-def run(ctx, detach, quiet):
+def run(ctx, detach, quiet, env):
     """Run a Modal function or local entrypoint
 
     `FUNC_REF` should be of the format `{file or module}::{function name}`.
@@ -182,25 +192,32 @@ def run(ctx, detach, quiet):
     """
     ctx.ensure_object(dict)
     ctx.obj["detach"] = detach  # if subcommand would be a click command...
-    ctx.obj["show_progress"] = False if quiet else None
+    ctx.obj["show_progress"] = False if quiet else True
+    ctx.obj["env"] = env
 
 
 def deploy(
     stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
     name: str = typer.Option(None, help="Name of the deployment."),
+    env: str = ENV_OPTION,
 ):
+    env = ensure_env(
+        env
+    )  # this ensures that `modal.lookup()` without environment specification uses the same env as specified
+
     _stub = import_stub(stub_ref)
 
     if name is None:
         name = _stub.name
 
     blocking_stub = synchronizer._translate_out(_stub, interface=Interface.BLOCKING)
-    deploy_stub(blocking_stub, name=name)
+    deploy_stub(blocking_stub, name=name, environment_name=env)
 
 
 def serve(
     stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
     timeout: Optional[float] = None,
+    env: str = ENV_OPTION,
 ):
     """Run a web endpoint(s) associated with a Modal stub and hot-reload code.
 
@@ -210,7 +227,9 @@ def serve(
     modal serve hello_world.py
     ```
     """
-    with serve_stub(stub_ref):
+    env = ensure_env(env)
+
+    with serve_stub(stub_ref, environment_name=env):
         if timeout is None:
             timeout = config["serve_timeout"]
         if timeout is None:
@@ -226,6 +245,7 @@ def shell(
         ..., help="Path to a Python file with a Stub or Modal function whose container to run.", metavar="FUNC_REF"
     ),
     cmd: str = typer.Option(default="/bin/bash", help="Command to run inside the Modal image."),
+    env: str = ENV_OPTION,
 ):
     """Run an interactive shell inside a Modal image.
 
@@ -245,6 +265,8 @@ def shell(
     modal shell hello_world.py --cmd=python
     ```
     """
+    env = ensure_env(env)
+
     console = Console()
     if not console.is_terminal:
         raise click.UsageError("`modal shell` can only be run from a terminal.")
@@ -256,18 +278,11 @@ def shell(
     _stub = _function_handle._stub
     _function = _function_handle._get_function()
     blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
+    blocking_function = synchronizer._translate_out(_function, Interface.BLOCKING)
 
-    if _function_handle is None:
-        interactive_shell(blocking_stub, cmd)
-    else:
-        interactive_shell(
-            blocking_stub,
-            cmd,
-            mounts=_function._mounts,
-            shared_volumes=_function._shared_volumes,
-            allow_cross_region_volumes=_function._allow_cross_region_volumes,
-            image=_function._image,
-            secrets=_function._secrets,
-            gpu=_function._gpu,
-            cloud=_function._cloud,
-        )
+    interactive_shell(
+        blocking_stub,
+        cmd,
+        blocking_function,
+        environment_name=env,
+    )

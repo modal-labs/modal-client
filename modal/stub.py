@@ -12,8 +12,7 @@ from modal._types import typechecked
 
 from modal_proto import api_pb2
 
-from modal_utils.async_utils import synchronize_apis, synchronizer
-from modal_utils.decorator_utils import decorator_with_options_unsupported
+from modal_utils.async_utils import synchronize_api, synchronizer
 from .retries import Retries
 
 from ._function_utils import FunctionInfo
@@ -24,18 +23,18 @@ from .client import _Client
 from .cls import make_remote_cls_constructors
 from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
-from .functions import _Function, _FunctionHandle, PartialFunction, AioPartialFunction, _PartialFunction
-from .functions import _asgi_app, _web_endpoint, _wsgi_app
+from .functions import _Function, _FunctionHandle, PartialFunction, _PartialFunction
 from .gpu import GPU_T
 from .image import _Image, _ImageHandle
 from .mount import _Mount
 from .object import _Provider
 from .proxy import _Proxy
 from .queue import _Queue
-from .runner import _run_stub, _deploy_stub, _interactive_shell
+from .runner import _run_stub
 from .schedule import Schedule
 from .secret import _Secret
-from .shared_volume import _SharedVolume
+from .network_file_system import _NetworkFileSystem
+from .volume import _Volume
 
 _default_image: _Image = _Image.debian_slim()
 
@@ -277,7 +276,7 @@ class _Stub:
         self,
         client: Optional[_Client] = None,
         stdout=None,
-        show_progress: Optional[bool] = None,
+        show_progress: bool = True,
         detach: bool = False,
         output_mgr: Optional[OutputManager] = None,
     ) -> AsyncGenerator[_App, None]:
@@ -293,22 +292,6 @@ class _Stub:
         async with _run_stub(self, client, stdout, show_progress, detach, output_mgr) as app:
             yield app
 
-    async def serve(
-        self,
-        client: Optional[_Client] = None,
-        stdout=None,
-        show_progress: Optional[bool] = None,
-        timeout: float = 1e10,
-    ):
-        """Deprecated. Use the `modal serve` CLI command instead.
-
-        For programmatic usage, use `modal.serving.serve_stub`
-        """
-        deprecation_error(
-            date(2023, 2, 28),
-            self.serve.__doc__,
-        )
-
     @typechecked
     async def deploy(
         self,
@@ -318,18 +301,17 @@ class _Stub:
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client=None,
         stdout=None,
-        show_progress=None,
+        show_progress=True,
         object_entity: str = "ap",
     ) -> _App:
-        """`stub.deploy` is deprecated. Use the `modal deploy` command instead.
+        """`stub.deploy` is deprecated and no longer supported. Use the `modal deploy` command instead.
 
         For programmatic usage, use `modal.runner.deploy_stub`
         """
-        deprecation_warning(
+        deprecation_error(
             date(2023, 5, 9),
             self.deploy.__doc__,
         )
-        return await _deploy_stub(self, name, namespace, client, stdout, show_progress, object_entity)
 
     def _get_default_image(self):
         if "image" in self._blueprint:
@@ -397,8 +379,7 @@ class _Stub:
         """Names of web endpoint (ie. webhook) functions registered on the stub."""
         return self._web_endpoints
 
-    @decorator_with_options_unsupported
-    def local_entrypoint(self, raw_f=None, name: Optional[str] = None):
+    def local_entrypoint(self, name: Optional[str] = None) -> Callable[[Callable[..., Any]], None]:
         """Decorate a function to be used as a CLI entrypoint for a Modal App.
 
         These functions can be used to define code that runs locally to set up the app,
@@ -446,16 +427,17 @@ class _Stub:
         information on usage.
 
         """
-        tag = name if name is not None else raw_f.__qualname__
-        entrypoint = self._local_entrypoints[tag] = LocalEntrypoint(raw_f, self)
-        return entrypoint
 
-    @decorator_with_options_unsupported
+        def wrapped(raw_f: Callable[..., Any]) -> None:
+            tag = name if name is not None else raw_f.__qualname__
+            entrypoint = self._local_entrypoints[tag] = LocalEntrypoint(raw_f, self)
+            return entrypoint
+
+        return wrapped
+
     @typechecked
     def function(
         self,
-        f: Optional[Union[_PartialFunction, Callable[..., Any]]] = None,  # The decorated function
-        *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
         secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
@@ -463,8 +445,12 @@ class _Stub:
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Sequence[_Mount] = (),
-        shared_volumes: Dict[Union[str, os.PathLike], _SharedVolume] = {},
+        shared_volumes: Dict[
+            Union[str, os.PathLike], _NetworkFileSystem
+        ] = {},  # Deprecated, use `network_file_systems` instead
+        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         allow_cross_region_volumes: bool = False,  # Whether using shared volumes from other regions is allowed.
+        volumes: Dict[Union[str, os.PathLike], _Volume] = {},  # Experimental. Do not use!
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
@@ -480,108 +466,101 @@ class _Stub:
         ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
         _cls: Optional[type] = None,  # Used for methods only
-    ) -> Union[
-        _FunctionHandle, Callable[[Union[_PartialFunction, Callable[..., Any]]], _FunctionHandle]
-    ]:  # Function object - callable as a regular function within a Modal app
+    ) -> Callable[[Union[_PartialFunction, Callable[..., Any]]], _FunctionHandle]:
         """Decorator to register a new Modal function with this stub."""
         if image is None:
             image = self._get_default_image()
 
-        if isinstance(f, _PartialFunction):
-            f.wrapped = True
-            info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
-            raw_f = f.raw_f
-            webhook_config = f.webhook_config
-            is_generator = f.is_generator
-            if webhook_config:
-                self._web_endpoints.append(info.get_tag())
-        else:
-            info = FunctionInfo(f, serialized=serialized, name_override=name)
-            webhook_config = None
-            raw_f = f
-
-        if not _cls and not info.is_serialized() and "." in info.function_name:  # This is a method
-            deprecation_warning(
-                date(2023, 4, 20),
-                inspect.cleandoc(
-                    """@stub.function on methods is deprecated. Use the @stub.cls and @method decorators. Usage:
-
-                    ```
-                    @stub.cls(cpu=8)
-                    class MyCls:
-                        @method()
-                        def f(self):
-                            ...
-                    ```
-                    """
-                ),
-            )
-
-        function_handle = self._get_function_handle(info)
         secrets = [*self._secrets, *secrets]
 
-        if is_generator is None:
-            is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
+        if shared_volumes:
+            deprecation_warning(
+                date(2023, 7, 5),
+                "`shared_volumes` is deprecated. Use the argument `network_file_systems` instead.",
+            )
+            network_file_systems = {**network_file_systems, **shared_volumes}
 
-        if is_generator and webhook_config:
-            if webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
-                raise InvalidError(
+        def wrapped(f: Union[_PartialFunction, Callable[..., Any]]) -> _FunctionHandle:
+            is_generator_override: Optional[bool] = is_generator
+
+            if isinstance(f, _PartialFunction):
+                f.wrapped = True
+                info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
+                raw_f = f.raw_f
+                webhook_config = f.webhook_config
+                is_generator_override = f.is_generator
+                if webhook_config:
+                    self._web_endpoints.append(info.get_tag())
+            else:
+                info = FunctionInfo(f, serialized=serialized, name_override=name)
+                webhook_config = None
+                raw_f = f
+
+            if not _cls and not info.is_serialized() and "." in info.function_name:  # This is a method
+                deprecation_error(
+                    date(2023, 4, 20),
                     inspect.cleandoc(
-                        """Webhooks cannot be generators. If you want to streaming response, use `fastapi.responses.StreamingResponse`. Usage:
+                        """@stub.function on methods is deprecated and no longer supported.
 
-                        def my_iter():
-                            for x in range(10):
-                                time.sleep(1.0)
-                                yield str(i)
+                        Use the @stub.cls and @method decorators. Usage:
 
-                        @stub.function()
-                        @web_endpoint()
-                        def web():
-                            return StreamingResponse(my_iter())
+                        ```
+                        @stub.cls(cpu=8)
+                        class MyCls:
+                            @method()
+                            def f(self):
+                                ...
+                        ```
                         """
+                    ),
+                )
+
+            function_handle = self._get_function_handle(info)
+
+            if is_generator_override is None:
+                is_generator_override = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
+
+            if interactive:
+                if self._pty_input_stream:
+                    warnings.warn(
+                        "Running multiple interactive functions at the same time is not fully supported, and could lead to unexpected behavior."
                     )
-                )
-            else:
-                raise InvalidError("Webhooks cannot be generators")
+                else:
+                    self._blueprint["_pty_input_stream"] = _Queue.new()
 
-        if interactive:
-            if self._pty_input_stream:
-                warnings.warn(
-                    "Running multiple interactive functions at the same time is not fully supported, and could lead to unexpected behavior."
-                )
-            else:
-                self._blueprint["_pty_input_stream"] = _Queue()
+            function = _Function.from_args(
+                function_handle,
+                info,
+                stub=self,
+                image=image,
+                secret=secret,
+                secrets=secrets,
+                schedule=schedule,
+                is_generator=is_generator_override,
+                gpu=gpu,
+                mounts=[*self._mounts, *mounts],
+                network_file_systems=network_file_systems,
+                allow_cross_region_volumes=allow_cross_region_volumes,
+                volumes=volumes,
+                memory=memory,
+                proxy=proxy,
+                retries=retries,
+                concurrency_limit=concurrency_limit,
+                container_idle_timeout=container_idle_timeout,
+                timeout=timeout,
+                cpu=cpu,
+                interactive=interactive,
+                keep_warm=keep_warm,
+                name=name,
+                cloud=cloud,
+                webhook_config=webhook_config,
+                cls=_cls,
+            )
 
-        function = _Function.from_args(
-            function_handle,
-            info,
-            stub=self,
-            image=image,
-            secret=secret,
-            secrets=secrets,
-            schedule=schedule,
-            is_generator=is_generator,
-            gpu=gpu,
-            mounts=[*self._mounts, *mounts],
-            shared_volumes=shared_volumes,
-            allow_cross_region_volumes=allow_cross_region_volumes,
-            memory=memory,
-            proxy=proxy,
-            retries=retries,
-            concurrency_limit=concurrency_limit,
-            container_idle_timeout=container_idle_timeout,
-            timeout=timeout,
-            cpu=cpu,
-            interactive=interactive,
-            keep_warm=keep_warm,
-            name=name,
-            cloud=cloud,
-            webhook_config=webhook_config,
-            cls=_cls,
-        )
+            self._add_function(function)
+            return function_handle
 
-        self._add_function(function)
-        return function_handle
+        return wrapped
 
     @typechecked
     def web_endpoint(
@@ -592,7 +571,7 @@ class _Stub:
         ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
     ):
-        """`stub.web_endpoint` is deprecated. Use `modal.web_endpoint` instead. Usage:
+        """`stub.web_endpoint` is deprecated and no longer supported. Use `modal.web_endpoint` instead. Usage:
 
         ```python
         from modal import Stub, web_endpoint
@@ -603,11 +582,10 @@ class _Stub:
         def my_function():
             ...
         ```"""
-        deprecation_warning(
+        deprecation_error(
             date(2023, 4, 18),
             self.web_endpoint.__doc__,
         )
-        return _web_endpoint(method, label, wait_for_response)
 
     @typechecked
     def asgi_app(
@@ -617,9 +595,8 @@ class _Stub:
         ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
     ):
-        """`stub.asgi_app` is deprecated. Use `modal.asgi_app` instead."""
-        deprecation_warning(date(2023, 4, 18), self.asgi_app.__doc__)
-        return _asgi_app(label, wait_for_response)
+        """`stub.asgi_app` is deprecated and no longer supported. Use `modal.asgi_app` instead."""
+        deprecation_error(date(2023, 4, 18), self.asgi_app.__doc__)
 
     @typechecked
     def wsgi_app(
@@ -629,74 +606,18 @@ class _Stub:
         ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
         wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
     ):
-        """`stub.wsgi_app` is deprecated. Use `modal.wsgi_app` instead."""
-        deprecation_warning(date(2023, 4, 18), self.wsgi_app.__doc__)
-        return _wsgi_app(label, wait_for_response)
-
-    def webhook(
-        self,
-        *args,
-        **kwargs,
-    ):
-        """`stub.webhook` is deprecated. Use `stub.function` in combination with `modal.web_endpoint` instead. Usage:
-
-        ```python
-        @stub.function(cpu=42)
-        @web_endpoint(method="POST")
-        def my_function():
-           ...
-        ```"""
-        deprecation_error(
-            date(2023, 4, 3),
-            self.webhook.__doc__,
-        )
-
-    def asgi(
-        self,
-        *args,
-        **kwargs,
-    ):
-        """`stub.asgi` is deprecated. Use `stub.function` in combination with `modal.asgi_app` instead. Usage:
-
-        ```python
-        @stub.function(cpu=42)
-        @asgi_app()
-        def my_asgi_app():
-            ...
-        ```"""
-        deprecation_error(
-            date(2023, 4, 3),
-            self.asgi.__doc__,
-        )
-
-    def wsgi(
-        self,
-        *args,
-        **kwargs,
-    ):
-        """`stub.wsgi` is deprecated. Use stub.function in combination with `modal.wsgi_app` instead. Usage:
-
-        ```
-        @stub.function(cpu=42)
-        @wsgi_app()
-        def my_wsgi_app():
-            ...
-        ```"""
-        deprecation_error(
-            date(2023, 4, 3),
-            self.wsgi.__doc__,
-        )
+        """`stub.wsgi_app` is deprecated and no longer supported. Use `modal.wsgi_app` instead."""
+        deprecation_error(date(2023, 4, 18), self.wsgi_app.__doc__)
 
     async def interactive_shell(self, cmd=None, image=None, **kwargs):
-        """`stub.interactive_shell` is deprecated. Use the `modal shell` command instead.
+        """`stub.interactive_shell` is deprecated and no longer supported. Use the `modal shell` command instead.
 
         For programmatic usage, use `modal.runner.interactive_shell`
         """
-        deprecation_warning(
+        deprecation_error(
             date(2023, 5, 9),
             self.interactive_shell.__doc__,
         )
-        await _interactive_shell(self, cmd, image, **kwargs)
 
     def cls(
         self,
@@ -706,8 +627,12 @@ class _Stub:
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Sequence[_Mount] = (),
-        shared_volumes: Dict[Union[str, os.PathLike], _SharedVolume] = {},
+        shared_volumes: Dict[
+            Union[str, os.PathLike], _NetworkFileSystem
+        ] = {},  # Deprecated, use `network_file_systems` instead
+        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         allow_cross_region_volumes: bool = False,  # Whether using shared volumes from other regions is allowed.
+        volumes: Dict[Union[str, os.PathLike], _Volume] = {},  # Experimental. Do not use!
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
@@ -720,11 +645,11 @@ class _Stub:
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
     ) -> Callable[[CLS_T], CLS_T]:
         def wrapper(user_cls: CLS_T) -> CLS_T:
-            partial_functions: Dict[str, Union[PartialFunction, AioPartialFunction]] = {}
+            partial_functions: Dict[str, PartialFunction] = {}
             function_handles: Dict[str, _FunctionHandle] = {}
 
             for k, v in user_cls.__dict__.items():
-                if isinstance(v, (PartialFunction, AioPartialFunction)):
+                if isinstance(v, PartialFunction):
                     partial_functions[k] = v
                     partial_function = synchronizer._translate_in(v)  # TODO: remove need for?
                     function_handles[k] = self.function(
@@ -736,7 +661,9 @@ class _Stub:
                         serialized=serialized,
                         mounts=mounts,
                         shared_volumes=shared_volumes,
+                        network_file_systems=network_file_systems,
                         allow_cross_region_volumes=allow_cross_region_volumes,
+                        volumes=volumes,
                         cpu=cpu,
                         memory=memory,
                         proxy=proxy,
@@ -750,10 +677,8 @@ class _Stub:
                     )(partial_function)
 
             _PartialFunction.initialize_cls(user_cls, function_handles)
-            # TODO (akshat): remote.aio
-            (remote, aio_remote) = make_remote_cls_constructors(user_cls, partial_functions, function_handles)
+            remote = make_remote_cls_constructors(user_cls, partial_functions, function_handles)
             user_cls.remote = remote
-            user_cls.aio_remote = aio_remote
             return user_cls
 
         return wrapper
@@ -779,4 +704,4 @@ class _Stub:
         return cached_mounts
 
 
-Stub, AioStub = synchronize_apis(_Stub)
+Stub = synchronize_api(_Stub)

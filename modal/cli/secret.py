@@ -3,18 +3,18 @@ import os
 import platform
 import subprocess
 from tempfile import NamedTemporaryFile
-from typing import List
+from typing import List, Optional
 
 import click
 import typer
-from google.protobuf import empty_pb2
 from rich.console import Console
 from rich.syntax import Syntax
-from rich.table import Table
 
 import modal
-from modal.cli.utils import timestamp_to_local
+from modal.environments import ensure_env
+from modal.cli.utils import timestamp_to_local, display_table, ENV_OPTION
 from modal.client import Client, _Client
+from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
 from modal_utils.grpc_utils import retry_transient_errors
 
@@ -23,29 +23,34 @@ secret_cli = typer.Typer(name="secret", help="Manage secrets.", no_args_is_help=
 
 @secret_cli.command("list", help="List your published secrets.")
 @synchronizer.create_blocking
-async def list():
+async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
+    env = ensure_env(env)
     client = await _Client.from_env()
-    response = await retry_transient_errors(client.stub.SecretList, empty_pb2.Empty())
-    table = Table()
-    table.add_column("Name")
-    table.add_column("Created at", justify="right")
-    table.add_column("Last used at", justify="right")
+    response = await retry_transient_errors(client.stub.SecretList, api_pb2.SecretListRequest(environment_name=env))
+    column_names = ["Name", "Created at", "Last used at"]
+    rows = []
 
     for item in response.items:
-        table.add_row(
-            item.label,
-            timestamp_to_local(item.created_at),
-            timestamp_to_local(item.last_used_at) if item.last_used_at else "-",
+        rows.append(
+            [
+                item.label,
+                timestamp_to_local(item.created_at),
+                timestamp_to_local(item.last_used_at) if item.last_used_at else "-",
+            ]
         )
 
-    console = Console()
-    console.print(table)
+    env_part = f" in environment '{env}'" if env else ""
+    display_table(column_names, rows, json, title=f"Secrets{env_part}")
 
 
 @secret_cli.command("create", help="Create a new secret, or overwrite an existing one.")
-def create(secret_name, keyvalues: List[str] = typer.Argument(..., help="Space-separated KEY=VALUE items")):
+def create(
+    secret_name,
+    keyvalues: List[str] = typer.Argument(..., help="Space-separated KEY=VALUE items"),
+    env: Optional[str] = ENV_OPTION,
+):
+    env = ensure_env(env)
     env_dict = {}
-
     for arg in keyvalues:
         if "=" in arg:
             key, value = arg.split("=")
@@ -66,7 +71,7 @@ modal secret create my-credentials username=john password=-
         raise click.UsageError("You need to specify at least one key for your secret")
 
     secret = modal.Secret.from_dict(env_dict=env_dict)
-    secret._deploy(secret_name, client=Client.from_env())
+    secret._deploy(secret_name, client=Client.from_env(), environment_name=env)
     console = Console()
 
     env_var_code = "\n    ".join(f'os.getenv("{name}")' for name in env_dict.keys()) if env_dict else "..."

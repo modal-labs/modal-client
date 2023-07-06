@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+from datetime import date
 import uuid
 from typing import Awaitable, Callable, Generic, Optional, Type, TypeVar
 
@@ -7,19 +8,18 @@ from grpclib import GRPCError, Status
 from modal._types import typechecked
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_apis
+from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors, get_proto_oneof
 
 from ._object_meta import ObjectMeta
 from ._resolver import Resolver
 from .client import _Client
-from .exception import InvalidError, NotFoundError
+from .config import config
+from .exception import InvalidError, NotFoundError, deprecation_error
 
 H = TypeVar("H", bound="_Handle")
 
-_BLOCKING_H, _ASYNC_H = synchronize_apis(H)
-
-DEFAULT_ENVIRONMENT_NAME: str = "default"
+_BLOCKING_H = synchronize_api(H)
 
 
 class _Handle(metaclass=ObjectMeta):
@@ -119,8 +119,12 @@ class _Handle(metaclass=ObjectMeta):
         tag: Optional[str] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
     ) -> H:
         """Returns a handle to a tagged object in a deployment on Modal."""
+        if environment_name is None:
+            environment_name = config.get("environment")
+
         if client is None:
             client = await _Client.from_env()
         request = api_pb2.AppLookupObjectRequest(
@@ -128,7 +132,7 @@ class _Handle(metaclass=ObjectMeta):
             object_tag=tag,
             namespace=namespace,
             object_entity=cls._type_prefix,
-            environment_name=DEFAULT_ENVIRONMENT_NAME,
+            environment_name=environment_name,
         )
         try:
             response = await retry_transient_errors(client.stub.AppLookupObject, request)
@@ -141,22 +145,24 @@ class _Handle(metaclass=ObjectMeta):
             else:
                 raise
 
-        proto = response.function  # TODO: handle different object types
-        handle: H = cls._from_id(response.object_id, client, proto)
-        return handle
+        handle_metadata = get_proto_oneof(response, "handle_metadata_oneof")
+        return cls._from_id(response.object_id, client, handle_metadata)
 
 
-Handle, AioHandle = synchronize_apis(_Handle)
+Handle = synchronize_api(_Handle)
 
 
 P = TypeVar("P", bound="_Provider")
 
-_BLOCKING_P, _ASYNC_P = synchronize_apis(P)
+_BLOCKING_P = synchronize_api(P)
 
 
 class _Provider(Generic[H]):
     _load: Callable[[Resolver, Optional[str]], Awaitable[H]]
     _preload: Optional[Callable[[Resolver, Optional[str]], Awaitable[H]]]
+
+    def __init__(self):
+        raise Exception("__init__ disallowed, use proper classmethods")
 
     def _init(
         self,
@@ -171,18 +177,8 @@ class _Provider(Generic[H]):
         self._rep = rep
         self._is_persisted_ref = is_persisted_ref
 
-    def __init__(
-        self,
-        load: Callable[[Resolver, Optional[str]], Awaitable[H]],
-        rep: str,
-        is_persisted_ref: bool = False,
-        preload: Optional[Callable[[Resolver, Optional[str]], Awaitable[H]]] = None,
-    ):
-        # TODO(erikbern): this is semi-deprecated - subclasses should use _from_loader
-        self._init(load, rep, is_persisted_ref, preload=preload)
-
     def _init_from_other(self, other: "_Provider"):
-        # Transient use case, see Secret.__inint__
+        # Transient use case, see Dict, Queue, and SharedVolume
         self._init(other._load, other._rep, other._is_persisted_ref, other._preload)
 
     @classmethod
@@ -216,6 +212,7 @@ class _Provider(Generic[H]):
         label: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
     ) -> H:
         """
         Note 1: this uses the single-object app method, which we're planning to get rid of later
@@ -223,41 +220,38 @@ class _Provider(Generic[H]):
         """
         from .app import _App
 
+        if environment_name is None:
+            environment_name = config.get("environment")
+
         if client is None:
             client = await _Client.from_env()
 
         handle_cls = self._get_handle_cls()
         object_entity = handle_cls._type_prefix
-        app = await _App._init_from_name(client, label, namespace, environment_name=DEFAULT_ENVIRONMENT_NAME)
-        handle = await app.create_one_object(self)
+        app = await _App._init_from_name(client, label, namespace, environment_name=environment_name)
+        handle = await app.create_one_object(self, environment_name)
         await app.deploy(label, namespace, object_entity)  # TODO(erikbern): not needed if the app already existed
         return handle
 
+    def persist(
+        self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
+    ):
+        """`Provider.persist` is deprecated for generic objects. See `SharedVolume.persisted` or `Dict.persisted`."""
+        # Note: this method is overridden in SharedVolume in Dict to print a warning
+        deprecation_error(
+            date(2023, 6, 30),
+            self.persist.__doc__,
+        )
+
     @typechecked
-    def persist(self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE):
-        """Deploy a Modal app containing this object. This object can then be imported from other apps using
-        the returned reference, or by calling `modal.SharedVolume.from_name(label)` (or the equivalent method
-        on respective class).
-
-        **Example Usage**
-
-        ```python
-        import modal
-
-        volume = modal.SharedVolume().persist("my-volume")
-
-        stub = modal.Stub()
-
-        # Volume refers to the same object, even across instances of `stub`.
-        @stub.function(shared_volumes={"/vol": volume})
-        def f():
-            pass
-        ```
-
-        """
+    def _persist(
+        self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
+    ):
+        if environment_name is None:
+            environment_name = config.get("environment")
 
         async def _load_persisted(resolver: Resolver, existing_object_id: Optional[str]) -> H:
-            return await self._deploy(label, namespace, resolver.client)
+            return await self._deploy(label, namespace, resolver.client, environment_name=environment_name)
 
         cls = type(self)
         rep = f"PersistedRef<{self}>({label})"
@@ -269,6 +263,7 @@ class _Provider(Generic[H]):
         app_name: str,
         tag: Optional[str] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        environment_name: Optional[str] = None,
     ) -> P:
         """Returns a reference to an Modal object of any type
 
@@ -286,8 +281,16 @@ class _Provider(Generic[H]):
         """
 
         async def _load_remote(resolver: Resolver, existing_object_id: Optional[str]) -> H:
+            nonlocal environment_name
             handle_cls = cls._get_handle_cls()
-            handle: H = await handle_cls.from_app(app_name, tag, namespace, client=resolver.client)
+            if environment_name is None:
+                # resolver always has an environment name, associated with the current app setup
+                # fall back on that one if no explicit environment was set in the call itself
+                environment_name = resolver._environment_name
+
+            handle: H = await handle_cls.from_app(
+                app_name, tag, namespace, client=resolver.client, environment_name=environment_name
+            )
             return handle
 
         rep = f"Ref({app_name})"
@@ -300,6 +303,7 @@ class _Provider(Generic[H]):
         tag: Optional[str] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
     ) -> H:
         """
         General purpose method to retrieve Modal objects such as
@@ -314,7 +318,7 @@ class _Provider(Generic[H]):
         ```
         """
         handle_cls = cls._get_handle_cls()
-        handle: H = await handle_cls.from_app(app_name, tag, namespace, client)
+        handle: H = await handle_cls.from_app(app_name, tag, namespace, client, environment_name=environment_name)
         return handle
 
     @classmethod
@@ -348,5 +352,5 @@ class _Provider(Generic[H]):
 
 
 # Dumb but needed becauase it's in the hierarchy
-synchronize_apis(Generic, __name__)  # erases base Generic type...
-Provider, AioProvider = synchronize_apis(_Provider, target_module=__name__)
+synchronize_api(Generic, __name__)  # erases base Generic type...
+Provider = synchronize_api(_Provider, target_module=__name__)

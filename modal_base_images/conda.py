@@ -1,14 +1,15 @@
 # Copyright Modal Labs 2022
+import sys
 import asyncio
 
-from modal.aio import AioImage, AioStub
+from modal import Image, Stub
 
 
-async def main(client=None):
-    stub = AioStub(image=AioImage.conda())
-    async with stub.run(client=client):
+async def main(client=None, python_version=None):
+    stub = Stub(image=Image.conda(python_version))
+    async with stub.run.aio(client=client):
         pass
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main(python_version=sys.argv[1]))

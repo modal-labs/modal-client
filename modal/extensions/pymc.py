@@ -6,10 +6,9 @@ from collections import namedtuple
 from typing import Any, List
 
 from aiostream import stream
-from synchronicity.interface import Interface
 
 import modal
-from modal_utils.async_utils import synchronize_apis, synchronizer
+from modal_utils.async_utils import synchronize_api
 
 pymc_stub = modal.Stub(
     image=modal.Image.conda()
@@ -17,11 +16,7 @@ pymc_stub = modal.Stub(
     .apt_install("zlib1g")
 )
 
-# HACK: we need the aio version of the pymc app, so we can merge the sample processes
-# as async generators.
-aio_pymc_stub = synchronizer._translate_out(synchronizer._translate_in(pymc_stub), Interface.ASYNC)
-
-if aio_pymc_stub.is_inside():
+if pymc_stub.is_inside():
     import numpy as np
     from fastprogress.fastprogress import progress_bar
     from pymc3 import theanof
@@ -62,7 +57,7 @@ def rebuild_exc(exc, tb):
     return exc
 
 
-@aio_pymc_stub.function()
+@pymc_stub.function()
 async def sample_process(
     draws: int,
     tune: int,
@@ -184,7 +179,7 @@ class _ModalSampler:
 
     async def __aiter__(self):
         samplers = [
-            sample_process(
+            sample_process.call.aio(
                 self._draws,
                 self._tune,
                 self._step_method,
@@ -224,4 +219,4 @@ class _ModalSampler:
         pass
 
 
-ModalSampler, _ = synchronize_apis(_ModalSampler)
+ModalSampler = synchronize_api(_ModalSampler)

@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-from datetime import date
 import getpass
 from typing import Optional
 import webbrowser
@@ -19,25 +18,15 @@ profile_option = typer.Option(
 )
 
 
-def env_profile_deprecation():
-    from modal.exception import deprecation_warning
-
-    deprecation_warning(date(2023, 5, 25), "--env will soon be deprecated, use --profile instead", pending=True)
-
-
 @token_cli.command(
     help="Set account credentials for connecting to Modal. If not provided with the command, you will be prompted to enter your credentials."
 )
 def set(
     token_id: Optional[str] = typer.Option(None, help="Account token ID."),
     token_secret: Optional[str] = typer.Option(None, help="Account token secret."),
-    env: Optional[str] = profile_option,
     profile: Optional[str] = profile_option,
     no_verify: bool = False,
 ):
-    if env:
-        env_profile_deprecation()
-        profile = env
     if token_id is None:
         token_id = getpass.getpass("Token ID:")
     if token_secret is None:
@@ -54,10 +43,7 @@ def set(
 
 
 @token_cli.command(help="Creates a new token by using an authenticated web session.")
-def new(env: Optional[str] = profile_option, profile: Optional[str] = profile_option, no_verify: bool = False):
-    if env:
-        env_profile_deprecation()
-        profile = env
+def new(profile: Optional[str] = profile_option, no_verify: bool = False):
     server_url = config.get("server_url", profile=profile)
 
     with Client.unauthenticated_client(server_url) as client:

@@ -3,11 +3,14 @@ import pathlib
 import pytest
 import subprocess
 import sys
+from fastapi.testclient import TestClient
 
 from modal_proto import api_pb2
 from modal import App, Stub, web_endpoint, asgi_app, wsgi_app
 from modal.functions import FunctionHandle
 from modal.exception import DeprecationError, InvalidError
+from modal._asgi import webhook_asgi_app
+
 
 stub = Stub()
 
@@ -18,7 +21,7 @@ async def f(x):
     return {"square": x**2}
 
 
-with pytest.warns(DeprecationError):
+with pytest.raises(DeprecationError):
 
     @stub.function(cpu=42)
     @stub.web_endpoint(method="POST")
@@ -26,22 +29,13 @@ with pytest.warns(DeprecationError):
         return {"square": x**2}
 
 
-with pytest.raises(DeprecationError):
-
-    @stub.webhook(method="PUT", cpu=42)
-    async def h(x):
-        return {"square": x**2}
-
-
 @pytest.mark.asyncio
 async def test_webhook(servicer, client):
     async with stub.run(client=client) as app:
         assert f.web_url
-        assert g.web_url
 
         assert servicer.app_functions["fu-1"].webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION
         assert servicer.app_functions["fu-1"].webhook_config.method == "PATCH"
-        assert servicer.app_functions["fu-2"].webhook_config.method == "POST"
 
         # Make sure we can call the webhooks
         # TODO: reinstate `.call` check when direct webhook fn invocation is fixed.
@@ -51,16 +45,10 @@ async def test_webhook(servicer, client):
         # Make sure the container gets the app id as well
         container_app = await App.init_container.aio(client, app.app_id)
         assert isinstance(container_app.f, FunctionHandle)
-        assert isinstance(container_app.g, FunctionHandle)
         assert container_app.f.web_url
-        assert container_app.g.web_url
 
 
 def test_webhook_cors():
-    from fastapi.testclient import TestClient
-
-    from modal._asgi import webhook_asgi_app
-
     def handler():
         return {"message": "Hello, World!"}
 
@@ -79,6 +67,22 @@ def test_webhook_cors():
     assert client.post("/").status_code == 405  # Method Not Allowed
 
 
+@pytest.mark.asyncio
+async def test_webhook_no_docs():
+    # FastAPI automatically sets docs URLs for apps, which we disable because it
+    # can be unexpected for users who are unfamilar with FastAPI.
+    #
+    # https://fastapi.tiangolo.com/tutorial/metadata/#docs-urls
+
+    def handler():
+        return {"message": "Hello, World!"}
+
+    app = webhook_asgi_app(handler, method="GET")
+    client = TestClient(app)
+    assert client.get("/docs").status_code == 404
+    assert client.get("/redoc").status_code == 404
+
+
 def test_webhook_generator():
     stub = Stub()
 
@@ -89,7 +93,7 @@ def test_webhook_generator():
         def web_gen():
             yield None
 
-    assert "StreamingResponse" in str(excinfo.value)
+    assert "streaming" in str(excinfo.value).lower()
 
 
 @pytest.mark.asyncio

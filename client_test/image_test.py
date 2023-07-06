@@ -5,7 +5,7 @@ import sys
 from tempfile import NamedTemporaryFile
 from typing import List
 
-from modal import Image, Mount, Secret, SharedVolume, Stub, gpu
+from modal import Image, Mount, Secret, NetworkFileSystem, Stub, gpu
 from modal.exception import InvalidError, NotFoundError
 from modal.image import _dockerhub_python_version
 from modal_proto import api_pb2
@@ -278,18 +278,18 @@ def run_f():
 
 def test_image_run_function(client, servicer):
     stub = Stub()
-    volume = SharedVolume().persist("test-vol")
+    volume = NetworkFileSystem.persisted("test-vol")
     stub["image"] = (
         Image.debian_slim()
         .pip_install("pandas")
-        .run_function(run_f, secrets=[Secret.from_dict({"xyz": "123"})], shared_volumes={"/foo": volume})
+        .run_function(run_f, secrets=[Secret.from_dict({"xyz": "123"})], network_file_systems={"/foo": volume})
     )
 
     with stub.run(client=client) as running_app:
         layers = get_image_layers(running_app["image"].object_id, servicer)
         assert "foo!" in layers[0].build_function_def
         assert "Secret.from_dict([xyz])" in layers[0].build_function_def
-        assert "Ref<SharedVolume()>(test-vol)" in layers[0].build_function_def
+        assert "Ref<NetworkFileSystem()>(test-vol)" in layers[0].build_function_def
 
     function_id = servicer.image_build_function_ids[2]
     assert function_id

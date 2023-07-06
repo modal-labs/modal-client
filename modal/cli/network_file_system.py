@@ -11,7 +11,6 @@ from typing import Optional, Tuple
 
 import typer
 from click import UsageError
-from google.protobuf import empty_pb2
 from grpclib import GRPCError, Status
 from rich.console import Console
 from rich.live import Live
@@ -22,70 +21,93 @@ from typer import Typer
 import modal
 from modal._location import display_location
 from modal._output import step_progress, step_completed
-from modal.client import AioClient
-from modal.shared_volume import _SharedVolumeHandle, _SharedVolume
+from modal.environments import ensure_env
+from modal.cli.utils import display_table, ENV_OPTION
+from modal.client import _Client
+from modal.network_file_system import _NetworkFileSystemHandle, _NetworkFileSystem
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
 from modal_utils.grpc_utils import retry_transient_errors
 
 FileType = api_pb2.SharedVolumeListFilesEntry.FileType
 
-volume_cli = Typer(name="volume", help="Read and edit shared volumes.", no_args_is_help=True)
+
+def depr_cmd(cmd):
+    return f"DEPRECATED! Use `{cmd}` instead!"
 
 
-@volume_cli.command(name="list", help="List the names of all shared volumes.")
+nfs_cli = Typer(name="nfs", help="Read and edit shared volumes.", no_args_is_help=True)
+vol_cli = Typer(name="volume", help=depr_cmd("modal nfs"), no_args_is_help=True, hidden=True)
+
+
+@vol_cli.command(name="list", help=depr_cmd("modal nfs list"), deprecated=True)
+@nfs_cli.command(name="list", help="List the names of all shared volumes.")
 @synchronizer.create_blocking
-async def list():
-    client = await AioClient.from_env()
-    response = await retry_transient_errors(client.stub.SharedVolumeList, empty_pb2.Empty())
-    if sys.stdout.isatty():
-        table = Table(title="Shared Volumes")
-        table.add_column("Name")
-        table.add_column("Location")
-        table.add_column("Created at", justify="right")
-        locale_tz = datetime.now().astimezone().tzinfo
-        for item in response.items:
-            table.add_row(
+async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
+    env = ensure_env(env)
+
+    client = await _Client.from_env()
+    response = await retry_transient_errors(
+        client.stub.SharedVolumeList, api_pb2.SharedVolumeListRequest(environment_name=env)
+    )
+    env_part = f" in environment '{env}'" if env else ""
+    column_names = ["Name", "Location", "Created at"]
+    rows = []
+    locale_tz = datetime.now().astimezone().tzinfo
+    for item in response.items:
+        rows.append(
+            [
                 item.label,
                 display_location(item.cloud_provider),
                 str(datetime.fromtimestamp(item.created_at, tz=locale_tz)),
-            )
-        console = Console()
-        console.print(table)
-    else:
-        for item in response.items:
-            print(item.label)
+            ]
+        )
+    display_table(column_names, rows, json, title=f"Shared Volumes{env_part}")
 
 
 def gen_usage_code(label):
     return f"""
-@stub.function(shared_volumes={{"/my_vol": modal.SharedVolume.from_name("{label}")}})
+@stub.function(network_file_systems={{"/my_vol": modal.NetworkFileSystem.from_name("{label}")}})
 def some_func():
     os.listdir("/my_vol")
 """
 
 
-@volume_cli.command(name="create", help="Create a named shared volume.")
-def create(name: str, cloud: str = typer.Option("aws", help="Cloud provider to create the volume in. One of aws|gcp.")):
-    volume = modal.SharedVolume(cloud=cloud)
-    volume._deploy(name)
+@vol_cli.command(name="create", help=depr_cmd("modal nfs create"), deprecated=True)
+@nfs_cli.command(name="create", help="Create a named shared volume.")
+def create(
+    name: str,
+    cloud: str = typer.Option("aws", help="Cloud provider to create the volume in. One of aws|gcp."),
+    env: Optional[str] = ENV_OPTION,
+):
+    ensure_env(env)
+    volume = modal.NetworkFileSystem.new(cloud=cloud)
+    volume._deploy(name, environment_name=env)
     console = Console()
     console.print(f"Created volume '{name}' in {cloud.upper()}. \n\nCode example:\n")
     usage = Syntax(gen_usage_code(name), "python")
     console.print(usage)
 
 
-async def volume_from_name(deployment_name) -> _SharedVolumeHandle:
-    shared_volume = await _SharedVolume.lookup(deployment_name)
-    if not isinstance(shared_volume, _SharedVolumeHandle):
+async def _volume_from_name(deployment_name: str) -> _NetworkFileSystemHandle:
+    network_file_system = await _NetworkFileSystem.lookup(
+        deployment_name, environment_name=None
+    )  # environment None will take value from config
+    if not isinstance(network_file_system, _NetworkFileSystemHandle):
         raise Exception("The specified app entity is not a shared volume")
-    return shared_volume
+    return network_file_system
 
 
-@volume_cli.command(name="ls", help="List files and directories in a shared volume.")
+@vol_cli.command(name="ls", help=depr_cmd("modal nfs ls"), deprecated=True)
+@nfs_cli.command(name="ls", help="List files and directories in a shared volume.")
 @synchronizer.create_blocking
-async def ls(volume_name: str, path: str = typer.Argument(default="/")):
-    volume = await volume_from_name(volume_name)
+async def ls(
+    volume_name: str,
+    path: str = typer.Argument(default="/"),
+    env: Optional[str] = ENV_OPTION,
+):
+    ensure_env(env)
+    volume = await _volume_from_name(volume_name)
     try:
         entries = await volume.listdir(path)
     except GRPCError as exc:
@@ -113,7 +135,8 @@ async def ls(volume_name: str, path: str = typer.Argument(default="/")):
 PIPE_PATH = Path("-")
 
 
-@volume_cli.command(
+@vol_cli.command(name="put", help=depr_cmd("modal nfs put"), deprecated=True)
+@nfs_cli.command(
     name="put",
     help="""Upload a file or directory to a shared volume.
 
@@ -127,8 +150,10 @@ async def put(
     volume_name: str,
     local_path: str,
     remote_path: str = typer.Argument(default="/"),
+    env: Optional[str] = ENV_OPTION,
 ):
-    volume = await volume_from_name(volume_name)
+    ensure_env(env)
+    volume = await _volume_from_name(volume_name)
     if remote_path.endswith("/"):
         remote_path = remote_path + os.path.basename(local_path)
     console = Console()
@@ -155,7 +180,9 @@ class CliError(Exception):
         self.message = message
 
 
-async def _glob_download(volume: _SharedVolumeHandle, remote_glob_path: str, local_destination: Path, overwrite: bool):
+async def _glob_download(
+    volume: _NetworkFileSystemHandle, remote_glob_path: str, local_destination: Path, overwrite: bool
+):
     q: asyncio.Queue[Tuple[Optional[Path], Optional[api_pb2.SharedVolumeListFilesEntry]]] = asyncio.Queue()
 
     async def producer():
@@ -200,9 +227,16 @@ async def _glob_download(volume: _SharedVolumeHandle, remote_glob_path: str, loc
     await asyncio.gather(*tasks)
 
 
-@volume_cli.command(name="get")
+@vol_cli.command(name="get", help=depr_cmd("modal nfs get"), deprecated=True)
+@nfs_cli.command(name="get")
 @synchronizer.create_blocking
-async def get(volume_name: str, remote_path: str, local_destination: str = typer.Argument("."), force: bool = False):
+async def get(
+    volume_name: str,
+    remote_path: str,
+    local_destination: str = typer.Argument("."),
+    force: bool = False,
+    env: Optional[str] = ENV_OPTION,
+):
     """Download a file from a shared volume.
 
     Specifying a glob pattern (using any `*` or `**` patterns) as the `remote_path` will download all matching *files*, preserving
@@ -216,8 +250,9 @@ async def get(volume_name: str, remote_path: str, local_destination: str = typer
 
     Use "-" (a hyphen) as LOCAL_DESTINATION to write contents of file to stdout (only for non-glob paths).
     """
+    ensure_env(env)
     destination = Path(local_destination)
-    volume = await volume_from_name(volume_name)
+    volume = await _volume_from_name(volume_name)
 
     if "*" in remote_path:
         try:
@@ -259,14 +294,17 @@ async def get(volume_name: str, remote_path: str, local_destination: str = typer
         print(f"Wrote {b} bytes to '{destination}'", file=sys.stderr)
 
 
-@volume_cli.command(name="rm", help="Delete a file or directory from a shared volume.")
+@vol_cli.command(name="rm", help=depr_cmd("modal nfs rm"), deprecated=True)
+@nfs_cli.command(name="rm", help="Delete a file or directory from a shared volume.")
 @synchronizer.create_blocking
 async def rm(
     volume_name: str,
     remote_path: str,
     recursive: bool = typer.Option(False, "-r", "--recursive", help="Delete directory recursively"),
+    env: Optional[str] = ENV_OPTION,
 ):
-    volume = await volume_from_name(volume_name)
+    ensure_env(env)
+    volume = await _volume_from_name(volume_name)
     try:
         await volume.remove_file(remote_path, recursive=recursive)
     except GRPCError as exc:
