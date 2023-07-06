@@ -234,14 +234,13 @@ def test_startup_failure(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_create_package_mounts_inside_container(unix_servicer, event_loop):
-    """`create_package_mounts` shouldn't actually run inside the container, because it's possible
+def test_from_local_python_packages_inside_container(unix_servicer, event_loop, monkeypatch):
+    """`from_local_python_packages` shouldn't actually collect modules inside the container, because it's possible
     that there are modules that were present locally for the user that didn't get mounted into
     all the containers."""
-
     client, items = _run_container(unix_servicer, "modal_test_support.package_mount", "num_mounts")
     assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert items[0].result.data == serialize(0)
+    assert deserialize(items[0].result.data, None) == 0
 
 
 def _get_web_inputs(path="/"):
