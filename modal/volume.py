@@ -117,5 +117,33 @@ class _Volume(_Provider[_VolumeHandle]):
 
         return _Volume._from_loader(_load, "Volume()")
 
+    @staticmethod
+    def persisted(
+        label: str,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        environment_name: Optional[str] = None,
+    ) -> "_Volume":
+        """Deploy a Modal app containing this object. This object can then be imported from other apps using
+        the returned reference, or by calling `modal.Volume.from_name(label)` (or the equivalent method
+        on respective class).
+
+        **Example Usage**
+
+        ```python
+        import modal
+
+        volume = modal.Volume.persisted("my-volume")
+
+        stub = modal.Stub()
+
+        # Volume refers to the same object, even across instances of `stub`.
+        @stub.function(volumes={"/vol": volume})
+        def f():
+            pass
+        ```
+
+        """
+        return _Volume.new()._persist(label, namespace, environment_name)
+
 
 Volume = synchronize_api(_Volume)

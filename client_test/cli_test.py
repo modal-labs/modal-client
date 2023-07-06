@@ -342,19 +342,25 @@ def test_logs(servicer, server_url_env):
     assert res.stdout == "hello, world (1)\n"  # from servicer mock
 
 
-def test_volume_get(set_env_client):
-    volume_name = "my-shared-volume"
-    _run(["volume", "create", volume_name])
+def test_nfs_get(set_env_client):
+    nfs_name = "my-shared-nfs"
+    _run(["nfs", "create", nfs_name])
     with tempfile.TemporaryDirectory() as tmpdir:
         upload_path = os.path.join(tmpdir, "upload.txt")
         with open(upload_path, "w") as f:
             f.write("foo bar baz")
             f.flush()
-        _run(["volume", "put", volume_name, upload_path, "test.txt"])
+        _run(["nfs", "put", nfs_name, upload_path, "test.txt"])
 
-        _run(["volume", "get", volume_name, "test.txt", tmpdir])
+        _run(["nfs", "get", nfs_name, "test.txt", tmpdir])
         with open(os.path.join(tmpdir, "test.txt"), "r") as f:
             assert f.read() == "foo bar baz"
+
+
+def test_deprecated_volume(set_env_client):
+    _run(
+        ["volume", "create", "xyz-volume"], expected_stderr="DeprecationWarning: The command 'create' is deprecated.\n"
+    )
 
 
 @pytest.mark.parametrize("command", [["run"], ["deploy"], ["serve", "--timeout=1"], ["shell"]])

@@ -9,7 +9,9 @@ import cloudpickle
 
 from synchronicity.exceptions import UserCodeException
 
-from modal import Proxy, Stub, SharedVolume, web_endpoint, asgi_app, wsgi_app
+from modal_proto import api_pb2
+
+from modal import Proxy, Stub, NetworkFileSystem, web_endpoint, asgi_app, wsgi_app
 from modal.exception import DeprecationError, InvalidError
 from modal.functions import Function, FunctionCall, gather, FunctionHandle
 from modal.runner import deploy_stub
@@ -513,9 +515,9 @@ with pytest.raises(DeprecationError):
 
 def test_allow_cross_region_volumes(client, servicer):
     stub = Stub()
-    vol1, vol2 = SharedVolume.new(), SharedVolume.new()
-    # Should pass flag for all the function's SharedVolumeMounts
-    stub.function(shared_volumes={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(dummy)
+    vol1, vol2 = NetworkFileSystem.new(), NetworkFileSystem.new()
+    # Should pass flag for all the function's NetworkFileSystemMounts
+    stub.function(network_file_systems={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(dummy)
 
     with stub.run(client=client):
         assert len(servicer.app_functions) == 1
@@ -528,9 +530,11 @@ def test_allow_cross_region_volumes(client, servicer):
 def test_allow_cross_region_volumes_webhook(client, servicer):
     # TODO(erikbern): this stest seems a bit redundant
     stub = Stub()
-    vol1, vol2 = SharedVolume.new(), SharedVolume.new()
-    # Should pass flag for all the function's SharedVolumeMounts
-    stub.function(shared_volumes={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(web_endpoint()(dummy))
+    vol1, vol2 = NetworkFileSystem.new(), NetworkFileSystem.new()
+    # Should pass flag for all the function's NetworkFileSystemMounts
+    stub.function(network_file_systems={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(
+        web_endpoint()(dummy)
+    )
 
     with stub.run(client=client):
         assert len(servicer.app_functions) == 1
@@ -538,6 +542,16 @@ def test_allow_cross_region_volumes_webhook(client, servicer):
             assert len(func.shared_volume_mounts) == 2
             for svm in func.shared_volume_mounts:
                 assert svm.allow_cross_region
+
+
+def test_shared_volumes(client, servicer):
+    stub = Stub()
+    vol = NetworkFileSystem.new()
+    with pytest.warns(DeprecationError):
+        stub.function(shared_volumes={"/sv-1": vol})(dummy)
+
+    with stub.run(client=client):
+        assert len(servicer.app_functions) == 1
 
 
 def test_serialize_deserialize_function_handle(servicer, client):
@@ -583,3 +597,14 @@ def test_invalid_web_decorator_usage():
         @wsgi_app  # type: ignore
         def my_handle_wsgi():
             pass
+
+
+def test_default_cloud_provider(client, servicer, monkeypatch):
+    stub = Stub()
+
+    monkeypatch.setenv("MODAL_DEFAULT_CLOUD", "oci")
+    stub.function()(dummy)
+    with stub.run(client=client) as app:
+        f = servicer.app_functions[app.dummy.object_id]
+
+    assert f.cloud_provider == api_pb2.CLOUD_PROVIDER_OCI
