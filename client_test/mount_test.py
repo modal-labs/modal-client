@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from modal import App, Stub, create_package_mounts
+from modal import App, Stub
 from modal._blob_utils import LARGE_FILE_LIMIT
 from modal.exception import NotFoundError
 from modal.mount import Mount
@@ -86,12 +86,12 @@ def dummy():
     pass
 
 
-def test_create_package_mounts(servicer, client, test_dir):
+def test_from_local_python_packages(servicer, client, test_dir):
     stub = Stub()
 
     sys.path.append((test_dir / "supports").as_posix())
 
-    stub.function(mounts=create_package_mounts(["pkg_a", "pkg_b", "standalone_file"]))(dummy)
+    stub.function(mounts=[Mount.from_local_python_packages("pkg_a", "pkg_b", "standalone_file")])(dummy)
 
     with stub.run(client=client):
         files = servicer.files_name2sha.keys()
@@ -107,9 +107,9 @@ def test_create_package_mounts(servicer, client, test_dir):
 def test_stub_mounts(servicer, client, test_dir):
     sys.path.append((test_dir / "supports").as_posix())
 
-    stub = Stub(mounts=create_package_mounts(["pkg_b"]))
+    stub = Stub(mounts=[Mount.from_local_python_packages("pkg_b")])
 
-    stub.function(mounts=create_package_mounts(["pkg_a"]))(dummy)
+    stub.function(mounts=[Mount.from_local_python_packages("pkg_a")])(dummy)
 
     with stub.run(client=client):
         files = servicer.files_name2sha.keys()
@@ -121,11 +121,11 @@ def test_stub_mounts(servicer, client, test_dir):
         assert not any(["pkg/pkg_c/j/k.py" in f for f in files])
 
 
-def test_create_package_mounts_missing_module(servicer, client, test_dir):
+def test_from_local_python_packages_missing_module(servicer, client, test_dir):
     stub = Stub()
 
     with pytest.raises(NotFoundError):
-        stub.function(mounts=create_package_mounts(["nonexistent_package"]))(dummy)
+        stub.function(mounts=[Mount.from_local_python_packages("nonexistent_package")])(dummy)
 
 
 def test_chained_entries(test_dir):

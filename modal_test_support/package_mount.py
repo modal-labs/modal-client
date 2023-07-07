@@ -1,11 +1,11 @@
 # Copyright Modal Labs 2022
-from modal import Stub, create_package_mounts
+from modal import Stub, Mount
 
 stub = Stub()
 
-mounts = create_package_mounts(["module_1"])
+mount = Mount.from_local_python_packages("module_1")
 
 
 @stub.function()
 def num_mounts(_x):
-    return len(mounts)
+    return len(mount.entries)
