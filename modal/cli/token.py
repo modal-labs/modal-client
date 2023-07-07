@@ -43,11 +43,11 @@ def set(
 
 
 @token_cli.command(help="Creates a new token by using an authenticated web session.")
-def new(profile: Optional[str] = profile_option, no_verify: bool = False):
+def new(profile: Optional[str] = profile_option, no_verify: bool = False, source: Optional[str] = None):
     server_url = config.get("server_url", profile=profile)
 
     with Client.unauthenticated_client(server_url) as client:
-        token_flow_id, web_url = client.start_token_flow()
+        token_flow_id, web_url = client.start_token_flow(source)
         console = Console()
         with console.status("Waiting for authentication in the web browser...", spinner="dots"):
             # Open the web url in the browser
