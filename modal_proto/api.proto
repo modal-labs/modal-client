@@ -380,6 +380,37 @@ message DictUpdateRequest {
 message DictUpdateResponse {
 }
 
+enum DNSRecordType {
+  DNS_RECORD_TYPE_A = 0;
+  DNS_RECORD_TYPE_CNAME = 1;
+}
+
+message DNSRecord {
+  DNSRecordType type = 1;
+  string name = 2;
+  string value = 3;
+  
+}
+
+message DomainCreateRequest {
+  string domain_name = 1;
+}
+
+message DomainCreateResponse {
+  string domain_id = 1;
+  DNSRecord record = 2;
+}
+
+message DomainGetRequest {
+  string domain_id = 1;
+}
+
+message DomainGetResponse {
+  string domain_name = 1;
+  double created_at = 2;
+  bool certificate_issued = 3;
+}
+
 message PTYInfo {
   bool enabled = 1;
   uint32 winsz_rows = 2;
@@ -1136,6 +1167,10 @@ service ModalClient {
   rpc DictPop(DictPopRequest) returns (DictPopResponse);
   rpc DictContains(DictContainsRequest) returns (DictContainsResponse);
   rpc DictLen(DictLenRequest) returns (DictLenResponse);
+
+  // Domains
+  rpc DomainCreate(DomainCreateRequest) returns (DomainCreateResponse);
+  rpc DomainGet(DomainGetRequest) returns (DomainGetResponse);
 
   // Environments
   rpc EnvironmentCreate(EnvironmentCreateRequest) returns (google.protobuf.Empty);
