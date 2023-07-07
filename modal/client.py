@@ -168,12 +168,13 @@ class _Client:
         # To be used with the token flow
         return _Client(server_url, api_pb2.CLIENT_TYPE_CLIENT, None, no_verify=True)
 
-    async def start_token_flow(self) -> Tuple[str, str]:
+    async def start_token_flow(self, utm_source: Optional[str] = None) -> Tuple[str, str]:
         # Create token creation request
         # Send some strings identifying the computer (these are shown to the user for security reasons)
         req = api_pb2.TokenFlowCreateRequest(
             node_name=platform.node(),
             platform_name=platform.platform(),
+            utm_source=utm_source,
         )
         resp = await self.stub.TokenFlowCreate(req)
         return (resp.token_flow_id, resp.web_url)
