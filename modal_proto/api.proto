@@ -95,7 +95,7 @@ message AppClientDisconnectRequest {
 }
 
 message AppCreateRequest {
-  string client_id = 1;
+  string client_id = 1 [deprecated=true];
   string description = 2;    // Human readable label for the website
   bool detach = 3; // deprecated, but needed until 0.48 is the minimum version
   bool initializing = 4; // deprecated, but needed until 0.48 is the minimum version
@@ -1196,4 +1196,7 @@ service ModalClient {
   rpc VolumeCreate(VolumeCreateRequest) returns (VolumeCreateResponse);
   rpc VolumeCommit(VolumeCommitRequest) returns (google.protobuf.Empty);
   rpc VolumeReload(VolumeReloadRequest) returns (google.protobuf.Empty);
+
+  // Unstable, for testing
+  rpc ZUnstablePing(google.protobuf.Empty) returns (google.protobuf.Empty);
 }
