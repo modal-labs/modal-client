@@ -1142,7 +1142,7 @@ class _Image(_Provider[_ImageHandle]):
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         timeout: Optional[int] = 86400,  # Maximum execution time of the function in seconds.
-        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
+        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         force_build: bool = False,
     ) -> "_Image":
         """Run user-defined function `raw_function` as an image build step. The function runs just like an ordinary Modal

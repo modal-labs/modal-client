@@ -464,7 +464,7 @@ class _Stub:
         is_generator: Optional[
             bool
         ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
-        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
+        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         _cls: Optional[type] = None,  # Used for methods only
     ) -> Callable[[Union[_PartialFunction, Callable[..., Any]]], _FunctionHandle]:
         """Decorator to register a new Modal function with this stub."""
@@ -642,7 +642,7 @@ class _Stub:
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         interactive: bool = False,  # Whether to run the function in interactive mode.
         keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
-        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
+        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
     ) -> Callable[[CLS_T], CLS_T]:
         def wrapper(user_cls: CLS_T) -> CLS_T:
             partial_functions: Dict[str, PartialFunction] = {}
