@@ -262,8 +262,10 @@ def serve(
 
 
 def shell(
-    func_ref: str = typer.Argument(
-        ..., help="Path to a Python file with a Stub or Modal function whose container to run.", metavar="FUNC_REF"
+    func_ref: Optional[str] = typer.Argument(
+        default=None,
+        help="Path to a Python file with a Stub or Modal function whose container to run.",
+        metavar="FUNC_REF",
     ),
     cmd: str = typer.Option(default="/bin/bash", help="Command to run inside the Modal image."),
     env: str = ENV_OPTION,
@@ -271,6 +273,12 @@ def shell(
     """Run an interactive shell inside a Modal image.
 
     **Examples:**
+
+    Start a shell inside the default Debian-based image:
+
+    ```bash
+    modal shell
+    ```
 
     Start a bash shell using the spec for `my_function` in your stub:
 
@@ -292,8 +300,14 @@ def shell(
     if not console.is_terminal:
         raise click.UsageError("`modal shell` can only be run from a terminal.")
 
-    function = import_function(func_ref, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell")
+    if func_ref is not None:
+        function = import_function(func_ref, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell")
+    else:
+        _stub = Stub()
+        function = _stub.function(serialized=True)(lambda: None)
+
     assert isinstance(function, Function)  # ensured by accept_local_entrypoint=False
+
     interactive_shell(
         function,
         cmd,
