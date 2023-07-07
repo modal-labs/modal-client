@@ -7,6 +7,7 @@ import functools
 import os
 import time
 import typing
+from datetime import date
 from pathlib import Path, PurePosixPath
 from typing import AsyncGenerator, Callable, List, Optional, Union, Tuple, Sequence
 
@@ -146,6 +147,10 @@ class _Mount(_Provider[_MountHandle]):
         obj._is_local = True
         return obj
 
+    @staticmethod
+    def new() -> "_Mount":
+        return _Mount._from_entries()
+
     @property
     def entries(self):
         return self._entries
@@ -196,7 +201,7 @@ class _Mount(_Provider[_MountHandle]):
         remote_path: Union[str, PurePosixPath, None] = None,  # Where the directory is placed within in the mount
         condition: Optional[Callable[[str], bool]] = None,  # Filter function for file selection - default all files
         recursive: bool = True,  # add files from subdirectories as well
-    ):
+    ) -> "_Mount":
         return _Mount._from_entries().add_local_dir(
             local_path, remote_path=remote_path, condition=condition, recursive=recursive
         )
@@ -319,6 +324,57 @@ class _Mount(_Provider[_MountHandle]):
         logger.debug(f"Uploaded {len(uploaded_hashes)}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
         return _MountHandle._from_id(resp.mount_id, resolver.client, resp.handle_metadata)
 
+    @staticmethod
+    def from_local_python_packages(*module_names: str) -> "_Mount":
+        """Returns a `modal.Mount` that makes local modules listed in `module_names` available inside the container.
+        This works by mounting the local path of each module's package to a directory inside the container that's on `PYTHONPATH`.
+
+        **Usage**
+
+        ```python notest
+        import modal
+        import my_local_module
+
+        stub = modal.Stub()
+
+        @stub.function(mounts=[
+            modal.Mount.from_local_python_packages("my_local_module", "my_other_module"),
+        ])
+        def f():
+            my_local_module.do_stuff()
+        ```
+        """
+        from modal.app import is_local
+
+        # Don't re-run inside container.
+
+        mount = _Mount.new()
+        if not is_local():
+            return mount
+
+        for module_name in module_names:
+            mount_infos = get_module_mount_info(module_name)
+
+            if mount_infos == []:
+                raise NotFoundError(f"Module {module_name} not found.")
+
+            for mount_info in mount_infos:
+                is_package, base_path, module_mount_condition = mount_info
+                if is_package:
+                    mount = mount.add_local_dir(
+                        base_path,
+                        remote_path=f"/pkg/{module_name}",
+                        condition=module_mount_condition,
+                        recursive=True,
+                    )
+                else:
+                    remote_path = PurePosixPath("/pkg") / Path(base_path).name
+                    mount = mount.add_local_file(
+                        base_path,
+                        remote_path=remote_path,
+                    )
+        return mount
+
 
 Mount = synchronize_api(_Mount)
 
@@ -363,59 +419,12 @@ def _get_client_mount():
 
 @typechecked
 def _create_package_mounts(module_names: Sequence[str]) -> List[_Mount]:
-    """Returns a `modal.Mount` that makes local modules listed in `module_names` available inside the container.
-    This works by mounting the local path of each module's package to a directory inside the container that's on `PYTHONPATH`.
-
-    **Usage**
-
-    ```python notest
-    import modal
-    import my_local_module
-
-    stub = modal.Stub()
-
-    @stub.function(mounts=[
-        *modal.create_package_mounts(["my_local_module", "my_other_module"]),
-        modal.Mount(local_dir="/my_local_dir", remote_dir="/"),
-    ])
-    def f():
-        my_local_module.do_stuff()
-    ```
-    """
-    # TODO(erikbern): make this a static method on the Mount class
-    from modal.app import is_local
-
-    # Don't re-run inside container.
-    if not is_local():
-        return []
-
-    mounts = []
-    for module_name in module_names:
-        mount_infos = get_module_mount_info(module_name)
-
-        if mount_infos == []:
-            raise NotFoundError(f"Module {module_name} not found.")
-
-        for mount_info in mount_infos:
-            is_package, base_path, module_mount_condition = mount_info
-            if is_package:
-                mounts.append(
-                    _Mount.from_local_dir(
-                        base_path,
-                        remote_path=f"/pkg/{module_name}",
-                        condition=module_mount_condition,
-                        recursive=True,
-                    )
-                )
-            else:
-                remote_path = PurePosixPath("/pkg") / Path(base_path).name
-                mounts.append(
-                    _Mount.from_local_file(
-                        base_path,
-                        remote_path=remote_path,
-                    )
-                )
-    return mounts
+    modal.exception.deprecation_warning(
+        date(2023, 7, 19),
+        "modal.create_package_mounts() is being deprecated, use modal.Mount.from_local_python_packages() instead",
+        pending=True,
+    )
+    return [_Mount.from_local_python_packages(*module_names)]
 
 
 create_package_mounts = synchronize_api(_create_package_mounts)

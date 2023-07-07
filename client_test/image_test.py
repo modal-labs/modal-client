@@ -70,7 +70,7 @@ def test_image_kwargs_validation(servicer, client):
             secrets=[
                 Secret.from_dict({"xyz": "123"}),
                 Secret.from_name("foo"),
-                Mount.from_local_dir("/", remote_path="/"),
+                Mount.from_local_dir("/", remote_path="/"),  # type: ignore
             ],  # Mount is not a valid Secret
         )
 

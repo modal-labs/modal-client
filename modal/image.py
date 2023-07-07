@@ -594,7 +594,7 @@ class _Image(_Provider[_ImageHandle]):
         file has to exist, unless `ignore_lockfile` is set to `True`.
 
         Note that the root project of the poetry project is not installed,
-        only the dependencies. For including local packages see `modal.create_package_mounts`
+        only the dependencies. For including local packages see `modal.Mount.from_local_python_packages`
         """
         if not is_local():
             # existence checks can fail in global scope of the containers
