@@ -9,6 +9,8 @@ import sys
 import traceback
 from typing import Optional, Tuple, no_type_check
 
+import rich
+
 from modal.queue import _QueueHandle
 from modal_proto import api_pb2
 from modal_utils.async_utils import TaskContext, asyncify
@@ -168,7 +170,6 @@ async def write_stdin_to_pty_stream(queue: _QueueHandle):
         return sys.stdin.buffer.read()
 
     async def _write():
-        await queue.put(b"\n")
         while True:
             char = await _read_char()
             if char is None:
@@ -186,9 +187,9 @@ async def write_stdin_to_pty_stream(queue: _QueueHandle):
 def exec_cmd(cmd: str = None):
     run_cmd = cmd or os.environ.get("SHELL", "sh")
 
-    print(f"Spawning {run_cmd}.")
+    rich.print(f"[yellow]Spawning [bold]{run_cmd}[/bold][/yellow]")
 
     # TODO: support args.
     argv = [run_cmd]
 
-    os.execlp(argv[0], *argv)
+    os.execvp(argv[0], argv)
