@@ -18,7 +18,7 @@ def f():
 async def get_files():
     fn_info = FunctionInfo(f, serialized=True)
 
-    for _, mount in fn_info.get_mounts().items():
+    for mount in fn_info.get_mounts():
         async for file_info in mount._get_files(mount.entries):
             print(file_info.mount_filename)
 

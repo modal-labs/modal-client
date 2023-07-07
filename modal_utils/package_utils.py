@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import importlib
 import importlib.util
-import os
+from pathlib import Path
 
 from importlib_metadata import PackageNotFoundError, files
 
@@ -14,27 +14,33 @@ def get_file_formats(module):
         return []
 
 
-def module_mount_condition(f):
-    return not any([f.endswith(".pyc"), os.path.basename(f).startswith(".")])
-
-
 BINARY_FORMATS = ["so", "S", "s", "asm"]  # TODO
 
 
-def get_module_mount_info(module: str):
-    """Returns a list of tuples [(is_package, path, condition)] describing how to mount a given module."""
+class ModuleNotMountable(Exception):
+    pass
 
-    file_formats = get_file_formats(module)
+
+def get_module_mount_info(module_name: str):
+    """Returns a list of tuples [(is_dir, path)] describing how to mount a given module."""
+    file_formats = get_file_formats(module_name)
     if set(BINARY_FORMATS) & set(file_formats):
-        raise Exception(f"{module} can't be mounted because it contains a binary file.")
+        raise ModuleNotMountable(f"{module_name} can't be mounted because it contains a binary file.")
+    try:
+        spec = importlib.util.find_spec(module_name)
+    except Exception as exc:
+        raise ModuleNotMountable(str(exc))
 
-    spec = importlib.util.find_spec(module)
-
+    entries = []
     if spec is None:
-        return []
+        return ModuleNotMountable(f"{module_name} has no spec")
     elif spec.submodule_search_locations:
-        return [(True, path, module_mount_condition) for path in spec.submodule_search_locations]
+        entries = [(True, path) for path in spec.submodule_search_locations if Path(path).exists()]
     else:
         # Individual file
         filename = spec.origin
-        return [(False, filename, lambda f: os.path.basename(f) == os.path.basename(filename))]
+        if Path(filename).exists():
+            entries = [(False, filename)]
+    if not entries:
+        raise ModuleNotMountable(f"{module_name} has no mountable paths")
+    return entries

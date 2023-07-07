@@ -99,7 +99,7 @@ class _Stub:
     _description: str
     _app_id: str
     _blueprint: Dict[str, _Provider]
-    _function_mounts: Dict[str, _Mount]
+    _function_mounts: List[_Mount]
     _mounts: Sequence[_Mount]
     _secrets: Sequence[_Secret]
     _function_handles: Dict[str, _FunctionHandle]
@@ -146,7 +146,6 @@ class _Stub:
         if image is not None:
             self._blueprint["image"] = image  # backward compatibility since "image" used to be on the blueprint
 
-        self._function_mounts = {}
         self._mounts = mounts
         self._secrets = secrets
         self._function_handles: Dict[str, _FunctionHandle] = {}
@@ -694,14 +693,6 @@ class _Stub:
                     self._function_handles[tag] = obj
                 else:
                     self._function_handles[tag]._hydrate(client, function_id, handle_metadata)
-
-    def _get_deduplicated_function_mounts(self, mounts: Dict[str, _Mount]):
-        cached_mounts = []
-        for root_path, mount in mounts.items():
-            if root_path not in self._function_mounts:
-                self._function_mounts[root_path] = mount
-            cached_mounts.append(self._function_mounts[root_path])
-        return cached_mounts
 
 
 Stub = synchronize_api(_Stub)

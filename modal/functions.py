@@ -31,7 +31,7 @@ from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.exceptions import UserCodeException
 
-from modal import _pty
+from modal import _pty, is_local
 from modal_proto import api_pb2
 from modal._types import typechecked
 from modal_utils.async_utils import (
@@ -61,7 +61,7 @@ from .exception import ExecutionError, InvalidError, RemoteError, deprecation_er
 from .exception import TimeoutError as _TimeoutError
 from .gpu import GPU_T, parse_gpu_config, display_gpu_config
 from .image import _Image
-from .mount import _Mount, _get_client_mount
+from .mount import _Mount, _get_client_mount, NonLocalMount, _MountedPythonModule, _deduplicate_mounts
 from .object import _Handle, _Provider
 from .proxy import _Proxy
 from .retries import Retries
@@ -815,6 +815,45 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
 FunctionHandle = synchronize_api(_FunctionHandle)
 
 
+def _get_function_mounts(function_info: FunctionInfo, explicit_mounts: Collection[_Mount]) -> List[_Mount]:
+    all_mounts = [
+        _get_client_mount(),  # client
+        *explicit_mounts,  # explicit mounts
+    ]
+    automounted = function_info.get_mounts()
+
+    def _all_mounted_modules(_mounts):
+        module_names = set()
+        for m in _mounts:
+            try:
+                for entry in m.entries:
+                    if isinstance(entry, _MountedPythonModule):
+                        module_names.add(entry.module_name)
+            except NonLocalMount:
+                pass
+        return module_names
+
+    explicit_mounted_modules = _all_mounted_modules(all_mounts)
+    automounted_mount_modules = _all_mounted_modules(automounted)
+
+    not_explictily_added = automounted_mount_modules - explicit_mounted_modules
+
+    if not_explictily_added:
+        module_list_str = ", ".join(f'"{module_name}"' for module_name in not_explictily_added)
+        automount_deprecation = (
+            "Automatic mounting of imported modules is deprecated and will be removed in an upcoming version of Modal.\n\n"
+            + "The following local python modules that are currently being auto-mounted would have to be explicitly added as Mounts or built into your image:\n\n"
+            + "\n".join(not_explictily_added)
+            + "\n\n"
+            "You can add them as explicit mounts using:\n\n"
+            f"@stub.function(mounts=[Mount.from_local_python_packages({module_list_str})])\n"
+        )
+        deprecation_warning(date(2023, 7, 7), automount_deprecation, pending=True)
+
+    all_mounts.extend(automounted)
+    return _deduplicate_mounts(all_mounts)
+
+
 class _Function(_Provider[_FunctionHandle]):
     """Functions are the basic units of serverless execution on Modal.
 
@@ -877,15 +916,10 @@ class _Function(_Provider[_FunctionHandle]):
                     f"Function {raw_f} has a schedule, so it needs to support calling it with no arguments"
                 )
 
-        all_mounts = [
-            _get_client_mount(),  # client
-            *mounts,  # explicit mounts
-        ]
-        # TODO (elias): Clean up mount logic, this is quite messy:
-        if stub:
-            all_mounts.extend(stub._get_deduplicated_function_mounts(info.get_mounts()))  # implicit mounts
+        if is_local():
+            all_mounts = _get_function_mounts(info, mounts)
         else:
-            all_mounts.extend(info.get_mounts().values())  # this would typically only happen for builder functions
+            all_mounts = []
 
         if secret:
             secrets = [secret, *secrets]

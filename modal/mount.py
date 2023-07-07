@@ -19,12 +19,11 @@ import modal.exception
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors
-from modal_utils.package_utils import get_module_mount_info, module_mount_condition
+from modal_utils.package_utils import get_module_mount_info
 from modal_version import __version__
 from ._blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec
 from ._resolver import Resolver
 from .config import config, logger
-from .exception import NotFoundError
 from .object import _Handle, _Provider
 
 MOUNT_PUT_FILE_CLIENT_TIMEOUT = 10 * 60  # 10 min max for transferring files
@@ -35,15 +34,20 @@ def client_mount_name():
 
 
 class _MountEntry(metaclass=abc.ABCMeta):
-    remote_path: PurePosixPath
-
+    @abc.abstractmethod
     def description(self) -> str:
         ...
 
+    @abc.abstractmethod
     def get_files_to_upload(self) -> typing.Iterator[Tuple[Path, str]]:
         ...
 
+    @abc.abstractmethod
     def watch_entry(self) -> Tuple[Path, Path]:
+        ...
+
+    @abc.abstractmethod
+    def top_level_paths(self) -> List[Path]:
         ...
 
 
@@ -66,6 +70,9 @@ class _MountFile(_MountEntry):
     def watch_entry(self):
         parent = self.local_file.parent
         return parent, self.local_file
+
+    def top_level_paths(self) -> List[Path]:
+        return [self.local_file]
 
 
 @dataclasses.dataclass
@@ -101,6 +108,67 @@ class _MountDir(_MountEntry):
     def watch_entry(self):
         return self.local_dir, None
 
+    def top_level_paths(self) -> List[Path]:
+        return [self.local_dir]
+
+
+def module_mount_condition(f):
+    return not any([f.endswith(".pyc"), os.path.basename(f).startswith(".")])
+
+
+@dataclasses.dataclass
+class _MountedPythonModule(_MountEntry):
+    # the purpose of this is to keep printable information about which Python package
+    # was mounted. Functionality wise it's the same as mounting a dir or a file with
+    # the Module
+
+    module_name: str
+    _base_dir: str
+
+    def description(self) -> str:
+        return f"PythonPackage:{self.module_name}"
+
+    def _proxy_entries(self) -> List[_MountEntry]:
+        mount_infos = get_module_mount_info(self.module_name)
+        entries = []
+        for mount_info in mount_infos:
+            is_package, base_path = mount_info
+            if is_package:
+                remote_dir = PurePosixPath("/root", *self.module_name.split("."))
+                entries.append(
+                    _MountDir(
+                        Path(base_path),
+                        remote_path=remote_dir,
+                        condition=module_mount_condition,
+                        recursive=True,
+                    )
+                )
+            else:
+                path_segments = self.module_name.split(".")[:-1]
+                remote_path = PurePosixPath("/root", *path_segments, Path(base_path).name)
+                entries.append(
+                    _MountFile(
+                        local_file=Path(base_path),
+                        remote_path=remote_path,
+                    )
+                )
+        return entries
+
+    def get_files_to_upload(self) -> typing.Iterator[Tuple[Path, str]]:
+        for entry in self._proxy_entries():
+            yield from entry.get_files_to_upload()
+
+    def watch_entry(self) -> Tuple[Path, Path]:
+        for entry in self._proxy_entries():
+            # TODO: fix watch for mounts of multi-path packages
+            return entry.watch_entry()
+
+    def top_level_paths(self) -> List[Path]:
+        paths = []
+        for sub in self._proxy_entries():
+            paths.extend(sub.top_level_paths())
+        return paths
+
 
 class _MountHandle(_Handle, type_prefix="mo"):
     """Store content checksum for uploaded Mount"""
@@ -113,6 +181,10 @@ class _MountHandle(_Handle, type_prefix="mo"):
 
 
 MountHandle = synchronize_api(_MountHandle)
+
+
+class NonLocalMount(Exception):
+    pass
 
 
 class _Mount(_Provider[_MountHandle]):
@@ -136,7 +208,7 @@ class _Mount(_Provider[_MountHandle]):
     the file's contents to skip uploading files that have been uploaded before.
     """
 
-    _entries: List[_MountEntry]
+    _entries: Optional[List[_MountEntry]] = None
 
     @staticmethod
     def _from_entries(*entries: _MountEntry) -> "_Mount":
@@ -153,7 +225,15 @@ class _Mount(_Provider[_MountHandle]):
 
     @property
     def entries(self):
+        if self._entries is None:
+            raise NonLocalMount()
         return self._entries
+
+    def get_top_level_paths(self) -> List[Path]:
+        res: List[Path] = []
+        for entry in self.entries:
+            res.extend(entry.top_level_paths())
+        return res
 
     def is_local(self) -> bool:
         """mdmd:hidden"""
@@ -344,36 +424,7 @@ class _Mount(_Provider[_MountHandle]):
             my_local_module.do_stuff()
         ```
         """
-        from modal.app import is_local
-
-        # Don't re-run inside container.
-
-        mount = _Mount.new()
-        if not is_local():
-            return mount
-
-        for module_name in module_names:
-            mount_infos = get_module_mount_info(module_name)
-
-            if mount_infos == []:
-                raise NotFoundError(f"Module {module_name} not found.")
-
-            for mount_info in mount_infos:
-                is_package, base_path, module_mount_condition = mount_info
-                if is_package:
-                    mount = mount.add_local_dir(
-                        base_path,
-                        remote_path=f"/pkg/{module_name}",
-                        condition=module_mount_condition,
-                        recursive=True,
-                    )
-                else:
-                    remote_path = PurePosixPath("/pkg") / Path(base_path).name
-                    mount = mount.add_local_file(
-                        base_path,
-                        remote_path=remote_path,
-                    )
-        return mount
+        return _Mount._from_entries(*[_MountedPythonModule(module_name) for module_name in module_names])
 
 
 Mount = synchronize_api(_Mount)
@@ -415,6 +466,24 @@ def _get_client_mount():
         return _create_client_mount()
     else:
         return _Mount.from_name(client_mount_name(), namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
+
+
+def _deduplicate_mounts(mounts: List[_Mount]):
+    deduped_mounts = []
+    already_handled_paths = []
+    for mount in mounts:
+        unhandled_paths = []
+        try:
+            for root_path in mount.get_top_level_paths():
+                if root_path not in already_handled_paths:
+                    unhandled_paths.append(root_path)
+            if unhandled_paths:
+                deduped_mounts.append(mount)
+                already_handled_paths.extend(unhandled_paths)
+        except NonLocalMount:
+            deduped_mounts.append(mount)
+
+    return deduped_mounts
 
 
 @typechecked
