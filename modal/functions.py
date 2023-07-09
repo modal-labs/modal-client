@@ -61,7 +61,7 @@ from .exception import ExecutionError, InvalidError, RemoteError, deprecation_er
 from .exception import TimeoutError as _TimeoutError
 from .gpu import GPU_T, parse_gpu_config, display_gpu_config
 from .image import _Image
-from .mount import _Mount, _get_client_mount, NonLocalMount, _MountedPythonModule, _deduplicate_mounts
+from .mount import _Mount, _get_client_mount, NonLocalMount, _MountedPythonModule
 from .object import _Handle, _Provider
 from .proxy import _Proxy
 from .retries import Retries
@@ -820,7 +820,7 @@ def _get_function_mounts(function_info: FunctionInfo, explicit_mounts: Collectio
         _get_client_mount(),  # client
         *explicit_mounts,  # explicit mounts
     ]
-    automounted = function_info.get_mounts()
+    automounted = function_info.get_implicit_mounts()
 
     def _all_mounted_modules(_mounts):
         module_names = set()
@@ -851,7 +851,7 @@ def _get_function_mounts(function_info: FunctionInfo, explicit_mounts: Collectio
         deprecation_warning(date(2023, 7, 7), automount_deprecation, pending=True)
 
     all_mounts.extend(automounted)
-    return _deduplicate_mounts(all_mounts)
+    return all_mounts
 
 
 class _Function(_Provider[_FunctionHandle]):
@@ -916,8 +916,15 @@ class _Function(_Provider[_FunctionHandle]):
                     f"Function {raw_f} has a schedule, so it needs to support calling it with no arguments"
                 )
 
-        if is_local():
-            all_mounts = _get_function_mounts(info, mounts)
+        if is_local():  # TODO: maybe the entire constructor should be exited early if not local?
+            if stub:
+                mount_cache = stub._function_mounts
+            else:
+                from modal.mount import MountCache
+
+                mount_cache = MountCache()
+
+            all_mounts = [mount_cache.get(m) for m in _get_function_mounts(info, mounts)]
         else:
             all_mounts = []
 

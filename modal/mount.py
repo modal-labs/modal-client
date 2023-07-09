@@ -47,7 +47,7 @@ class _MountEntry(metaclass=abc.ABCMeta):
         ...
 
     @abc.abstractmethod
-    def top_level_paths(self) -> List[Path]:
+    def top_level_paths(self) -> List[Tuple[Path, PurePosixPath]]:
         ...
 
 
@@ -71,8 +71,8 @@ class _MountFile(_MountEntry):
         parent = self.local_file.parent
         return parent, self.local_file
 
-    def top_level_paths(self) -> List[Path]:
-        return [self.local_file]
+    def top_level_paths(self) -> List[Tuple[Path, PurePosixPath]]:
+        return [(self.local_file.absolute(), self.remote_path)]
 
 
 @dataclasses.dataclass
@@ -108,8 +108,8 @@ class _MountDir(_MountEntry):
     def watch_entry(self):
         return self.local_dir, None
 
-    def top_level_paths(self) -> List[Path]:
-        return [self.local_dir]
+    def top_level_paths(self) -> List[Tuple[Path, PurePosixPath]]:
+        return [(self.local_dir.absolute(), self.remote_path)]
 
 
 def module_mount_condition(f):
@@ -123,7 +123,6 @@ class _MountedPythonModule(_MountEntry):
     # the Module
 
     module_name: str
-    _base_dir: str
 
     def description(self) -> str:
         return f"PythonPackage:{self.module_name}"
@@ -163,7 +162,7 @@ class _MountedPythonModule(_MountEntry):
             # TODO: fix watch for mounts of multi-path packages
             return entry.watch_entry()
 
-    def top_level_paths(self) -> List[Path]:
+    def top_level_paths(self) -> List[Tuple[Path, PurePosixPath]]:
         paths = []
         for sub in self._proxy_entries():
             paths.extend(sub.top_level_paths())
@@ -229,8 +228,8 @@ class _Mount(_Provider[_MountHandle]):
             raise NonLocalMount()
         return self._entries
 
-    def get_top_level_paths(self) -> List[Path]:
-        res: List[Path] = []
+    def _top_level_paths(self) -> List[Tuple[Path, PurePosixPath]]:
+        res: List[Tuple[Path, PurePosixPath]] = []
         for entry in self.entries:
             res.extend(entry.top_level_paths())
         return res
@@ -468,22 +467,21 @@ def _get_client_mount():
         return _Mount.from_name(client_mount_name(), namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
 
 
-def _deduplicate_mounts(mounts: List[_Mount]):
-    deduped_mounts = []
-    already_handled_paths = []
-    for mount in mounts:
-        unhandled_paths = []
-        try:
-            for root_path in mount.get_top_level_paths():
-                if root_path not in already_handled_paths:
-                    unhandled_paths.append(root_path)
-            if unhandled_paths:
-                deduped_mounts.append(mount)
-                already_handled_paths.extend(unhandled_paths)
-        except NonLocalMount:
-            deduped_mounts.append(mount)
+class MountCache:
+    # used for deduplicating Mounts
+    cache: typing.Dict[frozenset[(Path, PurePosixPath)], _Mount]
 
-    return deduped_mounts
+    def __init__(self):
+        self.cache = {}
+
+    def _cache_key(self, mount: _Mount) -> frozenset[Tuple[Path, PurePosixPath]]:
+        return frozenset(mount._top_level_paths())
+
+    def get(self, mount: _Mount):
+        try:
+            return self.cache.setdefault(self._cache_key(mount), mount)
+        except NonLocalMount:
+            return mount
 
 
 @typechecked

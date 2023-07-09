@@ -145,7 +145,7 @@ class FunctionInfo:
         logger.debug(f"Serializing {self.raw_f.__qualname__}, size is {len(serialized_bytes)}")
         return serialized_bytes
 
-    def get_mounts(self) -> typing.List[_Mount]:
+    def get_implicit_mounts(self) -> typing.List[_Mount]:
         """
         Includes:
         * Implicit mount of the function itself (the module or package that the function is part of)
@@ -160,11 +160,7 @@ class FunctionInfo:
             # Don't auto-mount anything for notebooks.
             return []
 
-        if config.get("automount"):
-            mounts = self._get_auto_mounts()
-        else:
-            mounts = []
-
+        mounts = []
         # make sure the function's own entrypoint is included:
         if self.type == FunctionInfoType.PACKAGE and config.get("automount"):
             mounts.append(
@@ -184,6 +180,10 @@ class FunctionInfo:
                         remote_path=remote_path,
                     )
                 )
+
+        if config.get("automount"):
+            mounts.extend(self._get_auto_mounts())
+
         return mounts
 
     def _get_auto_mounts(self) -> typing.List[_Mount]:
@@ -210,31 +210,17 @@ class FunctionInfo:
             try:
                 # at this point we don't know if the sys.modules module should be mounted or not
                 potential_mount = _Mount.from_local_python_packages(module_name)
-                mount_paths = potential_mount.get_top_level_paths()
+                mount_paths = potential_mount._top_level_paths()
             except ModuleNotMountable:
                 # this typically happens if the module is a built-in or has binary components
                 continue
 
-            skip_auto_mount = False
-            for path in mount_paths:
-                if any(str(path).startswith(p) for p in SYS_PREFIXES):
-                    # skip any module that has paths in SYS_PREFIXES
-                    skip_auto_mount = True
+            for local_path, remote_path in mount_paths:
+                if any(str(local_path).startswith(p) for p in SYS_PREFIXES) or _is_modal_path(remote_path):
+                    # skip any module that has paths in SYS_PREFIXES, or would overwrite the modal Package in the container
                     break
-
-                # also skip any auto mount that would have files in the remote Modal package mount
-                # potentially conflicting with Modal itself
-                for entry in potential_mount.entries:
-                    for local_path, remote_path_str in entry.get_files_to_upload():
-                        if _is_modal_path(PurePosixPath(remote_path_str)):
-                            skip_auto_mount = True
-                            break
-                    if skip_auto_mount:
-                        break
-
-            if not skip_auto_mount:
+            else:
                 auto_mounts.append(potential_mount)
-                # print("Automounting", module_name, module.__name__, potential_mount)
 
         return auto_mounts
 

@@ -41,7 +41,7 @@ async def env_mount_files():
     fn_info = FunctionInfo(f)
 
     filenames = []
-    for mount in fn_info.get_mounts():
+    for mount in fn_info.get_implicit_mounts():
         async for file_info in mount._get_files(mount.entries):
             filenames.append(file_info.mount_filename)
 
@@ -94,10 +94,11 @@ def test_mounted_files_serialized(supports_dir, env_mount_files):
 
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
     assert files == {
-        "/root/b/c.py",  # TODO: shouldn't this be /root/pkg_a/b/c.py !?
-        "/root/b/e.py",  # TODO: shouldn't this be /root/pkg_a/b/e.py !?
-        "/root/pkg_a/a.py",
-        "/root/pkg_a/serialized_fn.py",
+        # TODO: arguably a.py and b/* should both mounted under pkg_a, but then we need to also change how the modal stub file is mounted and loaded too
+        # should serialized_fn be included?
+        "/root/b/c.py",
+        "/root/b/e.py",
+        "/root/a.py",
         "/root/pkg_b/__init__.py",
         "/root/pkg_b/f.py",
         "/root/pkg_b/g/h.py",
@@ -115,7 +116,6 @@ def test_mounted_files_package(supports_dir, env_mount_files):
 
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
     assert files == {
-        "/root/package.py",
         "/root/pkg_a/__init__.py",
         "/root/pkg_a/a.py",
         "/root/pkg_a/b/c.py",
@@ -179,6 +179,7 @@ def test_mounted_files_config(supports_dir, env_mount_files):
 @skip_windows_unix_socket
 def test_e2e_modal_run_py_file_mounts(unix_servicer, test_dir):
     helpers.deploy_stub_externally(unix_servicer, "hello.py", cwd=test_dir.parent / "modal_test_support")
+    print(unix_servicer.files_name2sha)
     assert len(unix_servicer.files_name2sha) == 1
     assert unix_servicer.n_mounts == 1  # there should be a single mount
     assert unix_servicer.n_mount_files == 1

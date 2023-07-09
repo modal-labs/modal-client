@@ -26,7 +26,7 @@ from .exception import InvalidError, deprecation_error, deprecation_warning
 from .functions import _Function, _FunctionHandle, PartialFunction, _PartialFunction
 from .gpu import GPU_T
 from .image import _Image, _ImageHandle
-from .mount import _Mount
+from .mount import _Mount, MountCache
 from .object import _Provider
 from .proxy import _Proxy
 from .queue import _Queue
@@ -99,7 +99,7 @@ class _Stub:
     _description: str
     _app_id: str
     _blueprint: Dict[str, _Provider]
-    _function_mounts: List[_Mount]
+    _function_mounts: MountCache
     _mounts: Sequence[_Mount]
     _secrets: Sequence[_Secret]
     _function_handles: Dict[str, _FunctionHandle]
@@ -147,6 +147,7 @@ class _Stub:
             self._blueprint["image"] = image  # backward compatibility since "image" used to be on the blueprint
 
         self._mounts = mounts
+        self._function_mounts = MountCache()
         self._secrets = secrets
         self._function_handles: Dict[str, _FunctionHandle] = {}
         self._local_entrypoints = {}
