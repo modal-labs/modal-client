@@ -467,7 +467,7 @@ def _get_client_mount():
         return _Mount.from_name(client_mount_name(), namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
 
 
-class MountCache:
+class _MountCache:
     # used for deduplicating Mounts
     cache: typing.Dict[frozenset[(Path, PurePosixPath)], _Mount]
 

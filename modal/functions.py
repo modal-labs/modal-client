@@ -920,9 +920,9 @@ class _Function(_Provider[_FunctionHandle]):
             if stub:
                 mount_cache = stub._function_mounts
             else:
-                from modal.mount import MountCache
+                from modal.mount import _MountCache
 
-                mount_cache = MountCache()
+                mount_cache = _MountCache()
 
             all_mounts = [mount_cache.get(m) for m in _get_function_mounts(info, mounts)]
         else:
