@@ -382,7 +382,7 @@ message DictUpdateResponse {
 
 enum DNSRecordType {
   DNS_RECORD_TYPE_A = 0;
-  DNS_RECORD_TYPE_CNAME = 1;
+  DNS_RECORD_TYPE_TXT = 1;
 }
 
 message DNSRecord {
@@ -398,7 +398,7 @@ message DomainCreateRequest {
 
 message DomainCreateResponse {
   string domain_id = 1;
-  DNSRecord record = 2;
+  repeated DNSRecord records = 2;
 }
 
 message DomainGetRequest {
