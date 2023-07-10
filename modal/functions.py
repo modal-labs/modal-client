@@ -1367,6 +1367,7 @@ def _method(
 
 @typechecked
 def _web_endpoint(
+    *,
     method: str = "GET",  # REST method for the created endpoint.
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
@@ -1428,6 +1429,7 @@ def _web_endpoint(
 
 @typechecked
 def _asgi_app(
+    *,
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
@@ -1474,6 +1476,7 @@ def _asgi_app(
 
 @typechecked
 def _wsgi_app(
+    *,
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:

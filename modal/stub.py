@@ -379,7 +379,7 @@ class _Stub:
         """Names of web endpoint (ie. webhook) functions registered on the stub."""
         return self._web_endpoints
 
-    def local_entrypoint(self, name: Optional[str] = None) -> Callable[[Callable[..., Any]], None]:
+    def local_entrypoint(self, *, name: Optional[str] = None) -> Callable[[Callable[..., Any]], None]:
         """Decorate a function to be used as a CLI entrypoint for a Modal App.
 
         These functions can be used to define code that runs locally to set up the app,
@@ -438,6 +438,7 @@ class _Stub:
     @typechecked
     def function(
         self,
+        *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
         secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
@@ -621,6 +622,7 @@ class _Stub:
 
     def cls(
         self,
+        *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
         secrets: Sequence[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
