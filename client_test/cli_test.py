@@ -124,7 +124,8 @@ def test_run(servicer, set_env_client, test_dir):
 
 
 @pytest.mark.filterwarnings("error")  # any warnings that aren't caught will fail this test
-def test_local_entrypoint_no_remote_calls(servicer, set_env_client, test_dir):
+def test_local_entrypoint_no_remote_calls(servicer, set_env_client, test_dir, monkeypatch):
+    monkeypatch.setenv("MODAL_AUTOMOUNT", "0")
     file = test_dir / "supports" / "app_run_tests" / "local_entrypoint.py"
     res = _run(["run", file.as_posix()])
     assert "Warning: no remote function calls were made" not in res.stderr

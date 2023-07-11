@@ -469,12 +469,12 @@ def _get_client_mount():
 
 class _MountCache:
     # used for deduplicating Mounts
-    cache: typing.Dict[frozenset[(Path, PurePosixPath)], _Mount]
+    cache: typing.Dict[typing.FrozenSet[Tuple[Path, PurePosixPath]], _Mount]
 
     def __init__(self):
         self.cache = {}
 
-    def _cache_key(self, mount: _Mount) -> frozenset[Tuple[Path, PurePosixPath]]:
+    def _cache_key(self, mount: _Mount) -> typing.FrozenSet[Tuple[Path, PurePosixPath]]:
         return frozenset(mount._top_level_paths())
 
     def get(self, mount: _Mount) -> _Mount:

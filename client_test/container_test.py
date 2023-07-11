@@ -4,6 +4,8 @@ import pickle
 import base64
 import json
 import pathlib
+from unittest import mock
+
 import pytest
 import subprocess
 import sys
@@ -234,13 +236,13 @@ def test_startup_failure(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_from_local_python_packages_inside_container(unix_servicer, event_loop, monkeypatch):
+def test_from_local_python_packages_inside_container(unix_servicer, event_loop):
     """`from_local_python_packages` shouldn't actually collect modules inside the container, because it's possible
     that there are modules that were present locally for the user that didn't get mounted into
     all the containers."""
-    client, items = _run_container(unix_servicer, "modal_test_support.package_mount", "num_mounts")
-    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert deserialize(items[0].result.data, None) == 0
+    with mock.patch("modal_utils.package_utils.get_module_mount_info") as get_module_mount_info:
+        _run_container(unix_servicer, "modal_test_support.package_mount", "num_mounts")
+    assert get_module_mount_info.call_count == 0
 
 
 def _get_web_inputs(path="/"):

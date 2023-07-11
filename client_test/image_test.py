@@ -356,7 +356,7 @@ def test_image_build_with_local_packages(client, servicer, tmp_path, monkeypatch
     stub.image = modal.Image.debian_slim().copy_local_python_packages("modal_test_support")
 
     def expected_mount_request(build_request: api_pb2.MountBuildRequest):
-        return any(f for f in build_request.files if f.filename == "/pkg/modal_test_support/module_1.py")
+        return any(f for f in build_request.files if f.filename == "/root/modal_test_support/module_1.py")
 
     def expected_image_request(req: api_pb2.ImageGetOrCreateRequest):
         return req.image.context_mount_id == "mo-1337" and "COPY . /" in req.image.dockerfile_commands

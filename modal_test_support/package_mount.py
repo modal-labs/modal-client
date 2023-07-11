@@ -6,6 +6,6 @@ stub = Stub()
 mount = Mount.from_local_python_packages("module_1")
 
 
-@stub.function()
+@stub.function(mounts=[mount])
 def num_mounts(_x):
-    return len(mount.entries)
+    pass  # return len(mount.entries)
