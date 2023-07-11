@@ -380,6 +380,56 @@ message DictUpdateRequest {
 message DictUpdateResponse {
 }
 
+enum DNSRecordType {
+  DNS_RECORD_TYPE_A = 0;
+  DNS_RECORD_TYPE_TXT = 1;
+  DNS_RECORD_TYPE_CNAME = 2;
+}
+
+message DNSRecord {
+  DNSRecordType type = 1;
+  string name = 2;
+  string value = 3;
+}
+
+message DomainCreateRequest {
+  string domain_name = 1;
+}
+
+message DomainCreateResponse {
+  string domain_id = 1;
+  repeated DNSRecord records = 2;
+}
+
+message DomainListRequest {
+}
+
+enum CertificateStatus {
+  CERTIFICATE_STATUS_PENDING = 0;
+  CERTIFICATE_STATUS_ISSUED = 1;
+  CERTIFICATE_STATUS_FAILED = 2;
+  CERTIFICATE_STATUS_REVOKED = 3;
+}
+
+message Domain {
+  string domain_id = 1;
+  string domain_name = 2;
+  double created_at = 3;
+  CertificateStatus certificate_status = 4;
+};
+
+message DomainListResponse {
+  repeated Domain domains = 1;
+}
+
+message DomainCertificateVerifyRequest {
+  string domain_id = 1;
+}
+
+message DomainCertificateVerifyResponse {
+  Domain domain = 1;
+}
+
 message PTYInfo {
   bool enabled = 1;
   uint32 winsz_rows = 2;
@@ -1136,6 +1186,11 @@ service ModalClient {
   rpc DictPop(DictPopRequest) returns (DictPopResponse);
   rpc DictContains(DictContainsRequest) returns (DictContainsResponse);
   rpc DictLen(DictLenRequest) returns (DictLenResponse);
+
+  // Domains
+  rpc DomainCreate(DomainCreateRequest) returns (DomainCreateResponse);
+  rpc DomainList(DomainListRequest) returns (DomainListResponse);
+  rpc DomainCertificateVerify(DomainCertificateVerifyRequest) returns (DomainCertificateVerifyResponse);
 
   // Environments
   rpc EnvironmentCreate(EnvironmentCreateRequest) returns (google.protobuf.Empty);
