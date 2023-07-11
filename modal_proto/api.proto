@@ -398,7 +398,7 @@ message DomainCreateRequest {
 
 message DomainCreateResponse {
   string domain_id = 1;
-  repeated DNSRecord records = 2;
+  repeated DNSRecord dns_records = 2;
 }
 
 message DomainListRequest {
@@ -416,6 +416,7 @@ message Domain {
   string domain_name = 2;
   double created_at = 3;
   CertificateStatus certificate_status = 4;
+  repeated DNSRecord dns_records = 5;
 };
 
 message DomainListResponse {
