@@ -514,7 +514,7 @@ class _Image(_Provider[_ImageHandle]):
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ) -> "_Image":
-        """Install a list of Python packages from a `requirements.txt` file."""
+        """Install a list of Python packages from a local `requirements.txt` file."""
 
         requirements_txt = os.path.expanduser(requirements_txt)
 
@@ -545,12 +545,12 @@ class _Image(_Provider[_ImageHandle]):
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ) -> "_Image":
-        """Install dependencies specified by a `pyproject.toml` file.
+        """Install dependencies specified by a local `pyproject.toml` file.
 
-        When `optional_dependencies`, a list of the keys of the
+        `optional_dependencies` is a list of the keys of the
         optional-dependencies section(s) of the `pyproject.toml` file
-        (e.g. test, doc, experiment, etc), is provided,
-        all of those packages in each section are installed as well."""
+        (e.g. test, doc, experiment, etc). When provided,
+        all of the packages in each listed section are installed as well."""
         from modal.app import is_local
 
         # Don't re-run inside container.
@@ -588,9 +588,9 @@ class _Image(_Provider[_ImageHandle]):
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ) -> "_Image":
-        """Install poetry *dependencies* specified by a pyproject.toml file.
+        """Install poetry *dependencies* specified by a local `pyproject.toml` file.
 
-        The path to the lockfile is inferred, if not provided. However, the
+        If not provided as argument the path to the lockfile is inferred. However, the
         file has to exist, unless `ignore_lockfile` is set to `True`.
 
         Note that the root project of the poetry project is not installed,
@@ -768,7 +768,7 @@ class _Image(_Provider[_ImageHandle]):
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ) -> "_Image":
-        """Install a list of additional packages using conda. Note that in most cases, using `Image.micromamba()`
+        """Install a list of additional packages using Conda. Note that in most cases, using `Image.micromamba()`
         is recommended over `Image.conda()`, as it leads to significantly faster image build times."""
 
         pkgs = _flatten_str_args("conda_install", "packages", packages)
@@ -801,7 +801,7 @@ class _Image(_Provider[_ImageHandle]):
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ) -> "_Image":
-        """Update conda environment using dependencies from a given environment.yml file."""
+        """Update a Conda environment using dependencies from a given environment.yml file."""
 
         environment_yml = os.path.expanduser(environment_yml)
 
@@ -828,7 +828,7 @@ class _Image(_Provider[_ImageHandle]):
         python_version: str = "3.9",
         force_build: bool = False,
     ) -> "_Image":
-        """A Micromamba base image. Micromamba allows for fast building of small conda-based containers."""
+        """A Micromamba base image. Micromamba allows for fast building of small Conda-based containers."""
         _validate_python_version(python_version)
 
         return _Image.from_dockerhub(
