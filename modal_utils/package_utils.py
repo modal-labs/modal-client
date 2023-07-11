@@ -5,6 +5,8 @@ from pathlib import Path
 
 from importlib_metadata import PackageNotFoundError, files
 
+from modal.exception import ModuleNotMountable
+
 
 def get_file_formats(module):
     try:
@@ -15,10 +17,6 @@ def get_file_formats(module):
 
 
 BINARY_FORMATS = ["so", "S", "s", "asm"]  # TODO
-
-
-class ModuleNotMountable(Exception):
-    pass
 
 
 def get_module_mount_info(module_name: str):
@@ -33,7 +31,7 @@ def get_module_mount_info(module_name: str):
 
     entries = []
     if spec is None:
-        return ModuleNotMountable(f"{module_name} has no spec")
+        raise ModuleNotMountable(f"{module_name} has no spec - might not be installed?")
     elif spec.submodule_search_locations:
         entries = [(True, path) for path in spec.submodule_search_locations if Path(path).exists()]
     else:

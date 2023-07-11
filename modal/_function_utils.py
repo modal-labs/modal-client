@@ -10,11 +10,10 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Optional, Type
 
 from modal_proto import api_pb2
-from modal_utils.package_utils import ModuleNotMountable
 
 from ._serialization import serialize
 from .config import config, logger
-from .exception import InvalidError
+from .exception import InvalidError, ModuleNotMountable
 from .mount import _Mount
 
 ROOT_DIR = PurePosixPath("/root")

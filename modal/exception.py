@@ -98,3 +98,7 @@ def deprecation_warning(deprecated_on: date, msg: str, pending=False):
 
     # This is a lower-level function that warnings.warn uses
     warnings.warn_explicit(f"{deprecated_on}: {msg}", warning_cls, filename, lineno)
+
+
+class ModuleNotMountable(Exception):
+    pass
