@@ -99,7 +99,7 @@ class _Stub:
     _description: str
     _app_id: str
     _blueprint: Dict[str, _Provider]
-    _function_mounts: _MountCache
+    _mount_cache: _MountCache
     _mounts: Sequence[_Mount]
     _secrets: Sequence[_Secret]
     _function_handles: Dict[str, _FunctionHandle]
@@ -147,7 +147,7 @@ class _Stub:
             self._blueprint["image"] = image  # backward compatibility since "image" used to be on the blueprint
 
         self._mounts = mounts
-        self._function_mounts = _MountCache()
+        self._mount_cache = _MountCache()
         self._secrets = secrets
         self._function_handles: Dict[str, _FunctionHandle] = {}
         self._local_entrypoints = {}

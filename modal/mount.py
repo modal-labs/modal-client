@@ -477,11 +477,17 @@ class _MountCache:
     def _cache_key(self, mount: _Mount) -> frozenset[Tuple[Path, PurePosixPath]]:
         return frozenset(mount._top_level_paths())
 
-    def get(self, mount: _Mount):
+    def get(self, mount: _Mount) -> _Mount:
         try:
             return self.cache.setdefault(self._cache_key(mount), mount)
         except NonLocalMount:
             return mount
+
+    def get_many(self, mounts: typing.Collection[_Mount]) -> List[_Mount]:
+        result = []
+        for m in mounts:
+            result.append(self.get(m))
+        return result
 
 
 @typechecked

@@ -61,7 +61,7 @@ from .exception import ExecutionError, InvalidError, RemoteError, deprecation_er
 from .exception import TimeoutError as _TimeoutError
 from .gpu import GPU_T, parse_gpu_config, display_gpu_config
 from .image import _Image
-from .mount import _Mount, _get_client_mount, NonLocalMount, _MountedPythonModule
+from .mount import _Mount, _get_client_mount, NonLocalMount, _MountedPythonModule, _MountCache
 from .object import _Handle, _Provider
 from .proxy import _Proxy
 from .retries import Retries
@@ -815,14 +815,24 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
 FunctionHandle = synchronize_api(_FunctionHandle)
 
 
-def _get_function_mounts(function_info: FunctionInfo, explicit_mounts: Collection[_Mount]) -> List[_Mount]:
-    all_mounts = [
-        _get_client_mount(),  # client
-        *explicit_mounts,  # explicit mounts
-    ]
-    automounted = function_info.get_implicit_mounts()
+def _get_function_mounts(
+    function_info: FunctionInfo,
+    explicit_mounts: Collection[_Mount] = (),
+    mount_cache: Optional[_MountCache] = None,
+    *,
+    include_client_mount: bool = True,
+) -> List[_Mount]:
+    if mount_cache is None:
+        mount_cache = _MountCache()
 
-    def _all_mounted_modules(_mounts):
+    all_mounts = [
+        *([_get_client_mount()] if include_client_mount else []),
+        *mount_cache.get_many(function_info.get_main_mounts()),
+        *mount_cache.get_many(explicit_mounts),
+    ]
+
+    def _all_mounted_python_modules(_mounts):
+        # can be removed once we stop using automount
         module_names = set()
         for m in _mounts:
             try:
@@ -833,8 +843,13 @@ def _get_function_mounts(function_info: FunctionInfo, explicit_mounts: Collectio
                 pass
         return module_names
 
-    explicit_mounted_modules = _all_mounted_modules(all_mounts)
-    automounted_mount_modules = _all_mounted_modules(automounted)
+    if config.get("automount"):
+        automounted = mount_cache.get_many(function_info.get_auto_mounts())
+    else:
+        automounted = []
+
+    explicit_mounted_modules = _all_mounted_python_modules(all_mounts)
+    automounted_mount_modules = _all_mounted_python_modules(automounted)
 
     not_explictily_added = automounted_mount_modules - explicit_mounted_modules
 
@@ -917,14 +932,7 @@ class _Function(_Provider[_FunctionHandle]):
                 )
 
         if is_local():  # TODO: maybe the entire constructor should be exited early if not local?
-            if stub:
-                mount_cache = stub._function_mounts
-            else:
-                from modal.mount import _MountCache
-
-                mount_cache = _MountCache()
-
-            all_mounts = [mount_cache.get(m) for m in _get_function_mounts(info, mounts)]
+            all_mounts = _get_function_mounts(info, mounts, stub._mount_cache if stub else None)
         else:
             all_mounts = []
 

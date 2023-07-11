@@ -1,0 +1,24 @@
+import os
+
+import modal
+from modal import Mount
+
+stub = modal.Stub()
+import pkg_a  # noqa
+
+
+if int(os.environ["USE_EXPLICIT"]):
+    explicit_mounts1 = [Mount.from_local_python_packages("pkg_a")]
+    explicit_mounts2 = [Mount.from_local_python_packages("pkg_a")]  # same as above, but different instance
+else:
+    explicit_mounts1 = explicit_mounts2 = []
+
+
+@stub.function(mounts=explicit_mounts1)
+def foo():
+    pass
+
+
+@stub.function(mounts=explicit_mounts2)
+def bar():
+    pass

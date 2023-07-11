@@ -41,7 +41,7 @@ async def env_mount_files():
     fn_info = FunctionInfo(f)
 
     filenames = []
-    for mount in fn_info.get_implicit_mounts():
+    for mount in fn_info.get_auto_mounts():
         async for file_info in mount._get_files(mount.entries):
             filenames.append(file_info.mount_filename)
 
@@ -193,3 +193,22 @@ def test_e2e_modal_run_py_module_mounts(unix_servicer, test_dir):
     assert unix_servicer.n_mounts == 1  # there should be a single mount
     assert unix_servicer.n_mount_files == 1
     assert "/root/hello.py" in unix_servicer.files_name2sha
+
+
+@skip_windows_unix_socket
+def test_e2e_modal_run_py_with_implicit_package_mounts_warns(unix_servicer, test_dir):
+    output = helpers.deploy_stub_externally(
+        unix_servicer, "mount_dedupe.py", cwd=test_dir / "supports", env={"USE_EXPLICIT": "0"}
+    )
+    assert "Automatic mounting of imported modules is deprecated" in output
+    assert unix_servicer.n_mounts == 2  # one for the entrypoint, one for pkg_a
+
+
+@skip_windows_unix_socket
+def test_e2e_modal_run_py_with_explicit_package_mounts_doesnt_warn(unix_servicer, test_dir):
+    output = helpers.deploy_stub_externally(
+        unix_servicer, "mount_dedupe.py", cwd=test_dir / "supports", env={"USE_EXPLICIT": "1"}
+    )
+    print(output)
+    assert "Automatic mounting of imported modules is deprecated" not in output
+    assert unix_servicer.n_mounts == 2  # one for the entrypoint, one for pkg_a
