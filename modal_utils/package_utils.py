@@ -37,7 +37,7 @@ def get_module_mount_info(module_name: str):
     else:
         # Individual file
         filename = spec.origin
-        if Path(filename).exists():
+        if filename is not None and Path(filename).exists():
             entries = [(False, filename)]
     if not entries:
         raise ModuleNotMountable(f"{module_name} has no mountable paths")
