@@ -120,7 +120,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.cleared_function_calls = set()
 
-        self.enforce_object_entity = True
         self.cancelled_calls = []
 
         self.app_client_disconnect_count = 0
@@ -226,7 +225,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         else:
             object_id = request.object_id
 
-        if request.app_name and self.enforce_object_entity:
+        if request.app_name:
             assert request.object_entity
             if object_id:
                 assert object_id.startswith(request.object_entity)

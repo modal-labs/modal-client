@@ -544,8 +544,8 @@ message FunctionBindParamsResponse {
 
 message FunctionCreateResponse {
   string function_id = 1;
-  string web_url = 2;  // Deprecated - needed until 0.46 is the minimum version
-  WebUrlInfo web_url_info = 3;  // Deprecated - needed until 0.46 is the minimum version
+  string web_url = 2;  // Deprecated - needed until 0.51 is the minimum version
+  WebUrlInfo web_url_info = 3;  // Deprecated - needed until 0.51 is the minimum version
   Function function = 4;
   FunctionHandleMetadata handle_metadata = 5;
 }
