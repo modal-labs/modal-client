@@ -213,30 +213,30 @@ class _Client:
             client_type = api_pb2.CLIENT_TYPE_CLIENT
             credentials = None
 
-        if cls._client_from_env:
-            return cls._client_from_env
-
         if cls._client_from_env_lock is None:
             cls._client_from_env_lock = asyncio.Lock()
 
         async with cls._client_from_env_lock:
-            client = _Client(server_url, client_type, credentials)
-            await client._open()
-            async_utils.on_shutdown(client._close())
-            try:
-                await client._verify()
-            except AuthError:
-                if not credentials:
-                    creds_missing_msg = (
-                        "Token missing. Could not authenticate client. "
-                        "If you have token credentials, see modal.com/docs/reference/modal.config for setup help. "
-                        "If you are a new user, register an account at modal.com, then run `modal token new`."
-                    )
-                    raise AuthError(creds_missing_msg)
-                else:
-                    raise
-            cls._client_from_env = client
-            return client
+            if cls._client_from_env:
+                return cls._client_from_env
+            else:
+                client = _Client(server_url, client_type, credentials)
+                await client._open()
+                async_utils.on_shutdown(client._close())
+                try:
+                    await client._verify()
+                except AuthError:
+                    if not credentials:
+                        creds_missing_msg = (
+                            "Token missing. Could not authenticate client. "
+                            "If you have token credentials, see modal.com/docs/reference/modal.config for setup help. "
+                            "If you are a new user, register an account at modal.com, then run `modal token new`."
+                        )
+                        raise AuthError(creds_missing_msg)
+                    else:
+                        raise
+                cls._client_from_env = client
+                return client
 
     @classmethod
     def set_env_client(cls, client):
