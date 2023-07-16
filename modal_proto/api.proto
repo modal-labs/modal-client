@@ -32,9 +32,9 @@ enum AppState {
 enum ClientType {
   CLIENT_TYPE_UNSPECIFIED = 0;
   CLIENT_TYPE_CLIENT = 1;
-  CLIENT_TYPE_WORKER = 2;
+  CLIENT_TYPE_WORKER = 2; // deprecated
   CLIENT_TYPE_CONTAINER = 3;
-  CLIENT_TYPE_SERVER = 4;
+  CLIENT_TYPE_SERVER = 4; // deprecated
   CLIENT_TYPE_WEB_SERVER = 5;
 }
 
@@ -314,6 +314,7 @@ message ContainerArguments {  // This is used to pass data from the worker to th
   map<string, string> tracing_context = 9;
   bytes serialized_params = 10;
 }
+
 
 message ContainerHeartbeatRequest {
   string current_input_id = 1;
@@ -766,6 +767,35 @@ message GenericResult {  // Used for both tasks and function outputs
   bytes tb_line_cache = 12;
 }
 
+message Agent {
+  repeated string entrypoint_args = 1;
+  repeated string mount_ids = 2;
+  string image_id = 3;
+  repeated string secret_ids = 4;
+
+  Resources resources = 5;
+  CloudProvider cloud_provider = 6;
+
+  uint32 timeout_secs = 7;
+}
+
+message AgentCreateRequest {
+  string app_id = 1;
+  Agent definition = 2;
+}
+
+message AgentCreateResponse {
+  string agent_id = 1;
+}
+
+message AgentWaitRequest {
+  string agent_id = 1;
+}
+
+message AgentWaitResponse {
+  GenericResult result = 1;
+}
+
 message Image {
   repeated BaseImage base_images = 5;
   repeated string dockerfile_commands = 6;
@@ -1169,6 +1199,7 @@ message WebUrlInfo {
   bool label_stolen = 3;
 }
 
+
 service ModalClient {
   // Apps
   rpc AppCreate(AppCreateRequest) returns (AppCreateResponse);
@@ -1213,6 +1244,10 @@ service ModalClient {
   rpc EnvironmentList(google.protobuf.Empty) returns (EnvironmentListResponse);
   rpc EnvironmentDelete(EnvironmentDeleteRequest) returns (google.protobuf.Empty);
   rpc EnvironmentUpdate(EnvironmentUpdateRequest) returns (EnvironmentListItem);
+
+  // Agents
+  rpc AgentCreate(AgentCreateRequest) returns (AgentCreateResponse);
+  rpc AgentWait(AgentWaitRequest) returns (AgentWaitResponse);
 
   // Functions
   rpc FunctionBindParams(FunctionBindParamsRequest) returns (FunctionBindParamsResponse);
