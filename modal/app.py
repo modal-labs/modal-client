@@ -9,9 +9,11 @@ from ._resolver import Resolver
 from .client import _Client
 from .config import logger
 from .object import _Handle, _Provider
+from .agent import _AgentHandle
 
 if TYPE_CHECKING:
     from rich.tree import Tree
+    from .image import _Image
 else:
     Tree = TypeVar("Tree")
 
@@ -45,6 +47,7 @@ class _App:
     _app_page_url: str
     _resolver: Optional[Resolver]
     _function_invocations: int  # Number of function invocations made by this app.
+    _environment_name: str
 
     def __init__(
         self,
@@ -54,6 +57,7 @@ class _App:
         tag_to_object: Optional[Dict[str, _Handle]] = None,
         tag_to_existing_id: Optional[Dict[str, str]] = None,
         stub_name: Optional[str] = None,
+        environment_name: Optional[str] = None,
     ):
         """mdmd:hidden This is the app constructor. Users should not call this directly."""
         self._app_id = app_id
@@ -63,6 +67,7 @@ class _App:
         self._tag_to_existing_id = tag_to_existing_id or {}
         self._function_invocations = 0
         self._stub_name = stub_name
+        self._environment_name = environment_name
 
     @property
     def client(self) -> _Client:
@@ -197,7 +202,7 @@ class _App:
         app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
         app_page_url = app_resp.app_logs_url
         logger.debug(f"Created new app with id {app_resp.app_id}")
-        return _App(client, app_resp.app_id, app_page_url)
+        return _App(client, app_resp.app_id, app_page_url, environment_name=environment_name)
 
     @staticmethod
     async def _init_from_name(client: _Client, name: str, namespace, environment_name: str = ""):
@@ -239,6 +244,24 @@ class _App:
         )
         deploy_response = await retry_transient_errors(self._client.stub.AppDeploy, deploy_req)
         return deploy_response.url
+
+    async def spawn_agent(self, program: str, *args: str, image: Optional["_Image"] = None, mounts=[]) -> _AgentHandle:
+        from .stub import _default_image
+
+        if image is None:
+            image = _default_image
+
+        resolver = Resolver(None, self._client, self._environment_name, self.app_id)
+        image_handle = await resolver.load(image)
+
+        definition = api_pb2.Agent(
+            entrypoint_args=[program, *args],
+            image_id=image_handle.object_id,
+        )
+        create_req = api_pb2.AgentCreateRequest(app_id=self.app_id, definition=definition)
+        create_resp = await retry_transient_errors(self._client.stub.AgentCreate, create_req)
+
+        return _AgentHandle._from_id(create_resp.agent_id, self._client, None)
 
     @staticmethod
     def _reset_container():
