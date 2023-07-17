@@ -5,6 +5,7 @@ import threading
 from unittest import mock
 
 from modal.serving import serve_stub
+
 from .supports.skip import skip_old_py, skip_windows
 
 

@@ -1,20 +1,18 @@
 # Copyright Modal Labs 2022
 import asyncio
 import inspect
-import typing
 import pytest
 import time
+import typing
 
 import cloudpickle
-
 from synchronicity.exceptions import UserCodeException
 
-from modal_proto import api_pb2
-
-from modal import Proxy, Stub, NetworkFileSystem, web_endpoint, asgi_app, wsgi_app
+from modal import NetworkFileSystem, Proxy, Stub, asgi_app, web_endpoint, wsgi_app
 from modal.exception import DeprecationError, InvalidError
-from modal.functions import Function, FunctionCall, gather, FunctionHandle
+from modal.functions import Function, FunctionCall, FunctionHandle, gather
 from modal.runner import deploy_stub
+from modal_proto import api_pb2
 
 stub = Stub()
 
@@ -555,7 +553,7 @@ def test_shared_volumes(client, servicer):
 
 
 def test_serialize_deserialize_function_handle(servicer, client):
-    from modal._serialization import serialize, deserialize
+    from modal._serialization import deserialize, serialize
 
     stub = Stub()
 

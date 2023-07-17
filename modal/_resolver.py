@@ -20,7 +20,7 @@ class StatusRow:
     def __init__(self, progress: Optional[Tree]):
         from ._output import (
             step_progress,
-        )  # Lazy import to only import `rich` when necessary.
+        )
 
         self._spinner = None
         self._step_node = None
@@ -35,7 +35,7 @@ class StatusRow:
             step_progress_update(self._spinner, message)
 
     def finish(self, message):
-        from ._output import step_progress_update, step_completed
+        from ._output import step_completed, step_progress_update
 
         if self._step_node is not None:
             step_progress_update(self._spinner, message)
@@ -50,8 +50,9 @@ class Resolver:
     _environment_name: str
 
     def __init__(self, output_mgr, client, environment_name: str, app_id: Optional[str] = None):
-        from ._output import step_progress
         from rich.tree import Tree
+
+        from ._output import step_progress
 
         self._output_mgr = output_mgr
         self._local_uuid_to_future = {}

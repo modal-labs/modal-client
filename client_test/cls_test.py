@@ -3,10 +3,10 @@ import inspect
 import pytest
 
 from modal import Stub, method
-from modal.functions import FunctionHandle
-from modal_proto import api_pb2
 from modal._serialization import deserialize
 from modal.cls import ClsMixin
+from modal.functions import FunctionHandle
+from modal_proto import api_pb2
 
 stub = Stub()
 

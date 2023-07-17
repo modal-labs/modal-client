@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2022
-from modal import Stub, Mount
+from modal import Mount, Stub
 
 stub = Stub()
 

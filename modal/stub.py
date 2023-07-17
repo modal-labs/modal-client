@@ -1,19 +1,17 @@
 # Copyright Modal Labs 2022
-import typing
-from datetime import date
 import inspect
 import os
 import sys
+import typing
 import warnings
-from typing import AsyncGenerator, Callable, Dict, List, Optional, Union, Any, Sequence
+from datetime import date
+from typing import Any, AsyncGenerator, Callable, Dict, List, Optional, Sequence, Union
 
 from synchronicity.async_wrap import asynccontextmanager
+
 from modal._types import typechecked
-
 from modal_proto import api_pb2
-
 from modal_utils.async_utils import synchronize_api, synchronizer
-from .retries import Retries
 
 from ._function_utils import FunctionInfo
 from ._ipython import is_notebook
@@ -23,17 +21,18 @@ from .client import _Client
 from .cls import make_remote_cls_constructors
 from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
-from .functions import _Function, _FunctionHandle, PartialFunction, _PartialFunction
+from .functions import PartialFunction, _Function, _FunctionHandle, _PartialFunction
 from .gpu import GPU_T
 from .image import _Image, _ImageHandle
 from .mount import _Mount
+from .network_file_system import _NetworkFileSystem
 from .object import _Provider
 from .proxy import _Proxy
 from .queue import _Queue
+from .retries import Retries
 from .runner import _run_stub
 from .schedule import Schedule
 from .secret import _Secret
-from .network_file_system import _NetworkFileSystem
 from .volume import _Volume
 
 _default_image: _Image = _Image.debian_slim()

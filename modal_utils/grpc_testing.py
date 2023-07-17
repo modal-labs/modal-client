@@ -2,8 +2,8 @@
 import contextlib
 import inspect
 import logging
-from collections import defaultdict, Counter
-from typing import Any, List, Tuple, Callable, Dict
+from collections import Counter, defaultdict
+from typing import Any, Callable, Dict, List, Tuple
 
 from grpclib import GRPCError, Status
 

@@ -1,15 +1,12 @@
 repos:
-  - repo: https://github.com/hadialqattan/pycln
-    rev: v1.1.0
+  - repo: https://github.com/charliermarsh/ruff-pre-commit
+    rev: "v0.0.277"
     hooks:
-      - id: pycln
-        args: ["-a"]
+      - id: ruff
+        # Autofix, and respect `exclude` and `extend-exclude` settings.
+        args: [--fix, --exit-non-zero-on-fix]
   - repo: https://github.com/ambv/black
     rev: 22.3.0
     hooks:
       - id: black
         language_version: python3
-  - repo: https://github.com/charliermarsh/ruff-pre-commit
-    rev: "v0.0.239"
-    hooks:
-      - id: ruff

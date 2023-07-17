@@ -20,11 +20,11 @@ from typer import Typer
 
 import modal
 from modal._location import display_location
-from modal._output import step_progress, step_completed
-from modal.environments import ensure_env
-from modal.cli.utils import display_table, ENV_OPTION
+from modal._output import step_completed, step_progress
+from modal.cli.utils import ENV_OPTION, display_table
 from modal.client import _Client
-from modal.network_file_system import _NetworkFileSystemHandle, _NetworkFileSystem
+from modal.environments import ensure_env
+from modal.network_file_system import _NetworkFileSystem, _NetworkFileSystemHandle
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
 from modal_utils.grpc_utils import retry_transient_errors

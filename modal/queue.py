@@ -1,8 +1,8 @@
 # Copyright Modal Labs 2022
 import queue  # The system library
-from datetime import date
 import time
 import warnings
+from datetime import date
 from typing import Any, List, Optional
 
 from modal_proto import api_pb2

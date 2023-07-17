@@ -79,7 +79,6 @@ from datetime import date
 
 import toml
 
-
 from ._traceback import setup_rich_traceback
 from .exception import deprecation_error
 

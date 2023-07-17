@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
-from typing import Optional, List, Union
+from typing import List, Optional, Union
 
 import typer
 from click import UsageError
@@ -8,9 +8,9 @@ from grpclib import GRPCError, Status
 from rich.text import Text
 
 from modal._output import OutputManager, get_app_logs_loop
-from modal.environments import ensure_env
-from modal.cli.utils import timestamp_to_local, display_table, ENV_OPTION
+from modal.cli.utils import ENV_OPTION, display_table, timestamp_to_local
 from modal.client import _Client
+from modal.environments import ensure_env
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
 

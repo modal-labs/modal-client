@@ -4,12 +4,13 @@ import pickle
 from typing import Optional
 
 import cloudpickle
-
-from modal_utils import async_utils
 from synchronicity import Interface
 from synchronicity.synchronizer import TARGET_INTERFACE_ATTR
+
+from modal_utils import async_utils
+
 from .exception import InvalidError
-from .object import _Handle, Handle
+from .object import Handle, _Handle
 
 PICKLE_PROTOCOL = 4  # Support older Python versions.
 

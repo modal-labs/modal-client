@@ -1,13 +1,14 @@
 # Copyright Modal Labs 2022
-import pickle
-import os
 import asyncio
 import inspect
+import os
+import pickle
 import posixpath
 import time
 import typing
 import warnings
 from dataclasses import dataclass
+from datetime import date
 from pathlib import PurePath
 from typing import (
     Any,
@@ -17,28 +18,27 @@ from typing import (
     Callable,
     Collection,
     Dict,
+    Iterable,
     List,
     Optional,
     Set,
     Tuple,
     Union,
-    Iterable,
 )
 
-from datetime import date
 from aiostream import pipe, stream
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.exceptions import UserCodeException
 
 from modal import _pty
-from modal_proto import api_pb2
 from modal._types import typechecked
+from modal_proto import api_pb2
 from modal_utils.async_utils import (
     queue_batch_iterator,
     synchronize_api,
-    warn_if_generator_is_not_consumed,
     synchronizer,
+    warn_if_generator_is_not_consumed,
 )
 from modal_utils.grpc_utils import retry_transient_errors
 
@@ -55,19 +55,25 @@ from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._traceback import append_modal_tb
 from .call_graph import InputInfo, _reconstruct_call_graph
-from .config import config, logger
 from .client import _Client
-from .exception import ExecutionError, InvalidError, RemoteError, deprecation_error, deprecation_warning
-from .exception import TimeoutError as _TimeoutError
-from .gpu import GPU_T, parse_gpu_config, display_gpu_config
+from .config import config, logger
+from .exception import (
+    ExecutionError,
+    InvalidError,
+    RemoteError,
+    TimeoutError as _TimeoutError,
+    deprecation_error,
+    deprecation_warning,
+)
+from .gpu import GPU_T, display_gpu_config, parse_gpu_config
 from .image import _Image
-from .mount import _Mount, _get_client_mount
+from .mount import _get_client_mount, _Mount
+from .network_file_system import _NetworkFileSystem
 from .object import _Handle, _Provider
 from .proxy import _Proxy
 from .retries import Retries
 from .schedule import Schedule
 from .secret import _Secret
-from .network_file_system import _NetworkFileSystem
 from .volume import _Volume
 
 ATTEMPT_TIMEOUT_GRACE_PERIOD = 5  # seconds

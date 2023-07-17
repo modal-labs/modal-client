@@ -1,8 +1,8 @@
 # Copyright Modal Labs 2022
 import pytest
 
-from modal._serialization import deserialize, serialize
 from modal import Queue, Stub
+from modal._serialization import deserialize, serialize
 
 stub = Stub()
 

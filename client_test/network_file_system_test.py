@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
-from unittest import mock
-
 import pytest
+from unittest import mock
 
 import modal
 from modal.exception import DeprecationError, InvalidError

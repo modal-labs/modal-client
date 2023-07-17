@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 from dataclasses import dataclass
 from datetime import date
-from typing import Union, Optional
+from typing import Optional, Union
 
 from modal_proto import api_pb2
 

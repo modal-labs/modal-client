@@ -1,15 +1,15 @@
 # Copyright Modal Labs 2022
-from datetime import date
 import uuid
+from datetime import date
 from typing import Awaitable, Callable, Generic, Optional, Type, TypeVar
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
-from modal._types import typechecked
 
+from modal._types import typechecked
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
-from modal_utils.grpc_utils import retry_transient_errors, get_proto_oneof
+from modal_utils.grpc_utils import get_proto_oneof, retry_transient_errors
 
 from ._object_meta import ObjectMeta
 from ._resolver import Resolver

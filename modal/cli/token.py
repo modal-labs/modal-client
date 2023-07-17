@@ -1,11 +1,11 @@
 # Copyright Modal Labs 2022
 import getpass
-from typing import Optional
 import webbrowser
+from typing import Optional
 
 import rich
-from rich.console import Console
 import typer
+from rich.console import Console
 
 from modal.client import Client
 from modal.config import _store_user_config, config, user_config_path
