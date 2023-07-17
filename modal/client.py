@@ -2,7 +2,7 @@
 import asyncio
 import platform
 import warnings
-from typing import Awaitable, Callable, Optional, Tuple, Dict
+from typing import Awaitable, Callable, Dict, Optional, Tuple
 
 from aiohttp import ClientConnectorError, ClientResponseError
 from google.protobuf import empty_pb2

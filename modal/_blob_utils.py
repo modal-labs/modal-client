@@ -4,9 +4,9 @@ import dataclasses
 import hashlib
 import io
 import os
-from pathlib import Path
 from contextlib import contextmanager
-from typing import AsyncIterator, BinaryIO, Optional, Union, List
+from pathlib import Path
+from typing import AsyncIterator, BinaryIO, List, Optional, Union
 from urllib.parse import urlparse
 
 from aiohttp import BytesIOPayload
@@ -16,7 +16,7 @@ from modal.exception import ExecutionError
 from modal_proto import api_pb2
 from modal_utils.async_utils import retry
 from modal_utils.grpc_utils import retry_transient_errors
-from modal_utils.hash_utils import get_sha256_hex, get_upload_hashes, UploadHashes
+from modal_utils.hash_utils import UploadHashes, get_sha256_hex, get_upload_hashes
 from modal_utils.http_utils import http_client_with_tls
 from modal_utils.logger import logger
 

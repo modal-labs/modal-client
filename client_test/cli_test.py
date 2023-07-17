@@ -1,19 +1,19 @@
 # Copyright Modal Labs 2022-2023
 import os
+import pytest
 import sys
 import tempfile
 import traceback
 import unittest.mock
-from unittest import mock
 from typing import List, Optional
+from unittest import mock
 
 import click
 import click.testing
-import pytest
 import pytest_asyncio
 
-from modal.cli.entry_point import entrypoint_cli
 from modal import Client
+from modal.cli.entry_point import entrypoint_cli
 from modal_proto import api_pb2
 from modal_utils.async_utils import asyncnullcontext
 

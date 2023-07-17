@@ -4,11 +4,11 @@ import os
 import pytest
 from unittest import mock
 
+import modal.secret
 from modal import App, FunctionHandle, Image, Stub
 from modal.exception import InvalidError
 
 from .supports.skip import skip_windows_unix_socket
-import modal.secret
 
 
 def my_f_1(x):

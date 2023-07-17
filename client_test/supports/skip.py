@@ -1,9 +1,8 @@
 # Copyright Modal Labs 2022
 
 import platform
-import sys
-
 import pytest
+import sys
 
 
 def skip_windows(msg: str):

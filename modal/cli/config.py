@@ -3,7 +3,7 @@ import pprint
 
 import typer
 
-from modal.config import config, _store_user_config, _config_active_profile
+from modal.config import _config_active_profile, _store_user_config, config
 
 config_cli = typer.Typer(
     name="config",

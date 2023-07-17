@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2023
-from typing import Optional, List
+from typing import List, Optional
 
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.wrappers_pb2 import StringValue

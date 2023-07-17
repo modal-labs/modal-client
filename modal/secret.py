@@ -1,10 +1,9 @@
 # Copyright Modal Labs 2022
 import os
-from typing import Dict, Optional
 from datetime import date
+from typing import Dict, Optional
 
 from modal._types import typechecked
-
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
 
@@ -94,7 +93,7 @@ class _Secret(_Provider[_SecretHandle]):
 
         async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _SecretHandle:
             try:
-                from dotenv import find_dotenv, dotenv_values
+                from dotenv import dotenv_values, find_dotenv
                 from dotenv.main import _walk_to_root
             except ImportError:
                 raise ImportError(

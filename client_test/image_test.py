@@ -5,7 +5,7 @@ import sys
 from tempfile import NamedTemporaryFile
 from typing import List
 
-from modal import Image, Mount, Secret, NetworkFileSystem, Stub, gpu
+from modal import Image, Mount, NetworkFileSystem, Secret, Stub, gpu
 from modal.exception import InvalidError, NotFoundError
 from modal.image import _dockerhub_python_version
 from modal_proto import api_pb2

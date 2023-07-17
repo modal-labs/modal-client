@@ -7,9 +7,9 @@ from modal.cli.environment import environment_cli
 from .app import app_cli
 from .config import config_cli
 from .network_file_system import nfs_cli, vol_cli
+from .profile import profile_cli
 from .secret import secret_cli
 from .token import token_cli
-from .profile import profile_cli
 
 
 def version_callback(value: bool):

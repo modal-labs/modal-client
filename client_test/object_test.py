@@ -25,8 +25,8 @@ async def test_use_object(client):
 
 
 def test_from_id(client):
-    from modal.object import _Handle
     from modal.dict import _DictHandle
+    from modal.object import _Handle
     from modal.queue import _QueueHandle
 
     assert isinstance(_DictHandle._from_id("di-123", client, None), _DictHandle)

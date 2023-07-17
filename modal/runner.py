@@ -10,7 +10,7 @@ from modal_utils.async_utils import TaskContext, synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors
 
 from . import _pty
-from ._output import OutputManager, step_completed, step_progress, get_app_logs_loop
+from ._output import OutputManager, get_app_logs_loop, step_completed, step_progress
 from .app import _App, is_local
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config
