@@ -1,16 +1,16 @@
 # Copyright Modal Labs 2023
 import os
-from datetime import date
 import time
+from datetime import date
 from pathlib import Path, PurePosixPath
 from typing import AsyncIterator, BinaryIO, List, Optional, Union
 
 import modal
+from modal._location import parse_cloud_provider
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_api, ConcurrencyPool
+from modal_utils.async_utils import ConcurrencyPool, synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors, unary_stream
 from modal_utils.hash_utils import get_sha256_hex
-from modal._location import parse_cloud_provider
 
 from ._blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
 from ._resolver import Resolver

@@ -14,14 +14,15 @@ from synchronicity import Interface
 
 from modal.config import config
 from modal.exception import InvalidError
-from modal.runner import run_stub, deploy_stub, interactive_shell
+from modal.runner import deploy_stub, interactive_shell, run_stub
 from modal.serving import serve_stub
 from modal.stub import LocalEntrypoint
 from modal_utils.async_utils import synchronizer
+
 from ..environments import ensure_env
+from ..functions import _FunctionHandle
 from .import_refs import import_function, import_stub
 from .utils import ENV_OPTION, ENV_OPTION_HELP
-from ..functions import _FunctionHandle
 
 # Why do we need to support both types and the strings? Because something weird with
 # how __annotations__ works in Python (which inspect.signature uses). See #220.

@@ -3,7 +3,7 @@ import asyncio
 from typing import Optional
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_api, asyncnullcontext
+from modal_utils.async_utils import asyncnullcontext, synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors
 
 from ._resolver import Resolver

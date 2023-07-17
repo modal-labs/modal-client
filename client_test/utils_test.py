@@ -2,7 +2,6 @@
 import asyncio
 import hashlib
 import io
-
 import pytest
 
 from modal._blob_utils import BytesIOSegmentPayload

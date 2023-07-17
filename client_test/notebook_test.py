@@ -1,9 +1,9 @@
 # Copyright Modal Labs 2022
+import pytest
+import warnings
 from pathlib import Path
 
 import jupytext
-import pytest
-import warnings
 
 try:
     from nbclient.exceptions import CellExecutionError

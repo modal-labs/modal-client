@@ -3,14 +3,14 @@ import pathlib
 import pytest
 import subprocess
 import sys
+
 from fastapi.testclient import TestClient
 
-from modal_proto import api_pb2
-from modal import App, Stub, web_endpoint, asgi_app, wsgi_app
-from modal.functions import FunctionHandle
-from modal.exception import DeprecationError, InvalidError
+from modal import App, Stub, asgi_app, web_endpoint, wsgi_app
 from modal._asgi import webhook_asgi_app
-
+from modal.exception import DeprecationError, InvalidError
+from modal.functions import FunctionHandle
+from modal_proto import api_pb2
 
 stub = Stub()
 

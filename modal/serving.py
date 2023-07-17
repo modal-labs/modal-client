@@ -2,10 +2,10 @@
 import contextlib
 import io
 import multiprocessing
-from multiprocessing.context import SpawnProcess
-from multiprocessing.synchronize import Event
 import platform
 import sys
+from multiprocessing.context import SpawnProcess
+from multiprocessing.synchronize import Event
 from typing import AsyncGenerator, Optional
 
 from synchronicity import Interface

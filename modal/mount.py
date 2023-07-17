@@ -9,18 +9,19 @@ import time
 import typing
 from datetime import date
 from pathlib import Path, PurePosixPath
-from typing import AsyncGenerator, Callable, List, Optional, Union, Tuple, Sequence
+from typing import AsyncGenerator, Callable, List, Optional, Sequence, Tuple, Union
 
 import aiostream
 from google.protobuf.message import Message
-from modal._types import typechecked
 
 import modal.exception
+from modal._types import typechecked
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors
 from modal_utils.package_utils import get_module_mount_info, module_mount_condition
 from modal_version import __version__
+
 from ._blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec
 from ._resolver import Resolver
 from .config import config, logger
@@ -381,8 +382,9 @@ Mount = synchronize_api(_Mount)
 
 def _create_client_mount():
     # TODO(erikbern): make this a static method on the Mount class
-    import modal
     import synchronicity
+
+    import modal
 
     # Get the base_path because it also contains `modal_utils` and `modal_proto`.
     base_path, _ = os.path.split(modal.__path__[0])

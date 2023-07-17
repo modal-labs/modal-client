@@ -5,7 +5,7 @@ import sys
 import typing
 from datetime import date
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import toml
 from grpclib.exceptions import GRPCError, StreamTerminatedError
@@ -14,6 +14,7 @@ from modal._types import typechecked
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, unary_stream
+
 from ._function_utils import FunctionInfo
 from ._resolver import Resolver
 from .app import is_local
@@ -21,9 +22,9 @@ from .config import config, logger
 from .exception import InvalidError, NotFoundError, RemoteError, deprecation_warning
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount
+from .network_file_system import _NetworkFileSystem
 from .object import _Handle, _Provider
 from .secret import _Secret
-from .network_file_system import _NetworkFileSystem
 
 
 def _validate_python_version(version: str) -> None:
