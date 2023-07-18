@@ -9,7 +9,7 @@ from ._resolver import Resolver
 from .client import _Client
 from .config import logger
 from .object import _Handle, _Provider
-from .agent import _AgentHandle
+from .container import _ContainerHandle
 
 if TYPE_CHECKING:
     from rich.tree import Tree
@@ -245,7 +245,9 @@ class _App:
         deploy_response = await retry_transient_errors(self._client.stub.AppDeploy, deploy_req)
         return deploy_response.url
 
-    async def spawn_agent(self, program: str, *args: str, image: Optional["_Image"] = None, mounts=[]) -> _AgentHandle:
+    async def spawn_container(
+        self, program: str, *args: str, image: Optional["_Image"] = None, mounts=[]
+    ) -> _ContainerHandle:
         from .stub import _default_image
 
         if image is None:
@@ -254,14 +256,14 @@ class _App:
         resolver = Resolver(None, self._client, self._environment_name, self.app_id)
         image_handle = await resolver.load(image)
 
-        definition = api_pb2.Agent(
+        definition = api_pb2.Container(
             entrypoint_args=[program, *args],
             image_id=image_handle.object_id,
         )
-        create_req = api_pb2.AgentCreateRequest(app_id=self.app_id, definition=definition)
-        create_resp = await retry_transient_errors(self._client.stub.AgentCreate, create_req)
+        create_req = api_pb2.ContainerCreateRequest(app_id=self.app_id, definition=definition)
+        create_resp = await retry_transient_errors(self._client.stub.ContainerCreate, create_req)
 
-        return _AgentHandle._from_id(create_resp.agent_id, self._client, None)
+        return _ContainerHandle._from_id(create_resp.container_id, self._client, None)
 
     @staticmethod
     def _reset_container():
