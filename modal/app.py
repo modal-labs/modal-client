@@ -246,7 +246,7 @@ class _App:
         return deploy_response.url
 
     async def spawn_container(
-        self, program: str, *args: str, image: Optional["_Image"] = None, mounts=[]
+        self, program: str, *args: str, shell: bool = False, image: Optional["_Image"] = None, mounts=[]
     ) -> _ContainerHandle:
         from .stub import _default_image
 
@@ -263,7 +263,7 @@ class _App:
         create_req = api_pb2.ContainerCreateRequest(app_id=self.app_id, definition=definition)
         create_resp = await retry_transient_errors(self._client.stub.ContainerCreate, create_req)
 
-        return _ContainerHandle._from_id(create_resp.container_id, self._client, None)
+        return _ContainerHandle.from_id(create_resp.container_id, self._client)
 
     @staticmethod
     def _reset_container():
