@@ -180,7 +180,7 @@ class _NetworkFileSystem(_Provider[_NetworkFileSystemHandle]):
 
     It is often the case that you would want to persist a shared volume object
     separately from the currently attached app. Refer to the persistence
-    [guide section](/docs/guide/shared-volumes#persisting-volumes) to see how to
+    [guide section](/docs/guide/network-file-systems#persisting-volumes) to see how to
     persist this object across app runs.
     """
 
