@@ -32,7 +32,7 @@ when running a command that requires an environment.
 """
 
 
-@config_cli.command(help=SET_DEFAULT_ENV_HELP, hidden=True)
+@config_cli.command(help=SET_DEFAULT_ENV_HELP)
 def set_environment(environment_name: str):
     _store_user_config({"environment": environment_name})
     active_profile = _config_active_profile()
