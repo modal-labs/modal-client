@@ -96,7 +96,7 @@ message AppClientDisconnectRequest {
 
 message AppCreateRequest {
   string client_id = 1;
-  string description = 2;    // Human readable label for the website
+  string description = 2;    // Human readable label for the app
   bool detach = 3; // deprecated, but needed until 0.48 is the minimum version
   bool initializing = 4; // deprecated, but needed until 0.48 is the minimum version
   string environment_name = 5;
