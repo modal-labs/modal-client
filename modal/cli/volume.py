@@ -12,7 +12,7 @@ FileType = api_pb2.SharedVolumeListFilesEntry.FileType
 
 
 def depr_cmd(cmd):
-    return f"DEPRECATED! Use `{cmd}` instead!"
+    return f"Use `{cmd}` instead!"
 
 
 vol_cli = Typer(name="volume", help=depr_cmd("modal nfs"), no_args_is_help=True, hidden=True)
