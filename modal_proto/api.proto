@@ -767,7 +767,7 @@ message GenericResult {  // Used for both tasks and function outputs
   bytes tb_line_cache = 12;
 }
 
-message Agent {
+message Container {
   repeated string entrypoint_args = 1;
   repeated string mount_ids = 2;
   string image_id = 3;
@@ -779,20 +779,20 @@ message Agent {
   uint32 timeout_secs = 7;
 }
 
-message AgentCreateRequest {
+message ContainerCreateRequest {
   string app_id = 1;
-  Agent definition = 2;
+  Container definition = 2;
 }
 
-message AgentCreateResponse {
-  string agent_id = 1;
+message ContainerCreateResponse {
+  string container_id = 1;
 }
 
-message AgentWaitRequest {
-  string agent_id = 1;
+message ContainerWaitRequest {
+  string container_id = 1;
 }
 
-message AgentWaitResponse {
+message ContainerWaitResponse {
   GenericResult result = 1;
 }
 
@@ -1226,6 +1226,10 @@ service ModalClient {
   // Container
   rpc ContainerHeartbeat(ContainerHeartbeatRequest) returns (google.protobuf.Empty);
 
+  // Container tasks
+  rpc ContainerCreate(ContainerCreateRequest) returns (ContainerCreateResponse);
+  rpc ContainerWait(ContainerWaitRequest) returns (ContainerWaitResponse);
+
   // Dicts
   rpc DictCreate(DictCreateRequest) returns (DictCreateResponse);
   rpc DictUpdate(DictUpdateRequest) returns (DictUpdateResponse);
@@ -1244,10 +1248,6 @@ service ModalClient {
   rpc EnvironmentList(google.protobuf.Empty) returns (EnvironmentListResponse);
   rpc EnvironmentDelete(EnvironmentDeleteRequest) returns (google.protobuf.Empty);
   rpc EnvironmentUpdate(EnvironmentUpdateRequest) returns (EnvironmentListItem);
-
-  // Agents
-  rpc AgentCreate(AgentCreateRequest) returns (AgentCreateResponse);
-  rpc AgentWait(AgentWaitRequest) returns (AgentWaitResponse);
 
   // Functions
   rpc FunctionBindParams(FunctionBindParamsRequest) returns (FunctionBindParamsResponse);
