@@ -24,6 +24,7 @@ from modal._output import step_completed, step_progress
 from modal.cli.utils import ENV_OPTION, display_table
 from modal.client import _Client
 from modal.environments import ensure_env
+from modal.exception import DeprecationError
 from modal.network_file_system import _NetworkFileSystem, _NetworkFileSystemHandle
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
@@ -40,7 +41,6 @@ nfs_cli = Typer(name="nfs", help="Read and edit shared volumes.", no_args_is_hel
 vol_cli = Typer(name="volume", help=depr_cmd("modal nfs"), no_args_is_help=True, hidden=True)
 
 
-@vol_cli.command(name="list", help=depr_cmd("modal nfs list"), deprecated=True)
 @nfs_cli.command(name="list", help="List the names of all shared volumes.")
 @synchronizer.create_blocking
 async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
@@ -65,6 +65,11 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     display_table(column_names, rows, json, title=f"Shared Volumes{env_part}")
 
 
+@vol_cli.command(name="list", help=depr_cmd("modal nfs list"), deprecated=True)
+def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
+    raise DeprecationError(depr_cmd("modal nfs list"))
+
+
 def gen_usage_code(label):
     return f"""
 @stub.function(network_file_systems={{"/my_vol": modal.NetworkFileSystem.from_name("{label}")}})
@@ -73,7 +78,6 @@ def some_func():
 """
 
 
-@vol_cli.command(name="create", help=depr_cmd("modal nfs create"), deprecated=True)
 @nfs_cli.command(name="create", help="Create a named shared volume.")
 def create(
     name: str,
@@ -89,6 +93,11 @@ def create(
     console.print(usage)
 
 
+@vol_cli.command(name="create", help=depr_cmd("modal nfs create"), deprecated=True)
+def create(name: str, cloud: str = typer.Option("aws"), env: Optional[str] = ENV_OPTION):
+    raise DeprecationError(depr_cmd("modal nfs create"))
+
+
 async def _volume_from_name(deployment_name: str) -> _NetworkFileSystemHandle:
     network_file_system = await _NetworkFileSystem.lookup(
         deployment_name, environment_name=None
@@ -98,7 +107,6 @@ async def _volume_from_name(deployment_name: str) -> _NetworkFileSystemHandle:
     return network_file_system
 
 
-@vol_cli.command(name="ls", help=depr_cmd("modal nfs ls"), deprecated=True)
 @nfs_cli.command(name="ls", help="List files and directories in a shared volume.")
 @synchronizer.create_blocking
 async def ls(
@@ -132,10 +140,18 @@ async def ls(
             print(entry.path)
 
 
+@vol_cli.command(name="ls", help=depr_cmd("modal nfs ls"), deprecated=True)
+def ls(
+    volume_name: str,
+    path: str = typer.Argument(default="/"),
+    env: Optional[str] = ENV_OPTION,
+):
+    raise DeprecationError(depr_cmd("modal nfs ls"))
+
+
 PIPE_PATH = Path("-")
 
 
-@vol_cli.command(name="put", help=depr_cmd("modal nfs put"), deprecated=True)
 @nfs_cli.command(
     name="put",
     help="""Upload a file or directory to a shared volume.
@@ -173,6 +189,16 @@ async def put(
         console.print(
             step_completed(f"Uploaded file '{local_path}' to '{remote_path}' ({written_bytes} bytes written)")
         )
+
+
+@vol_cli.command(name="put", help=depr_cmd("modal nfs put"), deprecated=True)
+async def put(
+    volume_name: str,
+    local_path: str,
+    remote_path: str = typer.Argument(default="/"),
+    env: Optional[str] = ENV_OPTION,
+):
+    raise DeprecationError(depr_cmd("modal nfs put"))
 
 
 class CliError(Exception):
@@ -227,7 +253,6 @@ async def _glob_download(
     await asyncio.gather(*tasks)
 
 
-@vol_cli.command(name="get", help=depr_cmd("modal nfs get"), deprecated=True)
 @nfs_cli.command(name="get")
 @synchronizer.create_blocking
 async def get(
@@ -294,7 +319,17 @@ async def get(
         print(f"Wrote {b} bytes to '{destination}'", file=sys.stderr)
 
 
-@vol_cli.command(name="rm", help=depr_cmd("modal nfs rm"), deprecated=True)
+@vol_cli.command(name="get", help=depr_cmd("modal nfs get"), deprecated=True)
+async def get(
+    volume_name: str,
+    remote_path: str,
+    local_destination: str = typer.Argument("."),
+    force: bool = False,
+    env: Optional[str] = ENV_OPTION,
+):
+    raise DeprecationError(depr_cmd("modal nfs get"))
+
+
 @nfs_cli.command(name="rm", help="Delete a file or directory from a shared volume.")
 @synchronizer.create_blocking
 async def rm(
@@ -311,3 +346,13 @@ async def rm(
         if exc.status in (Status.NOT_FOUND, Status.INVALID_ARGUMENT):
             raise UsageError(exc.message)
         raise
+
+
+@vol_cli.command(name="rm", help=depr_cmd("modal nfs rm"), deprecated=True)
+async def rm(
+    volume_name: str,
+    remote_path: str,
+    recursive: bool = typer.Option(False, "-r", "--recursive"),
+    env: Optional[str] = ENV_OPTION,
+):
+    raise DeprecationError(depr_cmd("modal nfs rm"))

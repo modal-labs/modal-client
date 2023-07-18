@@ -359,7 +359,7 @@ def test_nfs_get(set_env_client):
 
 def test_deprecated_volume(set_env_client):
     _run(
-        ["volume", "create", "xyz-volume"], expected_stderr="DeprecationWarning: The command 'create' is deprecated.\n"
+        ["volume", "create", "xyz-volume"], expected_exit_code=1, expected_stderr="DeprecationWarning: The command 'create' is deprecated.\n"
     )
 
 
