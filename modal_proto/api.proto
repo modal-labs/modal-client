@@ -790,10 +790,16 @@ message ContainerCreateResponse {
 
 message ContainerWaitRequest {
   string container_id = 1;
+  float timeout = 2;
 }
 
 message ContainerWaitResponse {
   GenericResult result = 1;
+}
+
+message ContainerGetLogsRequest {
+  string container_id = 1;
+  FileDescriptor file_descriptor = 2;
 }
 
 message Image {
@@ -1228,6 +1234,7 @@ service ModalClient {
 
   // Container tasks
   rpc ContainerCreate(ContainerCreateRequest) returns (ContainerCreateResponse);
+  rpc ContainerGetLogs(ContainerGetLogsRequest) returns (stream TaskLogsBatch);
   rpc ContainerWait(ContainerWaitRequest) returns (ContainerWaitResponse);
 
   // Dicts
