@@ -66,7 +66,7 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
 
 
 @vol_cli.command(name="list", help=depr_cmd("modal nfs list"), deprecated=True)
-def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
+def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):  # noqa
     raise DeprecationError(depr_cmd("modal nfs list"))
 
 
@@ -94,7 +94,7 @@ def create(
 
 
 @vol_cli.command(name="create", help=depr_cmd("modal nfs create"), deprecated=True)
-def create(name: str, cloud: str = typer.Option("aws"), env: Optional[str] = ENV_OPTION):
+def create(name: str, cloud: str = typer.Option("aws"), env: Optional[str] = ENV_OPTION):  # noqa
     raise DeprecationError(depr_cmd("modal nfs create"))
 
 
@@ -141,7 +141,7 @@ async def ls(
 
 
 @vol_cli.command(name="ls", help=depr_cmd("modal nfs ls"), deprecated=True)
-def ls(
+def ls(  # noqa
     volume_name: str,
     path: str = typer.Argument(default="/"),
     env: Optional[str] = ENV_OPTION,
@@ -192,7 +192,7 @@ async def put(
 
 
 @vol_cli.command(name="put", help=depr_cmd("modal nfs put"), deprecated=True)
-async def put(
+async def put(  # noqa
     volume_name: str,
     local_path: str,
     remote_path: str = typer.Argument(default="/"),
@@ -320,7 +320,7 @@ async def get(
 
 
 @vol_cli.command(name="get", help=depr_cmd("modal nfs get"), deprecated=True)
-async def get(
+async def get(  # noqa
     volume_name: str,
     remote_path: str,
     local_destination: str = typer.Argument("."),
@@ -349,7 +349,7 @@ async def rm(
 
 
 @vol_cli.command(name="rm", help=depr_cmd("modal nfs rm"), deprecated=True)
-async def rm(
+async def rm(  # noqa
     volume_name: str,
     remote_path: str,
     recursive: bool = typer.Option(False, "-r", "--recursive"),
