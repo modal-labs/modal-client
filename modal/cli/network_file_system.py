@@ -32,15 +32,9 @@ from modal_utils.grpc_utils import retry_transient_errors
 FileType = api_pb2.SharedVolumeListFilesEntry.FileType
 
 
-def depr_cmd(cmd):
-    return f"DEPRECATED! Use `{cmd}` instead!"
-
-
 nfs_cli = Typer(name="nfs", help="Read and edit shared volumes.", no_args_is_help=True)
-vol_cli = Typer(name="volume", help=depr_cmd("modal nfs"), no_args_is_help=True, hidden=True)
 
 
-@vol_cli.command(name="list", help=depr_cmd("modal nfs list"), deprecated=True)
 @nfs_cli.command(name="list", help="List the names of all shared volumes.")
 @synchronizer.create_blocking
 async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
@@ -73,7 +67,6 @@ def some_func():
 """
 
 
-@vol_cli.command(name="create", help=depr_cmd("modal nfs create"), deprecated=True)
 @nfs_cli.command(name="create", help="Create a named shared volume.")
 def create(
     name: str,
@@ -98,7 +91,6 @@ async def _volume_from_name(deployment_name: str) -> _NetworkFileSystemHandle:
     return network_file_system
 
 
-@vol_cli.command(name="ls", help=depr_cmd("modal nfs ls"), deprecated=True)
 @nfs_cli.command(name="ls", help="List files and directories in a shared volume.")
 @synchronizer.create_blocking
 async def ls(
@@ -135,7 +127,6 @@ async def ls(
 PIPE_PATH = Path("-")
 
 
-@vol_cli.command(name="put", help=depr_cmd("modal nfs put"), deprecated=True)
 @nfs_cli.command(
     name="put",
     help="""Upload a file or directory to a shared volume.
@@ -227,7 +218,6 @@ async def _glob_download(
     await asyncio.gather(*tasks)
 
 
-@vol_cli.command(name="get", help=depr_cmd("modal nfs get"), deprecated=True)
 @nfs_cli.command(name="get")
 @synchronizer.create_blocking
 async def get(
@@ -294,7 +284,6 @@ async def get(
         print(f"Wrote {b} bytes to '{destination}'", file=sys.stderr)
 
 
-@vol_cli.command(name="rm", help=depr_cmd("modal nfs rm"), deprecated=True)
 @nfs_cli.command(name="rm", help="Delete a file or directory from a shared volume.")
 @synchronizer.create_blocking
 async def rm(
