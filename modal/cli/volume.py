@@ -14,7 +14,7 @@ from modal_utils.grpc_utils import retry_transient_errors
 vol_cli = Typer(name="vol", help="[Preview] Read and edit modal.Volume volumes.", no_args_is_help=True)
 
 
-@vol_cli.command(name="list", help="List the names of all modal.Volume volumes.")
+@vol_cli.command(name="list", help="List the names of all modal.Volume volumes.", hidden=True)
 @synchronizer.create_blocking
 async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     env = ensure_env(env)
