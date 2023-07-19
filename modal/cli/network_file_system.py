@@ -32,10 +32,10 @@ from modal_utils.grpc_utils import retry_transient_errors
 FileType = api_pb2.SharedVolumeListFilesEntry.FileType
 
 
-nfs_cli = Typer(name="nfs", help="Read and edit shared volumes.", no_args_is_help=True)
+nfs_cli = Typer(name="nfs", help="Read and edit modal.NetworkFileSystem volumes.", no_args_is_help=True)
 
 
-@nfs_cli.command(name="list", help="List the names of all shared volumes.")
+@nfs_cli.command(name="list", help="List the names of all network file systems.")
 @synchronizer.create_blocking
 async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     env = ensure_env(env)
@@ -67,10 +67,10 @@ def some_func():
 """
 
 
-@nfs_cli.command(name="create", help="Create a named shared volume.")
+@nfs_cli.command(name="create", help="Create a named network file system.")
 def create(
     name: str,
-    cloud: str = typer.Option("aws", help="Cloud provider to create the volume in. One of aws|gcp."),
+    cloud: str = typer.Option("aws", help="Cloud provider to create the file system in. One of aws|gcp."),
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
@@ -87,11 +87,11 @@ async def _volume_from_name(deployment_name: str) -> _NetworkFileSystemHandle:
         deployment_name, environment_name=None
     )  # environment None will take value from config
     if not isinstance(network_file_system, _NetworkFileSystemHandle):
-        raise Exception("The specified app entity is not a shared volume")
+        raise Exception("The specified app entity is not a network file system")
     return network_file_system
 
 
-@nfs_cli.command(name="ls", help="List files and directories in a shared volume.")
+@nfs_cli.command(name="ls", help="List files and directories in a network file system.")
 @synchronizer.create_blocking
 async def ls(
     volume_name: str,
@@ -129,7 +129,7 @@ PIPE_PATH = Path("-")
 
 @nfs_cli.command(
     name="put",
-    help="""Upload a file or directory to a shared volume.
+    help="""Upload a file or directory to a network file system.
 
 Remote parent directories will be created as needed.
 
@@ -284,7 +284,7 @@ async def get(
         print(f"Wrote {b} bytes to '{destination}'", file=sys.stderr)
 
 
-@nfs_cli.command(name="rm", help="Delete a file or directory from a shared volume.")
+@nfs_cli.command(name="rm", help="Delete a file or directory from a network file system.")
 @synchronizer.create_blocking
 async def rm(
     volume_name: str,
