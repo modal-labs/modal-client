@@ -103,6 +103,8 @@ class _Volume(_Provider[_VolumeHandle]):
     def new() -> "_Volume":
         """Construct a new volume, which is empty by default."""
 
+        handle: _VolumeHandle = _VolumeHandle._new()
+
         async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _VolumeHandle:
             status_row = resolver.add_status_row()
             if existing_object_id:
@@ -113,7 +115,8 @@ class _Volume(_Provider[_VolumeHandle]):
             req = api_pb2.VolumeCreateRequest(app_id=resolver.app_id)
             resp = await retry_transient_errors(resolver.client.stub.VolumeCreate, req)
             status_row.finish("Created volume.")
-            return _VolumeHandle._from_id(resp.volume_id, resolver.client, None)
+            handle._hydrate(resp.volume_id, resolver.client, None)
+            return handle
 
         return _Volume._from_loader(_load, "Volume()")
 

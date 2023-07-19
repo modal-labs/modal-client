@@ -171,10 +171,13 @@ class _Image(_Provider[_ImageHandle]):
         if build_function and len(base_images) != 1:
             raise InvalidError("Cannot run a build function with multiple base images!")
 
+        handle: _ImageHandle = _ImageHandle._new()
+
         async def _load(resolver: Resolver, existing_object_id: Optional[str]):
             if ref:
                 image_id = (await resolver.load(ref)).object_id
-                return _ImageHandle._from_id(image_id, resolver.client, None)
+                handle._hydrate(image_id, resolver.client, None)
+                return handle
 
             # Recursively build base images
             base_image_ids: List[str] = []
@@ -288,7 +291,8 @@ class _Image(_Provider[_ImageHandle]):
             else:
                 raise RemoteError("Unknown status %s!" % result.status)
 
-            return _ImageHandle._from_id(image_id, resolver.client, None)
+            handle._hydrate(image_id, resolver.client, None)
+            return handle
 
         rep = f"Image({dockerfile_commands})"
         obj = _Image._from_loader(_load, rep)

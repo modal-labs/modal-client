@@ -142,7 +142,8 @@ class _Mount(_Provider[_MountHandle]):
     @staticmethod
     def _from_entries(*entries: _MountEntry) -> "_Mount":
         rep = f"Mount({entries})"
-        load = functools.partial(_Mount._load_mount, entries)
+        handle: _MountHandle = _MountHandle._new()
+        load = functools.partial(_Mount._load_mount, entries, handle)
         obj = _Mount._from_loader(load, rep)
         obj._entries = entries
         obj._is_local = True
@@ -254,7 +255,9 @@ class _Mount(_Provider[_MountHandle]):
                     logger.info(f"Ignoring file not found: {exc}")
 
     @staticmethod
-    async def _load_mount(entries: List[_MountEntry], resolver: Resolver, existing_object_id: Optional[str]):
+    async def _load_mount(
+        entries: List[_MountEntry], handle: _MountHandle, resolver: Resolver, existing_object_id: Optional[str]
+    ):
         # Run a threadpool to compute hash values, and use concurrent coroutines to register files.
         t0 = time.time()
         n_concurrent_uploads = 16
@@ -323,7 +326,8 @@ class _Mount(_Provider[_MountHandle]):
         status_row.finish(f"Created mount {message_label}")
 
         logger.debug(f"Uploaded {len(uploaded_hashes)}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
-        return _MountHandle._from_id(resp.mount_id, resolver.client, resp.handle_metadata)
+        handle._hydrate(resp.mount_id, resolver.client, resp.handle_metadata)
+        return handle
 
     @staticmethod
     def from_local_python_packages(*module_names: str) -> "_Mount":
