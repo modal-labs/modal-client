@@ -692,7 +692,7 @@ class _Stub:
                     # assigning the app's hydrated function handle ensures it will be used for the later decoration return value
                     self._function_handles[tag] = obj
                 else:
-                    self._function_handles[tag]._hydrate(client, function_id, handle_metadata)
+                    self._function_handles[tag]._hydrate(function_id, client, handle_metadata)
 
     def _get_deduplicated_function_mounts(self, mounts: Dict[str, _Mount]):
         cached_mounts = []
