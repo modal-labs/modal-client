@@ -767,7 +767,7 @@ message GenericResult {  // Used for both tasks and function outputs
   bytes tb_line_cache = 12;
 }
 
-message Container {
+message Sandbox {
   repeated string entrypoint_args = 1;
   repeated string mount_ids = 2;
   string image_id = 3;
@@ -779,26 +779,26 @@ message Container {
   uint32 timeout_secs = 7;
 }
 
-message ContainerCreateRequest {
+message SandboxCreateRequest {
   string app_id = 1;
-  Container definition = 2;
+  Sandbox definition = 2;
 }
 
-message ContainerCreateResponse {
-  string container_id = 1;
+message SandboxCreateResponse {
+  string sandbox_id = 1;
 }
 
-message ContainerWaitRequest {
-  string container_id = 1;
+message SandboxWaitRequest {
+  string sandbox_id = 1;
   float timeout = 2;
 }
 
-message ContainerWaitResponse {
+message SandboxWaitResponse {
   GenericResult result = 1;
 }
 
-message ContainerGetLogsRequest {
-  string container_id = 1;
+message SandboxGetLogsRequest {
+  string sandbox_id = 1;
   FileDescriptor file_descriptor = 2;
 }
 
@@ -1232,11 +1232,6 @@ service ModalClient {
   // Container
   rpc ContainerHeartbeat(ContainerHeartbeatRequest) returns (google.protobuf.Empty);
 
-  // Container tasks
-  rpc ContainerCreate(ContainerCreateRequest) returns (ContainerCreateResponse);
-  rpc ContainerGetLogs(ContainerGetLogsRequest) returns (stream TaskLogsBatch);
-  rpc ContainerWait(ContainerWaitRequest) returns (ContainerWaitResponse);
-
   // Dicts
   rpc DictCreate(DictCreateRequest) returns (DictCreateResponse);
   rpc DictUpdate(DictUpdateRequest) returns (DictUpdateResponse);
@@ -1284,6 +1279,11 @@ service ModalClient {
   rpc QueueCreate(QueueCreateRequest) returns (QueueCreateResponse);
   rpc QueueGet(QueueGetRequest) returns (QueueGetResponse);
   rpc QueuePut(QueuePutRequest) returns (google.protobuf.Empty);
+
+  // Sandbox tasks
+  rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);
+  rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
+  rpc SandboxWait(SandboxWaitRequest) returns (SandboxWaitResponse);
 
   // Secrets
   rpc SecretCreate(SecretCreateRequest) returns (SecretCreateResponse);
