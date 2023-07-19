@@ -96,7 +96,7 @@ message AppClientDisconnectRequest {
 
 message AppCreateRequest {
   string client_id = 1;
-  string description = 2;    // Human readable label for the website
+  string description = 2;    // Human readable label for the app
   bool detach = 3; // deprecated, but needed until 0.48 is the minimum version
   bool initializing = 4; // deprecated, but needed until 0.48 is the minimum version
   string environment_name = 5;
@@ -1129,6 +1129,21 @@ message VolumeCommitRequest {
   string volume_id = 1;
 }
 
+message VolumeListItem {
+  string label = 1;  // app name of object entity app
+  string volume_id = 2;
+  double created_at = 3;
+}
+
+message VolumeListRequest {
+  string environment_name = 1;
+}
+
+message VolumeListResponse {
+  repeated VolumeListItem items = 1;
+  string environment_name = 2;
+}
+
 message VolumeReloadRequest {
   // NOTE(staffan): Mounting a volume in multiple locations is not supported, so volume_id alone uniquely identifies
   // a volume mount.
@@ -1251,5 +1266,6 @@ service ModalClient {
   // Volumes
   rpc VolumeCreate(VolumeCreateRequest) returns (VolumeCreateResponse);
   rpc VolumeCommit(VolumeCommitRequest) returns (google.protobuf.Empty);
+  rpc VolumeList(VolumeListRequest) returns (VolumeListResponse);
   rpc VolumeReload(VolumeReloadRequest) returns (google.protobuf.Empty);
 }
