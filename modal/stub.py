@@ -333,22 +333,6 @@ class _Stub:
 
         return [m for m in all_mounts if m.is_local()]
 
-    def _get_function_handle(self, info: FunctionInfo) -> _FunctionHandle:
-        """This can either return a hydrated or an unhydrated _FunctionHandle
-
-        If called from within a container_app that has this function handle,
-        it will return a Hydrated funciton handle, but in all other contexts
-        it will be unhydrated.
-        """
-        tag = info.get_tag()
-        if tag in self._function_handles:
-            return self._function_handles[tag]
-
-        function_handle = _FunctionHandle._new()
-        function_handle._initialize_from_local(self, info)
-        self._function_handles[tag] = function_handle
-        return function_handle  # note that the function handle is not yet hydrated at this point:
-
     def _add_function(self, function: _Function):
         if function.tag in self._blueprint:
             old_function = self._blueprint[function.tag]
@@ -514,7 +498,13 @@ class _Stub:
                     ),
                 )
 
-            function_handle = self._get_function_handle(info)
+            tag = info.get_tag()
+            if tag in self._function_handles:
+                function_handle = self._function_handles[tag]
+            else:
+                function_handle = _FunctionHandle._new()
+                function_handle._initialize_from_local(self, info)
+                self._function_handles[tag] = function_handle
 
             if is_generator_override is None:
                 is_generator_override = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
