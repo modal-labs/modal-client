@@ -1,23 +1,24 @@
-from .object import _Handle
-from .client import _Client
 from typing import Optional, Type
 
-from modal_utils.grpc_utils import retry_transient_errors
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
+from modal_utils.grpc_utils import retry_transient_errors
+
+from .client import _Client
+from .object import _Handle
 
 
 class _LogsReader:
-    def __init__(self, file_descriptor: api_pb2.FileDescriptor.ValueType, container_id: str, client: _Client) -> None:
+    def __init__(self, file_descriptor: api_pb2.FileDescriptor.ValueType, sandbox_id: str, client: _Client) -> None:
         self._file_descriptor = file_descriptor
-        self._container_id = container_id
+        self._sandbox_id = sandbox_id
         self._client = client
 
     async def read(self):
-        req = api_pb2.ContainerGetLogsRequest(container_id=self._container_id, file_descriptor=self._file_descriptor)
+        req = api_pb2.SandboxGetLogsRequest(sandbox_id=self._sandbox_id, file_descriptor=self._file_descriptor)
         # TODO: maybe add a mode that preserves timestamps, since we have them?
         data = ""
-        for batch in await retry_transient_errors(self._client.stub.ContainerGetLogs, req):
+        for batch in await retry_transient_errors(self._client.stub.SandboxGetLogs, req):
             for item in batch.items:
                 data += item.data
         return data
@@ -26,7 +27,7 @@ class _LogsReader:
 LogsReader = synchronize_api(_LogsReader)
 
 
-class _ContainerHandle(_Handle, type_prefix="co"):
+class _SandboxHandle(_Handle, type_prefix="sa"):
     """mdmd:hidden"""
 
     _result: Optional[api_pb2.GenericResult]
@@ -35,7 +36,7 @@ class _ContainerHandle(_Handle, type_prefix="co"):
     _stderr: _LogsReader
 
     @classmethod
-    def from_id(cls: Type["_ContainerHandle"], object_id: str, client: Optional[_Client] = None) -> "_ContainerHandle":
+    def from_id(cls: Type["_SandboxHandle"], object_id: str, client: Optional[_Client] = None) -> "_SandboxHandle":
         obj = cls._from_id(object_id, client, None)
         obj._stdout = LogsReader(api_pb2.FILE_DESCRIPTOR_STDOUT, object_id, client)
         obj._stderr = LogsReader(api_pb2.FILE_DESCRIPTOR_STDERR, object_id, client)
@@ -43,8 +44,8 @@ class _ContainerHandle(_Handle, type_prefix="co"):
 
     async def wait(self):
         while True:
-            req = api_pb2.ContainerWaitRequest(container_id=self._object_id, timeout=50)
-            resp = await retry_transient_errors(self._client.stub.ContainerWait, req)
+            req = api_pb2.SandboxWaitRequest(sandbox_id=self._object_id, timeout=50)
+            resp = await retry_transient_errors(self._client.stub.SandboxWait, req)
             if resp.result:
                 self._result = resp.result
                 break
@@ -58,4 +59,4 @@ class _ContainerHandle(_Handle, type_prefix="co"):
         return self._stderr
 
 
-ContainerHandle = synchronize_api(_ContainerHandle)
+SandboxHandle = synchronize_api(_SandboxHandle)

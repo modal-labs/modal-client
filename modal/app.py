@@ -9,10 +9,11 @@ from ._resolver import Resolver
 from .client import _Client
 from .config import logger
 from .object import _Handle, _Provider
-from .container import _ContainerHandle
+from .sandbox import _SandboxHandle
 
 if TYPE_CHECKING:
     from rich.tree import Tree
+
     from .image import _Image
 else:
     Tree = TypeVar("Tree")
@@ -245,10 +246,12 @@ class _App:
         deploy_response = await retry_transient_errors(self._client.stub.AppDeploy, deploy_req)
         return deploy_response.url
 
-    async def spawn_container(
+    async def spawn_sandbox(
         self, program: str, *args: str, shell: bool = False, image: Optional["_Image"] = None, mounts=[]
-    ) -> _ContainerHandle:
+    ) -> _SandboxHandle:
         from .stub import _default_image
+
+        self.track_function_invocation()
 
         if image is None:
             image = _default_image
@@ -256,14 +259,14 @@ class _App:
         resolver = Resolver(None, self._client, self._environment_name, self.app_id)
         image_handle = await resolver.load(image)
 
-        definition = api_pb2.Container(
+        definition = api_pb2.Sandbox(
             entrypoint_args=[program, *args],
             image_id=image_handle.object_id,
         )
-        create_req = api_pb2.ContainerCreateRequest(app_id=self.app_id, definition=definition)
-        create_resp = await retry_transient_errors(self._client.stub.ContainerCreate, create_req)
+        create_req = api_pb2.SandboxCreateRequest(app_id=self.app_id, definition=definition)
+        create_resp = await retry_transient_errors(self._client.stub.SandboxCreate, create_req)
 
-        return _ContainerHandle.from_id(create_resp.container_id, self._client)
+        return _SandboxHandle.from_id(create_resp.sandbox_id, self._client)
 
     @staticmethod
     def _reset_container():
