@@ -141,6 +141,7 @@ message AppGetLogsRequest {
   string function_id = 5;
   string input_id = 6;
   string task_id = 7;
+  FileDescriptor file_descriptor = 8;
 }
 
 message AppGetObjectsRequest {
@@ -800,6 +801,8 @@ message SandboxWaitResponse {
 message SandboxGetLogsRequest {
   string sandbox_id = 1;
   FileDescriptor file_descriptor = 2;
+  float timeout = 3;
+  string last_entry_id = 4;
 }
 
 message Image {
