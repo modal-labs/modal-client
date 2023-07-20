@@ -86,6 +86,12 @@ def _run_container(
             serialized_params=serialized_params,
         )
 
+        if module_name in sys.modules:
+            # Drop the module from sys.modules since some function code relies on the
+            # assumption that that the app is created before the user code is imported.
+            # This is really only an issue for tests.
+            sys.modules.pop(module_name)
+
         try:
             main(container_args, client)
         except UserException:

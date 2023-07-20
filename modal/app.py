@@ -157,6 +157,8 @@ class _App:
         req = api_pb2.AppGetObjectsRequest(app_id=app_id)
         resp = await retry_transient_errors(self._client.stub.AppGetObjects, req)
         for item in resp.items:
+            # TODO(erikbern): we shouldn't create new handles here if there are existing objects
+            # FunctionHandle objects already exist in the global scope so let's grab those and hydrate
             handle_metadata = get_proto_oneof(item, "handle_metadata_oneof")
             obj = _Handle._from_id(item.object_id, self._client, handle_metadata)
             self._tag_to_object[item.tag] = obj
