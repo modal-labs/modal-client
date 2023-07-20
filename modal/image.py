@@ -1178,7 +1178,6 @@ class _Image(_Provider[_ImageHandle]):
         from .functions import _Function, _FunctionHandle
 
         info = FunctionInfo(raw_f)
-        function_handle = _FunctionHandle._new()
 
         if shared_volumes:
             deprecation_warning(
@@ -1188,7 +1187,6 @@ class _Image(_Provider[_ImageHandle]):
             network_file_systems = {**network_file_systems, **shared_volumes}
 
         function = _Function.from_args(
-            function_handle,
             info,
             stub=None,
             image=self,

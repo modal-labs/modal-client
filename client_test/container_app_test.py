@@ -35,7 +35,7 @@ async def test_container_function_initialization(unix_servicer, container_client
 
     # Make sure these functions exist and have the right type
     my_f_1_app = container_app["my_f_1"]
-    my_f_2_app = container_app["my_f_1"]
+    my_f_2_app = container_app["my_f_2"]
     assert isinstance(my_f_1_app, FunctionHandle)
     assert isinstance(my_f_2_app, FunctionHandle)
 

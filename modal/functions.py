@@ -845,7 +845,6 @@ class _Function(_Provider[_FunctionHandle]):
 
     @staticmethod
     def from_args(
-        function_handle: _FunctionHandle,
         info: FunctionInfo,
         stub,
         image=None,
@@ -875,6 +874,9 @@ class _Function(_Provider[_FunctionHandle]):
         cls: Optional[type] = None,
     ) -> None:
         """mdmd:hidden"""
+        handle = _FunctionHandle._new()
+        handle._initialize_from_local(stub, info)
+
         raw_f = info.raw_f
         assert callable(raw_f)
         if schedule is not None:
@@ -976,8 +978,8 @@ class _Function(_Provider[_FunctionHandle]):
             )
             response = await resolver.client.stub.FunctionPrecreate(req)
             # Update the precreated function handle (todo: hack until we merge providers/handles)
-            function_handle._hydrate(response.function_id, resolver.client, response.handle_metadata)
-            return function_handle
+            handle._hydrate(response.function_id, resolver.client, response.handle_metadata)
+            return handle
 
         async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _FunctionHandle:
             # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
@@ -1163,19 +1165,17 @@ class _Function(_Provider[_FunctionHandle]):
             else:
                 status_row.finish(f"Created {tag}.")
 
-            # Instead of returning a new object, just return the precreated one
-            # TODO (elias): We should not have to run _hydrate in here since functions are preloaded. Needed for now due to some conflicts with builder_functions
-            function_handle._hydrate(response.function_id, resolver.client, response.handle_metadata)
-            return function_handle
+            handle._hydrate(response.function_id, resolver.client, response.handle_metadata)
+            return handle
 
         rep = f"Function({tag})"
         obj = _Function._from_loader(_load, rep, preload=_preload)
+        obj._handle = handle
         # TODO(erikbern): almost all of these are only needed because of modal.cli.run.shell
         obj._allow_cross_region_volumes = allow_cross_region_volumes
         obj._cloud = cloud
         obj._image = image
         obj._info = info
-        obj._function_handle = function_handle
         obj._gpu = gpu
         obj._gpu_config = gpu_config
         obj._mounts = mounts

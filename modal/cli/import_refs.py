@@ -178,7 +178,7 @@ Registered functions and local entrypoints on the selected stub are:
         # entrypoint is in entrypoint registry, for now
         return _stub.registered_entrypoints[function_name]
 
-    return _stub[function_name]._function_handle  # functions are in blueprint
+    return _stub[function_name]._handle  # functions are in blueprint
 
 
 def _show_no_auto_detectable_stub(stub_ref: ImportRef) -> None:
@@ -273,7 +273,7 @@ def import_function(
     if isinstance(stub_or_function, _FunctionHandle):
         return stub_or_function
     elif isinstance(stub_or_function, _Function):
-        return stub_or_function._function_handle
+        return stub_or_function._handle
     elif isinstance(stub_or_function, LocalEntrypoint):
         if not accept_local_entrypoint:
             raise click.UsageError(
