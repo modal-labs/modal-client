@@ -97,7 +97,7 @@ class _App:
 
             for tag, provider in blueprint.items():
                 existing_object_id = self._tag_to_existing_id.get(tag)
-                created_obj = await resolver.load(provider, existing_object_id)
+                created_obj: _Handle = await resolver.load(provider, existing_object_id)
                 self._tag_to_object[tag] = created_obj
 
         # Create the app (and send a list of all tagged obs)

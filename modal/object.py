@@ -29,14 +29,17 @@ class _Handle(metaclass=ObjectMeta):
     well as distributed data structures like Queues or Dicts.
     """
 
-    _type_prefix: str
+    _type_prefix: str  # class attribute
+    _object_id: str
+    _client: _Client
+    _is_hydrated: bool
 
     def __init__(self):
         raise Exception("__init__ disallowed, use proper classmethods")
 
     def _init(self):
-        self._client = None
         self._object_id = None
+        self._client = None
         self._is_hydrated = False
 
     @classmethod
@@ -49,9 +52,9 @@ class _Handle(metaclass=ObjectMeta):
     def _initialize_from_empty(self):
         pass  # default implementation
 
-    def _hydrate(self, client: _Client, object_id: str, handle_metadata: Optional[Message]):
-        self._client = client
+    def _hydrate(self, object_id: str, client: _Client, handle_metadata: Optional[Message]):
         self._object_id = object_id
+        self._client = client
         if handle_metadata:
             self._hydrate_metadata(handle_metadata)
         self._is_hydrated = True
@@ -90,7 +93,7 @@ class _Handle(metaclass=ObjectMeta):
 
         # Instantiate object and return
         obj = object_cls._new()
-        obj._hydrate(client, object_id, handle_metadata)
+        obj._hydrate(object_id, client, handle_metadata)
         return obj
 
     @classmethod

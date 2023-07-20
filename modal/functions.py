@@ -547,7 +547,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
             serialized_params=serialized_params,
         )
         response = await self._client.stub.FunctionBindParams(req)
-        new_handle._hydrate(self._client, response.bound_function_id, response.handle_metadata)
+        new_handle._hydrate(response.bound_function_id, self._client, response.handle_metadata)
         new_handle._is_remote_cls_method = True
         return new_handle
 
@@ -976,7 +976,7 @@ class _Function(_Provider[_FunctionHandle]):
             )
             response = await resolver.client.stub.FunctionPrecreate(req)
             # Update the precreated function handle (todo: hack until we merge providers/handles)
-            function_handle._hydrate(resolver.client, response.function_id, response.handle_metadata)
+            function_handle._hydrate(response.function_id, resolver.client, response.handle_metadata)
             return function_handle
 
         async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _FunctionHandle:
@@ -1165,7 +1165,7 @@ class _Function(_Provider[_FunctionHandle]):
 
             # Instead of returning a new object, just return the precreated one
             # TODO (elias): We should not have to run _hydrate in here since functions are preloaded. Needed for now due to some conflicts with builder_functions
-            function_handle._hydrate(resolver.client, response.function_id, response.handle_metadata)
+            function_handle._hydrate(response.function_id, resolver.client, response.handle_metadata)
             return function_handle
 
         rep = f"Function({tag})"
