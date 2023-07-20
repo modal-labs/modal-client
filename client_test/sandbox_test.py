@@ -1,6 +1,8 @@
 # Copyright Modal Labs 2022
 
 import hashlib
+import platform
+import pytest
 import time
 from pathlib import Path
 
@@ -9,6 +11,10 @@ from modal import Image, Mount, Stub
 stub = Stub()
 
 
+skip_non_linux = pytest.mark.skipif(platform.system() != "Linux", reason="sandbox mock uses subprocess")
+
+
+@skip_non_linux
 def test_spawn_sandbox(client, servicer):
     with stub.run(client=client) as app:
         sb = app.spawn_sandbox("bash", "-c", "echo bye >&2 && sleep 1 && echo hi")
@@ -22,6 +28,7 @@ def test_spawn_sandbox(client, servicer):
         assert sb.stderr.read() == "bye\n"
 
 
+@skip_non_linux
 def test_sandbox_mount(client, servicer, tmpdir):
     tmpdir.join("a.py").write(b"foo")
 
@@ -37,6 +44,7 @@ def test_sandbox_mount(client, servicer, tmpdir):
     assert servicer.files_sha2data[sha]["data"] == b"foo"
 
 
+@skip_non_linux
 def test_sandbox_image(client, servicer, tmpdir):
     tmpdir.join("a.py").write(b"foo")
 
