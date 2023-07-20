@@ -58,7 +58,12 @@ async def _run_stub(
         output_mgr = OutputManager(stdout, show_progress, "Running app...")
     post_init_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
     app = await _App._init_new(
-        client, stub.description, detach=detach, deploying=False, environment_name=environment_name
+        client,
+        stub.description,
+        detach=detach,
+        deploying=False,
+        environment_name=environment_name,
+        output_mgr=output_mgr,
     )
     async with stub._set_app(app), TaskContext(grace=config["logs_timeout"]) as tc:
         # Start heartbeats loop to keep the client alive
@@ -74,7 +79,7 @@ async def _run_stub(
 
         try:
             # Create all members
-            await app._create_all_objects(stub._blueprint, output_mgr, post_init_state, environment_name)
+            await app._create_all_objects(stub._blueprint, post_init_state, environment_name)
 
             # Update all functions client-side to have the output mgr
             for tag, obj in stub._function_handles.items():
@@ -123,10 +128,10 @@ async def _serve_update(
     client = await _Client.from_env()
     try:
         output_mgr = OutputManager(None, True)
-        app = await _App._init_existing(client, existing_app_id)
+        app = await _App._init_existing(client, existing_app_id, output_mgr=output_mgr)
 
         # Create objects
-        await app._create_all_objects(stub._blueprint, output_mgr, api_pb2.APP_STATE_UNSPECIFIED, environment_name)
+        await app._create_all_objects(stub._blueprint, api_pb2.APP_STATE_UNSPECIFIED, environment_name)
 
         # Communicate to the parent process
         is_ready.set()
@@ -191,9 +196,9 @@ async def _deploy_stub(
     if client is None:
         client = await _Client.from_env()
 
-    app = await _App._init_from_name(client, name, namespace, environment_name=environment_name)
-
     output_mgr = OutputManager(stdout, show_progress)
+
+    app = await _App._init_from_name(client, name, namespace, environment_name=environment_name, output_mgr=output_mgr)
 
     async with TaskContext(0) as tc:
         # Start heartbeats loop to keep the client alive
@@ -203,7 +208,7 @@ async def _deploy_stub(
         post_init_state = api_pb2.APP_STATE_UNSPECIFIED
 
         # Create all members
-        await app._create_all_objects(stub._blueprint, output_mgr, post_init_state, environment_name=environment_name)
+        await app._create_all_objects(stub._blueprint, post_init_state, environment_name=environment_name)
 
         # Deploy app
         # TODO(erikbern): not needed if the app already existed

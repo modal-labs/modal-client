@@ -1,10 +1,12 @@
 # Copyright Modal Labs 2022
+import asyncio
 from typing import TYPE_CHECKING, Dict, Optional, TypeVar
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import get_proto_oneof, retry_transient_errors
 
+from ._output import OutputManager
 from ._resolver import Resolver
 from .client import _Client
 from .config import logger
@@ -14,7 +16,6 @@ from .sandbox import _SandboxHandle
 if TYPE_CHECKING:
     from rich.tree import Tree
 
-    from .image import _Image
 else:
     Tree = TypeVar("Tree")
 
@@ -49,12 +50,14 @@ class _App:
     _resolver: Optional[Resolver]
     _function_invocations: int  # Number of function invocations made by this app.
     _environment_name: str
+    _output_mgr: Optional[OutputManager]
 
     def __init__(
         self,
         client: _Client,
         app_id: str,
         app_page_url: str,
+        output_mgr: Optional[OutputManager],
         tag_to_object: Optional[Dict[str, _Handle]] = None,
         tag_to_existing_id: Optional[Dict[str, str]] = None,
         stub_name: Optional[str] = None,
@@ -69,6 +72,7 @@ class _App:
         self._function_invocations = 0
         self._stub_name = stub_name
         self._environment_name = environment_name
+        self._output_mgr = output_mgr
 
     @property
     def client(self) -> _Client:
@@ -81,10 +85,10 @@ class _App:
         return self._app_id
 
     async def _create_all_objects(
-        self, blueprint: Dict[str, _Provider], output_mgr, new_app_state: int, environment_name: str
+        self, blueprint: Dict[str, _Provider], new_app_state: int, environment_name: str
     ):  # api_pb2.AppState.V
         """Create objects that have been defined but not created on the server."""
-        resolver = Resolver(output_mgr, self._client, environment_name, self.app_id)
+        resolver = Resolver(self._output_mgr, self._client, environment_name, self.app_id)
         with resolver.display():
             # Preload all functions to make sure they have ids assigned before they are loaded.
             # This is important to make sure any enclosed function handle references in serialized
@@ -176,13 +180,15 @@ class _App:
         return _container_app
 
     @staticmethod
-    async def _init_existing(client: _Client, existing_app_id: str) -> "_App":
+    async def _init_existing(
+        client: _Client, existing_app_id: str, output_mgr: Optional[OutputManager] = None
+    ) -> "_App":
         # Get all the objects first
         obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
         obj_resp = await retry_transient_errors(client.stub.AppGetObjects, obj_req)
         app_page_url = f"https://modal.com/apps/{existing_app_id}"  # TODO (elias): this should come from the backend
         object_ids = {item.tag: item.object_id for item in obj_resp.items}
-        return _App(client, existing_app_id, app_page_url, tag_to_existing_id=object_ids)
+        return _App(client, existing_app_id, app_page_url, output_mgr, tag_to_existing_id=object_ids)
 
     @staticmethod
     async def _init_new(
@@ -191,6 +197,7 @@ class _App:
         detach: bool = False,
         deploying: bool = False,
         environment_name: str = "",
+        output_mgr: Optional[OutputManager] = None,
     ) -> "_App":
         # Start app
         # TODO(erikbern): maybe this should happen outside of this method?
@@ -203,10 +210,16 @@ class _App:
         app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
         app_page_url = app_resp.app_logs_url
         logger.debug(f"Created new app with id {app_resp.app_id}")
-        return _App(client, app_resp.app_id, app_page_url, environment_name=environment_name)
+        return _App(client, app_resp.app_id, app_page_url, output_mgr, environment_name=environment_name)
 
     @staticmethod
-    async def _init_from_name(client: _Client, name: str, namespace, environment_name: str = ""):
+    async def _init_from_name(
+        client: _Client,
+        name: str,
+        namespace,
+        environment_name: str = "",
+        output_mgr: Optional[OutputManager] = None,
+    ):
         # Look up any existing deployment
         app_req = api_pb2.AppGetByDeploymentNameRequest(
             name=name, namespace=namespace, environment_name=environment_name
@@ -216,9 +229,11 @@ class _App:
 
         # Grab the app
         if existing_app_id is not None:
-            return await _App._init_existing(client, existing_app_id)
+            return await _App._init_existing(client, existing_app_id, output_mgr=output_mgr)
         else:
-            return await _App._init_new(client, name, detach=False, deploying=True, environment_name=environment_name)
+            return await _App._init_new(
+                client, name, detach=False, deploying=True, environment_name=environment_name, output_mgr=output_mgr
+            )
 
     async def create_one_object(self, provider: _Provider, environment_name: str) -> _Handle:
         existing_object_id: Optional[str] = self._tag_to_existing_id.get("_object")
@@ -246,23 +261,29 @@ class _App:
         deploy_response = await retry_transient_errors(self._client.stub.AppDeploy, deploy_req)
         return deploy_response.url
 
-    async def spawn_sandbox(
-        self, program: str, *args: str, shell: bool = False, image: Optional["_Image"] = None, mounts=[]
-    ) -> _SandboxHandle:
+    async def spawn_sandbox(self, program: str, *args: str, image=None, mounts=[]) -> _SandboxHandle:
         from .stub import _default_image
 
         self.track_function_invocation()
 
-        if image is None:
-            image = _default_image
+        resolver = Resolver(self._output_mgr, self._client, self._environment_name, self.app_id)
 
-        resolver = Resolver(None, self._client, self._environment_name, self.app_id)
-        image_handle = await resolver.load(image)
+        async def _load_mounts():
+            handles = await asyncio.gather(*[resolver.load(mount) for mount in mounts])
+            return [handle.object_id for handle in handles]
+
+        async def _load_image():
+            image_handle = await resolver.load(image or _default_image)
+            return image_handle.object_id
+
+        image_id, mount_ids = await asyncio.gather(_load_image(), _load_mounts())
 
         definition = api_pb2.Sandbox(
             entrypoint_args=[program, *args],
-            image_id=image_handle.object_id,
+            image_id=image_id,
+            mount_ids=mount_ids,
         )
+
         create_req = api_pb2.SandboxCreateRequest(app_id=self.app_id, definition=definition)
         create_resp = await retry_transient_errors(self._client.stub.SandboxCreate, create_req)
 
