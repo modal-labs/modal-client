@@ -32,9 +32,9 @@ enum AppState {
 enum ClientType {
   CLIENT_TYPE_UNSPECIFIED = 0;
   CLIENT_TYPE_CLIENT = 1;
-  CLIENT_TYPE_WORKER = 2;
+  CLIENT_TYPE_WORKER = 2; // deprecated
   CLIENT_TYPE_CONTAINER = 3;
-  CLIENT_TYPE_SERVER = 4;
+  CLIENT_TYPE_SERVER = 4; // deprecated
   CLIENT_TYPE_WEB_SERVER = 5;
 }
 
@@ -141,6 +141,7 @@ message AppGetLogsRequest {
   string function_id = 5;
   string input_id = 6;
   string task_id = 7;
+  FileDescriptor file_descriptor = 8;
 }
 
 message AppGetObjectsRequest {
@@ -314,6 +315,7 @@ message ContainerArguments {  // This is used to pass data from the worker to th
   map<string, string> tracing_context = 9;
   bytes serialized_params = 10;
 }
+
 
 message ContainerHeartbeatRequest {
   string current_input_id = 1;
@@ -766,6 +768,43 @@ message GenericResult {  // Used for both tasks and function outputs
   bytes tb_line_cache = 12;
 }
 
+message Sandbox {
+  repeated string entrypoint_args = 1;
+  repeated string mount_ids = 2;
+  string image_id = 3;
+  repeated string secret_ids = 4;
+
+  Resources resources = 5;
+  CloudProvider cloud_provider = 6;
+
+  uint32 timeout_secs = 7;
+}
+
+message SandboxCreateRequest {
+  string app_id = 1;
+  Sandbox definition = 2;
+}
+
+message SandboxCreateResponse {
+  string sandbox_id = 1;
+}
+
+message SandboxWaitRequest {
+  string sandbox_id = 1;
+  float timeout = 2;
+}
+
+message SandboxWaitResponse {
+  GenericResult result = 1;
+}
+
+message SandboxGetLogsRequest {
+  string sandbox_id = 1;
+  FileDescriptor file_descriptor = 2;
+  float timeout = 3;
+  string last_entry_id = 4;
+}
+
 message Image {
   repeated BaseImage base_images = 5;
   repeated string dockerfile_commands = 6;
@@ -1189,6 +1228,7 @@ message WebUrlInfo {
   bool label_stolen = 3;
 }
 
+
 service ModalClient {
   // Apps
   rpc AppCreate(AppCreateRequest) returns (AppCreateResponse);
@@ -1262,6 +1302,11 @@ service ModalClient {
   rpc QueueCreate(QueueCreateRequest) returns (QueueCreateResponse);
   rpc QueueGet(QueueGetRequest) returns (QueueGetResponse);
   rpc QueuePut(QueuePutRequest) returns (google.protobuf.Empty);
+
+  // Sandbox tasks
+  rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);
+  rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
+  rpc SandboxWait(SandboxWaitRequest) returns (SandboxWaitResponse);
 
   // Secrets
   rpc SecretCreate(SecretCreateRequest) returns (SecretCreateResponse);
