@@ -502,7 +502,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
 
     _web_url: Optional[str]
     _info: Optional[FunctionInfo]
-    _stub: Optional["modal.stub._Stub"]
+    _stub: Optional["modal.stub._Stub"]  # TODO(erikbern): remove
     _is_remote_cls_method: bool = False
     _function_name: Optional[str]
 
@@ -516,12 +516,12 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
             False  # set when a user terminates the app intentionally, to prevent useless traceback spam
         )
         self._function_name = None
-        self._stub = None
+        self._stub = None  # TODO(erikbern): remove
         self._self_obj = None
 
     def _initialize_from_local(self, stub, info: FunctionInfo):
         # note that this is not a full hydration of the function, as it doesn't yet get an object_id etc.
-        self._stub = stub
+        self._stub = stub  # TODO(erikbern): remove
         self._info = info
 
     def _hydrate_metadata(self, handle_metadata: Message):
@@ -576,6 +576,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         self._output_mgr = output_mgr
 
     def _get_function(self) -> "_Function":
+        # TODO(erikbern): don't use the stub here, just return the function, should be 1:1
         return self._stub[self._info.get_tag()]
 
     @property
