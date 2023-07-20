@@ -54,6 +54,8 @@ class _Secret(_Provider[_SecretHandle]):
         ):
             raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
 
+        handle: _SecretHandle = _SecretHandle._new()
+
         async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _SecretHandle:
             req = api_pb2.SecretCreateRequest(
                 app_id=resolver.app_id,
@@ -62,7 +64,8 @@ class _Secret(_Provider[_SecretHandle]):
                 existing_secret_id=existing_object_id,
             )
             resp = await resolver.client.stub.SecretCreate(req)
-            return _SecretHandle._from_id(resp.secret_id, resolver.client, None)
+            handle._hydrate(resp.secret_id, resolver.client, None)
+            return handle
 
         rep = f"Secret.from_dict([{', '.join(env_dict.keys())}])"
         return _Secret._from_loader(_load, rep)
