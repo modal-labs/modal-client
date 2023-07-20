@@ -587,10 +587,6 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
     def is_generator(self) -> bool:
         return self._is_generator
 
-    def _track_function_invocation(self):
-        if self._stub and self._stub.app:
-            self._stub.app.track_function_invocation()
-
     async def _map(self, input_stream: AsyncIterable[Any], order_outputs: bool, return_exceptions: bool, kwargs={}):
         if self._web_url:
             raise InvalidError(
@@ -605,7 +601,6 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
             self._output_mgr.function_progress_callback(self._function_name, total=None) if self._output_mgr else None
         )
 
-        self._track_function_invocation()
         async for item in _map_invocation(
             self._object_id,
             input_stream,
@@ -708,7 +703,6 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
             yield item
 
     async def _call_function(self, args, kwargs):
-        self._track_function_invocation()
         invocation = await _Invocation.create(self._object_id, args, kwargs, self._client)
         try:
             return await invocation.run_function()
@@ -718,18 +712,15 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
                 raise
 
     async def _call_function_nowait(self, args, kwargs):
-        self._track_function_invocation()
         return await _Invocation.create(self._object_id, args, kwargs, self._client)
 
     @warn_if_generator_is_not_consumed
     async def _call_generator(self, args, kwargs):
-        self._track_function_invocation()
         invocation = await _Invocation.create(self._object_id, args, kwargs, self._client)
         async for res in invocation.run_generator():
             yield res
 
     async def _call_generator_nowait(self, args, kwargs):
-        self._track_function_invocation()
         return await _Invocation.create(self._object_id, args, kwargs, self._client)
 
     def call(self, *args, **kwargs) -> Awaitable[Any]:  # TODO: Generics/TypeVars

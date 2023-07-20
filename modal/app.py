@@ -44,7 +44,6 @@ class _App:
     _app_id: str
     _app_page_url: str
     _resolver: Optional[Resolver]
-    _function_invocations: int  # Number of function invocations made by this app.
 
     def __init__(
         self,
@@ -61,7 +60,6 @@ class _App:
         self._client = client
         self._tag_to_object = tag_to_object or {}
         self._tag_to_existing_id = tag_to_existing_id or {}
-        self._function_invocations = 0
         self._stub_name = stub_name
 
     @property
@@ -141,13 +139,6 @@ class _App:
 
     def __getattr__(self, tag: str) -> _Handle:
         return self._tag_to_object[tag]
-
-    def track_function_invocation(self):
-        self._function_invocations += 1
-
-    @property
-    def function_invocations(self):
-        return self._function_invocations
 
     async def _init_container(self, client: _Client, app_id: str, stub_name: str):
         self._client = client
