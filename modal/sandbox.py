@@ -1,8 +1,10 @@
 from typing import Optional, Type
 
+from grpclib.exceptions import GRPCError, StreamTerminatedError
+
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
-from modal_utils.grpc_utils import retry_transient_errors
+from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
 
 from .client import _Client
 from .object import _Handle
@@ -15,12 +17,42 @@ class _LogsReader:
         self._client = client
 
     async def read(self):
-        req = api_pb2.SandboxGetLogsRequest(sandbox_id=self._sandbox_id, file_descriptor=self._file_descriptor)
-        # TODO: maybe add a mode that preserves timestamps, since we have them?
+        last_log_batch_entry_id = ""
+        completed = False
         data = ""
-        for batch in await retry_transient_errors(self._client.stub.SandboxGetLogs, req):
-            for item in batch.items:
-                data += item.data
+
+        # TODO: maybe combine this with get_app_logs_loop
+
+        async def _get_logs():
+            nonlocal last_log_batch_entry_id, completed, data
+
+            req = api_pb2.SandboxGetLogsRequest(
+                sandbox_id=self._sandbox_id, file_descriptor=self._file_descriptor, timeout=55
+            )
+            log_batch: api_pb2.TaskLogsBatch
+            async for log_batch in unary_stream(self._client.stub.SandboxGetLogs, req):
+                if log_batch.entry_id:
+                    # log_batch entry_id is empty for fd="server" messages from AppGetLogs
+                    last_log_batch_entry_id = log_batch.entry_id
+
+                if log_batch.eof:
+                    completed = True
+                    break
+
+                for item in log_batch.items:
+                    data += item.data
+
+        while not completed:
+            try:
+                await _get_logs()
+            except (GRPCError, StreamTerminatedError) as exc:
+                if isinstance(exc, GRPCError):
+                    if exc.status in RETRYABLE_GRPC_STATUS_CODES:
+                        continue
+                elif isinstance(exc, StreamTerminatedError):
+                    continue
+                raise
+
         return data
 
 
