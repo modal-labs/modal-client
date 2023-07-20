@@ -502,7 +502,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
 
     _web_url: Optional[str]
     _info: Optional[FunctionInfo]
-    _stub: Optional["modal.stub._Stub"]
+    _stub: Optional["modal.stub._Stub"]  # TODO(erikbern): remove
     _is_remote_cls_method: bool = False
     _function_name: Optional[str]
 
@@ -516,12 +516,12 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
             False  # set when a user terminates the app intentionally, to prevent useless traceback spam
         )
         self._function_name = None
-        self._stub = None
+        self._stub = None  # TODO(erikbern): remove
         self._self_obj = None
 
     def _initialize_from_local(self, stub, info: FunctionInfo):
         # note that this is not a full hydration of the function, as it doesn't yet get an object_id etc.
-        self._stub = stub
+        self._stub = stub  # TODO(erikbern): remove
         self._info = info
 
     def _hydrate_metadata(self, handle_metadata: Message):
@@ -576,6 +576,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         self._output_mgr = output_mgr
 
     def _get_function(self) -> "_Function":
+        # TODO(erikbern): don't use the stub here, just return the function, should be 1:1
         return self._stub[self._info.get_tag()]
 
     @property
@@ -838,14 +839,13 @@ class _Function(_Provider[_FunctionHandle]):
     _image: Optional[_Image]
     _gpu: Optional[GPU_T]
     _cloud: Optional[str]
-    _function_handle: _FunctionHandle
+    _handle: _FunctionHandle
     _stub: "modal.stub._Stub"
     _is_builder_function: bool
     _retry_policy: Optional[api_pb2.FunctionRetryPolicy]
 
     @staticmethod
     def from_args(
-        function_handle: _FunctionHandle,
         info: FunctionInfo,
         stub,
         image=None,
@@ -875,6 +875,21 @@ class _Function(_Provider[_FunctionHandle]):
         cls: Optional[type] = None,
     ) -> None:
         """mdmd:hidden"""
+        handle = _FunctionHandle._new()
+        handle._initialize_from_local(stub, info)
+
+        tag = info.get_tag()
+
+        if stub is not None and stub.app is not None:
+            # If the container is running, and we recognize this function, hydrate it
+            # TODO(erikbern): later when we merge apps and stubs, there should be no separate objects on the app,
+            # and there should be no need to "steal" ids
+            running_handle = stub.app._tag_to_object.get(tag)
+            if running_handle is not None:
+                function_id = running_handle.object_id
+                handle_metadata = running_handle._get_handle_metadata()
+                handle._hydrate(function_id, stub.app.client, handle_metadata)
+
         raw_f = info.raw_f
         assert callable(raw_f)
         if schedule is not None:
@@ -910,7 +925,7 @@ class _Function(_Provider[_FunctionHandle]):
             raise InvalidError(
                 f"Function {raw_f} retries must be an integer or instance of modal.Retries. Found: {type(retries)}"
             )
-        tag = info.get_tag()
+
         gpu_config = parse_gpu_config(gpu)
 
         if proxy:
@@ -976,8 +991,8 @@ class _Function(_Provider[_FunctionHandle]):
             )
             response = await resolver.client.stub.FunctionPrecreate(req)
             # Update the precreated function handle (todo: hack until we merge providers/handles)
-            function_handle._hydrate(response.function_id, resolver.client, response.handle_metadata)
-            return function_handle
+            handle._hydrate(response.function_id, resolver.client, response.handle_metadata)
+            return handle
 
         async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _FunctionHandle:
             # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
@@ -1163,19 +1178,17 @@ class _Function(_Provider[_FunctionHandle]):
             else:
                 status_row.finish(f"Created {tag}.")
 
-            # Instead of returning a new object, just return the precreated one
-            # TODO (elias): We should not have to run _hydrate in here since functions are preloaded. Needed for now due to some conflicts with builder_functions
-            function_handle._hydrate(response.function_id, resolver.client, response.handle_metadata)
-            return function_handle
+            handle._hydrate(response.function_id, resolver.client, response.handle_metadata)
+            return handle
 
         rep = f"Function({tag})"
         obj = _Function._from_loader(_load, rep, preload=_preload)
+        obj._handle = handle
         # TODO(erikbern): almost all of these are only needed because of modal.cli.run.shell
         obj._allow_cross_region_volumes = allow_cross_region_volumes
         obj._cloud = cloud
         obj._image = image
         obj._info = info
-        obj._function_handle = function_handle
         obj._gpu = gpu
         obj._gpu_config = gpu_config
         obj._mounts = mounts

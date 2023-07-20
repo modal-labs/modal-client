@@ -77,8 +77,8 @@ async def _run_stub(
             await app._create_all_objects(stub._blueprint, output_mgr, post_init_state, environment_name)
 
             # Update all functions client-side to have the output mgr
-            for tag, obj in stub._function_handles.items():
-                obj._set_output_mgr(output_mgr)
+            for tag, obj in stub.registered_functions.items():
+                obj._handle._set_output_mgr(output_mgr)
 
             # Yield to context
             if stub._pty_input_stream:

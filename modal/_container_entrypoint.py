@@ -577,10 +577,6 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Initialize the function
         with function_io_manager.handle_user_exception():
             imp_fun = import_function(container_args.function_def, ser_cls, ser_fun, container_args.serialized_params)
-            if imp_fun.stub:
-                _container_app = synchronizer._translate_in(container_app)
-                _client = synchronizer._translate_in(client)
-                imp_fun.stub._hydrate_function_handles(_client, _container_app)
 
         if container_args.function_def.pty_info.enabled:
             # TODO(erikbern): there is no client test for this branch

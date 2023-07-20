@@ -101,7 +101,6 @@ class _Stub:
     _function_mounts: Dict[str, _Mount]
     _mounts: Sequence[_Mount]
     _secrets: Sequence[_Secret]
-    _function_handles: Dict[str, _FunctionHandle]
     _web_endpoints: List[str]  # Used by the CLI
     _local_entrypoints: Dict[str, LocalEntrypoint]
     _app: Optional[_App]
@@ -148,10 +147,8 @@ class _Stub:
         self._function_mounts = {}
         self._mounts = mounts
         self._secrets = secrets
-        self._function_handles: Dict[str, _FunctionHandle] = {}
         self._local_entrypoints = {}
         self._web_endpoints = []
-
         self._app = None
 
         string_name = self._name or ""
@@ -333,22 +330,6 @@ class _Stub:
 
         return [m for m in all_mounts if m.is_local()]
 
-    def _get_function_handle(self, info: FunctionInfo) -> _FunctionHandle:
-        """This can either return a hydrated or an unhydrated _FunctionHandle
-
-        If called from within a container_app that has this function handle,
-        it will return a Hydrated funciton handle, but in all other contexts
-        it will be unhydrated.
-        """
-        tag = info.get_tag()
-        if tag in self._function_handles:
-            return self._function_handles[tag]
-
-        function_handle = _FunctionHandle._new()
-        function_handle._initialize_from_local(self, info)
-        self._function_handles[tag] = function_handle
-        return function_handle  # note that the function handle is not yet hydrated at this point:
-
     def _add_function(self, function: _Function):
         if function.tag in self._blueprint:
             old_function = self._blueprint[function.tag]
@@ -364,9 +345,9 @@ class _Stub:
         self._blueprint[function.tag] = function
 
     @property
-    def registered_functions(self) -> Dict[str, _FunctionHandle]:
+    def registered_functions(self) -> Dict[str, _Function]:
         """All modal.Function objects registered on the stub."""
-        return self._function_handles
+        return {tag: obj for tag, obj in self._blueprint.items() if isinstance(obj, _Function)}
 
     @property
     def registered_entrypoints(self) -> Dict[str, LocalEntrypoint]:
@@ -514,7 +495,7 @@ class _Stub:
                     ),
                 )
 
-            function_handle = self._get_function_handle(info)
+            info.get_tag()
 
             if is_generator_override is None:
                 is_generator_override = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
@@ -528,7 +509,6 @@ class _Stub:
                     self._blueprint["_pty_input_stream"] = _Queue.new()
 
             function = _Function.from_args(
-                function_handle,
                 info,
                 stub=self,
                 image=image,
@@ -557,7 +537,7 @@ class _Stub:
             )
 
             self._add_function(function)
-            return function_handle
+            return function._handle
 
         return wrapped
 
@@ -681,18 +661,6 @@ class _Stub:
             return user_cls
 
         return wrapper
-
-    def _hydrate_function_handles(self, client: _Client, container_app: _App):
-        for tag, obj in container_app._tag_to_object.items():
-            if isinstance(obj, _FunctionHandle):
-                function_id = obj.object_id
-                handle_metadata = obj._get_handle_metadata()
-                if tag not in self._function_handles:
-                    # this could happen if a sibling function decoration is lazy loaded at a later than function import
-                    # assigning the app's hydrated function handle ensures it will be used for the later decoration return value
-                    self._function_handles[tag] = obj
-                else:
-                    self._function_handles[tag]._hydrate(function_id, client, handle_metadata)
 
     def _get_deduplicated_function_mounts(self, mounts: Dict[str, _Mount]):
         cached_mounts = []
