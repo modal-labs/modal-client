@@ -878,6 +878,18 @@ class _Function(_Provider[_FunctionHandle]):
         handle = _FunctionHandle._new()
         handle._initialize_from_local(stub, info)
 
+        tag = info.get_tag()
+
+        if stub is not None and stub.app is not None:
+            # If the container is running, and we recognize this function, hydrate it
+            # TODO(erikbern): later when we merge apps and stubs, there should be no separate objects on the app,
+            # and there should be no need to "steal" ids
+            running_handle = stub.app._tag_to_object.get(tag)
+            if running_handle is not None:
+                function_id = running_handle.object_id
+                handle_metadata = running_handle._get_handle_metadata()
+                handle._hydrate(function_id, stub.app.client, handle_metadata)
+
         raw_f = info.raw_f
         assert callable(raw_f)
         if schedule is not None:
@@ -913,7 +925,7 @@ class _Function(_Provider[_FunctionHandle]):
             raise InvalidError(
                 f"Function {raw_f} retries must be an integer or instance of modal.Retries. Found: {type(retries)}"
             )
-        tag = info.get_tag()
+
         gpu_config = parse_gpu_config(gpu)
 
         if proxy:

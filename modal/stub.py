@@ -5,9 +5,8 @@ import sys
 import typing
 import warnings
 from datetime import date
-from typing import Any, AsyncGenerator, Callable, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, AsyncGenerator, Callable, Dict, List, Optional, Sequence, Union
 
-from google.protobuf.message import Message
 from synchronicity.async_wrap import asynccontextmanager
 
 from modal._types import typechecked
@@ -102,7 +101,6 @@ class _Stub:
     _function_mounts: Dict[str, _Mount]
     _mounts: Sequence[_Mount]
     _secrets: Sequence[_Secret]
-    _functions_not_seen_yet: Dict[str, Tuple[str, Optional[Message]]]
     _web_endpoints: List[str]  # Used by the CLI
     _local_entrypoints: Dict[str, LocalEntrypoint]
     _app: Optional[_App]
@@ -151,7 +149,6 @@ class _Stub:
         self._secrets = secrets
         self._local_entrypoints = {}
         self._web_endpoints = []
-        self._functions_not_seen_yet = {}
         self._app = None
 
         string_name = self._name or ""
@@ -498,7 +495,7 @@ class _Stub:
                     ),
                 )
 
-            tag = info.get_tag()
+            info.get_tag()
 
             if is_generator_override is None:
                 is_generator_override = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
@@ -540,13 +537,6 @@ class _Stub:
             )
 
             self._add_function(function)
-
-            if tag in self._functions_not_seen_yet:
-                # See comment in hydrate_function_handles
-                function_id, metadata = self._functions_not_seen_yet[tag]
-                client = self.app.client
-                function._handle._hydrate(function_id, client, metadata)
-
             return function._handle
 
         return wrapped
@@ -671,20 +661,6 @@ class _Stub:
             return user_cls
 
         return wrapper
-
-    def _hydrate_function_handles(self, client: _Client, container_app: _App):
-        for tag, obj in container_app._tag_to_object.items():
-            if isinstance(obj, _FunctionHandle):
-                function_id = obj.object_id
-                handle_metadata = obj._get_handle_metadata()
-                if tag in self._blueprint:
-                    # TODO: this is kind of weird, because we end up with two versions of the same handle
-                    # One on the app, and one in the global scope
-                    self._blueprint[tag]._handle._hydrate(client, function_id, handle_metadata)
-                else:
-                    # this could happen if a sibling function decoration is lazy loaded at a later than function import
-                    # assigning the app's hydrated function handle ensures it will be used for the later decoration return value
-                    self._functions_not_seen_yet[tag] = (function_id, handle_metadata)
 
     def _get_deduplicated_function_mounts(self, mounts: Dict[str, _Mount]):
         cached_mounts = []
