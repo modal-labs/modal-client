@@ -61,7 +61,7 @@ class _LogsReader:
 LogsReader = synchronize_api(_LogsReader)
 
 
-class _SandboxHandle(_Handle, type_prefix="sa"):
+class _SandboxHandle(_Handle, type_prefix="sb"):
     """mdmd:hidden"""
 
     _result: Optional[api_pb2.GenericResult]
