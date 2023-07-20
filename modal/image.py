@@ -1175,7 +1175,7 @@ class _Image(_Provider[_ImageHandle]):
         )
         ```
         """
-        from .functions import _Function, _FunctionHandle
+        from .functions import _Function
 
         info = FunctionInfo(raw_f)
 
