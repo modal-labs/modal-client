@@ -938,7 +938,7 @@ enum GPUType {
   GPU_TYPE_A10G = 3;
   GPU_TYPE_ANY = 4;
   GPU_TYPE_A100_20G = 5;
-  GPU_TYPE_A100_40GB_MANY = 6;
+  GPU_TYPE_A100_40GB_MANY = 6 [deprecated=true];
   GPU_TYPE_INFERENTIA2 = 7;
 }
 
