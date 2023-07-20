@@ -122,7 +122,7 @@ def make_function_panel(idx: int, tag: str, function: _Function, stub: _Stub) ->
 
 def choose_function_interactive(stub: _Stub, console: Console) -> str:
     # TODO: allow selection of local_entrypoints when used from `modal run`
-    functions = [(tag, function_handle._get_function()) for tag, function_handle in stub.registered_functions.items()]
+    functions = list(stub.registered_functions.items())
     function_panels = [make_function_panel(idx, tag, obj, stub) for idx, (tag, obj) in enumerate(functions)]
 
     renderable = Panel(Group(*function_panels))

@@ -839,7 +839,7 @@ class _Function(_Provider[_FunctionHandle]):
     _image: Optional[_Image]
     _gpu: Optional[GPU_T]
     _cloud: Optional[str]
-    _function_handle: _FunctionHandle
+    _handle: _FunctionHandle
     _stub: "modal.stub._Stub"
     _is_builder_function: bool
     _retry_policy: Optional[api_pb2.FunctionRetryPolicy]
