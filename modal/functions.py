@@ -782,7 +782,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
             return None
 
         invocation = await self._call_function_nowait(args, kwargs)
-        return _FunctionCall._from_id(invocation.function_call_id, invocation.client, None)
+        return _FunctionCall._new_hydrated(invocation.function_call_id, invocation.client, None)
 
     def get_raw_f(self) -> Callable[..., Any]:
         """Return the inner Python object wrapped by this Modal Function."""

@@ -75,7 +75,9 @@ class _Handle(metaclass=ObjectMeta):
         return None
 
     @classmethod
-    def _from_id(cls: Type[H], object_id: str, client: _Client, handle_metadata: Optional[Message]) -> H:
+    def _new_hydrated(cls: Type[H], object_id: str, client: _Client, handle_metadata: Optional[Message]) -> H:
+        """Similar to `_new` and `_hydrate` but does both at the same time."""
+
         if cls._type_prefix is not None:
             # This is called directly on a subclass, e.g. Secret.from_id
             if not object_id.startswith(cls._type_prefix + "-"):
@@ -108,7 +110,7 @@ class _Handle(metaclass=ObjectMeta):
         )
 
         handle_metadata = get_proto_oneof(app_lookup_object_response, "handle_metadata_oneof")
-        return cls._from_id(object_id, client, handle_metadata)
+        return cls._new_hydrated(object_id, client, handle_metadata)
 
     @property
     def object_id(self) -> str:
@@ -149,7 +151,7 @@ class _Handle(metaclass=ObjectMeta):
                 raise
 
         handle_metadata = get_proto_oneof(response, "handle_metadata_oneof")
-        return cls._from_id(response.object_id, client, handle_metadata)
+        return cls._new_hydrated(response.object_id, client, handle_metadata)
 
 
 Handle = synchronize_api(_Handle)
