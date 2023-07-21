@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-import asyncio
 from typing import TYPE_CHECKING, Dict, Optional, TypeVar
 
 from modal_proto import api_pb2
@@ -11,11 +10,11 @@ from ._resolver import Resolver
 from .client import _Client
 from .config import logger
 from .object import _Handle, _Provider
-from .sandbox import _SandboxHandle
 
 if TYPE_CHECKING:
     from rich.tree import Tree
 
+    import modal.sandbox
 else:
     Tree = TypeVar("Tree")
 
@@ -261,33 +260,15 @@ class _App:
         deploy_response = await retry_transient_errors(self._client.stub.AppDeploy, deploy_req)
         return deploy_response.url
 
-    async def spawn_sandbox(self, program: str, *args: str, image=None, mounts=[]) -> _SandboxHandle:
+    async def spawn_sandbox(self, *entrypoint_args: str, image=None, mounts=[]) -> "modal.sandbox._SandboxHandle":
+        from .sandbox import _Sandbox
         from .stub import _default_image
 
         self.track_function_invocation()
 
         resolver = Resolver(self._output_mgr, self._client, self._environment_name, self.app_id)
-
-        async def _load_mounts():
-            handles = await asyncio.gather(*[resolver.load(mount) for mount in mounts])
-            return [handle.object_id for handle in handles]
-
-        async def _load_image():
-            image_handle = await resolver.load(image or _default_image)
-            return image_handle.object_id
-
-        image_id, mount_ids = await asyncio.gather(_load_image(), _load_mounts())
-
-        definition = api_pb2.Sandbox(
-            entrypoint_args=[program, *args],
-            image_id=image_id,
-            mount_ids=mount_ids,
-        )
-
-        create_req = api_pb2.SandboxCreateRequest(app_id=self.app_id, definition=definition)
-        create_resp = await retry_transient_errors(self._client.stub.SandboxCreate, create_req)
-
-        return _SandboxHandle.from_id(create_resp.sandbox_id, self._client)
+        provider = _Sandbox._new(list(entrypoint_args), image or _default_image, mounts)
+        return await resolver.load(provider)
 
     @staticmethod
     def _reset_container():

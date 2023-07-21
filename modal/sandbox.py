@@ -1,13 +1,19 @@
-from typing import Optional, Type
+# Copyright Modal Labs 2022
+import asyncio
+from typing import List, Optional
 
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
+from modal.exception import InvalidError
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
 
+from ._resolver import Resolver
 from .client import _Client
-from .object import _Handle
+from .image import _Image
+from .mount import _Mount
+from .object import _Handle, _Provider
 
 
 class _LogsReader:
@@ -69,13 +75,6 @@ class _SandboxHandle(_Handle, type_prefix="sb"):
     _stdout: _LogsReader
     _stderr: _LogsReader
 
-    @classmethod
-    def from_id(cls: Type["_SandboxHandle"], object_id: str, client: Optional[_Client] = None) -> "_SandboxHandle":
-        obj = cls._from_id(object_id, client, None)
-        obj._stdout = LogsReader(api_pb2.FILE_DESCRIPTOR_STDOUT, object_id, client)
-        obj._stderr = LogsReader(api_pb2.FILE_DESCRIPTOR_STDERR, object_id, client)
-        return obj
-
     async def wait(self):
         while True:
             req = api_pb2.SandboxWaitRequest(sandbox_id=self._object_id, timeout=50)
@@ -94,3 +93,47 @@ class _SandboxHandle(_Handle, type_prefix="sb"):
 
 
 SandboxHandle = synchronize_api(_SandboxHandle)
+
+
+class _Sandbox(_Provider[_SandboxHandle]):
+    @staticmethod
+    def _new(
+        entrypoint_args: List[str],
+        image: _Image,
+        mounts: List[_Mount],
+    ) -> _SandboxHandle:
+        if len(entrypoint_args) == 0:
+            raise InvalidError("entrypoint_args must not be empty")
+
+        async def _load(resolver: Resolver, _existing_object_id: Optional[str]) -> _SandboxHandle:
+            handle: _SandboxHandle = _SandboxHandle._new()
+
+            async def _load_mounts():
+                handles = await asyncio.gather(*[resolver.load(mount) for mount in mounts])
+                return [handle.object_id for handle in handles]
+
+            async def _load_image():
+                image_handle = await resolver.load(image)
+                return image_handle.object_id
+
+            image_id, mount_ids = await asyncio.gather(_load_image(), _load_mounts())
+            definition = api_pb2.Sandbox(
+                entrypoint_args=entrypoint_args,
+                image_id=image_id,
+                mount_ids=mount_ids,
+            )
+
+            create_req = api_pb2.SandboxCreateRequest(app_id=resolver.app_id, definition=definition)
+            create_resp = await retry_transient_errors(resolver.client.stub.SandboxCreate, create_req)
+
+            sandbox_id = create_resp.sandbox_id
+            handle._hydrate(sandbox_id, resolver.client, None)
+
+            handle._stdout = LogsReader(api_pb2.FILE_DESCRIPTOR_STDOUT, sandbox_id, resolver.client)
+            handle._stderr = LogsReader(api_pb2.FILE_DESCRIPTOR_STDERR, sandbox_id, resolver.client)
+            return handle
+
+        return _Sandbox._from_loader(_load, "Sandbox()")
+
+
+Sandbox = synchronize_api(_Sandbox)
