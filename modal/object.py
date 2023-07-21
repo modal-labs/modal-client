@@ -52,27 +52,30 @@ class _Handle(metaclass=ObjectMeta):
     def _initialize_from_empty(self):
         pass  # default implementation
 
-    def _hydrate(self, object_id: str, client: _Client, handle_metadata: Optional[Message]):
+    def _hydrate(self, object_id: str, client: _Client, metadata: Optional[Message]):
         self._object_id = object_id
         self._client = client
-        if handle_metadata:
-            self._hydrate_metadata(handle_metadata)
+        if metadata:
+            self._hydrate_metadata(metadata)
         self._is_hydrated = True
+
+    def _hydrate_from_other(self, other: "_Handle"):
+        self._hydrate(other.object_id, other._client, other._get_metadata())
 
     def is_hydrated(self) -> bool:
         # A hydrated Handle is fully functional and linked to a live object in an app
         # To hydrate Handles, run an app using stub.run() or look up the object from a running app using <HandleClass>.lookup()
         return self._is_hydrated
 
-    def _hydrate_metadata(self, handle_metadata: Message):
+    def _hydrate_metadata(self, metadata: Message):
         # override this is subclasses that need additional data (other than an object_id) for a functioning Handle
         pass
 
-    def _get_handle_metadata(self) -> Optional[Message]:
+    def _get_metadata(self) -> Optional[Message]:
         # return the necessary metadata from this handle to be able to re-hydrate in another context if one is needed
         # used to provide a handle's handle_metadata for serializing/pickling a live handle
         # the object_id is already provided by other means
-        return None
+        return
 
     @classmethod
     def _new_hydrated(cls: Type[H], object_id: str, client: _Client, handle_metadata: Optional[Message]) -> H:
@@ -217,6 +220,7 @@ class _Provider(Generic[H]):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
+        handle: Optional[H] = None,
     ) -> H:
         """
         Note 1: this uses the single-object app method, which we're planning to get rid of later
@@ -233,9 +237,14 @@ class _Provider(Generic[H]):
         handle_cls = self._get_handle_cls()
         object_entity = handle_cls._type_prefix
         app = await _App._init_from_name(client, label, namespace, environment_name=environment_name)
-        handle = await app.create_one_object(self, environment_name)
+        handle_2 = await app.create_one_object(self, environment_name)
         await app.deploy(label, namespace, object_entity)  # TODO(erikbern): not needed if the app already existed
-        return handle
+        if handle is None:
+            return handle_2
+        else:
+            # TODO(erikbern): temporary workaround for now, let's clean up soon
+            handle._hydrate_from_other(handle_2)
+            return handle
 
     def persist(
         self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
@@ -254,8 +263,12 @@ class _Provider(Generic[H]):
         if environment_name is None:
             environment_name = config.get("environment")
 
+        handle_cls = self._get_handle_cls()
+        handle: H = handle_cls._new()
+            
         async def _load_persisted(resolver: Resolver, existing_object_id: Optional[str]) -> H:
-            return await self._deploy(label, namespace, resolver.client, environment_name=environment_name)
+            await self._deploy(label, namespace, resolver.client, environment_name=environment_name, handle=handle)
+            return handle
 
         cls = type(self)
         rep = f"PersistedRef<{self}>({label})"

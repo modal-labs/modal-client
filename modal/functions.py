@@ -524,12 +524,12 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         self._stub = stub  # TODO(erikbern): remove
         self._info = info
 
-    def _hydrate_metadata(self, handle_metadata: Message):
+    def _hydrate_metadata(self, metadata: Message):
         # makes function usable
-        assert isinstance(handle_metadata, (api_pb2.Function, api_pb2.FunctionHandleMetadata))
-        self._is_generator = handle_metadata.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
-        self._web_url = handle_metadata.web_url
-        self._function_name = handle_metadata.function_name
+        assert isinstance(metadata, (api_pb2.Function, api_pb2.FunctionHandleMetadata))
+        self._is_generator = metadata.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
+        self._web_url = metadata.web_url
+        self._function_name = metadata.function_name
 
     async def _make_bound_function_handle(self, *args: Iterable[Any], **kwargs: Dict[str, Any]) -> "_FunctionHandle":
         assert self.is_hydrated(), "Cannot make bound function handle from unhydrated handle."
@@ -560,7 +560,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
     def _get_self_obj(self):
         return self._self_obj
 
-    def _get_handle_metadata(self):
+    def _get_metadata(self):
         return api_pb2.FunctionHandleMetadata(
             function_name=self._function_name,
             function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR
@@ -886,9 +886,7 @@ class _Function(_Provider[_FunctionHandle]):
             # and there should be no need to "steal" ids
             running_handle = stub.app._tag_to_object.get(tag)
             if running_handle is not None:
-                function_id = running_handle.object_id
-                handle_metadata = running_handle._get_handle_metadata()
-                handle._hydrate(function_id, stub.app.client, handle_metadata)
+                handle._hydrate_from_other(running_handle)
 
         raw_f = info.raw_f
         assert callable(raw_f)
