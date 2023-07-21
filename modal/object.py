@@ -265,7 +265,7 @@ class _Provider(Generic[H]):
 
         handle_cls = self._get_handle_cls()
         handle: H = handle_cls._new()
-            
+
         async def _load_persisted(resolver: Resolver, existing_object_id: Optional[str]) -> H:
             await self._deploy(label, namespace, resolver.client, environment_name=environment_name, handle=handle)
             return handle
@@ -299,7 +299,7 @@ class _Provider(Generic[H]):
 
         handle_cls = cls._get_handle_cls()
         handle: H = handle_cls._new()
-        
+
         async def _load_remote(resolver: Resolver, existing_object_id: Optional[str]) -> H:
             nonlocal environment_name
             if environment_name is None:
@@ -338,7 +338,7 @@ class _Provider(Generic[H]):
         """
         handle_cls = cls._get_handle_cls()
         handle: H = handle_cls._new()
-        handle._hydrate_from_app(app_name, tag, namespace, client, environment_name=environment_name)
+        await handle._hydrate_from_app(app_name, tag, namespace, client, environment_name=environment_name)
         return handle
 
     @classmethod
