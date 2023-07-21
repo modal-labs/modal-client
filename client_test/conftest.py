@@ -8,6 +8,7 @@ import inspect
 import os
 import pytest
 import shutil
+import subprocess
 import sys
 import tempfile
 import traceback
@@ -133,7 +134,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.volume_commits: Dict[str, int] = defaultdict(lambda: 0)
         self.volume_reloads: Dict[str, int] = defaultdict(lambda: 0)
 
-        self.sandbox: asyncio.subprocess.Process = None
+        self.sandbox: subprocess.Popen = None
 
         @self.function_body
         def default_function_body(*args, **kwargs):
@@ -580,17 +581,18 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SandboxCreate(self, stream):
         request: api_pb2.SandboxCreateRequest = await stream.recv_message()
-        self.sandbox = await asyncio.subprocess.create_subprocess_exec(
-            *request.definition.entrypoint_args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        # Not using asyncio.subprocess here for Python 3.7 compatibility.
+        self.sandbox = subprocess.Popen(
+            request.definition.entrypoint_args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
         await stream.send_message(api_pb2.SandboxCreateResponse(sandbox_id="sb-123"))
 
     async def SandboxGetLogs(self, stream):
         request: api_pb2.SandboxGetLogsRequest = await stream.recv_message()
         if request.file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
-            data = await self.sandbox.stdout.read()
+            data = self.sandbox.stdout.read()
         else:
-            data = await self.sandbox.stderr.read()
+            data = self.sandbox.stderr.read()
         await stream.send_message(
             api_pb2.TaskLogsBatch(
                 items=[api_pb2.TaskLogs(data=data.decode("utf-8"), file_descriptor=request.file_descriptor)]
@@ -599,7 +601,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(api_pb2.TaskLogsBatch(eof=True))
 
     async def SandboxWait(self, stream):
-        await self.sandbox.wait()
+        self.sandbox.wait()
         await stream.send_message(
             api_pb2.SandboxWaitResponse(
                 result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
