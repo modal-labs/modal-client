@@ -137,6 +137,7 @@ def type_stubs(ctx):
         "modal.app",
         "modal.client",
         "modal.dict",
+        "modal.environments",
         "modal.functions",
         "modal.image",
         "modal.mount",
@@ -144,9 +145,9 @@ def type_stubs(ctx):
         "modal.object",
         "modal.proxy",
         "modal.queue",
+        "modal.sandbox",
         "modal.secret",
         "modal.stub",
         "modal.volume",
-        "modal.environments",
     ]
     subprocess.check_call(["python", "-m", "synchronicity.type_stubs", *modules])

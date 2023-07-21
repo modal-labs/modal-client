@@ -19,7 +19,7 @@ from .object import _Handle, _Provider
 class _LogsReader:
     """mdmd:hidden"""
 
-    def __init__(self, file_descriptor: "api_pb2.FileDescriptor.V", sandbox_id: str, client: _Client) -> None:
+    def __init__(self, file_descriptor: int, sandbox_id: str, client: _Client) -> None:
         self._file_descriptor = file_descriptor
         self._sandbox_id = sandbox_id
         self._client = client
