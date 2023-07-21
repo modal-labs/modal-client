@@ -117,9 +117,8 @@ class _Handle(metaclass=ObjectMeta):
         """A unique object id for this instance. Can be used to retrieve the object using `.from_id()`"""
         return self._object_id
 
-    @classmethod
-    async def from_app(
-        cls: Type[H],
+    async def _hydrate_from_app(
+        self: H,
         app_name: str,
         tag: Optional[str] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
@@ -136,7 +135,7 @@ class _Handle(metaclass=ObjectMeta):
             app_name=app_name,
             object_tag=tag,
             namespace=namespace,
-            object_entity=cls._type_prefix,
+            object_entity=self._type_prefix,
             environment_name=environment_name,
         )
         try:
@@ -151,7 +150,7 @@ class _Handle(metaclass=ObjectMeta):
                 raise
 
         handle_metadata = get_proto_oneof(response, "handle_metadata_oneof")
-        return cls._new_hydrated(response.object_id, client, handle_metadata)
+        return self._hydrate(response.object_id, client, handle_metadata)
 
 
 Handle = synchronize_api(_Handle)
@@ -241,8 +240,8 @@ class _Provider(Generic[H]):
     def persist(
         self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
     ):
-        """`Provider.persist` is deprecated for generic objects. See `SharedVolume.persisted` or `Dict.persisted`."""
-        # Note: this method is overridden in SharedVolume in Dict to print a warning
+        """`Provider.persist` is deprecated for generic objects. See `NetworkFileSystem.persisted` or `Dict.persisted`."""
+        # Note: this method is overridden in SharedVolume and Dict to print a warning
         deprecation_error(
             date(2023, 6, 30),
             self.persist.__doc__,
@@ -285,15 +284,17 @@ class _Provider(Generic[H]):
         ```
         """
 
+        handle_cls = cls._get_handle_cls()
+        handle: H = handle_cls._new()
+        
         async def _load_remote(resolver: Resolver, existing_object_id: Optional[str]) -> H:
             nonlocal environment_name
-            handle_cls = cls._get_handle_cls()
             if environment_name is None:
                 # resolver always has an environment name, associated with the current app setup
                 # fall back on that one if no explicit environment was set in the call itself
                 environment_name = resolver._environment_name
 
-            handle: H = await handle_cls.from_app(
+            await handle._hydrate_from_app(
                 app_name, tag, namespace, client=resolver.client, environment_name=environment_name
             )
             return handle
@@ -323,7 +324,8 @@ class _Provider(Generic[H]):
         ```
         """
         handle_cls = cls._get_handle_cls()
-        handle: H = await handle_cls.from_app(app_name, tag, namespace, client, environment_name=environment_name)
+        handle: H = handle_cls._new()
+        handle._hydrate_from_app(app_name, tag, namespace, client, environment_name=environment_name)
         return handle
 
     @classmethod
