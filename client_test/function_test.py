@@ -457,8 +457,8 @@ def test_closure_valued_serialized_function(client, servicer):
     assert functions["ret_bar"]() == "bar"
 
 
-def test_from_id_internal(client, servicer):
-    obj = FunctionCall._from_id("fc-123", client, None)
+def test_new_hydrated_internal(client, servicer):
+    obj = FunctionCall._new_hydrated("fc-123", client, None)
     assert obj.object_id == "fc-123"
 
 

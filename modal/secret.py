@@ -93,6 +93,7 @@ class _Secret(_Provider[_SecretHandle]):
         This will use the location of the script calling `modal.Secret.from_dotenv` as a
         starting point for finding the `.env` file.
         """
+        handle: _SecretHandle = _SecretHandle._new()
 
         async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _SecretHandle:
             try:
@@ -126,7 +127,9 @@ class _Secret(_Provider[_SecretHandle]):
                 existing_secret_id=existing_object_id,
             )
             resp = await resolver.client.stub.SecretCreate(req)
-            return _SecretHandle._from_id(resp.secret_id, resolver.client, None)
+
+            handle._hydrate(resp.secret_id, resolver.client, None)
+            return handle
 
         return _Secret._from_loader(_load, "Secret.from_dotenv()")
 

@@ -169,7 +169,7 @@ class _App:
             # TODO(erikbern): we shouldn't create new handles here if there are existing objects
             # FunctionHandle objects already exist in the global scope so let's grab those and hydrate
             handle_metadata = get_proto_oneof(item, "handle_metadata_oneof")
-            obj = _Handle._from_id(item.object_id, self._client, handle_metadata)
+            obj = _Handle._new_hydrated(item.object_id, self._client, handle_metadata)
             self._tag_to_object[item.tag] = obj
 
     @staticmethod
