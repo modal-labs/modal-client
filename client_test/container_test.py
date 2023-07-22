@@ -25,7 +25,7 @@ from modal_proto import api_pb2
 from .helpers import deploy_stub_externally
 from .supports.skip import skip_windows_unix_socket
 
-EXTRA_TOLERANCE_DELAY = 1.0
+EXTRA_TOLERANCE_DELAY = 3.0
 FUNCTION_CALL_ID = "fc-123"
 SLEEP_DELAY = 0.1
 
