@@ -34,7 +34,7 @@ class Pickler(cloudpickle.Pickler):
             return
         if not obj.object_id:
             raise InvalidError(f"Can't serialize object {obj} which hasn't been created.")
-        return (obj.object_id, get_synchronicity_interface(obj), obj._get_handle_metadata())
+        return (obj.object_id, get_synchronicity_interface(obj), obj._get_metadata())
 
 
 class Unpickler(pickle.Unpickler):
@@ -44,7 +44,7 @@ class Unpickler(pickle.Unpickler):
 
     def persistent_load(self, pid):
         (object_id, target_interface, handle_proto) = pid
-        raw_obj = _Handle._from_id(object_id, self.client, handle_proto)
+        raw_obj = _Handle._new_hydrated(object_id, self.client, handle_proto)
         return restore_synchronicity_interface(raw_obj, target_interface)
 
 

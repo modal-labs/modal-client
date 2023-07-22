@@ -130,7 +130,8 @@ class _Volume(_Provider[_VolumeHandle]):
             status_row = resolver.add_status_row()
             if existing_object_id:
                 # Volume already exists; do nothing.
-                return _VolumeHandle._from_id(existing_object_id, resolver.client, None)
+                handle._hydrate(existing_object_id, resolver.client, None)
+                return handle
 
             status_row.message("Creating volume...")
             req = api_pb2.VolumeCreateRequest(app_id=resolver.app_id)
