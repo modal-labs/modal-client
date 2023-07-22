@@ -105,9 +105,7 @@ class _Sandbox(_Provider[_SandboxHandle]):
         if len(entrypoint_args) == 0:
             raise InvalidError("entrypoint_args must not be empty")
 
-        async def _load(resolver: Resolver, _existing_object_id: Optional[str]) -> _SandboxHandle:
-            handle: _SandboxHandle = _SandboxHandle._new()
-
+        async def _load(resolver: Resolver, _existing_object_id: Optional[str], handle: _SandboxHandle):
             async def _load_mounts():
                 handles = await asyncio.gather(*[resolver.load(mount) for mount in mounts])
                 return [handle.object_id for handle in handles]
@@ -131,7 +129,6 @@ class _Sandbox(_Provider[_SandboxHandle]):
 
             handle._stdout = LogsReader(api_pb2.FILE_DESCRIPTOR_STDOUT, sandbox_id, resolver.client)
             handle._stderr = LogsReader(api_pb2.FILE_DESCRIPTOR_STDERR, sandbox_id, resolver.client)
-            return handle
 
         return _Sandbox._from_loader(_load, "Sandbox()")
 
