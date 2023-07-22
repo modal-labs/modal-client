@@ -47,7 +47,6 @@ class _App:
     _app_id: str
     _app_page_url: str
     _resolver: Optional[Resolver]
-    _function_invocations: int  # Number of function invocations made by this app.
     _environment_name: str
     _output_mgr: Optional[OutputManager]
 
@@ -68,7 +67,6 @@ class _App:
         self._client = client
         self._tag_to_object = tag_to_object or {}
         self._tag_to_existing_id = tag_to_existing_id or {}
-        self._function_invocations = 0
         self._stub_name = stub_name
         self._environment_name = environment_name
         self._output_mgr = output_mgr
@@ -150,13 +148,6 @@ class _App:
 
     def __getattr__(self, tag: str) -> _Handle:
         return self._tag_to_object[tag]
-
-    def track_function_invocation(self):
-        self._function_invocations += 1
-
-    @property
-    def function_invocations(self):
-        return self._function_invocations
 
     async def _init_container(self, client: _Client, app_id: str, stub_name: str):
         self._client = client
@@ -265,8 +256,6 @@ class _App:
     async def spawn_sandbox(self, *entrypoint_args: str, image=None, mounts=[]) -> "modal.sandbox._SandboxHandle":
         from .sandbox import _Sandbox
         from .stub import _default_image
-
-        self.track_function_invocation()
 
         resolver = Resolver(self._output_mgr, self._client, self._environment_name, self.app_id)
         provider = _Sandbox._new(list(entrypoint_args), image or _default_image, mounts)
