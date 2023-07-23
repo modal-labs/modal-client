@@ -215,6 +215,7 @@ message AppHeartbeatRequest {
   string app_id = 1;
 }
 
+
 message EnvironmentCreateRequest {
   string name = 1;
 }
@@ -805,6 +806,29 @@ message SandboxGetLogsRequest {
   string last_entry_id = 4;
 }
 
+message TaskInfo {
+  string id = 1;
+  double started_at = 2;
+  double finished_at = 3;
+  modal.client.GenericResult result = 4;
+}
+
+message SandboxInfo {
+  string id = 1;
+  modal.client.Sandbox definition = 2;
+  double created_at = 3;
+  TaskInfo task_info = 4;
+}
+
+message SandboxListRequest {
+  string app_id = 1;
+  double before_timestamp = 2;
+}
+
+message SandboxListResponse {
+  repeated SandboxInfo sandboxes = 1;
+}
+
 message Image {
   repeated BaseImage base_images = 5;
   repeated string dockerfile_commands = 6;
@@ -1303,10 +1327,11 @@ service ModalClient {
   rpc QueueGet(QueueGetRequest) returns (QueueGetResponse);
   rpc QueuePut(QueuePutRequest) returns (google.protobuf.Empty);
 
-  // Sandbox tasks
+  // Sandboxes
   rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);
   rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
   rpc SandboxWait(SandboxWaitRequest) returns (SandboxWaitResponse);
+  rpc SandboxList(SandboxListRequest) returns (SandboxListResponse);
 
   // Secrets
   rpc SecretCreate(SecretCreateRequest) returns (SecretCreateResponse);
