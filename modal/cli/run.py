@@ -124,7 +124,7 @@ def _get_click_command_for_local_entrypoint(_stub, entrypoint: LocalEntrypoint):
                 asyncio.run(func(*args, **kwargs))
             else:
                 func(*args, **kwargs)
-            if app.function_invocations == 0:
+            if app.client.function_invocations == 0:
                 # TODO: better formatting for the warning message
                 warnings.warn(
                     "Warning: no remote function calls were made.\n"

@@ -589,8 +589,8 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         return self._is_generator
 
     def _track_function_invocation(self):
-        if self._stub and self._stub.app:
-            self._stub.app.track_function_invocation()
+        if self._client is not None:  # Note that if it is None, then it will fail later anyway
+            self._client.track_function_invocation()
 
     async def _map(self, input_stream: AsyncIterable[Any], order_outputs: bool, return_exceptions: bool, kwargs={}):
         if self._web_url:
