@@ -875,18 +875,7 @@ class _Function(_Provider[_FunctionHandle]):
         cls: Optional[type] = None,
     ) -> None:
         """mdmd:hidden"""
-        handle = _FunctionHandle._new()
-        handle._initialize_from_local(stub, info)
-
         tag = info.get_tag()
-
-        if stub is not None and stub.app is not None:
-            # If the container is running, and we recognize this function, hydrate it
-            # TODO(erikbern): later when we merge apps and stubs, there should be no separate objects on the app,
-            # and there should be no need to "steal" ids
-            running_handle = stub.app._tag_to_object.get(tag)
-            if running_handle is not None:
-                handle._hydrate_from_other(running_handle)
 
         raw_f = info.raw_f
         assert callable(raw_f)
@@ -974,7 +963,7 @@ class _Function(_Provider[_FunctionHandle]):
             else:
                 raise InvalidError("Webhooks cannot be generators")
 
-        async def _preload(resolver: Resolver, existing_object_id: Optional[str]) -> _FunctionHandle:
+        async def _preload(resolver: Resolver, existing_object_id: Optional[str], handle: _FunctionHandle):
             if is_generator:
                 function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
             else:
@@ -992,7 +981,7 @@ class _Function(_Provider[_FunctionHandle]):
             handle._hydrate(response.function_id, resolver.client, response.handle_metadata)
             return handle
 
-        async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _FunctionHandle:
+        async def _load(resolver: Resolver, existing_object_id: Optional[str], handle: _FunctionHandle):
             # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
             status_row = resolver.add_status_row()
             status_row.message(f"Creating {tag}...")
@@ -1177,11 +1166,21 @@ class _Function(_Provider[_FunctionHandle]):
                 status_row.finish(f"Created {tag}.")
 
             handle._hydrate(response.function_id, resolver.client, response.handle_metadata)
-            return handle
 
         rep = f"Function({tag})"
         obj = _Function._from_loader(_load, rep, preload=_preload)
-        obj._handle = handle
+
+        if stub is not None and stub.app is not None:
+            # If the container is running, and we recognize this function, hydrate it
+            # TODO(erikbern): later when we merge apps and stubs, there should be no separate objects on the app,
+            # and there should be no need to "steal" ids
+            running_handle = stub.app._tag_to_object.get(tag)
+            if running_handle is not None:
+                obj._handle._hydrate_from_other(running_handle)
+
+        # TODO(erikbern): we should also get rid of this
+        obj._handle._initialize_from_local(stub, info)
+
         # TODO(erikbern): almost all of these are only needed because of modal.cli.run.shell
         obj._allow_cross_region_volumes = allow_cross_region_volumes
         obj._cloud = cloud

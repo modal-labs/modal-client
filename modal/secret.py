@@ -54,9 +54,7 @@ class _Secret(_Provider[_SecretHandle]):
         ):
             raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
 
-        handle: _SecretHandle = _SecretHandle._new()
-
-        async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _SecretHandle:
+        async def _load(resolver: Resolver, existing_object_id: Optional[str], handle: _SecretHandle):
             req = api_pb2.SecretCreateRequest(
                 app_id=resolver.app_id,
                 env_dict=env_dict,
@@ -65,7 +63,6 @@ class _Secret(_Provider[_SecretHandle]):
             )
             resp = await resolver.client.stub.SecretCreate(req)
             handle._hydrate(resp.secret_id, resolver.client, None)
-            return handle
 
         rep = f"Secret.from_dict([{', '.join(env_dict.keys())}])"
         return _Secret._from_loader(_load, rep)
@@ -93,9 +90,8 @@ class _Secret(_Provider[_SecretHandle]):
         This will use the location of the script calling `modal.Secret.from_dotenv` as a
         starting point for finding the `.env` file.
         """
-        handle: _SecretHandle = _SecretHandle._new()
 
-        async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _SecretHandle:
+        async def _load(resolver: Resolver, existing_object_id: Optional[str], handle: _SecretHandle):
             try:
                 from dotenv import dotenv_values, find_dotenv
                 from dotenv.main import _walk_to_root
@@ -129,7 +125,6 @@ class _Secret(_Provider[_SecretHandle]):
             resp = await resolver.client.stub.SecretCreate(req)
 
             handle._hydrate(resp.secret_id, resolver.client, None)
-            return handle
 
         return _Secret._from_loader(_load, "Secret.from_dotenv()")
 

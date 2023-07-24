@@ -142,8 +142,7 @@ class _Mount(_Provider[_MountHandle]):
     @staticmethod
     def _from_entries(*entries: _MountEntry) -> "_Mount":
         rep = f"Mount({entries})"
-        handle: _MountHandle = _MountHandle._new()
-        load = functools.partial(_Mount._load_mount, entries, handle)
+        load = functools.partial(_Mount._load_mount, entries)
         obj = _Mount._from_loader(load, rep)
         obj._entries = entries
         obj._is_local = True
@@ -256,7 +255,10 @@ class _Mount(_Provider[_MountHandle]):
 
     @staticmethod
     async def _load_mount(
-        entries: List[_MountEntry], handle: _MountHandle, resolver: Resolver, existing_object_id: Optional[str]
+        entries: List[_MountEntry],
+        resolver: Resolver,
+        existing_object_id: Optional[str],
+        handle: _MountHandle,
     ):
         # Run a threadpool to compute hash values, and use concurrent coroutines to register files.
         t0 = time.time()
