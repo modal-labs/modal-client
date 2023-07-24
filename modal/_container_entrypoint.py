@@ -578,7 +578,9 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         with function_io_manager.handle_user_exception():
             imp_fun = import_function(container_args.function_def, ser_cls, ser_fun, container_args.serialized_params)
 
-        if container_args.function_def.pty_info.enabled:
+        pty_info: api_pb2.PTYInfo = container_args.function_def.pty_info
+        if pty_info.pty_type or pty_info.enabled:
+            # TODO(erikbern): the second condition is for legacy compatibility, remove soon
             # TODO(erikbern): there is no client test for this branch
             input_stream_unwrapped = synchronizer._translate_in(container_app._pty_input_stream)
             input_stream_blocking = synchronizer._translate_out(input_stream_unwrapped, Interface.BLOCKING)
