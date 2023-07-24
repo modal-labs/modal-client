@@ -435,12 +435,18 @@ message DomainCertificateVerifyResponse {
 }
 
 message PTYInfo {
-  bool enabled = 1;
+  bool enabled = 1;  // Soon deprecated
   uint32 winsz_rows = 2;
   uint32 winsz_cols = 3;
   string env_term = 4;
   string env_colorterm = 5;
   string env_term_program = 6;
+  enum PTYType {
+    PTY_TYPE_UNSPECIFIED = 0;  // Nothing
+    PTY_TYPE_FUNCTION = 1;  // Run function in PTY
+    PTY_TYPE_SHELL = 2;  // Replace function with shell
+  }
+  PTYType pty_type = 7;
 }
 
 message Function {
