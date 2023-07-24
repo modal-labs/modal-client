@@ -276,14 +276,8 @@ def shell(
         func_ref, accept_local_entrypoint=False, accept_webhook=True, interactive=True, base_cmd="modal shell"
     )
     assert isinstance(_function_handle, _FunctionHandle)  # ensured by accept_local_entrypoint=False
-    _stub = _function_handle._stub
-    _function = _function_handle._get_function()
-    blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
-    blocking_function = synchronizer._translate_out(_function, Interface.BLOCKING)
-
     interactive_shell(
-        blocking_stub,
+        _function_handle,
         cmd,
-        blocking_function,
         environment_name=env,
     )

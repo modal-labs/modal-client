@@ -319,6 +319,14 @@ class _Stub:
     def _pty_input_stream(self):
         return self._blueprint.get("_pty_input_stream", None)
 
+    def _add_pty_input_stream(self):
+        if self._pty_input_stream:
+            warnings.warn(
+                "Running multiple interactive functions at the same time is not fully supported, and could lead to unexpected behavior."
+            )
+        else:
+            self._blueprint["_pty_input_stream"] = _Queue.new()
+
     def _get_watch_mounts(self):
         all_mounts = [
             *self._mounts,
@@ -501,12 +509,7 @@ class _Stub:
                 is_generator_override = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
 
             if interactive:
-                if self._pty_input_stream:
-                    warnings.warn(
-                        "Running multiple interactive functions at the same time is not fully supported, and could lead to unexpected behavior."
-                    )
-                else:
-                    self._blueprint["_pty_input_stream"] = _Queue.new()
+                self._add_pty_input_stream()
 
             function = _Function.from_args(
                 info,
