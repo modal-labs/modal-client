@@ -165,24 +165,34 @@ _BLOCKING_P = synchronize_api(P)
 
 
 class _Provider(Generic[H]):
-    _load: Callable[[Resolver, Optional[str]], Awaitable[H]]
-    _preload: Optional[Callable[[Resolver, Optional[str]], Awaitable[H]]]
+    _load: Callable[[Resolver, Optional[str], H], Awaitable[None]]
+    _preload: Optional[Callable[[Resolver, Optional[str], H], Awaitable[None]]]
 
     def __init__(self):
         raise Exception("__init__ disallowed, use proper classmethods")
 
+    @classmethod
+    def _get_handle_cls(cls) -> Type[H]:
+        (base,) = cls.__orig_bases__  # type: ignore
+        (handle_cls,) = base.__args__
+        return handle_cls
+
     def _init(
         self,
-        load: Callable[[Resolver, Optional[str]], Awaitable[H]],
+        load: Callable[[Resolver, Optional[str], H], Awaitable[None]],
         rep: str,
         is_persisted_ref: bool = False,
-        preload: Optional[Callable[[Resolver, Optional[str]], Awaitable[H]]] = None,
+        preload: Optional[Callable[[Resolver, Optional[str], H], Awaitable[None]]] = None,
     ):
         self._local_uuid = str(uuid.uuid4())
         self._load = load
         self._preload = preload
         self._rep = rep
         self._is_persisted_ref = is_persisted_ref
+
+        # Create an unhydrated handle
+        handle_cls = self._get_handle_cls()
+        self._handle = handle_cls._new()
 
     def _init_from_other(self, other: "_Provider"):
         # Transient use case, see Dict, Queue, and SharedVolume
@@ -191,20 +201,14 @@ class _Provider(Generic[H]):
     @classmethod
     def _from_loader(
         cls,
-        load: Callable[[Resolver, Optional[str]], Awaitable[H]],
+        load: Callable[[Resolver, Optional[str], H], Awaitable[None]],
         rep: str,
         is_persisted_ref: bool = False,
-        preload: Optional[Callable[[Resolver, Optional[str]], Awaitable[H]]] = None,
+        preload: Optional[Callable[[Resolver, Optional[str], H], Awaitable[None]]] = None,
     ):
         obj = _Handle.__new__(cls)
         obj._init(load, rep, is_persisted_ref, preload)
         return obj
-
-    @classmethod
-    def _get_handle_cls(cls) -> Type[H]:
-        (base,) = cls.__orig_bases__  # type: ignore
-        (handle_cls,) = base.__args__
-        return handle_cls
 
     def __repr__(self):
         return self._rep
@@ -263,12 +267,8 @@ class _Provider(Generic[H]):
         if environment_name is None:
             environment_name = config.get("environment")
 
-        handle_cls = self._get_handle_cls()
-        handle: H = handle_cls._new()
-
-        async def _load_persisted(resolver: Resolver, existing_object_id: Optional[str]) -> H:
+        async def _load_persisted(resolver: Resolver, existing_object_id: Optional[str], handle: H):
             await self._deploy(label, namespace, resolver.client, environment_name=environment_name, handle=handle)
-            return handle
 
         cls = type(self)
         rep = f"PersistedRef<{self}>({label})"
@@ -297,10 +297,7 @@ class _Provider(Generic[H]):
         ```
         """
 
-        handle_cls = cls._get_handle_cls()
-        handle: H = handle_cls._new()
-
-        async def _load_remote(resolver: Resolver, existing_object_id: Optional[str]) -> H:
+        async def _load_remote(resolver: Resolver, existing_object_id: Optional[str], handle: H):
             nonlocal environment_name
             if environment_name is None:
                 # resolver always has an environment name, associated with the current app setup

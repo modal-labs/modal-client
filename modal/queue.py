@@ -139,13 +139,10 @@ class _Queue(_Provider[_QueueHandle]):
 
     @staticmethod
     def new():
-        handle: _QueueHandle = _QueueHandle._new()
-
-        async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _QueueHandle:
+        async def _load(resolver: Resolver, existing_object_id: Optional[str], handle: _QueueHandle):
             request = api_pb2.QueueCreateRequest(app_id=resolver.app_id, existing_queue_id=existing_object_id)
             response = await resolver.client.stub.QueueCreate(request)
             handle._hydrate(response.queue_id, resolver.client, None)
-            return handle
 
         return _Queue._from_loader(_load, "Queue()")
 

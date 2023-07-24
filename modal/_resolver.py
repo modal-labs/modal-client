@@ -73,9 +73,9 @@ class Resolver:
     def client(self):
         return self._client
 
-    async def preload(self, obj, existing_object_id: Optional[str] = None):
+    async def preload(self, obj, existing_object_id: Optional[str], handle):
         if obj._preload is not None:
-            return await obj._preload(self, existing_object_id)
+            return await obj._preload(self, existing_object_id, handle)
 
     async def load(self, obj, existing_object_id: Optional[str] = None):
         cached_future = self._local_uuid_to_future.get(obj.local_uuid)
@@ -83,8 +83,9 @@ class Resolver:
         if not cached_future:
             # don't run any awaits within this if-block to prevent race conditions
             async def loader():
-                created_obj = await obj._load(self, existing_object_id)
-                if existing_object_id is not None and created_obj.object_id != existing_object_id:
+                handle = obj._handle
+                await obj._load(self, existing_object_id, handle)
+                if existing_object_id is not None and handle.object_id != existing_object_id:
                     # TODO(erikbern): ignoring images is an ugly fix to a problem that's on the server.
                     # Unlike every other object, images are not assigned random ids, but rather an
                     # id given by the hash of its contents. This means we can't _force_ an image to
@@ -96,10 +97,10 @@ class Resolver:
                     if not obj._is_persisted_ref and not existing_object_id.startswith("im-"):
                         raise Exception(
                             f"Tried creating an object using existing id {existing_object_id}"
-                            f" but it has id {created_obj.object_id}"
+                            f" but it has id {handle.object_id}"
                         )
 
-                return created_obj
+                return handle
 
             cached_future = asyncio.create_task(loader())
             self._local_uuid_to_future[obj.local_uuid] = cached_future
