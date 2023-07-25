@@ -20,12 +20,25 @@ class _LogsReader:
     """Provides an interface to buffer and fetch logs from a sandbox stream (`stdout` or `stderr`)."""
 
     def __init__(self, file_descriptor: int, sandbox_id: str, client: _Client) -> None:
+        """mdmd:hidden"""
+
         self._file_descriptor = file_descriptor
         self._sandbox_id = sandbox_id
         self._client = client
 
-    async def read(self):
-        """Read all logs from the sandbox for the given stream."""
+    async def read(self) -> str:
+        """Fetch and return contents of the entire stream.
+
+        **Usage**
+
+        ```python
+        sandbox = stub.app.spawn_sandbox("echo", "hello")
+        sandbox.wait()
+
+        print(sandbox.stdout.read())
+        ```
+
+        """
 
         last_log_batch_entry_id = ""
         completed = False
@@ -73,7 +86,7 @@ LogsReader = synchronize_api(_LogsReader)
 
 
 class _SandboxHandle(_Handle, type_prefix="sb"):
-    """A SandboxHandle lets you interact with a spawned sandbox. This API is similar to Python's
+    """A `SandboxHandle` lets you interact with a spawned sandbox. This API is similar to Python's
     [asyncio.subprocess.Process](https://docs.python.org/3/library/asyncio-subprocess.html#asyncio.subprocess.Process).
 
     Refer to the [docs](/docs/guide/sandbox) on how to spawn and use sandboxes.
@@ -85,6 +98,7 @@ class _SandboxHandle(_Handle, type_prefix="sb"):
 
     async def wait(self):
         """Wait for the sandbox to finish running."""
+
         while True:
             req = api_pb2.SandboxWaitRequest(sandbox_id=self._object_id, timeout=50)
             resp = await retry_transient_errors(self._client.stub.SandboxWait, req)
@@ -94,19 +108,19 @@ class _SandboxHandle(_Handle, type_prefix="sb"):
 
     @property
     def stdout(self) -> _LogsReader:
-        """LogsReader for the sandbox's stdout stream."""
+        """`LogsReader` for the sandbox's stdout stream."""
 
         return self._stdout
 
     @property
     def stderr(self) -> _LogsReader:
-        """LogsReader for the sandbox's stderr stream."""
+        """`LogsReader` for the sandbox's stderr stream."""
 
         return self._stderr
 
     @property
     def returncode(self) -> Optional[int]:
-        """Return code of the sandbox process if it has finished running, else None."""
+        """Return code of the sandbox process if it has finished running, else `None`."""
 
         if self._result is None:
             return None
@@ -117,6 +131,8 @@ SandboxHandle = synchronize_api(_SandboxHandle)
 
 
 class _Sandbox(_Provider[_SandboxHandle]):
+    """mdmd:hidden"""
+
     @staticmethod
     def _new(
         entrypoint_args: Sequence[str],
@@ -124,6 +140,8 @@ class _Sandbox(_Provider[_SandboxHandle]):
         mounts: Sequence[_Mount],
         timeout: Optional[int] = None,
     ) -> _SandboxHandle:
+        """mdmd:hidden"""
+
         if len(entrypoint_args) == 0:
             raise InvalidError("entrypoint_args must not be empty")
 
