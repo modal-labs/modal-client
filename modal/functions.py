@@ -1458,6 +1458,8 @@ def _asgi_app(
     **Usage:**
 
     ```python
+    from typing import Callable
+
     @stub.function()
     @modal.asgi_app()
     def create_asgi() -> Callable:
@@ -1510,6 +1512,8 @@ def _wsgi_app(
     **Usage:**
 
     ```python
+    from typing import Callable
+
     @stub.function()
     @modal.wsgi_app()
     def create_wsgi() -> Callable:
