@@ -99,7 +99,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.task_result = None
 
-        self.shared_volume_files: Dict[str, Dict[str, api_pb2.SharedVolumePutFileRequest]] = defaultdict(dict)
+        self.nfs_files: Dict[str, Dict[str, api_pb2.SharedVolumePutFileRequest]] = defaultdict(dict)
         self.images = {}
         self.image_build_function_ids = {}
         self.force_built_images = []
@@ -629,12 +629,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SharedVolumePutFile(self, stream):
         req = await stream.recv_message()
-        self.shared_volume_files[req.shared_volume_id][req.path] = req
+        self.nfs_files[req.shared_volume_id][req.path] = req
         await stream.send_message(api_pb2.SharedVolumePutFileResponse(exists=True))
 
     async def SharedVolumeGetFile(self, stream):
         req = await stream.recv_message()
-        put_req = self.shared_volume_files.get(req.shared_volume_id, {}).get(req.path)
+        put_req = self.nfs_files.get(req.shared_volume_id, {}).get(req.path)
         if not put_req:
             raise GRPCError(Status.NOT_FOUND, f"No such file: {req.path}")
         if put_req.data_blob_id:

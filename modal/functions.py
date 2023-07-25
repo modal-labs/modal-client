@@ -991,7 +991,7 @@ class _Function(_Provider[_FunctionHandle]):
             else:
                 proxy_id = None
 
-            # Mount point path validation for volumes and shared volumes
+            # Mount point path validation for volumes and network file systems.
             def _validate_mount_points(
                 display_name: str, volume_likes: Dict[Union[str, os.PathLike], Union[_Volume, _NetworkFileSystem]]
             ) -> List[Tuple[str, Union[_Volume, _NetworkFileSystem]]]:
