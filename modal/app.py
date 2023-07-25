@@ -264,6 +264,8 @@ class _App:
         from .sandbox import _Sandbox
         from .stub import _default_image
 
+        self._client.track_function_invocation()
+
         resolver = Resolver(self._output_mgr, self._client, self._environment_name, self.app_id)
         provider = _Sandbox._new(entrypoint_args, image or _default_image, mounts, timeout)
         return await resolver.load(provider)
