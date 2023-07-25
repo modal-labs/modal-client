@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2022
-from typing import TYPE_CHECKING, Dict, Optional, TypeVar
+from typing import TYPE_CHECKING, Dict, Optional, Sequence, TypeVar
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
@@ -14,6 +14,7 @@ from .object import _Handle, _Provider
 if TYPE_CHECKING:
     from rich.tree import Tree
 
+    import modal.image
     import modal.sandbox
 else:
     Tree = TypeVar("Tree")
@@ -253,12 +254,18 @@ class _App:
         deploy_response = await retry_transient_errors(self._client.stub.AppDeploy, deploy_req)
         return deploy_response.url
 
-    async def spawn_sandbox(self, *entrypoint_args: str, image=None, mounts=[]) -> "modal.sandbox._SandboxHandle":
+    async def spawn_sandbox(
+        self,
+        *entrypoint_args: str,
+        image: Optional["modal.image._Image"] = None,  # The image to run as the container for the sandbox.
+        mounts: Sequence["modal.image._Mount"] = (),
+        timeout: Optional[int] = None,  # Maximum execution time of the sandbox in seconds.
+    ) -> "modal.sandbox._SandboxHandle":
         from .sandbox import _Sandbox
         from .stub import _default_image
 
         resolver = Resolver(self._output_mgr, self._client, self._environment_name, self.app_id)
-        provider = _Sandbox._new(list(entrypoint_args), image or _default_image, mounts)
+        provider = _Sandbox._new(entrypoint_args, image or _default_image, mounts, timeout)
         return await resolver.load(provider)
 
     @staticmethod

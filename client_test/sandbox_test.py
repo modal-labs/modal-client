@@ -17,7 +17,7 @@ skip_non_linux = pytest.mark.skipif(platform.system() != "Linux", reason="sandbo
 @skip_non_linux
 def test_spawn_sandbox(client, servicer):
     with stub.run(client=client) as app:
-        sb = app.spawn_sandbox("bash", "-c", "echo bye >&2 && sleep 1 && echo hi && exit 42")
+        sb = app.spawn_sandbox("bash", "-c", "echo bye >&2 && sleep 1 && echo hi && exit 42", timeout=600)
 
         t0 = time.time()
         sb.wait()

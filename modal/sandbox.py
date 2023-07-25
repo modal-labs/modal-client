@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
-from typing import List, Optional
+from typing import Optional, Sequence
 
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
@@ -102,9 +102,10 @@ SandboxHandle = synchronize_api(_SandboxHandle)
 class _Sandbox(_Provider[_SandboxHandle]):
     @staticmethod
     def _new(
-        entrypoint_args: List[str],
+        entrypoint_args: Sequence[str],
         image: _Image,
-        mounts: List[_Mount],
+        mounts: Sequence[_Mount],
+        timeout: Optional[int] = None,
     ) -> _SandboxHandle:
         if len(entrypoint_args) == 0:
             raise InvalidError("entrypoint_args must not be empty")
@@ -123,6 +124,7 @@ class _Sandbox(_Provider[_SandboxHandle]):
                 entrypoint_args=entrypoint_args,
                 image_id=image_id,
                 mount_ids=mount_ids,
+                timeout_secs=timeout,
             )
 
             create_req = api_pb2.SandboxCreateRequest(app_id=resolver.app_id, definition=definition)
