@@ -19,4 +19,5 @@ def test_queue_use_provider(servicer, client):
     stub = Stub()
     stub.q = Queue.new()
     with stub.run(client=client):
+        assert isinstance(stub.q, Queue)
         stub.q.put("xyz")
