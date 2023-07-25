@@ -91,6 +91,10 @@ class _SandboxHandle(_Handle, type_prefix="sb"):
     def stderr(self):
         return self._stderr
 
+    @property
+    def returncode(self):
+        return self._result.exitcode
+
 
 SandboxHandle = synchronize_api(_SandboxHandle)
 
