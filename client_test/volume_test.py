@@ -4,6 +4,7 @@ import pytest
 
 import modal
 from modal.exception import InvalidError
+from modal.runner import deploy_stub
 from modal.volume import VolumeHandle
 
 from .supports.skip import skip_windows
@@ -80,3 +81,25 @@ def test_volume_reload(client, servicer):
         handle.reload()
 
     assert servicer.volume_reloads[handle.object_id] == 1
+
+
+def test_redeploy(servicer, client):
+    stub = modal.Stub()
+    stub.n1 = modal.Volume.new()
+    stub.n2 = modal.Volume.new()
+    stub.n3 = modal.Volume.new()
+
+    # Deploy app once
+    app1 = deploy_stub(stub, "my-app", client=client)
+    app1_ids = [app1.n1.object_id, app1.n2.object_id, app1.n3.object_id]
+
+    # Deploy app again
+    app2 = deploy_stub(stub, "my-app", client=client)
+    app2_ids = [app2.n1.object_id, app2.n2.object_id, app2.n3.object_id]
+
+    # Make sure ids are stable
+    assert app1_ids == app2_ids
+
+    # Make sure ids are unique
+    assert len(set(app1_ids)) == 3
+    assert len(set(app2_ids)) == 3
