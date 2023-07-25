@@ -584,7 +584,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             # TODO(erikbern): there is no client test for this branch
             input_stream_unwrapped = synchronizer._translate_in(container_app._pty_input_stream)
             input_stream_blocking = synchronizer._translate_out(input_stream_unwrapped, Interface.BLOCKING)
-            imp_fun.fun = run_in_pty(imp_fun.fun, input_stream_blocking, container_args.function_def.pty_info)
+            imp_fun.fun = run_in_pty(imp_fun.fun, input_stream_blocking, pty_info)
 
         if not imp_fun.is_async:
             call_function_sync(function_io_manager, imp_fun.obj, imp_fun.fun, imp_fun.is_generator)

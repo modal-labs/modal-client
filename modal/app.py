@@ -82,10 +82,10 @@ class _App:
         return self._app_id
 
     async def _create_all_objects(
-        self, blueprint: Dict[str, _Provider], new_app_state: int, environment_name: str
+        self, blueprint: Dict[str, _Provider], new_app_state: int, environment_name: str, shell: bool = False
     ):  # api_pb2.AppState.V
         """Create objects that have been defined but not created on the server."""
-        resolver = Resolver(self._output_mgr, self._client, environment_name, self.app_id)
+        resolver = Resolver(self._output_mgr, self._client, environment_name, self.app_id, shell=shell)
         with resolver.display():
             # Preload all functions to make sure they have ids assigned before they are loaded.
             # This is important to make sure any enclosed function handle references in serialized

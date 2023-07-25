@@ -277,7 +277,7 @@ def test_serve(servicer, set_env_client, server_url_env, test_dir):
 
 @pytest.fixture
 def mock_shell_pty():
-    def mock_get_pty_info() -> api_pb2.PTYInfo:
+    def mock_get_pty_info(shell: bool) -> api_pb2.PTYInfo:
         rows, cols = (64, 128)
         return api_pb2.PTYInfo(
             enabled=True,
