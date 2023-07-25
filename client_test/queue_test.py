@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
-import queue
 import pytest
+import queue
 
 from modal import Queue, Stub
 
@@ -18,5 +18,5 @@ def test_queue(servicer, client):
 def test_queue_use_provider(servicer, client):
     stub = Stub()
     stub.q = Queue.new()
-    with stub.run(client=client) as app:
+    with stub.run(client=client):
         stub.q.put("xyz")
