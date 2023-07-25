@@ -63,7 +63,6 @@ from .exception import (
     RemoteError,
     TimeoutError as _TimeoutError,
     deprecation_error,
-    deprecation_warning,
 )
 from .gpu import GPU_T, display_gpu_config, parse_gpu_config
 from .image import _Image
@@ -813,7 +812,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         return self
 
     def __get__(self, obj, objtype=None) -> "_FunctionHandle":
-        deprecation_warning(
+        deprecation_error(
             date(2023, 5, 9),
             "Using the `@stub.function` decorator on methods is deprecated."
             " Use the @method decorator instead."
