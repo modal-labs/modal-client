@@ -624,8 +624,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
     ### Shared volume
 
     async def SharedVolumeCreate(self, stream):
-        await stream.recv_message()
-        await stream.send_message(api_pb2.SharedVolumeCreateResponse(shared_volume_id="sv-123"))
+        shared_volume_id = f"sv-{len(self.shared_volume_files)}"
+        self.shared_volume_files[shared_volume_id] = {}
+        await stream.send_message(api_pb2.SharedVolumeCreateResponse(shared_volume_id=shared_volume_id))
 
     async def SharedVolumePutFile(self, stream):
         req = await stream.recv_message()
