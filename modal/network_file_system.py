@@ -194,6 +194,7 @@ class _NetworkFileSystem(_Provider[_NetworkFileSystemHandle]):
             if existing_object_id:
                 # Volume already exists; do nothing.
                 handle._hydrate(existing_object_id, resolver.client, None)
+                return
 
             cloud_provider = parse_cloud_provider(cloud) if cloud else None
 
