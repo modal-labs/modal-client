@@ -1088,6 +1088,11 @@ class _Function(_Provider[_FunctionHandle]):
             if resolver._shell:
                 timeout_secs = 86400
                 pty_info = _pty.get_pty_info(shell=True)
+
+                # TODO(erikbern): super hacky workaround for old workers 2023-07-24
+                from ._pty import exec_cmd
+
+                info = FunctionInfo(exec_cmd)
             elif interactive:
                 pty_info = _pty.get_pty_info(shell=False)
             else:
