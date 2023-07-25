@@ -158,5 +158,18 @@ class _Queue(_Provider[_QueueHandle]):
     ) -> "_Queue":
         return _Queue.new()._persist(label, namespace, environment_name)
 
+    # Live handle methods
+    async def get(self, block: bool = True, timeout: Optional[float] = None) -> Optional[Any]:
+        return await self._handle.get(block, timeout)
+
+    async def get_many(self, n_values: int, block: bool = True, timeout: Optional[float] = None) -> List[Any]:
+        return await self._handle.get_many(n_values, block, timeout)
+
+    async def put(self, v: Any) -> None:
+        return await self._handle.put(v)
+
+    async def put_many(self, vs: List[Any]) -> None:
+        return await self._handle.put_many(vs)
+
 
 Queue = synchronize_api(_Queue)
