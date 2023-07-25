@@ -503,14 +503,6 @@ def f(x):
     return x**2
 
 
-with pytest.raises(DeprecationError):
-
-    class Class:
-        @lc_stub.function()
-        def f(self, x):
-            return x**2
-
-
 def test_allow_cross_region_volumes(client, servicer):
     stub = Stub()
     vol1, vol2 = NetworkFileSystem.new(), NetworkFileSystem.new()

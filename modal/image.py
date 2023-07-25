@@ -19,7 +19,7 @@ from ._function_utils import FunctionInfo
 from ._resolver import Resolver
 from .app import is_local
 from .config import config, logger
-from .exception import InvalidError, NotFoundError, RemoteError, deprecation_warning
+from .exception import InvalidError, NotFoundError, RemoteError, deprecation_error, deprecation_warning
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem
@@ -341,7 +341,7 @@ class _Image(_Provider[_ImageHandle]):
         )
 
     def copy(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
-        deprecation_warning(
+        deprecation_error(
             date(2023, 5, 21),
             "`Image.copy` is deprecated in favor of `Image.copy_mount`, `Image.copy_local_file`,"
             " and `Image.copy_local_dir`.",
