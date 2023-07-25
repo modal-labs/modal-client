@@ -147,3 +147,11 @@ def test_redeploy(servicer, client):
     # Make sure ids are unique
     assert len(set(app1_ids)) == 3
     assert len(set(app2_ids)) == 3
+
+    # Deploy to a different app
+    app3 = deploy_stub(stub, "my-other-app", client=client)
+    app3_ids = [app3.n1.object_id, app3.n2.object_id, app3.n3.object_id]
+
+    # Should be unique and different
+    assert len(set(app3_ids)) == 3
+    assert set(app1_ids) & set(app3_ids) == set()
