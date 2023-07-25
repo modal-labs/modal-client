@@ -1141,6 +1141,7 @@ class _Function(_Provider[_FunctionHandle]):
                 runtime=config.get("function_runtime"),
                 stub_name=stub_name,
                 is_builder_function=is_builder_function,
+                max_concurrent_inputs=1,
             )
             request = api_pb2.FunctionCreateRequest(
                 app_id=resolver.app_id,
