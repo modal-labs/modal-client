@@ -15,7 +15,7 @@ from .app import _App, is_local
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config
 from .exception import InvalidError
-from .functions import _Function
+from .functions import _FunctionHandle
 from .queue import _QueueHandle
 
 
@@ -36,6 +36,7 @@ async def _run_stub(
     detach: bool = False,
     output_mgr: Optional[OutputManager] = None,
     environment_name: Optional[str] = None,
+    shell=False,
 ) -> AsyncGenerator[_App, None]:
     if environment_name is None:
         environment_name = config.get("environment")
@@ -79,7 +80,7 @@ async def _run_stub(
 
         try:
             # Create all members
-            await app._create_all_objects(stub._blueprint, post_init_state, environment_name)
+            await app._create_all_objects(stub._blueprint, post_init_state, environment_name, shell=shell)
 
             # Update all functions client-side to have the output mgr
             for tag, obj in stub.registered_functions.items():
@@ -219,7 +220,7 @@ async def _deploy_stub(
     return app
 
 
-async def _interactive_shell(stub, cmd: str, function: _Function, environment_name: str = ""):
+async def _interactive_shell(_function_handle: _FunctionHandle, cmd: str, environment_name: str = ""):
     """Run an interactive shell (like `bash`) within the image for this app.
 
     This is useful for online debugging and interactive exploration of the
@@ -240,21 +241,10 @@ async def _interactive_shell(stub, cmd: str, function: _Function, environment_na
     modal shell script.py --cmd /bin/bash
     ```
     """
-
-    wrapped_fn = stub.function(
-        interactive=True,
-        timeout=86400,
-        mounts=function._mounts,
-        network_file_systems=function._network_file_systems,
-        allow_cross_region_volumes=function._allow_cross_region_volumes,
-        image=function._image,
-        secrets=function._secrets,
-        gpu=function._gpu,
-        cloud=function._cloud,
-    )(_pty.exec_cmd)
-
-    async with _run_stub(stub, environment_name=environment_name):
-        await wrapped_fn.call(cmd)
+    _stub = _function_handle._stub
+    _stub._add_pty_input_stream()  # TOOD(erikbern): slightly hacky
+    async with _run_stub(_stub, environment_name=environment_name, shell=True):
+        await _function_handle.shell(cmd)
 
 
 run_stub = synchronize_api(_run_stub)

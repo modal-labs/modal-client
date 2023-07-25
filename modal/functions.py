@@ -575,10 +575,6 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
     def _set_output_mgr(self, output_mgr: OutputManager):
         self._output_mgr = output_mgr
 
-    def _get_function(self) -> "_Function":
-        # TODO(erikbern): don't use the stub here, just return the function, should be 1:1
-        return self._stub[self._info.get_tag()]
-
     @property
     def web_url(self) -> str:
         """URL of a Function running as a web endpoint."""
@@ -742,6 +738,13 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
                 "A web endpoint function cannot be invoked for remote execution with `.call`. "
                 f"Invoke this function via its web url '{self._web_url}' or call it locally: {self._function_name}()."
             )
+        if self._is_generator:
+            return self._call_generator(args, kwargs)  # type: ignore
+        else:
+            return self._call_function(args, kwargs)
+
+    def shell(self, *args, **kwargs):
+        # TOOD(erikbern): right now fairly duplicated
         if self._is_generator:
             return self._call_generator(args, kwargs)  # type: ignore
         else:
@@ -1081,8 +1084,12 @@ class _Function(_Provider[_FunctionHandle]):
                 raise InvalidError(f"Invalid fractional CPU value {cpu}. Cannot have less than 0.25 CPU resources.")
             milli_cpu = int(1000 * cpu) if cpu is not None else None
 
-            if interactive:
-                pty_info = _pty.get_pty_info()
+            timeout_secs = timeout
+            if resolver._shell:
+                timeout_secs = 86400
+                pty_info = _pty.get_pty_info(shell=True)
+            elif interactive:
+                pty_info = _pty.get_pty_info(shell=False)
             else:
                 pty_info = None
 
@@ -1125,7 +1132,7 @@ class _Function(_Provider[_FunctionHandle]):
                 volume_mounts=volume_mounts,
                 proxy_id=proxy_id,
                 retry_policy=retry_policy,
-                timeout_secs=timeout,
+                timeout_secs=timeout_secs,
                 task_idle_timeout_secs=container_idle_timeout,
                 concurrency_limit=concurrency_limit,
                 pty_info=pty_info,
@@ -1181,23 +1188,26 @@ class _Function(_Provider[_FunctionHandle]):
         # TODO(erikbern): we should also get rid of this
         obj._handle._initialize_from_local(stub, info)
 
-        # TODO(erikbern): almost all of these are only needed because of modal.cli.run.shell
-        obj._allow_cross_region_volumes = allow_cross_region_volumes
-        obj._cloud = cloud
-        obj._image = image
-        obj._info = info
-        obj._gpu = gpu
-        obj._gpu_config = gpu_config
-        obj._mounts = mounts
-        obj._panel_items = panel_items
         obj._raw_f = raw_f
-        obj._secrets = secrets
-        obj._network_file_systems = network_file_systems
+        obj._info = info
         obj._tag = tag
         obj._all_mounts = all_mounts  # needed for modal.serve file watching
+        obj._panel_items = panel_items
+
+        # Used to check whether we should rebuild an image using run_function
+        # Plaintext source and arg definition for the function, so it's part of the image
+        # hash. We can't use the cloudpickle hash because it's not very stable.
+        obj._build_args = dict(  # See get_build_def
+            secrets=repr(secrets),
+            gpu_config=repr(gpu_config),
+            mounts=repr(mounts),
+            network_file_systems=repr(network_file_systems),
+        )
+
         return obj
 
     def get_panel_items(self) -> List[str]:
+        """mdmd:hidden"""
         return self._panel_items
 
     @property
@@ -1205,18 +1215,9 @@ class _Function(_Provider[_FunctionHandle]):
         """mdmd:hidden"""
         return self._tag
 
-    def get_build_def(self):
+    def get_build_def(self) -> str:
         """mdmd:hidden"""
-        # Used to check whether we should rebuild an image using run_function
-        # Plaintext source and arg definition for the function, so it's part of the image
-        # hash. We can't use the cloudpickle hash because it's not very stable.
-        kwargs = dict(
-            secrets=repr(self._secrets),
-            gpu_config=repr(self._gpu_config),
-            mounts=repr(self._mounts),
-            network_file_systems=repr(self._network_file_systems),
-        )
-        return f"{inspect.getsource(self._raw_f)}\n{repr(kwargs)}"
+        return f"{inspect.getsource(self._raw_f)}\n{repr(self._build_args)}"
 
 
 Function = synchronize_api(_Function)

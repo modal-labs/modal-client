@@ -49,7 +49,9 @@ class Resolver:
     _local_uuid_to_future: Dict[str, Future]
     _environment_name: str
 
-    def __init__(self, output_mgr, client, environment_name: str, app_id: Optional[str] = None):
+    def __init__(
+        self, output_mgr, client, environment_name: str, app_id: Optional[str] = None, shell: Optional[bool] = False
+    ):
         from rich.tree import Tree
 
         from ._output import step_progress
@@ -62,6 +64,7 @@ class Resolver:
         self._client = client
         self._app_id = app_id
         self._environment_name = environment_name
+        self._shell = shell
 
     @property
     def app_id(self) -> str:
