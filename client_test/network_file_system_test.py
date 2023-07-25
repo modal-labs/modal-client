@@ -155,3 +155,18 @@ def test_redeploy(servicer, client):
     # Should be unique and different
     assert len(set(app3_ids)) == 3
     assert set(app1_ids) & set(app3_ids) == set()
+
+
+def test_write_file(client, tmp_path, servicer):
+    stub = modal.Stub()
+    stub.vol = modal.NetworkFileSystem.new()
+    local_file_path = tmp_path / "some_file"
+    local_file_path.write_text("hello world")
+
+    with stub.run(client=client) as app:
+        handle = app.vol
+        assert isinstance(handle, NetworkFileSystemHandle)
+        handle.write_file("remote_path.txt", open(local_file_path, "rb"))
+
+        # Make sure we can write through the provider too
+        stub.vol.write_file("remote_path.txt", open(local_file_path, "rb"))

@@ -246,5 +246,36 @@ class _NetworkFileSystem(_Provider[_NetworkFileSystemHandle]):
         deprecation_warning(date(2023, 6, 30), self.persist.__doc__)
         return self.persisted(label, namespace, environment_name, cloud)
 
+    # Methods on live handles
+
+    async def write_file(self, remote_path: str, fp: BinaryIO) -> int:
+        return await self._handle.write_file(remote_path, fp)
+
+    async def read_file(self, path: str) -> AsyncIterator[bytes]:
+        async for data in self._handle.read_file(path):
+            yield data
+
+    async def iterdir(self, path: str) -> AsyncIterator[api_pb2.SharedVolumeListFilesEntry]:
+        async for entry in self._handle.iterdir(path):
+            yield entry
+
+    async def add_local_file(
+        self, local_path: Union[Path, str], remote_path: Optional[Union[str, PurePosixPath, None]] = None
+    ):
+        return await self._handle.write_file(local_path, remote_path)
+
+    async def add_local_dir(
+        self,
+        local_path: Union[Path, str],
+        remote_path: Optional[Union[str, PurePosixPath, None]] = None,
+    ):
+        return await self._handle.add_local_dir(local_path, remote_path)
+
+    async def listdir(self, path: str) -> List[api_pb2.SharedVolumeListFilesEntry]:
+        return await self._handle.listdir(path)
+
+    async def remove_file(self, path: str, recursive=False):
+        return await self._handle.remove_file(path, recursive)
+
 
 NetworkFileSystem = synchronize_api(_NetworkFileSystem)
