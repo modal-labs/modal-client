@@ -602,11 +602,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SandboxWait(self, stream):
         self.sandbox.wait()
-        await stream.send_message(
-            api_pb2.SandboxWaitResponse(
-                result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
+        if self.sandbox.returncode != 0:
+            result = api_pb2.GenericResult(
+                status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE, exitcode=self.sandbox.returncode
             )
-        )
+        else:
+            result = api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
+        await stream.send_message(api_pb2.SandboxWaitResponse(result=result))
 
     ### Secret
 
