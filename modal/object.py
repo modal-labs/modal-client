@@ -322,14 +322,13 @@ class _Provider(Generic[H]):
         environment_name: Optional[str] = None,
     ) -> H:
         """
-        General purpose method to retrieve Modal objects such as
-        functions, shared volumes, and secrets.
+        General purpose method to retrieve Modal objects such as functions, network file systems, and secrets.
         ```python notest
         import modal
         square = modal.Function.lookup("my-shared-app", "square")
         assert square(3) == 9
-        vol = modal.SharedVolume.lookup("my-shared-volume")
-        for chunk in vol.read_file("my_db_dump.csv"):
+        nfs = modal.NetworkFileSystem.lookup("my-nfs")
+        for chunk in nfs.read_file("my_db_dump.csv"):
             ...
         ```
         """
