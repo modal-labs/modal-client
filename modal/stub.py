@@ -10,7 +10,6 @@ from typing import Any, AsyncGenerator, Callable, Dict, List, Optional, Sequence
 from synchronicity.async_wrap import asynccontextmanager
 
 from modal._types import typechecked
-from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api, synchronizer
 
 from ._function_utils import FunctionInfo
@@ -20,7 +19,7 @@ from .app import _App, _container_app, is_local
 from .client import _Client
 from .cls import make_remote_cls_constructors
 from .config import logger
-from .exception import InvalidError, deprecation_error, deprecation_warning
+from .exception import InvalidError, deprecation_warning
 from .functions import PartialFunction, _Function, _FunctionHandle, _PartialFunction
 from .gpu import GPU_T
 from .image import _Image, _ImageHandle
@@ -288,27 +287,6 @@ class _Stub:
         async with _run_stub(self, client, stdout, show_progress, detach, output_mgr) as app:
             yield app
 
-    @typechecked
-    async def deploy(
-        self,
-        name: Optional[
-            str
-        ] = None,  # Unique name of the deployment. Subsequent deploys with the same name overwrites previous ones. Falls back to the app name
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
-        client=None,
-        stdout=None,
-        show_progress=True,
-        object_entity: str = "ap",
-    ) -> _App:
-        """`stub.deploy` is deprecated and no longer supported. Use the `modal deploy` command instead.
-
-        For programmatic usage, use `modal.runner.deploy_stub`
-        """
-        deprecation_error(
-            date(2023, 5, 9),
-            self.deploy.__doc__,
-        )
-
     def _get_default_image(self):
         if "image" in self._blueprint:
             return self._blueprint["image"]
@@ -485,22 +463,8 @@ class _Stub:
                 raw_f = f
 
             if not _cls and not info.is_serialized() and "." in info.function_name:  # This is a method
-                deprecation_error(
-                    date(2023, 4, 20),
-                    inspect.cleandoc(
-                        """@stub.function on methods is deprecated and no longer supported.
-
-                        Use the @stub.cls and @method decorators. Usage:
-
-                        ```
-                        @stub.cls(cpu=8)
-                        class MyCls:
-                            @method()
-                            def f(self):
-                                ...
-                        ```
-                        """
-                    ),
+                raise InvalidError(
+                    "`stub.function` on methods is not allowed. See https://modal.com/docs/guide/lifecycle-functions instead"
                 )
 
             info.get_tag()
@@ -543,63 +507,6 @@ class _Stub:
             return function._handle
 
         return wrapped
-
-    @typechecked
-    def web_endpoint(
-        self,
-        method: str = "GET",  # REST method for the created endpoint.
-        label: Optional[
-            str
-        ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
-        wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-    ):
-        """`stub.web_endpoint` is deprecated and no longer supported. Use `modal.web_endpoint` instead. Usage:
-
-        ```python
-        from modal import Stub, web_endpoint
-
-        stub = Stub()
-        @stub.function(cpu=42)
-        @web_endpoint(method="POST")
-        def my_function():
-            ...
-        ```"""
-        deprecation_error(
-            date(2023, 4, 18),
-            self.web_endpoint.__doc__,
-        )
-
-    @typechecked
-    def asgi_app(
-        self,
-        label: Optional[
-            str
-        ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
-        wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-    ):
-        """`stub.asgi_app` is deprecated and no longer supported. Use `modal.asgi_app` instead."""
-        deprecation_error(date(2023, 4, 18), self.asgi_app.__doc__)
-
-    @typechecked
-    def wsgi_app(
-        self,
-        label: Optional[
-            str
-        ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
-        wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-    ):
-        """`stub.wsgi_app` is deprecated and no longer supported. Use `modal.wsgi_app` instead."""
-        deprecation_error(date(2023, 4, 18), self.wsgi_app.__doc__)
-
-    async def interactive_shell(self, cmd=None, image=None, **kwargs):
-        """`stub.interactive_shell` is deprecated and no longer supported. Use the `modal shell` command instead.
-
-        For programmatic usage, use `modal.runner.interactive_shell`
-        """
-        deprecation_error(
-            date(2023, 5, 9),
-            self.interactive_shell.__doc__,
-        )
 
     def cls(
         self,
