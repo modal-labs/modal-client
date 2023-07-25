@@ -35,7 +35,7 @@ class _LogsReader:
             nonlocal last_log_batch_entry_id, completed, data
 
             req = api_pb2.SandboxGetLogsRequest(
-                sandbox_id=self._sandbox_id, file_descriptor=self._file_descriptor, timeout=55
+                timeout=2,
             )
             log_batch: api_pb2.TaskLogsBatch
             async for log_batch in unary_stream(self._client.stub.SandboxGetLogs, req):
