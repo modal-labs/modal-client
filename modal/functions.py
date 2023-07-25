@@ -1448,12 +1448,23 @@ def _asgi_app(
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
-    """Register an ASGI app with this application.
+    """Decorator for registering an ASGI app with a Modal function.
 
     Asynchronous Server Gateway Interface (ASGI) is a standard for Python
     synchronous and asynchronous apps, supported by all popular Python web
     libraries. This is an advanced decorator that gives full flexibility in
     defining one or more web endpoints on Modal.
+
+    **Usage:**
+
+    ```python
+    from typing import Callable
+
+    @stub.function()
+    @modal.asgi_app()
+    def create_asgi() -> Callable:
+        ...
+    ```
 
     To learn how to use Modal with popular web frameworks, see the
     [guide on web endpoints](https://modal.com/docs/guide/webhooks).
@@ -1475,8 +1486,6 @@ def _asgi_app(
         else:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
 
-        # self._loose_webhook_configs.add(raw_f)
-
         return _PartialFunction(
             raw_f,
             api_pb2.WebhookConfig(
@@ -1494,9 +1503,27 @@ def _wsgi_app(
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
-    """Register a WSGI app with this application.
+    """Decorator for registering a WSGI app with a Modal function.
 
-    See documentation for [`asgi_app`](/docs/reference/modal.asgi_app).
+    Web Server Gateway Interface (WSGI) is a standard for synchronous Python web apps.
+    It has been [succeeded by the ASGI interface](https://asgi.readthedocs.io/en/latest/introduction.html#wsgi-compatibility) which is compatible with ASGI and supports
+    additional functionality such as web sockets. Modal supports ASGI via [`asgi_app`](/docs/reference/modal.asgi_app).
+
+    **Usage:**
+
+    ```python
+    from typing import Callable
+
+    @stub.function()
+    @modal.wsgi_app()
+    def create_wsgi() -> Callable:
+        ...
+    ```
+
+    To learn how to use this decorator with popular web frameworks, see the
+    [guide on web endpoints](https://modal.com/docs/guide/webhooks).
+
+    For documentation on this decorator's arguments see [`asgi_app`](/docs/reference/modal.asgi_app).
     """
     if label and not isinstance(label, str):
         raise InvalidError(
@@ -1510,8 +1537,6 @@ def _wsgi_app(
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
         else:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
-
-        # self._loose_webhook_configs.add(raw_f)
 
         return _PartialFunction(
             raw_f,
