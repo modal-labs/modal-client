@@ -65,9 +65,12 @@ def test_volume_commit(client, servicer):
         # Note that in practice this will not work unless run in a task.
         handle.commit()
 
-    assert servicer.volume_commits[handle.object_id] == 1
+        # Make sure we can commit through the provider too
+        stub.vol.commit()
+
+    assert servicer.volume_commits[handle.object_id] == 2
     # commit should implicitly reload on successful commit
-    assert servicer.volume_reloads[handle.object_id] == 1
+    assert servicer.volume_reloads[handle.object_id] == 2
 
 
 def test_volume_reload(client, servicer):

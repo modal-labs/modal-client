@@ -167,5 +167,20 @@ class _Volume(_Provider[_VolumeHandle]):
         """
         return _Volume.new()._persist(label, namespace, environment_name)
 
+    # Methods on live handles
+
+    async def commit(self):
+        return await self._handle.commit()
+
+    async def reload(self):
+        return await self._handle.reload()
+
+    async def iterdir(self, path: str) -> AsyncIterator[api_pb2.VolumeListFilesEntry]:
+        async for entry in self._handle.iterdir(path):
+            yield entry
+
+    async def listdir(self, path: str) -> List[api_pb2.VolumeListFilesEntry]:
+        return self._handle.listdir(path)
+
 
 Volume = synchronize_api(_Volume)
