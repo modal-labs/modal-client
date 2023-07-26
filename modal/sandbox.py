@@ -17,14 +17,29 @@ from .object import _Handle, _Provider
 
 
 class _LogsReader:
-    """mdmd:hidden"""
+    """Provides an interface to buffer and fetch logs from a sandbox stream (`stdout` or `stderr`)."""
 
     def __init__(self, file_descriptor: int, sandbox_id: str, client: _Client) -> None:
+        """mdmd:hidden"""
+
         self._file_descriptor = file_descriptor
         self._sandbox_id = sandbox_id
         self._client = client
 
-    async def read(self):
+    async def read(self) -> str:
+        """Fetch and return contents of the entire stream.
+
+        **Usage**
+
+        ```python
+        sandbox = stub.app.spawn_sandbox("echo", "hello")
+        sandbox.wait()
+
+        print(sandbox.stdout.read())
+        ```
+
+        """
+
         last_log_batch_entry_id = ""
         completed = False
         data = ""
@@ -35,7 +50,10 @@ class _LogsReader:
             nonlocal last_log_batch_entry_id, completed, data
 
             req = api_pb2.SandboxGetLogsRequest(
-                sandbox_id=self._sandbox_id, file_descriptor=self._file_descriptor, timeout=55
+                sandbox_id=self._sandbox_id,
+                file_descriptor=self._file_descriptor,
+                timeout=55,
+                last_entry_id=last_log_batch_entry_id,
             )
             log_batch: api_pb2.TaskLogsBatch
             async for log_batch in unary_stream(self._client.stub.SandboxGetLogs, req):
@@ -68,14 +86,19 @@ LogsReader = synchronize_api(_LogsReader)
 
 
 class _SandboxHandle(_Handle, type_prefix="sb"):
-    """mdmd:hidden"""
+    """A `SandboxHandle` lets you interact with a spawned sandbox. This API is similar to Python's
+    [asyncio.subprocess.Process](https://docs.python.org/3/library/asyncio-subprocess.html#asyncio.subprocess.Process).
+
+    Refer to the [docs](/docs/guide/sandbox) on how to spawn and use sandboxes.
+    """
 
     _result: Optional[api_pb2.GenericResult]
-    # TODO: fix typing for synchronized class?
     _stdout: _LogsReader
     _stderr: _LogsReader
 
     async def wait(self):
+        """Wait for the sandbox to finish running."""
+
         while True:
             req = api_pb2.SandboxWaitRequest(sandbox_id=self._object_id, timeout=50)
             resp = await retry_transient_errors(self._client.stub.SandboxWait, req)
@@ -84,15 +107,23 @@ class _SandboxHandle(_Handle, type_prefix="sb"):
                 break
 
     @property
-    def stdout(self):
+    def stdout(self) -> _LogsReader:
+        """`LogsReader` for the sandbox's stdout stream."""
+
         return self._stdout
 
     @property
-    def stderr(self):
+    def stderr(self) -> _LogsReader:
+        """`LogsReader` for the sandbox's stderr stream."""
+
         return self._stderr
 
     @property
-    def returncode(self):
+    def returncode(self) -> Optional[int]:
+        """Return code of the sandbox process if it has finished running, else `None`."""
+
+        if self._result is None:
+            return None
         return self._result.exitcode
 
 
@@ -100,6 +131,8 @@ SandboxHandle = synchronize_api(_SandboxHandle)
 
 
 class _Sandbox(_Provider[_SandboxHandle]):
+    """mdmd:hidden"""
+
     @staticmethod
     def _new(
         entrypoint_args: Sequence[str],
@@ -107,6 +140,8 @@ class _Sandbox(_Provider[_SandboxHandle]):
         mounts: Sequence[_Mount],
         timeout: Optional[int] = None,
     ) -> _SandboxHandle:
+        """mdmd:hidden"""
+
         if len(entrypoint_args) == 0:
             raise InvalidError("entrypoint_args must not be empty")
 
