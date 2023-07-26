@@ -261,8 +261,16 @@ class _App:
         mounts: Sequence["modal.image._Mount"] = (),
         timeout: Optional[int] = None,  # Maximum execution time of the sandbox in seconds.
     ) -> "modal.sandbox._SandboxHandle":
+        """Sandboxes are a way to run arbitrary commands in dynamically defined environments.
+
+        This function returns a [SandboxHandle](/docs/reference/modal.Sandbox#modalsandboxsandboxhandle), which can be used to interact with the running sandbox.
+
+        Refer to the [docs](/docs/guide/sandbox) on how to spawn and use sandboxes.
+        """
         from .sandbox import _Sandbox
         from .stub import _default_image
+
+        self._client.track_function_invocation()
 
         resolver = Resolver(self._output_mgr, self._client, self._environment_name, self.app_id)
         provider = _Sandbox._new(entrypoint_args, image or _default_image, mounts, timeout)

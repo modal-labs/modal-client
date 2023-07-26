@@ -63,6 +63,8 @@ class _Handle(metaclass=ObjectMeta):
         self._hydrate(other.object_id, other._client, other._get_metadata())
 
     def is_hydrated(self) -> bool:
+        """mdmd:hidden"""
+
         # A hydrated Handle is fully functional and linked to a live object in an app
         # To hydrate Handles, run an app using stub.run() or look up the object from a running app using <HandleClass>.lookup()
         return self._is_hydrated
