@@ -572,6 +572,7 @@ message FunctionGetInputsRequest {
   string function_id = 1;
   int32 max_values = 3;
   float average_call_time = 5;
+  int32 input_concurrency = 6; // Container aims to fetch multiple inputs at the same time
 }
 
 message FunctionGetInputsResponse {
