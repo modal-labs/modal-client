@@ -790,6 +790,8 @@ message Sandbox {
   CloudProvider cloud_provider = 6;
 
   uint32 timeout_secs = 7;
+
+  optional string workdir = 8;
 }
 
 message SandboxCreateRequest {
