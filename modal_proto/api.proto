@@ -508,6 +508,8 @@ message Function {
   bool is_builder_function = 32;
 
   repeated VolumeMount volume_mounts = 33;
+
+  uint32 allow_concurrent_inputs = 34;
 }
 
 message FunctionHandleMetadata {
