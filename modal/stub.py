@@ -528,7 +528,6 @@ class _Stub:
                 proxy=proxy,
                 retries=retries,
                 concurrency_limit=concurrency_limit,
-                max_concurrent_inputs=max_concurrent_inputs,
                 container_idle_timeout=container_idle_timeout,
                 timeout=timeout,
                 cpu=cpu,
