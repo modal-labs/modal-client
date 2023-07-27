@@ -838,6 +838,7 @@ class _Function(_Provider, type_prefix="fu"):
         retries: Optional[Union[int, Retries]] = None,
         timeout: Optional[int] = None,
         concurrency_limit: Optional[int] = None,
+        allow_concurrent_inputs: Optional[int] = None,
         container_idle_timeout: Optional[int] = None,
         cpu: Optional[float] = None,
         keep_warm: Optional[int] = None,
@@ -1111,7 +1112,7 @@ class _Function(_Provider, type_prefix="fu"):
                 runtime=config.get("function_runtime"),
                 stub_name=stub_name,
                 is_builder_function=is_builder_function,
-                allow_concurrent_inputs=1,
+                allow_concurrent_inputs=allow_concurrent_inputs,
             )
             request = api_pb2.FunctionCreateRequest(
                 app_id=resolver.app_id,

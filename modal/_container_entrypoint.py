@@ -182,20 +182,23 @@ class _FunctionIOManager:
 
         return math.ceil(RTT_S / max(self.get_average_call_time(), 1e-6))
 
-    async def _generate_inputs(
-        self,
-    ) -> AsyncIterator[tuple[str, api_pb2.FunctionInput]]:
+    async def _generate_inputs(self) -> AsyncIterator[tuple[str, api_pb2.FunctionInput]]:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         eof_received = False
         iteration = 0
         while not eof_received:
             request.average_call_time = self.get_average_call_time()
             request.max_values = self.get_max_inputs_to_fetch()  # Deprecated; remove.
+            request.input_concurrency = self.semaphore.maxsize
 
+            # If number of active inputs is at max queue size, this will block.
+            await self._acquire_semaphore()
             with trace("get_inputs"):
                 set_span_tag("iteration", str(iteration))  # force this to be a tag string
                 iteration += 1
                 response = await retry_transient_errors(self.client.stub.FunctionGetInputs, request)
+
+            yielded = False
 
             if response.rate_limit_sleep_duration:
                 logger.info(
@@ -203,28 +206,29 @@ class _FunctionIOManager:
                     % response.rate_limit_sleep_duration
                 )
                 await asyncio.sleep(response.rate_limit_sleep_duration)
-                continue
+            elif response.inputs:
+                for item in response.inputs:
+                    if item.kill_switch:
+                        logger.debug(f"Task {self.task_id} input received kill signal.")
+                        eof_received = True
+                        break
 
-            if not response.inputs:
-                continue
+                    # If we got a pointer to a blob, download it from S3.
+                    if item.input.WhichOneof("args_oneof") == "args_blob_id":
+                        input_pb = await self.populate_input_blobs(item.input)
+                    else:
+                        input_pb = item.input
 
-            for item in response.inputs:
-                if item.kill_switch:
-                    logger.debug(f"Task {self.task_id} input received kill signal.")
-                    eof_received = True
-                    break
+                    # If yielded, allow semaphore to be released via enqueue_outputs
+                    yield (item.input_id, input_pb)
+                    yielded = True
 
-                # If we got a pointer to a blob, download it from S3.
-                if item.input.WhichOneof("args_oneof") == "args_blob_id":
-                    input_pb = await self.populate_input_blobs(item.input)
-                else:
-                    input_pb = item.input
+                    if item.input.final_input:
+                        eof_received = True
+                        break
 
-                yield (item.input_id, input_pb)
-
-                if item.input.final_input:
-                    eof_received = True
-                    break
+            if not yielded:
+                await self._release_semaphore()
 
     async def _send_outputs(self):
         """Background task that tries to drain output queue until it's empty,
@@ -242,9 +246,18 @@ class _FunctionIOManager:
             # TODO(erikbern): we'll get a RESOURCE_EXCHAUSTED if the buffer is full server-side.
             # It's possible we want to retry "harder" for this particular error.
 
-    async def run_inputs_outputs(self):
+    async def _acquire_semaphore(self):
+        await self.semaphore.put(None)
+
+    async def _release_semaphore(self):
+        await self.semaphore.get()
+        self.semaphore.task_done()
+
+    async def run_inputs_outputs(self, input_concurrency: int = 1):
         # This also makes sure to terminate the outputs
         self.output_queue: asyncio.Queue = asyncio.Queue()
+        # Ensure we do not fetch new inputs when container is too busy
+        self.semaphore: asyncio.Queue[None] = asyncio.Queue(maxsize=input_concurrency)
 
         async with TaskContext(grace=10) as tc:
             tc.create_task(self._send_outputs())
@@ -255,13 +268,14 @@ class _FunctionIOManager:
                     self.current_input_id, self.current_input_started_at = (input_id, time.time())
                     yield input_id, args, kwargs
                     _set_current_input_id(None)
-                    self.total_user_time += time.time() - self.current_input_started_at
                     self.current_input_id, self.current_input_started_at = (None, None)
-                    self.calls_completed += 1
             finally:
+                # wait for all active inputs to place their outputs into the queue
+                await self.semaphore.join()
+                # send the eof to _send_outputs loop
                 await self.output_queue.put(None)
 
-    async def _enqueue_output(self, input_id, gen_index, **kwargs):
+    async def _enqueue_output(self, input_id, started_at: float, gen_index: int, **kwargs):
         # upload data to S3 if too big.
         if "data" in kwargs and kwargs["data"] and len(kwargs["data"]) > MAX_OBJECT_SIZE_BYTES:
             data_blob_id = await blob_upload(kwargs["data"], self.client.stub)
@@ -271,7 +285,7 @@ class _FunctionIOManager:
 
         output = api_pb2.FunctionPutOutputsItem(
             input_id=input_id,
-            input_started_at=self.current_input_started_at,
+            input_started_at=started_at,
             output_created_at=time.time(),
             gen_index=gen_index,
             result=api_pb2.GenericResult(**kwargs),
@@ -330,7 +344,9 @@ class _FunctionIOManager:
             raise UserException()
 
     @contextlib.asynccontextmanager
-    async def handle_input_exception(self, input_id, output_index: SequenceNumber) -> AsyncGenerator[None, None]:
+    async def handle_input_exception(
+        self, input_id, started_at: float, output_index: SequenceNumber
+    ) -> AsyncGenerator[None, None]:
         try:
             with trace("input"):
                 set_span_tag("input_id", input_id)
@@ -349,7 +365,8 @@ class _FunctionIOManager:
             # to unpickle it in some cases). Let's watch out for issues.
             await self._enqueue_output(
                 input_id,
-                output_index.value,
+                started_at=started_at,
+                gen_index=output_index.value,
                 status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
                 data=self.serialize_exception(exc),
                 exception=repr(exc),
@@ -357,31 +374,42 @@ class _FunctionIOManager:
                 serialized_tb=serialized_tb,
                 tb_line_cache=tb_line_cache,
             )
+            await self.complete_call(started_at)
 
-    async def enqueue_output(self, input_id, output_index: int, data):
+    async def complete_call(self, started_at):
+        self.total_user_time += time.time() - started_at
+        self.calls_completed += 1
+        await self._release_semaphore()
+
+    async def enqueue_output(self, input_id, started_at: float, output_index: int, data):
         await self._enqueue_output(
             input_id,
+            started_at=started_at,
             gen_index=output_index,
             status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
             data=self.serialize(data),
         )
+        await self.complete_call(started_at)
 
-    async def enqueue_generator_value(self, input_id, output_index: int, data):
+    async def enqueue_generator_value(self, input_id, started_at: float, output_index: int, data):
         await self._enqueue_output(
             input_id,
+            started_at=started_at,
             gen_index=output_index,
             status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
             data=self.serialize(data),
             gen_status=api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE,
         )
 
-    async def enqueue_generator_eof(self, input_id, output_index: int):
+    async def enqueue_generator_eof(self, input_id, started_at: float, output_index: int):
         await self._enqueue_output(
             input_id,
+            started_at=started_at,
             gen_index=output_index,
             status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
             gen_status=api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE,
         )
+        await self.complete_call(started_at)
 
 
 # just to mark the class as synchronized, we don't care about the interfaces
@@ -393,6 +421,7 @@ def call_function_sync(
     obj: Optional[Any],
     fun: Callable,
     is_generator: bool,
+    input_concurrency: int,
 ):
     # If this function is on a class, instantiate it and enter it
     if obj is not None:
@@ -404,9 +433,11 @@ def call_function_sync(
             logger.warning("Not running asynchronous enter/exit handlers with a sync function")
 
     try:
-        for input_id, args, kwargs in function_io_manager.run_inputs_outputs():
+        for input_id, args, kwargs in function_io_manager.run_inputs_outputs(input_concurrency):
             output_index = SequenceNumber(0)
-            with function_io_manager.handle_input_exception(input_id, output_index):
+            started_at = time.time()
+            with function_io_manager.handle_input_exception(input_id, started_at, output_index):
+                # TODO(gongy): run this in an executor
                 res = fun(*args, **kwargs)
 
                 # TODO(erikbern): any exception below shouldn't be considered a user exception
@@ -415,17 +446,17 @@ def call_function_sync(
                         raise InvalidError(f"Generator function returned value of type {type(res)}")
 
                     for value in res:
-                        function_io_manager.enqueue_generator_value(input_id, output_index.value, value)
+                        function_io_manager.enqueue_generator_value(input_id, started_at, output_index.value, value)
                         output_index.increase()
 
-                    function_io_manager.enqueue_generator_eof(input_id, output_index.value)
+                    function_io_manager.enqueue_generator_eof(input_id, started_at, output_index.value)
                 else:
                     if inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
                         raise InvalidError(
                             f"Sync (non-generator) function return value of type {type(res)}."
                             " You might need to use @stub.function(..., is_generator=True)."
                         )
-                    function_io_manager.enqueue_output(input_id, output_index.value, res)
+                    function_io_manager.enqueue_output(input_id, started_at, output_index.value, res)
     finally:
         if obj is not None and hasattr(obj, "__exit__"):
             with function_io_manager.handle_user_exception():
@@ -438,6 +469,7 @@ async def call_function_async(
     obj: Optional[Any],
     fun: Callable,
     is_generator: bool,
+    input_concurrency: int,
 ):
     # If this function is on a class, instantiate it and enter it
     if obj is not None:
@@ -450,9 +482,11 @@ async def call_function_async(
                 obj.__enter__()
 
     try:
-        async for input_id, args, kwargs in function_io_manager.run_inputs_outputs.aio():
+
+        async def run_input(input_id, args, kwargs):
             output_index = SequenceNumber(0)  # mutable number we can increase from the generator loop
-            async with function_io_manager.handle_input_exception.aio(input_id, output_index):
+            started_at = time.time()
+            async with function_io_manager.handle_input_exception.aio(input_id, started_at, output_index):
                 res = fun(*args, **kwargs)
 
                 # TODO(erikbern): any exception below shouldn't be considered a user exception
@@ -460,9 +494,11 @@ async def call_function_async(
                     if not inspect.isasyncgen(res):
                         raise InvalidError(f"Async generator function returned value of type {type(res)}")
                     async for value in res:
-                        await function_io_manager.enqueue_generator_value.aio(input_id, output_index.value, value)
+                        await function_io_manager.enqueue_generator_value.aio(
+                            input_id, started_at, output_index.value, value
+                        )
                         output_index.increase()
-                    await function_io_manager.enqueue_generator_eof.aio(input_id, output_index.value)
+                    await function_io_manager.enqueue_generator_eof.aio(input_id, started_at, output_index.value)
                 else:
                     if not inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
                         raise InvalidError(
@@ -470,7 +506,10 @@ async def call_function_async(
                             " You might need to use @stub.function(..., is_generator=True)."
                         )
                     value = await res
-                    await function_io_manager.enqueue_output.aio(input_id, output_index.value, value)
+                    await function_io_manager.enqueue_output.aio(input_id, started_at, output_index.value, value)
+
+        async for input_id, args, kwargs in function_io_manager.run_inputs_outputs.aio(input_concurrency):
+            asyncio.create_task(run_input(input_id, args, kwargs))
     finally:
         if obj is not None:
             if hasattr(obj, "__aexit__"):
@@ -488,6 +527,7 @@ class ImportedFunction:
     stub: Optional[_Stub]
     is_async: bool
     is_generator: bool
+    input_concurrency: int
 
 
 @wrap()
@@ -527,6 +567,9 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun, ser_params
     # Use the function definition for whether this is a generator (overriden by webhooks)
     is_generator = function_def.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
 
+    # Container can fetch multiple inputs simultaneously
+    input_concurrency = function_def.allow_concurrent_inputs or 1
+
     # Instantiate the class if it's defined
     if cls:
         if ser_params:
@@ -558,7 +601,7 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun, ser_params
         is_async = True
         is_generator = True
 
-    return ImportedFunction(obj, fun, active_stub, is_async, is_generator)
+    return ImportedFunction(obj, fun, active_stub, is_async, is_generator, input_concurrency)
 
 
 def main(container_args: api_pb2.ContainerArguments, client: Client):
@@ -597,10 +640,14 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             imp_fun.fun = run_in_pty(imp_fun.fun, input_stream_blocking, pty_info)
 
         if not imp_fun.is_async:
-            call_function_sync(function_io_manager, imp_fun.obj, imp_fun.fun, imp_fun.is_generator)
+            call_function_sync(
+                function_io_manager, imp_fun.obj, imp_fun.fun, imp_fun.is_generator, imp_fun.input_concurrency
+            )
         else:
             run_with_signal_handler(
-                call_function_async(function_io_manager, imp_fun.obj, imp_fun.fun, imp_fun.is_generator)
+                call_function_async(
+                    function_io_manager, imp_fun.obj, imp_fun.fun, imp_fun.is_generator, imp_fun.input_concurrency
+                )
             )
 
 
