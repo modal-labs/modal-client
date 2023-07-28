@@ -86,7 +86,9 @@ async def _run_stub(
             for tag, obj in stub.registered_functions.items():
                 obj._handle._set_output_mgr(output_mgr)
 
-            output_mgr.set_app_running()
+            # Show logs from dynamically created images.
+            # TODO: better way to do this
+            output_mgr.enable_image_logs()
 
             # Yield to context
             if stub._pty_input_stream:
