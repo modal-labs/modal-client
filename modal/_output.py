@@ -129,6 +129,7 @@ class OutputManager:
     _line_buffers: dict[int, LineBufferedOutput]
     _status_spinner: Spinner
     _app_page_url: Optional[str]
+    _show_image_logs: bool
 
     def __init__(self, stdout: io.TextIOWrapper, show_progress: bool, status_spinner_text: str = "Running app..."):
         self.stdout = stdout or sys.stdout
@@ -144,6 +145,7 @@ class OutputManager:
         self._line_buffers = {}
         self._status_spinner = step_progress(status_spinner_text)
         self._app_page_url = None
+        self._show_image_logs = False
 
     def print_if_visible(self, renderable) -> None:
         if self._visible_progress:
@@ -160,6 +162,9 @@ class OutputManager:
         self._function_progress = None
         self._current_render_group = Group(renderable)
         return Live(self._current_render_group, console=self._console, transient=True, refresh_per_second=4)
+
+    def enable_image_logs(self):
+        self._show_image_logs = True
 
     @property
     def function_progress(self) -> Progress:
@@ -387,9 +392,13 @@ async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputMana
                 logger.debug("App logs are done")
                 last_log_batch_entry_id = None
                 break
-            elif log_batch.image_id:
-                # Ignore image logs - these still exist for old clients
-                # New clients get them through ImageJoinStreaming (see image.py)
+            elif log_batch.image_id and not output_mgr._show_image_logs:
+                # Ignore image logs while app is creating objects.
+                # These logs are fetched through ImageJoinStreaming instead.
+                # Logs from images built "dynamically" (after the app has started)
+                # are printed through this loop.
+                # TODO (akshat): have a better way of differentiating between
+                # statically and dynamically built images.
                 pass
             else:
                 for log in log_batch.items:
