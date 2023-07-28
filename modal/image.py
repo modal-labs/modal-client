@@ -1218,6 +1218,23 @@ class _Image(_Provider[_ImageHandle]):
             dockerfile_commands=["FROM base"] + [f"ENV {key}={shlex.quote(val)}" for (key, val) in vars.items()]
         )
 
+    @typechecked
+    def workdir(self, path: str) -> "_Image":
+        """Sets the working directory for subequent image build steps.
+
+        **Example**
+
+        ```python
+        image = (
+            modal.Image.debian_slim()
+                .run_commands("git clone https://xyz app")
+                .workdir("/app")
+                .run_commands("yarn install")
+        )
+        ```
+        """
+        return self.extend(dockerfile_commands=["FROM base"] + [f"WORKDIR {shlex.quote(path)}"])
+
 
 ImageHandle = synchronize_api(_ImageHandle)
 Image = synchronize_api(_Image)
