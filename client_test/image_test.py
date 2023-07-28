@@ -389,3 +389,12 @@ def test_image_force_build(client, servicer):
     )
     with stub.run(client=client):
         assert servicer.force_built_images == [2, 3, 4, 5, 6, 7]
+
+
+def test_workdir(servicer, client):
+    stub = Stub(image=Image.debian_slim().workdir("/foo/bar"))
+
+    with stub.run(client=client) as running_app:
+        layers = get_image_layers(running_app["image"].object_id, servicer)
+
+        assert any("WORKDIR /foo/bar" in cmd for cmd in layers[0].dockerfile_commands)
