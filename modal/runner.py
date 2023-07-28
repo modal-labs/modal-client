@@ -86,6 +86,8 @@ async def _run_stub(
             for tag, obj in stub.registered_functions.items():
                 obj._handle._set_output_mgr(output_mgr)
 
+            output_mgr.set_app_running()
+
             # Yield to context
             if stub._pty_input_stream:
                 output_mgr._visible_progress = False
