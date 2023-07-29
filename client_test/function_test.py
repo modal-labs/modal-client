@@ -1,20 +1,18 @@
 # Copyright Modal Labs 2022
 import asyncio
 import inspect
-import typing
 import pytest
 import time
+import typing
 
 import cloudpickle
-
 from synchronicity.exceptions import UserCodeException
 
-from modal_proto import api_pb2
-
-from modal import Proxy, Stub, NetworkFileSystem, web_endpoint, asgi_app, wsgi_app
+from modal import NetworkFileSystem, Proxy, Stub, asgi_app, web_endpoint, wsgi_app
 from modal.exception import DeprecationError, InvalidError
-from modal.functions import Function, FunctionCall, gather, FunctionHandle
+from modal.functions import Function, FunctionCall, FunctionHandle, gather
 from modal.runner import deploy_stub
+from modal_proto import api_pb2
 
 stub = Stub()
 
@@ -459,8 +457,8 @@ def test_closure_valued_serialized_function(client, servicer):
     assert functions["ret_bar"]() == "bar"
 
 
-def test_from_id_internal(client, servicer):
-    obj = FunctionCall._from_id("fc-123", client, None)
+def test_new_hydrated_internal(client, servicer):
+    obj = FunctionCall._new_hydrated("fc-123", client, None)
     assert obj.object_id == "fc-123"
 
 
@@ -505,14 +503,6 @@ def f(x):
     return x**2
 
 
-with pytest.raises(DeprecationError):
-
-    class Class:
-        @lc_stub.function()
-        def f(self, x):
-            return x**2
-
-
 def test_allow_cross_region_volumes(client, servicer):
     stub = Stub()
     vol1, vol2 = NetworkFileSystem.new(), NetworkFileSystem.new()
@@ -555,7 +545,7 @@ def test_shared_volumes(client, servicer):
 
 
 def test_serialize_deserialize_function_handle(servicer, client):
-    from modal._serialization import serialize, deserialize
+    from modal._serialization import deserialize, serialize
 
     stub = Stub()
 

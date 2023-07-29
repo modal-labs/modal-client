@@ -14,14 +14,15 @@ from synchronicity import Interface
 
 from modal.config import config
 from modal.exception import InvalidError
-from modal.runner import run_stub, deploy_stub, interactive_shell
+from modal.runner import deploy_stub, interactive_shell, run_stub
 from modal.serving import serve_stub
 from modal.stub import LocalEntrypoint
 from modal_utils.async_utils import synchronizer
+
 from ..environments import ensure_env
+from ..functions import _FunctionHandle
 from .import_refs import import_function, import_stub
 from .utils import ENV_OPTION, ENV_OPTION_HELP
-from ..functions import _FunctionHandle
 
 # Why do we need to support both types and the strings? Because something weird with
 # how __annotations__ works in Python (which inspect.signature uses). See #220.
@@ -123,7 +124,7 @@ def _get_click_command_for_local_entrypoint(_stub, entrypoint: LocalEntrypoint):
                 asyncio.run(func(*args, **kwargs))
             else:
                 func(*args, **kwargs)
-            if app.function_invocations == 0:
+            if app.client.function_invocations == 0:
                 # TODO: better formatting for the warning message
                 warnings.warn(
                     "Warning: no remote function calls were made.\n"
@@ -275,14 +276,8 @@ def shell(
         func_ref, accept_local_entrypoint=False, accept_webhook=True, interactive=True, base_cmd="modal shell"
     )
     assert isinstance(_function_handle, _FunctionHandle)  # ensured by accept_local_entrypoint=False
-    _stub = _function_handle._stub
-    _function = _function_handle._get_function()
-    blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
-    blocking_function = synchronizer._translate_out(_function, Interface.BLOCKING)
-
     interactive_shell(
-        blocking_stub,
+        _function_handle,
         cmd,
-        blocking_function,
         environment_name=env,
     )

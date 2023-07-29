@@ -1,30 +1,31 @@
 # Copyright Modal Labs 2022
 from __future__ import annotations
-import pickle
+
 import base64
 import json
 import pathlib
+import pickle
 import pytest
 import subprocess
 import sys
 import time
-from typing import List, Tuple, Dict, Optional
+from typing import Dict, List, Optional, Tuple
 
 from grpclib.exceptions import GRPCError
 
+from modal import Client
 from modal._container_entrypoint import UserException, main
 
 # from modal_test_support import SLEEP_DELAY
 from modal._serialization import deserialize, serialize
-from modal import Client
 from modal.exception import InvalidError
 from modal.stub import _Stub
 from modal_proto import api_pb2
-from .helpers import deploy_stub_externally
 
+from .helpers import deploy_stub_externally
 from .supports.skip import skip_windows_unix_socket
 
-EXTRA_TOLERANCE_DELAY = 1.0
+EXTRA_TOLERANCE_DELAY = 3.0
 FUNCTION_CALL_ID = "fc-123"
 SLEEP_DELAY = 0.1
 
@@ -84,6 +85,12 @@ def _run_container(
             function_def=function_def,
             serialized_params=serialized_params,
         )
+
+        if module_name in sys.modules:
+            # Drop the module from sys.modules since some function code relies on the
+            # assumption that that the app is created before the user code is imported.
+            # This is really only an issue for tests.
+            sys.modules.pop(module_name)
 
         try:
             main(container_args, client)

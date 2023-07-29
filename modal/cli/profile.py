@@ -1,10 +1,11 @@
 # Copyright Modal Labs 2022
 
+from typing import Optional
+
 import typer
 
-from typing import Optional
-from modal.config import _profile, config_profiles, config_set_active_profile
 from modal.cli.utils import display_selection
+from modal.config import _profile, config_profiles, config_set_active_profile
 
 profile_cli = typer.Typer(name="profile", help="Set the active Modal profile.", no_args_is_help=True)
 

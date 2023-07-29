@@ -1,10 +1,11 @@
 # Copyright Modal Labs 2022
-from typing import TYPE_CHECKING, Dict, Optional, TypeVar
+from typing import TYPE_CHECKING, Dict, Optional, Sequence, TypeVar
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import get_proto_oneof, retry_transient_errors
 
+from ._output import OutputManager
 from ._resolver import Resolver
 from .client import _Client
 from .config import logger
@@ -12,6 +13,9 @@ from .object import _Handle, _Provider
 
 if TYPE_CHECKING:
     from rich.tree import Tree
+
+    import modal.image
+    import modal.sandbox
 else:
     Tree = TypeVar("Tree")
 
@@ -44,16 +48,19 @@ class _App:
     _app_id: str
     _app_page_url: str
     _resolver: Optional[Resolver]
-    _function_invocations: int  # Number of function invocations made by this app.
+    _environment_name: str
+    _output_mgr: Optional[OutputManager]
 
     def __init__(
         self,
         client: _Client,
         app_id: str,
         app_page_url: str,
+        output_mgr: Optional[OutputManager],
         tag_to_object: Optional[Dict[str, _Handle]] = None,
         tag_to_existing_id: Optional[Dict[str, str]] = None,
         stub_name: Optional[str] = None,
+        environment_name: Optional[str] = None,
     ):
         """mdmd:hidden This is the app constructor. Users should not call this directly."""
         self._app_id = app_id
@@ -61,8 +68,9 @@ class _App:
         self._client = client
         self._tag_to_object = tag_to_object or {}
         self._tag_to_existing_id = tag_to_existing_id or {}
-        self._function_invocations = 0
         self._stub_name = stub_name
+        self._environment_name = environment_name
+        self._output_mgr = output_mgr
 
     @property
     def client(self) -> _Client:
@@ -75,10 +83,10 @@ class _App:
         return self._app_id
 
     async def _create_all_objects(
-        self, blueprint: Dict[str, _Provider], output_mgr, new_app_state: int, environment_name: str
+        self, blueprint: Dict[str, _Provider], new_app_state: int, environment_name: str, shell: bool = False
     ):  # api_pb2.AppState.V
         """Create objects that have been defined but not created on the server."""
-        resolver = Resolver(output_mgr, self._client, environment_name, self.app_id)
+        resolver = Resolver(self._output_mgr, self._client, environment_name, self.app_id, shell=shell)
         with resolver.display():
             # Preload all functions to make sure they have ids assigned before they are loaded.
             # This is important to make sure any enclosed function handle references in serialized
@@ -90,14 +98,14 @@ class _App:
                 # Note: preload only currently implemented for Functions, returns None otherwise
                 # this is to ensure that directly referenced functions from the global scope has
                 # ids associated with them when they are serialized into other functions
-                precreated_object = await resolver.preload(provider, existing_object_id)
+                precreated_object = await resolver.preload(provider, existing_object_id, provider._handle)
                 if precreated_object is not None:
                     self._tag_to_existing_id[tag] = precreated_object.object_id
                     self._tag_to_object[tag] = precreated_object
 
             for tag, provider in blueprint.items():
                 existing_object_id = self._tag_to_existing_id.get(tag)
-                created_obj = await resolver.load(provider, existing_object_id)
+                created_obj: _Handle = await resolver.load(provider, existing_object_id)
                 self._tag_to_object[tag] = created_obj
 
         # Create the app (and send a list of all tagged obs)
@@ -142,13 +150,6 @@ class _App:
     def __getattr__(self, tag: str) -> _Handle:
         return self._tag_to_object[tag]
 
-    def track_function_invocation(self):
-        self._function_invocations += 1
-
-    @property
-    def function_invocations(self):
-        return self._function_invocations
-
     async def _init_container(self, client: _Client, app_id: str, stub_name: str):
         self._client = client
         self._app_id = app_id
@@ -157,8 +158,10 @@ class _App:
         req = api_pb2.AppGetObjectsRequest(app_id=app_id)
         resp = await retry_transient_errors(self._client.stub.AppGetObjects, req)
         for item in resp.items:
+            # TODO(erikbern): we shouldn't create new handles here if there are existing objects
+            # FunctionHandle objects already exist in the global scope so let's grab those and hydrate
             handle_metadata = get_proto_oneof(item, "handle_metadata_oneof")
-            obj = _Handle._from_id(item.object_id, self._client, handle_metadata)
+            obj = _Handle._new_hydrated(item.object_id, self._client, handle_metadata)
             self._tag_to_object[item.tag] = obj
 
     @staticmethod
@@ -170,13 +173,15 @@ class _App:
         return _container_app
 
     @staticmethod
-    async def _init_existing(client: _Client, existing_app_id: str) -> "_App":
+    async def _init_existing(
+        client: _Client, existing_app_id: str, output_mgr: Optional[OutputManager] = None
+    ) -> "_App":
         # Get all the objects first
         obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
         obj_resp = await retry_transient_errors(client.stub.AppGetObjects, obj_req)
         app_page_url = f"https://modal.com/apps/{existing_app_id}"  # TODO (elias): this should come from the backend
         object_ids = {item.tag: item.object_id for item in obj_resp.items}
-        return _App(client, existing_app_id, app_page_url, tag_to_existing_id=object_ids)
+        return _App(client, existing_app_id, app_page_url, output_mgr, tag_to_existing_id=object_ids)
 
     @staticmethod
     async def _init_new(
@@ -185,6 +190,7 @@ class _App:
         detach: bool = False,
         deploying: bool = False,
         environment_name: str = "",
+        output_mgr: Optional[OutputManager] = None,
     ) -> "_App":
         # Start app
         # TODO(erikbern): maybe this should happen outside of this method?
@@ -197,10 +203,16 @@ class _App:
         app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
         app_page_url = app_resp.app_logs_url
         logger.debug(f"Created new app with id {app_resp.app_id}")
-        return _App(client, app_resp.app_id, app_page_url)
+        return _App(client, app_resp.app_id, app_page_url, output_mgr, environment_name=environment_name)
 
     @staticmethod
-    async def _init_from_name(client: _Client, name: str, namespace, environment_name: str = ""):
+    async def _init_from_name(
+        client: _Client,
+        name: str,
+        namespace,
+        environment_name: str = "",
+        output_mgr: Optional[OutputManager] = None,
+    ):
         # Look up any existing deployment
         app_req = api_pb2.AppGetByDeploymentNameRequest(
             name=name, namespace=namespace, environment_name=environment_name
@@ -210,9 +222,11 @@ class _App:
 
         # Grab the app
         if existing_app_id is not None:
-            return await _App._init_existing(client, existing_app_id)
+            return await _App._init_existing(client, existing_app_id, output_mgr=output_mgr)
         else:
-            return await _App._init_new(client, name, detach=False, deploying=True, environment_name=environment_name)
+            return await _App._init_new(
+                client, name, detach=False, deploying=True, environment_name=environment_name, output_mgr=output_mgr
+            )
 
     async def create_one_object(self, provider: _Provider, environment_name: str) -> _Handle:
         existing_object_id: Optional[str] = self._tag_to_existing_id.get("_object")
@@ -239,6 +253,28 @@ class _App:
         )
         deploy_response = await retry_transient_errors(self._client.stub.AppDeploy, deploy_req)
         return deploy_response.url
+
+    async def spawn_sandbox(
+        self,
+        *entrypoint_args: str,
+        image: Optional["modal.image._Image"] = None,  # The image to run as the container for the sandbox.
+        mounts: Sequence["modal.image._Mount"] = (),
+        timeout: Optional[int] = None,  # Maximum execution time of the sandbox in seconds.
+    ) -> "modal.sandbox._SandboxHandle":
+        """Sandboxes are a way to run arbitrary commands in dynamically defined environments.
+
+        This function returns a [SandboxHandle](/docs/reference/modal.Sandbox#modalsandboxsandboxhandle), which can be used to interact with the running sandbox.
+
+        Refer to the [docs](/docs/guide/sandbox) on how to spawn and use sandboxes.
+        """
+        from .sandbox import _Sandbox
+        from .stub import _default_image
+
+        self._client.track_function_invocation()
+
+        resolver = Resolver(None, self._client, self._environment_name, self.app_id)
+        provider = _Sandbox._new(entrypoint_args, image or _default_image, mounts, timeout)
+        return await resolver.load(provider)
 
     @staticmethod
     def _reset_container():

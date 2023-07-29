@@ -6,7 +6,9 @@ import contextlib
 import hashlib
 import inspect
 import os
+import pytest
 import shutil
+import subprocess
 import sys
 import tempfile
 import traceback
@@ -19,7 +21,6 @@ import aiohttp.web_runner
 import cloudpickle
 import grpclib.server
 import pkg_resources
-import pytest
 import pytest_asyncio
 from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
@@ -31,8 +32,8 @@ from modal.image import _dockerhub_python_version
 from modal.mount import client_mount_name
 from modal_proto import api_grpc, api_pb2
 from modal_utils.async_utils import synchronize_api
-from modal_utils.grpc_utils import find_free_port
 from modal_utils.grpc_testing import patch_mock_servicer
+from modal_utils.grpc_utils import find_free_port
 from modal_utils.http_utils import run_temporary_http_server
 
 
@@ -98,7 +99,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.task_result = None
 
-        self.shared_volume_files: Dict[str, Dict[str, api_pb2.SharedVolumePutFileRequest]] = defaultdict(dict)
+        self.nfs_files: Dict[str, Dict[str, api_pb2.SharedVolumePutFileRequest]] = defaultdict(dict)
         self.images = {}
         self.image_build_function_ids = {}
         self.force_built_images = []
@@ -120,7 +121,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.cleared_function_calls = set()
 
-        self.enforce_object_entity = True
         self.cancelled_calls = []
 
         self.app_client_disconnect_count = 0
@@ -133,6 +133,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         # Volume-id -> commit/reload count
         self.volume_commits: Dict[str, int] = defaultdict(lambda: 0)
         self.volume_reloads: Dict[str, int] = defaultdict(lambda: 0)
+
+        self.sandbox: subprocess.Popen = None
 
         @self.function_body
         def default_function_body(*args, **kwargs):
@@ -226,7 +228,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         else:
             object_id = request.object_id
 
-        if request.app_name and self.enforce_object_entity:
+        if request.app_name:
             assert request.object_entity
             if object_id:
                 assert object_id.startswith(request.object_entity)
@@ -573,7 +575,44 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def QueueGet(self, stream):
         await stream.recv_message()
-        await stream.send_message(api_pb2.QueueGetResponse(values=[self.queue.pop(0)]))
+        if len(self.queue) > 0:
+            values = [self.queue.pop(0)]
+        else:
+            values = []
+        await stream.send_message(api_pb2.QueueGetResponse(values=values))
+
+    ### Sandbox
+
+    async def SandboxCreate(self, stream):
+        request: api_pb2.SandboxCreateRequest = await stream.recv_message()
+        # Not using asyncio.subprocess here for Python 3.7 compatibility.
+        self.sandbox = subprocess.Popen(
+            request.definition.entrypoint_args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        await stream.send_message(api_pb2.SandboxCreateResponse(sandbox_id="sb-123"))
+
+    async def SandboxGetLogs(self, stream):
+        request: api_pb2.SandboxGetLogsRequest = await stream.recv_message()
+        if request.file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
+            data = self.sandbox.stdout.read()
+        else:
+            data = self.sandbox.stderr.read()
+        await stream.send_message(
+            api_pb2.TaskLogsBatch(
+                items=[api_pb2.TaskLogs(data=data.decode("utf-8"), file_descriptor=request.file_descriptor)]
+            )
+        )
+        await stream.send_message(api_pb2.TaskLogsBatch(eof=True))
+
+    async def SandboxWait(self, stream):
+        self.sandbox.wait()
+        if self.sandbox.returncode != 0:
+            result = api_pb2.GenericResult(
+                status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE, exitcode=self.sandbox.returncode
+            )
+        else:
+            result = api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
+        await stream.send_message(api_pb2.SandboxWaitResponse(result=result))
 
     ### Secret
 
@@ -591,17 +630,18 @@ class MockClientServicer(api_grpc.ModalClientBase):
     ### Shared volume
 
     async def SharedVolumeCreate(self, stream):
-        await stream.recv_message()
-        await stream.send_message(api_pb2.SharedVolumeCreateResponse(shared_volume_id="sv-123"))
+        nfs_id = f"sv-{len(self.nfs_files)}"
+        self.nfs_files[nfs_id] = {}
+        await stream.send_message(api_pb2.SharedVolumeCreateResponse(shared_volume_id=nfs_id))
 
     async def SharedVolumePutFile(self, stream):
         req = await stream.recv_message()
-        self.shared_volume_files[req.shared_volume_id][req.path] = req
+        self.nfs_files[req.shared_volume_id][req.path] = req
         await stream.send_message(api_pb2.SharedVolumePutFileResponse(exists=True))
 
     async def SharedVolumeGetFile(self, stream):
         req = await stream.recv_message()
-        put_req = self.shared_volume_files.get(req.shared_volume_id, {}).get(req.path)
+        put_req = self.nfs_files.get(req.shared_volume_id, {}).get(req.path)
         if not put_req:
             raise GRPCError(Status.NOT_FOUND, f"No such file: {req.path}")
         if put_req.data_blob_id:

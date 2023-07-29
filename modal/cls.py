@@ -1,9 +1,11 @@
 # Copyright Modal Labs 2022
 import inspect
 import pickle
-from typing import Dict, TypeVar, Type
+from typing import Dict, Type, TypeVar
+
 from modal_utils.async_utils import synchronize_api
-from .functions import _PartialFunction, PartialFunction, _FunctionHandle
+
+from .functions import PartialFunction, _FunctionHandle, _PartialFunction
 
 T = TypeVar("T")
 

@@ -142,14 +142,14 @@ class _Dict(_Provider[_DictHandle]):
     def new(data={}) -> "_Dict":
         """Create a new dictionary, optionally filled with initial data."""
 
-        async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _DictHandle:
+        async def _load(resolver: Resolver, existing_object_id: Optional[str], handle: _DictHandle):
             serialized = _serialize_dict(data)
             req = api_pb2.DictCreateRequest(
                 app_id=resolver.app_id, data=serialized, existing_dict_id=existing_object_id
             )
             response = await resolver.client.stub.DictCreate(req)
             logger.debug("Created dict with id %s" % response.dict_id)
-            return _DictHandle._from_id(response.dict_id, resolver.client, None)
+            handle._hydrate(response.dict_id, resolver.client, None)
 
         return _Dict._from_loader(_load, "Dict()")
 
@@ -172,6 +172,37 @@ class _Dict(_Provider[_DictHandle]):
         """`Dict().persist("my-dict")` is deprecated. Use `Dict.persisted("my-dict")` instead."""
         deprecation_warning(date(2023, 6, 30), self.persist.__doc__)
         return self.persisted(label, namespace, environment_name)
+
+    # Handle methods - temporary until we get rid of all user-facing handles
+    async def get(self, key: Any) -> Any:
+        return await self._handle.get(key)
+
+    async def contains(self, key: Any) -> bool:
+        return await self._handle.contains(key)
+
+    async def len(self) -> int:
+        return await self._handle.len()
+
+    async def __getitem__(self, key: Any) -> Any:
+        return await self._handle.__getitem__(key)
+
+    async def update(self, **kwargs) -> None:
+        return await self._handle.update(**kwargs)
+
+    async def put(self, key: Any, value: Any) -> None:
+        return await self._handle.put(key, value)
+
+    async def __setitem__(self, key: Any, value: Any) -> None:
+        return await self._handle.__setitem__(key, value)
+
+    async def pop(self, key: Any) -> Any:
+        return await self._handle.pop(key)
+
+    async def __delitem__(self, key: Any) -> Any:
+        return await self._handle.__delitem__(key)
+
+    async def __contains__(self, key: Any) -> bool:
+        return await self._handle.__contains(key)
 
 
 Dict = synchronize_api(_Dict)

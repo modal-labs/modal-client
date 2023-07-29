@@ -5,9 +5,9 @@ import asyncio
 import base64
 import contextlib
 import importlib
-import pickle
 import inspect
 import math
+import pickle
 import signal
 import sys
 import time
@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import Any, AsyncGenerator, AsyncIterator, Callable, Optional
 
 from grpclib import Status
+from synchronicity.interface import Interface
 
 from modal.stub import _Stub
 from modal_proto import api_pb2
@@ -26,7 +27,7 @@ from modal_utils.async_utils import (
     synchronizer,
 )
 from modal_utils.grpc_utils import retry_transient_errors
-from synchronicity.interface import Interface
+
 from ._asgi import asgi_app_wrapper, webhook_asgi_app, wsgi_app_wrapper
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._function_utils import load_function_from_module
@@ -576,16 +577,14 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Initialize the function
         with function_io_manager.handle_user_exception():
             imp_fun = import_function(container_args.function_def, ser_cls, ser_fun, container_args.serialized_params)
-            if imp_fun.stub:
-                _container_app = synchronizer._translate_in(container_app)
-                _client = synchronizer._translate_in(client)
-                imp_fun.stub._hydrate_function_handles(_client, _container_app)
 
-        if container_args.function_def.pty_info.enabled:
+        pty_info: api_pb2.PTYInfo = container_args.function_def.pty_info
+        if pty_info.pty_type or pty_info.enabled:
+            # TODO(erikbern): the second condition is for legacy compatibility, remove soon
             # TODO(erikbern): there is no client test for this branch
             input_stream_unwrapped = synchronizer._translate_in(container_app._pty_input_stream)
             input_stream_blocking = synchronizer._translate_out(input_stream_unwrapped, Interface.BLOCKING)
-            imp_fun.fun = run_in_pty(imp_fun.fun, input_stream_blocking, container_args.function_def.pty_info)
+            imp_fun.fun = run_in_pty(imp_fun.fun, input_stream_blocking, pty_info)
 
         if not imp_fun.is_async:
             call_function_sync(function_io_manager, imp_fun.obj, imp_fun.fun, imp_fun.is_generator)

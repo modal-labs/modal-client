@@ -1,10 +1,10 @@
 # Copyright Modal Labs 2023
 import asyncio
-from typing import Optional
+from typing import AsyncIterator, List, Optional
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_api, asyncnullcontext
-from modal_utils.grpc_utils import retry_transient_errors
+from modal_utils.async_utils import asyncnullcontext, synchronize_api
+from modal_utils.grpc_utils import retry_transient_errors, unary_stream
 
 from ._resolver import Resolver
 from .object import _Handle, _Provider
@@ -47,6 +47,27 @@ class _VolumeHandle(_Handle, type_prefix="vo"):
         Reloading will fail if there are open files for the volume.
         """
         await self._do_reload()
+
+    async def iterdir(self, path: str) -> AsyncIterator[api_pb2.VolumeListFilesEntry]:
+        """Iterate over all files in a directory in the volume.
+
+        * Passing a directory path lists all files in the directory (names are relative to the directory)
+        * Passing a file path returns a list containing only that file's listing description
+        * Passing a glob path (including at least one * or ** sequence) returns all files matching that glob path (using absolute paths)
+        """
+        req = api_pb2.VolumeListFilesRequest(volume_id=self._object_id, path=path)
+        async for batch in unary_stream(self._client.stub.VolumeListFiles, req):
+            for entry in batch.entries:
+                yield entry
+
+    async def listdir(self, path: str) -> List[api_pb2.VolumeListFilesEntry]:
+        """List all files under a path prefix in the modal.Volume.
+
+        * Passing a directory path lists all files in the directory
+        * Passing a file path returns a list containing only that file's listing description
+        * Passing a glob path (including at least one * or ** sequence) returns all files matching that glob path (using absolute paths)
+        """
+        return [entry async for entry in self.iterdir(path)]
 
     async def _do_reload(self, lock=True):
         async with self._lock if lock else asyncnullcontext():
@@ -103,17 +124,18 @@ class _Volume(_Provider[_VolumeHandle]):
     def new() -> "_Volume":
         """Construct a new volume, which is empty by default."""
 
-        async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _VolumeHandle:
+        async def _load(resolver: Resolver, existing_object_id: Optional[str], handle: _VolumeHandle):
             status_row = resolver.add_status_row()
             if existing_object_id:
                 # Volume already exists; do nothing.
-                return _VolumeHandle._from_id(existing_object_id, resolver.client, None)
+                handle._hydrate(existing_object_id, resolver.client, None)
+                return
 
             status_row.message("Creating volume...")
             req = api_pb2.VolumeCreateRequest(app_id=resolver.app_id)
             resp = await retry_transient_errors(resolver.client.stub.VolumeCreate, req)
             status_row.finish("Created volume.")
-            return _VolumeHandle._from_id(resp.volume_id, resolver.client, None)
+            handle._hydrate(resp.volume_id, resolver.client, None)
 
         return _Volume._from_loader(_load, "Volume()")
 
@@ -144,6 +166,21 @@ class _Volume(_Provider[_VolumeHandle]):
 
         """
         return _Volume.new()._persist(label, namespace, environment_name)
+
+    # Methods on live handles
+
+    async def commit(self):
+        return await self._handle.commit()
+
+    async def reload(self):
+        return await self._handle.reload()
+
+    async def iterdir(self, path: str) -> AsyncIterator[api_pb2.VolumeListFilesEntry]:
+        async for entry in self._handle.iterdir(path):
+            yield entry
+
+    async def listdir(self, path: str) -> List[api_pb2.VolumeListFilesEntry]:
+        return self._handle.listdir(path)
 
 
 Volume = synchronize_api(_Volume)

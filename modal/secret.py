@@ -1,10 +1,9 @@
 # Copyright Modal Labs 2022
 import os
-from typing import Dict, Optional
 from datetime import date
+from typing import Dict, Optional
 
 from modal._types import typechecked
-
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
 
@@ -55,7 +54,7 @@ class _Secret(_Provider[_SecretHandle]):
         ):
             raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
 
-        async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _SecretHandle:
+        async def _load(resolver: Resolver, existing_object_id: Optional[str], handle: _SecretHandle):
             req = api_pb2.SecretCreateRequest(
                 app_id=resolver.app_id,
                 env_dict=env_dict,
@@ -63,7 +62,7 @@ class _Secret(_Provider[_SecretHandle]):
                 existing_secret_id=existing_object_id,
             )
             resp = await resolver.client.stub.SecretCreate(req)
-            return _SecretHandle._from_id(resp.secret_id, resolver.client, None)
+            handle._hydrate(resp.secret_id, resolver.client, None)
 
         rep = f"Secret.from_dict([{', '.join(env_dict.keys())}])"
         return _Secret._from_loader(_load, rep)
@@ -92,9 +91,9 @@ class _Secret(_Provider[_SecretHandle]):
         starting point for finding the `.env` file.
         """
 
-        async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _SecretHandle:
+        async def _load(resolver: Resolver, existing_object_id: Optional[str], handle: _SecretHandle):
             try:
-                from dotenv import find_dotenv, dotenv_values
+                from dotenv import dotenv_values, find_dotenv
                 from dotenv.main import _walk_to_root
             except ImportError:
                 raise ImportError(
@@ -124,7 +123,8 @@ class _Secret(_Provider[_SecretHandle]):
                 existing_secret_id=existing_object_id,
             )
             resp = await resolver.client.stub.SecretCreate(req)
-            return _SecretHandle._from_id(resp.secret_id, resolver.client, None)
+
+            handle._hydrate(resp.secret_id, resolver.client, None)
 
         return _Secret._from_loader(_load, "Secret.from_dotenv()")
 

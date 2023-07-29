@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
 import logging
-
 import pytest
 
 from google.protobuf.empty_pb2 import Empty

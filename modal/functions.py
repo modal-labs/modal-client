@@ -1,13 +1,14 @@
 # Copyright Modal Labs 2022
-import pickle
-import os
 import asyncio
 import inspect
+import os
+import pickle
 import posixpath
 import time
 import typing
 import warnings
 from dataclasses import dataclass
+from datetime import date
 from pathlib import PurePath
 from typing import (
     Any,
@@ -17,28 +18,27 @@ from typing import (
     Callable,
     Collection,
     Dict,
+    Iterable,
     List,
     Optional,
     Set,
     Tuple,
     Union,
-    Iterable,
 )
 
-from datetime import date
 from aiostream import pipe, stream
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.exceptions import UserCodeException
 
 from modal import _pty
-from modal_proto import api_pb2
 from modal._types import typechecked
+from modal_proto import api_pb2
 from modal_utils.async_utils import (
     queue_batch_iterator,
     synchronize_api,
-    warn_if_generator_is_not_consumed,
     synchronizer,
+    warn_if_generator_is_not_consumed,
 )
 from modal_utils.grpc_utils import retry_transient_errors
 
@@ -55,19 +55,24 @@ from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._traceback import append_modal_tb
 from .call_graph import InputInfo, _reconstruct_call_graph
-from .config import config, logger
 from .client import _Client
-from .exception import ExecutionError, InvalidError, RemoteError, deprecation_error, deprecation_warning
-from .exception import TimeoutError as _TimeoutError
-from .gpu import GPU_T, parse_gpu_config, display_gpu_config
+from .config import config, logger
+from .exception import (
+    ExecutionError,
+    InvalidError,
+    RemoteError,
+    TimeoutError as _TimeoutError,
+    deprecation_error,
+)
+from .gpu import GPU_T, display_gpu_config, parse_gpu_config
 from .image import _Image
-from .mount import _Mount, _get_client_mount
+from .mount import _get_client_mount, _Mount
+from .network_file_system import _NetworkFileSystem
 from .object import _Handle, _Provider
 from .proxy import _Proxy
 from .retries import Retries
 from .schedule import Schedule
 from .secret import _Secret
-from .network_file_system import _NetworkFileSystem
 from .volume import _Volume
 
 ATTEMPT_TIMEOUT_GRACE_PERIOD = 5  # seconds
@@ -496,7 +501,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
 
     _web_url: Optional[str]
     _info: Optional[FunctionInfo]
-    _stub: Optional["modal.stub._Stub"]
+    _stub: Optional["modal.stub._Stub"]  # TODO(erikbern): remove
     _is_remote_cls_method: bool = False
     _function_name: Optional[str]
 
@@ -510,20 +515,20 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
             False  # set when a user terminates the app intentionally, to prevent useless traceback spam
         )
         self._function_name = None
-        self._stub = None
+        self._stub = None  # TODO(erikbern): remove
         self._self_obj = None
 
     def _initialize_from_local(self, stub, info: FunctionInfo):
         # note that this is not a full hydration of the function, as it doesn't yet get an object_id etc.
-        self._stub = stub
+        self._stub = stub  # TODO(erikbern): remove
         self._info = info
 
-    def _hydrate_metadata(self, handle_metadata: Message):
+    def _hydrate_metadata(self, metadata: Message):
         # makes function usable
-        assert isinstance(handle_metadata, (api_pb2.Function, api_pb2.FunctionHandleMetadata))
-        self._is_generator = handle_metadata.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
-        self._web_url = handle_metadata.web_url
-        self._function_name = handle_metadata.function_name
+        assert isinstance(metadata, (api_pb2.Function, api_pb2.FunctionHandleMetadata))
+        self._is_generator = metadata.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
+        self._web_url = metadata.web_url
+        self._function_name = metadata.function_name
 
     async def _make_bound_function_handle(self, *args: Iterable[Any], **kwargs: Dict[str, Any]) -> "_FunctionHandle":
         assert self.is_hydrated(), "Cannot make bound function handle from unhydrated handle."
@@ -541,7 +546,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
             serialized_params=serialized_params,
         )
         response = await self._client.stub.FunctionBindParams(req)
-        new_handle._hydrate(self._client, response.bound_function_id, response.handle_metadata)
+        new_handle._hydrate(response.bound_function_id, self._client, response.handle_metadata)
         new_handle._is_remote_cls_method = True
         return new_handle
 
@@ -554,7 +559,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
     def _get_self_obj(self):
         return self._self_obj
 
-    def _get_handle_metadata(self):
+    def _get_metadata(self):
         return api_pb2.FunctionHandleMetadata(
             function_name=self._function_name,
             function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR
@@ -569,9 +574,6 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
     def _set_output_mgr(self, output_mgr: OutputManager):
         self._output_mgr = output_mgr
 
-    def _get_function(self) -> "_Function":
-        return self._stub[self._info.get_tag()]
-
     @property
     def web_url(self) -> str:
         """URL of a Function running as a web endpoint."""
@@ -582,8 +584,8 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         return self._is_generator
 
     def _track_function_invocation(self):
-        if self._stub and self._stub.app:
-            self._stub.app.track_function_invocation()
+        if self._client is not None:  # Note that if it is None, then it will fail later anyway
+            self._client.track_function_invocation()
 
     async def _map(self, input_stream: AsyncIterable[Any], order_outputs: bool, return_exceptions: bool, kwargs={}):
         if self._web_url:
@@ -740,6 +742,13 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         else:
             return self._call_function(args, kwargs)
 
+    def shell(self, *args, **kwargs):
+        # TOOD(erikbern): right now fairly duplicated
+        if self._is_generator:
+            return self._call_generator(args, kwargs)  # type: ignore
+        else:
+            return self._call_function(args, kwargs)
+
     @synchronizer.nowrap
     def __call__(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
         if self._get_is_remote_cls_method():  # TODO(elias): change parametrization so this is isn't needed
@@ -775,7 +784,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
             return None
 
         invocation = await self._call_function_nowait(args, kwargs)
-        return _FunctionCall._from_id(invocation.function_call_id, invocation.client, None)
+        return _FunctionCall._new_hydrated(invocation.function_call_id, invocation.client, None)
 
     def get_raw_f(self) -> Callable[..., Any]:
         """Return the inner Python object wrapped by this Modal Function."""
@@ -803,7 +812,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         return self
 
     def __get__(self, obj, objtype=None) -> "_FunctionHandle":
-        deprecation_warning(
+        deprecation_error(
             date(2023, 5, 9),
             "Using the `@stub.function` decorator on methods is deprecated."
             " Use the @method decorator instead."
@@ -832,14 +841,13 @@ class _Function(_Provider[_FunctionHandle]):
     _image: Optional[_Image]
     _gpu: Optional[GPU_T]
     _cloud: Optional[str]
-    _function_handle: _FunctionHandle
+    _handle: _FunctionHandle
     _stub: "modal.stub._Stub"
     _is_builder_function: bool
     _retry_policy: Optional[api_pb2.FunctionRetryPolicy]
 
     @staticmethod
     def from_args(
-        function_handle: _FunctionHandle,
         info: FunctionInfo,
         stub,
         image=None,
@@ -869,6 +877,8 @@ class _Function(_Provider[_FunctionHandle]):
         cls: Optional[type] = None,
     ) -> None:
         """mdmd:hidden"""
+        tag = info.get_tag()
+
         raw_f = info.raw_f
         assert callable(raw_f)
         if schedule is not None:
@@ -904,7 +914,7 @@ class _Function(_Provider[_FunctionHandle]):
             raise InvalidError(
                 f"Function {raw_f} retries must be an integer or instance of modal.Retries. Found: {type(retries)}"
             )
-        tag = info.get_tag()
+
         gpu_config = parse_gpu_config(gpu)
 
         if proxy:
@@ -924,7 +934,7 @@ class _Function(_Provider[_FunctionHandle]):
                 "Setting `keep_warm=True` is deprecated. Pass an explicit warm pool size instead, e.g. `keep_warm=2`.",
             )
 
-        if not cloud:
+        if not cloud and not is_builder_function:
             cloud = config.get("default_cloud")
         if cloud:
             cloud_provider = parse_cloud_provider(cloud)
@@ -955,7 +965,7 @@ class _Function(_Provider[_FunctionHandle]):
             else:
                 raise InvalidError("Webhooks cannot be generators")
 
-        async def _preload(resolver: Resolver, existing_object_id: Optional[str]) -> _FunctionHandle:
+        async def _preload(resolver: Resolver, existing_object_id: Optional[str], handle: _FunctionHandle):
             if is_generator:
                 function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
             else:
@@ -970,10 +980,10 @@ class _Function(_Provider[_FunctionHandle]):
             )
             response = await resolver.client.stub.FunctionPrecreate(req)
             # Update the precreated function handle (todo: hack until we merge providers/handles)
-            function_handle._hydrate(resolver.client, response.function_id, response.handle_metadata)
-            return function_handle
+            handle._hydrate(response.function_id, resolver.client, response.handle_metadata)
+            return handle
 
-        async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _FunctionHandle:
+        async def _load(resolver: Resolver, existing_object_id: Optional[str], handle: _FunctionHandle):
             # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
             status_row = resolver.add_status_row()
             status_row.message(f"Creating {tag}...")
@@ -983,7 +993,7 @@ class _Function(_Provider[_FunctionHandle]):
             else:
                 proxy_id = None
 
-            # Mount point path validation for volumes and shared volumes
+            # Mount point path validation for volumes and network file systems.
             def _validate_mount_points(
                 display_name: str, volume_likes: Dict[Union[str, os.PathLike], Union[_Volume, _NetworkFileSystem]]
             ) -> List[Tuple[str, Union[_Volume, _NetworkFileSystem]]]:
@@ -1073,8 +1083,12 @@ class _Function(_Provider[_FunctionHandle]):
                 raise InvalidError(f"Invalid fractional CPU value {cpu}. Cannot have less than 0.25 CPU resources.")
             milli_cpu = int(1000 * cpu) if cpu is not None else None
 
-            if interactive:
-                pty_info = _pty.get_pty_info()
+            timeout_secs = timeout
+            if resolver._shell:
+                timeout_secs = 86400
+                pty_info = _pty.get_pty_info(shell=True)
+            elif interactive:
+                pty_info = _pty.get_pty_info(shell=False)
             else:
                 pty_info = None
 
@@ -1117,7 +1131,7 @@ class _Function(_Provider[_FunctionHandle]):
                 volume_mounts=volume_mounts,
                 proxy_id=proxy_id,
                 retry_policy=retry_policy,
-                timeout_secs=timeout,
+                timeout_secs=timeout_secs,
                 task_idle_timeout_secs=container_idle_timeout,
                 concurrency_limit=concurrency_limit,
                 pty_info=pty_info,
@@ -1126,6 +1140,7 @@ class _Function(_Provider[_FunctionHandle]):
                 runtime=config.get("function_runtime"),
                 stub_name=stub_name,
                 is_builder_function=is_builder_function,
+                allow_concurrent_inputs=1,
             )
             request = api_pb2.FunctionCreateRequest(
                 app_id=resolver.app_id,
@@ -1142,13 +1157,13 @@ class _Function(_Provider[_FunctionHandle]):
                     raise InvalidError(exc.message)
                 raise
 
-            if response.web_url:
+            if response.function.web_url:
                 # Ensure terms used here match terms used in modal.com/docs/guide/webhook-urls doc.
-                if response.web_url_info.truncated:
+                if response.function.web_url_info.truncated:
                     suffix = " [grey70](label truncated)[/grey70]"
-                elif response.web_url_info.has_unique_hash:
+                elif response.function.web_url_info.has_unique_hash:
                     suffix = " [grey70](label includes conflict-avoidance hash)[/grey70]"
-                elif response.web_url_info.label_stolen:
+                elif response.function.web_url_info.label_stolen:
                     suffix = " [grey70](label stolen)[/grey70]"
                 else:
                     suffix = ""
@@ -1157,31 +1172,42 @@ class _Function(_Provider[_FunctionHandle]):
             else:
                 status_row.finish(f"Created {tag}.")
 
-            # Instead of returning a new object, just return the precreated one
-            # TODO (elias): We should not have to run _hydrate in here since functions are preloaded. Needed for now due to some conflicts with builder_functions
-            function_handle._hydrate(resolver.client, response.function_id, response.handle_metadata)
-            return function_handle
+            handle._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         rep = f"Function({tag})"
         obj = _Function._from_loader(_load, rep, preload=_preload)
-        # TODO(erikbern): almost all of these are only needed because of modal.cli.run.shell
-        obj._allow_cross_region_volumes = allow_cross_region_volumes
-        obj._cloud = cloud
-        obj._image = image
-        obj._info = info
-        obj._function_handle = function_handle
-        obj._gpu = gpu
-        obj._gpu_config = gpu_config
-        obj._mounts = mounts
-        obj._panel_items = panel_items
+
+        if stub is not None and stub.app is not None:
+            # If the container is running, and we recognize this function, hydrate it
+            # TODO(erikbern): later when we merge apps and stubs, there should be no separate objects on the app,
+            # and there should be no need to "steal" ids
+            running_handle = stub.app._tag_to_object.get(tag)
+            if running_handle is not None:
+                obj._handle._hydrate_from_other(running_handle)
+
+        # TODO(erikbern): we should also get rid of this
+        obj._handle._initialize_from_local(stub, info)
+
         obj._raw_f = raw_f
-        obj._secrets = secrets
-        obj._network_file_systems = network_file_systems
+        obj._info = info
         obj._tag = tag
         obj._all_mounts = all_mounts  # needed for modal.serve file watching
+        obj._panel_items = panel_items
+
+        # Used to check whether we should rebuild an image using run_function
+        # Plaintext source and arg definition for the function, so it's part of the image
+        # hash. We can't use the cloudpickle hash because it's not very stable.
+        obj._build_args = dict(  # See get_build_def
+            secrets=repr(secrets),
+            gpu_config=repr(gpu_config),
+            mounts=repr(mounts),
+            network_file_systems=repr(network_file_systems),
+        )
+
         return obj
 
     def get_panel_items(self) -> List[str]:
+        """mdmd:hidden"""
         return self._panel_items
 
     @property
@@ -1189,18 +1215,9 @@ class _Function(_Provider[_FunctionHandle]):
         """mdmd:hidden"""
         return self._tag
 
-    def get_build_def(self):
+    def get_build_def(self) -> str:
         """mdmd:hidden"""
-        # Used to check whether we should rebuild an image using run_function
-        # Plaintext source and arg definition for the function, so it's part of the image
-        # hash. We can't use the cloudpickle hash because it's not very stable.
-        kwargs = dict(
-            secrets=repr(self._secrets),
-            gpu_config=repr(self._gpu_config),
-            mounts=repr(self._mounts),
-            network_file_systems=repr(self._network_file_systems),
-        )
-        return f"{inspect.getsource(self._raw_f)}\n{repr(kwargs)}"
+        return f"{inspect.getsource(self._raw_f)}\n{repr(self._build_args)}"
 
 
 Function = synchronize_api(_Function)
@@ -1432,12 +1449,23 @@ def _asgi_app(
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
-    """Register an ASGI app with this application.
+    """Decorator for registering an ASGI app with a Modal function.
 
     Asynchronous Server Gateway Interface (ASGI) is a standard for Python
     synchronous and asynchronous apps, supported by all popular Python web
     libraries. This is an advanced decorator that gives full flexibility in
     defining one or more web endpoints on Modal.
+
+    **Usage:**
+
+    ```python
+    from typing import Callable
+
+    @stub.function()
+    @modal.asgi_app()
+    def create_asgi() -> Callable:
+        ...
+    ```
 
     To learn how to use Modal with popular web frameworks, see the
     [guide on web endpoints](https://modal.com/docs/guide/webhooks).
@@ -1459,8 +1487,6 @@ def _asgi_app(
         else:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
 
-        # self._loose_webhook_configs.add(raw_f)
-
         return _PartialFunction(
             raw_f,
             api_pb2.WebhookConfig(
@@ -1478,9 +1504,27 @@ def _wsgi_app(
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
-    """Register a WSGI app with this application.
+    """Decorator for registering a WSGI app with a Modal function.
 
-    See documentation for [`asgi_app`](/docs/reference/modal.asgi_app).
+    Web Server Gateway Interface (WSGI) is a standard for synchronous Python web apps.
+    It has been [succeeded by the ASGI interface](https://asgi.readthedocs.io/en/latest/introduction.html#wsgi-compatibility) which is compatible with ASGI and supports
+    additional functionality such as web sockets. Modal supports ASGI via [`asgi_app`](/docs/reference/modal.asgi_app).
+
+    **Usage:**
+
+    ```python
+    from typing import Callable
+
+    @stub.function()
+    @modal.wsgi_app()
+    def create_wsgi() -> Callable:
+        ...
+    ```
+
+    To learn how to use this decorator with popular web frameworks, see the
+    [guide on web endpoints](https://modal.com/docs/guide/webhooks).
+
+    For documentation on this decorator's arguments see [`asgi_app`](/docs/reference/modal.asgi_app).
     """
     if label and not isinstance(label, str):
         raise InvalidError(
@@ -1494,8 +1538,6 @@ def _wsgi_app(
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
         else:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
-
-        # self._loose_webhook_configs.add(raw_f)
 
         return _PartialFunction(
             raw_f,

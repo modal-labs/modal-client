@@ -1,11 +1,11 @@
 # Copyright Modal Labs 2022
 from __future__ import annotations
+
 import asyncio
-from datetime import date
 import time
+from datetime import date
 
-
-from modal import Stub, method, web_endpoint, asgi_app
+from modal import Stub, asgi_app, method, web_endpoint
 from modal.exception import deprecation_warning
 
 SLEEP_DELAY = 0.1

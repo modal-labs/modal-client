@@ -2,7 +2,7 @@
 import asyncio
 import platform
 import warnings
-from typing import Callable, Optional, Tuple, Dict
+from typing import Awaitable, Callable, Dict, Optional, Tuple
 
 from aiohttp import ClientConnectorError, ClientResponseError
 from google.protobuf import empty_pb2
@@ -86,9 +86,10 @@ class _Client:
         self.credentials = credentials
         self.version = version
         self.no_verify = no_verify
-        self._pre_stop: Optional[Callable[[], None]] = None
+        self._pre_stop: Optional[Callable[[], Awaitable[None]]] = None
         self._channel = None
         self._stub = None
+        self._function_invocations = 0
 
     @property
     def stub(self):
@@ -112,7 +113,7 @@ class _Client:
         if self._channel is not None:
             self._channel.close()
 
-    def set_pre_stop(self, pre_stop: Callable[[], None]):
+    def set_pre_stop(self, pre_stop: Callable[[], Awaitable[None]]):
         """mdmd:hidden"""
         # hack: stub.serve() gets into a losing race with the `on_shutdown` client
         # teardown when an interrupt signal is received (eg. KeyboardInterrupt).
@@ -242,6 +243,13 @@ class _Client:
     def set_env_client(cls, client):
         """Just used from tests."""
         cls._client_from_env = client
+
+    def track_function_invocation(self):
+        self._function_invocations += 1
+
+    @property
+    def function_invocations(self):
+        return self._function_invocations
 
 
 Client = synchronize_api(_Client)

@@ -1,8 +1,8 @@
 # Copyright Modal Labs 2022
 import queue  # The system library
-from datetime import date
 import time
 import warnings
+from datetime import date
 from typing import Any, List, Optional
 
 from modal_proto import api_pb2
@@ -139,10 +139,10 @@ class _Queue(_Provider[_QueueHandle]):
 
     @staticmethod
     def new():
-        async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _QueueHandle:
+        async def _load(resolver: Resolver, existing_object_id: Optional[str], handle: _QueueHandle):
             request = api_pb2.QueueCreateRequest(app_id=resolver.app_id, existing_queue_id=existing_object_id)
             response = await resolver.client.stub.QueueCreate(request)
-            return _QueueHandle._from_id(response.queue_id, resolver.client, None)
+            handle._hydrate(response.queue_id, resolver.client, None)
 
         return _Queue._from_loader(_load, "Queue()")
 
@@ -157,6 +157,19 @@ class _Queue(_Provider[_QueueHandle]):
         label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
     ) -> "_Queue":
         return _Queue.new()._persist(label, namespace, environment_name)
+
+    # Live handle methods
+    async def get(self, block: bool = True, timeout: Optional[float] = None) -> Optional[Any]:
+        return await self._handle.get(block, timeout)
+
+    async def get_many(self, n_values: int, block: bool = True, timeout: Optional[float] = None) -> List[Any]:
+        return await self._handle.get_many(n_values, block, timeout)
+
+    async def put(self, v: Any) -> None:
+        return await self._handle.put(v)
+
+    async def put_many(self, vs: List[Any]) -> None:
+        return await self._handle.put_many(vs)
 
 
 Queue = synchronize_api(_Queue)

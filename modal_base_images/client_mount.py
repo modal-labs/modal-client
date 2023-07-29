@@ -2,7 +2,7 @@
 import asyncio
 
 from modal.config import config
-from modal.mount import create_client_mount, client_mount_name
+from modal.mount import client_mount_name, create_client_mount
 from modal_proto import api_pb2
 
 

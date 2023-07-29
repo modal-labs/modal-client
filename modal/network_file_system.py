@@ -1,16 +1,16 @@
 # Copyright Modal Labs 2023
 import os
-from datetime import date
 import time
+from datetime import date
 from pathlib import Path, PurePosixPath
 from typing import AsyncIterator, BinaryIO, List, Optional, Union
 
 import modal
+from modal._location import parse_cloud_provider
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_api, ConcurrencyPool
+from modal_utils.async_utils import ConcurrencyPool, synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors, unary_stream
 from modal_utils.hash_utils import get_sha256_hex
-from modal._location import parse_cloud_provider
 
 from ._blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
 from ._resolver import Resolver
@@ -29,10 +29,10 @@ class _NetworkFileSystemHandle(_Handle, type_prefix="sv"):
     Should typically not be used directly in a Modal function,
     and instead referenced through the file system, see `modal.NetworkFileSystem`.
 
-    Also see the CLI methods for accessing shared volumes:
+    Also see the CLI methods for accessing network file systems:
 
     ```bash
-    modal volume --help
+    modal nfs --help
     ```
 
     A NetworkFileSystemHandle *can* however be useful for some local scripting scenarios, e.g.:
@@ -45,7 +45,7 @@ class _NetworkFileSystemHandle(_Handle, type_prefix="sv"):
     """
 
     async def write_file(self, remote_path: str, fp: BinaryIO) -> int:
-        """Write from a file object to a path on the shared volume, atomically.
+        """Write from a file object to a path on the network file system, atomically.
 
         Will create any needed parent directories automatically.
 
@@ -82,7 +82,7 @@ class _NetworkFileSystemHandle(_Handle, type_prefix="sv"):
         return data_size  # might be better if this is returned from the server
 
     async def read_file(self, path: str) -> AsyncIterator[bytes]:
-        """Read a file from the shared volume"""
+        """Read a file from the network file system"""
         req = api_pb2.SharedVolumeGetFileRequest(shared_volume_id=self._object_id, path=path)
         response = await retry_transient_errors(self._client.stub.SharedVolumeGetFile, req)
         if response.WhichOneof("data_oneof") == "data":
@@ -92,7 +92,7 @@ class _NetworkFileSystemHandle(_Handle, type_prefix="sv"):
                 yield data
 
     async def iterdir(self, path: str) -> AsyncIterator[api_pb2.SharedVolumeListFilesEntry]:
-        """Iterate over all files in a directory in the shared volume.
+        """Iterate over all files in a directory in the network file system.
 
         * Passing a directory path lists all files in the directory (names are relative to the directory)
         * Passing a file path returns a list containing only that file's listing description
@@ -138,7 +138,7 @@ class _NetworkFileSystemHandle(_Handle, type_prefix="sv"):
         await ConcurrencyPool(20).run_coros(gen_transfers(), return_exceptions=True)
 
     async def listdir(self, path: str) -> List[api_pb2.SharedVolumeListFilesEntry]:
-        """List all files in a directory in the shared volume.
+        """List all files in a directory in the network file system.
 
         * Passing a directory path lists all files in the directory (names are relative to the directory)
         * Passing a file path returns a list containing only that file's listing description
@@ -147,7 +147,7 @@ class _NetworkFileSystemHandle(_Handle, type_prefix="sv"):
         return [entry async for entry in self.iterdir(path)]
 
     async def remove_file(self, path: str, recursive=False):
-        """Remove a file in a shared volume."""
+        """Remove a file in a network file system."""
         req = api_pb2.SharedVolumeRemoveFileRequest(shared_volume_id=self._object_id, path=path, recursive=recursive)
         await retry_transient_errors(self._client.stub.SharedVolumeRemoveFile, req)
 
@@ -178,30 +178,31 @@ class _NetworkFileSystem(_Provider[_NetworkFileSystemHandle]):
         pass
     ```
 
-    It is often the case that you would want to persist a shared volume object
+    It is often the case that you would want to persist a network file system object
     separately from the currently attached app. Refer to the persistence
-    [guide section](/docs/guide/shared-volumes#persisting-volumes) to see how to
+    [guide section](/docs/guide/network-file-systems#persisting-volumes) to see how to
     persist this object across app runs.
     """
 
     @typechecked
     @staticmethod
     def new(cloud: Optional[str] = None) -> "_NetworkFileSystem":
-        """Construct a new shared volume, which is empty by default."""
+        """Construct a new network file system, which is empty by default."""
 
-        async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _NetworkFileSystemHandle:
+        async def _load(resolver: Resolver, existing_object_id: Optional[str], handle: _NetworkFileSystemHandle):
             status_row = resolver.add_status_row()
             if existing_object_id:
                 # Volume already exists; do nothing.
-                return _NetworkFileSystemHandle._from_id(existing_object_id, resolver.client, None)
+                handle._hydrate(existing_object_id, resolver.client, None)
+                return
 
             cloud_provider = parse_cloud_provider(cloud) if cloud else None
 
-            status_row.message("Creating shared volume...")
+            status_row.message("Creating network file system...")
             req = api_pb2.SharedVolumeCreateRequest(app_id=resolver.app_id, cloud_provider=cloud_provider)
             resp = await retry_transient_errors(resolver.client.stub.SharedVolumeCreate, req)
-            status_row.finish("Created shared volume.")
-            return _NetworkFileSystemHandle._from_id(resp.shared_volume_id, resolver.client, None)
+            status_row.finish("Created network file system.")
+            handle._hydrate(resp.shared_volume_id, resolver.client, None)
 
         return _NetworkFileSystem._from_loader(_load, "NetworkFileSystem()")
 
@@ -244,6 +245,37 @@ class _NetworkFileSystem(_Provider[_NetworkFileSystemHandle]):
         """`NetworkFileSystem().persist("my-volume")` is deprecated. Use `NetworkFileSystem.persisted("my-volume")` instead."""
         deprecation_warning(date(2023, 6, 30), self.persist.__doc__)
         return self.persisted(label, namespace, environment_name, cloud)
+
+    # Methods on live handles
+
+    async def write_file(self, remote_path: str, fp: BinaryIO) -> int:
+        return await self._handle.write_file(remote_path, fp)
+
+    async def read_file(self, path: str) -> AsyncIterator[bytes]:
+        async for data in self._handle.read_file(path):
+            yield data
+
+    async def iterdir(self, path: str) -> AsyncIterator[api_pb2.SharedVolumeListFilesEntry]:
+        async for entry in self._handle.iterdir(path):
+            yield entry
+
+    async def add_local_file(
+        self, local_path: Union[Path, str], remote_path: Optional[Union[str, PurePosixPath, None]] = None
+    ):
+        return await self._handle.write_file(local_path, remote_path)
+
+    async def add_local_dir(
+        self,
+        local_path: Union[Path, str],
+        remote_path: Optional[Union[str, PurePosixPath, None]] = None,
+    ):
+        return await self._handle.add_local_dir(local_path, remote_path)
+
+    async def listdir(self, path: str) -> List[api_pb2.SharedVolumeListFilesEntry]:
+        return await self._handle.listdir(path)
+
+    async def remove_file(self, path: str, recursive=False):
+        return await self._handle.remove_file(path, recursive)
 
 
 NetworkFileSystem = synchronize_api(_NetworkFileSystem)

@@ -3,7 +3,7 @@ import pprint
 
 import typer
 
-from modal.config import config, _store_user_config, _config_active_profile
+from modal.config import _config_active_profile, _store_user_config, config
 
 config_cli = typer.Typer(
     name="config",
@@ -32,7 +32,7 @@ when running a command that requires an environment.
 """
 
 
-@config_cli.command(help=SET_DEFAULT_ENV_HELP, hidden=True)
+@config_cli.command(help=SET_DEFAULT_ENV_HELP)
 def set_environment(environment_name: str):
     _store_user_config({"environment": environment_name})
     active_profile = _config_active_profile()

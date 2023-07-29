@@ -1,10 +1,9 @@
 # Copyright Modal Labs 2022
 import hashlib
 import os
+import pytest
 import sys
 from pathlib import Path
-
-import pytest
 
 from modal import App, Stub
 from modal._blob_utils import LARGE_FILE_LIMIT

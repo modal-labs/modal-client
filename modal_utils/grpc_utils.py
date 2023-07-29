@@ -1,9 +1,9 @@
 # Copyright Modal Labs 2022
 import asyncio
 import contextlib
+import platform
 import socket
 import time
-import platform
 import urllib.parse
 import uuid
 from typing import (
@@ -18,8 +18,8 @@ from typing import (
     cast,
 )
 
-import grpclib.events
 import grpclib.client
+import grpclib.events
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from grpclib.exceptions import StreamTerminatedError
