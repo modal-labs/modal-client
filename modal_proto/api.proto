@@ -1140,12 +1140,17 @@ message VolumeMount {
   string mount_path = 2;
 }
 
+message CustomDomainConfig {
+  string name = 1;
+}
+
 message WebhookConfig {
   WebhookType type = 1;
   string method = 2;
   bool wait_for_response = 3 [deprecated=true]; // rolled into async_mode - remove when ending support for 0.44
   string requested_suffix = 4;
   WebhookAsyncMode async_mode = 5;
+  repeated CustomDomainConfig custom_domains = 6;
 }
 
 message WebUrlInfo {

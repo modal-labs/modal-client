@@ -1370,6 +1370,7 @@ def _web_endpoint(
     method: str = "GET",  # REST method for the created endpoint.
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
+    custom_domains: Optional[list[str]] = None,  # Create an endpoint using a custom domain URL.
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Register a basic web endpoint with this application.
 
