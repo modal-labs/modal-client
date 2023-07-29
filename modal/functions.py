@@ -1410,6 +1410,9 @@ def _web_endpoint(
     * `wait_for_response=True` - tries to fulfill the request on the original URL, but returns a 302 redirect after ~150s to a result URL (original URL with an added `__modal_function_id=...` query parameter)
     * `wait_for_response=False` - immediately returns a 202 ACCEPTED response with a JSON payload: `{"result_url": "..."}` containing the result "redirect" URL from above (which in turn redirects to itself every ~150s)
     """
+    if custom_domains is None:
+        custom_domains = []
+
     if not isinstance(method, str):
         raise InvalidError(
             f"Unexpected argument {method} of type {type(method)} for `method` parameter. "
@@ -1438,6 +1441,7 @@ def _web_endpoint(
                 method=method,
                 requested_suffix=label,
                 async_mode=_response_mode,
+                custom_domains=custom_domains
             ),
         )
 
