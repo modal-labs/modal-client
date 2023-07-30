@@ -874,14 +874,23 @@ class _Image(_Provider[_ImageHandle]):
         )
 
     @staticmethod
-    def _registry_setup_commands(tag: str, setup_dockerfile_commands: List[str]) -> List[str]:
-        return [
+    def _registry_setup_commands(tag: str, setup_dockerfile_commands: List[str], setup_modal_client: bool) -> List[str]:
+        commands = [
             f"FROM {tag}",
             *setup_dockerfile_commands,
-            "COPY /modal_requirements.txt /modal_requirements.txt",
-            "RUN python -m pip install --upgrade pip",
-            "RUN python -m pip install -r /modal_requirements.txt",
         ]
+
+        # Install requirements to allow the Modal client to be mounted.
+        # This is needed for function images, but not for sandbox images.
+        if setup_modal_client:
+            commands.extend(
+                [
+                    "COPY /modal_requirements.txt /modal_requirements.txt",
+                    "RUN python -m pip install --upgrade pip",
+                    "RUN python -m pip install -r /modal_requirements.txt",
+                ]
+            )
+        return commands
 
     @staticmethod
     @typechecked
@@ -889,6 +898,7 @@ class _Image(_Provider[_ImageHandle]):
         tag: str,
         setup_dockerfile_commands: List[str] = [],
         force_build: bool = False,
+        setup_modal_client: bool = True,  # Can be set to False for sandbox images, where the client is not needed.
         **kwargs,
     ) -> "_Image":
         """
@@ -914,7 +924,7 @@ class _Image(_Provider[_ImageHandle]):
         ```
         """
         requirements_path = _get_client_requirements_path()
-        dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands)
+        dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands, setup_modal_client)
 
         return _Image._from_args(
             dockerfile_commands=dockerfile_commands,
@@ -930,6 +940,7 @@ class _Image(_Provider[_ImageHandle]):
         secret: Optional[_Secret] = None,
         setup_dockerfile_commands: List[str] = [],
         force_build: bool = False,
+        setup_modal_client: bool = True,  # Can be set to False for sandbox images, where the client is not needed.
         **kwargs,
     ) -> "_Image":
         """
@@ -960,7 +971,7 @@ class _Image(_Provider[_ImageHandle]):
         """
         requirements_path = _get_client_requirements_path()
 
-        dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands)
+        dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands, setup_modal_client)
 
         return _Image._from_args(
             dockerfile_commands=dockerfile_commands,
@@ -977,6 +988,7 @@ class _Image(_Provider[_ImageHandle]):
         secret: Optional[_Secret] = None,
         setup_dockerfile_commands: List[str] = [],
         force_build: bool = False,
+        setup_modal_client: bool = True,  # Can be set to False for sandbox images, where the client is not needed.
         **kwargs,
     ) -> "_Image":
         """
@@ -1008,7 +1020,7 @@ class _Image(_Provider[_ImageHandle]):
         ```
         """
         requirements_path = _get_client_requirements_path()
-        dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands)
+        dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands, setup_modal_client)
 
         return _Image._from_args(
             dockerfile_commands=dockerfile_commands,

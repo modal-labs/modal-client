@@ -253,6 +253,22 @@ def test_dockerhub_install(servicer, client):
 
         assert any("FROM gisops/valhalla:latest" in cmd for cmd in layers[0].dockerfile_commands)
         assert any("RUN apt-get update" in cmd for cmd in layers[0].dockerfile_commands)
+        assert any("modal_requirements.txt" in cmd for cmd in layers[0].dockerfile_commands)
+
+
+def test_dockerhub_no_client_install(servicer, client):
+    stub = Stub(
+        image=Image.from_dockerhub(
+            "gisops/valhalla:latest", setup_dockerfile_commands=["RUN apt-get update"], setup_modal_client=False
+        )
+    )
+
+    with stub.run(client=client) as running_app:
+        layers = get_image_layers(running_app["image"].object_id, servicer)
+
+        assert any("FROM gisops/valhalla:latest" in cmd for cmd in layers[0].dockerfile_commands)
+        assert any("RUN apt-get update" in cmd for cmd in layers[0].dockerfile_commands)
+        assert not any("modal_requirements.txt" in cmd for cmd in layers[0].dockerfile_commands)
 
 
 def test_ecr_install(servicer, client):
