@@ -168,3 +168,16 @@ class ParamCls:
     @method()
     def f(self, z: int):
         return f"{self.x} {self.y} {z}"
+
+
+@stub.function(allow_concurrent_inputs=5)
+def sleep_1_sync(x):
+    print("start", time.time())
+    time.sleep(1.0)
+    return x * x
+
+
+@stub.function(allow_concurrent_inputs=5)
+async def sleep_1_async(x):
+    await asyncio.sleep(1.0)
+    return x * x

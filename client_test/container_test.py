@@ -30,13 +30,12 @@ FUNCTION_CALL_ID = "fc-123"
 SLEEP_DELAY = 0.1
 
 
-def _get_inputs(args: Tuple[Tuple, Dict] = ((42,), {})) -> list[api_pb2.FunctionGetInputsResponse]:
+def _get_inputs(args: Tuple[Tuple, Dict] = ((42,), {}), n: int = 1) -> list[api_pb2.FunctionGetInputsResponse]:
     input_pb = api_pb2.FunctionInput(args=serialize(args))
 
     return [
-        api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(input_id="in-xyz", input=input_pb)]),
-        api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(kill_switch=True)]),
-    ]
+        api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(input_id="in-xyz", input=input_pb)])
+    ] * n + [api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(kill_switch=True)])]
 
 
 def _run_container(
@@ -50,6 +49,7 @@ def _run_container(
     definition_type=api_pb2.Function.DEFINITION_TYPE_FILE,
     stub_name: str = "",
     is_builder_function: bool = False,
+    allow_concurrent_inputs: Optional[int] = None,
     serialized_params: Optional[bytes] = None,
 ) -> tuple[Client, list[api_pb2.FunctionPutOutputsItem]]:
     with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
@@ -76,6 +76,7 @@ def _run_container(
             definition_type=definition_type,
             stub_name=stub_name or "",
             is_builder_function=is_builder_function,
+            allow_concurrent_inputs=allow_concurrent_inputs,
         )
 
         container_args = api_pb2.ContainerArguments(
@@ -672,3 +673,45 @@ def test_multistub_is_inside_warning(unix_servicer, caplog, capsys):
     assert (
         "inside b" in out
     )  # can't determine which of two anonymous stubs is the active one at import time, so both will trigger
+
+
+@skip_windows_unix_socket
+def test_concurrent_inputs_sync_function(unix_servicer):
+    n_inputs = 12
+    n_threads = 6
+    expected_execution = n_inputs / n_threads
+
+    t0 = time.time()
+    client, items = _run_container(
+        unix_servicer,
+        "modal_test_support.functions",
+        "sleep_1_sync",
+        inputs=_get_inputs(n=n_inputs),
+        allow_concurrent_inputs=n_threads,
+    )
+    assert expected_execution <= time.time() - t0 < expected_execution + EXTRA_TOLERANCE_DELAY
+    assert len(items) == n_inputs
+    for item in items:
+        assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+        assert item.result.data == serialize(42**2)
+
+
+@skip_windows_unix_socket
+def test_concurrent_inputs_async_function(unix_servicer, event_loop):
+    n_inputs = 12
+    n_tasks = 6
+    expected_execution = n_inputs / n_tasks
+
+    t0 = time.time()
+    client, items = _run_container(
+        unix_servicer,
+        "modal_test_support.functions",
+        "sleep_1_async",
+        inputs=_get_inputs(n=n_inputs),
+        allow_concurrent_inputs=n_tasks,
+    )
+    assert expected_execution <= time.time() - t0 < expected_execution + EXTRA_TOLERANCE_DELAY
+    assert len(items) == n_inputs
+    for item in items:
+        assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+        assert item.result.data == serialize(42**2)

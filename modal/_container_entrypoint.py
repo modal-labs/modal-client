@@ -434,6 +434,7 @@ def call_function_sync(
             logger.warning("Not running asynchronous enter/exit handlers with a sync function")
 
     try:
+
         def run_inputs(input_id, args, kwargs):
             output_index = SequenceNumber(0)
             started_at = time.time()
@@ -496,6 +497,7 @@ async def call_function_async(
                 obj.__enter__()
 
     try:
+
         async def run_input(input_id, args, kwargs):
             output_index = SequenceNumber(0)  # mutable number we can increase from the generator loop
             started_at = time.time()
