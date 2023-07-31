@@ -1028,7 +1028,7 @@ class _Function(_Provider[_FunctionHandle]):
                 network_file_system_mounts = []
                 volume_ids = await _load_ids([vol for _, vol in validated_network_file_systems])
                 # Relies on dicts being ordered (true as of Python 3.6).
-                for ((path, _), volume_id) in zip(validated_network_file_systems, volume_ids):
+                for (path, _), volume_id in zip(validated_network_file_systems, volume_ids):
                     network_file_system_mounts.append(
                         api_pb2.SharedVolumeMount(
                             mount_path=path,
@@ -1043,7 +1043,7 @@ class _Function(_Provider[_FunctionHandle]):
             validated_volumes = _validate_mount_points("Volume", volumes)
             # We don't support mounting a volume in more than one location
             volume_to_paths: Dict[_Volume, List[str]] = {}
-            for (path, volume) in validated_volumes:
+            for path, volume in validated_volumes:
                 volume_to_paths.setdefault(volume, []).append(path)
             for paths in volume_to_paths.values():
                 if len(paths) > 1:
@@ -1056,7 +1056,7 @@ class _Function(_Provider[_FunctionHandle]):
                 volume_mounts = []
                 volume_ids = await _load_ids([vol for _, vol in validated_volumes])
                 # Relies on dicts being ordered (true as of Python 3.6).
-                for ((path, _), volume_id) in zip(validated_volumes, volume_ids):
+                for (path, _), volume_id in zip(validated_volumes, volume_ids):
                     volume_mounts.append(
                         api_pb2.VolumeMount(
                             mount_path=path,
@@ -1378,6 +1378,7 @@ def _web_endpoint(
     method: str = "GET",  # REST method for the created endpoint.
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
+    custom_domains: Optional[List[str]] = None,  # Create an endpoint using a custom domain URL.
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Register a basic web endpoint with this application.
 
@@ -1421,6 +1422,11 @@ def _web_endpoint(
 
         # self._loose_webhook_configs.add(raw_f)
 
+        _custom_domains: list[api_pb2.CustomDomainConfig] = []
+        if custom_domains is not None:
+            for custom_domain in custom_domains:
+                _custom_domains.append(api_pb2.CustomDomainConfig(name=custom_domain))
+
         return _PartialFunction(
             raw_f,
             api_pb2.WebhookConfig(
@@ -1428,6 +1434,7 @@ def _web_endpoint(
                 method=method,
                 requested_suffix=label,
                 async_mode=_response_mode,
+                custom_domains=_custom_domains,
             ),
         )
 
