@@ -1162,6 +1162,11 @@ class _Function(_Provider[_FunctionHandle]):
                     suffix = ""
                 # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
                 status_row.finish(f"Created {tag} => [magenta underline]{response.web_url}[/magenta underline]{suffix}")
+                
+                # Print custom domain in terminal
+                for custom_domain in response.function.custom_domain_info:
+                    status_row.finish(f"Created {tag} => [magenta underline]{custom_domain.url}[/magenta underline]{suffix}")
+
             else:
                 status_row.finish(f"Created {tag}.")
 
