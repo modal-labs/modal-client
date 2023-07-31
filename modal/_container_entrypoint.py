@@ -462,14 +462,9 @@ def call_function_sync(
                     function_io_manager.enqueue_output(input_id, started_at, output_index.value, res)
 
         if input_concurrency > 1:
-            executor = concurrent.futures.ThreadPoolExecutor()
-            futures = []
-
-            for input_id, args, kwargs in function_io_manager.run_inputs_outputs(input_concurrency):
-                futures.append(executor.submit(run_inputs, input_id, args, kwargs))
-
-            # This should complete instantly
-            concurrent.futures.wait(futures)
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                for input_id, args, kwargs in function_io_manager.run_inputs_outputs(input_concurrency):
+                    executor.submit(run_inputs, input_id, args, kwargs)
         else:
             for input_id, args, kwargs in function_io_manager.run_inputs_outputs(input_concurrency):
                 run_inputs(input_id, args, kwargs)
@@ -525,12 +520,9 @@ async def call_function_async(
                     await function_io_manager.enqueue_output.aio(input_id, started_at, output_index.value, value)
 
         if input_concurrency > 1:
-            tasks = []
-            async for input_id, args, kwargs in function_io_manager.run_inputs_outputs.aio(input_concurrency):
-                tasks.append(asyncio.create_task(run_input(input_id, args, kwargs)))
-
-            # This should complete instantly
-            await asyncio.gather(*tasks)
+            async with TaskContext() as execution_context:
+                async for input_id, args, kwargs in function_io_manager.run_inputs_outputs.aio(input_concurrency):
+                    execution_context.create_task(run_input(input_id, args, kwargs))
         else:
             async for input_id, args, kwargs in function_io_manager.run_inputs_outputs.aio(input_concurrency):
                 await run_input(input_id, args, kwargs)
