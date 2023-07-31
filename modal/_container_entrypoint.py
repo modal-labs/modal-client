@@ -113,6 +113,7 @@ class _FunctionIOManager:
         self.total_user_time: float = 0
         self.current_input_id: Optional[str] = None
         self.current_input_started_at: Optional[float] = None
+        self._input_concurrency: Optional[int] = None
         self._semaphore: Optional[asyncio.Semaphore] = None
         self._client = synchronizer._translate_in(self.client)  # make it a _Client object
         self._stub_name = self.function_def.stub_name
@@ -191,7 +192,7 @@ class _FunctionIOManager:
         while not eof_received:
             request.average_call_time = self.get_average_call_time()
             request.max_values = self.get_max_inputs_to_fetch()  # Deprecated; remove.
-            request.input_concurrency = self.input_concurrency
+            request.input_concurrency = self._input_concurrency
 
             # If number of active inputs is at max queue size, this will block.
             await self._semaphore.acquire()
@@ -256,7 +257,7 @@ class _FunctionIOManager:
         # Before trying to fetch an input, acquire the semaphore:
         # - if no input is fetched, release the semaphore.
         # - or, when the output for the fetched input is enqueued, release the semaphore.
-        self.input_concurrency = input_concurrency
+        self._input_concurrency = input_concurrency
         self._semaphore = asyncio.Semaphore(input_concurrency)
 
         async with TaskContext(grace=10) as tc:
@@ -272,7 +273,7 @@ class _FunctionIOManager:
             finally:
                 # collect all active input slots, meaning all outputs of outstanding inputs are enqueued
                 for _ in range(input_concurrency):
-                    await self._semaphore.acquire()
+                    await self_semaphore.acquire()
                 # send the eof to _send_outputs loop
                 await self.output_queue.put(None)
 
