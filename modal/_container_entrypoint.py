@@ -194,44 +194,44 @@ class _FunctionIOManager:
             request.max_values = self.get_max_inputs_to_fetch()  # Deprecated; remove.
             request.input_concurrency = self._input_concurrency
 
-            # If number of active inputs is at max queue size, this will block.
             await self._semaphore.acquire()
-            with trace("get_inputs"):
-                set_span_tag("iteration", str(iteration))  # force this to be a tag string
-                iteration += 1
-                response = await retry_transient_errors(self.client.stub.FunctionGetInputs, request)
+            try:
+                # If number of active inputs is at max queue size, this will block.
+                yielded = False
+                with trace("get_inputs"):
+                    set_span_tag("iteration", str(iteration))  # force this to be a tag string
+                    iteration += 1
+                    response = await retry_transient_errors(self.client.stub.FunctionGetInputs, request)
 
-            yielded = False
+                if response.rate_limit_sleep_duration:
+                    logger.info(
+                        "Task exceeded rate limit, sleeping for %.2fs before trying again."
+                        % response.rate_limit_sleep_duration
+                    )
+                    await asyncio.sleep(response.rate_limit_sleep_duration)
+                elif response.inputs:
+                    for item in response.inputs:
+                        if item.kill_switch:
+                            logger.debug(f"Task {self.task_id} input received kill signal.")
+                            eof_received = True
+                            break
 
-            if response.rate_limit_sleep_duration:
-                logger.info(
-                    "Task exceeded rate limit, sleeping for %.2fs before trying again."
-                    % response.rate_limit_sleep_duration
-                )
-                await asyncio.sleep(response.rate_limit_sleep_duration)
-            elif response.inputs:
-                for item in response.inputs:
-                    if item.kill_switch:
-                        logger.debug(f"Task {self.task_id} input received kill signal.")
-                        eof_received = True
-                        break
+                        # If we got a pointer to a blob, download it from S3.
+                        if item.input.WhichOneof("args_oneof") == "args_blob_id":
+                            input_pb = await self.populate_input_blobs(item.input)
+                        else:
+                            input_pb = item.input
 
-                    # If we got a pointer to a blob, download it from S3.
-                    if item.input.WhichOneof("args_oneof") == "args_blob_id":
-                        input_pb = await self.populate_input_blobs(item.input)
-                    else:
-                        input_pb = item.input
+                        # If yielded, allow semaphore to be released via enqueue_outputs
+                        yield (item.input_id, input_pb)
+                        yielded = True
 
-                    # If yielded, allow semaphore to be released via enqueue_outputs
-                    yield (item.input_id, input_pb)
-                    yielded = True
-
-                    if item.input.final_input:
-                        eof_received = True
-                        break
-
-            if not yielded:
-                self._semaphore.release()
+                        if item.input.final_input:
+                            eof_received = True
+                            break
+            finally:
+                if not yielded:
+                    self._semaphore.release()
 
     async def _send_outputs(self):
         """Background task that tries to drain output queue until it's empty,

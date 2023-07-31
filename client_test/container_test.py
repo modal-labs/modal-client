@@ -684,7 +684,6 @@ def verify_concurrent_input_outputs(n_inputs: int, n_parallel: int, output_items
     assert len(output_items) == n_inputs
     for i in range(1, len(output_items)):
         diff = output_items[i].input_started_at - output_items[i - 1].input_started_at
-        print(diff)
         expected_diff = 1.0 if i % n_parallel == 0 else 0
         assert diff == pytest.approx(expected_diff, abs=0.05)
 
