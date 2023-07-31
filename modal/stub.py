@@ -431,8 +431,7 @@ class _Stub:
             bool
         ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
-        _cls: Optional[type] = None,  # Used for methods only
-    ) -> Callable[[Union[_PartialFunction, Callable[..., Any]]], _FunctionHandle]:
+    ) -> Callable[..., _FunctionHandle]:
         """Decorator to register a new Modal function with this stub."""
         if image is None:
             image = self._get_default_image()
@@ -446,7 +445,10 @@ class _Stub:
             )
             network_file_systems = {**network_file_systems, **shared_volumes}
 
-        def wrapped(f: Union[_PartialFunction, Callable[..., Any]]) -> _FunctionHandle:
+        def wrapped(
+            f: Union[_PartialFunction, Callable[..., Any]],
+            _cls: Optional[type] = None,  # Used for methods only
+        ) -> _FunctionHandle:
             is_generator_override: Optional[bool] = is_generator
 
             if isinstance(f, _PartialFunction):
@@ -542,7 +544,6 @@ class _Stub:
                     partial_functions[k] = v
                     partial_function = synchronizer._translate_in(v)  # TODO: remove need for?
                     function_handles[k] = self.function(
-                        _cls=user_cls,
                         image=image,
                         secret=secret,
                         secrets=secrets,
@@ -563,7 +564,7 @@ class _Stub:
                         interactive=interactive,
                         keep_warm=keep_warm,
                         cloud=cloud,
-                    )(partial_function)
+                    )(partial_function, user_cls)
 
             _PartialFunction.initialize_cls(user_cls, function_handles)
             remote = make_remote_cls_constructors(user_cls, partial_functions, function_handles)
