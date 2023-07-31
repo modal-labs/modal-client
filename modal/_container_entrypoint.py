@@ -257,7 +257,7 @@ class _FunctionIOManager:
         # Before trying to fetch an input, acquire the semaphore:
         # - if no input is fetched, release the semaphore.
         # - or, when the output for the fetched input is enqueued, release the semaphore.
-        self._input_concurrency = input_concurrency
+        self.input_concurrency = input_concurrency
         self._semaphore = asyncio.Semaphore(input_concurrency)
 
         async with TaskContext(grace=10) as tc:
@@ -273,7 +273,7 @@ class _FunctionIOManager:
             finally:
                 # collect all active input slots, meaning all outputs of outstanding inputs are enqueued
                 for _ in range(input_concurrency):
-                    await self_semaphore.acquire()
+                    await self._semaphore.acquire()
                 # send the eof to _send_outputs loop
                 await self.output_queue.put(None)
 
