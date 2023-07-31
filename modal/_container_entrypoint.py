@@ -112,6 +112,7 @@ class _FunctionIOManager:
         self.total_user_time: float = 0
         self.current_input_id: Optional[str] = None
         self.current_input_started_at: Optional[float] = None
+        self._semaphore: Optional[asyncio.Semaphore] = None
         self._client = synchronizer._translate_in(self.client)  # make it a _Client object
         self._stub_name = self.function_def.stub_name
         self._container_app = None
@@ -189,10 +190,10 @@ class _FunctionIOManager:
         while not eof_received:
             request.average_call_time = self.get_average_call_time()
             request.max_values = self.get_max_inputs_to_fetch()  # Deprecated; remove.
-            request.input_concurrency = self.semaphore.maxsize
+            request.input_concurrency = self.input_concurrency
 
             # If number of active inputs is at max queue size, this will block.
-            await self._acquire_semaphore()
+            await self._semaphore.acquire()
             with trace("get_inputs"):
                 set_span_tag("iteration", str(iteration))  # force this to be a tag string
                 iteration += 1
@@ -228,7 +229,7 @@ class _FunctionIOManager:
                         break
 
             if not yielded:
-                await self._release_semaphore()
+                await self._semaphore.release()
 
     async def _send_outputs(self):
         """Background task that tries to drain output queue until it's empty,
@@ -246,18 +247,17 @@ class _FunctionIOManager:
             # TODO(erikbern): we'll get a RESOURCE_EXCHAUSTED if the buffer is full server-side.
             # It's possible we want to retry "harder" for this particular error.
 
-    async def _acquire_semaphore(self):
-        await self.semaphore.put(None)
-
-    async def _release_semaphore(self):
-        await self.semaphore.get()
-        self.semaphore.task_done()
 
     async def run_inputs_outputs(self, input_concurrency: int = 1):
         # This also makes sure to terminate the outputs
         self.output_queue: asyncio.Queue = asyncio.Queue()
+
         # Ensure we do not fetch new inputs when container is too busy
-        self.semaphore: asyncio.Queue[None] = asyncio.Queue(maxsize=input_concurrency)
+        # Before trying to fetch an input, acquire the semaphore.
+        # If no input is fetched, release the semaphore.
+        # When the output for the fetched input is enqueued, release the semaphore.
+        self.input_concurrency = input_concurrency
+        self._semaphore = asyncio.Semaphore(input_concurrency)
 
         async with TaskContext(grace=10) as tc:
             tc.create_task(self._send_outputs())
@@ -270,8 +270,9 @@ class _FunctionIOManager:
                     _set_current_input_id(None)
                     self.current_input_id, self.current_input_started_at = (None, None)
             finally:
-                # wait for all active inputs to place their outputs into the queue
-                await self.semaphore.join()
+                # collect all active input slots, meaning all outputs of outstanding inputs are enqueued
+                for _ in range(input_concurrency):
+                    await self._semaphore.acquire()
                 # send the eof to _send_outputs loop
                 await self.output_queue.put(None)
 
@@ -379,7 +380,7 @@ class _FunctionIOManager:
     async def complete_call(self, started_at):
         self.total_user_time += time.time() - started_at
         self.calls_completed += 1
-        await self._release_semaphore()
+        await self._semaphore.release()
 
     async def enqueue_output(self, input_id, started_at: float, output_index: int, data):
         await self._enqueue_output(
