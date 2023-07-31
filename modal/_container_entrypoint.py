@@ -420,18 +420,15 @@ FunctionIOManager = synchronize_api(_FunctionIOManager)
 
 def call_function_sync(
     function_io_manager,  #: FunctionIOManager,  # TODO: this type is generated in runtime
-    obj: Optional[Any],
-    fun: Callable,
-    is_generator: bool,
-    input_concurrency: int,
+    imp_fun: ImportedFunction,
 ):
     # If this function is on a class, instantiate it and enter it
-    if obj is not None:
-        if hasattr(obj, "__enter__"):
+    if imp_fun.obj is not None:
+        if hasattr(imp_fun.obj, "__enter__"):
             # Call a user-defined method
             with function_io_manager.handle_user_exception():
-                obj.__enter__()
-        elif hasattr(obj, "__aenter__"):
+                imp_fun.obj.__enter__()
+        elif hasattr(imp_fun.obj, "__aenter__"):
             logger.warning("Not running asynchronous enter/exit handlers with a sync function")
 
     try:
@@ -441,10 +438,10 @@ def call_function_sync(
             started_at = time.time()
             with function_io_manager.handle_input_exception(input_id, started_at, output_index):
                 # TODO(gongy): run this in an executor
-                res = fun(*args, **kwargs)
+                res = imp_fun.fun(*args, **kwargs)
 
                 # TODO(erikbern): any exception below shouldn't be considered a user exception
-                if is_generator:
+                if imp_fun.is_generator:
                     if not inspect.isgenerator(res):
                         raise InvalidError(f"Generator function returned value of type {type(res)}")
 
@@ -461,36 +458,33 @@ def call_function_sync(
                         )
                     function_io_manager.enqueue_output(input_id, started_at, output_index.value, res)
 
-        if input_concurrency > 1:
+        if imp_fun.input_concurrency > 1:
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                for input_id, args, kwargs in function_io_manager.run_inputs_outputs(input_concurrency):
+                for input_id, args, kwargs in function_io_manager.run_inputs_outputs(imp_fun.input_concurrency):
                     executor.submit(run_inputs, input_id, args, kwargs)
         else:
-            for input_id, args, kwargs in function_io_manager.run_inputs_outputs(input_concurrency):
+            for input_id, args, kwargs in function_io_manager.run_inputs_outputs(imp_fun.input_concurrency):
                 run_inputs(input_id, args, kwargs)
     finally:
-        if obj is not None and hasattr(obj, "__exit__"):
+        if imp_fun.obj is not None and hasattr(imp_fun.obj, "__exit__"):
             with function_io_manager.handle_user_exception():
-                obj.__exit__(*sys.exc_info())
+                imp_fun.obj.__exit__(*sys.exc_info())
 
 
 @wrap()
 async def call_function_async(
     function_io_manager,  #: FunctionIOManager,  # TODO: this one too
-    obj: Optional[Any],
-    fun: Callable,
-    is_generator: bool,
-    input_concurrency: int,
+    imp_fun: ImportedFunction,
 ):
     # If this function is on a class, instantiate it and enter it
-    if obj is not None:
-        if hasattr(obj, "__aenter__"):
+    if imp_fun.obj is not None:
+        if hasattr(imp_fun.obj, "__aenter__"):
             # Call a user-defined method
             async with function_io_manager.handle_user_exception.aio():
-                await obj.__aenter__()
-        elif hasattr(obj, "__enter__"):
+                await imp_fun.obj.__aenter__()
+        elif hasattr(imp_fun.obj, "__enter__"):
             async with function_io_manager.handle_user_exception.aio():
-                obj.__enter__()
+                imp_fun.obj.__enter__()
 
     try:
 
@@ -498,10 +492,10 @@ async def call_function_async(
             output_index = SequenceNumber(0)  # mutable number we can increase from the generator loop
             started_at = time.time()
             async with function_io_manager.handle_input_exception.aio(input_id, started_at, output_index):
-                res = fun(*args, **kwargs)
+                res = imp_fun.fun(*args, **kwargs)
 
                 # TODO(erikbern): any exception below shouldn't be considered a user exception
-                if is_generator:
+                if imp_fun.is_generator:
                     if not inspect.isasyncgen(res):
                         raise InvalidError(f"Async generator function returned value of type {type(res)}")
                     async for value in res:
@@ -519,21 +513,23 @@ async def call_function_async(
                     value = await res
                     await function_io_manager.enqueue_output.aio(input_id, started_at, output_index.value, value)
 
-        if input_concurrency > 1:
+        if imp_fun.input_concurrency > 1:
             async with TaskContext() as execution_context:
-                async for input_id, args, kwargs in function_io_manager.run_inputs_outputs.aio(input_concurrency):
+                async for input_id, args, kwargs in function_io_manager.run_inputs_outputs.aio(
+                    imp_fun.input_concurrency
+                ):
                     execution_context.create_task(run_input(input_id, args, kwargs))
         else:
-            async for input_id, args, kwargs in function_io_manager.run_inputs_outputs.aio(input_concurrency):
+            async for input_id, args, kwargs in function_io_manager.run_inputs_outputs.aio(imp_fun.input_concurrency):
                 await run_input(input_id, args, kwargs)
     finally:
-        if obj is not None:
-            if hasattr(obj, "__aexit__"):
+        if imp_fun.obj is not None:
+            if hasattr(imp_fun.obj, "__aexit__"):
                 async with function_io_manager.handle_user_exception.aio():
-                    await obj.__aexit__(*sys.exc_info())
-            elif hasattr(obj, "__exit__"):
+                    await imp_fun.obj.__aexit__(*sys.exc_info())
+            elif hasattr(imp_fun.obj, "__exit__"):
                 async with function_io_manager.handle_user_exception.aio():
-                    obj.__exit__(*sys.exc_info())
+                    imp_fun.obj.__exit__(*sys.exc_info())
 
 
 @dataclass
@@ -656,15 +652,9 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             imp_fun.fun = run_in_pty(imp_fun.fun, input_stream_blocking, pty_info)
 
         if not imp_fun.is_async:
-            call_function_sync(
-                function_io_manager, imp_fun.obj, imp_fun.fun, imp_fun.is_generator, imp_fun.input_concurrency
-            )
+            call_function_sync(function_io_manager, imp_fun)
         else:
-            run_with_signal_handler(
-                call_function_async(
-                    function_io_manager, imp_fun.obj, imp_fun.fun, imp_fun.is_generator, imp_fun.input_concurrency
-                )
-            )
+            run_with_signal_handler(call_function_async(function_io_manager, imp_fun))
 
 
 if __name__ == "__main__":
