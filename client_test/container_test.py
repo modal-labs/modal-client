@@ -675,6 +675,7 @@ def test_multistub_is_inside_warning(unix_servicer, caplog, capsys):
         "inside b" in out
     )  # can't determine which of two anonymous stubs is the active one at import time, so both will trigger
 
+
 def verify_concurrent_input_outputs(n_inputs: int, n_parallel: int, output_items: list[api_pb2.FunctionPutOutputsItem]):
     # Ensure that outputs align with expectation of running concurrent inputs
 
@@ -682,7 +683,7 @@ def verify_concurrent_input_outputs(n_inputs: int, n_parallel: int, output_items
     # and different groups should start 1 second apart.
     assert len(output_items) == n_inputs
     for i in range(1, len(output_items)):
-        diff = output_items[i].input_started_at - output_items[i-1].input_started_at
+        diff = output_items[i].input_started_at - output_items[i - 1].input_started_at
         print(diff)
         expected_diff = 1.0 if i % n_parallel == 0 else 0
         assert diff == pytest.approx(expected_diff, abs=0.05)
@@ -691,6 +692,7 @@ def verify_concurrent_input_outputs(n_inputs: int, n_parallel: int, output_items
         assert item.output_created_at - item.input_started_at == pytest.approx(1.0, abs=0.05)
         assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
         assert item.result.data == serialize(42**2)
+
 
 @skip_windows_unix_socket
 def test_concurrent_inputs_sync_function(unix_servicer):
