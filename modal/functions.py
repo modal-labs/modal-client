@@ -811,15 +811,6 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         # We should fix this in the future since it probably precludes using classmethods/staticmethods
         return self
 
-    def __get__(self, obj, objtype=None) -> "_FunctionHandle":
-        deprecation_error(
-            date(2023, 5, 9),
-            "Using the `@stub.function` decorator on methods is deprecated."
-            " Use the @method decorator instead."
-            " See https://modal.com/docs/guide/lifecycle-functions",
-        )
-        return self.bind_obj(obj, objtype)
-
 
 FunctionHandle = synchronize_api(_FunctionHandle)
 
