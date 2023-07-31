@@ -1251,8 +1251,13 @@ class _Function(_Provider[_FunctionHandle]):
     def shell(self, *args, **kwargs):
         return self._handle.shell(*args, **kwargs)
 
+    def _get_handle(self) -> _FunctionHandle:
+        # TODO(erikbern): stupid workaround since __call__ runs on the "outer" object
+        return self._handle
+
+    @synchronizer.nowrap
     def __call__(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
-        return self._handle.__call__(*args, **kwargs)
+        return self._get_handle().__call__(*args, **kwargs)
 
     async def spawn(self, *args, **kwargs) -> Optional["_FunctionCall"]:
         return await self._handle.spawn(*args, **kwargs)
