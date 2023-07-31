@@ -431,8 +431,7 @@ class _Stub:
             bool
         ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
-        _cls: Optional[type] = None,  # Used for methods only
-    ) -> Callable[[Union[_PartialFunction, Callable[..., Any]]], _FunctionHandle]:
+    ) -> Callable[..., _FunctionHandle]:
         """Decorator to register a new Modal function with this stub."""
         if image is None:
             image = self._get_default_image()
@@ -446,7 +445,10 @@ class _Stub:
             )
             network_file_systems = {**network_file_systems, **shared_volumes}
 
-        def wrapped(f: Union[_PartialFunction, Callable[..., Any]]) -> _FunctionHandle:
+        def wrapped(
+            f: Union[_PartialFunction, Callable[..., Any]],
+            _cls: Optional[type] = None,  # Used for methods only
+        ) -> _FunctionHandle:
             is_generator_override: Optional[bool] = is_generator
 
             if isinstance(f, _PartialFunction):
@@ -533,6 +535,29 @@ class _Stub:
         keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
     ) -> Callable[[CLS_T], CLS_T]:
+        decorator: Callable[[PartialFunction, type], _FunctionHandle] = self.function(
+            image=image,
+            secret=secret,
+            secrets=secrets,
+            gpu=gpu,
+            serialized=serialized,
+            mounts=mounts,
+            shared_volumes=shared_volumes,
+            network_file_systems=network_file_systems,
+            allow_cross_region_volumes=allow_cross_region_volumes,
+            volumes=volumes,
+            cpu=cpu,
+            memory=memory,
+            proxy=proxy,
+            retries=retries,
+            concurrency_limit=concurrency_limit,
+            container_idle_timeout=container_idle_timeout,
+            timeout=timeout,
+            interactive=interactive,
+            keep_warm=keep_warm,
+            cloud=cloud,
+        )
+
         def wrapper(user_cls: CLS_T) -> CLS_T:
             partial_functions: Dict[str, PartialFunction] = {}
             function_handles: Dict[str, _FunctionHandle] = {}
@@ -541,29 +566,7 @@ class _Stub:
                 if isinstance(v, PartialFunction):
                     partial_functions[k] = v
                     partial_function = synchronizer._translate_in(v)  # TODO: remove need for?
-                    function_handles[k] = self.function(
-                        _cls=user_cls,
-                        image=image,
-                        secret=secret,
-                        secrets=secrets,
-                        gpu=gpu,
-                        serialized=serialized,
-                        mounts=mounts,
-                        shared_volumes=shared_volumes,
-                        network_file_systems=network_file_systems,
-                        allow_cross_region_volumes=allow_cross_region_volumes,
-                        volumes=volumes,
-                        cpu=cpu,
-                        memory=memory,
-                        proxy=proxy,
-                        retries=retries,
-                        concurrency_limit=concurrency_limit,
-                        container_idle_timeout=container_idle_timeout,
-                        timeout=timeout,
-                        interactive=interactive,
-                        keep_warm=keep_warm,
-                        cloud=cloud,
-                    )(partial_function)
+                    function_handles[k] = decorator(partial_function, user_cls)
 
             _PartialFunction.initialize_cls(user_cls, function_handles)
             remote = make_remote_cls_constructors(user_cls, partial_functions, function_handles)
