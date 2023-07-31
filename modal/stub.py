@@ -535,6 +535,29 @@ class _Stub:
         keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
     ) -> Callable[[CLS_T], CLS_T]:
+        decorator: Callable[[PartialFunction, type], _FunctionHandle] = self.function(
+            image=image,
+            secret=secret,
+            secrets=secrets,
+            gpu=gpu,
+            serialized=serialized,
+            mounts=mounts,
+            shared_volumes=shared_volumes,
+            network_file_systems=network_file_systems,
+            allow_cross_region_volumes=allow_cross_region_volumes,
+            volumes=volumes,
+            cpu=cpu,
+            memory=memory,
+            proxy=proxy,
+            retries=retries,
+            concurrency_limit=concurrency_limit,
+            container_idle_timeout=container_idle_timeout,
+            timeout=timeout,
+            interactive=interactive,
+            keep_warm=keep_warm,
+            cloud=cloud,
+        )
+
         def wrapper(user_cls: CLS_T) -> CLS_T:
             partial_functions: Dict[str, PartialFunction] = {}
             function_handles: Dict[str, _FunctionHandle] = {}
@@ -543,28 +566,7 @@ class _Stub:
                 if isinstance(v, PartialFunction):
                     partial_functions[k] = v
                     partial_function = synchronizer._translate_in(v)  # TODO: remove need for?
-                    function_handles[k] = self.function(
-                        image=image,
-                        secret=secret,
-                        secrets=secrets,
-                        gpu=gpu,
-                        serialized=serialized,
-                        mounts=mounts,
-                        shared_volumes=shared_volumes,
-                        network_file_systems=network_file_systems,
-                        allow_cross_region_volumes=allow_cross_region_volumes,
-                        volumes=volumes,
-                        cpu=cpu,
-                        memory=memory,
-                        proxy=proxy,
-                        retries=retries,
-                        concurrency_limit=concurrency_limit,
-                        container_idle_timeout=container_idle_timeout,
-                        timeout=timeout,
-                        interactive=interactive,
-                        keep_warm=keep_warm,
-                        cloud=cloud,
-                    )(partial_function, user_cls)
+                    function_handles[k] = decorator(partial_function, user_cls)
 
             _PartialFunction.initialize_cls(user_cls, function_handles)
             remote = make_remote_cls_constructors(user_cls, partial_functions, function_handles)
