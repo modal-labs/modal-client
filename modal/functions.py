@@ -1142,7 +1142,7 @@ class _Function(_Provider[_FunctionHandle]):
                 existing_function_id=existing_object_id,
             )
             try:
-                response = await resolver.client.stub.FunctionCreate(request)
+                response: api_pb2.FunctionCreateResponse = await resolver.client.stub.FunctionCreate(request)
             except GRPCError as exc:
                 if exc.status == Status.INVALID_ARGUMENT:
                     raise InvalidError(exc.message)
@@ -1162,6 +1162,14 @@ class _Function(_Provider[_FunctionHandle]):
                     suffix = ""
                 # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
                 status_row.finish(f"Created {tag} => [magenta underline]{response.web_url}[/magenta underline]{suffix}")
+
+                # Print custom domain in terminal
+                for custom_domain in response.function.custom_domain_info:
+                    custom_domain_status_row = resolver.add_status_row()
+                    custom_domain_status_row.finish(
+                        f"Custom domain for {tag} => [magenta underline]{custom_domain.url}[/magenta underline]{suffix}"
+                    )
+
             else:
                 status_row.finish(f"Created {tag}.")
 
