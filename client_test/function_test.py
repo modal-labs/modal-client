@@ -99,7 +99,13 @@ def test_for_each(client, servicer):
     assert _side_effect_count == 0
     with stub.run(client=client):
         side_effect_modal.for_each(range(10))
-    assert _side_effect_count == 10
+
+        # Call stub function too
+        fun = stub.side_effect
+        assert isinstance(fun, Function)
+        fun.for_each(range(10))
+
+    assert _side_effect_count == 20
 
 
 def custom_function(x):
