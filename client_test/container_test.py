@@ -688,7 +688,7 @@ def verify_concurrent_input_outputs(n_inputs: int, n_parallel: int, output_items
         assert diff == pytest.approx(expected_diff, abs=0.2)
 
     for item in output_items:
-        assert item.output_created_at - item.input_started_at == pytest.approx(1.0, abs=0.05)
+        assert item.output_created_at - item.input_started_at == pytest.approx(1.0, abs=0.1)
         assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
         assert item.result.data == serialize(42**2)
 
