@@ -57,6 +57,8 @@ async def test_call_function_locally(client, servicer):
         assert await async_foo.call.aio(2, 4) == 20
 
         # Make sure we can also call the Function object
+        assert isinstance(stub.foo, Function)
+        assert isinstance(stub.async_foo, Function)
         assert stub.foo(22, 55) == 88
         assert await stub.async_foo(22, 44) == 78
 
