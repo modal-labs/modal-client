@@ -1441,7 +1441,7 @@ def _web_endpoint(
                 method=method,
                 requested_suffix=label,
                 async_mode=_response_mode,
-                custom_domains=custom_domains
+                custom_domains=custom_domains,
             ),
         )
 
