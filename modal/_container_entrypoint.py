@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import concurrent.futures
 import contextlib
 import importlib
 import inspect
@@ -433,7 +434,7 @@ def call_function_sync(
             logger.warning("Not running asynchronous enter/exit handlers with a sync function")
 
     try:
-        for input_id, args, kwargs in function_io_manager.run_inputs_outputs(input_concurrency):
+        def run_inputs(input_id, args, kwargs):
             output_index = SequenceNumber(0)
             started_at = time.time()
             with function_io_manager.handle_input_exception(input_id, started_at, output_index):
@@ -457,6 +458,19 @@ def call_function_sync(
                             " You might need to use @stub.function(..., is_generator=True)."
                         )
                     function_io_manager.enqueue_output(input_id, started_at, output_index.value, res)
+
+        if input_concurrency > 1:
+            executor = concurrent.futures.ThreadPoolExecutor()
+            futures = []
+
+            for input_id, args, kwargs in function_io_manager.run_inputs_outputs(input_concurrency):
+                futures.append(executor.submit(run_inputs, input_id, args, kwargs))
+
+            # This should complete instantly
+            concurrent.futures.wait(futures)
+        else:
+            for input_id, args, kwargs in function_io_manager.run_inputs_outputs(input_concurrency):
+                run_inputs(input_id, args, kwargs)
     finally:
         if obj is not None and hasattr(obj, "__exit__"):
             with function_io_manager.handle_user_exception():
@@ -482,7 +496,6 @@ async def call_function_async(
                 obj.__enter__()
 
     try:
-
         async def run_input(input_id, args, kwargs):
             output_index = SequenceNumber(0)  # mutable number we can increase from the generator loop
             started_at = time.time()
@@ -508,11 +521,16 @@ async def call_function_async(
                     value = await res
                     await function_io_manager.enqueue_output.aio(input_id, started_at, output_index.value, value)
 
-        tasks = []
-        async for input_id, args, kwargs in function_io_manager.run_inputs_outputs.aio(input_concurrency):
-            tasks.append(asyncio.create_task(run_input(input_id, args, kwargs)))
+        if input_concurrency > 1:
+            tasks = []
+            async for input_id, args, kwargs in function_io_manager.run_inputs_outputs.aio(input_concurrency):
+                tasks.append(asyncio.create_task(run_input(input_id, args, kwargs)))
 
-        await asyncio.gather(*tasks)
+            # This should complete instantly
+            await asyncio.gather(*tasks)
+        else:
+            async for input_id, args, kwargs in function_io_manager.run_inputs_outputs.aio(input_concurrency):
+                await run_input(input_id, args, kwargs)
     finally:
         if obj is not None:
             if hasattr(obj, "__aexit__"):
