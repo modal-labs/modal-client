@@ -247,7 +247,6 @@ class _FunctionIOManager:
             # TODO(erikbern): we'll get a RESOURCE_EXCHAUSTED if the buffer is full server-side.
             # It's possible we want to retry "harder" for this particular error.
 
-
     async def run_inputs_outputs(self, input_concurrency: int = 1):
         # This also makes sure to terminate the outputs
         self.output_queue: asyncio.Queue = asyncio.Queue()
