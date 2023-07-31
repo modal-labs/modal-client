@@ -1235,7 +1235,7 @@ class _Function(_Provider[_FunctionHandle]):
             yield item
 
     async def for_each(self, *input_iterators, kwargs={}, ignore_exceptions=False):
-        await self._handle.for_each(input_iterators, kwargs, ignore_exceptions)
+        await self._handle.for_each(*input_iterators, kwargs=kwargs, ignore_exceptions=ignore_exceptions)
 
     async def starmap(
         self, input_iterator, kwargs={}, order_outputs=None, return_exceptions=False
