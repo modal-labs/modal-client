@@ -229,7 +229,7 @@ class _FunctionIOManager:
                         break
 
             if not yielded:
-                await self._semaphore.release()
+                self._semaphore.release()
 
     async def _send_outputs(self):
         """Background task that tries to drain output queue until it's empty,
@@ -252,10 +252,10 @@ class _FunctionIOManager:
         # This also makes sure to terminate the outputs
         self.output_queue: asyncio.Queue = asyncio.Queue()
 
-        # Ensure we do not fetch new inputs when container is too busy
-        # Before trying to fetch an input, acquire the semaphore.
-        # If no input is fetched, release the semaphore.
-        # When the output for the fetched input is enqueued, release the semaphore.
+        # Ensure we do not fetch new inputs when container is too busy.
+        # Before trying to fetch an input, acquire the semaphore:
+        # - if no input is fetched, release the semaphore.
+        # - or, when the output for the fetched input is enqueued, release the semaphore.
         self.input_concurrency = input_concurrency
         self._semaphore = asyncio.Semaphore(input_concurrency)
 
@@ -380,7 +380,7 @@ class _FunctionIOManager:
     async def complete_call(self, started_at):
         self.total_user_time += time.time() - started_at
         self.calls_completed += 1
-        await self._semaphore.release()
+        self._semaphore.release()
 
     async def enqueue_output(self, input_id, started_at: float, output_index: int, data):
         await self._enqueue_output(
@@ -509,8 +509,11 @@ async def call_function_async(
                     value = await res
                     await function_io_manager.enqueue_output.aio(input_id, started_at, output_index.value, value)
 
+        tasks = []
         async for input_id, args, kwargs in function_io_manager.run_inputs_outputs.aio(input_concurrency):
-            asyncio.create_task(run_input(input_id, args, kwargs))
+            tasks.append(asyncio.create_task(run_input(input_id, args, kwargs)))
+
+        await asyncio.gather(*tasks)
     finally:
         if obj is not None:
             if hasattr(obj, "__aexit__"):
