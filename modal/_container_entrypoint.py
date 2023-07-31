@@ -257,7 +257,7 @@ class _FunctionIOManager:
         # Before trying to fetch an input, acquire the semaphore:
         # - if no input is fetched, release the semaphore.
         # - or, when the output for the fetched input is enqueued, release the semaphore.
-        self.input_concurrency = input_concurrency
+        self._input_concurrency = input_concurrency
         self._semaphore = asyncio.Semaphore(input_concurrency)
 
         async with TaskContext(grace=10) as tc:

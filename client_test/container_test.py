@@ -34,8 +34,9 @@ def _get_inputs(args: Tuple[Tuple, Dict] = ((42,), {}), n: int = 1) -> list[api_
     input_pb = api_pb2.FunctionInput(args=serialize(args))
 
     return [
-        api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(input_id="in-xyz", input=input_pb)])
-    ] * n + [api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(kill_switch=True)])]
+        api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(input_id=f"in-xyz{i}", input=input_pb)])
+        for i in range(n)
+    ] + [api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(kill_switch=True)])]
 
 
 def _run_container(
@@ -674,12 +675,27 @@ def test_multistub_is_inside_warning(unix_servicer, caplog, capsys):
         "inside b" in out
     )  # can't determine which of two anonymous stubs is the active one at import time, so both will trigger
 
+def verify_concurrent_input_outputs(n_inputs: int, n_parallel: int, output_items: list[api_pb2.FunctionPutOutputsItem]):
+    # Ensure that outputs align with expectation of running concurrent inputs
+
+    # Each group of n_parallel inputs should start together of each other
+    # and different groups should start 1 second apart.
+    assert len(output_items) == n_inputs
+    for i in range(1, len(output_items)):
+        diff = output_items[i].input_started_at - output_items[i-1].input_started_at
+        print(diff)
+        expected_diff = 1.0 if i % n_parallel == 0 else 0
+        assert diff == pytest.approx(expected_diff, abs=0.05)
+
+    for item in output_items:
+        assert item.output_created_at - item.input_started_at == pytest.approx(1.0, abs=0.05)
+        assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+        assert item.result.data == serialize(42**2)
 
 @skip_windows_unix_socket
 def test_concurrent_inputs_sync_function(unix_servicer):
     n_inputs = 12
-    n_threads = 6
-    expected_execution = n_inputs / n_threads
+    n_parallel = 6
 
     t0 = time.time()
     client, items = _run_container(
@@ -687,20 +703,18 @@ def test_concurrent_inputs_sync_function(unix_servicer):
         "modal_test_support.functions",
         "sleep_1_sync",
         inputs=_get_inputs(n=n_inputs),
-        allow_concurrent_inputs=n_threads,
+        allow_concurrent_inputs=n_parallel,
     )
+
+    expected_execution = n_inputs / n_parallel
     assert expected_execution <= time.time() - t0 < expected_execution + EXTRA_TOLERANCE_DELAY
-    assert len(items) == n_inputs
-    for item in items:
-        assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-        assert item.result.data == serialize(42**2)
+    verify_concurrent_input_outputs(n_inputs, n_parallel, items)
 
 
 @skip_windows_unix_socket
 def test_concurrent_inputs_async_function(unix_servicer, event_loop):
     n_inputs = 12
-    n_tasks = 6
-    expected_execution = n_inputs / n_tasks
+    n_parallel = 6
 
     t0 = time.time()
     client, items = _run_container(
@@ -708,10 +722,9 @@ def test_concurrent_inputs_async_function(unix_servicer, event_loop):
         "modal_test_support.functions",
         "sleep_1_async",
         inputs=_get_inputs(n=n_inputs),
-        allow_concurrent_inputs=n_tasks,
+        allow_concurrent_inputs=n_parallel,
     )
+
+    expected_execution = n_inputs / n_parallel
     assert expected_execution <= time.time() - t0 < expected_execution + EXTRA_TOLERANCE_DELAY
-    assert len(items) == n_inputs
-    for item in items:
-        assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-        assert item.result.data == serialize(42**2)
+    verify_concurrent_input_outputs(n_inputs, n_parallel, items)

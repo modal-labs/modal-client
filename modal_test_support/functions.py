@@ -172,7 +172,6 @@ class ParamCls:
 
 @stub.function(allow_concurrent_inputs=5)
 def sleep_1_sync(x):
-    print("start", time.time())
     time.sleep(1.0)
     return x * x
 
