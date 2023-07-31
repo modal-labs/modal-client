@@ -1037,7 +1037,7 @@ class _Function(_Provider[_FunctionHandle]):
                 network_file_system_mounts = []
                 volume_ids = await _load_ids([vol for _, vol in validated_network_file_systems])
                 # Relies on dicts being ordered (true as of Python 3.6).
-                for ((path, _), volume_id) in zip(validated_network_file_systems, volume_ids):
+                for (path, _), volume_id in zip(validated_network_file_systems, volume_ids):
                     network_file_system_mounts.append(
                         api_pb2.SharedVolumeMount(
                             mount_path=path,
@@ -1052,7 +1052,7 @@ class _Function(_Provider[_FunctionHandle]):
             validated_volumes = _validate_mount_points("Volume", volumes)
             # We don't support mounting a volume in more than one location
             volume_to_paths: Dict[_Volume, List[str]] = {}
-            for (path, volume) in validated_volumes:
+            for path, volume in validated_volumes:
                 volume_to_paths.setdefault(volume, []).append(path)
             for paths in volume_to_paths.values():
                 if len(paths) > 1:
@@ -1065,7 +1065,7 @@ class _Function(_Provider[_FunctionHandle]):
                 volume_mounts = []
                 volume_ids = await _load_ids([vol for _, vol in validated_volumes])
                 # Relies on dicts being ordered (true as of Python 3.6).
-                for ((path, _), volume_id) in zip(validated_volumes, volume_ids):
+                for (path, _), volume_id in zip(validated_volumes, volume_ids):
                     volume_mounts.append(
                         api_pb2.VolumeMount(
                             mount_path=path,
@@ -1410,9 +1410,6 @@ def _web_endpoint(
     * `wait_for_response=True` - tries to fulfill the request on the original URL, but returns a 302 redirect after ~150s to a result URL (original URL with an added `__modal_function_id=...` query parameter)
     * `wait_for_response=False` - immediately returns a 202 ACCEPTED response with a JSON payload: `{"result_url": "..."}` containing the result "redirect" URL from above (which in turn redirects to itself every ~150s)
     """
-    if custom_domains is None:
-        custom_domains = []
-
     if not isinstance(method, str):
         raise InvalidError(
             f"Unexpected argument {method} of type {type(method)} for `method` parameter. "
@@ -1434,6 +1431,11 @@ def _web_endpoint(
 
         # self._loose_webhook_configs.add(raw_f)
 
+        _custom_domains: list[api_pb2.CustomDomainConfig] = []
+        if custom_domains is not None:
+            for custom_domain in custom_domains:
+                _custom_domains.append(api_pb2.CustomDomainConfig(name=custom_domain))
+
         return _PartialFunction(
             raw_f,
             api_pb2.WebhookConfig(
@@ -1441,7 +1443,7 @@ def _web_endpoint(
                 method=method,
                 requested_suffix=label,
                 async_mode=_response_mode,
-                custom_domains=custom_domains,
+                custom_domains=_custom_domains,
             ),
         )
 
