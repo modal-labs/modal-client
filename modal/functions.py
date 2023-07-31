@@ -672,6 +672,8 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         Convenient alias for `.map()` in cases where the function just needs to be called.
         as the caller doesn't have to consume the generator to process the inputs.
         """
+        # TODO(erikbern): it would be better if this is more like a map_spawn that immediately exits
+        # rather than iterating over the result
         async for _ in self.map(
             *input_iterators, kwargs=kwargs, order_outputs=False, return_exceptions=ignore_exceptions
         ):
@@ -803,7 +805,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
             backlog=resp.backlog, num_active_runners=resp.num_active_tasks, num_total_runners=resp.num_total_tasks
         )
 
-    def bind_obj(self, obj, objtype) -> "_FunctionHandle":
+    def _bind_obj(self, obj, objtype) -> "_FunctionHandle":
         # This is needed to bind "self" to methods for direct __call__
         self._self_obj = obj
 
@@ -1210,6 +1212,57 @@ class _Function(_Provider[_FunctionHandle]):
         """mdmd:hidden"""
         return f"{inspect.getsource(self._raw_f)}\n{repr(self._build_args)}"
 
+    # Live handle methods
+
+    @property
+    def web_url(self) -> str:
+        return self._handle.web_url
+
+    @property
+    def is_generator(self) -> bool:
+        return self._handle._is_generator
+
+    async def map(
+        self,
+        *input_iterators,  # one input iterator per argument in the mapped-over function/generator
+        kwargs={},  # any extra keyword arguments for the function
+        order_outputs=None,  # defaults to True for regular functions, False for generators
+        return_exceptions=False,  # whether to propogate exceptions (False) or aggregate them in the results list (True)
+    ) -> AsyncGenerator[Any, None]:
+        async for item in self._handle.map(
+            *input_iterators, kwargs=kwargs, order_outputs=order_outputs, return_exceptions=return_exceptions
+        ):
+            yield item
+
+    async def for_each(self, *input_iterators, kwargs={}, ignore_exceptions=False):
+        await self._handle.for_each(input_iterators, kwargs, ignore_exceptions)
+
+    async def starmap(
+        self, input_iterator, kwargs={}, order_outputs=None, return_exceptions=False
+    ) -> AsyncGenerator[typing.Any, None]:
+        async for item in self._handle.starmap(
+            input_iterator, kwargs=kwargs, order_outputs=order_outputs, return_exceptions=return_exceptions
+        ):
+            yield item
+
+    def call(self, *args, **kwargs) -> Awaitable[Any]:  # TODO: Generics/TypeVars
+        return self._handle.call(*args, **kwargs)
+
+    def shell(self, *args, **kwargs):
+        return self._handle.shell(*args, **kwargs)
+
+    def __call__(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
+        return self._handle.__call__(*args, **kwargs)
+
+    async def spawn(self, *args, **kwargs) -> Optional["_FunctionCall"]:
+        return await self._handle.spawn(*args, **kwargs)
+
+    def get_raw_f(self) -> Callable[..., Any]:
+        return self._handle.get_raw_f()
+
+    async def get_current_stats(self) -> FunctionStats:
+        return await self._handle.get_current_stats()
+
 
 Function = synchronize_api(_Function)
 
@@ -1334,7 +1387,7 @@ class _PartialFunction:
             function_handle = obj._modal_function_handles[k]
         else:  # Cls.fun
             function_handle = objtype._modal_function_handles[k]
-        return function_handle.bind_obj(obj, objtype)
+        return function_handle._bind_obj(obj, objtype)
 
     def __del__(self):
         if self.wrapped is False:

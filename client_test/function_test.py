@@ -37,6 +37,12 @@ def test_run_function(client, servicer):
         assert foo.call(2, 4) == 20
         assert len(servicer.cleared_function_calls) == 1
 
+        # Make sure we can also call the Function object
+        fun = stub.foo
+        assert isinstance(fun, Function)
+        assert fun.call(2, 4) == 20
+        assert len(servicer.cleared_function_calls) == 2
+
 
 @pytest.mark.asyncio
 async def test_call_function_locally(client, servicer):
@@ -65,6 +71,12 @@ def test_map(client, servicer, slow_put_inputs):
         assert len(servicer.cleared_function_calls) == 1
         assert set(dummy_modal.map([5, 2], [4, 3], order_outputs=False)) == {13, 41}
         assert len(servicer.cleared_function_calls) == 2
+
+        # Make sure we can map on the Function object too
+        fun = stub.dummy
+        assert isinstance(fun, Function)
+        assert list(fun.map([5, 2], [4, 3])) == [41, 13]
+        assert len(servicer.cleared_function_calls) == 3
 
 
 _side_effect_count = 0
