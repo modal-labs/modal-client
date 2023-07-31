@@ -510,6 +510,8 @@ message Function {
   repeated VolumeMount volume_mounts = 33;
 
   uint32 allow_concurrent_inputs = 34;
+
+  repeated CustomDomainInfo custom_domain_info = 35;
 }
 
 message FunctionHandleMetadata {
@@ -1253,6 +1255,10 @@ message VolumeMount {
 
 message CustomDomainConfig {
   string name = 1;
+}
+
+message CustomDomainInfo {
+  string url = 1;
 }
 
 message WebhookConfig {
