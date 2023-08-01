@@ -110,8 +110,8 @@ class _Handle(metaclass=ObjectMeta):
         # TODO(erikbern): this should probably be on the provider?
         if client is None:
             client = await _Client.from_env()
-        app_lookup_object_response: api_pb2.AppLookupObjectResponse = await client.stub.AppLookupObject(
-            api_pb2.AppLookupObjectRequest(object_id=object_id)
+        app_lookup_object_response: api_pb2.AppLookupObjectResponse = await retry_transient_errors(
+            client.stub.AppLookupObject, api_pb2.AppLookupObjectRequest(object_id=object_id)
         )
 
         handle_metadata = get_proto_oneof(app_lookup_object_response, "handle_metadata_oneof")
