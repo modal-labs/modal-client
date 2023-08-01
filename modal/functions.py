@@ -530,26 +530,6 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         self._web_url = metadata.web_url
         self._function_name = metadata.function_name
 
-    async def _make_bound_function_handle(self, *args: Iterable[Any], **kwargs: Dict[str, Any]) -> "_FunctionHandle":
-        assert self.is_hydrated(), "Cannot make bound function handle from unhydrated handle."
-
-        if len(args) + len(kwargs) == 0:
-            # short circuit if no args, don't need a special object.
-            return self
-
-        new_handle = _FunctionHandle._new()
-        new_handle._initialize_from_local(self._stub, self._info)
-
-        serialized_params = pickle.dumps((args, kwargs))
-        req = api_pb2.FunctionBindParamsRequest(
-            function_id=self._object_id,
-            serialized_params=serialized_params,
-        )
-        response = await self._client.stub.FunctionBindParams(req)
-        new_handle._hydrate(response.bound_function_id, self._client, response.handle_metadata)
-        new_handle._is_remote_cls_method = True
-        return new_handle
-
     def _get_is_remote_cls_method(self):
         return self._is_remote_cls_method
 
@@ -1206,6 +1186,28 @@ class _Function(_Provider[_FunctionHandle]):
         )
 
         return obj
+
+    @staticmethod
+    def from_parametrized(base_handle: _FunctionHandle, *args: Iterable[Any], **kwargs: Dict[str, Any]) -> "_Function":
+        assert base_handle.is_hydrated(), "Cannot make bound function handle from unhydrated handle."
+
+        if len(args) + len(kwargs) == 0:
+            # short circuit if no args, don't need a special object.
+            return base_handle
+
+        async def _load(resolver: Resolver, existing_object_id: Optional[str], handle: _FunctionHandle):
+            handle._initialize_from_local(base_handle._stub, base_handle._info)
+
+            serialized_params = pickle.dumps((args, kwargs))  # TODO(erikbern): use modal._serialization?
+            req = api_pb2.FunctionBindParamsRequest(
+                function_id=base_handle.object_id,
+                serialized_params=serialized_params,
+            )
+            response = await resolver.client.stub.FunctionBindParams(req)
+            handle._hydrate(response.bound_function_id, resolver.client, response.handle_metadata)
+            handle._is_remote_cls_method = True
+
+        return _Function._from_loader(_load, "Function(parametrized)")
 
     def get_panel_items(self) -> List[str]:
         """mdmd:hidden"""
