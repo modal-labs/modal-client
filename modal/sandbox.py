@@ -139,6 +139,7 @@ class _Sandbox(_Provider[_SandboxHandle]):
         image: _Image,
         mounts: Sequence[_Mount],
         timeout: Optional[int] = None,
+        workdir: Optional[str] = None,
     ) -> _SandboxHandle:
         """mdmd:hidden"""
 
@@ -160,6 +161,7 @@ class _Sandbox(_Provider[_SandboxHandle]):
                 image_id=image_id,
                 mount_ids=mount_ids,
                 timeout_secs=timeout,
+                workdir=workdir,
             )
 
             create_req = api_pb2.SandboxCreateRequest(app_id=resolver.app_id, definition=definition)

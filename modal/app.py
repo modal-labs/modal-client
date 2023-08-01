@@ -260,6 +260,7 @@ class _App:
         image: Optional["modal.image._Image"] = None,  # The image to run as the container for the sandbox.
         mounts: Sequence["modal.image._Mount"] = (),
         timeout: Optional[int] = None,  # Maximum execution time of the sandbox in seconds.
+        workdir: Optional[str] = None,  # Working directory of the sandbox.
     ) -> "modal.sandbox._SandboxHandle":
         """Sandboxes are a way to run arbitrary commands in dynamically defined environments.
 
@@ -273,7 +274,7 @@ class _App:
         self._client.track_function_invocation()
 
         resolver = Resolver(None, self._client, self._environment_name, self.app_id)
-        provider = _Sandbox._new(entrypoint_args, image or _default_image, mounts, timeout)
+        provider = _Sandbox._new(entrypoint_args, image or _default_image, mounts, timeout, workdir)
         return await resolver.load(provider)
 
     @staticmethod
