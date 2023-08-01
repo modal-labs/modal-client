@@ -13,7 +13,7 @@ from grpclib.exceptions import GRPCError, StreamTerminatedError
 from modal._types import typechecked
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
-from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, unary_stream
+from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
 
 from ._function_utils import FunctionInfo
 from ._resolver import Resolver
@@ -239,7 +239,7 @@ class _Image(_Provider[_ImageHandle]):
                 force_build=force_build,
                 namespace=_namespace,
             )
-            resp = await resolver.client.stub.ImageGetOrCreate(req)
+            resp = await retry_transient_errors(resolver.client.stub.ImageGetOrCreate, req)
             image_id = resp.image_id
 
             logger.debug("Waiting for image %s" % image_id)

@@ -949,7 +949,7 @@ class _Function(_Provider[_FunctionHandle]):
                 webhook_config=webhook_config,
                 existing_function_id=existing_object_id,
             )
-            response = await resolver.client.stub.FunctionPrecreate(req)
+            response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
             # Update the precreated function handle (todo: hack until we merge providers/handles)
             handle._hydrate(response.function_id, resolver.client, response.handle_metadata)
             return handle
@@ -1120,7 +1120,9 @@ class _Function(_Provider[_FunctionHandle]):
                 existing_function_id=existing_object_id,
             )
             try:
-                response: api_pb2.FunctionCreateResponse = await resolver.client.stub.FunctionCreate(request)
+                response: api_pb2.FunctionCreateResponse = await retry_transient_errors(
+                    resolver.client.stub.FunctionCreate, request
+                )
             except GRPCError as exc:
                 if exc.status == Status.INVALID_ARGUMENT:
                     raise InvalidError(exc.message)
@@ -1201,7 +1203,7 @@ class _Function(_Provider[_FunctionHandle]):
                 function_id=base_handle.object_id,
                 serialized_params=serialized_params,
             )
-            response = await resolver.client.stub.FunctionBindParams(req)
+            response = await retry_transient_errors(resolver.client.stub.FunctionBindParams, req)
             handle._hydrate(response.bound_function_id, resolver.client, response.handle_metadata)
             handle._is_remote_cls_method = True
 
@@ -1318,7 +1320,7 @@ class _FunctionCall(_Handle, type_prefix="fc"):
     async def cancel(self):
         request = api_pb2.FunctionCallCancelRequest(function_call_id=self.object_id)
         assert self._client and self._client.stub
-        await self._client.stub.FunctionCallCancel(request)
+        await retry_transient_errors(self._client.stub.FunctionCallCancel, request)
 
 
 FunctionCall = synchronize_api(_FunctionCall)
