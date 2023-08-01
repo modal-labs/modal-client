@@ -50,7 +50,7 @@ async def ls(
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
-    vol: _VolumeHandle = await _Volume.lookup(volume_name, environment_name=env)
+    vol = await _Volume.lookup(volume_name, environment_name=env)
     if not isinstance(vol, _VolumeHandle):
         raise UsageError("The specified app entity is not a modal.Volume")
 
