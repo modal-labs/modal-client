@@ -11,7 +11,7 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import get_proto_oneof, retry_transient_errors
 
-from ._object_meta import ObjectMeta
+from ._object_meta import HandleMeta, ProviderMeta
 from ._resolver import Resolver
 from .client import _Client
 from .config import config
@@ -22,7 +22,7 @@ H = TypeVar("H", bound="_Handle")
 _BLOCKING_H = synchronize_api(H)
 
 
-class _Handle(metaclass=ObjectMeta):
+class _Handle(metaclass=HandleMeta):
     """mdmd:hidden The shared base class of any synced/distributed object in Modal.
 
     Examples of objects include Modal primitives like Images and Functions, as
@@ -94,9 +94,9 @@ class _Handle(metaclass=ObjectMeta):
             if len(parts) != 2:
                 raise InvalidError(f"Object id {object_id} has no dash in it")
             prefix = parts[0]
-            if prefix not in ObjectMeta.prefix_to_type:
+            if prefix not in HandleMeta.prefix_to_type:
                 raise InvalidError(f"Object prefix {prefix} does not correspond to a type")
-            object_cls = ObjectMeta.prefix_to_type[prefix]
+            object_cls = HandleMeta.prefix_to_type[prefix]
 
         # Instantiate object and return
         obj = object_cls._new()
@@ -166,8 +166,8 @@ P = TypeVar("P", bound="_Provider")
 _BLOCKING_P = synchronize_api(P)
 
 
-class _Provider(Generic[H]):
-    _load: Callable[[Resolver, Optional[str], H], Awaitable[None]]
+class _Provider(Generic[H], metaclass=ProviderMeta):
+    _load: Optional[Callable[[Resolver, Optional[str], H], Awaitable[None]]]
     _preload: Optional[Callable[[Resolver, Optional[str], H], Awaitable[None]]]
     _handle: H
 
@@ -176,13 +176,11 @@ class _Provider(Generic[H]):
 
     @classmethod
     def _get_handle_cls(cls) -> Type[H]:
-        (base,) = cls.__orig_bases__  # type: ignore
-        (handle_cls,) = base.__args__
-        return handle_cls
+        return HandleMeta.prefix_to_type[cls._type_prefix]
 
     def _init(
         self,
-        load: Callable[[Resolver, Optional[str], H], Awaitable[None]],
+        load: Optional[Callable[[Resolver, Optional[str], H], Awaitable[None]]],
         rep: str,
         is_persisted_ref: bool = False,
         preload: Optional[Callable[[Resolver, Optional[str], H], Awaitable[None]]] = None,
@@ -209,7 +207,7 @@ class _Provider(Generic[H]):
         is_persisted_ref: bool = False,
         preload: Optional[Callable[[Resolver, Optional[str], H], Awaitable[None]]] = None,
     ):
-        obj = _Handle.__new__(cls)
+        obj = _Provider.__new__(cls)
         obj._init(load, rep, is_persisted_ref, preload)
         return obj
 

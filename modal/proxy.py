@@ -8,7 +8,7 @@ class _ProxyHandle(_Handle, type_prefix="pr"):
     pass
 
 
-class _Proxy(_Provider[_ProxyHandle]):
+class _Proxy(_Provider[_ProxyHandle], type_prefix="pr"):
     """
     Proxy objects are used to setup secure tunnel connections to a private remote address, for example
     a database.

@@ -125,7 +125,7 @@ if typing.TYPE_CHECKING:
     import modal.functions
 
 
-class _Image(_Provider[_ImageHandle]):
+class _Image(_Provider[_ImageHandle], type_prefix="im"):
     """Base class for container images to run functions in.
 
     Do not construct this class directly; instead use one of its static factory methods,

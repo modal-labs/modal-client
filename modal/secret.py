@@ -22,7 +22,7 @@ SecretHandle = synchronize_api(_SecretHandle)
 ENV_DICT_WRONG_TYPE_ERR = "the env_dict argument to Secret has to be a dict[str, str]"
 
 
-class _Secret(_Provider[_SecretHandle]):
+class _Secret(_Provider[_SecretHandle], type_prefix="st"):
     """Secrets provide a dictionary of environment variables for images.
 
     Secrets are a secure way to add credentials and other sensitive information
