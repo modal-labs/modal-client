@@ -16,12 +16,14 @@ class Pickler(cloudpickle.Pickler):
 
     def persistent_id(self, obj):
         if isinstance(obj, _Handle):
-            raise InvalidError("Can't synchronize internal objects")
-        if not isinstance(obj, Handle):
+            flag = "_h"
+        elif isinstance(obj, Handle):
+            flag = "h"
+        else:
             return
         if not obj.object_id:
             raise InvalidError(f"Can't serialize object {obj} which hasn't been created.")
-        return (obj.object_id, obj._get_metadata())
+        return (obj.object_id, flag, obj._get_metadata())
 
 
 class Unpickler(pickle.Unpickler):
@@ -30,8 +32,13 @@ class Unpickler(pickle.Unpickler):
         super().__init__(buf)
 
     def persistent_load(self, pid):
-        (object_id, handle_proto) = pid
-        return Handle._new_hydrated(object_id, self.client, handle_proto)
+        (object_id, flag, handle_proto) = pid
+        if flag == "h":
+            return Handle._new_hydrated(object_id, self.client, handle_proto)
+        elif flag == "_h":
+            return _Handle._new_hydrated(object_id, self.client, handle_proto)
+        else:
+            raise InvalidError("bad flag")
 
 
 def serialize(obj):
