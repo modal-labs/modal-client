@@ -48,9 +48,7 @@ class _DictHandle(_Handle, type_prefix="di"):
         return resp.found
 
     async def len(self) -> int:
-        """
-        Returns the length of the dictionary, _including any expired keys_.
-        """
+        """Returns the length of the dictionary, including any expired keys."""
         req = api_pb2.DictLenRequest(dict_id=self.object_id)
         resp = await retry_transient_errors(self._client.stub.DictLen, req)
         return resp.len
@@ -163,7 +161,7 @@ class _Dict(_Provider[_DictHandle]):
     def persisted(
         label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
     ) -> "_Dict":
-        """See `SharedVolume.persisted`."""
+        """See `NetworkFileSystem.persisted`."""
         return _Dict.new()._persist(label, namespace, environment_name)
 
     def persist(
@@ -202,7 +200,7 @@ class _Dict(_Provider[_DictHandle]):
         return await self._handle.__delitem__(key)
 
     async def __contains__(self, key: Any) -> bool:
-        return await self._handle.__contains(key)
+        return await self._handle.__contains__(key)
 
 
 Dict = synchronize_api(_Dict)
