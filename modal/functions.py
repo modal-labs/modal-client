@@ -1077,7 +1077,7 @@ class _Function(_Provider[_FunctionHandle]):
             milli_cpu = int(1000 * cpu) if cpu is not None else None
 
             timeout_secs = timeout
-            if resolver._shell:
+            if resolver.shell:
                 timeout_secs = 86400
                 pty_info = _pty.get_pty_info(shell=True)
             elif interactive:

@@ -86,7 +86,13 @@ class _App:
         self, blueprint: Dict[str, _Provider], new_app_state: int, environment_name: str, shell: bool = False
     ):  # api_pb2.AppState.V
         """Create objects that have been defined but not created on the server."""
-        resolver = Resolver(self._output_mgr, self._client, environment_name, self.app_id, shell=shell)
+        resolver = Resolver(
+            self._client,
+            output_mgr=self._output_mgr,
+            environment_name=environment_name,
+            app_id=self.app_id,
+            shell=shell,
+        )
         with resolver.display():
             # Preload all functions to make sure they have ids assigned before they are loaded.
             # This is important to make sure any enclosed function handle references in serialized
@@ -230,7 +236,7 @@ class _App:
 
     async def create_one_object(self, provider: _Provider, environment_name: str) -> _Handle:
         existing_object_id: Optional[str] = self._tag_to_existing_id.get("_object")
-        resolver = Resolver(None, self._client, environment_name, self.app_id)
+        resolver = Resolver(self._client, environment_name=environment_name, app_id=self.app_id)
         handle = await resolver.load(provider, existing_object_id)
         indexed_object_ids = {"_object": handle.object_id}
         unindexed_object_ids = [obj.object_id for obj in resolver.objects() if obj is not handle]
@@ -273,7 +279,7 @@ class _App:
 
         self._client.track_function_invocation()
 
-        resolver = Resolver(None, self._client, self._environment_name, self.app_id)
+        resolver = Resolver(self._client, environment_name=self._environment_name, app_id=self.app_id)
         provider = _Sandbox._new(entrypoint_args, image or _default_image, mounts, timeout, workdir)
         return await resolver.load(provider)
 
