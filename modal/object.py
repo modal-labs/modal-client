@@ -169,6 +169,7 @@ _BLOCKING_P = synchronize_api(P)
 class _Provider(Generic[H]):
     _load: Callable[[Resolver, Optional[str], H], Awaitable[None]]
     _preload: Optional[Callable[[Resolver, Optional[str], H], Awaitable[None]]]
+    _handle: H
 
     def __init__(self):
         raise Exception("__init__ disallowed, use proper classmethods")
