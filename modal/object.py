@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import uuid
 from datetime import date
-from typing import Awaitable, Callable, Optional, Type, TypeVar
+from typing import Awaitable, Callable, Dict, Optional, Type, TypeVar
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
@@ -11,7 +11,6 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import get_proto_oneof, retry_transient_errors
 
-from ._object_meta import HandleMeta, ProviderMeta
 from ._resolver import Resolver
 from .client import _Client
 from .config import config
@@ -22,17 +21,25 @@ H = TypeVar("H", bound="_Handle")
 _BLOCKING_H = synchronize_api(H)
 
 
-class _Handle(metaclass=HandleMeta):
+class _Handle:
     """mdmd:hidden The shared base class of any synced/distributed object in Modal.
 
     Examples of objects include Modal primitives like Images and Functions, as
     well as distributed data structures like Queues or Dicts.
     """
 
-    _type_prefix: str  # class attribute
+    _type_prefix: Optional[str] = None  # class attribute
     _object_id: str
     _client: _Client
     _is_hydrated: bool
+    _prefix_to_type: Dict[str, type] = {}
+
+    @classmethod
+    def __init_subclass__(cls, type_prefix: Optional[str] = None):
+        super().__init_subclass__()
+        if type_prefix is not None:
+            cls._type_prefix = type_prefix
+            cls._prefix_to_type[type_prefix] = cls
 
     def __init__(self):
         raise Exception("__init__ disallowed, use proper classmethods")
@@ -94,9 +101,9 @@ class _Handle(metaclass=HandleMeta):
             if len(parts) != 2:
                 raise InvalidError(f"Object id {object_id} has no dash in it")
             prefix = parts[0]
-            if prefix not in HandleMeta.prefix_to_type:
+            if prefix not in cls._prefix_to_type:
                 raise InvalidError(f"Object prefix {prefix} does not correspond to a type")
-            object_cls = HandleMeta.prefix_to_type[prefix]
+            object_cls = cls._prefix_to_type[prefix]
 
         # Instantiate object and return
         obj = object_cls._new()
@@ -166,17 +173,26 @@ P = TypeVar("P", bound="_Provider")
 _BLOCKING_P = synchronize_api(P)
 
 
-class _Provider(metaclass=ProviderMeta):
+class _Provider:
+    _type_prefix: Optional[str] = None  # class attribute
     _load: Optional[Callable[[Resolver, Optional[str], _Handle], Awaitable[None]]]
     _preload: Optional[Callable[[Resolver, Optional[str], _Handle], Awaitable[None]]]
     _handle: _Handle
+    _prefix_to_type: Dict[str, type] = {}
+
+    @classmethod
+    def __init_subclass__(cls, type_prefix: Optional[str] = None):
+        super().__init_subclass__()
+        if type_prefix is not None:
+            cls._type_prefix = type_prefix
+            cls._prefix_to_type[type_prefix] = cls
 
     def __init__(self):
         raise Exception("__init__ disallowed, use proper classmethods")
 
     @classmethod
     def _get_handle_cls(cls) -> Type[_Handle]:
-        return HandleMeta.prefix_to_type[cls._type_prefix]
+        return _Handle._prefix_to_type[cls._type_prefix]
 
     def _init(
         self,

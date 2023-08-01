@@ -7,7 +7,7 @@ from .exception import deprecation_warning
 from .network_file_system import _NetworkFileSystem
 
 
-class _SharedVolume(_NetworkFileSystem, type_prefix="sv"):
+class _SharedVolume(_NetworkFileSystem):
     def __init__(self, *args, **kwargs) -> None:
         """`SharedVolume(...)` is deprecated. Please use `NetworkFileSystem.new(...)` instead."""
         deprecation_warning(date(2023, 7, 5), _SharedVolume.__init__.__doc__)
