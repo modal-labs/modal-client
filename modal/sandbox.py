@@ -130,7 +130,7 @@ class _SandboxHandle(_Handle, type_prefix="sb"):
 SandboxHandle = synchronize_api(_SandboxHandle)
 
 
-class _Sandbox(_Provider[_SandboxHandle], type_prefix="sb"):
+class _Sandbox(_Provider, type_prefix="sb"):
     """mdmd:hidden"""
 
     @staticmethod

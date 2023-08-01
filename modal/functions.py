@@ -795,7 +795,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
 FunctionHandle = synchronize_api(_FunctionHandle)
 
 
-class _Function(_Provider[_FunctionHandle], type_prefix="fu"):
+class _Function(_Provider, type_prefix="fu"):
     """Functions are the basic units of serverless execution on Modal.
 
     Generally, you will not construct a `Function` directly. Instead, use the
