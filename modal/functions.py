@@ -805,13 +805,11 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
             backlog=resp.backlog, num_active_runners=resp.num_active_tasks, num_total_runners=resp.num_total_tasks
         )
 
-    def _bind_obj(self, obj, objtype) -> "_FunctionHandle":
+    def _bind_obj(self, obj, objtype):
         # This is needed to bind "self" to methods for direct __call__
-        self._self_obj = obj
-
         # TODO(erikbern): we're mutating self directly here, as opposed to returning a different _FunctionHandle
         # We should fix this in the future since it probably precludes using classmethods/staticmethods
-        return self
+        self._self_obj = obj
 
 
 FunctionHandle = synchronize_api(_FunctionHandle)
@@ -1400,7 +1398,8 @@ class _PartialFunction:
             function_handle = obj._modal_function_handles[k]
         else:  # Cls.fun
             function_handle = objtype._modal_function_handles[k]
-        return function_handle._bind_obj(obj, objtype)
+        function_handle._bind_obj(obj, objtype)  # TODO(erikbern): don't mutate
+        return function_handle
 
     def __del__(self):
         if self.wrapped is False:
