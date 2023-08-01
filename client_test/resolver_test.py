@@ -16,10 +16,10 @@ async def test_multi_resolve_sequential_loads_once():
 
     load_count = 0
 
-    class _DumbHandle(_Handle):
+    class _DumbHandle(_Handle, type_prefix="zz"):
         pass
 
-    class _DumbProvider(_Provider[_DumbHandle]):
+    class _DumbProvider(_Provider[_DumbHandle], type_prefix="zz"):
         pass
 
     async def _load(resolver: Resolver, existing_object_id: Optional[str], handle: _DumbHandle):
@@ -44,10 +44,10 @@ async def test_multi_resolve_concurrent_loads_once():
 
     load_count = 0
 
-    class _DumbHandle(_Handle):
+    class _DumbHandle(_Handle, type_prefix="zz"):
         pass
 
-    class _DumbProvider(_Provider[_DumbHandle]):
+    class _DumbProvider(_Provider[_DumbHandle], type_prefix="zz"):
         pass
 
     async def _load(resolver: Resolver, existing_object_id: Optional[str], handle: _DumbHandle):
