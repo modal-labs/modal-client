@@ -47,10 +47,17 @@ class Resolver:
     # since that leads to circular dependencies
     _tree: Tree
     _local_uuid_to_future: Dict[str, Future]
-    _environment_name: str
+    _environment_name: Optional[str]
+    _app_id: Optional[str]
 
     def __init__(
-        self, output_mgr, client, environment_name: str, app_id: Optional[str] = None, shell: Optional[bool] = False
+        self,
+        client,
+        *,
+        output_mgr=None,
+        environment_name: Optional[str] = None,
+        app_id: Optional[str] = None,
+        shell: Optional[bool] = False,
     ):
         from rich.tree import Tree
 
@@ -59,8 +66,6 @@ class Resolver:
         self._output_mgr = output_mgr
         self._local_uuid_to_future = {}
         self._tree = Tree(step_progress("Creating objects..."), guide_style="gray50")
-
-        # Accessible by objects
         self._client = client
         self._app_id = app_id
         self._environment_name = environment_name
@@ -75,6 +80,14 @@ class Resolver:
     @property
     def client(self):
         return self._client
+
+    @property
+    def environment_name(self):
+        return self._environment_name
+
+    @property
+    def shell(self):
+        return self._shell
 
     async def preload(self, obj, existing_object_id: Optional[str], handle):
         if obj._preload is not None:

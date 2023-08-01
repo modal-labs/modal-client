@@ -304,7 +304,7 @@ class _Provider(Generic[H]):
             if environment_name is None:
                 # resolver always has an environment name, associated with the current app setup
                 # fall back on that one if no explicit environment was set in the call itself
-                environment_name = resolver._environment_name
+                environment_name = resolver.environment_name
 
             await handle._hydrate_from_app(
                 app_name, tag, namespace, client=resolver.client, environment_name=environment_name
