@@ -360,7 +360,7 @@ class _Provider:
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
-    ) -> _Handle:
+    ) -> P:
         """
         General purpose method to retrieve Modal objects such as functions, network file systems, and secrets.
         ```python notest
@@ -372,10 +372,14 @@ class _Provider:
             ...
         ```
         """
+        # TODO(erikbern): this code is very duplicated. Clean up once handles are gone.
         handle_cls = cls._get_handle_cls()
         handle: _Handle = handle_cls._new()
         await handle._hydrate_from_app(app_name, tag, namespace, client, environment_name=environment_name)
-        return handle
+        obj = _Provider.__new__(cls)
+        rep = f"Provider({app_name})"  # TODO(erikbern): dumb
+        obj._init(rep, handle=handle)
+        return obj
 
     @classmethod
     async def _exists(
