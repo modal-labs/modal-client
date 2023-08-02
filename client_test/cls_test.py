@@ -5,7 +5,7 @@ import pytest
 from modal import Stub, method
 from modal._serialization import deserialize
 from modal.cls import ClsMixin
-from modal.functions import FunctionHandle
+from modal.functions import Function
 from modal_proto import api_pb2
 
 stub = Stub()
@@ -118,7 +118,7 @@ def test_run_class_serialized(client, servicer):
     obj = cls()
     meth = fun.__get__(obj, cls)
 
-    assert isinstance(obj.bar, FunctionHandle)
+    assert isinstance(obj.bar, Function)
     # Make sure it's callable
     assert meth(100) == 1000000
 

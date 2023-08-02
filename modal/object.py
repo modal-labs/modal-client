@@ -255,6 +255,9 @@ class _Provider:
     def _get_metadata(self) -> Optional[Message]:
         return self._handle._get_metadata()
 
+    def is_hydrated(self) -> bool:
+        return self._handle.is_hydrated()
+
     async def _deploy(
         self,
         label: str,
