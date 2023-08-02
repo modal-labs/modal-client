@@ -103,7 +103,7 @@ class _DictHandle(_Handle, type_prefix="di"):
 DictHandle = synchronize_api(_DictHandle)
 
 
-class _Dict(_Provider[_DictHandle]):
+class _Dict(_Provider, type_prefix="di"):
     """A distributed dictionary available to Modal apps.
 
     Keys and values can be essentially any object, so long as it can be

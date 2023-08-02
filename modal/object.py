@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import uuid
 from datetime import date
-from typing import Awaitable, Callable, Generic, Optional, Type, TypeVar
+from typing import Awaitable, Callable, Dict, Optional, Type, TypeVar
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
@@ -11,7 +11,6 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import get_proto_oneof, retry_transient_errors
 
-from ._object_meta import ObjectMeta
 from ._resolver import Resolver
 from .client import _Client
 from .config import config
@@ -22,17 +21,25 @@ H = TypeVar("H", bound="_Handle")
 _BLOCKING_H = synchronize_api(H)
 
 
-class _Handle(metaclass=ObjectMeta):
+class _Handle:
     """mdmd:hidden The shared base class of any synced/distributed object in Modal.
 
     Examples of objects include Modal primitives like Images and Functions, as
     well as distributed data structures like Queues or Dicts.
     """
 
-    _type_prefix: str  # class attribute
+    _type_prefix: Optional[str] = None  # class attribute
     _object_id: str
     _client: _Client
     _is_hydrated: bool
+    _prefix_to_type: Dict[str, type] = {}
+
+    @classmethod
+    def __init_subclass__(cls, type_prefix: Optional[str] = None):
+        super().__init_subclass__()
+        if type_prefix is not None:
+            cls._type_prefix = type_prefix
+            cls._prefix_to_type[type_prefix] = cls
 
     def __init__(self):
         raise Exception("__init__ disallowed, use proper classmethods")
@@ -94,9 +101,9 @@ class _Handle(metaclass=ObjectMeta):
             if len(parts) != 2:
                 raise InvalidError(f"Object id {object_id} has no dash in it")
             prefix = parts[0]
-            if prefix not in ObjectMeta.prefix_to_type:
+            if prefix not in cls._prefix_to_type:
                 raise InvalidError(f"Object prefix {prefix} does not correspond to a type")
-            object_cls = ObjectMeta.prefix_to_type[prefix]
+            object_cls = cls._prefix_to_type[prefix]
 
         # Instantiate object and return
         obj = object_cls._new()
@@ -166,26 +173,33 @@ P = TypeVar("P", bound="_Provider")
 _BLOCKING_P = synchronize_api(P)
 
 
-class _Provider(Generic[H]):
-    _load: Callable[[Resolver, Optional[str], H], Awaitable[None]]
-    _preload: Optional[Callable[[Resolver, Optional[str], H], Awaitable[None]]]
-    _handle: H
+class _Provider:
+    _type_prefix: Optional[str] = None  # class attribute
+    _load: Optional[Callable[[Resolver, Optional[str], _Handle], Awaitable[None]]]
+    _preload: Optional[Callable[[Resolver, Optional[str], _Handle], Awaitable[None]]]
+    _handle: _Handle
+    _prefix_to_type: Dict[str, type] = {}
+
+    @classmethod
+    def __init_subclass__(cls, type_prefix: Optional[str] = None):
+        super().__init_subclass__()
+        if type_prefix is not None:
+            cls._type_prefix = type_prefix
+            cls._prefix_to_type[type_prefix] = cls
 
     def __init__(self):
         raise Exception("__init__ disallowed, use proper classmethods")
 
     @classmethod
-    def _get_handle_cls(cls) -> Type[H]:
-        (base,) = cls.__orig_bases__  # type: ignore
-        (handle_cls,) = base.__args__
-        return handle_cls
+    def _get_handle_cls(cls) -> Type[_Handle]:
+        return _Handle._prefix_to_type[cls._type_prefix]
 
     def _init(
         self,
-        load: Callable[[Resolver, Optional[str], H], Awaitable[None]],
+        load: Optional[Callable[[Resolver, Optional[str], _Handle], Awaitable[None]]],
         rep: str,
         is_persisted_ref: bool = False,
-        preload: Optional[Callable[[Resolver, Optional[str], H], Awaitable[None]]] = None,
+        preload: Optional[Callable[[Resolver, Optional[str], _Handle], Awaitable[None]]] = None,
     ):
         self._local_uuid = str(uuid.uuid4())
         self._load = load
@@ -204,12 +218,12 @@ class _Provider(Generic[H]):
     @classmethod
     def _from_loader(
         cls,
-        load: Callable[[Resolver, Optional[str], H], Awaitable[None]],
+        load: Callable[[Resolver, Optional[str], _Handle], Awaitable[None]],
         rep: str,
         is_persisted_ref: bool = False,
-        preload: Optional[Callable[[Resolver, Optional[str], H], Awaitable[None]]] = None,
+        preload: Optional[Callable[[Resolver, Optional[str], _Handle], Awaitable[None]]] = None,
     ):
-        obj = _Handle.__new__(cls)
+        obj = _Provider.__new__(cls)
         obj._init(load, rep, is_persisted_ref, preload)
         return obj
 
@@ -227,8 +241,8 @@ class _Provider(Generic[H]):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
-        handle: Optional[H] = None,
-    ) -> H:
+        handle: Optional[_Handle] = None,
+    ) -> _Handle:
         """
         Note 1: this uses the single-object app method, which we're planning to get rid of later
         Note 2: still considering this an "internal" method, but we'll make it "official" later
@@ -270,7 +284,7 @@ class _Provider(Generic[H]):
         if environment_name is None:
             environment_name = config.get("environment")
 
-        async def _load_persisted(resolver: Resolver, existing_object_id: Optional[str], handle: H):
+        async def _load_persisted(resolver: Resolver, existing_object_id: Optional[str], handle: _Handle):
             await self._deploy(label, namespace, resolver.client, environment_name=environment_name, handle=handle)
 
         cls = type(self)
@@ -300,7 +314,7 @@ class _Provider(Generic[H]):
         ```
         """
 
-        async def _load_remote(resolver: Resolver, existing_object_id: Optional[str], handle: H):
+        async def _load_remote(resolver: Resolver, existing_object_id: Optional[str], handle: _Handle):
             nonlocal environment_name
             if environment_name is None:
                 # resolver always has an environment name, associated with the current app setup
@@ -323,7 +337,7 @@ class _Provider(Generic[H]):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
-    ) -> H:
+    ) -> _Handle:
         """
         General purpose method to retrieve Modal objects such as functions, network file systems, and secrets.
         ```python notest
@@ -336,7 +350,7 @@ class _Provider(Generic[H]):
         ```
         """
         handle_cls = cls._get_handle_cls()
-        handle: H = handle_cls._new()
+        handle: _Handle = handle_cls._new()
         await handle._hydrate_from_app(app_name, tag, namespace, client, environment_name=environment_name)
         return handle
 
@@ -370,6 +384,4 @@ class _Provider(Generic[H]):
                 raise
 
 
-# Dumb but needed becauase it's in the hierarchy
-synchronize_api(Generic, __name__)  # erases base Generic type...
 Provider = synchronize_api(_Provider, target_module=__name__)

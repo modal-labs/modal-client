@@ -131,7 +131,7 @@ class _QueueHandle(_Handle, type_prefix="qu"):
 QueueHandle = synchronize_api(_QueueHandle)
 
 
-class _Queue(_Provider[_QueueHandle]):
+class _Queue(_Provider, type_prefix="qu"):
     """A distributed, FIFO Queue available to Modal apps.
 
     The queue can contain any object serializable by `cloudpickle`.
