@@ -1232,6 +1232,7 @@ class _Function(_Provider, type_prefix="fu"):
     def is_generator(self) -> bool:
         return self._handle._is_generator
 
+    @warn_if_generator_is_not_consumed
     async def map(
         self,
         *input_iterators,  # one input iterator per argument in the mapped-over function/generator
@@ -1247,6 +1248,7 @@ class _Function(_Provider, type_prefix="fu"):
     async def for_each(self, *input_iterators, kwargs={}, ignore_exceptions=False):
         await self._handle.for_each(*input_iterators, kwargs=kwargs, ignore_exceptions=ignore_exceptions)
 
+    @warn_if_generator_is_not_consumed
     async def starmap(
         self, input_iterator, kwargs={}, order_outputs=None, return_exceptions=False
     ) -> AsyncGenerator[typing.Any, None]:
@@ -1382,8 +1384,8 @@ class _PartialFunction:
     """Intermediate function, produced by @method or @web_endpoint"""
 
     @staticmethod
-    def initialize_cls(user_cls: type, function_handles: Dict[str, _FunctionHandle]):
-        user_cls._modal_function_handles = function_handles
+    def initialize_cls(user_cls: type, functions: Dict[str, _Function]):
+        user_cls._modal_functions = functions
 
     def __init__(
         self,
@@ -1396,14 +1398,14 @@ class _PartialFunction:
         self.is_generator = is_generator
         self.wrapped = False  # Make sure that this was converted into a FunctionHandle
 
-    def __get__(self, obj, objtype=None) -> _FunctionHandle:
+    def __get__(self, obj, objtype=None) -> _Function:
         k = self.raw_f.__name__
         if obj:  # Cls().fun
-            function_handle = obj._modal_function_handles[k]
+            function = obj._modal_functions[k]
         else:  # Cls.fun
-            function_handle = objtype._modal_function_handles[k]
-        function_handle._bind_obj(obj, objtype)  # TODO(erikbern): don't mutate
-        return function_handle
+            function = objtype._modal_functions[k]
+        function._handle._bind_obj(obj, objtype)  # TODO(erikbern): don't mutate
+        return function
 
     def __del__(self):
         if self.wrapped is False:
@@ -1478,7 +1480,7 @@ def _web_endpoint(
         )
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
-        if isinstance(raw_f, _FunctionHandle):
+        if isinstance(raw_f, _Function):
             raw_f = raw_f.get_raw_f()
             raise InvalidError(
                 f"Applying decorators for {raw_f} in the wrong order!\nUsage:\n\n"
