@@ -49,6 +49,7 @@ class _VolumeHandle(_Handle, type_prefix="vo"):
 
 VolumeHandle = synchronize_api(_VolumeHandle)
 
+
 class _Volume(_Provider, type_prefix="vo"):
     """mdmd:hidden A writeable volume that can be used to share files between one or more Modal functions.
 
