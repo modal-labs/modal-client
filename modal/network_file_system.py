@@ -155,7 +155,7 @@ class _NetworkFileSystemHandle(_Handle, type_prefix="sv"):
 NetworkFileSystemHandle = synchronize_api(_NetworkFileSystemHandle)
 
 
-class _NetworkFileSystem(_Provider[_NetworkFileSystemHandle]):
+class _NetworkFileSystem(_Provider, type_prefix="sv"):
     """A shared, writable file system accessible by one or more Modal functions.
 
     By attaching this file system as a mount to one or more functions, they can

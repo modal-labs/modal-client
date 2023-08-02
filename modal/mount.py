@@ -116,7 +116,7 @@ class _MountHandle(_Handle, type_prefix="mo"):
 MountHandle = synchronize_api(_MountHandle)
 
 
-class _Mount(_Provider[_MountHandle]):
+class _Mount(_Provider, type_prefix="mo"):
     """Create a mount for a local directory or file that can be attached
     to one or more Modal functions.
 
