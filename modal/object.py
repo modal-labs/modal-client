@@ -196,10 +196,11 @@ class _Provider:
 
     def _init(
         self,
-        load: Optional[Callable[[Resolver, Optional[str], _Handle], Awaitable[None]]],
         rep: str,
+        load: Optional[Callable[[Resolver, Optional[str], _Handle], Awaitable[None]]] = None,
         is_persisted_ref: bool = False,
         preload: Optional[Callable[[Resolver, Optional[str], _Handle], Awaitable[None]]] = None,
+        handle: Optional[_Handle] = None,
     ):
         self._local_uuid = str(uuid.uuid4())
         self._load = load
@@ -207,13 +208,15 @@ class _Provider:
         self._rep = rep
         self._is_persisted_ref = is_persisted_ref
 
-        # Create an unhydrated handle
-        handle_cls = self._get_handle_cls()
-        self._handle = handle_cls._new()
+        if handle is None:
+            # Create an unhydrated handle
+            handle_cls = self._get_handle_cls()
+            handle = handle_cls._new()
+        self._handle = handle
 
     def _init_from_other(self, other: "_Provider"):
         # Transient use case, see Dict, Queue, and SharedVolume
-        self._init(other._load, other._rep, other._is_persisted_ref, other._preload)
+        self._init(other._rep, other._load, other._is_persisted_ref, other._preload)
 
     @classmethod
     def _from_loader(
@@ -223,8 +226,18 @@ class _Provider:
         is_persisted_ref: bool = False,
         preload: Optional[Callable[[Resolver, Optional[str], _Handle], Awaitable[None]]] = None,
     ):
+        # TODO(erikbern): flip the order of the two first arguments
         obj = _Provider.__new__(cls)
-        obj._init(load, rep, is_persisted_ref, preload)
+        obj._init(rep, load, is_persisted_ref, preload)
+        return obj
+
+    @classmethod
+    def _new_hydrated(cls: Type[P], object_id: str, client: _Client, handle_metadata: Optional[Message]) -> P:
+        handle = _Handle._new_hydrated(object_id, client, handle_metadata)
+        provider_cls = cls._prefix_to_type[handle._type_prefix]
+        obj = _Provider.__new__(provider_cls)
+        rep = f"Provider({object_id})"  # TODO(erikbern): dumb
+        obj._init(rep, handle=handle)
         return obj
 
     def __repr__(self):
@@ -234,6 +247,13 @@ class _Provider:
     def local_uuid(self):
         """mdmd:hidden"""
         return self._local_uuid
+
+    @property
+    def object_id(self):
+        return self._handle.object_id
+
+    def _get_metadata(self) -> Optional[Message]:
+        return self._handle._get_metadata()
 
     async def _deploy(
         self,
