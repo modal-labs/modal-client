@@ -171,12 +171,12 @@ class ParamCls:
 
 
 @stub.function(allow_concurrent_inputs=5)
-def sleep_1_sync(x):
-    time.sleep(1.0)
+def sleep_700_sync(x):
+    time.sleep(0.7)
     return x * x
 
 
 @stub.function(allow_concurrent_inputs=5)
-async def sleep_1_async(x):
-    await asyncio.sleep(1.0)
+async def sleep_700_async(x):
+    await asyncio.sleep(0.7)
     return x * x
