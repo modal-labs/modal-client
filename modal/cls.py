@@ -25,7 +25,7 @@ class ClsMixin:
 def make_remote_cls_constructors(
     user_cls: type,
     partial_functions: Dict[str, PartialFunction],
-    function_handles: Dict[str, _FunctionHandle],
+    functions: Dict[str, _Function],
 ):
     original_sig = inspect.signature(user_cls.__init__)  # type: ignore
     new_parameters = [param for name, param in original_sig.parameters.items() if name != "self"]
@@ -44,18 +44,19 @@ def make_remote_cls_constructors(
                 )
 
         cls_dict = {}
-        new_function_handles: Dict[str, _FunctionHandle] = {}
+        new_functions: Dict[str, _Function] = {}
 
         for k, v in partial_functions.items():
-            handle: _FunctionHandle = function_handles[k]
+            handle: _FunctionHandle = functions[k]._handle
             client: _Client = handle._client
             new_function: _Function = _Function.from_parametrized(handle, *params.args, **params.kwargs)
             resolver = Resolver(client)
-            new_function_handles[k] = await resolver.load(new_function)
+            await resolver.load(new_function)
+            new_functions[k] = new_function
             cls_dict[k] = v
 
         cls = type(f"Remote{user_cls.__name__}", (), cls_dict)
-        _PartialFunction.initialize_cls(cls, new_function_handles)
+        _PartialFunction.initialize_cls(cls, new_functions)
         return cls()
 
     return synchronize_api(_remote)

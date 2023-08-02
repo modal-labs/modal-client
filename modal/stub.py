@@ -506,7 +506,7 @@ class _Stub:
             )
 
             self._add_function(function)
-            return function._handle
+            return function
 
         return wrapped
 
@@ -560,16 +560,16 @@ class _Stub:
 
         def wrapper(user_cls: CLS_T) -> CLS_T:
             partial_functions: Dict[str, PartialFunction] = {}
-            function_handles: Dict[str, _FunctionHandle] = {}
+            functions: Dict[str, _Function] = {}
 
             for k, v in user_cls.__dict__.items():
                 if isinstance(v, PartialFunction):
                     partial_functions[k] = v
                     partial_function = synchronizer._translate_in(v)  # TODO: remove need for?
-                    function_handles[k] = decorator(partial_function, user_cls)
+                    functions[k] = decorator(partial_function, user_cls)
 
-            _PartialFunction.initialize_cls(user_cls, function_handles)
-            remote = make_remote_cls_constructors(user_cls, partial_functions, function_handles)
+            _PartialFunction.initialize_cls(user_cls, functions)
+            remote = make_remote_cls_constructors(user_cls, partial_functions, functions)
             user_cls.remote = remote
             return user_cls
 
