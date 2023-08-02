@@ -1280,6 +1280,9 @@ class _Function(_Provider, type_prefix="fu"):
     async def get_current_stats(self) -> FunctionStats:
         return await self._handle.get_current_stats()
 
+    def get_raw_f(self) -> Callable[..., Any]:
+        return self._handle.get_raw_f()
+
 
 Function = synchronize_api(_Function)
 
