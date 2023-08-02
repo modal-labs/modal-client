@@ -262,7 +262,7 @@ class _NetworkFileSystem(_Provider, type_prefix="sv"):
     async def add_local_file(
         self, local_path: Union[Path, str], remote_path: Optional[Union[str, PurePosixPath, None]] = None
     ):
-        return await self._handle.write_file(local_path, remote_path)
+        return await self._handle.add_local_file(local_path, remote_path)
 
     async def add_local_dir(
         self,

@@ -24,7 +24,7 @@ from modal._output import step_completed, step_progress
 from modal.cli.utils import ENV_OPTION, display_table
 from modal.client import _Client
 from modal.environments import ensure_env
-from modal.network_file_system import _NetworkFileSystem, _NetworkFileSystemHandle
+from modal.network_file_system import _NetworkFileSystem
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
 from modal_utils.grpc_utils import retry_transient_errors
@@ -82,11 +82,11 @@ def create(
     console.print(usage)
 
 
-async def _volume_from_name(deployment_name: str) -> _NetworkFileSystemHandle:
+async def _volume_from_name(deployment_name: str) -> _NetworkFileSystem:
     network_file_system = await _NetworkFileSystem.lookup(
         deployment_name, environment_name=None
     )  # environment None will take value from config
-    if not isinstance(network_file_system, _NetworkFileSystemHandle):
+    if not isinstance(network_file_system, _NetworkFileSystem):
         raise Exception("The specified app entity is not a network file system")
     return network_file_system
 
@@ -171,9 +171,7 @@ class CliError(Exception):
         self.message = message
 
 
-async def _glob_download(
-    volume: _NetworkFileSystemHandle, remote_glob_path: str, local_destination: Path, overwrite: bool
-):
+async def _glob_download(volume: _NetworkFileSystem, remote_glob_path: str, local_destination: Path, overwrite: bool):
     q: asyncio.Queue[Tuple[Optional[Path], Optional[api_pb2.SharedVolumeListFilesEntry]]] = asyncio.Queue()
 
     async def producer():

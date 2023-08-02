@@ -15,7 +15,7 @@ async def test_persistent_object(servicer, client):
 
     q: QueueHandle = await Queue.lookup.aio("my-queue", client=client)  # type: ignore
     # TODO: remove type annotation here after genstub gets better Generic base class support
-    assert isinstance(q, QueueHandle)  # TODO(erikbern): it's a QueueHandler
+    assert isinstance(q, Queue)
     assert q.object_id == "qu-1"
 
     with pytest.raises(NotFoundError):
