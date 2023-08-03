@@ -1233,6 +1233,11 @@ class _Image(_Provider, type_prefix="im"):
         """
         return self.extend(dockerfile_commands=["FROM base"] + [f"WORKDIR {shlex.quote(path)}"])
 
+    # Live handle methods
+
+    def _is_inside(self) -> bool:
+        return self._handle._is_inside()
+
 
 ImageHandle = synchronize_api(_ImageHandle)
 Image = synchronize_api(_Image)
