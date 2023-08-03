@@ -246,7 +246,7 @@ class _App:
                 client, name, detach=False, deploying=True, environment_name=environment_name, output_mgr=output_mgr
             )
 
-    async def create_one_object(self, provider: _Provider, environment_name: str) -> _Handle:
+    async def create_one_object(self, provider: _Provider, environment_name: str) -> None:
         existing_object_id: Optional[str] = self._tag_to_existing_id.get("_object")
         resolver = Resolver(self._client, environment_name=environment_name, app_id=self.app_id)
         await resolver.load(provider, existing_object_id)
@@ -259,7 +259,6 @@ class _App:
             new_app_state=api_pb2.APP_STATE_UNSPECIFIED,  # app is either already deployed or will be set to deployed after this call
         )
         await retry_transient_errors(self._client.stub.AppSetObjects, req_set)
-        return provider._handle
 
     async def deploy(self, name: str, namespace, object_entity: str) -> str:
         deploy_req = api_pb2.AppDeployRequest(

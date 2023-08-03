@@ -264,8 +264,7 @@ class _Provider:
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
-        handle: Optional[_Handle] = None,
-    ) -> _Handle:
+    ) -> None:
         """
         Note 1: this uses the single-object app method, which we're planning to get rid of later
         Note 2: still considering this an "internal" method, but we'll make it "official" later
@@ -281,14 +280,8 @@ class _Provider:
         handle_cls = self._get_handle_cls()
         object_entity = handle_cls._type_prefix
         app = await _App._init_from_name(client, label, namespace, environment_name=environment_name)
-        handle_2 = await app.create_one_object(self, environment_name)
+        await app.create_one_object(self, environment_name)
         await app.deploy(label, namespace, object_entity)  # TODO(erikbern): not needed if the app already existed
-        if handle is None:
-            return handle_2
-        else:
-            # TODO(erikbern): temporary workaround for now, let's clean up soon
-            handle._hydrate_from_other(handle_2)
-            return handle
 
     def persist(
         self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
@@ -308,7 +301,8 @@ class _Provider:
             environment_name = config.get("environment")
 
         async def _load_persisted(resolver: Resolver, existing_object_id: Optional[str], handle: _Handle):
-            await self._deploy(label, namespace, resolver.client, environment_name=environment_name, handle=handle)
+            await self._deploy(label, namespace, resolver.client, environment_name=environment_name)
+            handle._hydrate_from_other(self._handle)
 
         cls = type(self)
         rep = f"PersistedRef<{self}>({label})"
