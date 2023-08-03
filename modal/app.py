@@ -153,6 +153,9 @@ class _App:
         # Deprecated?
         return self._tag_to_object[tag]
 
+    def __contains__(self, tag: str) -> bool:
+        return tag in self._tag_to_object
+
     def __getattr__(self, tag: str) -> _Handle:
         return self._tag_to_object[tag]
 
@@ -161,15 +164,6 @@ class _App:
         self._app_id = app_id
         self._stub_name = stub_name
 
-        req = api_pb2.AppGetObjectsRequest(app_id=app_id)
-        resp = await retry_transient_errors(self._client.stub.AppGetObjects, req)
-        for item in resp.items:
-            # TODO(erikbern): we shouldn't create new handles here if there are existing objects
-            # FunctionHandle objects already exist in the global scope so let's grab those and hydrate
-            handle_metadata = get_proto_oneof(item, "handle_metadata_oneof")
-            obj = _Handle._new_hydrated(item.object_id, self._client, handle_metadata)
-            self._tag_to_object[item.tag] = obj
-
     @staticmethod
     async def init_container(client: _Client, app_id: str, stub_name: str = "") -> "_App":
         """Used by the container to bootstrap the app and all its objects. Not intended to be called by Modal users."""
@@ -177,6 +171,24 @@ class _App:
         _is_container_app = True
         await _container_app._init_container(client, app_id, stub_name)
         return _container_app
+
+    async def _init_container_objects(self, stub):
+        stub_objects: dict[str, _Provider] = {}
+        if stub:
+            stub_objects = dict(stub.get_objects())
+        req = api_pb2.AppGetObjectsRequest(app_id=self._app_id)
+        resp = await retry_transient_errors(self._client.stub.AppGetObjects, req)
+        for item in resp.items:
+            handle_metadata = get_proto_oneof(item, "handle_metadata_oneof")
+            if item.tag in stub_objects:
+                # This already exists on the stub (typically a function)
+                provider = stub_objects[item.tag]
+                provider._handle._hydrate(item.object_id, self._client, handle_metadata)
+                handle = provider._handle
+            else:
+                # Can't find the object, create a new one
+                handle = _Handle._new_hydrated(item.object_id, self._client, handle_metadata)
+            self._tag_to_object[item.tag] = handle
 
     @staticmethod
     async def _init_existing(

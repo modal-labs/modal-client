@@ -5,7 +5,7 @@ import sys
 import typing
 import warnings
 from datetime import date
-from typing import Any, AsyncGenerator, Callable, Dict, List, Optional, Sequence, Union
+from typing import Any, AsyncGenerator, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -227,6 +227,10 @@ class _Stub:
             self._validate_blueprint_value(tag, obj)
             self._blueprint[tag] = obj
 
+    def get_objects(self) -> List[Tuple[str, _Provider]]:
+        """Used by the container app to initialize objects."""
+        return list(self._blueprint.items())
+
     @typechecked
     def is_inside(self, image: Optional[_Image] = None) -> bool:
         """Returns if the program is currently running inside a container for this app."""
@@ -328,6 +332,14 @@ class _Stub:
                     )
             else:
                 logger.warning(f"Warning: tag {function.tag} exists but is overridden by function")
+
+        if self._app and function.tag in self._app:
+            # If this is inside a container, and some module is loaded lazily, then a function may be
+            # defined later than the container initialization. If this happens then lets hydrate the
+            # function at this point
+            handle = self._app[function.tag]
+            function._handle._hydrate_from_other(handle)
+
         self._blueprint[function.tag] = function
 
     @property
