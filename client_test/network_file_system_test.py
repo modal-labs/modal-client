@@ -4,7 +4,7 @@ from unittest import mock
 
 import modal
 from modal.exception import DeprecationError, InvalidError
-from modal.network_file_system import NetworkFileSystemHandle
+from modal.network_file_system import NetworkFileSystem
 from modal.runner import deploy_stub
 
 from .supports.skip import skip_windows
@@ -56,7 +56,7 @@ def test_network_file_system_handle_single_file(client, tmp_path, servicer):
 
     with stub.run(client=client) as app:
         handle = app.vol
-        assert isinstance(handle, NetworkFileSystemHandle)
+        assert isinstance(handle, NetworkFileSystem)
         handle.add_local_file(local_file_path)
         handle.add_local_file(local_file_path.as_posix(), remote_path="/foo/other_destination")
 
@@ -82,7 +82,7 @@ async def test_network_file_system_handle_dir(client, tmp_path, servicer):
 
     with stub.run(client=client) as app:
         handle = app.vol
-        assert isinstance(handle, NetworkFileSystemHandle)
+        assert isinstance(handle, NetworkFileSystem)
         handle.add_local_dir(local_dir)
 
     assert servicer.nfs_files[handle.object_id].keys() == {
@@ -103,7 +103,7 @@ async def test_network_file_system_handle_big_file(client, tmp_path, servicer, b
 
         async with stub.run(client=client) as app:
             handle = app.vol
-            assert isinstance(handle, NetworkFileSystemHandle)
+            assert isinstance(handle, NetworkFileSystem)
             await handle.add_local_file.aio(local_file_path)
 
         assert servicer.nfs_files[handle.object_id].keys() == {"/bigfile"}
@@ -122,9 +122,9 @@ def test_old_syntax(client, servicer):
         stub.vol2 = modal.SharedVolume.new()
     stub.vol3 = modal.NetworkFileSystem.new()
     with stub.run(client=client) as app:
-        assert isinstance(app.vol1, NetworkFileSystemHandle)
-        assert isinstance(app.vol2, NetworkFileSystemHandle)
-        assert isinstance(app.vol3, NetworkFileSystemHandle)
+        assert isinstance(app.vol1, NetworkFileSystem)
+        assert isinstance(app.vol2, NetworkFileSystem)
+        assert isinstance(app.vol3, NetworkFileSystem)
 
 
 def test_redeploy(servicer, client):
@@ -165,7 +165,7 @@ def test_write_file(client, tmp_path, servicer):
 
     with stub.run(client=client) as app:
         handle = app.vol
-        assert isinstance(handle, NetworkFileSystemHandle)
+        assert isinstance(handle, NetworkFileSystem)
         handle.write_file("remote_path.txt", open(local_file_path, "rb"))
 
         # Make sure we can write through the provider too
