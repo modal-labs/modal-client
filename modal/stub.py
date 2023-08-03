@@ -337,8 +337,8 @@ class _Stub:
             # If this is inside a container, and some module is loaded lazily, then a function may be
             # defined later than the container initialization. If this happens then lets hydrate the
             # function at this point
-            handle = self._app[function.tag]
-            function._handle._hydrate_from_other(handle)
+            other_function = self._app[function.tag]
+            function._handle._hydrate_from_other(other_function._handle)
 
         self._blueprint[function.tag] = function
 
