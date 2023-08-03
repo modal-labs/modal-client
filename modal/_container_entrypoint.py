@@ -114,11 +114,17 @@ class _FunctionIOManager:
         self.current_input_started_at: Optional[float] = None
         self._client = synchronizer._translate_in(self.client)  # make it a _Client object
         self._stub_name = self.function_def.stub_name
+        self._container_app = None
         assert isinstance(self._client, _Client)
 
     @wrap()
     async def initialize_app(self):
-        return await _App.init_container(self._client, self.app_id, self._stub_name)
+        self._container_app = await _App.init_container(self._client, self.app_id, self._stub_name)
+        return self._container_app
+
+    @wrap()
+    async def initialize_app_objects(self, stub: Optional[_Stub]):
+        await self._container_app._init_container_objects(stub)
 
     async def _heartbeat(self):
         request = api_pb2.ContainerHeartbeatRequest()
@@ -565,6 +571,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     _function_io_manager = _FunctionIOManager(container_args, client)
     function_io_manager = synchronize_api(_function_io_manager)
 
+    # Define a global app (need to do this before imports)
     container_app = function_io_manager.initialize_app()
 
     with function_io_manager.heartbeats():
@@ -577,6 +584,9 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Initialize the function
         with function_io_manager.handle_user_exception():
             imp_fun = import_function(container_args.function_def, ser_cls, ser_fun, container_args.serialized_params)
+
+        # Hydrate all app objects
+        function_io_manager.initialize_app_objects(imp_fun.stub)
 
         pty_info: api_pb2.PTYInfo = container_args.function_def.pty_info
         if pty_info.pty_type or pty_info.enabled:

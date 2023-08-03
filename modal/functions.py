@@ -1158,14 +1158,6 @@ class _Function(_Provider, type_prefix="fu"):
         rep = f"Function({tag})"
         obj = _Function._from_loader(_load, rep, preload=_preload)
 
-        if stub is not None and stub.app is not None:
-            # If the container is running, and we recognize this function, hydrate it
-            # TODO(erikbern): later when we merge apps and stubs, there should be no separate objects on the app,
-            # and there should be no need to "steal" ids
-            running_handle = stub.app._tag_to_object.get(tag)
-            if running_handle is not None:
-                obj._handle._hydrate_from_other(running_handle)
-
         # TODO(erikbern): we should also get rid of this
         obj._handle._initialize_from_local(stub, info)
 
@@ -1279,9 +1271,6 @@ class _Function(_Provider, type_prefix="fu"):
 
     async def get_current_stats(self) -> FunctionStats:
         return await self._handle.get_current_stats()
-
-    def get_raw_f(self) -> Callable[..., Any]:
-        return self._handle.get_raw_f()
 
 
 Function = synchronize_api(_Function)

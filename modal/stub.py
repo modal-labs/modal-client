@@ -5,7 +5,7 @@ import sys
 import typing
 import warnings
 from datetime import date
-from typing import Any, AsyncGenerator, Callable, Dict, List, Optional, Sequence, Union
+from typing import Any, AsyncGenerator, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -226,6 +226,10 @@ class _Stub:
         else:
             self._validate_blueprint_value(tag, obj)
             self._blueprint[tag] = obj
+
+    def get_objects(self) -> List[Tuple[str, _Provider]]:
+        """Used by the container app to initialize objects."""
+        return list(self._blueprint.items())
 
     @typechecked
     def is_inside(self, image: Optional[_Image] = None) -> bool:

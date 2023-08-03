@@ -28,6 +28,7 @@ async def test_container_function_initialization(unix_servicer, container_client
     }
 
     container_app = await App.init_container.aio(container_client, "ap-123")
+    await container_app._init_container_objects.aio(None)
 
     stub = Stub()
     # my_f_1_container = stub.function()(my_f_1)
@@ -76,7 +77,8 @@ async def test_is_inside(servicer, unix_servicer, client, container_client):
         unix_servicer.app_objects[app_id] = servicer.app_objects[app_id]
 
         # Pretend that we're inside the container
-        await App.init_container.aio(container_client, app_id)
+        container_app = await App.init_container.aio(container_client, app_id)
+        await container_app._init_container_objects.aio(None)
 
         # Create a new stub (TODO: tie it to the previous stub through name or similar)
         stub = get_stub()
