@@ -153,6 +153,9 @@ class _App:
         # Deprecated?
         return self._tag_to_object[tag]
 
+    def __contains__(self, tag: str) -> bool:
+        return tag in self._tag_to_object
+
     def __getattr__(self, tag: str) -> _Handle:
         return self._tag_to_object[tag]
 

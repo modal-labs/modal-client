@@ -332,6 +332,14 @@ class _Stub:
                     )
             else:
                 logger.warning(f"Warning: tag {function.tag} exists but is overridden by function")
+
+        if self._app and function.tag in self._app:
+            # If this is inside a container, and some module is loaded lazily, then a function may be
+            # defined later than the container initialization. If this happens then lets hydrate the
+            # function at this point
+            handle = self._app[function.tag]
+            function._handle._hydrate_from_other(handle)
+
         self._blueprint[function.tag] = function
 
     @property
