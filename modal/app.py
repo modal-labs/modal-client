@@ -111,8 +111,8 @@ class _App:
 
             for tag, provider in blueprint.items():
                 existing_object_id = self._tag_to_existing_id.get(tag)
-                created_obj: _Handle = await resolver.load(provider, existing_object_id)
-                self._tag_to_object[tag] = created_obj
+                await resolver.load(provider, existing_object_id)
+                self._tag_to_object[tag] = provider._handle
 
         # Create the app (and send a list of all tagged obs)
         # TODO(erikbern): we should delete objects from a previous version that are no longer needed
@@ -237,9 +237,9 @@ class _App:
     async def create_one_object(self, provider: _Provider, environment_name: str) -> _Handle:
         existing_object_id: Optional[str] = self._tag_to_existing_id.get("_object")
         resolver = Resolver(self._client, environment_name=environment_name, app_id=self.app_id)
-        handle = await resolver.load(provider, existing_object_id)
-        indexed_object_ids = {"_object": handle.object_id}
-        unindexed_object_ids = [obj.object_id for obj in resolver.objects() if obj is not handle]
+        await resolver.load(provider, existing_object_id)
+        indexed_object_ids = {"_object": provider.object_id}
+        unindexed_object_ids = [obj.object_id for obj in resolver.objects() if obj.object_id is not provider.object_id]
         req_set = api_pb2.AppSetObjectsRequest(
             app_id=self.app_id,
             indexed_object_ids=indexed_object_ids,
@@ -247,8 +247,7 @@ class _App:
             new_app_state=api_pb2.APP_STATE_UNSPECIFIED,  # app is either already deployed or will be set to deployed after this call
         )
         await retry_transient_errors(self._client.stub.AppSetObjects, req_set)
-
-        return handle
+        return provider._handle
 
     async def deploy(self, name: str, namespace, object_entity: str) -> str:
         deploy_req = api_pb2.AppDeployRequest(
@@ -281,7 +280,8 @@ class _App:
 
         resolver = Resolver(self._client, environment_name=self._environment_name, app_id=self.app_id)
         provider = _Sandbox._new(entrypoint_args, image or _default_image, mounts, timeout, workdir)
-        return await resolver.load(provider)
+        await resolver.load(provider)
+        return provider._handle
 
     @staticmethod
     def _reset_container():

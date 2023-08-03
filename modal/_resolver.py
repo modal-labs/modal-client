@@ -116,7 +116,7 @@ class Resolver:
                             f" but it has id {handle.object_id}"
                         )
 
-                return handle
+                return obj
 
             cached_future = asyncio.create_task(loader())
             self._local_uuid_to_future[obj.local_uuid] = cached_future
