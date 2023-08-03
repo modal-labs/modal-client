@@ -58,7 +58,7 @@ class _Volume(_Provider, type_prefix="vo"):
 
     Unlike a networked filesystem, you need to explicitly reload the volume to see changes made since it was mounted.
     Similarly, you need to explicitly commit any changes you make to the volume for the changes to become visible
-    outside the current task.
+    outside the current container.
 
     Concurrent modification is supported, but concurrent modifications of the same files should be avoided! Last write
     wins in case of concurrent modification of the same file - any data the last writer didn't have when committing
@@ -142,22 +142,22 @@ class _Volume(_Provider, type_prefix="vo"):
     # Methods on live handles
 
     async def commit(self):
-        """Commit changes to the volume and fetch any other changes made to the volume by other tasks.
+        """Commit changes to the volume and fetch any other changes made to the volume by other containers.
 
         Committing always triggers a reload after saving changes.
 
-        If successful, the changes made are now persisted in durable storage and available for other functions/tasks.
+        If successful, the changes made are now persisted in durable storage and available to other containers accessing the volume.
 
         Committing will fail if there are open files for the volume.
         """
         return await self._handle.commit()
 
     async def reload(self):
-        """Make changes made by other tasks/functions visible in the volume.
+        """Make latest committed state of volume available in the running container.
 
         Uncommitted changes to the volume, such as new or modified files, will be preserved during reload. Uncommitted
-        changes will shadow any changes made by other tasks - e.g. if you have an uncommitted modified a file that was
-        also updated by another task/function you will not see the changes made by the other function/task.
+        changes will shadow any changes made by other writers - e.g. if you have an uncommitted modified a file that was
+        also updated by another writer you will not see the other change.
 
         Reloading will fail if there are open files for the volume.
         """
