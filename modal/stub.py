@@ -22,7 +22,7 @@ from .config import logger
 from .exception import InvalidError, deprecation_warning
 from .functions import PartialFunction, _Function, _FunctionHandle, _PartialFunction
 from .gpu import GPU_T
-from .image import _Image, _ImageHandle
+from .image import _Image
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem
 from .object import _Provider
@@ -246,7 +246,6 @@ class _Stub:
         assert isinstance(image, _Image)
         for tag, provider in self._blueprint.items():
             if provider == image:
-                image_handle = self._app[tag]
                 break
         else:
             raise InvalidError(
@@ -259,8 +258,8 @@ class _Stub:
                 )
             )
 
-        assert isinstance(image_handle, _ImageHandle)
-        return image_handle._is_inside()
+        assert isinstance(image, _Image)
+        return image._is_inside()
 
     @asynccontextmanager
     async def _set_app(self, app: _App) -> AsyncGenerator[None, None]:
@@ -337,8 +336,8 @@ class _Stub:
             # If this is inside a container, and some module is loaded lazily, then a function may be
             # defined later than the container initialization. If this happens then lets hydrate the
             # function at this point
-            handle = self._app[function.tag]
-            function._handle._hydrate_from_other(handle)
+            other_function = self._app[function.tag]
+            function._handle._hydrate_from_other(other_function._handle)
 
         self._blueprint[function.tag] = function
 

@@ -5,7 +5,7 @@ import pytest
 import modal
 from modal.exception import InvalidError
 from modal.runner import deploy_stub
-from modal.volume import VolumeHandle
+from modal.volume import Volume
 
 from .supports.skip import skip_windows
 
@@ -61,7 +61,7 @@ def test_volume_commit(client, servicer):
 
     with stub.run(client=client) as app:
         handle = app.vol
-        assert isinstance(handle, VolumeHandle)
+        assert isinstance(handle, Volume)
         # Note that in practice this will not work unless run in a task.
         handle.commit()
 
@@ -79,7 +79,7 @@ def test_volume_reload(client, servicer):
 
     with stub.run(client=client) as app:
         handle = app.vol
-        assert isinstance(handle, VolumeHandle)
+        assert isinstance(handle, Volume)
         # Note that in practice this will not work unless run in a task.
         handle.reload()
 

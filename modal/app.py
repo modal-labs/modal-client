@@ -9,7 +9,7 @@ from ._output import OutputManager
 from ._resolver import Resolver
 from .client import _Client
 from .config import logger
-from .object import _Handle, _Provider
+from .object import _Provider
 
 if TYPE_CHECKING:
     from rich.tree import Tree
@@ -41,7 +41,7 @@ class _App:
     ```
     """
 
-    _tag_to_object: Dict[str, _Handle]
+    _tag_to_object: Dict[str, _Provider]
     _tag_to_existing_id: Dict[str, str]
 
     _client: _Client
@@ -57,7 +57,7 @@ class _App:
         app_id: str,
         app_page_url: str,
         output_mgr: Optional[OutputManager],
-        tag_to_object: Optional[Dict[str, _Handle]] = None,
+        tag_to_object: Optional[Dict[str, _Provider]] = None,
         tag_to_existing_id: Optional[Dict[str, str]] = None,
         stub_name: Optional[str] = None,
         environment_name: Optional[str] = None,
@@ -112,7 +112,7 @@ class _App:
             for tag, provider in blueprint.items():
                 existing_object_id = self._tag_to_existing_id.get(tag)
                 await resolver.load(provider, existing_object_id)
-                self._tag_to_object[tag] = provider._handle
+                self._tag_to_object[tag] = provider
 
         # Create the app (and send a list of all tagged obs)
         # TODO(erikbern): we should delete objects from a previous version that are no longer needed
@@ -149,14 +149,14 @@ class _App:
     def log_url(self):
         return self._app_page_url
 
-    def __getitem__(self, tag: str) -> _Handle:
+    def __getitem__(self, tag: str) -> _Provider:
         # Deprecated?
         return self._tag_to_object[tag]
 
     def __contains__(self, tag: str) -> bool:
         return tag in self._tag_to_object
 
-    def __getattr__(self, tag: str) -> _Handle:
+    def __getattr__(self, tag: str) -> _Provider:
         return self._tag_to_object[tag]
 
     async def _init_container(self, client: _Client, app_id: str, stub_name: str):
@@ -184,11 +184,10 @@ class _App:
                 # This already exists on the stub (typically a function)
                 provider = stub_objects[item.tag]
                 provider._handle._hydrate(item.object_id, self._client, handle_metadata)
-                handle = provider._handle
             else:
                 # Can't find the object, create a new one
-                handle = _Handle._new_hydrated(item.object_id, self._client, handle_metadata)
-            self._tag_to_object[item.tag] = handle
+                provider = _Provider._new_hydrated(item.object_id, self._client, handle_metadata)
+            self._tag_to_object[item.tag] = provider
 
     @staticmethod
     async def _init_existing(
@@ -317,7 +316,7 @@ stub.data = modal.Dict()
 
 @stub.function()
 def store_something(key, value):
-    data: modal.DictHandle = modal.container_app.data
+    data: modal.Dict = modal.container_app.data
     data.put(key, value)
 ```
 """

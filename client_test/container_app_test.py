@@ -5,7 +5,7 @@ import pytest
 from unittest import mock
 
 import modal.secret
-from modal import App, FunctionHandle, Image, Stub
+from modal import App, Function, Image, Stub
 from modal.exception import InvalidError
 
 from .supports.skip import skip_windows_unix_socket
@@ -34,8 +34,8 @@ async def test_container_function_lazily_imported(unix_servicer, container_clien
     # Make sure these functions exist and have the right type
     my_f_1_app = container_app["my_f_1"]
     my_f_2_app = container_app["my_f_2"]
-    assert isinstance(my_f_1_app, FunctionHandle)
-    assert isinstance(my_f_2_app, FunctionHandle)
+    assert isinstance(my_f_1_app, Function)
+    assert isinstance(my_f_2_app, Function)
 
     # Now, let's create my_f_2 after the app started running
     # This might happen if some local module is imported lazily
