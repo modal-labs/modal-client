@@ -175,5 +175,22 @@ class _Sandbox(_Provider, type_prefix="sb"):
 
         return _Sandbox._from_loader(_load, "Sandbox()")
 
+    # Live handle methods
+
+    async def wait(self):
+        return await self._handle.wait()
+
+    @property
+    def stdout(self) -> _LogsReader:
+        return self._handle.stdout
+
+    @property
+    def stderr(self) -> _LogsReader:
+        return self._handle.stderr
+
+    @property
+    def returncode(self) -> Optional[int]:
+        return self._handle.returncode
+
 
 Sandbox = synchronize_api(_Sandbox)

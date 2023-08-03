@@ -277,7 +277,7 @@ class _App:
         mounts: Sequence["modal.image._Mount"] = (),
         timeout: Optional[int] = None,  # Maximum execution time of the sandbox in seconds.
         workdir: Optional[str] = None,  # Working directory of the sandbox.
-    ) -> "modal.sandbox._SandboxHandle":
+    ) -> "modal.sandbox._Sandbox":
         """Sandboxes are a way to run arbitrary commands in dynamically defined environments.
 
         This function returns a [SandboxHandle](/docs/reference/modal.Sandbox#modalsandboxsandboxhandle), which can be used to interact with the running sandbox.
@@ -292,7 +292,7 @@ class _App:
         resolver = Resolver(self._client, environment_name=self._environment_name, app_id=self.app_id)
         provider = _Sandbox._new(entrypoint_args, image or _default_image, mounts, timeout, workdir)
         await resolver.load(provider)
-        return provider._handle
+        return provider
 
     @staticmethod
     def _reset_container():
