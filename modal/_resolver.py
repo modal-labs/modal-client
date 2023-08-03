@@ -89,9 +89,9 @@ class Resolver:
     def shell(self):
         return self._shell
 
-    async def preload(self, obj, existing_object_id: Optional[str], handle):
+    async def preload(self, obj, existing_object_id: Optional[str]):
         if obj._preload is not None:
-            return await obj._preload(self, existing_object_id, handle)
+            return await obj._preload(self, existing_object_id, obj._handle)
 
     async def load(self, obj, existing_object_id: Optional[str] = None):
         cached_future = self._local_uuid_to_future.get(obj.local_uuid)
@@ -116,7 +116,7 @@ class Resolver:
                             f" but it has id {handle.object_id}"
                         )
 
-                return handle
+                return obj
 
             cached_future = asyncio.create_task(loader())
             self._local_uuid_to_future[obj.local_uuid] = cached_future
