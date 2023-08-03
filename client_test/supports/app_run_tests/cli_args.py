@@ -26,8 +26,17 @@ def unannotated_arg(i):
     print(repr(i))
 
 
+@stub.function()
+def int_arg_fn(i: int):
+    print(repr(i), type(i))
+
+
 @stub.cls()
 class ALifecycle:
     @method()
     def some_method(self, i):
-        print(repr(i))
+        print(repr(i), type(i))
+
+    @method()
+    def some_method_int(self, i: int):
+        print(repr(i), type(i))
