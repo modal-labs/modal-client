@@ -3,7 +3,6 @@ import pytest
 
 from modal import Queue, Stub
 from modal._serialization import deserialize, serialize
-from modal.queue import QueueHandle
 
 stub = Stub()
 
@@ -11,7 +10,7 @@ stub.q = Queue.new()
 
 
 @pytest.mark.asyncio
-async def test_handle(servicer, client):
+async def test_roundtrip(servicer, client):
     async with stub.run(client=client) as running_app:
         q = running_app.q
         data = serialize(q)
@@ -24,17 +23,6 @@ async def test_handle(servicer, client):
         # is most likely because the name doesn't match. To fix this, make
         # sure that cls.__name__ (which is something synchronicity sets)
         # is the same as the symbol defined in the global scope.
-        q_roundtrip = deserialize(data, running_app)
-        assert isinstance(q_roundtrip, QueueHandle)
-        assert q.object_id == q_roundtrip.object_id
-
-
-@pytest.mark.asyncio
-async def test_provider(servicer, client):
-    async with stub.run(client=client) as running_app:
-        q = stub.q
-        data = serialize(q)
-        assert len(data) < 350
         q_roundtrip = deserialize(data, running_app)
         assert isinstance(q_roundtrip, Queue)
         assert q.object_id == q_roundtrip.object_id
