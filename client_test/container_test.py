@@ -685,7 +685,7 @@ def verify_concurrent_input_outputs(n_inputs: int, n_parallel: int, output_items
     # Each group of n_parallel inputs should start together of each other
     # and different groups should start SLEEP_TIME apart.
     assert len(output_items) == n_inputs
-    for i in range(1, len(sorted(output_items, key=lambda x: x.input_started_at))):
+    for i in range(1, len(output_items)):
         diff = output_items[i].input_started_at - output_items[i - 1].input_started_at
         expected_diff = SLEEP_TIME if i % n_parallel == 0 else 0
         assert diff == pytest.approx(expected_diff, abs=0.2)
