@@ -13,17 +13,22 @@ def dt_arg(dt: datetime):
 
 @stub.local_entrypoint()
 def int_arg(i: int):
-    print(repr(i))
+    print(repr(i), type(i))
 
 
 @stub.local_entrypoint()
 def default_arg(i: int = 10):
-    print(repr(i))
+    print(repr(i), type(i))
 
 
 @stub.local_entrypoint()
 def unannotated_arg(i):
-    print(repr(i))
+    print(repr(i), type(i))
+
+
+@stub.local_entrypoint()
+def unannotated_default_arg(i=10):
+    print(repr(i), type(i))
 
 
 @stub.cls()

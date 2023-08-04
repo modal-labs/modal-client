@@ -5,7 +5,7 @@ import inspect
 import sys
 import time
 import warnings
-from typing import Optional
+from typing import Any, Optional
 
 import click
 import typer
@@ -24,6 +24,14 @@ from ..functions import _FunctionHandle
 from .import_refs import import_function, import_stub
 from .utils import ENV_OPTION, ENV_OPTION_HELP
 
+
+class AnyParamType(click.ParamType):
+    name = "any"
+
+    def convert(self, value, param, ctx):
+        return value
+
+
 # Why do we need to support both types and the strings? Because something weird with
 # how __annotations__ works in Python (which inspect.signature uses). See #220.
 option_parsers = {
@@ -37,6 +45,7 @@ option_parsers = {
     "bool": bool,
     datetime.datetime: click.DateTime(),
     "datetime.datetime": click.DateTime(),
+    Any: AnyParamType(),
 }
 
 
@@ -50,7 +59,7 @@ def _add_click_options(func, signature: inspect.Signature):
     Kind of like typer, but using options instead of positional arguments
     """
     for param in signature.parameters.values():
-        param_type = str if param.annotation is inspect.Signature.empty else param.annotation
+        param_type = Any if param.annotation is inspect.Signature.empty else param.annotation
         param_name = param.name.replace("_", "-")
         cli_name = "--" + param_name
         if param_type in (bool, "bool"):
