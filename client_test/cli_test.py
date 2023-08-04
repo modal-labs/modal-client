@@ -236,9 +236,10 @@ def test_run_parse_args_entrypoint(servicer, set_env_client, test_dir):
             "the day is 31",
         ),
         (["run", f"{stub_file.as_posix()}::dt_arg", "--dt=2022-10-31"], "the day is 31"),
-        (["run", f"{stub_file.as_posix()}::int_arg", "--i=200"], "200"),
-        (["run", f"{stub_file.as_posix()}::default_arg"], "10"),
-        (["run", f"{stub_file.as_posix()}::unannotated_arg", "--i=2022-10-31"], "'2022-10-31'"),
+        (["run", f"{stub_file.as_posix()}::int_arg", "--i=200"], "200 <class 'int'>"),
+        (["run", f"{stub_file.as_posix()}::default_arg"], "10 <class 'int'>"),
+        (["run", f"{stub_file.as_posix()}::unannotated_arg", "--i=2022-10-31"], "'2022-10-31' <class 'str'>"),
+        (["run", f"{stub_file.as_posix()}::unannotated_default_arg"], "10 <class 'int'>"),
     ]
     for args, expected in valid_call_args:
         res = _run(args)
