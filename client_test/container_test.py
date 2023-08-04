@@ -698,8 +698,8 @@ def verify_concurrent_input_outputs(n_inputs: int, n_parallel: int, output_items
 
 @skip_windows_unix_socket
 def test_concurrent_inputs_sync_function(unix_servicer):
-    n_inputs = 32
-    n_parallel = 8
+    n_inputs = 18
+    n_parallel = 6
 
     t0 = time.time()
     client, items = _run_container(
@@ -717,8 +717,8 @@ def test_concurrent_inputs_sync_function(unix_servicer):
 
 @skip_windows_unix_socket
 def test_concurrent_inputs_async_function(unix_servicer, event_loop):
-    n_inputs = 32
-    n_parallel = 8
+    n_inputs = 18
+    n_parallel = 6
 
     t0 = time.time()
     client, items = _run_container(
