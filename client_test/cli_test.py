@@ -220,7 +220,7 @@ def test_run_local_entrypoint_invalid_with_stub_run(servicer, set_env_client, te
     assert len(servicer.client_calls) == 0
 
 
-def test_run_parse_args(servicer, set_env_client, test_dir):
+def test_run_parse_args_entrypoint(servicer, set_env_client, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "cli_args.py"
     res = _run(["run", stub_file.as_posix()], expected_exit_code=2, expected_stderr=None)
     assert "You need to specify a Modal function or local entrypoint to run" in res.stderr
@@ -240,13 +240,31 @@ def test_run_parse_args(servicer, set_env_client, test_dir):
         (["run", f"{stub_file.as_posix()}::default_arg"], "10 <class 'int'>"),
         (["run", f"{stub_file.as_posix()}::unannotated_arg", "--i=2022-10-31"], "'2022-10-31' <class 'str'>"),
         (["run", f"{stub_file.as_posix()}::unannotated_default_arg"], "10 <class 'int'>"),
-        # TODO: fix class references
-        # (["run", f"{stub_file.as_posix()}::ALifecycle.some_method", "--i=hello"], "'hello'"),
     ]
     for args, expected in valid_call_args:
         res = _run(args)
         assert expected in res.stdout
         assert len(servicer.client_calls) == 0
+
+
+def test_run_parse_args_function(servicer, set_env_client, test_dir):
+    stub_file = test_dir / "supports" / "app_run_tests" / "cli_args.py"
+    res = _run(["run", stub_file.as_posix()], expected_exit_code=2, expected_stderr=None)
+    assert "You need to specify a Modal function or local entrypoint to run" in res.stderr
+
+    # HACK: all the tests use the same arg, i.
+    @servicer.function_body
+    def print_type(i):
+        print(repr(i), type(i))
+
+    valid_call_args = [
+        (["run", f"{stub_file.as_posix()}::int_arg_fn", "--i=200"], "200 <class 'int'>"),
+        (["run", f"{stub_file.as_posix()}::ALifecycle.some_method", "--i=hello"], "'hello' <class 'str'>"),
+        (["run", f"{stub_file.as_posix()}::ALifecycle.some_method_int", "--i=42"], "42 <class 'int'>"),
+    ]
+    for args, expected in valid_call_args:
+        res = _run(args)
+        assert expected in res.stdout
 
 
 @pytest.fixture

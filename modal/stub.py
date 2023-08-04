@@ -464,14 +464,14 @@ class _Stub:
 
             if isinstance(f, _PartialFunction):
                 f.wrapped = True
-                info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
+                info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name, cls=_cls)
                 raw_f = f.raw_f
                 webhook_config = f.webhook_config
                 is_generator_override = f.is_generator
                 if webhook_config:
                     self._web_endpoints.append(info.get_tag())
             else:
-                info = FunctionInfo(f, serialized=serialized, name_override=name)
+                info = FunctionInfo(f, serialized=serialized, name_override=name, cls=_cls)
                 webhook_config = None
                 raw_f = f
 
