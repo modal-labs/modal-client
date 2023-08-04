@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import datetime
+import functools
 import inspect
 import sys
 import time
@@ -93,7 +94,11 @@ def _get_click_command_for_function(_stub, function_tag):
     blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
 
     _function = _stub[function_tag]
-    raw_func = _function._info.raw_f
+    if _function._info.cls is not None:
+        obj = _function._info.cls()
+        raw_func = functools.partial(_function._info.raw_f, obj)
+    else:
+        raw_func = _function._info.raw_f
 
     @click.pass_context
     def f(ctx, *args, **kwargs):
