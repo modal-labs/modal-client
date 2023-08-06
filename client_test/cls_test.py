@@ -176,3 +176,24 @@ def test_can_call_remotely_from_local(client):
         # which just squares the arguments
         assert foo.bar.call(8) == 64
         assert foo.baz.call(9) == 81
+
+
+stub_remote_3 = Stub()
+
+
+@stub_remote_3.cls(cpu=42)
+class NoArgRemote(ClsMixin):
+    def __init__(self) -> None:
+        pass
+
+    @method()
+    def baz(self, z: int):
+        return z**3
+
+
+def test_call_cls_remote_no_args(client):
+    with stub_remote_3.run(client=client):
+        foo_remote = NoArgRemote.remote()
+        # Mock servicer just squares the argument
+        # This means remote function call is taking place.
+        assert foo_remote.baz(8) == 64

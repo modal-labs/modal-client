@@ -1183,10 +1183,6 @@ class _Function(_Provider, type_prefix="fu"):
     def from_parametrized(base_handle: _FunctionHandle, *args: Iterable[Any], **kwargs: Dict[str, Any]) -> "_Function":
         assert base_handle.is_hydrated(), "Cannot make bound function handle from unhydrated handle."
 
-        if len(args) + len(kwargs) == 0:
-            # short circuit if no args, don't need a special object.
-            return base_handle
-
         async def _load(resolver: Resolver, existing_object_id: Optional[str], handle: _FunctionHandle):
             handle._initialize_from_local(base_handle._stub, base_handle._info)
 
