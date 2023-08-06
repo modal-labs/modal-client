@@ -1183,12 +1183,14 @@ class _Function(_Provider, type_prefix="fu"):
     def from_parametrized(base_handle: _FunctionHandle, *args: Iterable[Any], **kwargs: Dict[str, Any]) -> "_Function":
         assert base_handle.is_hydrated(), "Cannot make bound function handle from unhydrated handle."
 
-        if len(args) + len(kwargs) == 0:
-            # short circuit if no args, don't need a special object.
-            return base_handle
-
         async def _load(resolver: Resolver, existing_object_id: Optional[str], handle: _FunctionHandle):
             handle._initialize_from_local(base_handle._stub, base_handle._info)
+            handle._is_remote_cls_method = True
+
+            if len(args) + len(kwargs) == 0:
+                # if no args, don't need a separate object.
+                handle._hydrate(base_handle.object_id, resolver.client, base_handle._get_metadata())
+                return
 
             serialized_params = pickle.dumps((args, kwargs))  # TODO(erikbern): use modal._serialization?
             req = api_pb2.FunctionBindParamsRequest(
@@ -1197,7 +1199,6 @@ class _Function(_Provider, type_prefix="fu"):
             )
             response = await retry_transient_errors(resolver.client.stub.FunctionBindParams, req)
             handle._hydrate(response.bound_function_id, resolver.client, response.handle_metadata)
-            handle._is_remote_cls_method = True
 
         return _Function._from_loader(_load, "Function(parametrized)")
 
