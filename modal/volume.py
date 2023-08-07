@@ -180,7 +180,7 @@ class _Volume(_Provider, type_prefix="vo"):
         * Passing a file path returns a list containing only that file's listing description
         * Passing a glob path (including at least one * or ** sequence) returns all files matching that glob path (using absolute paths)
         """
-        return self._handle.listdir(path)
+        return await self._handle.listdir(path)
 
 
 Volume = synchronize_api(_Volume)

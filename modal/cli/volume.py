@@ -12,7 +12,7 @@ from typer import Argument, Typer
 from modal.cli.utils import ENV_OPTION, display_table
 from modal.client import _Client
 from modal.environments import ensure_env
-from modal.volume import _Volume, _VolumeHandle
+from modal.volume import _Volume
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
 from modal_utils.grpc_utils import retry_transient_errors
@@ -51,7 +51,7 @@ async def ls(
 ):
     ensure_env(env)
     vol = await _Volume.lookup(volume_name, environment_name=env)
-    if not isinstance(vol, _VolumeHandle):
+    if not isinstance(vol, _Volume):
         raise UsageError("The specified app entity is not a modal.Volume")
 
     try:
