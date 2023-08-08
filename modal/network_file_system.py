@@ -24,26 +24,6 @@ NETWORK_FILE_SYSTEM_PUT_FILE_CLIENT_TIMEOUT = (
 
 
 class _NetworkFileSystemHandle(_Handle, type_prefix="sv"):
-    """Handle to a `NetworkFileSystem` object.
-
-    Should typically not be used directly in a Modal function,
-    and instead referenced through the file system, see `modal.NetworkFileSystem`.
-
-    Also see the CLI methods for accessing network file systems:
-
-    ```bash
-    modal nfs --help
-    ```
-
-    A NetworkFileSystemHandle *can* however be useful for some local scripting scenarios, e.g.:
-
-    ```python notest
-    vol = modal.lookup("my-network-file-system")
-    for chunk in vol.read_file("my_db_dump.csv"):
-        ...
-    ```
-    """
-
     pass
 
 
@@ -77,6 +57,20 @@ class _NetworkFileSystem(_Provider, type_prefix="sv"):
     separately from the currently attached app. Refer to the persistence
     [guide section](/docs/guide/network-file-systems#persisting-volumes) to see how to
     persist this object across app runs.
+
+    Also see the CLI methods for accessing network file systems:
+
+    ```bash
+    modal nfs --help
+    ```
+
+    A `NetworkFileSystem` can also be useful for some local scripting scenarios, e.g.:
+
+    ```python notest
+    vol = modal.NetworkFileSystem.lookup("my-network-file-system")
+    for chunk in vol.read_file("my_db_dump.csv"):
+        ...
+    ```
     """
 
     @typechecked
