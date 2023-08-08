@@ -22,30 +22,6 @@ class _VolumeHandle(_Handle, type_prefix="vo"):
         # covers the typical case = good enough.
         self._lock = asyncio.Lock()
 
-    async def commit(self):
-        async with self._lock:
-            req = api_pb2.VolumeCommitRequest(volume_id=self.object_id)
-            _ = await retry_transient_errors(self._client.stub.VolumeCommit, req)
-            # Reload changes on successful commit.
-            await self._do_reload(lock=False)
-
-    async def reload(self):
-        await self._do_reload()
-
-    async def iterdir(self, path: str) -> AsyncIterator[api_pb2.VolumeListFilesEntry]:
-        req = api_pb2.VolumeListFilesRequest(volume_id=self._object_id, path=path)
-        async for batch in unary_stream(self._client.stub.VolumeListFiles, req):
-            for entry in batch.entries:
-                yield entry
-
-    async def listdir(self, path: str) -> List[api_pb2.VolumeListFilesEntry]:
-        return [entry async for entry in self.iterdir(path)]
-
-    async def _do_reload(self, lock=True):
-        async with self._lock if lock else asyncnullcontext():
-            req = api_pb2.VolumeReloadRequest(volume_id=self.object_id)
-            _ = await retry_transient_errors(self._client.stub.VolumeReload, req)
-
 
 VolumeHandle = synchronize_api(_VolumeHandle)
 
@@ -141,6 +117,11 @@ class _Volume(_Provider, type_prefix="vo"):
 
     # Methods on live handles
 
+    async def _do_reload(self, lock=True):
+        async with self._handle._lock if lock else asyncnullcontext():
+            req = api_pb2.VolumeReloadRequest(volume_id=self.object_id)
+            _ = await retry_transient_errors(self._client.stub.VolumeReload, req)
+
     async def commit(self):
         """Commit changes to the volume and fetch any other changes made to the volume by other containers.
 
@@ -150,7 +131,11 @@ class _Volume(_Provider, type_prefix="vo"):
 
         Committing will fail if there are open files for the volume.
         """
-        return await self._handle.commit()
+        async with self._handle._lock:
+            req = api_pb2.VolumeCommitRequest(volume_id=self.object_id)
+            _ = await retry_transient_errors(self._client.stub.VolumeCommit, req)
+            # Reload changes on successful commit.
+            await self._do_reload(lock=False)
 
     async def reload(self):
         """Make latest committed state of volume available in the running container.
@@ -161,7 +146,7 @@ class _Volume(_Provider, type_prefix="vo"):
 
         Reloading will fail if there are open files for the volume.
         """
-        return await self._handle.reload()
+        await self._do_reload()
 
     async def iterdir(self, path: str) -> AsyncIterator[api_pb2.VolumeListFilesEntry]:
         """Iterate over all files in a directory in the volume.
@@ -170,8 +155,10 @@ class _Volume(_Provider, type_prefix="vo"):
         * Passing a file path returns a list containing only that file's listing description
         * Passing a glob path (including at least one * or ** sequence) returns all files matching that glob path (using absolute paths)
         """
-        async for entry in self._handle.iterdir(path):
-            yield entry
+        req = api_pb2.VolumeListFilesRequest(volume_id=self._object_id, path=path)
+        async for batch in unary_stream(self._client.stub.VolumeListFiles, req):
+            for entry in batch.entries:
+                yield entry
 
     async def listdir(self, path: str) -> List[api_pb2.VolumeListFilesEntry]:
         """List all files under a path prefix in the modal.Volume.
@@ -180,7 +167,7 @@ class _Volume(_Provider, type_prefix="vo"):
         * Passing a file path returns a list containing only that file's listing description
         * Passing a glob path (including at least one * or ** sequence) returns all files matching that glob path (using absolute paths)
         """
-        return await self._handle.listdir(path)
+        return [entry async for entry in self.iterdir(path)]
 
 
 Volume = synchronize_api(_Volume)
