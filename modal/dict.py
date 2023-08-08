@@ -19,85 +19,7 @@ def _serialize_dict(data):
 
 
 class _DictHandle(_Handle, type_prefix="di"):
-    """Handle for interacting with the contents of a `Dict`
-
-    ```python
-    stub.some_dict = modal.Dict.new()
-
-    if __name__ == "__main__":
-        with stub.run() as app:
-            app.some_dict["message"] = "hello world"
-    ```
-    """
-
-    async def get(self, key: Any) -> Any:
-        """Get the value associated with the key.
-
-        Raises `KeyError` if the key does not exist.
-        """
-        req = api_pb2.DictGetRequest(dict_id=self.object_id, key=serialize(key))
-        resp = await retry_transient_errors(self._client.stub.DictGet, req)
-        if not resp.found:
-            raise KeyError(f"KeyError: {key} not in dict {self.object_id}")
-        return deserialize(resp.value, self._client)
-
-    async def contains(self, key: Any) -> bool:
-        """Check if the key exists."""
-        req = api_pb2.DictContainsRequest(dict_id=self.object_id, key=serialize(key))
-        resp = await retry_transient_errors(self._client.stub.DictContains, req)
-        return resp.found
-
-    async def len(self) -> int:
-        """Returns the length of the dictionary, including any expired keys."""
-        req = api_pb2.DictLenRequest(dict_id=self.object_id)
-        resp = await retry_transient_errors(self._client.stub.DictLen, req)
-        return resp.len
-
-    async def __getitem__(self, key: Any) -> Any:
-        """Get an item from the dictionary."""
-        return await self.get(key)
-
-    async def update(self, **kwargs) -> None:
-        """Update the dictionary with additional items."""
-        serialized = _serialize_dict(kwargs)
-        req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized)
-        await retry_transient_errors(self._client.stub.DictUpdate, req)
-
-    async def put(self, key: Any, value: Any) -> None:
-        """Add a specific key-value pair in the dictionary."""
-        updates = {key: value}
-        serialized = _serialize_dict(updates)
-        req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized)
-        await retry_transient_errors(self._client.stub.DictUpdate, req)
-
-    async def __setitem__(self, key: Any, value: Any) -> None:
-        """Set a specific key-value pair in the dictionary.
-
-        This function only works in a synchronous context.
-        """
-        return await self.put(key, value)
-
-    async def pop(self, key: Any) -> Any:
-        """Remove a key from the dictionary, returning the value if it exists."""
-        req = api_pb2.DictPopRequest(dict_id=self.object_id, key=serialize(key))
-        resp = await retry_transient_errors(self._client.stub.DictPop, req)
-        if not resp.found:
-            raise KeyError(f"KeyError: {key} not in dict {self.object_id}")
-        return deserialize(resp.value, self._client)
-
-    async def __delitem__(self, key: Any) -> Any:
-        """Delete a key from the dictionary.
-
-        This function only works in a synchronous context.
-        """
-        return await self.pop(key)
-
-    async def __contains__(self, key: Any) -> bool:
-        """Check if key in the dictionary exists.
-
-        This function only works in a synchronous context.
-        """
-        return await self.contains(key)
+    pass
 
 
 DictHandle = synchronize_api(_DictHandle)
@@ -172,35 +94,75 @@ class _Dict(_Provider, type_prefix="di"):
         return self.persisted(label, namespace, environment_name)
 
     # Handle methods - temporary until we get rid of all user-facing handles
+
     async def get(self, key: Any) -> Any:
-        return await self._handle.get(key)
+        """Get the value associated with the key.
+
+        Raises `KeyError` if the key does not exist.
+        """
+        req = api_pb2.DictGetRequest(dict_id=self.object_id, key=serialize(key))
+        resp = await retry_transient_errors(self._client.stub.DictGet, req)
+        if not resp.found:
+            raise KeyError(f"KeyError: {key} not in dict {self.object_id}")
+        return deserialize(resp.value, self._client)
 
     async def contains(self, key: Any) -> bool:
-        return await self._handle.contains(key)
+        """Check if the key exists."""
+        req = api_pb2.DictContainsRequest(dict_id=self.object_id, key=serialize(key))
+        resp = await retry_transient_errors(self._client.stub.DictContains, req)
+        return resp.found
 
     async def len(self) -> int:
-        return await self._handle.len()
+        """Returns the length of the dictionary, including any expired keys."""
+        req = api_pb2.DictLenRequest(dict_id=self.object_id)
+        resp = await retry_transient_errors(self._client.stub.DictLen, req)
+        return resp.len
 
     async def __getitem__(self, key: Any) -> Any:
-        return await self._handle.__getitem__(key)
+        """Get an item from the dictionary."""
+        return await self.get(key)
 
     async def update(self, **kwargs) -> None:
-        return await self._handle.update(**kwargs)
+        """Update the dictionary with additional items."""
+        serialized = _serialize_dict(kwargs)
+        req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized)
+        await retry_transient_errors(self._client.stub.DictUpdate, req)
 
     async def put(self, key: Any, value: Any) -> None:
-        return await self._handle.put(key, value)
+        """Add a specific key-value pair in the dictionary."""
+        updates = {key: value}
+        serialized = _serialize_dict(updates)
+        req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized)
+        await retry_transient_errors(self._client.stub.DictUpdate, req)
 
     async def __setitem__(self, key: Any, value: Any) -> None:
-        return await self._handle.__setitem__(key, value)
+        """Set a specific key-value pair in the dictionary.
+
+        This function only works in a synchronous context.
+        """
+        return await self.put(key, value)
 
     async def pop(self, key: Any) -> Any:
-        return await self._handle.pop(key)
+        """Remove a key from the dictionary, returning the value if it exists."""
+        req = api_pb2.DictPopRequest(dict_id=self.object_id, key=serialize(key))
+        resp = await retry_transient_errors(self._client.stub.DictPop, req)
+        if not resp.found:
+            raise KeyError(f"KeyError: {key} not in dict {self.object_id}")
+        return deserialize(resp.value, self._client)
 
     async def __delitem__(self, key: Any) -> Any:
-        return await self._handle.__delitem__(key)
+        """Delete a key from the dictionary.
+
+        This function only works in a synchronous context.
+        """
+        return await self.pop(key)
 
     async def __contains__(self, key: Any) -> bool:
-        return await self._handle.__contains__(key)
+        """Check if key in the dictionary exists.
+
+        This function only works in a synchronous context.
+        """
+        return await self.contains(key)
 
 
 Dict = synchronize_api(_Dict)

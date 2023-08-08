@@ -258,6 +258,10 @@ class _Provider:
     def is_hydrated(self) -> bool:
         return self._handle.is_hydrated()
 
+    @property
+    def _client(self) -> _Client:
+        return self._handle._client
+
     async def _deploy(
         self,
         label: str,
