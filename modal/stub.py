@@ -251,7 +251,7 @@ class _Stub:
             raise InvalidError(
                 inspect.cleandoc(
                     """`is_inside` only works for an image associated with an App. For instance:
-                    stub.image = DebianSlim()
+                    stub.image = Image.debian_slim()
                     if stub.is_inside(stub.image):
                         print("I'm inside!")
                     """
