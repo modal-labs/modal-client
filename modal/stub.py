@@ -432,12 +432,16 @@ class _Stub:
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
-        concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
+        concurrency_limit: Optional[
+            int
+        ] = None,  # An optional maximum number of concurrent containers running the function (use keep_warm for minimum).
         allow_concurrent_inputs: Optional[int] = None,  # Number of inputs the container may fetch to run concurrently.
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
-        interactive: bool = False,  # Whether to run the function in interactive mode.
-        keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
+        interactive: bool = False,  # Whether to run the function in interactive mode./
+        keep_warm: Optional[
+            int
+        ] = None,  # An optional minimum number of containers to always keep warm (use concurrency_limit for maximum).
         name: Optional[str] = None,  # Sets the Modal name of the function within the stub
         is_generator: Optional[
             bool
