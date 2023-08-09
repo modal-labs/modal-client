@@ -5,7 +5,7 @@ import sys
 import typing
 import warnings
 from datetime import date
-from typing import Any, AsyncGenerator, Callable, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Union
 
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -103,7 +103,7 @@ class _Stub:
     _web_endpoints: List[str]  # Used by the CLI
     _local_entrypoints: Dict[str, LocalEntrypoint]
     _app: Optional[_App]
-    _all_stubs: typing.ClassVar[Dict[str, List["_Stub"]]] = {}
+    _all_stubs: ClassVar[Dict[str, List["_Stub"]]] = {}
 
     @typechecked
     def __init__(
