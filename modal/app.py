@@ -99,6 +99,21 @@ class _App:
             )
         self._associated_stub = stub
 
+        # Initialize objects on stub
+        stub_objects: dict[str, _Provider] = {}
+        if stub:
+            stub_objects = dict(stub.get_objects())
+        for tag, object_id in self._tag_to_object_id.items():
+            handle_metadata = self._tag_to_handle_metadata.get(tag)
+            if tag in stub_objects:
+                # This already exists on the stub (typically a function)
+                provider = stub_objects[tag]
+                provider._handle._hydrate(object_id, self._client, handle_metadata)
+            else:
+                # Can't find the object, create a new one
+                provider = _Provider._new_hydrated(object_id, self._client, handle_metadata)
+            self._tag_to_object[tag] = provider
+
     async def _create_all_objects(
         self, blueprint: Dict[str, _Provider], new_app_state: int, environment_name: str, shell: bool = False
     ):  # api_pb2.AppState.V
@@ -195,22 +210,6 @@ class _App:
         _is_container_app = True
         await _container_app._init_container(client, app_id, stub_name)
         return _container_app
-
-    async def _init_container_objects(self, stub):
-        # Initialize objects on stub
-        stub_objects: dict[str, _Provider] = {}
-        if stub:
-            stub_objects = dict(stub.get_objects())
-        for tag, object_id in self._tag_to_object_id.items():
-            handle_metadata = self._tag_to_handle_metadata.get(tag)
-            if tag in stub_objects:
-                # This already exists on the stub (typically a function)
-                provider = stub_objects[tag]
-                provider._handle._hydrate(object_id, self._client, handle_metadata)
-            else:
-                # Can't find the object, create a new one
-                provider = _Provider._new_hydrated(object_id, self._client, handle_metadata)
-            self._tag_to_object[tag] = provider
 
     @staticmethod
     async def _init_existing(
