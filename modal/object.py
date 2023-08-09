@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import uuid
 from datetime import date
-from typing import Awaitable, Callable, Dict, Optional, Type, TypeVar
+from typing import Awaitable, Callable, ClassVar, Dict, Optional, Type, TypeVar
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
@@ -28,11 +28,12 @@ class _Handle:
     well as distributed data structures like Queues or Dicts.
     """
 
-    _type_prefix: Optional[str] = None  # class attribute
+    _type_prefix: ClassVar[Optional[str]] = None
+    _prefix_to_type: ClassVar[Dict[str, type]] = {}
+
     _object_id: str
     _client: _Client
     _is_hydrated: bool
-    _prefix_to_type: Dict[str, type] = {}
 
     @classmethod
     def __init_subclass__(cls, type_prefix: Optional[str] = None):
@@ -174,11 +175,12 @@ _BLOCKING_P = synchronize_api(P)
 
 
 class _Provider:
-    _type_prefix: Optional[str] = None  # class attribute
+    _type_prefix: ClassVar[Optional[str]] = None
+    _prefix_to_type: ClassVar[Dict[str, type]] = {}
+
     _load: Optional[Callable[[Resolver, Optional[str], _Handle], Awaitable[None]]]
     _preload: Optional[Callable[[Resolver, Optional[str], _Handle], Awaitable[None]]]
     _handle: _Handle
-    _prefix_to_type: Dict[str, type] = {}
 
     @classmethod
     def __init_subclass__(cls, type_prefix: Optional[str] = None):
