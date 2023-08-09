@@ -126,6 +126,10 @@ class _App:
             shell=shell,
         )
         with resolver.display():
+            # Assign all objects
+            for tag, provider in blueprint.items():
+                self._tag_to_object[tag] = provider
+
             # Preload all functions to make sure they have ids assigned before they are loaded.
             # This is important to make sure any enclosed function handle references in serialized
             # functions have ids assigned to them when the function is serialized.
@@ -139,12 +143,10 @@ class _App:
                 precreated_object = await resolver.preload(provider, existing_object_id)
                 if precreated_object is not None:
                     self._tag_to_object_id[tag] = precreated_object.object_id
-                    self._tag_to_object[tag] = precreated_object
 
             for tag, provider in blueprint.items():
                 existing_object_id = self._tag_to_object_id.get(tag)
                 await resolver.load(provider, existing_object_id)
-                self._tag_to_object[tag] = provider
 
         # Create the app (and send a list of all tagged obs)
         # TODO(erikbern): we should delete objects from a previous version that are no longer needed
