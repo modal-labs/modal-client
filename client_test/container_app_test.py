@@ -45,10 +45,9 @@ async def test_container_function_lazily_imported(unix_servicer, container_clien
 @skip_windows_unix_socket
 @pytest.mark.asyncio
 async def test_is_inside(servicer, unix_servicer, client, container_client):
-    image_1 = Image.debian_slim().pip_install(["abc"])
-    image_2 = Image.debian_slim().pip_install(["def"])
-
     def get_stub():
+        image_1 = Image.debian_slim().pip_install(["abc"])
+        image_2 = Image.debian_slim().pip_install(["def"])
         return Stub(image=image_1, image_2=image_2)
 
     stub = get_stub()
@@ -57,8 +56,8 @@ async def test_is_inside(servicer, unix_servicer, client, container_client):
     async with stub.run(client=client) as app:
         # We're not inside the container (yet)
         assert not stub.is_inside()
-        assert not stub.is_inside(image_1)
-        assert not stub.is_inside(image_2)
+        assert not stub.is_inside(stub.image)
+        assert not stub.is_inside(stub.image_2)
 
         app_id = app.app_id
         image_1_id = app["image"].object_id
@@ -76,14 +75,14 @@ async def test_is_inside(servicer, unix_servicer, client, container_client):
         # Pretend that we're inside image 1
         with mock.patch.dict(os.environ, {"MODAL_IMAGE_ID": image_1_id}):
             assert stub.is_inside()
-            assert stub.is_inside(image_1)
-            assert not stub.is_inside(image_2)
+            assert stub.is_inside(stub.image)
+            assert not stub.is_inside(stub.image_2)
 
         # Pretend that we're inside image 2
         with mock.patch.dict(os.environ, {"MODAL_IMAGE_ID": image_2_id}):
             assert stub.is_inside()
-            assert not stub.is_inside(image_1)
-            assert stub.is_inside(image_2)
+            assert not stub.is_inside(stub.image)
+            assert stub.is_inside(stub.image_2)
 
 
 def f():
