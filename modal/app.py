@@ -50,6 +50,7 @@ class _App:
     _resolver: Optional[Resolver]
     _environment_name: str
     _output_mgr: Optional[OutputManager]
+    _associated_stub: Optional["_Stub"]
 
     def __init__(
         self,
@@ -71,6 +72,7 @@ class _App:
         self._stub_name = stub_name
         self._environment_name = environment_name
         self._output_mgr = output_mgr
+        self._associated_stub = None
 
     @property
     def client(self) -> _Client:
@@ -81,6 +83,17 @@ class _App:
     def app_id(self) -> str:
         """A unique identifier for this running App."""
         return self._app_id
+
+    def _associate_stub(self, stub: "_Stub"):
+        if self._associated_stub:
+            if self._stub_name:
+                warning_sub_message = f"stub with the same name ('{self._stub_name}')"
+            else:
+                warning_sub_message = "unnamed stub"
+            logger.warning(
+                f"You have more than one {warning_sub_message}. It's recommended to name all your Stubs uniquely when using multiple stubs"
+            )
+        self._associated_stub = stub
 
     async def _create_all_objects(
         self, blueprint: Dict[str, _Provider], new_app_state: int, environment_name: str, shell: bool = False
