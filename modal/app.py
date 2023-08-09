@@ -126,6 +126,14 @@ class _App:
             shell=shell,
         )
         with resolver.display():
+            # Assign all objects
+            for tag, provider in blueprint.items():
+                self._tag_to_object[tag] = provider
+
+                # Reset object_id in case the app runs twice
+                # TODO(erikbern): clean up the interface
+                provider._handle._init()
+
             # Preload all functions to make sure they have ids assigned before they are loaded.
             # This is important to make sure any enclosed function handle references in serialized
             # functions have ids assigned to them when the function is serialized.
@@ -136,20 +144,20 @@ class _App:
                 # Note: preload only currently implemented for Functions, returns None otherwise
                 # this is to ensure that directly referenced functions from the global scope has
                 # ids associated with them when they are serialized into other functions
-                precreated_object = await resolver.preload(provider, existing_object_id)
-                if precreated_object is not None:
-                    self._tag_to_object_id[tag] = precreated_object.object_id
-                    self._tag_to_object[tag] = precreated_object
+                await resolver.preload(provider, existing_object_id)
+                if provider.object_id is not None:
+                    self._tag_to_object_id[tag] = provider.object_id
 
             for tag, provider in blueprint.items():
                 existing_object_id = self._tag_to_object_id.get(tag)
                 await resolver.load(provider, existing_object_id)
-                self._tag_to_object[tag] = provider
+                self._tag_to_object_id[tag] = provider.object_id
 
         # Create the app (and send a list of all tagged obs)
         # TODO(erikbern): we should delete objects from a previous version that are no longer needed
         # We just delete them from the app, but the actual objects will stay around
-        indexed_object_ids = {tag: obj.object_id for tag, obj in self._tag_to_object.items()}
+        indexed_object_ids = self._tag_to_object_id
+        assert indexed_object_ids == self._tag_to_object_id
         all_objects = resolver.objects()
 
         unindexed_object_ids = list(
