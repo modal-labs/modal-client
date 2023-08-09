@@ -1,8 +1,7 @@
 # Development requirements
 
 black~=22.3.0
-grpcio-tools==1.48.0;python_version<'3.11'
-grpcio-tools==1.51.1;python_version>='3.11'
+grpcio-tools==1.56.2
 grpclib==0.4.3
 httpx~=0.23.0
 invoke~=2.2
