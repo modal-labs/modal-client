@@ -68,7 +68,7 @@ def _add_click_options(func, signature: inspect.Signature):
         parser = option_parsers.get(param_type)
         if parser is None:
             raise NoParserAvailable(repr(param_type))
-        kwargs = {
+        kwargs: Any = {
             "type": parser,
         }
         if param.default is not inspect.Signature.empty:

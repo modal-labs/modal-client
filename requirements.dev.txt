@@ -1,14 +1,14 @@
 # Development requirements
 
 black~=22.3.0
-grpcio-tools==1.48.0;python_version<'3.11'
-grpcio-tools==1.51.1;python_version>='3.11'
+grpcio-tools==1.48.0;python_version<'3.11'  # TODO: remove when we drop client support for Protobuf 3.19
+grpcio-tools==1.56.2;python_version>='3.11'
 grpclib==0.4.3
 httpx~=0.23.0
-invoke~=1.7.0
-mypy==0.950
-mypy-protobuf~=3.2.0
-pre-commit~=2.17.0
+invoke~=2.2
+mypy~=1.4
+mypy-protobuf~=3.3.0  # TODO: can't use mypy-protobuf>=3.4 because of protobuf==3.19 support
+pre-commit>=2.21,<4
 pytest-asyncio @ git+https://github.com/modal-labs/pytest-asyncio.git@b535db05f6e43019700483c442ab6686f132a415
 pytest-env~=0.6.2
 pytest-markdown-docs==0.4.3

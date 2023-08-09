@@ -130,13 +130,13 @@ class _Handle:
         return self._object_id
 
     async def _hydrate_from_app(
-        self: H,
+        self,
         app_name: str,
         tag: Optional[str] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
-    ) -> H:
+    ):
         """Returns a handle to a tagged object in a deployment on Modal."""
         if environment_name is None:
             environment_name = config.get("environment")

@@ -99,7 +99,7 @@ class _ImageRegistryConfig:
 
     def __init__(
         self,
-        registry_type: "api_pb2.RegistryType.ValueType" = api_pb2.RegistryType.DOCKERHUB,
+        registry_type: int = api_pb2.RegistryType.DOCKERHUB,
         secret: Optional[_Secret] = None,
     ):
         self.registry_type = registry_type
@@ -141,7 +141,7 @@ class _Image(_Provider, type_prefix="im"):
         image_registry_config: Optional[_ImageRegistryConfig] = None,
         force_build: bool = False,
         # For internal use only.
-        _namespace: "api_pb2.DeploymentNamespace.ValueType" = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        _namespace: int = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
     ):
         if gpu_config is None:
             gpu_config = api_pb2.GPUConfig()
