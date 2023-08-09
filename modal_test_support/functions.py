@@ -180,3 +180,7 @@ def sleep_700_sync(x):
 async def sleep_700_async(x):
     await asyncio.sleep(0.7)
     return x * x
+
+
+def unassociated_function(x):
+    return 100 - x
