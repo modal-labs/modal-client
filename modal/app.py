@@ -1,6 +1,8 @@
 # Copyright Modal Labs 2022
 from typing import TYPE_CHECKING, Dict, Optional, Sequence, TypeVar
 
+from google.protobuf.message import Message
+
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import get_proto_oneof, retry_transient_errors
@@ -43,6 +45,7 @@ class _App:
 
     _tag_to_object: Dict[str, _Provider]
     _tag_to_object_id: Dict[str, str]
+    _tag_to_handle_metadata: Dict[str, Message]
 
     _client: _Client
     _app_id: str
@@ -69,6 +72,7 @@ class _App:
         self._client = client
         self._tag_to_object = tag_to_object or {}
         self._tag_to_object_id = tag_to_object_id or {}
+        self._tag_to_handle_metadata = {}
         self._stub_name = stub_name
         self._environment_name = environment_name
         self._output_mgr = output_mgr
@@ -186,21 +190,28 @@ class _App:
         return _container_app
 
     async def _init_container_objects(self, stub):
-        stub_objects: dict[str, _Provider] = {}
-        if stub:
-            stub_objects = dict(stub.get_objects())
         req = api_pb2.AppGetObjectsRequest(app_id=self._app_id)
         resp = await retry_transient_errors(self._client.stub.AppGetObjects, req)
         for item in resp.items:
-            handle_metadata = get_proto_oneof(item, "handle_metadata_oneof")
-            if item.tag in stub_objects:
+            self._tag_to_object_id[item.tag] = item.object_id
+            handle_metadata: Optional[Message] = get_proto_oneof(item, "handle_metadata_oneof")
+            if handle_metadata is not None:
+                self._tag_to_handle_metadata[item.tag] = handle_metadata
+
+        # Initialize objects on stub
+        stub_objects: dict[str, _Provider] = {}
+        if stub:
+            stub_objects = dict(stub.get_objects())
+        for tag, object_id in self._tag_to_object_id.items():
+            handle_metadata = self._tag_to_handle_metadata.get(tag)
+            if tag in stub_objects:
                 # This already exists on the stub (typically a function)
-                provider = stub_objects[item.tag]
-                provider._handle._hydrate(item.object_id, self._client, handle_metadata)
+                provider = stub_objects[tag]
+                provider._handle._hydrate(object_id, self._client, handle_metadata)
             else:
                 # Can't find the object, create a new one
-                provider = _Provider._new_hydrated(item.object_id, self._client, handle_metadata)
-            self._tag_to_object[item.tag] = provider
+                provider = _Provider._new_hydrated(object_id, self._client, handle_metadata)
+            self._tag_to_object[tag] = provider
 
     @staticmethod
     async def _init_existing(
