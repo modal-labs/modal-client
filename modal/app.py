@@ -126,6 +126,10 @@ class _App:
             shell=shell,
         )
         with resolver.display():
+            # Get current objects, and reset all objects
+            tag_to_object_id = self._tag_to_object_id
+            self._tag_to_object_id = {}
+
             # Assign all objects
             for tag, provider in blueprint.items():
                 self._tag_to_object[tag] = provider
@@ -140,7 +144,7 @@ class _App:
             # Note: when handles/providers are merged, all objects will need to get ids pre-assigned
             # like this in order to be referrable within serialized functions
             for tag, provider in blueprint.items():
-                existing_object_id = self._tag_to_object_id.get(tag)
+                existing_object_id = tag_to_object_id.get(tag)
                 # Note: preload only currently implemented for Functions, returns None otherwise
                 # this is to ensure that directly referenced functions from the global scope has
                 # ids associated with them when they are serialized into other functions
@@ -149,7 +153,7 @@ class _App:
                     self._tag_to_object_id[tag] = provider.object_id
 
             for tag, provider in blueprint.items():
-                existing_object_id = self._tag_to_object_id.get(tag)
+                existing_object_id = tag_to_object_id.get(tag)
                 await resolver.load(provider, existing_object_id)
                 self._tag_to_object_id[tag] = provider.object_id
 
