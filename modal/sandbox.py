@@ -144,6 +144,8 @@ class _Sandbox(_Provider, type_prefix="sb"):
         workdir: Optional[str] = None,
         gpu: GPU_T = None,
         cloud: Optional[str] = None,
+        cpu: Optional[float] = None,
+        memory: Optional[int] = None,
     ) -> _SandboxHandle:
         """mdmd:hidden"""
 
@@ -163,6 +165,10 @@ class _Sandbox(_Provider, type_prefix="sb"):
 
             cloud_provider = parse_cloud_provider(cloud) if cloud else None
 
+            if cpu is not None and cpu < 0.25:
+                raise InvalidError(f"Invalid fractional CPU value {cpu}. Cannot have less than 0.25 CPU resources.")
+            milli_cpu = int(1000 * cpu) if cpu is not None else None
+
             image_id, mount_ids = await asyncio.gather(_load_image(), _load_mounts())
             definition = api_pb2.Sandbox(
                 entrypoint_args=entrypoint_args,
@@ -170,7 +176,7 @@ class _Sandbox(_Provider, type_prefix="sb"):
                 mount_ids=mount_ids,
                 timeout_secs=timeout,
                 workdir=workdir,
-                resources=api_pb2.Resources(gpu_config=gpu_config),
+                resources=api_pb2.Resources(gpu_config=gpu_config, milli_cpu=milli_cpu, memory_mb=memory),
                 cloud_provider=cloud_provider,
             )
 
