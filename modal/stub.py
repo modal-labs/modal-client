@@ -193,6 +193,16 @@ class _Stub:
             # instead of displaying "_container_entrypoint.py [base64 garbage]"
             return "[unnamed app]"
 
+    def _add_object(self, tag, obj):
+        if self._app and tag in self._app:
+            # If this is inside a container, and some module is loaded lazily, then a function may be
+            # defined later than the container initialization. If this happens then lets hydrate the
+            # function at this point
+            other_obj = self._app[tag]
+            obj._handle._hydrate_from_other(other_obj._handle)
+
+        self._blueprint[tag] = obj
+
     def __getitem__(self, tag: str):
         # Deprecated? Note: this is currently the only way to refer to lifecycled methods on the stub, since they have . in the tag
         return self._blueprint[tag]
@@ -200,7 +210,7 @@ class _Stub:
     def __setitem__(self, tag: str, obj: _Provider):
         self._validate_blueprint_value(tag, obj)
         # Deprecated ?
-        self._blueprint[tag] = obj
+        self._add_object(tag, obj)
 
     def __getattr__(self, tag: str) -> _Provider:
         assert isinstance(tag, str)
@@ -217,7 +227,7 @@ class _Stub:
             object.__setattr__(self, tag, obj)
         else:
             self._validate_blueprint_value(tag, obj)
-            self._blueprint[tag] = obj
+            self._add_object(tag, obj)
 
     def get_objects(self) -> List[Tuple[str, _Provider]]:
         """Used by the container app to initialize objects."""
@@ -324,14 +334,7 @@ class _Stub:
             else:
                 logger.warning(f"Warning: tag {function.tag} exists but is overridden by function")
 
-        if self._app and function.tag in self._app:
-            # If this is inside a container, and some module is loaded lazily, then a function may be
-            # defined later than the container initialization. If this happens then lets hydrate the
-            # function at this point
-            other_function = self._app[function.tag]
-            function._handle._hydrate_from_other(other_function._handle)
-
-        self._blueprint[function.tag] = function
+        self._add_object(function.tag, function)
 
     @property
     def registered_functions(self) -> Dict[str, _Function]:
