@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2022
-from typing import TYPE_CHECKING, Dict, Optional, Sequence, TypeVar
+from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, TypeVar
 
 from google.protobuf.message import Message
 
@@ -53,7 +53,7 @@ class _App:
     _resolver: Optional[Resolver]
     _environment_name: str
     _output_mgr: Optional[OutputManager]
-    _associated_stub: Optional["_Stub"]
+    _associated_stub: Optional[Any]  # TODO(erikbern): type
 
     def __init__(
         self,
@@ -88,7 +88,7 @@ class _App:
         """A unique identifier for this running App."""
         return self._app_id
 
-    def _associate_stub(self, stub: "_Stub"):
+    def _associate_stub(self, stub):
         if self._associated_stub:
             if self._stub_name:
                 warning_sub_message = f"stub with the same name ('{self._stub_name}')"
