@@ -1447,7 +1447,9 @@ def _web_endpoint(
     method: str = "GET",  # REST method for the created endpoint.
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-    custom_domains: Optional[Iterable[str]] = None,  # Create an endpoint using a custom domain fully-qualified domain name.
+    custom_domains: Optional[
+        Iterable[str]
+    ] = None,  # Create an endpoint using a custom domain fully-qualified domain name.
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Register a basic web endpoint with this application.
 
@@ -1509,7 +1511,9 @@ def _web_endpoint(
 def _asgi_app(
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-    custom_domains: Optional[Iterable[str]] = None,  # Create an endpoint using a custom domain fully-qualified domain name.
+    custom_domains: Optional[
+        Iterable[str]
+    ] = None,  # Create an endpoint using a custom domain fully-qualified domain name.
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Decorator for registering an ASGI app with a Modal function.
 
@@ -1566,7 +1570,9 @@ def _asgi_app(
 def _wsgi_app(
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-    custom_domains: Optional[Iterable[str]] = None,  # Create an endpoint using a custom domain fully-qualified domain name.
+    custom_domains: Optional[
+        Iterable[str]
+    ] = None,  # Create an endpoint using a custom domain fully-qualified domain name.
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Decorator for registering a WSGI app with a Modal function.
 
