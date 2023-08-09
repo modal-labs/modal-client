@@ -29,7 +29,6 @@ async def test_container_function_lazily_imported(unix_servicer, container_clien
 
     container_app = await App.init_container.aio(container_client, "ap-123")
     stub = Stub()
-    await container_app._init_container_objects.aio(stub)
 
     # Make sure these functions exist and have the right type
     my_f_1_app = container_app["my_f_1"]
@@ -69,8 +68,7 @@ async def test_is_inside(servicer, unix_servicer, client, container_client):
         unix_servicer.app_objects[app_id] = servicer.app_objects[app_id]
 
         # Pretend that we're inside the container
-        container_app = await App.init_container.aio(container_client, app_id)
-        await container_app._init_container_objects.aio(None)
+        await App.init_container.aio(container_client, app_id)
 
         # Create a new stub (TODO: tie it to the previous stub through name or similar)
         stub = get_stub()

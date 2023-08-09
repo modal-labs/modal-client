@@ -125,10 +125,6 @@ class _FunctionIOManager:
         self._container_app = await _App.init_container(self._client, self.app_id, self._stub_name)
         return self._container_app
 
-    @wrap()
-    async def initialize_app_objects(self, stub: Optional[_Stub]):
-        await self._container_app._init_container_objects(stub)
-
     async def _heartbeat(self):
         request = api_pb2.ContainerHeartbeatRequest()
         if self.current_input_id is not None:
@@ -637,11 +633,9 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             ser_cls, ser_fun = None, None
 
         # Initialize the function
+        # Note: detecting the stub causes all objects to be associated with the app and hydrated
         with function_io_manager.handle_user_exception():
             imp_fun = import_function(container_args.function_def, ser_cls, ser_fun, container_args.serialized_params)
-
-        # Hydrate all app objects
-        function_io_manager.initialize_app_objects(imp_fun.stub)
 
         pty_info: api_pb2.PTYInfo = container_args.function_def.pty_info
         if pty_info.pty_type or pty_info.enabled:
