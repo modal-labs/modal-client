@@ -151,11 +151,13 @@ class _App:
             for tag, provider in blueprint.items():
                 existing_object_id = self._tag_to_object_id.get(tag)
                 await resolver.load(provider, existing_object_id)
+                self._tag_to_object_id[tag] = provider.object_id
 
         # Create the app (and send a list of all tagged obs)
         # TODO(erikbern): we should delete objects from a previous version that are no longer needed
         # We just delete them from the app, but the actual objects will stay around
-        indexed_object_ids = {tag: obj.object_id for tag, obj in self._tag_to_object.items()}
+        indexed_object_ids = self._tag_to_object_id
+        assert indexed_object_ids == self._tag_to_object_id
         all_objects = resolver.objects()
 
         unindexed_object_ids = list(
