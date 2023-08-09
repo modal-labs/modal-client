@@ -732,3 +732,12 @@ def test_concurrent_inputs_async_function(unix_servicer, event_loop):
     expected_execution = n_inputs / n_parallel * SLEEP_TIME
     assert expected_execution <= time.time() - t0 < expected_execution + EXTRA_TOLERANCE_DELAY
     verify_concurrent_input_outputs(n_inputs, n_parallel, items)
+
+
+@skip_windows_unix_socket
+def test_unassociated_function(unix_servicer, event_loop):
+    client, items = _run_container(unix_servicer, "modal_test_support.functions", "unassociated_function")
+    assert len(items) == 1
+    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert items[0].result.data
+    assert deserialize(items[0].result.data, client) == 58
