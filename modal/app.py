@@ -42,7 +42,7 @@ class _App:
     """
 
     _tag_to_object: Dict[str, _Provider]
-    _tag_to_existing_id: Dict[str, str]
+    _tag_to_object_id: Dict[str, str]
 
     _client: _Client
     _app_id: str
@@ -59,7 +59,7 @@ class _App:
         app_page_url: str,
         output_mgr: Optional[OutputManager],
         tag_to_object: Optional[Dict[str, _Provider]] = None,
-        tag_to_existing_id: Optional[Dict[str, str]] = None,
+        tag_to_object_id: Optional[Dict[str, str]] = None,
         stub_name: Optional[str] = None,
         environment_name: Optional[str] = None,
     ):
@@ -68,7 +68,7 @@ class _App:
         self._app_page_url = app_page_url
         self._client = client
         self._tag_to_object = tag_to_object or {}
-        self._tag_to_existing_id = tag_to_existing_id or {}
+        self._tag_to_object_id = tag_to_object_id or {}
         self._stub_name = stub_name
         self._environment_name = environment_name
         self._output_mgr = output_mgr
@@ -113,17 +113,17 @@ class _App:
             # Note: when handles/providers are merged, all objects will need to get ids pre-assigned
             # like this in order to be referrable within serialized functions
             for tag, provider in blueprint.items():
-                existing_object_id = self._tag_to_existing_id.get(tag)
+                existing_object_id = self._tag_to_object_id.get(tag)
                 # Note: preload only currently implemented for Functions, returns None otherwise
                 # this is to ensure that directly referenced functions from the global scope has
                 # ids associated with them when they are serialized into other functions
                 precreated_object = await resolver.preload(provider, existing_object_id)
                 if precreated_object is not None:
-                    self._tag_to_existing_id[tag] = precreated_object.object_id
+                    self._tag_to_object_id[tag] = precreated_object.object_id
                     self._tag_to_object[tag] = precreated_object
 
             for tag, provider in blueprint.items():
-                existing_object_id = self._tag_to_existing_id.get(tag)
+                existing_object_id = self._tag_to_object_id.get(tag)
                 await resolver.load(provider, existing_object_id)
                 self._tag_to_object[tag] = provider
 
@@ -211,7 +211,7 @@ class _App:
         obj_resp = await retry_transient_errors(client.stub.AppGetObjects, obj_req)
         app_page_url = f"https://modal.com/apps/{existing_app_id}"  # TODO (elias): this should come from the backend
         object_ids = {item.tag: item.object_id for item in obj_resp.items}
-        return _App(client, existing_app_id, app_page_url, output_mgr, tag_to_existing_id=object_ids)
+        return _App(client, existing_app_id, app_page_url, output_mgr, tag_to_object_id=object_ids)
 
     @staticmethod
     async def _init_new(
@@ -259,7 +259,7 @@ class _App:
             )
 
     async def create_one_object(self, provider: _Provider, environment_name: str) -> None:
-        existing_object_id: Optional[str] = self._tag_to_existing_id.get("_object")
+        existing_object_id: Optional[str] = self._tag_to_object_id.get("_object")
         resolver = Resolver(self._client, environment_name=environment_name, app_id=self.app_id)
         await resolver.load(provider, existing_object_id)
         indexed_object_ids = {"_object": provider.object_id}
