@@ -1433,13 +1433,14 @@ def _method(
     return wrapper
 
 
-def _parse_custom_domains(custom_domains:Optional[List[str]] = None) -> list[api_pb2.CustomDomainConfig]:
+def _parse_custom_domains(custom_domains: Optional[List[str]] = None) -> list[api_pb2.CustomDomainConfig]:
     _custom_domains: list[api_pb2.CustomDomainConfig] = []
     if custom_domains is not None:
         for custom_domain in custom_domains:
             _custom_domains.append(api_pb2.CustomDomainConfig(name=custom_domain))
 
     return _custom_domains
+
 
 @typechecked
 def _web_endpoint(
@@ -1554,7 +1555,7 @@ def _asgi_app(
                 type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
                 requested_suffix=label,
                 async_mode=_response_mode,
-                custom_domains=_parse_custom_domains(custom_domains)
+                custom_domains=_parse_custom_domains(custom_domains),
             ),
         )
 
@@ -1608,7 +1609,7 @@ def _wsgi_app(
                 type=api_pb2.WEBHOOK_TYPE_WSGI_APP,
                 requested_suffix=label,
                 async_mode=_response_mode,
-                custom_domains=_parse_custom_domains(custom_domains)
+                custom_domains=_parse_custom_domains(custom_domains),
             ),
         )
 
