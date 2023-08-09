@@ -180,6 +180,13 @@ class _App:
         self._client = client
         self._app_id = app_id
         self._stub_name = stub_name
+        req = api_pb2.AppGetObjectsRequest(app_id=self._app_id)
+        resp = await retry_transient_errors(self._client.stub.AppGetObjects, req)
+        for item in resp.items:
+            self._tag_to_object_id[item.tag] = item.object_id
+            handle_metadata: Optional[Message] = get_proto_oneof(item, "handle_metadata_oneof")
+            if handle_metadata is not None:
+                self._tag_to_handle_metadata[item.tag] = handle_metadata
 
     @staticmethod
     async def init_container(client: _Client, app_id: str, stub_name: str = "") -> "_App":
@@ -190,14 +197,6 @@ class _App:
         return _container_app
 
     async def _init_container_objects(self, stub):
-        req = api_pb2.AppGetObjectsRequest(app_id=self._app_id)
-        resp = await retry_transient_errors(self._client.stub.AppGetObjects, req)
-        for item in resp.items:
-            self._tag_to_object_id[item.tag] = item.object_id
-            handle_metadata: Optional[Message] = get_proto_oneof(item, "handle_metadata_oneof")
-            if handle_metadata is not None:
-                self._tag_to_handle_metadata[item.tag] = handle_metadata
-
         # Initialize objects on stub
         stub_objects: dict[str, _Provider] = {}
         if stub:
