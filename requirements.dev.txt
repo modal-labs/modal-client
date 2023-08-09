@@ -7,7 +7,7 @@ httpx~=0.23.0
 invoke~=2.2
 mypy~=1.4
 mypy-protobuf~=3.4
-pre-commit~=3.3
+pre-commit>=2.21,<4
 pytest-asyncio @ git+https://github.com/modal-labs/pytest-asyncio.git@b535db05f6e43019700483c442ab6686f132a415
 pytest-env~=0.6.2
 pytest-markdown-docs==0.4.3
