@@ -91,14 +91,7 @@ def _flatten_str_args(function_name: str, arg_name: str, args: Tuple[Union[str, 
 
 
 class _ImageHandle(_Handle, type_prefix="im"):
-    def _is_inside(self) -> bool:
-        """Returns whether this container is active or not.
-
-        This is not meant to be called directly: see app.is_inside(image)
-        """
-        env_image_id = config.get("image_id")
-        logger.debug(f"Image._is_inside(): env_image_id={env_image_id} self.object_id={self.object_id}")
-        return self.object_id == env_image_id
+    pass
 
 
 class _ImageRegistryConfig:
@@ -1236,7 +1229,13 @@ class _Image(_Provider, type_prefix="im"):
     # Live handle methods
 
     def _is_inside(self) -> bool:
-        return self._handle._is_inside()
+        """Returns whether this container is active or not.
+
+        This is not meant to be called directly: see app.is_inside(image)
+        """
+        env_image_id = config.get("image_id")
+        logger.debug(f"Image._is_inside(): env_image_id={env_image_id} self.object_id={self.object_id}")
+        return self.object_id == env_image_id
 
 
 ImageHandle = synchronize_api(_ImageHandle)
