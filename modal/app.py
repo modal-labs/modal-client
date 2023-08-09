@@ -140,9 +140,9 @@ class _App:
                 # Note: preload only currently implemented for Functions, returns None otherwise
                 # this is to ensure that directly referenced functions from the global scope has
                 # ids associated with them when they are serialized into other functions
-                precreated_object = await resolver.preload(provider, existing_object_id)
-                if precreated_object is not None:
-                    self._tag_to_object_id[tag] = precreated_object.object_id
+                await resolver.preload(provider, existing_object_id)
+                if provider.object_id is not None:
+                    self._tag_to_object_id[tag] = provider.object_id
 
             for tag, provider in blueprint.items():
                 existing_object_id = self._tag_to_object_id.get(tag)

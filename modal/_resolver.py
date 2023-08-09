@@ -91,7 +91,7 @@ class Resolver:
 
     async def preload(self, obj, existing_object_id: Optional[str]):
         if obj._preload is not None:
-            return await obj._preload(self, existing_object_id, obj._handle)
+            await obj._preload(self, existing_object_id, obj._handle)
 
     async def load(self, obj, existing_object_id: Optional[str] = None):
         cached_future = self._local_uuid_to_future.get(obj.local_uuid)
