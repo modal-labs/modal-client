@@ -1,5 +1,7 @@
 # Copyright Modal Labs 2022
-from typing import TYPE_CHECKING, Dict, Optional, Sequence, TypeVar
+from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, TypeVar
+
+from google.protobuf.message import Message
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
@@ -42,7 +44,8 @@ class _App:
     """
 
     _tag_to_object: Dict[str, _Provider]
-    _tag_to_existing_id: Dict[str, str]
+    _tag_to_object_id: Dict[str, str]
+    _tag_to_handle_metadata: Dict[str, Message]
 
     _client: _Client
     _app_id: str
@@ -50,6 +53,7 @@ class _App:
     _resolver: Optional[Resolver]
     _environment_name: str
     _output_mgr: Optional[OutputManager]
+    _associated_stub: Optional[Any]  # TODO(erikbern): type
 
     def __init__(
         self,
@@ -58,7 +62,7 @@ class _App:
         app_page_url: str,
         output_mgr: Optional[OutputManager],
         tag_to_object: Optional[Dict[str, _Provider]] = None,
-        tag_to_existing_id: Optional[Dict[str, str]] = None,
+        tag_to_object_id: Optional[Dict[str, str]] = None,
         stub_name: Optional[str] = None,
         environment_name: Optional[str] = None,
     ):
@@ -67,10 +71,12 @@ class _App:
         self._app_page_url = app_page_url
         self._client = client
         self._tag_to_object = tag_to_object or {}
-        self._tag_to_existing_id = tag_to_existing_id or {}
+        self._tag_to_object_id = tag_to_object_id or {}
+        self._tag_to_handle_metadata = {}
         self._stub_name = stub_name
         self._environment_name = environment_name
         self._output_mgr = output_mgr
+        self._associated_stub = None
 
     @property
     def client(self) -> _Client:
@@ -81,6 +87,32 @@ class _App:
     def app_id(self) -> str:
         """A unique identifier for this running App."""
         return self._app_id
+
+    def _associate_stub(self, stub):
+        if self._associated_stub:
+            if self._stub_name:
+                warning_sub_message = f"stub with the same name ('{self._stub_name}')"
+            else:
+                warning_sub_message = "unnamed stub"
+            logger.warning(
+                f"You have more than one {warning_sub_message}. It's recommended to name all your Stubs uniquely when using multiple stubs"
+            )
+        self._associated_stub = stub
+
+        # Initialize objects on stub
+        stub_objects: dict[str, _Provider] = {}
+        if stub:
+            stub_objects = dict(stub.get_objects())
+        for tag, object_id in self._tag_to_object_id.items():
+            handle_metadata = self._tag_to_handle_metadata.get(tag)
+            if tag in stub_objects:
+                # This already exists on the stub (typically a function)
+                provider = stub_objects[tag]
+                provider._handle._hydrate(object_id, self._client, handle_metadata)
+            else:
+                # Can't find the object, create a new one
+                provider = _Provider._new_hydrated(object_id, self._client, handle_metadata)
+            self._tag_to_object[tag] = provider
 
     async def _create_all_objects(
         self, blueprint: Dict[str, _Provider], new_app_state: int, environment_name: str, shell: bool = False
@@ -100,17 +132,17 @@ class _App:
             # Note: when handles/providers are merged, all objects will need to get ids pre-assigned
             # like this in order to be referrable within serialized functions
             for tag, provider in blueprint.items():
-                existing_object_id = self._tag_to_existing_id.get(tag)
+                existing_object_id = self._tag_to_object_id.get(tag)
                 # Note: preload only currently implemented for Functions, returns None otherwise
                 # this is to ensure that directly referenced functions from the global scope has
                 # ids associated with them when they are serialized into other functions
                 precreated_object = await resolver.preload(provider, existing_object_id)
                 if precreated_object is not None:
-                    self._tag_to_existing_id[tag] = precreated_object.object_id
+                    self._tag_to_object_id[tag] = precreated_object.object_id
                     self._tag_to_object[tag] = precreated_object
 
             for tag, provider in blueprint.items():
-                existing_object_id = self._tag_to_existing_id.get(tag)
+                existing_object_id = self._tag_to_object_id.get(tag)
                 await resolver.load(provider, existing_object_id)
                 self._tag_to_object[tag] = provider
 
@@ -163,6 +195,13 @@ class _App:
         self._client = client
         self._app_id = app_id
         self._stub_name = stub_name
+        req = api_pb2.AppGetObjectsRequest(app_id=self._app_id)
+        resp = await retry_transient_errors(self._client.stub.AppGetObjects, req)
+        for item in resp.items:
+            self._tag_to_object_id[item.tag] = item.object_id
+            handle_metadata: Optional[Message] = get_proto_oneof(item, "handle_metadata_oneof")
+            if handle_metadata is not None:
+                self._tag_to_handle_metadata[item.tag] = handle_metadata
 
     @staticmethod
     async def init_container(client: _Client, app_id: str, stub_name: str = "") -> "_App":
@@ -171,23 +210,6 @@ class _App:
         _is_container_app = True
         await _container_app._init_container(client, app_id, stub_name)
         return _container_app
-
-    async def _init_container_objects(self, stub):
-        stub_objects: dict[str, _Provider] = {}
-        if stub:
-            stub_objects = dict(stub.get_objects())
-        req = api_pb2.AppGetObjectsRequest(app_id=self._app_id)
-        resp = await retry_transient_errors(self._client.stub.AppGetObjects, req)
-        for item in resp.items:
-            handle_metadata = get_proto_oneof(item, "handle_metadata_oneof")
-            if item.tag in stub_objects:
-                # This already exists on the stub (typically a function)
-                provider = stub_objects[item.tag]
-                provider._handle._hydrate(item.object_id, self._client, handle_metadata)
-            else:
-                # Can't find the object, create a new one
-                provider = _Provider._new_hydrated(item.object_id, self._client, handle_metadata)
-            self._tag_to_object[item.tag] = provider
 
     @staticmethod
     async def _init_existing(
@@ -198,7 +220,7 @@ class _App:
         obj_resp = await retry_transient_errors(client.stub.AppGetObjects, obj_req)
         app_page_url = f"https://modal.com/apps/{existing_app_id}"  # TODO (elias): this should come from the backend
         object_ids = {item.tag: item.object_id for item in obj_resp.items}
-        return _App(client, existing_app_id, app_page_url, output_mgr, tag_to_existing_id=object_ids)
+        return _App(client, existing_app_id, app_page_url, output_mgr, tag_to_object_id=object_ids)
 
     @staticmethod
     async def _init_new(
@@ -246,7 +268,7 @@ class _App:
             )
 
     async def create_one_object(self, provider: _Provider, environment_name: str) -> None:
-        existing_object_id: Optional[str] = self._tag_to_existing_id.get("_object")
+        existing_object_id: Optional[str] = self._tag_to_object_id.get("_object")
         resolver = Resolver(self._client, environment_name=environment_name, app_id=self.app_id)
         await resolver.load(provider, existing_object_id)
         indexed_object_ids = {"_object": provider.object_id}

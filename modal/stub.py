@@ -151,21 +151,13 @@ class _Stub:
         self._app = None
 
         string_name = self._name or ""
-        existing_stubs = _Stub._all_stubs.setdefault(string_name, [])
 
         if not is_local() and _container_app._stub_name == string_name:
-            if len(existing_stubs) == 1:  # warn the first time we reach a duplicate stub name for the active stub
-                if self._name is None:
-                    warning_sub_message = "unnamed stub"
-                else:
-                    warning_sub_message = f"stub with the same name ('{self._name}')"
-                logger.warning(
-                    f"You have more than one {warning_sub_message}. It's recommended to name all your Stubs uniquely when using multiple stubs"
-                )
+            _container_app._associate_stub(self)
             # note that all stubs with the correct name will get the container app assigned
             self._app = _container_app
 
-        _Stub._all_stubs[string_name].append(self)
+        _Stub._all_stubs.setdefault(string_name, []).append(self)
 
     @property
     def name(self) -> Optional[str]:
