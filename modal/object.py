@@ -181,6 +181,7 @@ class _Provider:
     _load: Optional[Callable[[Resolver, Optional[str], _Handle], Awaitable[None]]]
     _preload: Optional[Callable[[Resolver, Optional[str], _Handle], Awaitable[None]]]
     _handle: _Handle
+    _is_persisted_ref: bool
 
     @classmethod
     def __init_subclass__(cls, type_prefix: Optional[str] = None):
