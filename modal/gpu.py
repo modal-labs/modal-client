@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 from dataclasses import dataclass
 from datetime import date
-from typing import Union, Optional
+from typing import Optional, Union
 
 from modal_proto import api_pb2
 
@@ -30,7 +30,10 @@ class T4(_GPUConfig):
     Low-cost GPU option, providing 16GiB of GPU memory.
     """
 
-    def __init__(self, count: int = 1):
+    def __init__(
+        self,
+        count: int = 1,  # Number of GPUs per container. Defaults to 1. Useful if you have very large models that don't fit on a single GPU.
+    ):
         super().__init__(api_pb2.GPU_TYPE_T4, count, 0)
 
     def __repr__(self):
@@ -44,15 +47,17 @@ class A100(_GPUConfig):
     The most powerful GPU available in the cloud. Available in 20GiB and 40GiB GPU memory configurations.
     """
 
-    def __init__(self, *, count: int = 1, memory: int = 0):
+    def __init__(
+        self,
+        *,
+        count: int = 1,  # Number of GPUs per container. Defaults to 1. Useful if you have very large models that don't fit on a single GPU.
+        memory: int = 0,  # Set this to 20 if you want to use the 20GB version (with half as many cores)
+    ):
         allowed_memory_values = {0, 20, 40}
         if memory not in allowed_memory_values:
             raise ValueError(f"A100s can only have memory values of {allowed_memory_values} => memory={memory}")
 
-        # Multi-GPU workloads require a different GPU type.
         gpu_type = api_pb2.GPU_TYPE_A100
-        if count > 1:
-            gpu_type = api_pb2.GPU_TYPE_A100_40GB_MANY
 
         if memory == 20:
             if count != 1:
@@ -76,7 +81,11 @@ class A10G(_GPUConfig):
     and 3x better graphics performance, in comparison to NVIDIA T4 GPUs.
     """
 
-    def __init__(self, *, count: int = 1):
+    def __init__(
+        self,
+        *,
+        count: int = 1,  # Number of GPUs per container. Defaults to 1. Useful if you have very large models that don't fit on a single GPU.
+    ):
         super().__init__(api_pb2.GPU_TYPE_A10G, count)
 
     def __repr__(self):

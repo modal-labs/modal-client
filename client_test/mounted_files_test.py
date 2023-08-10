@@ -1,14 +1,15 @@
 # Copyright Modal Labs 2022
 import os
 import pytest
-import pytest_asyncio
 import subprocess
 import sys
 from pathlib import Path
 
-from modal._function_utils import FunctionInfo
-from . import helpers
+import pytest_asyncio
 
+from modal._function_utils import FunctionInfo
+
+from . import helpers
 from .supports.skip import skip_windows, skip_windows_unix_socket
 
 

@@ -1,19 +1,16 @@
 # Copyright Modal Labs 2022
-import typing
-from datetime import date
 import inspect
 import os
 import sys
+import typing
 import warnings
-from typing import AsyncGenerator, Callable, Dict, List, Optional, Union, Any, Sequence
+from datetime import date
+from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Union
 
 from synchronicity.async_wrap import asynccontextmanager
+
 from modal._types import typechecked
-
-from modal_proto import api_pb2
-
 from modal_utils.async_utils import synchronize_api, synchronizer
-from .retries import Retries
 
 from ._function_utils import FunctionInfo
 from ._ipython import is_notebook
@@ -22,18 +19,19 @@ from .app import _App, _container_app, is_local
 from .client import _Client
 from .cls import make_remote_cls_constructors
 from .config import logger
-from .exception import InvalidError, deprecation_error, deprecation_warning
-from .functions import _Function, _FunctionHandle, PartialFunction, _PartialFunction
+from .exception import InvalidError, deprecation_warning
+from .functions import PartialFunction, _Function, _FunctionHandle, _PartialFunction
 from .gpu import GPU_T
-from .image import _Image, _ImageHandle
+from .image import _Image
 from .mount import _Mount
+from .network_file_system import _NetworkFileSystem
 from .object import _Provider
 from .proxy import _Proxy
 from .queue import _Queue
+from .retries import Retries
 from .runner import _run_stub
 from .schedule import Schedule
 from .secret import _Secret
-from .network_file_system import _NetworkFileSystem
 from .volume import _Volume
 
 _default_image: _Image = _Image.debian_slim()
@@ -102,11 +100,10 @@ class _Stub:
     _function_mounts: Dict[str, _Mount]
     _mounts: Sequence[_Mount]
     _secrets: Sequence[_Secret]
-    _function_handles: Dict[str, _FunctionHandle]
     _web_endpoints: List[str]  # Used by the CLI
     _local_entrypoints: Dict[str, LocalEntrypoint]
     _app: Optional[_App]
-    _all_stubs: typing.ClassVar[Dict[str, List["_Stub"]]] = {}
+    _all_stubs: ClassVar[Dict[str, List["_Stub"]]] = {}
 
     @typechecked
     def __init__(
@@ -149,28 +146,18 @@ class _Stub:
         self._function_mounts = {}
         self._mounts = mounts
         self._secrets = secrets
-        self._function_handles: Dict[str, _FunctionHandle] = {}
         self._local_entrypoints = {}
         self._web_endpoints = []
-
         self._app = None
 
         string_name = self._name or ""
-        existing_stubs = _Stub._all_stubs.setdefault(string_name, [])
 
         if not is_local() and _container_app._stub_name == string_name:
-            if len(existing_stubs) == 1:  # warn the first time we reach a duplicate stub name for the active stub
-                if self._name is None:
-                    warning_sub_message = "unnamed stub"
-                else:
-                    warning_sub_message = f"stub with the same name ('{self._name}')"
-                logger.warning(
-                    f"You have more than one {warning_sub_message}. It's recommended to name all your Stubs uniquely when using multiple stubs"
-                )
+            _container_app._associate_stub(self)
             # note that all stubs with the correct name will get the container app assigned
             self._app = _container_app
 
-        _Stub._all_stubs[string_name].append(self)
+        _Stub._all_stubs.setdefault(string_name, []).append(self)
 
     @property
     def name(self) -> Optional[str]:
@@ -206,6 +193,16 @@ class _Stub:
             # instead of displaying "_container_entrypoint.py [base64 garbage]"
             return "[unnamed app]"
 
+    def _add_object(self, tag, obj):
+        if self._app and tag in self._app:
+            # If this is inside a container, and some module is loaded lazily, then a function may be
+            # defined later than the container initialization. If this happens then lets hydrate the
+            # function at this point
+            other_obj = self._app[tag]
+            obj._handle._hydrate_from_other(other_obj._handle)
+
+        self._blueprint[tag] = obj
+
     def __getitem__(self, tag: str):
         # Deprecated? Note: this is currently the only way to refer to lifecycled methods on the stub, since they have . in the tag
         return self._blueprint[tag]
@@ -213,7 +210,7 @@ class _Stub:
     def __setitem__(self, tag: str, obj: _Provider):
         self._validate_blueprint_value(tag, obj)
         # Deprecated ?
-        self._blueprint[tag] = obj
+        self._add_object(tag, obj)
 
     def __getattr__(self, tag: str) -> _Provider:
         assert isinstance(tag, str)
@@ -230,7 +227,11 @@ class _Stub:
             object.__setattr__(self, tag, obj)
         else:
             self._validate_blueprint_value(tag, obj)
-            self._blueprint[tag] = obj
+            self._add_object(tag, obj)
+
+    def get_objects(self) -> List[Tuple[str, _Provider]]:
+        """Used by the container app to initialize objects."""
+        return list(self._blueprint.items())
 
     @typechecked
     def is_inside(self, image: Optional[_Image] = None) -> bool:
@@ -247,21 +248,20 @@ class _Stub:
         assert isinstance(image, _Image)
         for tag, provider in self._blueprint.items():
             if provider == image:
-                image_handle = self._app[tag]
                 break
         else:
             raise InvalidError(
                 inspect.cleandoc(
                     """`is_inside` only works for an image associated with an App. For instance:
-                    stub.image = DebianSlim()
+                    stub.image = Image.debian_slim()
                     if stub.is_inside(stub.image):
                         print("I'm inside!")
                     """
                 )
             )
 
-        assert isinstance(image_handle, _ImageHandle)
-        return image_handle._is_inside()
+        assert isinstance(image, _Image)
+        return image._is_inside()
 
     @asynccontextmanager
     async def _set_app(self, app: _App) -> AsyncGenerator[None, None]:
@@ -292,27 +292,6 @@ class _Stub:
         async with _run_stub(self, client, stdout, show_progress, detach, output_mgr) as app:
             yield app
 
-    @typechecked
-    async def deploy(
-        self,
-        name: Optional[
-            str
-        ] = None,  # Unique name of the deployment. Subsequent deploys with the same name overwrites previous ones. Falls back to the app name
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
-        client=None,
-        stdout=None,
-        show_progress=True,
-        object_entity: str = "ap",
-    ) -> _App:
-        """`stub.deploy` is deprecated and no longer supported. Use the `modal deploy` command instead.
-
-        For programmatic usage, use `modal.runner.deploy_stub`
-        """
-        deprecation_error(
-            date(2023, 5, 9),
-            self.deploy.__doc__,
-        )
-
     def _get_default_image(self):
         if "image" in self._blueprint:
             return self._blueprint["image"]
@@ -322,6 +301,14 @@ class _Stub:
     @property
     def _pty_input_stream(self):
         return self._blueprint.get("_pty_input_stream", None)
+
+    def _add_pty_input_stream(self):
+        if self._pty_input_stream:
+            warnings.warn(
+                "Running multiple interactive functions at the same time is not fully supported, and could lead to unexpected behavior."
+            )
+        else:
+            self._blueprint["_pty_input_stream"] = _Queue.new()
 
     def _get_watch_mounts(self):
         all_mounts = [
@@ -333,22 +320,6 @@ class _Stub:
             all_mounts.extend(function._all_mounts)
 
         return [m for m in all_mounts if m.is_local()]
-
-    def _get_function_handle(self, info: FunctionInfo) -> _FunctionHandle:
-        """This can either return a hydrated or an unhydrated _FunctionHandle
-
-        If called from within a container_app that has this function handle,
-        it will return a Hydrated funciton handle, but in all other contexts
-        it will be unhydrated.
-        """
-        tag = info.get_tag()
-        if tag in self._function_handles:
-            return self._function_handles[tag]
-
-        function_handle = _FunctionHandle._new()
-        function_handle._initialize_from_local(self, info)
-        self._function_handles[tag] = function_handle
-        return function_handle  # note that the function handle is not yet hydrated at this point:
 
     def _add_function(self, function: _Function):
         if function.tag in self._blueprint:
@@ -362,12 +333,13 @@ class _Stub:
                     )
             else:
                 logger.warning(f"Warning: tag {function.tag} exists but is overridden by function")
-        self._blueprint[function.tag] = function
+
+        self._add_object(function.tag, function)
 
     @property
-    def registered_functions(self) -> Dict[str, _FunctionHandle]:
+    def registered_functions(self) -> Dict[str, _Function]:
         """All modal.Function objects registered on the stub."""
-        return self._function_handles
+        return {tag: obj for tag, obj in self._blueprint.items() if isinstance(obj, _Function)}
 
     @property
     def registered_entrypoints(self) -> Dict[str, LocalEntrypoint]:
@@ -449,24 +421,28 @@ class _Stub:
             Union[str, os.PathLike], _NetworkFileSystem
         ] = {},  # Deprecated, use `network_file_systems` instead
         network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
-        allow_cross_region_volumes: bool = False,  # Whether using shared volumes from other regions is allowed.
+        allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
         volumes: Dict[Union[str, os.PathLike], _Volume] = {},  # Experimental. Do not use!
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
-        concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
+        concurrency_limit: Optional[
+            int
+        ] = None,  # An optional maximum number of concurrent containers running the function (use keep_warm for minimum).
+        allow_concurrent_inputs: Optional[int] = None,  # Number of inputs the container may fetch to run concurrently.
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
-        interactive: bool = False,  # Whether to run the function in interactive mode.
-        keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
+        interactive: bool = False,  # Whether to run the function in interactive mode./
+        keep_warm: Optional[
+            int
+        ] = None,  # An optional minimum number of containers to always keep warm (use concurrency_limit for maximum).
         name: Optional[str] = None,  # Sets the Modal name of the function within the stub
         is_generator: Optional[
             bool
         ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
-        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
-        _cls: Optional[type] = None,  # Used for methods only
-    ) -> Callable[[Union[_PartialFunction, Callable[..., Any]]], _FunctionHandle]:
+        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
+    ) -> Callable[..., _FunctionHandle]:
         """Decorator to register a new Modal function with this stub."""
         if image is None:
             image = self._get_default_image()
@@ -480,56 +456,39 @@ class _Stub:
             )
             network_file_systems = {**network_file_systems, **shared_volumes}
 
-        def wrapped(f: Union[_PartialFunction, Callable[..., Any]]) -> _FunctionHandle:
+        def wrapped(
+            f: Union[_PartialFunction, Callable[..., Any]],
+            _cls: Optional[type] = None,  # Used for methods only
+        ) -> _FunctionHandle:
             is_generator_override: Optional[bool] = is_generator
 
             if isinstance(f, _PartialFunction):
                 f.wrapped = True
-                info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
+                info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name, cls=_cls)
                 raw_f = f.raw_f
                 webhook_config = f.webhook_config
                 is_generator_override = f.is_generator
                 if webhook_config:
                     self._web_endpoints.append(info.get_tag())
             else:
-                info = FunctionInfo(f, serialized=serialized, name_override=name)
+                info = FunctionInfo(f, serialized=serialized, name_override=name, cls=_cls)
                 webhook_config = None
                 raw_f = f
 
             if not _cls and not info.is_serialized() and "." in info.function_name:  # This is a method
-                deprecation_error(
-                    date(2023, 4, 20),
-                    inspect.cleandoc(
-                        """@stub.function on methods is deprecated and no longer supported.
-
-                        Use the @stub.cls and @method decorators. Usage:
-
-                        ```
-                        @stub.cls(cpu=8)
-                        class MyCls:
-                            @method()
-                            def f(self):
-                                ...
-                        ```
-                        """
-                    ),
+                raise InvalidError(
+                    "`stub.function` on methods is not allowed. See https://modal.com/docs/guide/lifecycle-functions instead"
                 )
 
-            function_handle = self._get_function_handle(info)
+            info.get_tag()
 
             if is_generator_override is None:
                 is_generator_override = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
 
             if interactive:
-                if self._pty_input_stream:
-                    warnings.warn(
-                        "Running multiple interactive functions at the same time is not fully supported, and could lead to unexpected behavior."
-                    )
-                else:
-                    self._blueprint["_pty_input_stream"] = _Queue.new()
+                self._add_pty_input_stream()
 
             function = _Function.from_args(
-                function_handle,
                 info,
                 stub=self,
                 image=image,
@@ -546,6 +505,7 @@ class _Stub:
                 proxy=proxy,
                 retries=retries,
                 concurrency_limit=concurrency_limit,
+                allow_concurrent_inputs=allow_concurrent_inputs,
                 container_idle_timeout=container_idle_timeout,
                 timeout=timeout,
                 cpu=cpu,
@@ -558,66 +518,9 @@ class _Stub:
             )
 
             self._add_function(function)
-            return function_handle
+            return function
 
         return wrapped
-
-    @typechecked
-    def web_endpoint(
-        self,
-        method: str = "GET",  # REST method for the created endpoint.
-        label: Optional[
-            str
-        ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
-        wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-    ):
-        """`stub.web_endpoint` is deprecated and no longer supported. Use `modal.web_endpoint` instead. Usage:
-
-        ```python
-        from modal import Stub, web_endpoint
-
-        stub = Stub()
-        @stub.function(cpu=42)
-        @web_endpoint(method="POST")
-        def my_function():
-            ...
-        ```"""
-        deprecation_error(
-            date(2023, 4, 18),
-            self.web_endpoint.__doc__,
-        )
-
-    @typechecked
-    def asgi_app(
-        self,
-        label: Optional[
-            str
-        ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
-        wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-    ):
-        """`stub.asgi_app` is deprecated and no longer supported. Use `modal.asgi_app` instead."""
-        deprecation_error(date(2023, 4, 18), self.asgi_app.__doc__)
-
-    @typechecked
-    def wsgi_app(
-        self,
-        label: Optional[
-            str
-        ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
-        wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-    ):
-        """`stub.wsgi_app` is deprecated and no longer supported. Use `modal.wsgi_app` instead."""
-        deprecation_error(date(2023, 4, 18), self.wsgi_app.__doc__)
-
-    async def interactive_shell(self, cmd=None, image=None, **kwargs):
-        """`stub.interactive_shell` is deprecated and no longer supported. Use the `modal shell` command instead.
-
-        For programmatic usage, use `modal.runner.interactive_shell`
-        """
-        deprecation_error(
-            date(2023, 5, 9),
-            self.interactive_shell.__doc__,
-        )
 
     def cls(
         self,
@@ -631,69 +534,60 @@ class _Stub:
             Union[str, os.PathLike], _NetworkFileSystem
         ] = {},  # Deprecated, use `network_file_systems` instead
         network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
-        allow_cross_region_volumes: bool = False,  # Whether using shared volumes from other regions is allowed.
+        allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
         volumes: Dict[Union[str, os.PathLike], _Volume] = {},  # Experimental. Do not use!
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
+        allow_concurrent_inputs: Optional[int] = None,  # Number of inputs the container may fetch to run concurrently.
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         interactive: bool = False,  # Whether to run the function in interactive mode.
         keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
-        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
+        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
     ) -> Callable[[CLS_T], CLS_T]:
+        decorator: Callable[[PartialFunction, type], _FunctionHandle] = self.function(
+            image=image,
+            secret=secret,
+            secrets=secrets,
+            gpu=gpu,
+            serialized=serialized,
+            mounts=mounts,
+            shared_volumes=shared_volumes,
+            network_file_systems=network_file_systems,
+            allow_cross_region_volumes=allow_cross_region_volumes,
+            volumes=volumes,
+            cpu=cpu,
+            memory=memory,
+            proxy=proxy,
+            retries=retries,
+            concurrency_limit=concurrency_limit,
+            allow_concurrent_inputs=allow_concurrent_inputs,
+            container_idle_timeout=container_idle_timeout,
+            timeout=timeout,
+            interactive=interactive,
+            keep_warm=keep_warm,
+            cloud=cloud,
+        )
+
         def wrapper(user_cls: CLS_T) -> CLS_T:
             partial_functions: Dict[str, PartialFunction] = {}
-            function_handles: Dict[str, _FunctionHandle] = {}
+            functions: Dict[str, _Function] = {}
 
             for k, v in user_cls.__dict__.items():
                 if isinstance(v, PartialFunction):
                     partial_functions[k] = v
                     partial_function = synchronizer._translate_in(v)  # TODO: remove need for?
-                    function_handles[k] = self.function(
-                        _cls=user_cls,
-                        image=image,
-                        secret=secret,
-                        secrets=secrets,
-                        gpu=gpu,
-                        serialized=serialized,
-                        mounts=mounts,
-                        shared_volumes=shared_volumes,
-                        network_file_systems=network_file_systems,
-                        allow_cross_region_volumes=allow_cross_region_volumes,
-                        volumes=volumes,
-                        cpu=cpu,
-                        memory=memory,
-                        proxy=proxy,
-                        retries=retries,
-                        concurrency_limit=concurrency_limit,
-                        container_idle_timeout=container_idle_timeout,
-                        timeout=timeout,
-                        interactive=interactive,
-                        keep_warm=keep_warm,
-                        cloud=cloud,
-                    )(partial_function)
+                    functions[k] = decorator(partial_function, user_cls)
 
-            _PartialFunction.initialize_cls(user_cls, function_handles)
-            remote = make_remote_cls_constructors(user_cls, partial_functions, function_handles)
+            _PartialFunction.initialize_cls(user_cls, functions)
+            remote = make_remote_cls_constructors(user_cls, partial_functions, functions)
             user_cls.remote = remote
             return user_cls
 
         return wrapper
-
-    def _hydrate_function_handles(self, client: _Client, container_app: _App):
-        for tag, obj in container_app._tag_to_object.items():
-            if isinstance(obj, _FunctionHandle):
-                function_id = obj.object_id
-                handle_metadata = obj._get_handle_metadata()
-                if tag not in self._function_handles:
-                    # this could happen if a sibling function decoration is lazy loaded at a later than function import
-                    # assigning the app's hydrated function handle ensures it will be used for the later decoration return value
-                    self._function_handles[tag] = obj
-                else:
-                    self._function_handles[tag]._hydrate(client, function_id, handle_metadata)
 
     def _get_deduplicated_function_mounts(self, mounts: Dict[str, _Mount]):
         cached_mounts = []

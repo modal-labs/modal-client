@@ -3,7 +3,6 @@ import datetime
 
 from modal.exception import deprecation_error
 
-
 deprecation_error(
     datetime.date(2023, 5, 12),
     "The `modal.aio` module and `Aio*` classes have been deprecated.\n"

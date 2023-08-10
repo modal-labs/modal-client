@@ -3,14 +3,14 @@ import pathlib
 import pytest
 import subprocess
 import sys
+
 from fastapi.testclient import TestClient
 
-from modal_proto import api_pb2
-from modal import App, Stub, web_endpoint, asgi_app, wsgi_app
-from modal.functions import FunctionHandle
-from modal.exception import DeprecationError, InvalidError
+from modal import App, Stub, asgi_app, web_endpoint, wsgi_app
 from modal._asgi import webhook_asgi_app
-
+from modal.exception import InvalidError
+from modal.functions import Function
+from modal_proto import api_pb2
 
 stub = Stub()
 
@@ -19,14 +19,6 @@ stub = Stub()
 @web_endpoint(method="PATCH")
 async def f(x):
     return {"square": x**2}
-
-
-with pytest.raises(DeprecationError):
-
-    @stub.function(cpu=42)
-    @stub.web_endpoint(method="POST")
-    async def g(x):
-        return {"square": x**2}
 
 
 @pytest.mark.asyncio
@@ -44,7 +36,8 @@ async def test_webhook(servicer, client):
 
         # Make sure the container gets the app id as well
         container_app = await App.init_container.aio(client, app.app_id)
-        assert isinstance(container_app.f, FunctionHandle)
+        container_app._associate_stub(stub)
+        assert isinstance(container_app.f, Function)
         assert container_app.f.web_url
 
 

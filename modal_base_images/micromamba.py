@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
-import sys
 import asyncio
+import sys
 
 from modal import Image, Stub
 

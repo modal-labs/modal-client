@@ -1,20 +1,18 @@
 # Copyright Modal Labs 2022
 import asyncio
 import inspect
-import typing
 import pytest
 import time
+import typing
 
 import cloudpickle
-
 from synchronicity.exceptions import UserCodeException
 
-from modal_proto import api_pb2
-
-from modal import Proxy, Stub, NetworkFileSystem, web_endpoint, asgi_app, wsgi_app
+from modal import NetworkFileSystem, Proxy, Stub, asgi_app, web_endpoint, wsgi_app
 from modal.exception import DeprecationError, InvalidError
-from modal.functions import Function, FunctionCall, gather, FunctionHandle
+from modal.functions import Function, FunctionCall, FunctionHandle, gather
 from modal.runner import deploy_stub
+from modal_proto import api_pb2
 
 stub = Stub()
 
@@ -39,6 +37,12 @@ def test_run_function(client, servicer):
         assert foo.call(2, 4) == 20
         assert len(servicer.cleared_function_calls) == 1
 
+        # Make sure we can also call the Function object
+        fun = stub.foo
+        assert isinstance(fun, Function)
+        assert fun.call(2, 4) == 20
+        assert len(servicer.cleared_function_calls) == 2
+
 
 @pytest.mark.asyncio
 async def test_call_function_locally(client, servicer):
@@ -51,6 +55,12 @@ async def test_call_function_locally(client, servicer):
         assert await async_foo(22, 44) == 78
         assert async_foo.call(2, 4) == 20
         assert await async_foo.call.aio(2, 4) == 20
+
+        # Make sure we can also call the Function object
+        assert isinstance(stub.foo, Function)
+        assert isinstance(stub.async_foo, Function)
+        assert stub.foo(22, 55) == 88
+        assert await stub.async_foo(22, 44) == 78
 
 
 @pytest.mark.parametrize("slow_put_inputs", [False, True])
@@ -68,6 +78,12 @@ def test_map(client, servicer, slow_put_inputs):
         assert set(dummy_modal.map([5, 2], [4, 3], order_outputs=False)) == {13, 41}
         assert len(servicer.cleared_function_calls) == 2
 
+        # Make sure we can map on the Function object too
+        fun = stub.dummy
+        assert isinstance(fun, Function)
+        assert list(fun.map([5, 2], [4, 3])) == [41, 13]
+        assert len(servicer.cleared_function_calls) == 3
+
 
 _side_effect_count = 0
 
@@ -83,7 +99,13 @@ def test_for_each(client, servicer):
     assert _side_effect_count == 0
     with stub.run(client=client):
         side_effect_modal.for_each(range(10))
-    assert _side_effect_count == 10
+
+        # Call stub function too
+        fun = stub.side_effect
+        assert isinstance(fun, Function)
+        fun.for_each(range(10))
+
+    assert _side_effect_count == 20
 
 
 def custom_function(x):
@@ -459,8 +481,8 @@ def test_closure_valued_serialized_function(client, servicer):
     assert functions["ret_bar"]() == "bar"
 
 
-def test_from_id_internal(client, servicer):
-    obj = FunctionCall._from_id("fc-123", client, None)
+def test_new_hydrated_internal(client, servicer):
+    obj = FunctionCall._new_hydrated("fc-123", client, None)
     assert obj.object_id == "fc-123"
 
 
@@ -505,14 +527,6 @@ def f(x):
     return x**2
 
 
-with pytest.raises(DeprecationError):
-
-    class Class:
-        @lc_stub.function()
-        def f(self, x):
-            return x**2
-
-
 def test_allow_cross_region_volumes(client, servicer):
     stub = Stub()
     vol1, vol2 = NetworkFileSystem.new(), NetworkFileSystem.new()
@@ -555,7 +569,7 @@ def test_shared_volumes(client, servicer):
 
 
 def test_serialize_deserialize_function_handle(servicer, client):
-    from modal._serialization import serialize, deserialize
+    from modal._serialization import deserialize, serialize
 
     stub = Stub()
 
@@ -572,7 +586,7 @@ def test_serialize_deserialize_function_handle(servicer, client):
 
     rehydrated_function_handle = deserialize(blob, client)
     assert rehydrated_function_handle.object_id == my_handle.object_id
-    assert isinstance(rehydrated_function_handle, FunctionHandle)
+    assert isinstance(rehydrated_function_handle, Function)
     assert rehydrated_function_handle.web_url == "http://xyz.internal"
 
 

@@ -24,19 +24,19 @@ async def test_use_object(client):
         assert running_app["my_q"].object_id == "qu-foo"
 
 
-def test_from_id(client):
-    from modal.object import _Handle
+def test_new_hydrated(client):
     from modal.dict import _DictHandle
+    from modal.object import _Handle
     from modal.queue import _QueueHandle
 
-    assert isinstance(_DictHandle._from_id("di-123", client, None), _DictHandle)
-    assert isinstance(_QueueHandle._from_id("qu-123", client, None), _QueueHandle)
+    assert isinstance(_DictHandle._new_hydrated("di-123", client, None), _DictHandle)
+    assert isinstance(_QueueHandle._new_hydrated("qu-123", client, None), _QueueHandle)
 
     with pytest.raises(InvalidError):
-        _QueueHandle._from_id("di-123", client, None)  # Wrong prefix for type
+        _QueueHandle._new_hydrated("di-123", client, None)  # Wrong prefix for type
 
-    assert isinstance(_Handle._from_id("qu-123", client, None), _QueueHandle)
-    assert isinstance(_Handle._from_id("di-123", client, None), _DictHandle)
+    assert isinstance(_Handle._new_hydrated("qu-123", client, None), _QueueHandle)
+    assert isinstance(_Handle._new_hydrated("di-123", client, None), _DictHandle)
 
     with pytest.raises(InvalidError):
-        _Handle._from_id("xy-123", client, None)
+        _Handle._new_hydrated("xy-123", client, None)

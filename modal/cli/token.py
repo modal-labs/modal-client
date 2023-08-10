@@ -1,11 +1,11 @@
 # Copyright Modal Labs 2022
 import getpass
-from typing import Optional
 import webbrowser
+from typing import Optional
 
 import rich
-from rich.console import Console
 import typer
+from rich.console import Console
 
 from modal.client import Client
 from modal.config import _store_user_config, config, user_config_path
@@ -43,11 +43,11 @@ def set(
 
 
 @token_cli.command(help="Creates a new token by using an authenticated web session.")
-def new(profile: Optional[str] = profile_option, no_verify: bool = False):
+def new(profile: Optional[str] = profile_option, no_verify: bool = False, source: Optional[str] = None):
     server_url = config.get("server_url", profile=profile)
 
     with Client.unauthenticated_client(server_url) as client:
-        token_flow_id, web_url = client.start_token_flow()
+        token_flow_id, web_url = client.start_token_flow(source)
         console = Console()
         with console.status("Waiting for authentication in the web browser...", spinner="dots"):
             # Open the web url in the browser

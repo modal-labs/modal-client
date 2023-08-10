@@ -1,11 +1,12 @@
 # Copyright Modal Labs 2022
 import asyncio
 import datetime
+import functools
 import inspect
 import sys
 import time
 import warnings
-from typing import Optional
+from typing import Any, Optional
 
 import click
 import typer
@@ -14,14 +15,23 @@ from synchronicity import Interface
 
 from modal.config import config
 from modal.exception import InvalidError
-from modal.runner import run_stub, deploy_stub, interactive_shell
+from modal.runner import deploy_stub, interactive_shell, run_stub
 from modal.serving import serve_stub
 from modal.stub import LocalEntrypoint
 from modal_utils.async_utils import synchronizer
+
 from ..environments import ensure_env
+from ..functions import _FunctionHandle
 from .import_refs import import_function, import_stub
 from .utils import ENV_OPTION, ENV_OPTION_HELP
-from ..functions import _FunctionHandle
+
+
+class AnyParamType(click.ParamType):
+    name = "any"
+
+    def convert(self, value, param, ctx):
+        return value
+
 
 # Why do we need to support both types and the strings? Because something weird with
 # how __annotations__ works in Python (which inspect.signature uses). See #220.
@@ -36,6 +46,7 @@ option_parsers = {
     "bool": bool,
     datetime.datetime: click.DateTime(),
     "datetime.datetime": click.DateTime(),
+    Any: AnyParamType(),
 }
 
 
@@ -49,7 +60,7 @@ def _add_click_options(func, signature: inspect.Signature):
     Kind of like typer, but using options instead of positional arguments
     """
     for param in signature.parameters.values():
-        param_type = str if param.annotation is inspect.Signature.empty else param.annotation
+        param_type = Any if param.annotation is inspect.Signature.empty else param.annotation
         param_name = param.name.replace("_", "-")
         cli_name = "--" + param_name
         if param_type in (bool, "bool"):
@@ -57,7 +68,7 @@ def _add_click_options(func, signature: inspect.Signature):
         parser = option_parsers.get(param_type)
         if parser is None:
             raise NoParserAvailable(repr(param_type))
-        kwargs = {
+        kwargs: Any = {
             "type": parser,
         }
         if param.default is not inspect.Signature.empty:
@@ -83,7 +94,11 @@ def _get_click_command_for_function(_stub, function_tag):
     blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
 
     _function = _stub[function_tag]
-    raw_func = _function._info.raw_f
+    if _function._info.cls is not None:
+        obj = _function._info.cls()
+        raw_func = functools.partial(_function._info.raw_f, obj)
+    else:
+        raw_func = _function._info.raw_f
 
     @click.pass_context
     def f(ctx, *args, **kwargs):
@@ -123,7 +138,7 @@ def _get_click_command_for_local_entrypoint(_stub, entrypoint: LocalEntrypoint):
                 asyncio.run(func(*args, **kwargs))
             else:
                 func(*args, **kwargs)
-            if app.function_invocations == 0:
+            if app.client.function_invocations == 0:
                 # TODO: better formatting for the warning message
                 warnings.warn(
                     "Warning: no remote function calls were made.\n"
@@ -275,14 +290,8 @@ def shell(
         func_ref, accept_local_entrypoint=False, accept_webhook=True, interactive=True, base_cmd="modal shell"
     )
     assert isinstance(_function_handle, _FunctionHandle)  # ensured by accept_local_entrypoint=False
-    _stub = _function_handle._stub
-    _function = _function_handle._get_function()
-    blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
-    blocking_function = synchronizer._translate_out(_function, Interface.BLOCKING)
-
     interactive_shell(
-        blocking_stub,
+        _function_handle,
         cmd,
-        blocking_function,
         environment_name=env,
     )

@@ -9,7 +9,9 @@ import sys
 import traceback
 from typing import Optional, Tuple, no_type_check
 
-from modal.queue import _QueueHandle
+import rich
+
+from modal.queue import _Queue
 from modal_proto import api_pb2
 from modal_utils.async_utils import TaskContext, asyncify
 
@@ -105,6 +107,9 @@ def run_in_pty(fn, queue, pty_info: api_pb2.PTYInfo):
     import pty
     import threading
 
+    if pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
+        fn = exec_cmd
+
     @functools.wraps(fn)
     def wrapped_fn(*args, **kwargs):
         write_fd, read_fd = pty.openpty()
@@ -137,20 +142,21 @@ def run_in_pty(fn, queue, pty_info: api_pb2.PTYInfo):
     return wrapped_fn
 
 
-def get_pty_info() -> api_pb2.PTYInfo:
+def get_pty_info(shell: bool) -> api_pb2.PTYInfo:
     rows, cols = get_winsz(sys.stdin.fileno())
     return api_pb2.PTYInfo(
-        enabled=True,
+        enabled=True,  # TODO(erikbern): deprecated
         winsz_rows=rows,
         winsz_cols=cols,
         env_term=os.environ.get("TERM"),
         env_colorterm=os.environ.get("COLORTERM"),
         env_term_program=os.environ.get("TERM_PROGRAM"),
+        pty_type=api_pb2.PTYInfo.PTY_TYPE_SHELL if shell else api_pb2.PTYInfo.PTY_TYPE_FUNCTION,
     )
 
 
 @contextlib.asynccontextmanager
-async def write_stdin_to_pty_stream(queue: _QueueHandle):
+async def write_stdin_to_pty_stream(queue: _Queue):
     if platform.system() == "Windows":
         raise InvalidError("Interactive mode is not currently supported on Windows.")
 
@@ -168,7 +174,6 @@ async def write_stdin_to_pty_stream(queue: _QueueHandle):
         return sys.stdin.buffer.read()
 
     async def _write():
-        await queue.put(b"\n")
         while True:
             char = await _read_char()
             if char is None:
@@ -186,9 +191,9 @@ async def write_stdin_to_pty_stream(queue: _QueueHandle):
 def exec_cmd(cmd: str = None):
     run_cmd = cmd or os.environ.get("SHELL", "sh")
 
-    print(f"Spawning {run_cmd}.")
+    rich.print(f"[yellow]Spawning [bold]{run_cmd}[/bold][/yellow]")
 
     # TODO: support args.
     argv = [run_cmd]
 
-    os.execlp(argv[0], *argv)
+    os.execvp(argv[0], argv)

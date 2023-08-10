@@ -20,11 +20,11 @@ from typer import Typer
 
 import modal
 from modal._location import display_location
-from modal._output import step_progress, step_completed
-from modal.environments import ensure_env
-from modal.cli.utils import display_table, ENV_OPTION
+from modal._output import step_completed, step_progress
+from modal.cli.utils import ENV_OPTION, display_table
 from modal.client import _Client
-from modal.network_file_system import _NetworkFileSystemHandle, _NetworkFileSystem
+from modal.environments import ensure_env
+from modal.network_file_system import _NetworkFileSystem
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
 from modal_utils.grpc_utils import retry_transient_errors
@@ -32,16 +32,10 @@ from modal_utils.grpc_utils import retry_transient_errors
 FileType = api_pb2.SharedVolumeListFilesEntry.FileType
 
 
-def depr_cmd(cmd):
-    return f"DEPRECATED! Use `{cmd}` instead!"
+nfs_cli = Typer(name="nfs", help="Read and edit modal.NetworkFileSystem volumes.", no_args_is_help=True)
 
 
-nfs_cli = Typer(name="nfs", help="Read and edit shared volumes.", no_args_is_help=True)
-vol_cli = Typer(name="volume", help=depr_cmd("modal nfs"), no_args_is_help=True, hidden=True)
-
-
-@vol_cli.command(name="list", help=depr_cmd("modal nfs list"), deprecated=True)
-@nfs_cli.command(name="list", help="List the names of all shared volumes.")
+@nfs_cli.command(name="list", help="List the names of all network file systems.")
 @synchronizer.create_blocking
 async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     env = ensure_env(env)
@@ -73,11 +67,10 @@ def some_func():
 """
 
 
-@vol_cli.command(name="create", help=depr_cmd("modal nfs create"), deprecated=True)
-@nfs_cli.command(name="create", help="Create a named shared volume.")
+@nfs_cli.command(name="create", help="Create a named network file system.")
 def create(
     name: str,
-    cloud: str = typer.Option("aws", help="Cloud provider to create the volume in. One of aws|gcp."),
+    cloud: str = typer.Option("aws", help="Cloud provider to create the file system in. One of aws|gcp."),
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
@@ -89,17 +82,16 @@ def create(
     console.print(usage)
 
 
-async def _volume_from_name(deployment_name: str) -> _NetworkFileSystemHandle:
+async def _volume_from_name(deployment_name: str) -> _NetworkFileSystem:
     network_file_system = await _NetworkFileSystem.lookup(
         deployment_name, environment_name=None
     )  # environment None will take value from config
-    if not isinstance(network_file_system, _NetworkFileSystemHandle):
-        raise Exception("The specified app entity is not a shared volume")
+    if not isinstance(network_file_system, _NetworkFileSystem):
+        raise Exception("The specified app entity is not a network file system")
     return network_file_system
 
 
-@vol_cli.command(name="ls", help=depr_cmd("modal nfs ls"), deprecated=True)
-@nfs_cli.command(name="ls", help="List files and directories in a shared volume.")
+@nfs_cli.command(name="ls", help="List files and directories in a network file system.")
 @synchronizer.create_blocking
 async def ls(
     volume_name: str,
@@ -135,10 +127,9 @@ async def ls(
 PIPE_PATH = Path("-")
 
 
-@vol_cli.command(name="put", help=depr_cmd("modal nfs put"), deprecated=True)
 @nfs_cli.command(
     name="put",
-    help="""Upload a file or directory to a shared volume.
+    help="""Upload a file or directory to a network file system.
 
 Remote parent directories will be created as needed.
 
@@ -180,9 +171,7 @@ class CliError(Exception):
         self.message = message
 
 
-async def _glob_download(
-    volume: _NetworkFileSystemHandle, remote_glob_path: str, local_destination: Path, overwrite: bool
-):
+async def _glob_download(volume: _NetworkFileSystem, remote_glob_path: str, local_destination: Path, overwrite: bool):
     q: asyncio.Queue[Tuple[Optional[Path], Optional[api_pb2.SharedVolumeListFilesEntry]]] = asyncio.Queue()
 
     async def producer():
@@ -227,7 +216,6 @@ async def _glob_download(
     await asyncio.gather(*tasks)
 
 
-@vol_cli.command(name="get", help=depr_cmd("modal nfs get"), deprecated=True)
 @nfs_cli.command(name="get")
 @synchronizer.create_blocking
 async def get(
@@ -237,15 +225,15 @@ async def get(
     force: bool = False,
     env: Optional[str] = ENV_OPTION,
 ):
-    """Download a file from a shared volume.
+    """Download a file from a network file system.
 
     Specifying a glob pattern (using any `*` or `**` patterns) as the `remote_path` will download all matching *files*, preserving
     the source directory structure for the matched files.
 
-    For example, to download an entire shared volume into `dump_volume`:
+    For example, to download an entire network file system into `dump_volume`:
 
     ```bash
-    modal volume get <volume-name> "**" dump_volume
+    modal nfs get <volume-name> "**" dump_volume
     ```
 
     Use "-" (a hyphen) as LOCAL_DESTINATION to write contents of file to stdout (only for non-glob paths).
@@ -294,8 +282,7 @@ async def get(
         print(f"Wrote {b} bytes to '{destination}'", file=sys.stderr)
 
 
-@vol_cli.command(name="rm", help=depr_cmd("modal nfs rm"), deprecated=True)
-@nfs_cli.command(name="rm", help="Delete a file or directory from a shared volume.")
+@nfs_cli.command(name="rm", help="Delete a file or directory from a network file system.")
 @synchronizer.create_blocking
 async def rm(
     volume_name: str,

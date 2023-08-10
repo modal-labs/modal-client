@@ -5,7 +5,7 @@ import sys
 import typing
 from datetime import date
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import toml
 from grpclib.exceptions import GRPCError, StreamTerminatedError
@@ -13,17 +13,18 @@ from grpclib.exceptions import GRPCError, StreamTerminatedError
 from modal._types import typechecked
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
-from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, unary_stream
+from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
+
 from ._function_utils import FunctionInfo
 from ._resolver import Resolver
 from .app import is_local
 from .config import config, logger
-from .exception import InvalidError, NotFoundError, RemoteError, deprecation_warning
+from .exception import InvalidError, NotFoundError, RemoteError, deprecation_error, deprecation_warning
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount
+from .network_file_system import _NetworkFileSystem
 from .object import _Handle, _Provider
 from .secret import _Secret
-from .network_file_system import _NetworkFileSystem
 
 
 def _validate_python_version(version: str) -> None:
@@ -90,14 +91,7 @@ def _flatten_str_args(function_name: str, arg_name: str, args: Tuple[Union[str, 
 
 
 class _ImageHandle(_Handle, type_prefix="im"):
-    def _is_inside(self) -> bool:
-        """Returns whether this container is active or not.
-
-        This is not meant to be called directly: see app.is_inside(image)
-        """
-        env_image_id = config.get("image_id")
-        logger.debug(f"Image._is_inside(): env_image_id={env_image_id} self.object_id={self.object_id}")
-        return self.object_id == env_image_id
+    pass
 
 
 class _ImageRegistryConfig:
@@ -105,7 +99,7 @@ class _ImageRegistryConfig:
 
     def __init__(
         self,
-        registry_type: "api_pb2.RegistryType.ValueType" = api_pb2.RegistryType.DOCKERHUB,
+        registry_type: int = api_pb2.RegistryType.DOCKERHUB,
         secret: Optional[_Secret] = None,
     ):
         self.registry_type = registry_type
@@ -124,7 +118,7 @@ if typing.TYPE_CHECKING:
     import modal.functions
 
 
-class _Image(_Provider[_ImageHandle]):
+class _Image(_Provider, type_prefix="im"):
     """Base class for container images to run functions in.
 
     Do not construct this class directly; instead use one of its static factory methods,
@@ -147,7 +141,7 @@ class _Image(_Provider[_ImageHandle]):
         image_registry_config: Optional[_ImageRegistryConfig] = None,
         force_build: bool = False,
         # For internal use only.
-        _namespace: "api_pb2.DeploymentNamespace.ValueType" = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        _namespace: int = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
     ):
         if gpu_config is None:
             gpu_config = api_pb2.GPUConfig()
@@ -170,10 +164,10 @@ class _Image(_Provider[_ImageHandle]):
         if build_function and len(base_images) != 1:
             raise InvalidError("Cannot run a build function with multiple base images!")
 
-        async def _load(resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(resolver: Resolver, existing_object_id: Optional[str], handle: _ImageHandle):
             if ref:
                 image_id = (await resolver.load(ref)).object_id
-                return _ImageHandle._from_id(image_id, resolver.client, None)
+                handle._hydrate(image_id, resolver.client, None)
 
             # Recursively build base images
             base_image_ids: List[str] = []
@@ -238,7 +232,7 @@ class _Image(_Provider[_ImageHandle]):
                 force_build=force_build,
                 namespace=_namespace,
             )
-            resp = await resolver.client.stub.ImageGetOrCreate(req)
+            resp = await retry_transient_errors(resolver.client.stub.ImageGetOrCreate, req)
             image_id = resp.image_id
 
             logger.debug("Waiting for image %s" % image_id)
@@ -287,7 +281,7 @@ class _Image(_Provider[_ImageHandle]):
             else:
                 raise RemoteError("Unknown status %s!" % result.status)
 
-            return _ImageHandle._from_id(image_id, resolver.client, None)
+            handle._hydrate(image_id, resolver.client, None)
 
         rep = f"Image({dockerfile_commands})"
         obj = _Image._from_loader(_load, rep)
@@ -340,7 +334,7 @@ class _Image(_Provider[_ImageHandle]):
         )
 
     def copy(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
-        deprecation_warning(
+        deprecation_error(
             date(2023, 5, 21),
             "`Image.copy` is deprecated in favor of `Image.copy_mount`, `Image.copy_local_file`,"
             " and `Image.copy_local_dir`.",
@@ -524,7 +518,7 @@ class _Image(_Provider[_ImageHandle]):
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ) -> "_Image":
-        """Install a list of Python packages from a `requirements.txt` file."""
+        """Install a list of Python packages from a local `requirements.txt` file."""
 
         requirements_txt = os.path.expanduser(requirements_txt)
 
@@ -555,12 +549,12 @@ class _Image(_Provider[_ImageHandle]):
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ) -> "_Image":
-        """Install dependencies specified by a `pyproject.toml` file.
+        """Install dependencies specified by a local `pyproject.toml` file.
 
-        When `optional_dependencies`, a list of the keys of the
+        `optional_dependencies` is a list of the keys of the
         optional-dependencies section(s) of the `pyproject.toml` file
-        (e.g. test, doc, experiment, etc), is provided,
-        all of those packages in each section are installed as well."""
+        (e.g. test, doc, experiment, etc). When provided,
+        all of the packages in each listed section are installed as well."""
         from modal.app import is_local
 
         # Don't re-run inside container.
@@ -598,9 +592,9 @@ class _Image(_Provider[_ImageHandle]):
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ) -> "_Image":
-        """Install poetry *dependencies* specified by a pyproject.toml file.
+        """Install poetry *dependencies* specified by a local `pyproject.toml` file.
 
-        The path to the lockfile is inferred, if not provided. However, the
+        If not provided as argument the path to the lockfile is inferred. However, the
         file has to exist, unless `ignore_lockfile` is set to `True`.
 
         Note that the root project of the poetry project is not installed,
@@ -778,7 +772,7 @@ class _Image(_Provider[_ImageHandle]):
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ) -> "_Image":
-        """Install a list of additional packages using conda. Note that in most cases, using `Image.micromamba()`
+        """Install a list of additional packages using Conda. Note that in most cases, using `Image.micromamba()`
         is recommended over `Image.conda()`, as it leads to significantly faster image build times."""
 
         pkgs = _flatten_str_args("conda_install", "packages", packages)
@@ -811,7 +805,7 @@ class _Image(_Provider[_ImageHandle]):
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ) -> "_Image":
-        """Update conda environment using dependencies from a given environment.yml file."""
+        """Update a Conda environment using dependencies from a given environment.yml file."""
 
         environment_yml = os.path.expanduser(environment_yml)
 
@@ -838,7 +832,7 @@ class _Image(_Provider[_ImageHandle]):
         python_version: str = "3.9",
         force_build: bool = False,
     ) -> "_Image":
-        """A Micromamba base image. Micromamba allows for fast building of small conda-based containers."""
+        """A Micromamba base image. Micromamba allows for fast building of small Conda-based containers."""
         _validate_python_version(python_version)
 
         return _Image.from_dockerhub(
@@ -1152,7 +1146,6 @@ class _Image(_Provider[_ImageHandle]):
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         timeout: Optional[int] = 86400,  # Maximum execution time of the function in seconds.
-        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
         force_build: bool = False,
     ) -> "_Image":
         """Run user-defined function `raw_function` as an image build step. The function runs just like an ordinary Modal
@@ -1180,10 +1173,9 @@ class _Image(_Provider[_ImageHandle]):
         )
         ```
         """
-        from .functions import _Function, _FunctionHandle
+        from .functions import _Function
 
         info = FunctionInfo(raw_f)
-        function_handle = _FunctionHandle._new()
 
         if shared_volumes:
             deprecation_warning(
@@ -1193,7 +1185,6 @@ class _Image(_Provider[_ImageHandle]):
             network_file_systems = {**network_file_systems, **shared_volumes}
 
         function = _Function.from_args(
-            function_handle,
             info,
             stub=None,
             image=self,
@@ -1205,7 +1196,6 @@ class _Image(_Provider[_ImageHandle]):
             memory=memory,
             timeout=timeout,
             cpu=cpu,
-            cloud=cloud,
             is_builder_function=True,
         )
         return self.extend(build_function=function, force_build=self.force_build or force_build)
@@ -1228,6 +1218,34 @@ class _Image(_Provider[_ImageHandle]):
         return self.extend(
             dockerfile_commands=["FROM base"] + [f"ENV {key}={shlex.quote(val)}" for (key, val) in vars.items()]
         )
+
+    @typechecked
+    def workdir(self, path: str) -> "_Image":
+        """Sets the working directory for subequent image build steps.
+
+        **Example**
+
+        ```python
+        image = (
+            modal.Image.debian_slim()
+                .run_commands("git clone https://xyz app")
+                .workdir("/app")
+                .run_commands("yarn install")
+        )
+        ```
+        """
+        return self.extend(dockerfile_commands=["FROM base"] + [f"WORKDIR {shlex.quote(path)}"])
+
+    # Live handle methods
+
+    def _is_inside(self) -> bool:
+        """Returns whether this container is active or not.
+
+        This is not meant to be called directly: see app.is_inside(image)
+        """
+        env_image_id = config.get("image_id")
+        logger.debug(f"Image._is_inside(): env_image_id={env_image_id} self.object_id={self.object_id}")
+        return self.object_id == env_image_id
 
 
 ImageHandle = synchronize_api(_ImageHandle)

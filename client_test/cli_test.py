@@ -1,19 +1,19 @@
 # Copyright Modal Labs 2022-2023
 import os
+import pytest
 import sys
 import tempfile
 import traceback
 import unittest.mock
-from unittest import mock
 from typing import List, Optional
+from unittest import mock
 
 import click
 import click.testing
-import pytest
 import pytest_asyncio
 
-from modal.cli.entry_point import entrypoint_cli
 from modal import Client
+from modal.cli.entry_point import entrypoint_cli
 from modal_proto import api_pb2
 from modal_utils.async_utils import asyncnullcontext
 
@@ -124,11 +124,14 @@ def test_run(servicer, set_env_client, test_dir):
 
 
 @pytest.mark.filterwarnings("error")  # any warnings that aren't caught will fail this test
-def test_local_entrypoint_no_remote_calls(servicer, set_env_client, test_dir):
+def test_local_entrypoint_yes_remote_calls(servicer, set_env_client, test_dir):
     file = test_dir / "supports" / "app_run_tests" / "local_entrypoint.py"
     res = _run(["run", file.as_posix()])
     assert "Warning: no remote function calls were made" not in res.stderr
 
+
+@pytest.mark.filterwarnings("error")  # any warnings that aren't caught will fail this test
+def test_local_entrypoint_no_remote_calls(servicer, set_env_client, test_dir):
     file = test_dir / "supports" / "app_run_tests" / "local_entrypoint_no_remote.py"
     with pytest.warns(UserWarning, match="Warning: no remote function calls were made"):
         _run(["run", file.as_posix()])
@@ -217,7 +220,7 @@ def test_run_local_entrypoint_invalid_with_stub_run(servicer, set_env_client, te
     assert len(servicer.client_calls) == 0
 
 
-def test_run_parse_args(servicer, set_env_client, test_dir):
+def test_run_parse_args_entrypoint(servicer, set_env_client, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "cli_args.py"
     res = _run(["run", stub_file.as_posix()], expected_exit_code=2, expected_stderr=None)
     assert "You need to specify a Modal function or local entrypoint to run" in res.stderr
@@ -233,16 +236,35 @@ def test_run_parse_args(servicer, set_env_client, test_dir):
             "the day is 31",
         ),
         (["run", f"{stub_file.as_posix()}::dt_arg", "--dt=2022-10-31"], "the day is 31"),
-        (["run", f"{stub_file.as_posix()}::int_arg", "--i=200"], "200"),
-        (["run", f"{stub_file.as_posix()}::default_arg"], "10"),
-        (["run", f"{stub_file.as_posix()}::unannotated_arg", "--i=2022-10-31"], "'2022-10-31'"),
-        # TODO: fix class references
-        # (["run", f"{stub_file.as_posix()}::ALifecycle.some_method", "--i=hello"], "'hello'"),
+        (["run", f"{stub_file.as_posix()}::int_arg", "--i=200"], "200 <class 'int'>"),
+        (["run", f"{stub_file.as_posix()}::default_arg"], "10 <class 'int'>"),
+        (["run", f"{stub_file.as_posix()}::unannotated_arg", "--i=2022-10-31"], "'2022-10-31' <class 'str'>"),
+        (["run", f"{stub_file.as_posix()}::unannotated_default_arg"], "10 <class 'int'>"),
     ]
     for args, expected in valid_call_args:
         res = _run(args)
         assert expected in res.stdout
         assert len(servicer.client_calls) == 0
+
+
+def test_run_parse_args_function(servicer, set_env_client, test_dir):
+    stub_file = test_dir / "supports" / "app_run_tests" / "cli_args.py"
+    res = _run(["run", stub_file.as_posix()], expected_exit_code=2, expected_stderr=None)
+    assert "You need to specify a Modal function or local entrypoint to run" in res.stderr
+
+    # HACK: all the tests use the same arg, i.
+    @servicer.function_body
+    def print_type(i):
+        print(repr(i), type(i))
+
+    valid_call_args = [
+        (["run", f"{stub_file.as_posix()}::int_arg_fn", "--i=200"], "200 <class 'int'>"),
+        (["run", f"{stub_file.as_posix()}::ALifecycle.some_method", "--i=hello"], "'hello' <class 'str'>"),
+        (["run", f"{stub_file.as_posix()}::ALifecycle.some_method_int", "--i=42"], "42 <class 'int'>"),
+    ]
+    for args, expected in valid_call_args:
+        res = _run(args)
+        assert expected in res.stdout
 
 
 @pytest.fixture
@@ -274,7 +296,7 @@ def test_serve(servicer, set_env_client, server_url_env, test_dir):
 
 @pytest.fixture
 def mock_shell_pty():
-    def mock_get_pty_info() -> api_pb2.PTYInfo:
+    def mock_get_pty_info(shell: bool) -> api_pb2.PTYInfo:
         rows, cols = (64, 128)
         return api_pb2.PTYInfo(
             enabled=True,
@@ -359,7 +381,9 @@ def test_nfs_get(set_env_client):
 
 def test_deprecated_volume(set_env_client):
     _run(
-        ["volume", "create", "xyz-volume"], expected_stderr="DeprecationWarning: The command 'create' is deprecated.\n"
+        ["volume", "create", "xyz-volume"],
+        expected_exit_code=1,
+        expected_stderr="DeprecationWarning: The command 'create' is deprecated.\n",
     )
 
 
