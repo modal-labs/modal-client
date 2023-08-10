@@ -1,13 +1,14 @@
 # Copyright Modal Labs 2022
-import pickle
-import os
 import asyncio
 import inspect
+import os
+import pickle
 import posixpath
 import time
 import typing
 import warnings
 from dataclasses import dataclass
+from datetime import date
 from pathlib import PurePath
 from typing import (
     Any,
@@ -17,28 +18,27 @@ from typing import (
     Callable,
     Collection,
     Dict,
+    Iterable,
     List,
     Optional,
     Set,
     Tuple,
     Union,
-    Iterable,
 )
 
-from datetime import date
 from aiostream import pipe, stream
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.exceptions import UserCodeException
 
 from modal import _pty, is_local
-from modal_proto import api_pb2
 from modal._types import typechecked
+from modal_proto import api_pb2
 from modal_utils.async_utils import (
     queue_batch_iterator,
     synchronize_api,
-    warn_if_generator_is_not_consumed,
     synchronizer,
+    warn_if_generator_is_not_consumed,
 )
 from modal_utils.grpc_utils import retry_transient_errors
 
@@ -55,19 +55,25 @@ from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._traceback import append_modal_tb
 from .call_graph import InputInfo, _reconstruct_call_graph
-from .config import config, logger
 from .client import _Client
-from .exception import ExecutionError, InvalidError, RemoteError, deprecation_error, deprecation_warning
-from .exception import TimeoutError as _TimeoutError
-from .gpu import GPU_T, parse_gpu_config, display_gpu_config
+from .config import config, logger
+from .exception import (
+    ExecutionError,
+    InvalidError,
+    RemoteError,
+    TimeoutError as _TimeoutError,
+    deprecation_error,
+    deprecation_warning,
+)
+from .gpu import GPU_T, display_gpu_config, parse_gpu_config
 from .image import _Image
-from .mount import _Mount, _get_client_mount, NonLocalMount, _MountedPythonModule, _MountCache
+from .mount import NonLocalMountError, _get_client_mount, _Mount, _MountCache, _MountedPythonModule
+from .network_file_system import _NetworkFileSystem
 from .object import _Handle, _Provider
 from .proxy import _Proxy
 from .retries import Retries
 from .schedule import Schedule
 from .secret import _Secret
-from .network_file_system import _NetworkFileSystem
 from .volume import _Volume
 
 ATTEMPT_TIMEOUT_GRACE_PERIOD = 5  # seconds
@@ -496,7 +502,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
 
     _web_url: Optional[str]
     _info: Optional[FunctionInfo]
-    _stub: Optional["modal.stub._Stub"]
+    _stub: Optional["modal.stub._Stub"]  # TODO(erikbern): remove
     _is_remote_cls_method: bool = False
     _function_name: Optional[str]
 
@@ -510,40 +516,20 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
             False  # set when a user terminates the app intentionally, to prevent useless traceback spam
         )
         self._function_name = None
-        self._stub = None
+        self._stub = None  # TODO(erikbern): remove
         self._self_obj = None
 
     def _initialize_from_local(self, stub, info: FunctionInfo):
         # note that this is not a full hydration of the function, as it doesn't yet get an object_id etc.
-        self._stub = stub
+        self._stub = stub  # TODO(erikbern): remove
         self._info = info
 
-    def _hydrate_metadata(self, handle_metadata: Message):
+    def _hydrate_metadata(self, metadata: Message):
         # makes function usable
-        assert isinstance(handle_metadata, (api_pb2.Function, api_pb2.FunctionHandleMetadata))
-        self._is_generator = handle_metadata.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
-        self._web_url = handle_metadata.web_url
-        self._function_name = handle_metadata.function_name
-
-    async def _make_bound_function_handle(self, *args: Iterable[Any], **kwargs: Dict[str, Any]) -> "_FunctionHandle":
-        assert self.is_hydrated(), "Cannot make bound function handle from unhydrated handle."
-
-        if len(args) + len(kwargs) == 0:
-            # short circuit if no args, don't need a special object.
-            return self
-
-        new_handle = _FunctionHandle._new()
-        new_handle._initialize_from_local(self._stub, self._info)
-
-        serialized_params = pickle.dumps((args, kwargs))
-        req = api_pb2.FunctionBindParamsRequest(
-            function_id=self._object_id,
-            serialized_params=serialized_params,
-        )
-        response = await self._client.stub.FunctionBindParams(req)
-        new_handle._hydrate(self._client, response.bound_function_id, response.handle_metadata)
-        new_handle._is_remote_cls_method = True
-        return new_handle
+        assert isinstance(metadata, (api_pb2.Function, api_pb2.FunctionHandleMetadata))
+        self._is_generator = metadata.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
+        self._web_url = metadata.web_url
+        self._function_name = metadata.function_name
 
     def _get_is_remote_cls_method(self):
         return self._is_remote_cls_method
@@ -554,7 +540,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
     def _get_self_obj(self):
         return self._self_obj
 
-    def _get_handle_metadata(self):
+    def _get_metadata(self):
         return api_pb2.FunctionHandleMetadata(
             function_name=self._function_name,
             function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR
@@ -569,9 +555,6 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
     def _set_output_mgr(self, output_mgr: OutputManager):
         self._output_mgr = output_mgr
 
-    def _get_function(self) -> "_Function":
-        return self._stub[self._info.get_tag()]
-
     @property
     def web_url(self) -> str:
         """URL of a Function running as a web endpoint."""
@@ -582,8 +565,8 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         return self._is_generator
 
     def _track_function_invocation(self):
-        if self._stub and self._stub.app:
-            self._stub.app.track_function_invocation()
+        if self._client is not None:  # Note that if it is None, then it will fail later anyway
+            self._client.track_function_invocation()
 
     async def _map(self, input_stream: AsyncIterable[Any], order_outputs: bool, return_exceptions: bool, kwargs={}):
         if self._web_url:
@@ -670,6 +653,8 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         Convenient alias for `.map()` in cases where the function just needs to be called.
         as the caller doesn't have to consume the generator to process the inputs.
         """
+        # TODO(erikbern): it would be better if this is more like a map_spawn that immediately exits
+        # rather than iterating over the result
         async for _ in self.map(
             *input_iterators, kwargs=kwargs, order_outputs=False, return_exceptions=ignore_exceptions
         ):
@@ -740,6 +725,13 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         else:
             return self._call_function(args, kwargs)
 
+    def shell(self, *args, **kwargs):
+        # TOOD(erikbern): right now fairly duplicated
+        if self._is_generator:
+            return self._call_generator(args, kwargs)  # type: ignore
+        else:
+            return self._call_function(args, kwargs)
+
     @synchronizer.nowrap
     def __call__(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
         if self._get_is_remote_cls_method():  # TODO(elias): change parametrization so this is isn't needed
@@ -775,7 +767,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
             return None
 
         invocation = await self._call_function_nowait(args, kwargs)
-        return _FunctionCall._from_id(invocation.function_call_id, invocation.client, None)
+        return _FunctionCall._new_hydrated(invocation.function_call_id, invocation.client, None)
 
     def get_raw_f(self) -> Callable[..., Any]:
         """Return the inner Python object wrapped by this Modal Function."""
@@ -794,22 +786,11 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
             backlog=resp.backlog, num_active_runners=resp.num_active_tasks, num_total_runners=resp.num_total_tasks
         )
 
-    def bind_obj(self, obj, objtype) -> "_FunctionHandle":
+    def _bind_obj(self, obj, objtype):
         # This is needed to bind "self" to methods for direct __call__
-        self._self_obj = obj
-
         # TODO(erikbern): we're mutating self directly here, as opposed to returning a different _FunctionHandle
         # We should fix this in the future since it probably precludes using classmethods/staticmethods
-        return self
-
-    def __get__(self, obj, objtype=None) -> "_FunctionHandle":
-        deprecation_warning(
-            date(2023, 5, 9),
-            "Using the `@stub.function` decorator on methods is deprecated."
-            " Use the @method decorator instead."
-            " See https://modal.com/docs/guide/lifecycle-functions",
-        )
-        return self.bind_obj(obj, objtype)
+        self._self_obj = obj
 
 
 FunctionHandle = synchronize_api(_FunctionHandle)
@@ -839,7 +820,7 @@ def _get_function_mounts(
                 for entry in m.entries:
                     if isinstance(entry, _MountedPythonModule):
                         module_names.add(entry.module_name)
-            except NonLocalMount:
+            except NonLocalMountError:
                 pass
         return module_names
 
@@ -869,7 +850,7 @@ def _get_function_mounts(
     return all_mounts
 
 
-class _Function(_Provider[_FunctionHandle]):
+class _Function(_Provider, type_prefix="fu"):
     """Functions are the basic units of serverless execution on Modal.
 
     Generally, you will not construct a `Function` directly. Instead, use the
@@ -886,14 +867,13 @@ class _Function(_Provider[_FunctionHandle]):
     _image: Optional[_Image]
     _gpu: Optional[GPU_T]
     _cloud: Optional[str]
-    _function_handle: _FunctionHandle
+    _handle: _FunctionHandle
     _stub: "modal.stub._Stub"
     _is_builder_function: bool
     _retry_policy: Optional[api_pb2.FunctionRetryPolicy]
 
     @staticmethod
     def from_args(
-        function_handle: _FunctionHandle,
         info: FunctionInfo,
         stub,
         image=None,
@@ -913,6 +893,7 @@ class _Function(_Provider[_FunctionHandle]):
         retries: Optional[Union[int, Retries]] = None,
         timeout: Optional[int] = None,
         concurrency_limit: Optional[int] = None,
+        allow_concurrent_inputs: Optional[int] = None,
         container_idle_timeout: Optional[int] = None,
         cpu: Optional[float] = None,
         keep_warm: Optional[int] = None,
@@ -923,6 +904,8 @@ class _Function(_Provider[_FunctionHandle]):
         cls: Optional[type] = None,
     ) -> None:
         """mdmd:hidden"""
+        tag = info.get_tag()
+
         raw_f = info.raw_f
         assert callable(raw_f)
         if schedule is not None:
@@ -953,7 +936,7 @@ class _Function(_Provider[_FunctionHandle]):
             raise InvalidError(
                 f"Function {raw_f} retries must be an integer or instance of modal.Retries. Found: {type(retries)}"
             )
-        tag = info.get_tag()
+
         gpu_config = parse_gpu_config(gpu)
 
         if proxy:
@@ -973,7 +956,7 @@ class _Function(_Provider[_FunctionHandle]):
                 "Setting `keep_warm=True` is deprecated. Pass an explicit warm pool size instead, e.g. `keep_warm=2`.",
             )
 
-        if not cloud:
+        if not cloud and not is_builder_function:
             cloud = config.get("default_cloud")
         if cloud:
             cloud_provider = parse_cloud_provider(cloud)
@@ -1004,7 +987,7 @@ class _Function(_Provider[_FunctionHandle]):
             else:
                 raise InvalidError("Webhooks cannot be generators")
 
-        async def _preload(resolver: Resolver, existing_object_id: Optional[str]) -> _FunctionHandle:
+        async def _preload(resolver: Resolver, existing_object_id: Optional[str], handle: _FunctionHandle):
             if is_generator:
                 function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
             else:
@@ -1017,12 +1000,12 @@ class _Function(_Provider[_FunctionHandle]):
                 webhook_config=webhook_config,
                 existing_function_id=existing_object_id,
             )
-            response = await resolver.client.stub.FunctionPrecreate(req)
+            response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
             # Update the precreated function handle (todo: hack until we merge providers/handles)
-            function_handle._hydrate(resolver.client, response.function_id, response.handle_metadata)
-            return function_handle
+            handle._hydrate(response.function_id, resolver.client, response.handle_metadata)
+            return handle
 
-        async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _FunctionHandle:
+        async def _load(resolver: Resolver, existing_object_id: Optional[str], handle: _FunctionHandle):
             # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
             status_row = resolver.add_status_row()
             status_row.message(f"Creating {tag}...")
@@ -1032,7 +1015,7 @@ class _Function(_Provider[_FunctionHandle]):
             else:
                 proxy_id = None
 
-            # Mount point path validation for volumes and shared volumes
+            # Mount point path validation for volumes and network file systems.
             def _validate_mount_points(
                 display_name: str, volume_likes: Dict[Union[str, os.PathLike], Union[_Volume, _NetworkFileSystem]]
             ) -> List[Tuple[str, Union[_Volume, _NetworkFileSystem]]]:
@@ -1076,7 +1059,7 @@ class _Function(_Provider[_FunctionHandle]):
                 network_file_system_mounts = []
                 volume_ids = await _load_ids([vol for _, vol in validated_network_file_systems])
                 # Relies on dicts being ordered (true as of Python 3.6).
-                for ((path, _), volume_id) in zip(validated_network_file_systems, volume_ids):
+                for (path, _), volume_id in zip(validated_network_file_systems, volume_ids):
                     network_file_system_mounts.append(
                         api_pb2.SharedVolumeMount(
                             mount_path=path,
@@ -1091,7 +1074,7 @@ class _Function(_Provider[_FunctionHandle]):
             validated_volumes = _validate_mount_points("Volume", volumes)
             # We don't support mounting a volume in more than one location
             volume_to_paths: Dict[_Volume, List[str]] = {}
-            for (path, volume) in validated_volumes:
+            for path, volume in validated_volumes:
                 volume_to_paths.setdefault(volume, []).append(path)
             for paths in volume_to_paths.values():
                 if len(paths) > 1:
@@ -1104,7 +1087,7 @@ class _Function(_Provider[_FunctionHandle]):
                 volume_mounts = []
                 volume_ids = await _load_ids([vol for _, vol in validated_volumes])
                 # Relies on dicts being ordered (true as of Python 3.6).
-                for ((path, _), volume_id) in zip(validated_volumes, volume_ids):
+                for (path, _), volume_id in zip(validated_volumes, volume_ids):
                     volume_mounts.append(
                         api_pb2.VolumeMount(
                             mount_path=path,
@@ -1122,8 +1105,12 @@ class _Function(_Provider[_FunctionHandle]):
                 raise InvalidError(f"Invalid fractional CPU value {cpu}. Cannot have less than 0.25 CPU resources.")
             milli_cpu = int(1000 * cpu) if cpu is not None else None
 
-            if interactive:
-                pty_info = _pty.get_pty_info()
+            timeout_secs = timeout
+            if resolver.shell:
+                timeout_secs = 86400
+                pty_info = _pty.get_pty_info(shell=True)
+            elif interactive:
+                pty_info = _pty.get_pty_info(shell=False)
             else:
                 pty_info = None
 
@@ -1166,7 +1153,7 @@ class _Function(_Provider[_FunctionHandle]):
                 volume_mounts=volume_mounts,
                 proxy_id=proxy_id,
                 retry_policy=retry_policy,
-                timeout_secs=timeout,
+                timeout_secs=timeout_secs,
                 task_idle_timeout_secs=container_idle_timeout,
                 concurrency_limit=concurrency_limit,
                 pty_info=pty_info,
@@ -1175,6 +1162,7 @@ class _Function(_Provider[_FunctionHandle]):
                 runtime=config.get("function_runtime"),
                 stub_name=stub_name,
                 is_builder_function=is_builder_function,
+                allow_concurrent_inputs=allow_concurrent_inputs,
             )
             request = api_pb2.FunctionCreateRequest(
                 app_id=resolver.app_id,
@@ -1183,7 +1171,9 @@ class _Function(_Provider[_FunctionHandle]):
                 existing_function_id=existing_object_id,
             )
             try:
-                response = await resolver.client.stub.FunctionCreate(request)
+                response: api_pb2.FunctionCreateResponse = await retry_transient_errors(
+                    resolver.client.stub.FunctionCreate, request
+                )
             except GRPCError as exc:
                 if exc.status == Status.INVALID_ARGUMENT:
                     raise InvalidError(exc.message)
@@ -1191,46 +1181,75 @@ class _Function(_Provider[_FunctionHandle]):
                     raise InvalidError(exc.message)
                 raise
 
-            if response.web_url:
+            if response.function.web_url:
                 # Ensure terms used here match terms used in modal.com/docs/guide/webhook-urls doc.
-                if response.web_url_info.truncated:
+                if response.function.web_url_info.truncated:
                     suffix = " [grey70](label truncated)[/grey70]"
-                elif response.web_url_info.has_unique_hash:
+                elif response.function.web_url_info.has_unique_hash:
                     suffix = " [grey70](label includes conflict-avoidance hash)[/grey70]"
-                elif response.web_url_info.label_stolen:
+                elif response.function.web_url_info.label_stolen:
                     suffix = " [grey70](label stolen)[/grey70]"
                 else:
                     suffix = ""
                 # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
                 status_row.finish(f"Created {tag} => [magenta underline]{response.web_url}[/magenta underline]{suffix}")
+
+                # Print custom domain in terminal
+                for custom_domain in response.function.custom_domain_info:
+                    custom_domain_status_row = resolver.add_status_row()
+                    custom_domain_status_row.finish(
+                        f"Custom domain for {tag} => [magenta underline]{custom_domain.url}[/magenta underline]{suffix}"
+                    )
+
             else:
                 status_row.finish(f"Created {tag}.")
 
-            # Instead of returning a new object, just return the precreated one
-            # TODO (elias): We should not have to run _hydrate in here since functions are preloaded. Needed for now due to some conflicts with builder_functions
-            function_handle._hydrate(resolver.client, response.function_id, response.handle_metadata)
-            return function_handle
+            handle._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         rep = f"Function({tag})"
         obj = _Function._from_loader(_load, rep, preload=_preload)
-        # TODO(erikbern): almost all of these are only needed because of modal.cli.run.shell
-        obj._allow_cross_region_volumes = allow_cross_region_volumes
-        obj._cloud = cloud
-        obj._image = image
-        obj._info = info
-        obj._function_handle = function_handle
-        obj._gpu = gpu
-        obj._gpu_config = gpu_config
-        obj._mounts = mounts
-        obj._panel_items = panel_items
+
+        # TODO(erikbern): we should also get rid of this
+        obj._handle._initialize_from_local(stub, info)
+
         obj._raw_f = raw_f
-        obj._secrets = secrets
-        obj._network_file_systems = network_file_systems
+        obj._info = info
         obj._tag = tag
         obj._all_mounts = all_mounts  # needed for modal.serve file watching
+        obj._panel_items = panel_items
+
+        # Used to check whether we should rebuild an image using run_function
+        # Plaintext source and arg definition for the function, so it's part of the image
+        # hash. We can't use the cloudpickle hash because it's not very stable.
+        obj._build_args = dict(  # See get_build_def
+            secrets=repr(secrets),
+            gpu_config=repr(gpu_config),
+            mounts=repr(mounts),
+            network_file_systems=repr(network_file_systems),
+        )
+
         return obj
 
+    @staticmethod
+    def from_parametrized(base_handle: _FunctionHandle, *args: Iterable[Any], **kwargs: Dict[str, Any]) -> "_Function":
+        assert base_handle.is_hydrated(), "Cannot make bound function handle from unhydrated handle."
+
+        async def _load(resolver: Resolver, existing_object_id: Optional[str], handle: _FunctionHandle):
+            handle._initialize_from_local(base_handle._stub, base_handle._info)
+
+            serialized_params = pickle.dumps((args, kwargs))  # TODO(erikbern): use modal._serialization?
+            req = api_pb2.FunctionBindParamsRequest(
+                function_id=base_handle.object_id,
+                serialized_params=serialized_params,
+            )
+            response = await retry_transient_errors(resolver.client.stub.FunctionBindParams, req)
+            handle._hydrate(response.bound_function_id, resolver.client, response.handle_metadata)
+            handle._is_remote_cls_method = True
+
+        return _Function._from_loader(_load, "Function(parametrized)")
+
     def get_panel_items(self) -> List[str]:
+        """mdmd:hidden"""
         return self._panel_items
 
     @property
@@ -1238,18 +1257,67 @@ class _Function(_Provider[_FunctionHandle]):
         """mdmd:hidden"""
         return self._tag
 
-    def get_build_def(self):
+    def get_build_def(self) -> str:
         """mdmd:hidden"""
-        # Used to check whether we should rebuild an image using run_function
-        # Plaintext source and arg definition for the function, so it's part of the image
-        # hash. We can't use the cloudpickle hash because it's not very stable.
-        kwargs = dict(
-            secrets=repr(self._secrets),
-            gpu_config=repr(self._gpu_config),
-            mounts=repr(self._mounts),
-            network_file_systems=repr(self._network_file_systems),
-        )
-        return f"{inspect.getsource(self._raw_f)}\n{repr(kwargs)}"
+        return f"{inspect.getsource(self._raw_f)}\n{repr(self._build_args)}"
+
+    # Live handle methods
+
+    @property
+    def web_url(self) -> str:
+        return self._handle.web_url
+
+    @property
+    def is_generator(self) -> bool:
+        return self._handle._is_generator
+
+    @warn_if_generator_is_not_consumed
+    async def map(
+        self,
+        *input_iterators,  # one input iterator per argument in the mapped-over function/generator
+        kwargs={},  # any extra keyword arguments for the function
+        order_outputs=None,  # defaults to True for regular functions, False for generators
+        return_exceptions=False,  # whether to propogate exceptions (False) or aggregate them in the results list (True)
+    ) -> AsyncGenerator[Any, None]:
+        async for item in self._handle.map(
+            *input_iterators, kwargs=kwargs, order_outputs=order_outputs, return_exceptions=return_exceptions
+        ):
+            yield item
+
+    async def for_each(self, *input_iterators, kwargs={}, ignore_exceptions=False):
+        await self._handle.for_each(*input_iterators, kwargs=kwargs, ignore_exceptions=ignore_exceptions)
+
+    @warn_if_generator_is_not_consumed
+    async def starmap(
+        self, input_iterator, kwargs={}, order_outputs=None, return_exceptions=False
+    ) -> AsyncGenerator[typing.Any, None]:
+        async for item in self._handle.starmap(
+            input_iterator, kwargs=kwargs, order_outputs=order_outputs, return_exceptions=return_exceptions
+        ):
+            yield item
+
+    def call(self, *args, **kwargs) -> Awaitable[Any]:  # TODO: Generics/TypeVars
+        return self._handle.call(*args, **kwargs)
+
+    def shell(self, *args, **kwargs):
+        return self._handle.shell(*args, **kwargs)
+
+    def _get_handle(self) -> _FunctionHandle:
+        # TODO(erikbern): stupid workaround since __call__ runs on the "outer" object
+        return self._handle
+
+    @synchronizer.nowrap
+    def __call__(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
+        return self._get_handle().__call__(*args, **kwargs)
+
+    async def spawn(self, *args, **kwargs) -> Optional["_FunctionCall"]:
+        return await self._handle.spawn(*args, **kwargs)
+
+    def get_raw_f(self) -> Callable[..., Any]:
+        return self._handle.get_raw_f()
+
+    async def get_current_stats(self) -> FunctionStats:
+        return await self._handle.get_current_stats()
 
 
 Function = synchronize_api(_Function)
@@ -1293,7 +1361,7 @@ class _FunctionCall(_Handle, type_prefix="fc"):
     async def cancel(self):
         request = api_pb2.FunctionCallCancelRequest(function_call_id=self.object_id)
         assert self._client and self._client.stub
-        await self._client.stub.FunctionCallCancel(request)
+        await retry_transient_errors(self._client.stub.FunctionCallCancel, request)
 
 
 FunctionCall = synchronize_api(_FunctionCall)
@@ -1355,8 +1423,8 @@ class _PartialFunction:
     """Intermediate function, produced by @method or @web_endpoint"""
 
     @staticmethod
-    def initialize_cls(user_cls: type, function_handles: Dict[str, _FunctionHandle]):
-        user_cls._modal_function_handles = function_handles
+    def initialize_cls(user_cls: type, functions: Dict[str, _Function]):
+        user_cls._modal_functions = functions
 
     def __init__(
         self,
@@ -1369,13 +1437,14 @@ class _PartialFunction:
         self.is_generator = is_generator
         self.wrapped = False  # Make sure that this was converted into a FunctionHandle
 
-    def __get__(self, obj, objtype=None) -> _FunctionHandle:
+    def __get__(self, obj, objtype=None) -> _Function:
         k = self.raw_f.__name__
         if obj:  # Cls().fun
-            function_handle = obj._modal_function_handles[k]
+            function = obj._modal_functions[k]
         else:  # Cls.fun
-            function_handle = objtype._modal_function_handles[k]
-        return function_handle.bind_obj(obj, objtype)
+            function = objtype._modal_functions[k]
+        function._handle._bind_obj(obj, objtype)  # TODO(erikbern): don't mutate
+        return function
 
     def __del__(self):
         if self.wrapped is False:
@@ -1414,11 +1483,23 @@ def _method(
     return wrapper
 
 
+def _parse_custom_domains(custom_domains: Optional[Iterable[str]] = None) -> List[api_pb2.CustomDomainConfig]:
+    _custom_domains: List[api_pb2.CustomDomainConfig] = []
+    if custom_domains is not None:
+        for custom_domain in custom_domains:
+            _custom_domains.append(api_pb2.CustomDomainConfig(name=custom_domain))
+
+    return _custom_domains
+
+
 @typechecked
 def _web_endpoint(
     method: str = "GET",  # REST method for the created endpoint.
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
+    custom_domains: Optional[
+        Iterable[str]
+    ] = None,  # Create an endpoint using a custom domain fully-qualified domain name.
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Register a basic web endpoint with this application.
 
@@ -1449,7 +1530,7 @@ def _web_endpoint(
         )
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
-        if isinstance(raw_f, _FunctionHandle):
+        if isinstance(raw_f, _Function):
             raw_f = raw_f.get_raw_f()
             raise InvalidError(
                 f"Applying decorators for {raw_f} in the wrong order!\nUsage:\n\n"
@@ -1469,6 +1550,7 @@ def _web_endpoint(
                 method=method,
                 requested_suffix=label,
                 async_mode=_response_mode,
+                custom_domains=_parse_custom_domains(custom_domains),
             ),
         )
 
@@ -1479,13 +1561,27 @@ def _web_endpoint(
 def _asgi_app(
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
+    custom_domains: Optional[
+        Iterable[str]
+    ] = None,  # Create an endpoint using a custom domain fully-qualified domain name.
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
-    """Register an ASGI app with this application.
+    """Decorator for registering an ASGI app with a Modal function.
 
     Asynchronous Server Gateway Interface (ASGI) is a standard for Python
     synchronous and asynchronous apps, supported by all popular Python web
     libraries. This is an advanced decorator that gives full flexibility in
     defining one or more web endpoints on Modal.
+
+    **Usage:**
+
+    ```python
+    from typing import Callable
+
+    @stub.function()
+    @modal.asgi_app()
+    def create_asgi() -> Callable:
+        ...
+    ```
 
     To learn how to use Modal with popular web frameworks, see the
     [guide on web endpoints](https://modal.com/docs/guide/webhooks).
@@ -1507,14 +1603,13 @@ def _asgi_app(
         else:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
 
-        # self._loose_webhook_configs.add(raw_f)
-
         return _PartialFunction(
             raw_f,
             api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
                 requested_suffix=label,
                 async_mode=_response_mode,
+                custom_domains=_parse_custom_domains(custom_domains),
             ),
         )
 
@@ -1525,10 +1620,31 @@ def _asgi_app(
 def _wsgi_app(
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
+    custom_domains: Optional[
+        Iterable[str]
+    ] = None,  # Create an endpoint using a custom domain fully-qualified domain name.
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
-    """Register a WSGI app with this application.
+    """Decorator for registering a WSGI app with a Modal function.
 
-    See documentation for [`asgi_app`](/docs/reference/modal.asgi_app).
+    Web Server Gateway Interface (WSGI) is a standard for synchronous Python web apps.
+    It has been [succeeded by the ASGI interface](https://asgi.readthedocs.io/en/latest/introduction.html#wsgi-compatibility) which is compatible with ASGI and supports
+    additional functionality such as web sockets. Modal supports ASGI via [`asgi_app`](/docs/reference/modal.asgi_app).
+
+    **Usage:**
+
+    ```python
+    from typing import Callable
+
+    @stub.function()
+    @modal.wsgi_app()
+    def create_wsgi() -> Callable:
+        ...
+    ```
+
+    To learn how to use this decorator with popular web frameworks, see the
+    [guide on web endpoints](https://modal.com/docs/guide/webhooks).
+
+    For documentation on this decorator's arguments see [`asgi_app`](/docs/reference/modal.asgi_app).
     """
     if label and not isinstance(label, str):
         raise InvalidError(
@@ -1543,14 +1659,13 @@ def _wsgi_app(
         else:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
 
-        # self._loose_webhook_configs.add(raw_f)
-
         return _PartialFunction(
             raw_f,
             api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_WSGI_APP,
                 requested_suffix=label,
                 async_mode=_response_mode,
+                custom_domains=_parse_custom_domains(custom_domains),
             ),
         )
 

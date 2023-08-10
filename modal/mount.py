@@ -9,18 +9,19 @@ import time
 import typing
 from datetime import date
 from pathlib import Path, PurePosixPath
-from typing import AsyncGenerator, Callable, List, Optional, Union, Tuple, Sequence
+from typing import AsyncGenerator, Callable, List, Optional, Sequence, Tuple, Union
 
 import aiostream
 from google.protobuf.message import Message
-from modal._types import typechecked
 
 import modal.exception
+from modal._types import typechecked
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors
 from modal_utils.package_utils import get_module_mount_info
 from modal_version import __version__
+
 from ._blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec
 from ._resolver import Resolver
 from .config import config, logger
@@ -182,11 +183,12 @@ class _MountHandle(_Handle, type_prefix="mo"):
 MountHandle = synchronize_api(_MountHandle)
 
 
-class NonLocalMount(Exception):
+class NonLocalMountError(Exception):
+    # used internally to signal an error when trying to access entries on a non-local mount definition
     pass
 
 
-class _Mount(_Provider[_MountHandle]):
+class _Mount(_Provider, type_prefix="mo"):
     """Create a mount for a local directory or file that can be attached
     to one or more Modal functions.
 
@@ -225,7 +227,7 @@ class _Mount(_Provider[_MountHandle]):
     @property
     def entries(self):
         if self._entries is None:
-            raise NonLocalMount()
+            raise NonLocalMountError()
         return self._entries
 
     def _top_level_paths(self) -> List[Tuple[Path, PurePosixPath]]:
@@ -332,7 +334,12 @@ class _Mount(_Provider[_MountHandle]):
                     logger.info(f"Ignoring file not found: {exc}")
 
     @staticmethod
-    async def _load_mount(entries: List[_MountEntry], resolver: Resolver, existing_object_id: Optional[str]):
+    async def _load_mount(
+        entries: List[_MountEntry],
+        resolver: Resolver,
+        existing_object_id: Optional[str],
+        handle: _MountHandle,
+    ):
         # Run a threadpool to compute hash values, and use concurrent coroutines to register files.
         t0 = time.time()
         n_concurrent_uploads = 16
@@ -401,7 +408,59 @@ class _Mount(_Provider[_MountHandle]):
         status_row.finish(f"Created mount {message_label}")
 
         logger.debug(f"Uploaded {len(uploaded_hashes)}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
-        return _MountHandle._from_id(resp.mount_id, resolver.client, resp.handle_metadata)
+        handle._hydrate(resp.mount_id, resolver.client, resp.handle_metadata)
+        return handle
+
+    @staticmethod
+    def from_local_python_packages(*module_names: str) -> "_Mount":
+        """Returns a `modal.Mount` that makes local modules listed in `module_names` available inside the container.
+        This works by mounting the local path of each module's package to a directory inside the container that's on `PYTHONPATH`.
+
+        **Usage**
+
+        ```python notest
+        import modal
+        import my_local_module
+
+        stub = modal.Stub()
+
+        @stub.function(mounts=[
+            modal.Mount.from_local_python_packages("my_local_module", "my_other_module"),
+        ])
+        def f():
+            my_local_module.do_stuff()
+        ```
+        """
+        from modal.app import is_local
+
+        # Don't re-run inside container.
+
+        mount = _Mount.new()
+        if not is_local():
+            return mount
+
+        for module_name in module_names:
+            mount_infos = get_module_mount_info(module_name)
+
+            if mount_infos == []:
+                raise modal.NotFoundError(f"Module {module_name} not found.")
+
+            for mount_info in mount_infos:
+                is_package, base_path, module_mount_condition = mount_info
+                if is_package:
+                    mount = mount.add_local_dir(
+                        base_path,
+                        remote_path=f"/pkg/{module_name}",
+                        condition=module_mount_condition,
+                        recursive=True,
+                    )
+                else:
+                    remote_path = PurePosixPath("/pkg") / Path(base_path).name
+                    mount = mount.add_local_file(
+                        base_path,
+                        remote_path=remote_path,
+                    )
+        return mount
 
     @staticmethod
     def from_local_python_packages(*module_names: str) -> "_Mount":
@@ -431,8 +490,9 @@ Mount = synchronize_api(_Mount)
 
 def _create_client_mount():
     # TODO(erikbern): make this a static method on the Mount class
-    import modal
     import synchronicity
+
+    import modal
 
     # Get the base_path because it also contains `modal_utils` and `modal_proto`.
     base_path, _ = os.path.split(modal.__path__[0])
@@ -480,7 +540,7 @@ class _MountCache:
     def get(self, mount: _Mount) -> _Mount:
         try:
             return self.cache.setdefault(self._cache_key(mount), mount)
-        except NonLocalMount:
+        except NonLocalMountError:
             return mount
 
     def get_many(self, mounts: typing.Collection[_Mount]) -> List[_Mount]:

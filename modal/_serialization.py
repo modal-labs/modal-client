@@ -1,27 +1,13 @@
 # Copyright Modal Labs 2022
 import io
 import pickle
-from typing import Optional
 
 import cloudpickle
 
-from modal_utils import async_utils
-from synchronicity import Interface
-from synchronicity.synchronizer import TARGET_INTERFACE_ATTR
 from .exception import InvalidError
-from .object import _Handle, Handle
+from .object import Handle, Provider, _Handle, _Provider
 
 PICKLE_PROTOCOL = 4  # Support older Python versions.
-
-
-def get_synchronicity_interface(obj) -> Optional[Interface]:
-    return getattr(obj, TARGET_INTERFACE_ATTR, None)
-
-
-def restore_synchronicity_interface(raw_obj, target_interface: Optional[Interface]):
-    if target_interface:
-        return async_utils.synchronizer._translate_out(raw_obj, target_interface)
-    return raw_obj
 
 
 class Pickler(cloudpickle.Pickler):
@@ -29,11 +15,19 @@ class Pickler(cloudpickle.Pickler):
         super().__init__(buf, protocol=PICKLE_PROTOCOL)
 
     def persistent_id(self, obj):
-        if not isinstance(obj, (_Handle, Handle)):
+        if isinstance(obj, _Handle):
+            flag = "_h"
+        elif isinstance(obj, Handle):
+            flag = "h"
+        elif isinstance(obj, _Provider):
+            flag = "_p"
+        elif isinstance(obj, Provider):
+            flag = "p"
+        else:
             return
         if not obj.object_id:
             raise InvalidError(f"Can't serialize object {obj} which hasn't been created.")
-        return (obj.object_id, get_synchronicity_interface(obj), obj._get_handle_metadata())
+        return (obj.object_id, flag, obj._get_metadata())
 
 
 class Unpickler(pickle.Unpickler):
@@ -42,9 +36,17 @@ class Unpickler(pickle.Unpickler):
         super().__init__(buf)
 
     def persistent_load(self, pid):
-        (object_id, target_interface, handle_proto) = pid
-        raw_obj = _Handle._from_id(object_id, self.client, handle_proto)
-        return restore_synchronicity_interface(raw_obj, target_interface)
+        (object_id, flag, handle_proto) = pid
+        if flag == "h":
+            return Handle._new_hydrated(object_id, self.client, handle_proto)
+        elif flag == "_h":
+            return _Handle._new_hydrated(object_id, self.client, handle_proto)
+        elif flag == "p":
+            return Provider._new_hydrated(object_id, self.client, handle_proto)
+        elif flag == "_p":
+            return _Provider._new_hydrated(object_id, self.client, handle_proto)
+        else:
+            raise InvalidError("bad flag")
 
 
 def serialize(obj):

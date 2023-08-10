@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2022
-"""Modal intentionally keeps configurability to a minimum.
+r"""Modal intentionally keeps configurability to a minimum.
 
 The main configuration options are the API tokens: the token id and the token secret.
 These can be configured in two ways:
@@ -78,7 +78,6 @@ import warnings
 from datetime import date
 
 import toml
-
 
 from ._traceback import setup_rich_traceback
 from .exception import deprecation_error

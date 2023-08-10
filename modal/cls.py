@@ -1,9 +1,13 @@
 # Copyright Modal Labs 2022
 import inspect
 import pickle
-from typing import Dict, TypeVar, Type
+from typing import Dict, Type, TypeVar
+
 from modal_utils.async_utils import synchronize_api
-from .functions import _PartialFunction, PartialFunction, _FunctionHandle
+
+from ._resolver import Resolver
+from .client import _Client
+from .functions import PartialFunction, _Function, _FunctionHandle, _PartialFunction
 
 T = TypeVar("T")
 
@@ -21,7 +25,7 @@ class ClsMixin:
 def make_remote_cls_constructors(
     user_cls: type,
     partial_functions: Dict[str, PartialFunction],
-    function_handles: Dict[str, _FunctionHandle],
+    functions: Dict[str, _Function],
 ):
     original_sig = inspect.signature(user_cls.__init__)  # type: ignore
     new_parameters = [param for name, param in original_sig.parameters.items() if name != "self"]
@@ -40,16 +44,19 @@ def make_remote_cls_constructors(
                 )
 
         cls_dict = {}
-        new_function_handles: Dict[str, _FunctionHandle] = {}
+        new_functions: Dict[str, _Function] = {}
 
         for k, v in partial_functions.items():
-            new_function_handles[k] = await function_handles[k]._make_bound_function_handle(
-                *params.args, **params.kwargs
-            )
+            handle: _FunctionHandle = functions[k]._handle
+            client: _Client = handle._client
+            new_function: _Function = _Function.from_parametrized(handle, *params.args, **params.kwargs)
+            resolver = Resolver(client)
+            await resolver.load(new_function)
+            new_functions[k] = new_function
             cls_dict[k] = v
 
         cls = type(f"Remote{user_cls.__name__}", (), cls_dict)
-        _PartialFunction.initialize_cls(cls, new_function_handles)
+        _PartialFunction.initialize_cls(cls, new_functions)
         return cls()
 
     return synchronize_api(_remote)

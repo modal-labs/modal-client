@@ -23,6 +23,8 @@ def asgi_app_wrapper(asgi_app):
 
         # Run the ASGI app, while draining the send message queue at the same time,
         # and yielding results.
+        # TODO(gongy): we currently create one ASGI instance per concurrent input,
+        # but it would be sufficient to share this background ASGI context.
         async with TaskContext(grace=1.0) as tc:
             app_task = tc.create_task(asgi_app(scope, receive, send))
 

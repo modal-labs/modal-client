@@ -10,13 +10,13 @@ from modal_utils.async_utils import TaskContext, synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors
 
 from . import _pty
-from ._output import OutputManager, step_completed, step_progress, get_app_logs_loop
+from ._output import OutputManager, get_app_logs_loop, step_completed, step_progress
 from .app import _App, is_local
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config
 from .exception import InvalidError
-from .functions import _Function
-from .queue import _QueueHandle
+from .functions import _FunctionHandle
+from .queue import _Queue
 
 
 async def _heartbeat(client, app_id):
@@ -36,6 +36,7 @@ async def _run_stub(
     detach: bool = False,
     output_mgr: Optional[OutputManager] = None,
     environment_name: Optional[str] = None,
+    shell=False,
 ) -> AsyncGenerator[_App, None]:
     if environment_name is None:
         environment_name = config.get("environment")
@@ -58,7 +59,12 @@ async def _run_stub(
         output_mgr = OutputManager(stdout, show_progress, "Running app...")
     post_init_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
     app = await _App._init_new(
-        client, stub.description, detach=detach, deploying=False, environment_name=environment_name
+        client,
+        stub.description,
+        detach=detach,
+        deploying=False,
+        environment_name=environment_name,
+        output_mgr=output_mgr,
     )
     async with stub._set_app(app), TaskContext(grace=config["logs_timeout"]) as tc:
         # Start heartbeats loop to keep the client alive
@@ -74,17 +80,21 @@ async def _run_stub(
 
         try:
             # Create all members
-            await app._create_all_objects(stub._blueprint, output_mgr, post_init_state, environment_name)
+            await app._create_all_objects(stub._blueprint, post_init_state, environment_name, shell=shell)
 
             # Update all functions client-side to have the output mgr
-            for tag, obj in stub._function_handles.items():
-                obj._set_output_mgr(output_mgr)
+            for tag, obj in stub.registered_functions.items():
+                obj._handle._set_output_mgr(output_mgr)
+
+            # Show logs from dynamically created images.
+            # TODO: better way to do this
+            output_mgr.enable_image_logs()
 
             # Yield to context
             if stub._pty_input_stream:
                 output_mgr._visible_progress = False
                 handle = app._pty_input_stream
-                assert isinstance(handle, _QueueHandle)
+                assert isinstance(handle, _Queue)
                 async with _pty.write_stdin_to_pty_stream(handle):
                     yield app
                 output_mgr._visible_progress = True
@@ -123,10 +133,10 @@ async def _serve_update(
     client = await _Client.from_env()
     try:
         output_mgr = OutputManager(None, True)
-        app = await _App._init_existing(client, existing_app_id)
+        app = await _App._init_existing(client, existing_app_id, output_mgr=output_mgr)
 
         # Create objects
-        await app._create_all_objects(stub._blueprint, output_mgr, api_pb2.APP_STATE_UNSPECIFIED, environment_name)
+        await app._create_all_objects(stub._blueprint, api_pb2.APP_STATE_UNSPECIFIED, environment_name)
 
         # Communicate to the parent process
         is_ready.set()
@@ -191,9 +201,9 @@ async def _deploy_stub(
     if client is None:
         client = await _Client.from_env()
 
-    app = await _App._init_from_name(client, name, namespace, environment_name=environment_name)
-
     output_mgr = OutputManager(stdout, show_progress)
+
+    app = await _App._init_from_name(client, name, namespace, environment_name=environment_name, output_mgr=output_mgr)
 
     async with TaskContext(0) as tc:
         # Start heartbeats loop to keep the client alive
@@ -203,7 +213,7 @@ async def _deploy_stub(
         post_init_state = api_pb2.APP_STATE_UNSPECIFIED
 
         # Create all members
-        await app._create_all_objects(stub._blueprint, output_mgr, post_init_state, environment_name=environment_name)
+        await app._create_all_objects(stub._blueprint, post_init_state, environment_name=environment_name)
 
         # Deploy app
         # TODO(erikbern): not needed if the app already existed
@@ -214,7 +224,7 @@ async def _deploy_stub(
     return app
 
 
-async def _interactive_shell(stub, cmd: str, function: _Function, environment_name: str = ""):
+async def _interactive_shell(_function_handle: _FunctionHandle, cmd: str, environment_name: str = ""):
     """Run an interactive shell (like `bash`) within the image for this app.
 
     This is useful for online debugging and interactive exploration of the
@@ -235,21 +245,10 @@ async def _interactive_shell(stub, cmd: str, function: _Function, environment_na
     modal shell script.py --cmd /bin/bash
     ```
     """
-
-    wrapped_fn = stub.function(
-        interactive=True,
-        timeout=86400,
-        mounts=function._mounts,
-        network_file_systems=function._network_file_systems,
-        allow_cross_region_volumes=function._allow_cross_region_volumes,
-        image=function._image,
-        secrets=function._secrets,
-        gpu=function._gpu,
-        cloud=function._cloud,
-    )(_pty.exec_cmd)
-
-    async with _run_stub(stub, environment_name=environment_name):
-        await wrapped_fn.call(cmd)
+    _stub = _function_handle._stub
+    _stub._add_pty_input_stream()  # TOOD(erikbern): slightly hacky
+    async with _run_stub(_stub, environment_name=environment_name, shell=True):
+        await _function_handle.shell(cmd)
 
 
 run_stub = synchronize_api(_run_stub)

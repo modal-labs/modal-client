@@ -10,7 +10,6 @@ from modal.mount import _Mount
 
 from ._output import OutputManager
 
-
 _TIMEOUT_SENTINEL = object()
 
 

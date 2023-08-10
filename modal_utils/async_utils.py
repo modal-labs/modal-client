@@ -6,10 +6,10 @@ import inspect
 import time
 import typing
 from contextlib import asynccontextmanager
-from typing import Any, Awaitable, Callable, List, Optional, Set, TypeVar
-from typing_extensions import ParamSpec
+from typing import Any, AsyncIterator, Awaitable, Callable, Iterator, List, Optional, Set, TypeVar
 
 import synchronicity
+from typing_extensions import ParamSpec
 
 from .logger import logger
 
@@ -317,6 +317,18 @@ def asyncify(f: Callable[P, T]) -> Callable[P, Awaitable[T]]:
         return loop.run_in_executor(None, functools.partial(f, *args, **kwargs))
 
     return wrapper
+
+
+async def iterate_blocking(iterator: Iterator[T]) -> AsyncIterator[T]:
+    """Iterate over a blocking iterator in an async context."""
+
+    loop = asyncio.get_running_loop()
+    DONE = object()
+    while True:
+        obj = await loop.run_in_executor(None, next, iterator, DONE)
+        if obj is DONE:
+            break
+        yield obj
 
 
 class ConcurrencyPool:

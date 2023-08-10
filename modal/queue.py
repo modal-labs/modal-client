@@ -1,8 +1,8 @@
 # Copyright Modal Labs 2022
 import queue  # The system library
-from datetime import date
 import time
 import warnings
+from datetime import date
 from typing import Any, List, Optional
 
 from modal_proto import api_pb2
@@ -16,16 +16,48 @@ from .object import _Handle, _Provider
 
 
 class _QueueHandle(_Handle, type_prefix="qu"):
-    """Handle for interacting with the contents of a `Queue`
+    pass
+
+
+QueueHandle = synchronize_api(_QueueHandle)
+
+
+class _Queue(_Provider, type_prefix="qu"):
+    """A distributed, FIFO Queue available to Modal apps.
+
+    The queue can contain any object serializable by `cloudpickle`.
 
     ```python
-    stub.some_dict = modal.Queue.new()
+    stub.some_queue = modal.Queue.new()
 
     if __name__ == "__main__":
-        with stub.run() as app:
-            app.some_dict.put({"some": "object"})
+        with stub.run():
+            stub.some_queue.put({"some": "object"})
     ```
     """
+
+    @staticmethod
+    def new():
+        async def _load(resolver: Resolver, existing_object_id: Optional[str], handle: _QueueHandle):
+            request = api_pb2.QueueCreateRequest(app_id=resolver.app_id, existing_queue_id=existing_object_id)
+            response = await resolver.client.stub.QueueCreate(request)
+            handle._hydrate(response.queue_id, resolver.client, None)
+
+        return _Queue._from_loader(_load, "Queue()")
+
+    def __init__(self):
+        """`Queue({...})` is deprecated. Please use `Queue.new({...})` instead."""
+        deprecation_warning(date(2023, 6, 27), self.__init__.__doc__)
+        obj = _Queue.new()
+        self._init_from_other(obj)
+
+    @staticmethod
+    def persisted(
+        label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
+    ) -> "_Queue":
+        return _Queue.new()._persist(label, namespace, environment_name)
+
+    # Live handle methods
 
     async def _get_nonblocking(self, n_values: int) -> List[Any]:
         request = api_pb2.QueueGetRequest(
@@ -126,37 +158,6 @@ class _QueueHandle(_Handle, type_prefix="qu"):
         )
 
         await retry_transient_errors(self._client.stub.QueuePut, request)
-
-
-QueueHandle = synchronize_api(_QueueHandle)
-
-
-class _Queue(_Provider[_QueueHandle]):
-    """A distributed, FIFO Queue available to Modal apps.
-
-    The queue can contain any object serializable by `cloudpickle`.
-    """
-
-    @staticmethod
-    def new():
-        async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _QueueHandle:
-            request = api_pb2.QueueCreateRequest(app_id=resolver.app_id, existing_queue_id=existing_object_id)
-            response = await resolver.client.stub.QueueCreate(request)
-            return _QueueHandle._from_id(response.queue_id, resolver.client, None)
-
-        return _Queue._from_loader(_load, "Queue()")
-
-    def __init__(self):
-        """`Queue({...})` is deprecated. Please use `Queue.new({...})` instead."""
-        deprecation_warning(date(2023, 6, 27), self.__init__.__doc__)
-        obj = _Queue.new()
-        self._init_from_other(obj)
-
-    @staticmethod
-    def persisted(
-        label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
-    ) -> "_Queue":
-        return _Queue.new()._persist(label, namespace, environment_name)
 
 
 Queue = synchronize_api(_Queue)

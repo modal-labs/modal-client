@@ -1,11 +1,11 @@
 # Copyright Modal Labs 2022
 from __future__ import annotations
+
 import asyncio
-from datetime import date
 import time
+from datetime import date
 
-
-from modal import Stub, method, web_endpoint, asgi_app
+from modal import Stub, asgi_app, method, web_endpoint
 from modal.exception import deprecation_warning
 
 SLEEP_DELAY = 0.1
@@ -168,3 +168,19 @@ class ParamCls:
     @method()
     def f(self, z: int):
         return f"{self.x} {self.y} {z}"
+
+
+@stub.function(allow_concurrent_inputs=5)
+def sleep_700_sync(x):
+    time.sleep(0.7)
+    return x * x
+
+
+@stub.function(allow_concurrent_inputs=5)
+async def sleep_700_async(x):
+    await asyncio.sleep(0.7)
+    return x * x
+
+
+def unassociated_function(x):
+    return 100 - x

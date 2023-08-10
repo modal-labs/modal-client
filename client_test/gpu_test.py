@@ -106,7 +106,7 @@ def test_memory_selection_gpu_variant(client, servicer, memory, gpu_type):
     assert func_def.resources.gpu_config.memory == memory
 
 
-A100_GPU_COUNT_MAPPING = {1: api_pb2.GPU_TYPE_A100, **{i: api_pb2.GPU_TYPE_A100_40GB_MANY for i in range(2, 5)}}
+A100_GPU_COUNT_MAPPING = {1: api_pb2.GPU_TYPE_A100, **{i: api_pb2.GPU_TYPE_A100 for i in range(2, 5)}}
 
 
 @pytest.mark.parametrize("count,gpu_type", A100_GPU_COUNT_MAPPING.items())

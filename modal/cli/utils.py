@@ -1,12 +1,12 @@
 # Copyright Modal Labs 2022
 from datetime import datetime
-from typing import Union, List
+from typing import List, Union
 
 import typer
 from rich.console import Console
+from rich.json import JSON
 from rich.table import Table
 from rich.text import Text
-from rich.json import JSON
 
 
 def timestamp_to_local(ts: float) -> str:

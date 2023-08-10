@@ -1,10 +1,9 @@
 # Copyright Modal Labs 2022
 import hashlib
 import os
+import pytest
 import sys
 from pathlib import Path
-
-import pytest
 
 from modal import App, Stub
 from modal._blob_utils import LARGE_FILE_LIMIT
@@ -59,9 +58,9 @@ def test_create_mount(servicer, client):
     m = Mount.from_local_dir(local_dir, remote_path="/foo", condition=condition)
 
     app = App._init_new(client)
-    obj = app.create_one_object(m, "")
+    app.create_one_object(m, "")
 
-    assert obj.object_id == "mo-123"
+    assert m.object_id == "mo-123"
     assert f"/foo/{cur_filename}" in servicer.files_name2sha
     sha256_hex = servicer.files_name2sha[f"/foo/{cur_filename}"]
     assert sha256_hex in servicer.files_sha2data

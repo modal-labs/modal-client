@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
 import logging
-
 import pytest
 
 from google.protobuf.empty_pb2 import Empty
@@ -260,3 +259,23 @@ async def test_redeploy_persist(servicer, client):
     app = await deploy_stub.aio(stub, "my-app", client=client)
     assert app.app_id == "ap-1"
     assert servicer.app_objects["ap-1"]["d"] == "di-1"
+
+
+def test_redeploy_delete_objects(servicer, client):
+    # Deploy an app with objects d1 and d2
+    stub = Stub()
+    stub.d1 = Dict.new()
+    stub.d2 = Dict.new()
+    app = deploy_stub(stub, "xyz", client=client)
+
+    # Check objects
+    assert set(servicer.app_objects[app.app_id].keys()) == set(["d1", "d2"])
+
+    # Deploy an app with objects d2 and d3
+    stub = Stub()
+    stub.d2 = Dict.new()
+    stub.d3 = Dict.new()
+    app = deploy_stub(stub, "xyz", client=client)
+
+    # Make sure d1 is deleted
+    assert set(servicer.app_objects[app.app_id].keys()) == set(["d2", "d3"])
