@@ -150,7 +150,7 @@ class _App:
                 # ids associated with them when they are serialized into other functions
                 await resolver.preload(provider, existing_object_id)
                 if provider.object_id is not None:
-                    self._tag_to_object_id[tag] = provider.object_id
+                    tag_to_object_id[tag] = provider.object_id
 
             for tag, provider in blueprint.items():
                 existing_object_id = tag_to_object_id.get(tag)
