@@ -9,8 +9,10 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
 
+from ._location import parse_cloud_provider
 from ._resolver import Resolver
 from .client import _Client
+from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
 from .mount import _Mount
 from .object import _Handle, _Provider
@@ -140,6 +142,10 @@ class _Sandbox(_Provider, type_prefix="sb"):
         mounts: Sequence[_Mount],
         timeout: Optional[int] = None,
         workdir: Optional[str] = None,
+        gpu: GPU_T = None,
+        cloud: Optional[str] = None,
+        cpu: Optional[float] = None,
+        memory: Optional[int] = None,
     ) -> _SandboxHandle:
         """mdmd:hidden"""
 
@@ -155,6 +161,14 @@ class _Sandbox(_Provider, type_prefix="sb"):
                 image_handle = await resolver.load(image)
                 return image_handle.object_id
 
+            gpu_config = parse_gpu_config(gpu)
+
+            cloud_provider = parse_cloud_provider(cloud) if cloud else None
+
+            if cpu is not None and cpu < 0.25:
+                raise InvalidError(f"Invalid fractional CPU value {cpu}. Cannot have less than 0.25 CPU resources.")
+            milli_cpu = int(1000 * cpu) if cpu is not None else None
+
             image_id, mount_ids = await asyncio.gather(_load_image(), _load_mounts())
             definition = api_pb2.Sandbox(
                 entrypoint_args=entrypoint_args,
@@ -162,6 +176,8 @@ class _Sandbox(_Provider, type_prefix="sb"):
                 mount_ids=mount_ids,
                 timeout_secs=timeout,
                 workdir=workdir,
+                resources=api_pb2.Resources(gpu_config=gpu_config, milli_cpu=milli_cpu, memory_mb=memory),
+                cloud_provider=cloud_provider,
             )
 
             create_req = api_pb2.SandboxCreateRequest(app_id=resolver.app_id, definition=definition)

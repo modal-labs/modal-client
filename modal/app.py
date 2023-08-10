@@ -11,6 +11,7 @@ from ._output import OutputManager
 from ._resolver import Resolver
 from .client import _Client
 from .config import logger
+from .gpu import GPU_T
 from .object import _Provider
 
 if TYPE_CHECKING:
@@ -310,6 +311,10 @@ class _App:
         mounts: Sequence["modal.image._Mount"] = (),
         timeout: Optional[int] = None,  # Maximum execution time of the sandbox in seconds.
         workdir: Optional[str] = None,  # Working directory of the sandbox.
+        gpu: GPU_T = None,
+        cloud: Optional[str] = None,
+        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
+        memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
     ) -> "modal.sandbox._Sandbox":
         """Sandboxes are a way to run arbitrary commands in dynamically defined environments.
 
@@ -323,7 +328,17 @@ class _App:
         self._client.track_function_invocation()
 
         resolver = Resolver(self._client, environment_name=self._environment_name, app_id=self.app_id)
-        provider = _Sandbox._new(entrypoint_args, image or _default_image, mounts, timeout, workdir)
+        provider = _Sandbox._new(
+            entrypoint_args,
+            image=image or _default_image,
+            mounts=mounts,
+            timeout=timeout,
+            workdir=workdir,
+            gpu=gpu,
+            cloud=cloud,
+            cpu=cpu,
+            memory=memory,
+        )
         await resolver.load(provider)
         return provider
 
