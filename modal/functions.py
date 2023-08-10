@@ -844,7 +844,7 @@ def _get_function_mounts(
             "You can add them as explicit mounts using:\n\n"
             f"@stub.function(mounts=[Mount.from_local_python_packages({module_list_str})])\n"
         )
-        deprecation_warning(date(2023, 7, 7), automount_deprecation, pending=True)
+        deprecation_warning(date(2023, 8, 10), automount_deprecation, pending=True)
 
     all_mounts.extend(automounted)
     return all_mounts
