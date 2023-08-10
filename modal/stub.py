@@ -194,12 +194,13 @@ class _Stub:
             return "[unnamed app]"
 
     def _add_object(self, tag, obj):
-        if self._app and tag in self._app:
+        if self._app:
             # If this is inside a container, and some module is loaded lazily, then a function may be
             # defined later than the container initialization. If this happens then lets hydrate the
             # function at this point
-            other_obj = self._app[tag]
-            obj._handle._hydrate_from_other(other_obj._handle)
+            other_obj = self._app._get_object(tag)
+            if other_obj is not None:
+                obj._handle._hydrate_from_other(other_obj._handle)
 
         self._blueprint[tag] = obj
 

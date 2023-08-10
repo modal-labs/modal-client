@@ -8,7 +8,7 @@ from grpclib import GRPCError, Status
 
 import modal.app
 from modal import Dict, Image, Queue, Stub, web_endpoint
-from modal.exception import InvalidError
+from modal.exception import DeprecationError, InvalidError
 from modal.runner import deploy_stub
 from modal_proto import api_pb2
 from modal_test_support import module_1, module_2
@@ -22,10 +22,15 @@ async def test_kwargs(servicer, client):
     )
     async with stub.run(client=client) as app:
         # TODO: interface to get type safe objects from live apps
-        await app["d"].put.aio("foo", "bar")  # type: ignore
-        await app["q"].put.aio("baz")  # type: ignore
-        assert await app["d"].get.aio("foo") == "bar"  # type: ignore
-        assert await app["q"].get.aio() == "baz"  # type: ignore
+        await stub["d"].put.aio("foo", "bar")  # type: ignore
+        await stub["q"].put.aio("baz")  # type: ignore
+        assert await stub["d"].get.aio("foo") == "bar"  # type: ignore
+        assert await stub["q"].get.aio() == "baz"  # type: ignore
+
+        with pytest.warns(DeprecationError):
+            assert isinstance(app["d"], Dict)
+        with pytest.warns(DeprecationError):
+            assert isinstance(app["q"], Queue)
 
 
 @pytest.mark.asyncio
@@ -34,10 +39,15 @@ async def test_attrs(servicer, client):
     stub.d = Dict.new()
     stub.q = Queue.new()
     async with stub.run(client=client) as app:
-        await app.d.put.aio("foo", "bar")  # type: ignore
-        await app.q.put.aio("baz")  # type: ignore
-        assert await app.d.get.aio("foo") == "bar"  # type: ignore
-        assert await app.q.get.aio() == "baz"  # type: ignore
+        await stub.d.put.aio("foo", "bar")  # type: ignore
+        await stub.q.put.aio("baz")  # type: ignore
+        assert await stub.d.get.aio("foo") == "bar"  # type: ignore
+        assert await stub.q.get.aio() == "baz"  # type: ignore
+
+        with pytest.warns(DeprecationError):
+            assert isinstance(app.d, Dict)
+        with pytest.warns(DeprecationError):
+            assert isinstance(app.q, Queue)
 
 
 @pytest.mark.asyncio

@@ -107,9 +107,8 @@ def _get_click_command_for_function(_stub, function_tag):
             detach=ctx.obj["detach"],
             show_progress=ctx.obj["show_progress"],
             environment_name=ctx.obj["env"],
-        ) as app:
-            _function_handle = app[function_tag]
-            _function_handle.call(*args, **kwargs)
+        ):
+            blocking_stub[function_tag].call(*args, **kwargs)
 
     # TODO: handle `self` when raw_func is an unbound method (e.g. method on lifecycle class)
     with_click_options = _add_click_options(f, inspect.signature(raw_func))

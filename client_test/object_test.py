@@ -2,7 +2,7 @@
 import pytest
 
 from modal import Queue, Stub
-from modal.exception import InvalidError
+from modal.exception import DeprecationError, InvalidError
 
 
 @pytest.mark.asyncio
@@ -10,8 +10,11 @@ async def test_async_factory(client):
     stub = Stub()
     stub["my_factory"] = Queue.new()
     async with stub.run(client=client) as running_app:
-        # assert isinstance(running_app["my_factory"], Queue)  # TODO(erikbern(): is a handle now
-        assert running_app["my_factory"].object_id == "qu-1"
+        assert isinstance(stub["my_factory"], Queue)
+        assert stub["my_factory"].object_id == "qu-1"
+        with pytest.warns(DeprecationError):
+            assert isinstance(running_app["my_factory"], Queue)
+            assert running_app["my_factory"].object_id == "qu-1"
 
 
 @pytest.mark.asyncio
@@ -21,7 +24,9 @@ async def test_use_object(client):
     assert isinstance(q, Queue)
     stub["my_q"] = q
     async with stub.run(client=client) as running_app:
-        assert running_app["my_q"].object_id == "qu-foo"
+        assert stub["my_q"].object_id == "qu-foo"
+        with pytest.warns(DeprecationError):
+            assert running_app["my_q"].object_id == "qu-foo"
 
 
 def test_new_hydrated(client):

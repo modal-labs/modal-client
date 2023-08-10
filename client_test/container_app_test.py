@@ -5,7 +5,7 @@ import pytest
 from unittest import mock
 
 import modal.secret
-from modal import App, Function, Image, Stub
+from modal import App, Image, Stub
 from modal.exception import InvalidError
 
 from .supports.skip import skip_windows_unix_socket
@@ -27,14 +27,8 @@ async def test_container_function_lazily_imported(unix_servicer, container_clien
         "my_f_2": "fu-456",
     }
 
-    container_app = await App.init_container.aio(container_client, "ap-123")
+    await App.init_container.aio(container_client, "ap-123")
     stub = Stub()
-
-    # Make sure these functions exist and have the right type
-    my_f_1_app = container_app["my_f_1"]
-    my_f_2_app = container_app["my_f_2"]
-    assert isinstance(my_f_1_app, Function)
-    assert isinstance(my_f_2_app, Function)
 
     # Now, let's create my_f_2 after the app started running
     # This might happen if some local module is imported lazily
@@ -60,8 +54,8 @@ async def test_is_inside(servicer, unix_servicer, client, container_client):
         assert not stub.is_inside(stub.image_2)
 
         app_id = app.app_id
-        image_1_id = app["image"].object_id
-        image_2_id = app["image_2"].object_id
+        image_1_id = stub["image"].object_id
+        image_2_id = stub["image_2"].object_id
 
         # Copy the app objects to the container servicer
         unix_servicer.app_objects[app_id] = servicer.app_objects[app_id]

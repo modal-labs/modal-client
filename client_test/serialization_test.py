@@ -11,8 +11,8 @@ stub.q = Queue.new()
 
 @pytest.mark.asyncio
 async def test_roundtrip(servicer, client):
-    async with stub.run(client=client) as running_app:
-        q = running_app.q
+    async with stub.run(client=client):
+        q = stub.q
         data = serialize(q)
         # TODO: strip synchronizer reference from synchronicity entities!
         assert len(data) < 350  # Used to be 93...
@@ -23,6 +23,6 @@ async def test_roundtrip(servicer, client):
         # is most likely because the name doesn't match. To fix this, make
         # sure that cls.__name__ (which is something synchronicity sets)
         # is the same as the symbol defined in the global scope.
-        q_roundtrip = deserialize(data, running_app)
+        q_roundtrip = deserialize(data, client)
         assert isinstance(q_roundtrip, Queue)
         assert q.object_id == q_roundtrip.object_id

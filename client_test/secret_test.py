@@ -12,8 +12,8 @@ from .supports.skip import skip_old_py
 def test_secret_from_dict(servicer, client):
     stub = Stub()
     stub.secret = Secret.from_dict({"FOO": "hello, world"})
-    with stub.run(client=client) as running_app:
-        assert running_app.secret.object_id == "st-0"
+    with stub.run(client=client):
+        assert stub.secret.object_id == "st-0"
         assert servicer.secrets["st-0"].env_dict == {"FOO": "hello, world"}
 
 
@@ -24,8 +24,8 @@ def test_secret_from_dotenv(servicer, client):
             f.write("# My settings\nUSER=user\nPASSWORD=abc123\n")
         stub = Stub()
         stub.secret = Secret.from_dotenv(tmpdirname)
-        with stub.run(client=client) as running_app:
-            assert running_app.secret.object_id == "st-0"
+        with stub.run(client=client):
+            assert stub.secret.object_id == "st-0"
             assert servicer.secrets["st-0"].env_dict == {"USER": "user", "PASSWORD": "abc123"}
 
 
