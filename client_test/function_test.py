@@ -619,6 +619,6 @@ def test_default_cloud_provider(client, servicer, monkeypatch):
     monkeypatch.setenv("MODAL_DEFAULT_CLOUD", "oci")
     stub.function()(dummy)
     with stub.run(client=client) as app:
-        f = servicer.app_functions[app.dummy.object_id]
+        f = servicer.app_functions[app._get_object("dummy").object_id]
 
     assert f.cloud_provider == api_pb2.CLOUD_PROVIDER_OCI

@@ -16,7 +16,6 @@ from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config
 from .exception import InvalidError
 from .functions import _FunctionHandle
-from .queue import _Queue
 
 
 async def _heartbeat(client, app_id):
@@ -93,9 +92,7 @@ async def _run_stub(
             # Yield to context
             if stub._pty_input_stream:
                 output_mgr._visible_progress = False
-                handle = app._pty_input_stream
-                assert isinstance(handle, _Queue)
-                async with _pty.write_stdin_to_pty_stream(handle):
+                async with _pty.write_stdin_to_pty_stream(stub._pty_input_stream):
                     yield app
                 output_mgr._visible_progress = True
             else:

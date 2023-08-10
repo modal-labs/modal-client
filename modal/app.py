@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+from datetime import date
 from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, TypeVar
 
 from google.protobuf.message import Message
@@ -11,6 +12,7 @@ from ._output import OutputManager
 from ._resolver import Resolver
 from .client import _Client
 from .config import logger
+from .exception import deprecation_warning
 from .gpu import GPU_T
 from .object import _Provider
 
@@ -195,14 +197,20 @@ class _App:
         return self._app_page_url
 
     def __getitem__(self, tag: str) -> _Provider:
-        # Deprecated?
+        deprecation_warning(date(2023, 8, 10), "`app[...]` is deprecated. Use the stub to get objects instead.")
         return self._tag_to_object[tag]
 
     def __contains__(self, tag: str) -> bool:
+        deprecation_warning(date(2023, 8, 10), "`obj in app` is deprecated. Use the stub to get objects instead.")
         return tag in self._tag_to_object
 
     def __getattr__(self, tag: str) -> _Provider:
+        deprecation_warning(date(2023, 8, 10), "`app.obj` is deprecated. Use the stub to get objects instead.")
         return self._tag_to_object[tag]
+
+    def _get_object(self, tag: str) -> Optional[_Provider]:
+        # TODO(erikbern): remove objects from apps soon
+        return self._tag_to_object.get(tag)
 
     async def _init_container(self, client: _Client, app_id: str, stub_name: str):
         self._client = client

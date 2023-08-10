@@ -50,8 +50,8 @@ def test_image_python_packages(client, servicer):
         .pip_install("sklearn[xyz]")
         .pip_install("numpy", "scipy", extra_index_url="https://xyz", find_links="https://abc?q=123", pre=True)
     )
-    with stub.run(client=client) as running_app:
-        layers = get_image_layers(running_app["image"].object_id, servicer)
+    with stub.run(client=client):
+        layers = get_image_layers(stub["image"].object_id, servicer)
         assert any("pip install 'sklearn[xyz]'" in cmd for cmd in layers[1].dockerfile_commands)
         assert any(
             "pip install numpy scipy --find-links 'https://abc?q=123' --extra-index-url https://xyz --pre" in cmd
@@ -101,8 +101,8 @@ def test_image_requirements_txt(servicer, client):
 
     stub = Stub()
     stub["image"] = Image.debian_slim().pip_install_from_requirements(requirements_txt)
-    with stub.run(client=client) as running_app:
-        layers = get_image_layers(running_app["image"].object_id, servicer)
+    with stub.run(client=client):
+        layers = get_image_layers(stub["image"].object_id, servicer)
 
         assert any("COPY /.requirements.txt /.requirements.txt" in cmd for cmd in layers[0].dockerfile_commands)
         assert any("pip install -r /.requirements.txt" in cmd for cmd in layers[0].dockerfile_commands)
@@ -120,16 +120,16 @@ def test_empty_install(servicer, client):
         .conda_install()
     )
 
-    with stub.run(client=client) as running_app:
-        layers = get_image_layers(running_app["image"].object_id, servicer)
+    with stub.run(client=client):
+        layers = get_image_layers(stub["image"].object_id, servicer)
         assert len(layers) == 1
 
 
 def test_debian_slim_apt_install(servicer, client):
     stub = Stub(image=Image.debian_slim().pip_install("numpy").apt_install("git", "ssh").pip_install("scikit-learn"))
 
-    with stub.run(client=client) as running_app:
-        layers = get_image_layers(running_app["image"].object_id, servicer)
+    with stub.run(client=client):
+        layers = get_image_layers(stub["image"].object_id, servicer)
 
         assert any("pip install scikit-learn" in cmd for cmd in layers[0].dockerfile_commands)
         assert any("apt-get install -y git ssh" in cmd for cmd in layers[1].dockerfile_commands)
@@ -141,8 +141,8 @@ def test_image_pip_install_pyproject(servicer, client):
 
     stub = Stub()
     stub["image"] = Image.debian_slim().pip_install_from_pyproject(pyproject_toml)
-    with stub.run(client=client) as running_app:
-        layers = get_image_layers(running_app["image"].object_id, servicer)
+    with stub.run(client=client):
+        layers = get_image_layers(stub["image"].object_id, servicer)
 
         print(layers[0].dockerfile_commands)
         assert any("pip install 'banana >=1.2.0' 'potato >=0.1.0'" in cmd for cmd in layers[0].dockerfile_commands)
@@ -155,8 +155,8 @@ def test_image_pip_install_pyproject_with_optionals(servicer, client):
     stub["image"] = Image.debian_slim().pip_install_from_pyproject(
         pyproject_toml, optional_dependencies=["dev", "test"]
     )
-    with stub.run(client=client) as running_app:
-        layers = get_image_layers(running_app["image"].object_id, servicer)
+    with stub.run(client=client):
+        layers = get_image_layers(stub["image"].object_id, servicer)
 
         print(layers[0].dockerfile_commands)
         assert any(
@@ -197,8 +197,8 @@ def test_image_pip_install_private_repos(servicer, client):
         ],
     )
 
-    with stub.run(client=client) as running_app:
-        layers = get_image_layers(running_app["image"].object_id, servicer)
+    with stub.run(client=client):
+        layers = get_image_layers(stub["image"].object_id, servicer)
         assert len(layers[0].secret_ids) == 2
         assert any(
             "pip install git+https://erikbern:$GITHUB_TOKEN@github.com/corp/private-one@1.0.0" in cmd
@@ -213,8 +213,8 @@ def test_image_pip_install_private_repos(servicer, client):
 def test_conda_install(servicer, client):
     stub = Stub(image=Image.conda().pip_install("numpy").conda_install("pymc3", "theano").pip_install("scikit-learn"))
 
-    with stub.run(client=client) as running_app:
-        layers = get_image_layers(running_app["image"].object_id, servicer)
+    with stub.run(client=client):
+        layers = get_image_layers(stub["image"].object_id, servicer)
 
         assert any("pip install scikit-learn" in cmd for cmd in layers[0].dockerfile_commands)
         assert any("conda install pymc3 theano --yes" in cmd for cmd in layers[1].dockerfile_commands)
@@ -226,8 +226,8 @@ def test_dockerfile_image(servicer, client):
 
     stub = Stub(image=Image.from_dockerfile(path))
 
-    with stub.run(client=client) as running_app:
-        layers = get_image_layers(running_app["image"].object_id, servicer)
+    with stub.run(client=client):
+        layers = get_image_layers(stub["image"].object_id, servicer)
 
         assert any("RUN pip install numpy" in cmd for cmd in layers[1].dockerfile_commands)
 
@@ -237,8 +237,8 @@ def test_conda_update_from_environment(servicer, client):
 
     stub = Stub(image=Image.conda().conda_update_from_environment(path))
 
-    with stub.run(client=client) as running_app:
-        layers = get_image_layers(running_app["image"].object_id, servicer)
+    with stub.run(client=client):
+        layers = get_image_layers(stub["image"].object_id, servicer)
 
         assert any("RUN conda env update" in cmd for cmd in layers[0].dockerfile_commands)
         assert any(b"foo=1.0" in f.data for f in layers[0].context_files)
@@ -248,8 +248,8 @@ def test_conda_update_from_environment(servicer, client):
 def test_dockerhub_install(servicer, client):
     stub = Stub(image=Image.from_dockerhub("gisops/valhalla:latest", setup_dockerfile_commands=["RUN apt-get update"]))
 
-    with stub.run(client=client) as running_app:
-        layers = get_image_layers(running_app["image"].object_id, servicer)
+    with stub.run(client=client):
+        layers = get_image_layers(stub["image"].object_id, servicer)
 
         assert any("FROM gisops/valhalla:latest" in cmd for cmd in layers[0].dockerfile_commands)
         assert any("RUN apt-get update" in cmd for cmd in layers[0].dockerfile_commands)
@@ -265,8 +265,8 @@ def test_ecr_install(servicer, client):
         )
     )
 
-    with stub.run(client=client) as running_app:
-        layers = get_image_layers(running_app["image"].object_id, servicer)
+    with stub.run(client=client):
+        layers = get_image_layers(stub["image"].object_id, servicer)
 
         assert any(f"FROM {image_tag}" in cmd for cmd in layers[0].dockerfile_commands)
         assert any("RUN apt-get update" in cmd for cmd in layers[0].dockerfile_commands)
@@ -285,8 +285,8 @@ def test_image_run_function(client, servicer):
         .run_function(run_f, secrets=[Secret.from_dict({"xyz": "123"})], network_file_systems={"/foo": volume})
     )
 
-    with stub.run(client=client) as running_app:
-        layers = get_image_layers(running_app["image"].object_id, servicer)
+    with stub.run(client=client):
+        layers = get_image_layers(stub["image"].object_id, servicer)
         assert "foo!" in layers[0].build_function_def
         assert "Secret.from_dict([xyz])" in layers[0].build_function_def
         assert "Ref<NetworkFileSystem()>(test-vol)" in layers[0].build_function_def
@@ -314,8 +314,8 @@ def test_poetry(client, servicer):
     # Build iamge
     stub = Stub()
     stub["image"] = image
-    with stub.run(client=client) as running_app:
-        layers = get_image_layers(running_app["image"].object_id, servicer)
+    with stub.run(client=client):
+        layers = get_image_layers(stub["image"].object_id, servicer)
         context_files = {f.filename for layer in layers for f in layer.context_files}
         assert context_files == {"/.poetry.lock", "/.pyproject.toml", "/modal_requirements.txt"}
 
@@ -336,9 +336,9 @@ def test_image_build_with_context_mount(client, servicer, tmp_path):
     stub["from_dockerfile"] = Image.debian_slim().dockerfile_commands(["COPY . /dummy"], context_mount=data_mount)
     stub["dockerfile_commands"] = Image.debian_slim().from_dockerfile(dockerfile.name, context_mount=data_mount)
 
-    with stub.run(client=client) as running_app:
+    with stub.run(client=client):
         for image_name, expected_layer in [("copy", 0), ("dockerfile_commands", 1), ("from_dockerfile", 0)]:
-            layers = get_image_layers(running_app[image_name].object_id, servicer)
+            layers = get_image_layers(stub[image_name].object_id, servicer)
             assert layers[expected_layer].context_mount_id == "mo-123", f"error in {image_name}"
             assert "COPY . /dummy" in layers[expected_layer].dockerfile_commands
 
@@ -349,27 +349,27 @@ def test_image_build_with_context_mount(client, servicer, tmp_path):
 def test_image_env(client, servicer):
     stub = Stub(image=Image.debian_slim().env({"HELLO": "world!"}))
 
-    with stub.run(client=client) as running_app:
-        layers = get_image_layers(running_app["image"].object_id, servicer)
+    with stub.run(client=client):
+        layers = get_image_layers(stub["image"].object_id, servicer)
         assert any("ENV HELLO=" in cmd and "world!" in cmd for cmd in layers[0].dockerfile_commands)
 
 
 def test_image_gpu(client, servicer):
     stub = Stub(image=Image.debian_slim().run_commands("echo 0"))
-    with stub.run(client=client) as running_app:
-        layers = get_image_layers(running_app["image"].object_id, servicer)
+    with stub.run(client=client):
+        layers = get_image_layers(stub["image"].object_id, servicer)
         assert layers[0].gpu_config.type == api_pb2.GPU_TYPE_UNSPECIFIED
 
     # TODO(erikbern): reenable this warning when we actually support different GPU types
     # with pytest.warns(DeprecationError):
     stub = Stub(image=Image.debian_slim().run_commands("echo 1", gpu=True))
-    with stub.run(client=client) as running_app:
-        layers = get_image_layers(running_app["image"].object_id, servicer)
+    with stub.run(client=client):
+        layers = get_image_layers(stub["image"].object_id, servicer)
         assert layers[0].gpu_config.type == api_pb2.GPU_TYPE_ANY
 
     stub = Stub(image=Image.debian_slim().run_commands("echo 2", gpu=gpu.A10G()))
-    with stub.run(client=client) as running_app:
-        layers = get_image_layers(running_app["image"].object_id, servicer)
+    with stub.run(client=client):
+        layers = get_image_layers(stub["image"].object_id, servicer)
         assert layers[0].gpu_config.type == api_pb2.GPU_TYPE_A10G
 
 
@@ -394,7 +394,7 @@ def test_image_force_build(client, servicer):
 def test_workdir(servicer, client):
     stub = Stub(image=Image.debian_slim().workdir("/foo/bar"))
 
-    with stub.run(client=client) as running_app:
-        layers = get_image_layers(running_app["image"].object_id, servicer)
+    with stub.run(client=client):
+        layers = get_image_layers(stub["image"].object_id, servicer)
 
         assert any("WORKDIR /foo/bar" in cmd for cmd in layers[0].dockerfile_commands)
