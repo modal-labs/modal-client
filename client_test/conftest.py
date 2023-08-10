@@ -313,8 +313,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
     ### Dict
 
     async def DictCreate(self, stream):
-        dict_id = f"di-{len(self.dicts)}"
-        self.dicts[dict_id] = {}
+        request: api_pb2.DictCreateRequest = await stream.recv_message()
+        if request.existing_dict_id:
+            dict_id = request.existing_dict_id
+        else:
+            dict_id = f"di-{len(self.dicts)}"
+            self.dicts[dict_id] = {}
         await stream.send_message(api_pb2.DictCreateResponse(dict_id=dict_id))
 
     async def DictGet(self, stream):
