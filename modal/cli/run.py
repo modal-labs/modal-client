@@ -21,7 +21,7 @@ from modal.stub import LocalEntrypoint
 from modal_utils.async_utils import synchronizer
 
 from ..environments import ensure_env
-from ..functions import _FunctionHandle
+from ..functions import _Function
 from .import_refs import import_function, import_stub
 from .utils import ENV_OPTION, ENV_OPTION_HELP
 
@@ -151,16 +151,16 @@ def _get_click_command_for_local_entrypoint(_stub, entrypoint: LocalEntrypoint):
 
 class RunGroup(click.Group):
     def get_command(self, ctx, func_ref):
-        _function_handle_or_entrypoint = import_function(
+        _function_or_entrypoint = import_function(
             func_ref, accept_local_entrypoint=True, interactive=False, base_cmd="modal run"
         )
-        _stub = _function_handle_or_entrypoint._stub
+        _stub = _function_or_entrypoint._stub
         if _stub._description is None:
             _stub._description = _get_clean_stub_description(func_ref)
-        if isinstance(_function_handle_or_entrypoint, LocalEntrypoint):
-            click_command = _get_click_command_for_local_entrypoint(_stub, _function_handle_or_entrypoint)
+        if isinstance(_function_or_entrypoint, LocalEntrypoint):
+            click_command = _get_click_command_for_local_entrypoint(_stub, _function_or_entrypoint)
         else:
-            tag = _function_handle_or_entrypoint._info.get_tag()
+            tag = _function_or_entrypoint._info.get_tag()
             click_command = _get_click_command_for_function(_stub, tag)
 
         return click_command
@@ -285,12 +285,12 @@ def shell(
     if not console.is_terminal:
         raise click.UsageError("`modal shell` can only be run from a terminal.")
 
-    _function_handle = import_function(
+    _function = import_function(
         func_ref, accept_local_entrypoint=False, accept_webhook=True, interactive=True, base_cmd="modal shell"
     )
-    assert isinstance(_function_handle, _FunctionHandle)  # ensured by accept_local_entrypoint=False
+    assert isinstance(_function, _Function)  # ensured by accept_local_entrypoint=False
     interactive_shell(
-        _function_handle,
+        _function,
         cmd,
         environment_name=env,
     )
