@@ -19,7 +19,7 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 
 import modal
-from modal.functions import _Function, _FunctionHandle
+from modal.functions import _Function
 from modal.stub import LocalEntrypoint, Stub, _Stub
 from modal_utils.async_utils import synchronizer
 
@@ -140,7 +140,7 @@ def choose_function_interactive(stub: _Stub, console: Console) -> str:
 
 def infer_function_or_help(
     _stub: _Stub, interactive: bool, accept_local_entrypoint: bool, accept_webhook: bool
-) -> Union[_FunctionHandle, LocalEntrypoint]:
+) -> Union[_Function, LocalEntrypoint]:
     function_choices = set(_stub.registered_functions.keys())
     if not accept_webhook:
         function_choices -= set(_stub.registered_web_endpoints)
@@ -178,7 +178,7 @@ Registered functions and local entrypoints on the selected stub are:
         # entrypoint is in entrypoint registry, for now
         return _stub.registered_entrypoints[function_name]
 
-    return _stub[function_name]._handle  # functions are in blueprint
+    return _stub[function_name]  # functions are in blueprint
 
 
 def _show_no_auto_detectable_stub(stub_ref: ImportRef) -> None:
@@ -249,7 +249,7 @@ You would run foo as [bold green]{base_cmd} app.py::foo[/bold green]"""
 
 def import_function(
     func_ref: str, base_cmd: str, accept_local_entrypoint=True, accept_webhook=False, interactive=False
-) -> Union[_FunctionHandle, LocalEntrypoint]:
+) -> Union[_Function, LocalEntrypoint]:
     import_ref = parse_import_ref(func_ref)
     try:
         module = import_file_or_module(import_ref.file_or_module)
@@ -270,10 +270,8 @@ def import_function(
         _stub = stub_or_function
         _function_handle = infer_function_or_help(_stub, interactive, accept_local_entrypoint, accept_webhook)
         return _function_handle
-    if isinstance(stub_or_function, _FunctionHandle):
-        return stub_or_function
     elif isinstance(stub_or_function, _Function):
-        return stub_or_function._handle
+        return stub_or_function
     elif isinstance(stub_or_function, LocalEntrypoint):
         if not accept_local_entrypoint:
             raise click.UsageError(
