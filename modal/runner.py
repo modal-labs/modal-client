@@ -15,7 +15,7 @@ from .app import _App, is_local
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config
 from .exception import InvalidError
-from .functions import _FunctionHandle
+from .functions import _Function
 
 
 async def _heartbeat(client, app_id):
@@ -221,7 +221,7 @@ async def _deploy_stub(
     return app
 
 
-async def _interactive_shell(_function_handle: _FunctionHandle, cmd: str, environment_name: str = ""):
+async def _interactive_shell(_function: _Function, cmd: str, environment_name: str = ""):
     """Run an interactive shell (like `bash`) within the image for this app.
 
     This is useful for online debugging and interactive exploration of the
@@ -242,10 +242,10 @@ async def _interactive_shell(_function_handle: _FunctionHandle, cmd: str, enviro
     modal shell script.py --cmd /bin/bash
     ```
     """
-    _stub = _function_handle._stub
+    _stub = _function._stub
     _stub._add_pty_input_stream()  # TOOD(erikbern): slightly hacky
     async with _run_stub(_stub, environment_name=environment_name, shell=True):
-        await _function_handle.shell(cmd)
+        await _function.shell(cmd)
 
 
 run_stub = synchronize_api(_run_stub)

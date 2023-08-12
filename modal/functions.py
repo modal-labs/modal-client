@@ -501,7 +501,6 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
 
     _web_url: Optional[str]
     _info: Optional[FunctionInfo]
-    _stub: Optional["modal.stub._Stub"]  # TODO(erikbern): remove
     _is_remote_cls_method: bool = False
     _function_name: Optional[str]
 
@@ -515,12 +514,10 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
             False  # set when a user terminates the app intentionally, to prevent useless traceback spam
         )
         self._function_name = None
-        self._stub = None  # TODO(erikbern): remove
         self._self_obj = None
 
-    def _initialize_from_local(self, stub, info: FunctionInfo):
+    def _initialize_from_local(self, info: FunctionInfo):
         # note that this is not a full hydration of the function, as it doesn't yet get an object_id etc.
-        self._stub = stub  # TODO(erikbern): remove
         self._info = info
 
     def _hydrate_metadata(self, metadata: Message):
@@ -1160,13 +1157,14 @@ class _Function(_Provider, type_prefix="fu"):
         obj = _Function._from_loader(_load, rep, preload=_preload)
 
         # TODO(erikbern): we should also get rid of this
-        obj._handle._initialize_from_local(stub, info)
+        obj._handle._initialize_from_local(info)
 
         obj._raw_f = raw_f
         obj._info = info
         obj._tag = tag
         obj._all_mounts = all_mounts  # needed for modal.serve file watching
         obj._panel_items = panel_items
+        obj._stub = stub  # Needed for CLI right now
 
         # Used to check whether we should rebuild an image using run_function
         # Plaintext source and arg definition for the function, so it's part of the image
@@ -1185,7 +1183,7 @@ class _Function(_Provider, type_prefix="fu"):
         assert base_handle.is_hydrated(), "Cannot make bound function handle from unhydrated handle."
 
         async def _load(resolver: Resolver, existing_object_id: Optional[str], handle: _FunctionHandle):
-            handle._initialize_from_local(base_handle._stub, base_handle._info)
+            handle._initialize_from_local(base_handle._info)
 
             serialized_params = pickle.dumps((args, kwargs))  # TODO(erikbern): use modal._serialization?
             req = api_pb2.FunctionBindParamsRequest(
