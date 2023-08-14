@@ -527,15 +527,6 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         self._web_url = metadata.web_url
         self._function_name = metadata.function_name
 
-    def _get_is_remote_cls_method(self):
-        return self._is_remote_cls_method
-
-    def _get_info(self):
-        return self._info
-
-    def _get_self_obj(self):
-        return self._self_obj
-
     def _get_metadata(self):
         return api_pb2.FunctionHandleMetadata(
             function_name=self._function_name,
@@ -563,224 +554,6 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
     def _track_function_invocation(self):
         if self._client is not None:  # Note that if it is None, then it will fail later anyway
             self._client.track_function_invocation()
-
-    async def _map(self, input_stream: AsyncIterable[Any], order_outputs: bool, return_exceptions: bool, kwargs={}):
-        if self._web_url:
-            raise InvalidError(
-                "A web endpoint function cannot be directly invoked for parallel remote execution. "
-                f"Invoke this function via its web url '{self._web_url}' or call it locally: {self._function_name}()."
-            )
-
-        if order_outputs and self._is_generator:
-            raise ValueError("Can't return ordered results for a generator")
-
-        count_update_callback = (
-            self._output_mgr.function_progress_callback(self._function_name, total=None) if self._output_mgr else None
-        )
-
-        self._track_function_invocation()
-        async for item in _map_invocation(
-            self._object_id,
-            input_stream,
-            kwargs,
-            self._client,
-            self._is_generator,
-            order_outputs,
-            return_exceptions,
-            count_update_callback,
-        ):
-            yield item
-
-    @warn_if_generator_is_not_consumed
-    async def map(
-        self,
-        *input_iterators,  # one input iterator per argument in the mapped-over function/generator
-        kwargs={},  # any extra keyword arguments for the function
-        order_outputs=None,  # defaults to True for regular functions, False for generators
-        return_exceptions=False,  # whether to propogate exceptions (False) or aggregate them in the results list (True)
-    ) -> AsyncGenerator[Any, None]:
-        """Parallel map over a set of inputs.
-
-        Takes one iterator argument per argument in the function being mapped over.
-
-        Example:
-        ```python
-        @stub.function()
-        def my_func(a):
-            return a ** 2
-
-        @stub.local_entrypoint()
-        def main():
-            assert list(my_func.map([1, 2, 3, 4])) == [1, 4, 9, 16]
-        ```
-
-        If applied to a `stub.function`, `map()` returns one result per input and the output order
-        is guaranteed to be the same as the input order. Set `order_outputs=False` to return results
-        in the order that they are completed instead.
-
-        If applied to a `stub.generator`, the results are returned as they are finished and can be
-        out of order. By yielding zero or more than once, mapping over generators can also be used
-        as a "flat map".
-
-        `return_exceptions` can be used to treat exceptions as successful results:
-        ```python
-        @stub.function()
-        def my_func(a):
-            if a == 2:
-                raise Exception("ohno")
-            return a ** 2
-
-        @stub.local_entrypoint()
-        def main():
-            # [0, 1, UserCodeException(Exception('ohno'))]
-            print(list(my_func.map(range(3), return_exceptions=True)))
-        ```
-        """
-        if order_outputs is None:
-            order_outputs = not self._is_generator
-
-        input_stream = stream.zip(*(stream.iterate(it) for it in input_iterators))
-        async for item in self._map(input_stream, order_outputs, return_exceptions, kwargs):
-            yield item
-
-    async def for_each(self, *input_iterators, kwargs={}, ignore_exceptions=False):
-        """Execute function for all outputs, ignoring outputs
-
-        Convenient alias for `.map()` in cases where the function just needs to be called.
-        as the caller doesn't have to consume the generator to process the inputs.
-        """
-        # TODO(erikbern): it would be better if this is more like a map_spawn that immediately exits
-        # rather than iterating over the result
-        async for _ in self.map(
-            *input_iterators, kwargs=kwargs, order_outputs=False, return_exceptions=ignore_exceptions
-        ):
-            pass
-
-    @warn_if_generator_is_not_consumed
-    async def starmap(
-        self, input_iterator, kwargs={}, order_outputs=None, return_exceptions=False
-    ) -> AsyncGenerator[typing.Any, None]:
-        """Like `map` but spreads arguments over multiple function arguments
-
-        Assumes every input is a sequence (e.g. a tuple).
-
-        Example:
-        ```python
-        @stub.function()
-        def my_func(a, b):
-            return a + b
-
-        @stub.local_entrypoint()
-        def main():
-            assert list(my_func.starmap([(1, 2), (3, 4)])) == [3, 7]
-        ```
-        """
-        if order_outputs is None:
-            order_outputs = not self._is_generator
-
-        input_stream = stream.iterate(input_iterator)
-        async for item in self._map(input_stream, order_outputs, return_exceptions, kwargs):
-            yield item
-
-    async def _call_function(self, args, kwargs):
-        self._track_function_invocation()
-        invocation = await _Invocation.create(self._object_id, args, kwargs, self._client)
-        try:
-            return await invocation.run_function()
-        except asyncio.CancelledError:
-            # this can happen if the user terminates a program, triggering a cancellation cascade
-            if not self._mute_cancellation:
-                raise
-
-    async def _call_function_nowait(self, args, kwargs):
-        self._track_function_invocation()
-        return await _Invocation.create(self._object_id, args, kwargs, self._client)
-
-    @warn_if_generator_is_not_consumed
-    async def _call_generator(self, args, kwargs):
-        self._track_function_invocation()
-        invocation = await _Invocation.create(self._object_id, args, kwargs, self._client)
-        async for res in invocation.run_generator():
-            yield res
-
-    async def _call_generator_nowait(self, args, kwargs):
-        self._track_function_invocation()
-        return await _Invocation.create(self._object_id, args, kwargs, self._client)
-
-    def call(self, *args, **kwargs) -> Awaitable[Any]:  # TODO: Generics/TypeVars
-        """
-        Calls the function remotely, executing it with the given arguments and returning the execution's result.
-        """
-        if self._web_url:
-            raise InvalidError(
-                "A web endpoint function cannot be invoked for remote execution with `.call`. "
-                f"Invoke this function via its web url '{self._web_url}' or call it locally: {self._function_name}()."
-            )
-        if self._is_generator:
-            return self._call_generator(args, kwargs)  # type: ignore
-        else:
-            return self._call_function(args, kwargs)
-
-    def shell(self, *args, **kwargs):
-        # TOOD(erikbern): right now fairly duplicated
-        if self._is_generator:
-            return self._call_generator(args, kwargs)  # type: ignore
-        else:
-            return self._call_function(args, kwargs)
-
-    @synchronizer.nowrap
-    def __call__(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
-        if self._get_is_remote_cls_method():  # TODO(elias): change parametrization so this is isn't needed
-            return self.call(*args, **kwargs)
-
-        info = self._get_info()
-        if not info:
-            msg = (
-                "The definition for this function is missing so it is not possible to invoke it locally. "
-                "If this function was retrieved via `Function.lookup` you need to use `.call()`."
-            )
-            raise AttributeError(msg)
-
-        self_obj = self._get_self_obj()
-        if self_obj:
-            # This is a method on a class, so bind the self to the function
-            fun = info.raw_f.__get__(self_obj)
-        else:
-            fun = info.raw_f
-        return fun(*args, **kwargs)
-
-    async def spawn(self, *args, **kwargs) -> Optional["_FunctionCall"]:
-        """Calls the function with the given arguments, without waiting for the results.
-
-        Returns a `modal.functions.FunctionCall` object, that can later be polled or waited for using `.get(timeout=...)`.
-        Conceptually similar to `multiprocessing.pool.apply_async`, or a Future/Promise in other contexts.
-
-        *Note:* `.spawn()` on a modal generator function does call and execute the generator, but does not currently
-        return a function handle for polling the result.
-        """
-        if self._is_generator:
-            await self._call_generator_nowait(args, kwargs)
-            return None
-
-        invocation = await self._call_function_nowait(args, kwargs)
-        return _FunctionCall._new_hydrated(invocation.function_call_id, invocation.client, None)
-
-    def get_raw_f(self) -> Callable[..., Any]:
-        """Return the inner Python object wrapped by this Modal Function."""
-        if not self._info:
-            raise AttributeError("_info has not been set on this FunctionHandle and not available in this context")
-
-        return self._info.raw_f
-
-    async def get_current_stats(self) -> FunctionStats:
-        """Return a `FunctionStats` object describing the current function's queue and runner counts."""
-
-        resp = await self._client.stub.FunctionGetCurrentStats(
-            api_pb2.FunctionGetCurrentStatsRequest(function_id=self._object_id)
-        )
-        return FunctionStats(
-            backlog=resp.backlog, num_active_runners=resp.num_active_tasks, num_total_runners=resp.num_total_tasks
-        )
 
     def _bind_obj(self, obj, objtype):
         # This is needed to bind "self" to methods for direct __call__
@@ -1219,6 +992,60 @@ class _Function(_Provider, type_prefix="fu"):
     def is_generator(self) -> bool:
         return self._handle._is_generator
 
+    async def _map(self, input_stream: AsyncIterable[Any], order_outputs: bool, return_exceptions: bool, kwargs={}):
+        if self._handle._web_url:
+            raise InvalidError(
+                "A web endpoint function cannot be directly invoked for parallel remote execution. "
+                f"Invoke this function via its web url '{self._handle._web_url}' or call it locally: {self._handle._function_name}()."
+            )
+
+        if order_outputs and self._handle._is_generator:
+            raise ValueError("Can't return ordered results for a generator")
+
+        count_update_callback = (
+            self._handle._output_mgr.function_progress_callback(self._handle._function_name, total=None)
+            if self._handle._output_mgr
+            else None
+        )
+
+        self._handle._track_function_invocation()
+        async for item in _map_invocation(
+            self.object_id,
+            input_stream,
+            kwargs,
+            self._client,
+            self._handle._is_generator,
+            order_outputs,
+            return_exceptions,
+            count_update_callback,
+        ):
+            yield item
+
+    async def _call_function(self, args, kwargs):
+        self._handle._track_function_invocation()
+        invocation = await _Invocation.create(self.object_id, args, kwargs, self._client)
+        try:
+            return await invocation.run_function()
+        except asyncio.CancelledError:
+            # this can happen if the user terminates a program, triggering a cancellation cascade
+            if not self._mute_cancellation:
+                raise
+
+    async def _call_function_nowait(self, args, kwargs):
+        self._handle._track_function_invocation()
+        return await _Invocation.create(self.object_id, args, kwargs, self._client)
+
+    @warn_if_generator_is_not_consumed
+    async def _call_generator(self, args, kwargs):
+        self._handle._track_function_invocation()
+        invocation = await _Invocation.create(self.object_id, args, kwargs, self._client)
+        async for res in invocation.run_generator():
+            yield res
+
+    async def _call_generator_nowait(self, args, kwargs):
+        self._handle._track_function_invocation()
+        return await _Invocation.create(self.object_id, args, kwargs, self._client)
+
     @warn_if_generator_is_not_consumed
     async def map(
         self,
@@ -1227,45 +1054,176 @@ class _Function(_Provider, type_prefix="fu"):
         order_outputs=None,  # defaults to True for regular functions, False for generators
         return_exceptions=False,  # whether to propogate exceptions (False) or aggregate them in the results list (True)
     ) -> AsyncGenerator[Any, None]:
-        async for item in self._handle.map(
-            *input_iterators, kwargs=kwargs, order_outputs=order_outputs, return_exceptions=return_exceptions
-        ):
+        """Parallel map over a set of inputs.
+
+        Takes one iterator argument per argument in the function being mapped over.
+
+        Example:
+        ```python
+        @stub.function()
+        def my_func(a):
+            return a ** 2
+
+        @stub.local_entrypoint()
+        def main():
+            assert list(my_func.map([1, 2, 3, 4])) == [1, 4, 9, 16]
+        ```
+
+        If applied to a `stub.function`, `map()` returns one result per input and the output order
+        is guaranteed to be the same as the input order. Set `order_outputs=False` to return results
+        in the order that they are completed instead.
+
+        If applied to a `stub.generator`, the results are returned as they are finished and can be
+        out of order. By yielding zero or more than once, mapping over generators can also be used
+        as a "flat map".
+
+        `return_exceptions` can be used to treat exceptions as successful results:
+        ```python
+        @stub.function()
+        def my_func(a):
+            if a == 2:
+                raise Exception("ohno")
+            return a ** 2
+
+        @stub.local_entrypoint()
+        def main():
+            # [0, 1, UserCodeException(Exception('ohno'))]
+            print(list(my_func.map(range(3), return_exceptions=True)))
+        ```
+        """
+        if order_outputs is None:
+            order_outputs = not self._handle._is_generator
+
+        input_stream = stream.zip(*(stream.iterate(it) for it in input_iterators))
+        async for item in self._map(input_stream, order_outputs, return_exceptions, kwargs):
             yield item
 
     async def for_each(self, *input_iterators, kwargs={}, ignore_exceptions=False):
-        await self._handle.for_each(*input_iterators, kwargs=kwargs, ignore_exceptions=ignore_exceptions)
+        """Execute function for all outputs, ignoring outputs
+
+        Convenient alias for `.map()` in cases where the function just needs to be called.
+        as the caller doesn't have to consume the generator to process the inputs.
+        """
+        # TODO(erikbern): it would be better if this is more like a map_spawn that immediately exits
+        # rather than iterating over the result
+        async for _ in self.map(
+            *input_iterators, kwargs=kwargs, order_outputs=False, return_exceptions=ignore_exceptions
+        ):
+            pass
 
     @warn_if_generator_is_not_consumed
     async def starmap(
         self, input_iterator, kwargs={}, order_outputs=None, return_exceptions=False
     ) -> AsyncGenerator[typing.Any, None]:
-        async for item in self._handle.starmap(
-            input_iterator, kwargs=kwargs, order_outputs=order_outputs, return_exceptions=return_exceptions
-        ):
+        """Like `map` but spreads arguments over multiple function arguments
+
+        Assumes every input is a sequence (e.g. a tuple).
+
+        Example:
+        ```python
+        @stub.function()
+        def my_func(a, b):
+            return a + b
+
+        @stub.local_entrypoint()
+        def main():
+            assert list(my_func.starmap([(1, 2), (3, 4)])) == [3, 7]
+        ```
+        """
+        if order_outputs is None:
+            order_outputs = not self._handle._is_generator
+
+        input_stream = stream.iterate(input_iterator)
+        async for item in self._map(input_stream, order_outputs, return_exceptions, kwargs):
             yield item
 
     def call(self, *args, **kwargs) -> Awaitable[Any]:  # TODO: Generics/TypeVars
-        return self._handle.call(*args, **kwargs)
+        """
+        Calls the function remotely, executing it with the given arguments and returning the execution's result.
+        """
+        if self._handle._web_url:
+            raise InvalidError(
+                "A web endpoint function cannot be invoked for remote execution with `.call`. "
+                f"Invoke this function via its web url '{self._handle._web_url}' or call it locally: {self._handle._function_name}()."
+            )
+        if self._handle._is_generator:
+            return self._call_generator(args, kwargs)  # type: ignore
+        else:
+            return self._call_function(args, kwargs)
 
     def shell(self, *args, **kwargs):
-        return self._handle.shell(*args, **kwargs)
+        # TOOD(erikbern): right now fairly duplicated
+        if self._handle._is_generator:
+            return self._call_generator(args, kwargs)  # type: ignore
+        else:
+            return self._call_function(args, kwargs)
 
     def _get_handle(self) -> _FunctionHandle:
         # TODO(erikbern): stupid workaround since __call__ runs on the "outer" object
         return self._handle
 
+    def _get_is_remote_cls_method(self):
+        return self._handle._is_remote_cls_method
+
+    def _get_info(self):
+        return self._handle._info
+
+    def _get_self_obj(self):
+        return self._handle._self_obj
+
     @synchronizer.nowrap
     def __call__(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
-        return self._get_handle().__call__(*args, **kwargs)
+        if self._get_is_remote_cls_method():  # TODO(elias): change parametrization so this is isn't needed
+            return self.call(*args, **kwargs)
+
+        info = self._get_info()
+        if not info:
+            msg = (
+                "The definition for this function is missing so it is not possible to invoke it locally. "
+                "If this function was retrieved via `Function.lookup` you need to use `.call()`."
+            )
+            raise AttributeError(msg)
+
+        self_obj = self._get_self_obj()
+        if self_obj:
+            # This is a method on a class, so bind the self to the function
+            fun = info.raw_f.__get__(self_obj)
+        else:
+            fun = info.raw_f
+        return fun(*args, **kwargs)
 
     async def spawn(self, *args, **kwargs) -> Optional["_FunctionCall"]:
-        return await self._handle.spawn(*args, **kwargs)
+        """Calls the function with the given arguments, without waiting for the results.
+
+        Returns a `modal.functions.FunctionCall` object, that can later be polled or waited for using `.get(timeout=...)`.
+        Conceptually similar to `multiprocessing.pool.apply_async`, or a Future/Promise in other contexts.
+
+        *Note:* `.spawn()` on a modal generator function does call and execute the generator, but does not currently
+        return a function handle for polling the result.
+        """
+        if self._handle._is_generator:
+            await self._call_generator_nowait(args, kwargs)
+            return None
+
+        invocation = await self._call_function_nowait(args, kwargs)
+        return _FunctionCall._new_hydrated(invocation.function_call_id, invocation.client, None)
 
     def get_raw_f(self) -> Callable[..., Any]:
-        return self._handle.get_raw_f()
+        """Return the inner Python object wrapped by this Modal Function."""
+        if not self._info:
+            raise AttributeError("_info has not been set on this FunctionHandle and not available in this context")
+
+        return self._info.raw_f
 
     async def get_current_stats(self) -> FunctionStats:
-        return await self._handle.get_current_stats()
+        """Return a `FunctionStats` object describing the current function's queue and runner counts."""
+
+        resp = await self._client.stub.FunctionGetCurrentStats(
+            api_pb2.FunctionGetCurrentStatsRequest(function_id=self.object_id)
+        )
+        return FunctionStats(
+            backlog=resp.backlog, num_active_runners=resp.num_active_tasks, num_total_runners=resp.num_total_tasks
+        )
 
 
 Function = synchronize_api(_Function)
