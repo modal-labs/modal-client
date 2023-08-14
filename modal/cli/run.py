@@ -243,7 +243,13 @@ def serve(
     """
     env = ensure_env(env)
 
-    with serve_stub(stub_ref, environment_name=env):
+    _stub = import_stub(stub_ref)
+    if _stub.description is None:
+        _stub.set_description(_get_clean_stub_description(stub_ref))
+
+    blocking_stub = synchronizer._translate_out(_stub, interface=Interface.BLOCKING)
+
+    with serve_stub(blocking_stub, stub_ref, environment_name=env):
         if timeout is None:
             timeout = config["serve_timeout"]
         if timeout is None:
