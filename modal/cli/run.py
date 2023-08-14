@@ -155,8 +155,8 @@ class RunGroup(click.Group):
             func_ref, accept_local_entrypoint=True, interactive=False, base_cmd="modal run"
         )
         _stub = _function_or_entrypoint._stub
-        if _stub._description is None:
-            _stub._description = _get_clean_stub_description(func_ref)
+        if _stub.description is None:
+            _stub.set_description(_get_clean_stub_description(func_ref))
         if isinstance(_function_or_entrypoint, LocalEntrypoint):
             click_command = _get_click_command_for_local_entrypoint(_stub, _function_or_entrypoint)
         else:
