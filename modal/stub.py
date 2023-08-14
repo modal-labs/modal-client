@@ -20,7 +20,7 @@ from .client import _Client
 from .cls import make_remote_cls_constructors
 from .config import logger
 from .exception import InvalidError, deprecation_warning
-from .functions import PartialFunction, _Function, _FunctionHandle, _PartialFunction
+from .functions import PartialFunction, _Function, _PartialFunction
 from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount
@@ -443,7 +443,7 @@ class _Stub:
             bool
         ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
-    ) -> Callable[..., _FunctionHandle]:
+    ) -> Callable[..., _Function]:
         """Decorator to register a new Modal function with this stub."""
         if image is None:
             image = self._get_default_image()
@@ -460,7 +460,7 @@ class _Stub:
         def wrapped(
             f: Union[_PartialFunction, Callable[..., Any]],
             _cls: Optional[type] = None,  # Used for methods only
-        ) -> _FunctionHandle:
+        ) -> _Function:
             is_generator_override: Optional[bool] = is_generator
 
             if isinstance(f, _PartialFunction):
@@ -549,7 +549,7 @@ class _Stub:
         keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
     ) -> Callable[[CLS_T], CLS_T]:
-        decorator: Callable[[PartialFunction, type], _FunctionHandle] = self.function(
+        decorator: Callable[[PartialFunction, type], _Function] = self.function(
             image=image,
             secret=secret,
             secrets=secrets,
