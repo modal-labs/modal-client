@@ -1363,7 +1363,7 @@ class _PartialFunction:
 PartialFunction = synchronize_api(_PartialFunction)
 
 
-def _method(
+def method(
     *,
     # Set this to True if it's a non-generator function returning
     # a [sync/async] generator object
@@ -1399,7 +1399,7 @@ def _parse_custom_domains(custom_domains: Optional[Iterable[str]] = None) -> Lis
 
 
 @typechecked
-def _web_endpoint(
+def web_endpoint(
     method: str = "GET",  # REST method for the created endpoint.
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
@@ -1464,7 +1464,7 @@ def _web_endpoint(
 
 
 @typechecked
-def _asgi_app(
+def asgi_app(
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
     custom_domains: Optional[
@@ -1523,7 +1523,7 @@ def _asgi_app(
 
 
 @typechecked
-def _wsgi_app(
+def wsgi_app(
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
     custom_domains: Optional[
@@ -1576,9 +1576,3 @@ def _wsgi_app(
         )
 
     return wrapper
-
-
-method = synchronize_api(_method)
-web_endpoint = synchronize_api(_web_endpoint)
-asgi_app = synchronize_api(_asgi_app)
-wsgi_app = synchronize_api(_wsgi_app)
