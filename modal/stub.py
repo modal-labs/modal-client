@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 import inspect
 import os
-import sys
 import typing
 import warnings
 from datetime import date
@@ -94,7 +93,7 @@ class _Stub:
     """
 
     _name: Optional[str]
-    _description: str
+    _description: Optional[str]
     _app_id: str
     _blueprint: Dict[str, _Provider]
     _function_mounts: Dict[str, _Mount]
@@ -170,28 +169,16 @@ class _Stub:
         return self._app
 
     @property
-    def description(self) -> str:
+    def description(self) -> Optional[str]:
         """The Stub's `name`, if available, or a fallback descriptive identifier."""
-        return self._description or self._infer_app_desc()
+        return self._description
+
+    def set_description(self, description: str):
+        self._description = description
 
     def _validate_blueprint_value(self, key: str, value: Any):
         if not isinstance(value, _Provider):
             raise InvalidError(f"Stub attribute {key} with value {value} is not a valid Modal object")
-
-    def _infer_app_desc(self):
-        if is_notebook():
-            # when running from a notebook the sys.argv for the kernel will
-            # be really long and not very helpful
-            return "Notebook"  # TODO: use actual name of notebook
-
-        if is_local():
-            script_filename = os.path.split(sys.argv[0])[-1]
-            args = [script_filename] + sys.argv[1:]
-            return " ".join(args)
-        else:
-            # in a container we rarely use the description, but nice to have a fallback
-            # instead of displaying "_container_entrypoint.py [base64 garbage]"
-            return "[unnamed app]"
 
     def _add_object(self, tag, obj):
         if self._app:
