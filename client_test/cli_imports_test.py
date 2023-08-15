@@ -10,7 +10,7 @@ from modal.cli.import_refs import (
     parse_import_ref,
 )
 from modal.functions import _Function
-from modal.stub import LocalEntrypoint, _Stub
+from modal.stub import _LocalEntrypoint, _Stub
 from modal_utils.async_utils import synchronizer
 
 # Some helper vars for import_stub tests:
@@ -90,7 +90,7 @@ dir_containing_python_package = {
         (empty_dir_with_python_file, "mod::other_stub", _Stub),
         (dir_containing_python_package, "pack.mod", _Stub),
         (dir_containing_python_package, "pack.mod::other_stub", _Stub),
-        (dir_containing_python_package, "pack/local.py::stub.main", LocalEntrypoint),
+        (dir_containing_python_package, "pack/local.py::stub.main", _LocalEntrypoint),
     ],
 )
 def test_import_object(dir_structure, ref, expected_object_type, mock_dir):

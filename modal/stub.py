@@ -36,16 +36,23 @@ from .volume import _Volume
 _default_image: _Image = _Image.debian_slim()
 
 
-class LocalEntrypoint:
-    raw_f: Callable[..., Any]
+class _LocalEntrypoint:
+    _raw_f: Callable[..., Any]
     _stub: "_Stub"
 
     def __init__(self, raw_f, stub):
-        self.raw_f = raw_f  # type: ignore
+        self._raw_f = raw_f  # type: ignore
         self._stub = stub
 
     def __call__(self, *args, **kwargs):
-        return self.raw_f(*args, **kwargs)
+        return self._raw_f(*args, **kwargs)
+
+    @property
+    def raw_f(self) -> Callable:
+        return self._raw_f
+
+
+LocalEntrypoint = synchronize_api(_LocalEntrypoint)
 
 
 def check_sequence(items: typing.Sequence[typing.Any], item_type: typing.Type[typing.Any], error_msg: str):
@@ -100,7 +107,7 @@ class _Stub:
     _mounts: Sequence[_Mount]
     _secrets: Sequence[_Secret]
     _web_endpoints: List[str]  # Used by the CLI
-    _local_entrypoints: Dict[str, LocalEntrypoint]
+    _local_entrypoints: Dict[str, _LocalEntrypoint]
     _app: Optional[_App]
     _all_stubs: ClassVar[Dict[str, List["_Stub"]]] = {}
 
@@ -330,7 +337,7 @@ class _Stub:
         return {tag: obj for tag, obj in self._blueprint.items() if isinstance(obj, _Function)}
 
     @property
-    def registered_entrypoints(self) -> Dict[str, LocalEntrypoint]:
+    def registered_entrypoints(self) -> Dict[str, _LocalEntrypoint]:
         """All local CLI entrypoints registered on the stub."""
         return self._local_entrypoints
 
@@ -390,7 +397,7 @@ class _Stub:
 
         def wrapped(raw_f: Callable[..., Any]) -> None:
             tag = name if name is not None else raw_f.__qualname__
-            entrypoint = self._local_entrypoints[tag] = LocalEntrypoint(raw_f, self)
+            entrypoint = self._local_entrypoints[tag] = _LocalEntrypoint(raw_f, self)
             return entrypoint
 
         return wrapped
