@@ -17,7 +17,7 @@ from modal.config import config
 from modal.exception import InvalidError
 from modal.runner import deploy_stub, interactive_shell, run_stub
 from modal.serving import serve_stub
-from modal.stub import LocalEntrypoint
+from modal.stub import _LocalEntrypoint
 from modal_utils.async_utils import synchronizer
 
 from ..environments import ensure_env
@@ -115,7 +115,7 @@ def _get_click_command_for_function(_stub, function_tag):
     return click.command(with_click_options)
 
 
-def _get_click_command_for_local_entrypoint(_stub, entrypoint: LocalEntrypoint):
+def _get_click_command_for_local_entrypoint(_stub, entrypoint: _LocalEntrypoint):
     blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
     func = entrypoint.raw_f
     isasync = inspect.iscoroutinefunction(func)
@@ -157,7 +157,7 @@ class RunGroup(click.Group):
         _stub = _function_or_entrypoint._stub
         if _stub.description is None:
             _stub.set_description(_get_clean_stub_description(func_ref))
-        if isinstance(_function_or_entrypoint, LocalEntrypoint):
+        if isinstance(_function_or_entrypoint, _LocalEntrypoint):
             click_command = _get_click_command_for_local_entrypoint(_stub, _function_or_entrypoint)
         else:
             tag = _function_or_entrypoint._info.get_tag()

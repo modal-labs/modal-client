@@ -20,7 +20,7 @@ from rich.prompt import Prompt
 
 import modal
 from modal.functions import _Function
-from modal.stub import LocalEntrypoint, Stub, _Stub
+from modal.stub import Stub, _LocalEntrypoint, _Stub
 from modal_utils.async_utils import synchronizer
 
 
@@ -140,7 +140,7 @@ def choose_function_interactive(stub: _Stub, console: Console) -> str:
 
 def infer_function_or_help(
     _stub: _Stub, interactive: bool, accept_local_entrypoint: bool, accept_webhook: bool
-) -> Union[_Function, LocalEntrypoint]:
+) -> Union[_Function, _LocalEntrypoint]:
     function_choices = set(_stub.registered_functions.keys())
     if not accept_webhook:
         function_choices -= set(_stub.registered_web_endpoints)
@@ -249,7 +249,7 @@ You would run foo as [bold green]{base_cmd} app.py::foo[/bold green]"""
 
 def import_function(
     func_ref: str, base_cmd: str, accept_local_entrypoint=True, accept_webhook=False, interactive=False
-) -> Union[_Function, LocalEntrypoint]:
+) -> Union[_Function, _LocalEntrypoint]:
     import_ref = parse_import_ref(func_ref)
     try:
         module = import_file_or_module(import_ref.file_or_module)
@@ -272,7 +272,7 @@ def import_function(
         return _function_handle
     elif isinstance(stub_or_function, _Function):
         return stub_or_function
-    elif isinstance(stub_or_function, LocalEntrypoint):
+    elif isinstance(stub_or_function, _LocalEntrypoint):
         if not accept_local_entrypoint:
             raise click.UsageError(
                 f"{func_ref} is not a Modal Function (a Modal local_entrypoint can't be used in this context)"
