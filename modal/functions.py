@@ -500,14 +500,12 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
     """Interact with a Modal Function of a live app."""
 
     _web_url: Optional[str]
-    _info: Optional[FunctionInfo]
     _is_remote_cls_method: bool = False
     _function_name: Optional[str]
 
     def _initialize_from_empty(self):
         self._progress = None
         self._is_generator = None
-        self._info = None  # TODO(erikbern): remove
         self._web_url = None
         self._output_mgr: Optional[OutputManager] = None
         self._mute_cancellation = (
@@ -515,11 +513,6 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         )
         self._function_name = None
         self._self_obj = None
-
-    def _initialize_from_local(self, info: FunctionInfo):
-        # note that this is not a full hydration of the function, as it doesn't yet get an object_id etc.
-        # TODO(erikbern): remove this
-        self._info = info
 
     def _hydrate_metadata(self, metadata: Message):
         # makes function usable
@@ -930,9 +923,6 @@ class _Function(_Provider, type_prefix="fu"):
         rep = f"Function({tag})"
         obj = _Function._from_loader(_load, rep, preload=_preload)
 
-        # TODO(erikbern): we should also get rid of this
-        obj._handle._initialize_from_local(info)
-
         obj._raw_f = raw_f
         obj._info = info
         obj._tag = tag
@@ -957,8 +947,6 @@ class _Function(_Provider, type_prefix="fu"):
         assert base_handle.is_hydrated(), "Cannot make bound function handle from unhydrated handle."
 
         async def _load(resolver: Resolver, existing_object_id: Optional[str], handle: _FunctionHandle):
-            handle._initialize_from_local(base_handle._info)
-
             serialized_params = pickle.dumps((args, kwargs))  # TODO(erikbern): use modal._serialization?
             req = api_pb2.FunctionBindParamsRequest(
                 function_id=base_handle.object_id,
@@ -1175,7 +1163,7 @@ class _Function(_Provider, type_prefix="fu"):
         return self._handle._is_remote_cls_method
 
     def _get_info(self):
-        return self._handle._info
+        return self._info
 
     def _get_self_obj(self):
         return self._handle._self_obj
