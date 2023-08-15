@@ -567,19 +567,10 @@ class _Function(_Provider, type_prefix="fu"):
     """
 
     # TODO: more type annotations
-    _secrets: Collection[_Secret]
     _info: FunctionInfo
-    _mounts: Collection[_Mount]
-    _network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem]
-    _allow_cross_region_volumes: bool
-    _volumes: Dict[Union[str, os.PathLike], _Volume]
-    _image: Optional[_Image]
-    _gpu: Optional[GPU_T]
-    _cloud: Optional[str]
+    _all_mounts: Collection[_Mount]
     _handle: _FunctionHandle
     _stub: "modal.stub._Stub"
-    _is_builder_function: bool
-    _retry_policy: Optional[api_pb2.FunctionRetryPolicy]
 
     @staticmethod
     def from_args(
