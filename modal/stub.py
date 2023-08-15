@@ -51,6 +51,10 @@ class _LocalEntrypoint:
     def raw_f(self) -> Callable:
         return self._raw_f
 
+    @property
+    def stub(self) -> "_Stub":
+        return self._stub
+
 
 LocalEntrypoint = synchronize_api(_LocalEntrypoint)
 
