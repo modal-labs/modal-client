@@ -159,5 +159,11 @@ class _Queue(_Provider, type_prefix="qu"):
 
         await retry_transient_errors(self._client.stub.QueuePut, request)
 
+    async def len(self) -> int:
+        """Return the number of objects in the queue."""
+        request = api_pb2.QueueLenRequest(queue_id=self.object_id)
+        response = await retry_transient_errors(self._client.stub.QueueLen, request)
+        return response.len
+
 
 Queue = synchronize_api(_Queue)

@@ -965,6 +965,14 @@ message QueuePutRequest {
   repeated bytes values = 4;
 }
 
+message QueueLenRequest {
+  string queue_id = 1;
+}
+
+message QueueLenResponse {
+  int32 len = 1;
+}
+
 message RateLimit {
   int32 limit = 1;
   RateLimitInterval interval = 2;
@@ -1350,6 +1358,7 @@ service ModalClient {
   rpc QueueCreate(QueueCreateRequest) returns (QueueCreateResponse);
   rpc QueueGet(QueueGetRequest) returns (QueueGetResponse);
   rpc QueuePut(QueuePutRequest) returns (google.protobuf.Empty);
+  rpc QueueLen(QueueLenRequest) returns (QueueLenResponse);
 
   // Sandboxes
   rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);
