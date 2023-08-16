@@ -19,9 +19,8 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 
 import modal
-from modal.functions import _Function
-from modal.stub import Stub, _LocalEntrypoint, _Stub
-from modal_utils.async_utils import synchronizer
+from modal.functions import Function
+from modal.stub import LocalEntrypoint, Stub
 
 
 @dataclasses.dataclass
@@ -111,7 +110,7 @@ def get_by_object_path(obj: Any, obj_path: str):
     return obj
 
 
-def make_function_panel(idx: int, tag: str, function: _Function, stub: _Stub) -> Panel:
+def make_function_panel(idx: int, tag: str, function: Function, stub: Stub) -> Panel:
     items = [f"- {i}" for i in function.get_panel_items()]
     return Panel(
         Markdown("\n".join(items)),
@@ -120,7 +119,7 @@ def make_function_panel(idx: int, tag: str, function: _Function, stub: _Stub) ->
     )
 
 
-def choose_function_interactive(stub: _Stub, console: Console) -> str:
+def choose_function_interactive(stub: Stub, console: Console) -> str:
     # TODO: allow selection of local_entrypoints when used from `modal run`
     functions = list(stub.registered_functions.items())
     function_panels = [make_function_panel(idx, tag, obj, stub) for idx, (tag, obj) in enumerate(functions)]
@@ -139,31 +138,31 @@ def choose_function_interactive(stub: _Stub, console: Console) -> str:
 
 
 def infer_function_or_help(
-    _stub: _Stub, interactive: bool, accept_local_entrypoint: bool, accept_webhook: bool
-) -> Union[_Function, _LocalEntrypoint]:
-    function_choices = set(_stub.registered_functions.keys())
+    stub: Stub, interactive: bool, accept_local_entrypoint: bool, accept_webhook: bool
+) -> Union[Function, LocalEntrypoint]:
+    function_choices = set(stub.registered_functions.keys())
     if not accept_webhook:
-        function_choices -= set(_stub.registered_web_endpoints)
+        function_choices -= set(stub.registered_web_endpoints)
     if accept_local_entrypoint:
-        function_choices |= set(_stub.registered_entrypoints.keys())
+        function_choices |= set(stub.registered_entrypoints.keys())
 
     sorted_function_choices = sorted(function_choices)
     registered_functions_str = "\n".join(sorted_function_choices)
-    if accept_local_entrypoint and len(_stub.registered_entrypoints) == 1:
+    if accept_local_entrypoint and len(stub.registered_entrypoints) == 1:
         # if there is a single local_entrypoint, use that regardless of
         # other functions on the stub
-        function_name = list(_stub.registered_entrypoints.keys())[0]
+        function_name = list(stub.registered_entrypoints.keys())[0]
     elif len(function_choices) == 1:
         function_name = sorted_function_choices[0]
     elif len(function_choices) == 0:
-        if _stub.registered_web_endpoints:
+        if stub.registered_web_endpoints:
             err_msg = "Modal stub has only webhook functions. Use `modal serve` instead of `modal run`."
         else:
             err_msg = "Modal stub has no registered functions. Nothing to run."
         raise click.UsageError(err_msg)
     elif interactive:
         console = Console()
-        function_name = choose_function_interactive(_stub, console)
+        function_name = choose_function_interactive(stub, console)
     else:
         help_text = f"""You need to specify a Modal function or local entrypoint to run, e.g.
 
@@ -174,11 +173,11 @@ Registered functions and local entrypoints on the selected stub are:
 """
         raise click.UsageError(help_text)
 
-    if function_name in _stub.registered_entrypoints:
+    if function_name in stub.registered_entrypoints:
         # entrypoint is in entrypoint registry, for now
-        return _stub.registered_entrypoints[function_name]
+        return stub.registered_entrypoints[function_name]
 
-    return _stub[function_name]  # functions are in blueprint
+    return stub[function_name]  # functions are in blueprint
 
 
 def _show_no_auto_detectable_stub(stub_ref: ImportRef) -> None:
@@ -198,25 +197,20 @@ def _show_no_auto_detectable_stub(stub_ref: ImportRef) -> None:
         error_console.print(md)
 
 
-def import_stub(stub_ref: str) -> _Stub:
+def import_stub(stub_ref: str) -> Stub:
     import_ref = parse_import_ref(stub_ref)
     try:
         module = import_file_or_module(import_ref.file_or_module)
         obj_path = import_ref.object_path or DEFAULT_STUB_NAME  # get variable named "stub" by default
-        raw_object = get_by_object_path(module, obj_path)
+        stub = get_by_object_path(module, obj_path)
     except NoSuchObject:
         _show_no_auto_detectable_stub(import_ref)
         sys.exit(1)
 
-    try:
-        _stub = synchronizer._translate_in(raw_object)
-    except Exception:
-        raise click.UsageError(f"{raw_object} is not a Modal Stub")
+    if not isinstance(stub, Stub):
+        raise click.UsageError(f"{stub} is not a Modal Stub")
 
-    if not isinstance(_stub, _Stub):
-        raise click.UsageError(f"{raw_object} is not a Modal Stub")
-
-    return _stub
+    return stub
 
 
 def _show_function_ref_help(stub_ref: ImportRef, base_cmd) -> None:
@@ -249,34 +243,28 @@ You would run foo as [bold green]{base_cmd} app.py::foo[/bold green]"""
 
 def import_function(
     func_ref: str, base_cmd: str, accept_local_entrypoint=True, accept_webhook=False, interactive=False
-) -> Union[_Function, _LocalEntrypoint]:
+) -> Union[Function, LocalEntrypoint]:
     import_ref = parse_import_ref(func_ref)
     try:
         module = import_file_or_module(import_ref.file_or_module)
         obj_path = import_ref.object_path or DEFAULT_STUB_NAME  # get variable named "stub" by default
-        raw_object = get_by_object_path(module, obj_path)
+        stub_or_function = get_by_object_path(module, obj_path)
     except NoSuchObject:
         _show_function_ref_help(import_ref, base_cmd)
         sys.exit(1)
 
-    try:
-        stub_or_function = synchronizer._translate_in(raw_object)
-    except Exception:
-        _show_function_ref_help(import_ref, base_cmd)
-        sys.exit(1)
-
-    if isinstance(stub_or_function, _Stub):
+    if isinstance(stub_or_function, Stub):
         # infer function or display help for how to select one
-        _stub = stub_or_function
-        _function_handle = infer_function_or_help(_stub, interactive, accept_local_entrypoint, accept_webhook)
-        return _function_handle
-    elif isinstance(stub_or_function, _Function):
+        stub = stub_or_function
+        function_handle = infer_function_or_help(stub, interactive, accept_local_entrypoint, accept_webhook)
+        return function_handle
+    elif isinstance(stub_or_function, Function):
         return stub_or_function
-    elif isinstance(stub_or_function, _LocalEntrypoint):
+    elif isinstance(stub_or_function, LocalEntrypoint):
         if not accept_local_entrypoint:
             raise click.UsageError(
                 f"{func_ref} is not a Modal Function (a Modal local_entrypoint can't be used in this context)"
             )
         return stub_or_function
     else:
-        raise click.UsageError(f"{raw_object} is not a Modal entity (should be a Stub or Function)")
+        raise click.UsageError(f"{stub_or_function} is not a Modal entity (should be a Stub or Function)")

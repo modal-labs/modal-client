@@ -11,17 +11,15 @@ from typing import Any, Optional
 import click
 import typer
 from rich.console import Console
-from synchronicity import Interface
 
 from modal.config import config
 from modal.exception import InvalidError
 from modal.runner import deploy_stub, interactive_shell, run_stub
 from modal.serving import serve_stub
-from modal.stub import _LocalEntrypoint
-from modal_utils.async_utils import synchronizer
+from modal.stub import LocalEntrypoint, Stub
 
 from ..environments import ensure_env
-from ..functions import _Function
+from ..functions import Function
 from .import_refs import import_function, import_stub
 from .utils import ENV_OPTION, ENV_OPTION_HELP
 
@@ -90,33 +88,30 @@ def _get_clean_stub_description(func_ref: str) -> str:
         return " ".join(sys.argv)
 
 
-def _get_click_command_for_function(_stub, function_tag):
-    blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
-
-    _function = _stub[function_tag]
-    if _function._info.cls is not None:
-        obj = _function._info.cls()
-        raw_func = functools.partial(_function._info.raw_f, obj)
+def _get_click_command_for_function(stub: Stub, function_tag):
+    function = stub[function_tag]
+    if function.info.cls is not None:
+        obj = function.info.cls()
+        raw_func = functools.partial(function.info.raw_f, obj)
     else:
-        raw_func = _function._info.raw_f
+        raw_func = function.info.raw_f
 
     @click.pass_context
     def f(ctx, *args, **kwargs):
         with run_stub(
-            blocking_stub,
+            stub,
             detach=ctx.obj["detach"],
             show_progress=ctx.obj["show_progress"],
             environment_name=ctx.obj["env"],
         ):
-            blocking_stub[function_tag].call(*args, **kwargs)
+            stub[function_tag].call(*args, **kwargs)
 
     # TODO: handle `self` when raw_func is an unbound method (e.g. method on lifecycle class)
     with_click_options = _add_click_options(f, inspect.signature(raw_func))
     return click.command(with_click_options)
 
 
-def _get_click_command_for_local_entrypoint(_stub, entrypoint: _LocalEntrypoint):
-    blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
+def _get_click_command_for_local_entrypoint(stub: Stub, entrypoint: LocalEntrypoint):
     func = entrypoint.raw_f
     isasync = inspect.iscoroutinefunction(func)
 
@@ -128,7 +123,7 @@ def _get_click_command_for_local_entrypoint(_stub, entrypoint: _LocalEntrypoint)
             )
 
         with run_stub(
-            blocking_stub,
+            stub,
             detach=ctx.obj["detach"],
             show_progress=ctx.obj["show_progress"],
             environment_name=ctx.obj["env"],
@@ -151,17 +146,17 @@ def _get_click_command_for_local_entrypoint(_stub, entrypoint: _LocalEntrypoint)
 
 class RunGroup(click.Group):
     def get_command(self, ctx, func_ref):
-        _function_or_entrypoint = import_function(
+        function_or_entrypoint = import_function(
             func_ref, accept_local_entrypoint=True, interactive=False, base_cmd="modal run"
         )
-        _stub = _function_or_entrypoint._stub
-        if _stub.description is None:
-            _stub.set_description(_get_clean_stub_description(func_ref))
-        if isinstance(_function_or_entrypoint, _LocalEntrypoint):
-            click_command = _get_click_command_for_local_entrypoint(_stub, _function_or_entrypoint)
+        stub: Stub = function_or_entrypoint.stub
+        if stub.description is None:
+            stub.set_description(_get_clean_stub_description(func_ref))
+        if isinstance(function_or_entrypoint, LocalEntrypoint):
+            click_command = _get_click_command_for_local_entrypoint(stub, function_or_entrypoint)
         else:
-            tag = _function_or_entrypoint._info.get_tag()
-            click_command = _get_click_command_for_function(_stub, tag)
+            tag = function_or_entrypoint.info.get_tag()
+            click_command = _get_click_command_for_function(stub, tag)
 
         return click_command
 
@@ -219,13 +214,12 @@ def deploy(
         env
     )  # this ensures that `modal.lookup()` without environment specification uses the same env as specified
 
-    _stub = import_stub(stub_ref)
+    stub = import_stub(stub_ref)
 
     if name is None:
-        name = _stub.name
+        name = stub.name
 
-    blocking_stub = synchronizer._translate_out(_stub, interface=Interface.BLOCKING)
-    deploy_stub(blocking_stub, name=name, environment_name=env)
+    deploy_stub(stub, name=name, environment_name=env)
 
 
 def serve(
@@ -243,13 +237,11 @@ def serve(
     """
     env = ensure_env(env)
 
-    _stub = import_stub(stub_ref)
-    if _stub.description is None:
-        _stub.set_description(_get_clean_stub_description(stub_ref))
+    stub = import_stub(stub_ref)
+    if stub.description is None:
+        stub.set_description(_get_clean_stub_description(stub_ref))
 
-    blocking_stub = synchronizer._translate_out(_stub, interface=Interface.BLOCKING)
-
-    with serve_stub(blocking_stub, stub_ref, environment_name=env):
+    with serve_stub(stub, stub_ref, environment_name=env):
         if timeout is None:
             timeout = config["serve_timeout"]
         if timeout is None:
@@ -291,12 +283,12 @@ def shell(
     if not console.is_terminal:
         raise click.UsageError("`modal shell` can only be run from a terminal.")
 
-    _function = import_function(
+    function = import_function(
         func_ref, accept_local_entrypoint=False, accept_webhook=True, interactive=True, base_cmd="modal shell"
     )
-    assert isinstance(_function, _Function)  # ensured by accept_local_entrypoint=False
+    assert isinstance(function, Function)  # ensured by accept_local_entrypoint=False
     interactive_shell(
-        _function,
+        function,
         cmd,
         environment_name=env,
     )
