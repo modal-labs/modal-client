@@ -507,7 +507,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
     def _initialize_from_empty(self):
         self._progress = None
         self._is_generator = None
-        self._info = None
+        self._info = None  # TODO(erikbern): remove
         self._web_url = None
         self._output_mgr: Optional[OutputManager] = None
         self._mute_cancellation = (
@@ -518,6 +518,7 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
 
     def _initialize_from_local(self, info: FunctionInfo):
         # note that this is not a full hydration of the function, as it doesn't yet get an object_id etc.
+        # TODO(erikbern): remove this
         self._info = info
 
     def _hydrate_metadata(self, metadata: Message):
@@ -977,6 +978,14 @@ class _Function(_Provider, type_prefix="fu"):
     def tag(self):
         """mdmd:hidden"""
         return self._tag
+
+    @property
+    def stub(self) -> "modal.stub._Stub":
+        return self._stub
+
+    @property
+    def info(self) -> FunctionInfo:
+        return self._info
 
     def get_build_def(self) -> str:
         """mdmd:hidden"""
