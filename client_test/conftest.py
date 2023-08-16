@@ -585,6 +585,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
             values = []
         await stream.send_message(api_pb2.QueueGetResponse(values=values))
 
+    async def QueueLen(self, stream):
+        await stream.recv_message()
+        await stream.send_message(api_pb2.QueueLenResponse(len=len(self.queue)))
+
     ### Sandbox
 
     async def SandboxCreate(self, stream):
