@@ -512,7 +512,6 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
             False  # set when a user terminates the app intentionally, to prevent useless traceback spam
         )
         self._function_name = None
-        self._self_obj = None
 
     def _hydrate_metadata(self, metadata: Message):
         # makes function usable
@@ -549,12 +548,6 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
         if self._client is not None:  # Note that if it is None, then it will fail later anyway
             self._client.track_function_invocation()
 
-    def _bind_obj(self, obj, objtype):
-        # This is needed to bind "self" to methods for direct __call__
-        # TODO(erikbern): we're mutating self directly here, as opposed to returning a different _FunctionHandle
-        # We should fix this in the future since it probably precludes using classmethods/staticmethods
-        self._self_obj = obj
-
 
 FunctionHandle = synchronize_api(_FunctionHandle)
 
@@ -571,6 +564,7 @@ class _Function(_Provider, type_prefix="fu"):
     _all_mounts: Collection[_Mount]
     _handle: _FunctionHandle
     _stub: "modal.stub._Stub"
+    _self_obj: Any
 
     @staticmethod
     def from_args(
@@ -920,6 +914,7 @@ class _Function(_Provider, type_prefix="fu"):
         obj._all_mounts = all_mounts  # needed for modal.serve file watching
         obj._panel_items = panel_items
         obj._stub = stub  # Needed for CLI right now
+        obj._self_obj = None
 
         # Used to check whether we should rebuild an image using run_function
         # Plaintext source and arg definition for the function, so it's part of the image
@@ -969,6 +964,12 @@ class _Function(_Provider, type_prefix="fu"):
     def get_build_def(self) -> str:
         """mdmd:hidden"""
         return f"{inspect.getsource(self._raw_f)}\n{repr(self._build_args)}"
+
+    def _bind_obj(self, obj, objtype):
+        # This is needed to bind "self" to methods for direct __call__
+        # TODO(erikbern): we're mutating self directly here, as opposed to returning a different _FunctionHandle
+        # We should fix this in the future since it probably precludes using classmethods/staticmethods
+        self._self_obj = obj
 
     # Live handle methods
 
@@ -1157,7 +1158,7 @@ class _Function(_Provider, type_prefix="fu"):
         return self._info
 
     def _get_self_obj(self):
-        return self._handle._self_obj
+        return self._self_obj
 
     @synchronizer.nowrap
     def __call__(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
@@ -1337,7 +1338,7 @@ class _PartialFunction:
             function = obj._modal_functions[k]
         else:  # Cls.fun
             function = objtype._modal_functions[k]
-        function._handle._bind_obj(obj, objtype)  # TODO(erikbern): don't mutate
+        function._bind_obj(obj, objtype)  # TODO(erikbern): don't mutate
         return function
 
     def __del__(self):
