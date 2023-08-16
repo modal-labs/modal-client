@@ -8,7 +8,6 @@ import time
 import typing
 import warnings
 from dataclasses import dataclass
-from datetime import date
 from pathlib import PurePath
 from typing import (
     Any,
@@ -62,7 +61,6 @@ from .exception import (
     InvalidError,
     RemoteError,
     TimeoutError as _TimeoutError,
-    deprecation_error,
 )
 from .gpu import GPU_T, display_gpu_config, parse_gpu_config
 from .image import _Image
@@ -671,11 +669,8 @@ class _Function(_Provider, type_prefix="fu"):
             )
             concurrency_limit = 1
 
-        if keep_warm is True:
-            deprecation_error(
-                date(2023, 3, 3),
-                "Setting `keep_warm=True` is deprecated. Pass an explicit warm pool size instead, e.g. `keep_warm=2`.",
-            )
+        if keep_warm is not None:
+            assert isinstance(keep_warm, int)
 
         if not cloud and not is_builder_function:
             cloud = config.get("default_cloud")

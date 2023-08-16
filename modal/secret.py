@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2022
 import os
-from datetime import date
 from typing import Dict, Optional
 
 from modal._types import typechecked
@@ -8,7 +7,7 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
 
 from ._resolver import Resolver
-from .exception import InvalidError, deprecation_error
+from .exception import InvalidError
 from .object import _Handle, _Provider
 
 
@@ -66,10 +65,6 @@ class _Secret(_Provider, type_prefix="st"):
 
         rep = f"Secret.from_dict([{', '.join(env_dict.keys())}])"
         return _Secret._from_loader(_load, rep)
-
-    def __init__(self, env_dict: Dict[str, str]):
-        """`Secret({...})` is deprecated. Please use `Secret.from_dict({...})` instead."""
-        deprecation_error(date(2023, 5, 1), self.__init__.__doc__)
 
     @staticmethod
     def from_dotenv(path=None):

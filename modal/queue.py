@@ -11,7 +11,7 @@ from modal_utils.grpc_utils import retry_transient_errors
 
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
-from .exception import deprecation_warning
+from .exception import deprecation_error
 from .object import _Handle, _Provider
 
 
@@ -47,7 +47,7 @@ class _Queue(_Provider, type_prefix="qu"):
 
     def __init__(self):
         """`Queue({...})` is deprecated. Please use `Queue.new({...})` instead."""
-        deprecation_warning(date(2023, 6, 27), self.__init__.__doc__)
+        deprecation_error(date(2023, 6, 27), self.__init__.__doc__)
         obj = _Queue.new()
         self._init_from_other(obj)
 
