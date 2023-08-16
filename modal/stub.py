@@ -313,9 +313,7 @@ class _Stub:
         all_mounts = [
             *self._mounts,
         ]
-        for function_handle in self.registered_functions.values():
-            # TODO(elias): This is quite ugly and should be refactored once we merge Function/FunctionHandle
-            function = self[function_handle._info.get_tag()]
+        for function in self.registered_functions.values():
             all_mounts.extend(function._all_mounts)
 
         return [m for m in all_mounts if m.is_local()]
