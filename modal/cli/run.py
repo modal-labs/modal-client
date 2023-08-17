@@ -104,7 +104,7 @@ def _get_click_command_for_function(stub: Stub, function_tag):
             show_progress=ctx.obj["show_progress"],
             environment_name=ctx.obj["env"],
         ):
-            stub[function_tag].call(*args, **kwargs)
+            stub[function_tag].remote(*args, **kwargs)
 
     # TODO: handle `self` when raw_func is an unbound method (e.g. method on lifecycle class)
     with_click_options = _add_click_options(f, inspect.signature(raw_func))
@@ -137,7 +137,7 @@ def _get_click_command_for_local_entrypoint(stub: Stub, entrypoint: LocalEntrypo
                 warnings.warn(
                     "Warning: no remote function calls were made.\n"
                     "Note that Modal functions run locally when called directly (e.g. `f()`).\n"
-                    "In order to run a function remotely, you may use `f.call()`. (See https://modal.com/docs/reference/modal.Function for other options)."
+                    "In order to run a function remotely, you may use `f.remote()`. (See https://modal.com/docs/reference/modal.Function for other options)."
                 )
 
     with_click_options = _add_click_options(f, inspect.signature(func))
