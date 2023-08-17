@@ -10,7 +10,7 @@ from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._types import typechecked
 from .config import logger
-from .exception import deprecation_warning
+from .exception import deprecation_error
 from .object import _Handle, _Provider
 
 
@@ -75,7 +75,7 @@ class _Dict(_Provider, type_prefix="di"):
 
     def __init__(self, data={}):
         """`Dict({...})` is deprecated. Please use `Dict.new({...})` instead."""
-        deprecation_warning(date(2023, 6, 27), self.__init__.__doc__)
+        deprecation_error(date(2023, 6, 27), self.__init__.__doc__)
         obj = _Dict.new(data)
         self._init_from_other(obj)
 
@@ -90,7 +90,7 @@ class _Dict(_Provider, type_prefix="di"):
         self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
     ) -> "_Dict":
         """`Dict().persist("my-dict")` is deprecated. Use `Dict.persisted("my-dict")` instead."""
-        deprecation_warning(date(2023, 6, 30), self.persist.__doc__)
+        deprecation_error(date(2023, 6, 30), self.persist.__doc__)
         return self.persisted(label, namespace, environment_name)
 
     # Handle methods - temporary until we get rid of all user-facing handles
