@@ -34,14 +34,20 @@ def dummy():
 def test_run_function(client, servicer):
     assert len(servicer.cleared_function_calls) == 0
     with stub.run(client=client):
-        assert foo.call(2, 4) == 20
-        assert len(servicer.cleared_function_calls) == 1
+        # Old-style remote calls
+        with pytest.warns(PendingDeprecationError):
+            assert foo.call(2, 4) == 20
+            assert len(servicer.cleared_function_calls) == 1
 
+        # New-style remote calls
+        assert foo.remote(2, 4) == 20
+        assert len(servicer.cleared_function_calls) == 2
+            
         # Make sure we can also call the Function object
         fun = stub.foo
         assert isinstance(fun, Function)
         assert fun.call(2, 4) == 20
-        assert len(servicer.cleared_function_calls) == 2
+        assert len(servicer.cleared_function_calls) == 3
 
 
 @pytest.mark.asyncio
