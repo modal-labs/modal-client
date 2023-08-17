@@ -1187,7 +1187,7 @@ class _Function(_Provider, type_prefix="fu"):
     def __call__(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
         if self._get_is_remote_cls_method():  # TODO(elias): change parametrization so this is isn't needed
             # TODO(erikbern): deprecate this soon too
-            return self.call(*args, **kwargs)
+            return self.remote(*args, **kwargs)
 
         deprecation_warning(
             date(2018, 8, 16),
