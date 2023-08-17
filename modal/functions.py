@@ -8,6 +8,7 @@ import time
 import typing
 import warnings
 from dataclasses import dataclass
+from datetime import date
 from pathlib import PurePath
 from typing import (
     Any,
@@ -61,6 +62,7 @@ from .exception import (
     InvalidError,
     RemoteError,
     TimeoutError as _TimeoutError,
+    deprecation_warning,
 )
 from .gpu import GPU_T, display_gpu_config, parse_gpu_config
 from .image import _Image
@@ -1121,7 +1123,7 @@ class _Function(_Provider, type_prefix="fu"):
         async for item in self._map(input_stream, order_outputs, return_exceptions, kwargs):
             yield item
 
-    def call(self, *args, **kwargs) -> Awaitable[Any]:  # TODO: Generics/TypeVars
+    def remote(self, *args, **kwargs) -> Awaitable[Any]:  # TODO: Generics/TypeVars
         """
         Calls the function remotely, executing it with the given arguments and returning the execution's result.
         """
@@ -1134,6 +1136,12 @@ class _Function(_Provider, type_prefix="fu"):
             return self._call_generator(args, kwargs)  # type: ignore
         else:
             return self._call_function(args, kwargs)
+
+    def call(self, *args, **kwargs) -> Awaitable[Any]:  # TODO: Generics/TypeVars
+        deprecation_warning(
+            date(2018, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote(...)`", pending=True
+        )
+        return self.remote(*args, **kwargs)
 
     def shell(self, *args, **kwargs):
         # TOOD(erikbern): right now fairly duplicated
@@ -1156,9 +1164,36 @@ class _Function(_Provider, type_prefix="fu"):
         return self._self_obj
 
     @synchronizer.nowrap
+    def local(self, *args, **kwargs) -> Any:
+        # TODO(erikbern): it would be nice to remove the nowrap thing, but right now that would cause
+        # "user code" to run on the synchronicity thread, which seems bad
+        info = self._get_info()
+        if not info:
+            msg = (
+                "The definition for this function is missing so it is not possible to invoke it locally. "
+                "If this function was retrieved via `Function.lookup` you need to use `.call()`."
+            )
+            raise AttributeError(msg)
+
+        self_obj = self._get_self_obj()
+        if self_obj:
+            # This is a method on a class, so bind the self to the function
+            fun = info.raw_f.__get__(self_obj)
+        else:
+            fun = info.raw_f
+        return fun(*args, **kwargs)
+
+    @synchronizer.nowrap
     def __call__(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
         if self._get_is_remote_cls_method():  # TODO(elias): change parametrization so this is isn't needed
+            # TODO(erikbern): deprecate this soon too
             return self.call(*args, **kwargs)
+
+        deprecation_warning(
+            date(2018, 8, 16),
+            "Direct calling `f(...)` of local functions is deprecated. Use `f.local(...)` instead.",
+            pending=True,
+        )
 
         info = self._get_info()
         if not info:

@@ -9,7 +9,7 @@ import cloudpickle
 from synchronicity.exceptions import UserCodeException
 
 from modal import NetworkFileSystem, Proxy, Stub, asgi_app, web_endpoint, wsgi_app
-from modal.exception import DeprecationError, InvalidError
+from modal.exception import DeprecationError, InvalidError, PendingDeprecationError
 from modal.functions import Function, FunctionCall, FunctionHandle, gather
 from modal.runner import deploy_stub
 from modal_proto import api_pb2
@@ -46,8 +46,14 @@ def test_run_function(client, servicer):
 
 @pytest.mark.asyncio
 async def test_call_function_locally(client, servicer):
-    assert foo(22, 44) == 77  # call it locally
-    assert await async_foo(22, 44) == 78
+    # Old-style local calls
+    with pytest.warns(PendingDeprecationError):
+        assert foo(22, 44) == 77  # call it locally
+        assert await async_foo(22, 44) == 78
+
+    # New-style local calls
+    assert foo.local(22, 44) == 77  # call it locally
+    assert await async_foo.local(22, 44) == 78
 
     with stub.run(client=client):
         assert foo.call(2, 4) == 20
