@@ -5,7 +5,6 @@ import functools
 import inspect
 import sys
 import time
-import warnings
 from typing import Any, Optional
 
 import click
@@ -127,18 +126,11 @@ def _get_click_command_for_local_entrypoint(stub: Stub, entrypoint: LocalEntrypo
             detach=ctx.obj["detach"],
             show_progress=ctx.obj["show_progress"],
             environment_name=ctx.obj["env"],
-        ) as app:
+        ):
             if isasync:
                 asyncio.run(func(*args, **kwargs))
             else:
                 func(*args, **kwargs)
-            if app.client.function_invocations == 0:
-                # TODO: better formatting for the warning message
-                warnings.warn(
-                    "Warning: no remote function calls were made.\n"
-                    "Note that Modal functions run locally when called directly (e.g. `f()`).\n"
-                    "In order to run a function remotely, you may use `f.remote()`. (See https://modal.com/docs/reference/modal.Function for other options)."
-                )
 
     with_click_options = _add_click_options(f, inspect.signature(func))
     return click.command(with_click_options)

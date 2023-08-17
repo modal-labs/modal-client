@@ -544,10 +544,6 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
     def is_generator(self) -> bool:
         return self._is_generator
 
-    def _track_function_invocation(self):
-        if self._client is not None:  # Note that if it is None, then it will fail later anyway
-            self._client.track_function_invocation()
-
 
 FunctionHandle = synchronize_api(_FunctionHandle)
 
@@ -994,7 +990,6 @@ class _Function(_Provider, type_prefix="fu"):
             else None
         )
 
-        self._handle._track_function_invocation()
         async for item in _map_invocation(
             self.object_id,
             input_stream,
@@ -1008,7 +1003,6 @@ class _Function(_Provider, type_prefix="fu"):
             yield item
 
     async def _call_function(self, args, kwargs):
-        self._handle._track_function_invocation()
         invocation = await _Invocation.create(self.object_id, args, kwargs, self._client)
         try:
             return await invocation.run_function()
@@ -1018,18 +1012,15 @@ class _Function(_Provider, type_prefix="fu"):
                 raise
 
     async def _call_function_nowait(self, args, kwargs):
-        self._handle._track_function_invocation()
         return await _Invocation.create(self.object_id, args, kwargs, self._client)
 
     @warn_if_generator_is_not_consumed
     async def _call_generator(self, args, kwargs):
-        self._handle._track_function_invocation()
         invocation = await _Invocation.create(self.object_id, args, kwargs, self._client)
         async for res in invocation.run_generator():
             yield res
 
     async def _call_generator_nowait(self, args, kwargs):
-        self._handle._track_function_invocation()
         return await _Invocation.create(self.object_id, args, kwargs, self._client)
 
     @warn_if_generator_is_not_consumed
