@@ -996,7 +996,6 @@ message GPUConfig {
 }
 
 message Resources {
-  bool gpu = 1; // Legacy GPU toggle.
   uint32 memory_mb = 2;
   uint32 milli_cpu = 3;
   GPUConfig gpu_config = 4;
