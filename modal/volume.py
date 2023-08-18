@@ -155,7 +155,7 @@ class _Volume(_Provider, type_prefix="vo"):
         * Passing a file path returns a list containing only that file's listing description
         * Passing a glob path (including at least one * or ** sequence) returns all files matching that glob path (using absolute paths)
         """
-        req = api_pb2.VolumeListFilesRequest(volume_id=self._object_id, path=path)
+        req = api_pb2.VolumeListFilesRequest(volume_id=self.object_id, path=path)
         async for batch in unary_stream(self._client.stub.VolumeListFiles, req):
             for entry in batch.entries:
                 yield entry
