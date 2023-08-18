@@ -4,6 +4,7 @@ import shlex
 import sys
 import typing
 from datetime import date
+from inspect import isfunction
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
@@ -17,6 +18,7 @@ from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_
 
 from ._function_utils import FunctionInfo
 from ._resolver import Resolver
+from ._serialization import serialize
 from .app import is_local
 from .config import config, logger
 from .exception import InvalidError, NotFoundError, RemoteError, deprecation_warning
@@ -136,7 +138,7 @@ class _Image(_Provider, type_prefix="im"):
         secrets: Sequence[_Secret] = [],
         ref=None,
         gpu_config: Optional[api_pb2.GPUConfig] = None,
-        build_function: "modal.functions._Function" = None,
+        build_function: Optional["modal.functions._Function"] = None,
         context_mount: Optional[_Mount] = None,
         image_registry_config: Optional[_ImageRegistryConfig] = None,
         force_build: bool = False,
@@ -194,9 +196,16 @@ class _Image(_Provider, type_prefix="im"):
             if build_function:
                 build_function_def = build_function.get_build_def()
                 build_function_id = (await resolver.load(build_function)).object_id
+
+                globals = build_function.get_globals()
+                # Cloudpickle function serialization produces unstable values.
+                # TODO: better way to filter out types that don't have a stable hash?
+                globals = {k: v for k, v in globals.items() if not isfunction(v)}
+                build_function_globals = serialize(globals)
             else:
                 build_function_def = None
                 build_function_id = None
+                build_function_globals = None
 
             dockerfile_commands_list: List[str]
             if callable(dockerfile_commands):
@@ -217,6 +226,7 @@ class _Image(_Provider, type_prefix="im"):
                 secret_ids=secret_ids,
                 gpu=bool(gpu_config.type),  # Note: as of 2023-01-27, server still uses this
                 build_function_def=build_function_def,
+                build_function_globals=build_function_globals,
                 context_mount_id=context_mount_id,
                 gpu_config=gpu_config,  # Note: as of 2023-01-27, server ignores this
                 image_registry_config=await image_registry_config.resolve(
