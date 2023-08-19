@@ -111,7 +111,7 @@ def _get_click_command_for_function(stub: Stub, function_tag):
 
 
 def _get_click_command_for_local_entrypoint(stub: Stub, entrypoint: LocalEntrypoint):
-    func = entrypoint.raw_f
+    func = entrypoint.info.raw_f
     isasync = inspect.iscoroutinefunction(func)
 
     @click.pass_context
