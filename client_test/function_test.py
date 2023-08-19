@@ -9,7 +9,7 @@ import cloudpickle
 from synchronicity.exceptions import UserCodeException
 
 from modal import NetworkFileSystem, Proxy, Stub, asgi_app, web_endpoint, wsgi_app
-from modal.exception import DeprecationError, InvalidError
+from modal.exception import DeprecationError, InvalidError, PendingDeprecationError
 from modal.functions import Function, FunctionCall, FunctionHandle, gather
 from modal.runner import deploy_stub
 from modal_proto import api_pb2
@@ -34,33 +34,49 @@ def dummy():
 def test_run_function(client, servicer):
     assert len(servicer.cleared_function_calls) == 0
     with stub.run(client=client):
-        assert foo.call(2, 4) == 20
-        assert len(servicer.cleared_function_calls) == 1
+        # Old-style remote calls
+        with pytest.warns(PendingDeprecationError):
+            assert foo.call(2, 4) == 20
+            assert len(servicer.cleared_function_calls) == 1
+
+        # New-style remote calls
+        assert foo.remote(2, 4) == 20
+        assert len(servicer.cleared_function_calls) == 2
 
         # Make sure we can also call the Function object
         fun = stub.foo
         assert isinstance(fun, Function)
-        assert fun.call(2, 4) == 20
-        assert len(servicer.cleared_function_calls) == 2
+        assert fun.remote(2, 4) == 20
+        assert len(servicer.cleared_function_calls) == 3
 
 
 @pytest.mark.asyncio
 async def test_call_function_locally(client, servicer):
-    assert foo(22, 44) == 77  # call it locally
-    assert await async_foo(22, 44) == 78
+    # Old-style local calls
+    with pytest.warns(PendingDeprecationError):
+        assert foo(22, 44) == 77  # call it locally
+        assert await async_foo(22, 44) == 78
+
+    # New-style local calls
+    assert foo.local(22, 44) == 77  # call it locally
+    assert await async_foo.local(22, 44) == 78
 
     with stub.run(client=client):
-        assert foo.call(2, 4) == 20
-        assert foo(22, 55) == 88
-        assert await async_foo(22, 44) == 78
-        assert async_foo.call(2, 4) == 20
-        assert await async_foo.call.aio(2, 4) == 20
+        assert foo.remote(2, 4) == 20
+        with pytest.warns(PendingDeprecationError):
+            assert foo(22, 55) == 88
+        with pytest.warns(PendingDeprecationError):
+            assert await async_foo(22, 44) == 78
+        assert async_foo.remote(2, 4) == 20
+        assert await async_foo.remote.aio(2, 4) == 20
 
         # Make sure we can also call the Function object
         assert isinstance(stub.foo, Function)
         assert isinstance(stub.async_foo, Function)
-        assert stub.foo(22, 55) == 88
-        assert await stub.async_foo(22, 44) == 78
+        with pytest.warns(PendingDeprecationError):
+            assert stub.foo(22, 55) == 88
+        with pytest.warns(PendingDeprecationError):
+            assert await stub.async_foo(22, 44) == 78
 
 
 @pytest.mark.parametrize("slow_put_inputs", [False, True])
@@ -215,7 +231,7 @@ async def test_generator(client, servicer):
     assert len(servicer.cleared_function_calls) == 0
     with stub.run(client=client):
         assert later_gen_modal.is_generator
-        res: typing.Generator = later_gen_modal.call()  # type: ignore
+        res: typing.Generator = later_gen_modal.remote()  # type: ignore
         # Generators fulfil the *iterator protocol*, which requires both these methods.
         # https://docs.python.org/3/library/stdtypes.html#typeiter
         assert hasattr(res, "__iter__")  # strangely inspect.isgenerator returns false
@@ -240,7 +256,7 @@ async def test_generator_async(client, servicer):
     assert len(servicer.cleared_function_calls) == 0
     async with stub.run(client=client):
         assert later_gen_modal.is_generator
-        res = later_gen_modal.call.aio()
+        res = later_gen_modal.remote.aio()
         # Async generators fulfil the *asynchronous iterator protocol*, which requires both these methods.
         # https://peps.python.org/pep-0525/#support-for-asynchronous-iteration-protocol
         assert hasattr(res, "__aiter__")
@@ -381,7 +397,7 @@ def test_function_exception(client, servicer):
     failure_modal = stub.function()(servicer.function_body(failure))
     with stub.run(client=client):
         with pytest.raises(CustomException) as excinfo:
-            failure_modal.call()
+            failure_modal.remote()
         assert "foo!" in str(excinfo.value)
 
 
@@ -392,7 +408,7 @@ async def test_function_exception_async(client, servicer):
     failure_modal = stub.function()(servicer.function_body(failure))
     async with stub.run(client=client):
         with pytest.raises(CustomException) as excinfo:
-            coro = failure_modal.call.aio()
+            coro = failure_modal.remote.aio()
             assert inspect.isawaitable(
                 coro
             )  # mostly for mypy, since output could technically be an async generator which isn't awaitable in the same sense
@@ -434,7 +450,7 @@ def test_function_relative_import_hint(client, servicer):
 
     with stub.run(client=client):
         with pytest.raises(ImportError) as excinfo:
-            import_failure_modal.call()
+            import_failure_modal.remote()
         assert "HINT" in str(excinfo.value)
 
 

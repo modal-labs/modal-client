@@ -8,6 +8,7 @@ import time
 import typing
 import warnings
 from dataclasses import dataclass
+from datetime import date
 from pathlib import PurePath
 from typing import (
     Any,
@@ -61,6 +62,7 @@ from .exception import (
     InvalidError,
     RemoteError,
     TimeoutError as _TimeoutError,
+    deprecation_warning,
 )
 from .gpu import GPU_T, display_gpu_config, parse_gpu_config
 from .image import _Image
@@ -193,7 +195,7 @@ class _Invocation:
                 "Modal functions can only be called within an app. "
                 "Try calling it from another running modal function or from an app run context:\n\n"
                 "with stub.run():\n"
-                "    my_modal_function.call()\n"
+                "    my_modal_function.remote()\n"
             )
         request = api_pb2.FunctionMapRequest(
             function_id=function_id,
@@ -541,10 +543,6 @@ class _FunctionHandle(_Handle, type_prefix="fu"):
     @property
     def is_generator(self) -> bool:
         return self._is_generator
-
-    def _track_function_invocation(self):
-        if self._client is not None:  # Note that if it is None, then it will fail later anyway
-            self._client.track_function_invocation()
 
 
 FunctionHandle = synchronize_api(_FunctionHandle)
@@ -992,7 +990,6 @@ class _Function(_Provider, type_prefix="fu"):
             else None
         )
 
-        self._handle._track_function_invocation()
         async for item in _map_invocation(
             self.object_id,
             input_stream,
@@ -1006,7 +1003,6 @@ class _Function(_Provider, type_prefix="fu"):
             yield item
 
     async def _call_function(self, args, kwargs):
-        self._handle._track_function_invocation()
         invocation = await _Invocation.create(self.object_id, args, kwargs, self._client)
         try:
             return await invocation.run_function()
@@ -1016,18 +1012,15 @@ class _Function(_Provider, type_prefix="fu"):
                 raise
 
     async def _call_function_nowait(self, args, kwargs):
-        self._handle._track_function_invocation()
         return await _Invocation.create(self.object_id, args, kwargs, self._client)
 
     @warn_if_generator_is_not_consumed
     async def _call_generator(self, args, kwargs):
-        self._handle._track_function_invocation()
         invocation = await _Invocation.create(self.object_id, args, kwargs, self._client)
         async for res in invocation.run_generator():
             yield res
 
     async def _call_generator_nowait(self, args, kwargs):
-        self._handle._track_function_invocation()
         return await _Invocation.create(self.object_id, args, kwargs, self._client)
 
     @warn_if_generator_is_not_consumed
@@ -1121,19 +1114,25 @@ class _Function(_Provider, type_prefix="fu"):
         async for item in self._map(input_stream, order_outputs, return_exceptions, kwargs):
             yield item
 
-    def call(self, *args, **kwargs) -> Awaitable[Any]:  # TODO: Generics/TypeVars
+    def remote(self, *args, **kwargs) -> Awaitable[Any]:  # TODO: Generics/TypeVars
         """
         Calls the function remotely, executing it with the given arguments and returning the execution's result.
         """
         if self._handle._web_url:
             raise InvalidError(
-                "A web endpoint function cannot be invoked for remote execution with `.call`. "
+                "A web endpoint function cannot be invoked for remote execution with `.remote`. "
                 f"Invoke this function via its web url '{self._handle._web_url}' or call it locally: {self._handle._function_name}()."
             )
         if self._handle._is_generator:
             return self._call_generator(args, kwargs)  # type: ignore
         else:
             return self._call_function(args, kwargs)
+
+    def call(self, *args, **kwargs) -> Awaitable[Any]:  # TODO: Generics/TypeVars
+        deprecation_warning(
+            date(2018, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote(...)`", pending=True
+        )
+        return self.remote(*args, **kwargs)
 
     def shell(self, *args, **kwargs):
         # TOOD(erikbern): right now fairly duplicated
@@ -1156,15 +1155,44 @@ class _Function(_Provider, type_prefix="fu"):
         return self._self_obj
 
     @synchronizer.nowrap
+    def local(self, *args, **kwargs) -> Any:
+        # TODO(erikbern): it would be nice to remove the nowrap thing, but right now that would cause
+        # "user code" to run on the synchronicity thread, which seems bad
+        info = self._get_info()
+        if not info:
+            msg = (
+                "The definition for this function is missing so it is not possible to invoke it locally. "
+                "If this function was retrieved via `Function.lookup` you need to use `.remote()`."
+            )
+            raise AttributeError(msg)
+
+        self_obj = self._get_self_obj()
+        if self_obj:
+            # This is a method on a class, so bind the self to the function
+            fun = info.raw_f.__get__(self_obj)
+        else:
+            fun = info.raw_f
+        return fun(*args, **kwargs)
+
+    @synchronizer.nowrap
     def __call__(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
         if self._get_is_remote_cls_method():  # TODO(elias): change parametrization so this is isn't needed
-            return self.call(*args, **kwargs)
+            # TODO(erikbern): deprecate this soon too
+            return self.remote(*args, **kwargs)
+
+        deprecation_warning(
+            date(2018, 8, 16),
+            "Calling Modal functions like `f(...)` is deprecated. Use `f.local(...)` if you want to call the"
+            " function in the same Python process. Use `f.remote(...)` if you want to call the function in"
+            " a Modal container in the cloud",
+            pending=True,
+        )
 
         info = self._get_info()
         if not info:
             msg = (
                 "The definition for this function is missing so it is not possible to invoke it locally. "
-                "If this function was retrieved via `Function.lookup` you need to use `.call()`."
+                "If this function was retrieved via `Function.lookup` you need to use `.remote()`."
             )
             raise AttributeError(msg)
 

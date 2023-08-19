@@ -11,7 +11,7 @@ async def test_serialize_deserialize_function(servicer, client):
 
     @stub.function(serialized=True, name="foo")
     def foo():
-        2 * foo.call()
+        2 * foo.remote()
 
     assert foo.object_id is None
 

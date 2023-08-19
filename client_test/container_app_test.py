@@ -33,7 +33,7 @@ async def test_container_function_lazily_imported(unix_servicer, container_clien
     # Now, let's create my_f_2 after the app started running
     # This might happen if some local module is imported lazily
     my_f_2_container = stub.function()(my_f_2)
-    assert await my_f_2_container.call.aio(42) == 1764  # type: ignore
+    assert await my_f_2_container.remote.aio(42) == 1764  # type: ignore
 
 
 @skip_windows_unix_socket

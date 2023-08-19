@@ -89,7 +89,6 @@ class _Client:
         self._pre_stop: Optional[Callable[[], Awaitable[None]]] = None
         self._channel = None
         self._stub = None
-        self._function_invocations = 0
 
     @property
     def stub(self):
@@ -243,13 +242,6 @@ class _Client:
     def set_env_client(cls, client):
         """Just used from tests."""
         cls._client_from_env = client
-
-    def track_function_invocation(self):
-        self._function_invocations += 1
-
-    @property
-    def function_invocations(self):
-        return self._function_invocations
 
 
 Client = synchronize_api(_Client)
