@@ -123,6 +123,16 @@ def test_run(servicer, set_env_client, test_dir):
     _run(["run", file_with_entrypoint.as_posix() + "::stub.main"])
 
 
+def test_run_async(servicer, set_env_client, test_dir):
+    sync_fn = test_dir / "supports" / "app_run_tests" / "local_entrypoint.py"
+    res = _run(["run", sync_fn.as_posix()])
+    assert "called locally" in res.stdout
+
+    async_fn = test_dir / "supports" / "app_run_tests" / "local_entrypoint_async.py"
+    res = _run(["run", async_fn.as_posix()])
+    assert "called locally (async)" in res.stdout
+
+
 def test_help_message_unspecified_function(servicer, set_env_client, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "stub_with_multiple_functions.py"
     result = _run(["run", stub_file.as_posix()], expected_exit_code=2, expected_stderr=None)
