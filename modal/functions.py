@@ -195,7 +195,7 @@ class _Invocation:
                 "Modal functions can only be called within an app. "
                 "Try calling it from another running modal function or from an app run context:\n\n"
                 "with stub.run():\n"
-                "    my_modal_function.call()\n"
+                "    my_modal_function.remote()\n"
             )
         request = api_pb2.FunctionMapRequest(
             function_id=function_id,
@@ -1120,7 +1120,7 @@ class _Function(_Provider, type_prefix="fu"):
         """
         if self._handle._web_url:
             raise InvalidError(
-                "A web endpoint function cannot be invoked for remote execution with `.call`. "
+                "A web endpoint function cannot be invoked for remote execution with `.remote`. "
                 f"Invoke this function via its web url '{self._handle._web_url}' or call it locally: {self._handle._function_name}()."
             )
         if self._handle._is_generator:
@@ -1162,7 +1162,7 @@ class _Function(_Provider, type_prefix="fu"):
         if not info:
             msg = (
                 "The definition for this function is missing so it is not possible to invoke it locally. "
-                "If this function was retrieved via `Function.lookup` you need to use `.call()`."
+                "If this function was retrieved via `Function.lookup` you need to use `.remote()`."
             )
             raise AttributeError(msg)
 
@@ -1182,7 +1182,9 @@ class _Function(_Provider, type_prefix="fu"):
 
         deprecation_warning(
             date(2018, 8, 16),
-            "Direct calling `f(...)` of local functions is deprecated. Use `f.local(...)` instead.",
+            "Calling Modal functions like `f(...)` is deprecated. Use `f.local(...)` if you want to call the"
+            " function in the same Python process. Use `f.remote(...)` if you want to call the function in"
+            " a Modal container in the cloud",
             pending=True,
         )
 
@@ -1190,7 +1192,7 @@ class _Function(_Provider, type_prefix="fu"):
         if not info:
             msg = (
                 "The definition for this function is missing so it is not possible to invoke it locally. "
-                "If this function was retrieved via `Function.lookup` you need to use `.call()`."
+                "If this function was retrieved via `Function.lookup` you need to use `.remote()`."
             )
             raise AttributeError(msg)
 
