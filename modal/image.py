@@ -201,7 +201,7 @@ class _Image(_Provider, type_prefix="im"):
                 # Cloudpickle function serialization produces unstable values.
                 # TODO: better way to filter out types that don't have a stable hash?
                 globals = {k: v for k, v in globals.items() if not isfunction(v)}
-                build_function_globals = serialize(globals)
+                build_function_globals = serialize(globals) if globals else None
             else:
                 build_function_def = None
                 build_function_id = None
