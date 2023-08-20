@@ -278,18 +278,15 @@ def run_f():
 
 def test_image_run_function(client, servicer):
     stub = Stub()
-    volume = NetworkFileSystem.persisted("test-vol")
+    NetworkFileSystem.persisted("test-vol")
     stub["image"] = (
-        Image.debian_slim()
-        .pip_install("pandas")
-        .run_function(run_f, secrets=[Secret.from_dict({"xyz": "123"})], network_file_systems={"/foo": volume})
+        Image.debian_slim().pip_install("pandas").run_function(run_f, secrets=[Secret.from_dict({"xyz": "123"})])
     )
 
     with stub.run(client=client):
         layers = get_image_layers(stub["image"].object_id, servicer)
         assert "foo!" in layers[0].build_function_def
         assert "Secret.from_dict([xyz])" in layers[0].build_function_def
-        assert "Ref<NetworkFileSystem()>(test-vol)" in layers[0].build_function_def
         # globals is none when no globals are referenced
         assert layers[0].build_function_globals == b""
 

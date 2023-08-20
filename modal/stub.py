@@ -37,19 +37,19 @@ _default_image: _Image = _Image.debian_slim()
 
 
 class _LocalEntrypoint:
-    _raw_f: Callable[..., Any]
+    _info: FunctionInfo
     _stub: "_Stub"
 
-    def __init__(self, raw_f, stub):
-        self._raw_f = raw_f  # type: ignore
+    def __init__(self, info, stub):
+        self._info = info  # type: ignore
         self._stub = stub
 
     def __call__(self, *args, **kwargs):
-        return self._raw_f(*args, **kwargs)
+        return self._info.raw_f(*args, **kwargs)
 
     @property
-    def raw_f(self) -> Callable:
-        return self._raw_f
+    def info(self) -> FunctionInfo:
+        return self._info
 
     @property
     def stub(self) -> "_Stub":
@@ -398,8 +398,9 @@ class _Stub:
         """
 
         def wrapped(raw_f: Callable[..., Any]) -> None:
+            info = FunctionInfo(raw_f)
             tag = name if name is not None else raw_f.__qualname__
-            entrypoint = self._local_entrypoints[tag] = _LocalEntrypoint(raw_f, self)
+            entrypoint = self._local_entrypoints[tag] = _LocalEntrypoint(info, self)
             return entrypoint
 
         return wrapped

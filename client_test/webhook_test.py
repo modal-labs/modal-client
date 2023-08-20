@@ -30,9 +30,9 @@ async def test_webhook(servicer, client):
         assert servicer.app_functions["fu-1"].webhook_config.method == "PATCH"
 
         # Make sure we can call the webhooks
-        # TODO: reinstate `.call` check when direct webhook fn invocation is fixed.
-        # assert await f.call(10)
-        assert await f(100) == {"square": 10000}
+        # TODO: reinstate `.remote` check when direct webhook fn invocation is fixed.
+        # assert await f.remote(10)
+        assert await f.local(100) == {"square": 10000}
 
         # Make sure the container gets the app id as well
         container_app = await App.init_container.aio(client, app.app_id)

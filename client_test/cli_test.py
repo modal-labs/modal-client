@@ -123,18 +123,14 @@ def test_run(servicer, set_env_client, test_dir):
     _run(["run", file_with_entrypoint.as_posix() + "::stub.main"])
 
 
-@pytest.mark.filterwarnings("error")  # any warnings that aren't caught will fail this test
-def test_local_entrypoint_yes_remote_calls(servicer, set_env_client, test_dir):
-    file = test_dir / "supports" / "app_run_tests" / "local_entrypoint.py"
-    res = _run(["run", file.as_posix()])
-    assert "Warning: no remote function calls were made" not in res.stderr
+def test_run_async(servicer, set_env_client, test_dir):
+    sync_fn = test_dir / "supports" / "app_run_tests" / "local_entrypoint.py"
+    res = _run(["run", sync_fn.as_posix()])
+    assert "called locally" in res.stdout
 
-
-@pytest.mark.filterwarnings("error")  # any warnings that aren't caught will fail this test
-def test_local_entrypoint_no_remote_calls(servicer, set_env_client, test_dir):
-    file = test_dir / "supports" / "app_run_tests" / "local_entrypoint_no_remote.py"
-    with pytest.warns(UserWarning, match="Warning: no remote function calls were made"):
-        _run(["run", file.as_posix()])
+    async_fn = test_dir / "supports" / "app_run_tests" / "local_entrypoint_async.py"
+    res = _run(["run", async_fn.as_posix()])
+    assert "called locally (async)" in res.stdout
 
 
 def test_help_message_unspecified_function(servicer, set_env_client, test_dir):

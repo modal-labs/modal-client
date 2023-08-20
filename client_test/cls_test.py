@@ -34,7 +34,7 @@ def test_run_class(client, servicer):
 def test_call_class_sync(client, servicer):
     with stub.run(client=client):
         foo = Foo()
-        assert foo.bar.call(42) == 1764
+        assert foo.bar.remote(42) == 1764
 
 
 # Reusing the stub runs into an issue with stale function handles.
@@ -59,7 +59,7 @@ def test_call_cls_remote_sync(client):
         foo_remote = FooRemote.remote(3, "hello")
         # Mock servicer just squares the argument
         # This means remote function call is taking place.
-        assert foo_remote.bar.call(8) == 64
+        assert foo_remote.bar.remote(8) == 64
         assert foo_remote.bar(8) == 64
 
 
@@ -90,7 +90,7 @@ class Bar:
 async def test_call_class_async(client, servicer):
     async with stub_2.run(client=client):
         bar = Bar()
-        assert await bar.baz.call.aio(42) == 1764
+        assert await bar.baz.remote.aio(42) == 1764
 
 
 def test_run_class_serialized(client, servicer):
@@ -145,7 +145,7 @@ async def test_call_cls_remote_async(client):
         bar_remote = await coro
         # Mock servicer just squares the argument
         # This means remote function call is taking place.
-        assert await bar_remote.baz.call.aio(8) == 64
+        assert await bar_remote.baz.remote.aio(8) == 64
         assert bar_remote.baz(8) == 64
 
 
@@ -160,13 +160,13 @@ class FooLocal:
 
     @method()
     def baz(self, y):
-        return self.bar(y + 1)
+        return self.bar.local(y + 1)
 
 
 def test_can_call_locally():
     foo = FooLocal()
-    assert foo.bar(4) == 64
-    assert foo.baz(4) == 125
+    assert foo.bar.local(4) == 64
+    assert foo.baz.local(4) == 125
 
 
 def test_can_call_remotely_from_local(client):
@@ -174,8 +174,8 @@ def test_can_call_remotely_from_local(client):
         foo = FooLocal()
         # remote calls use the mockservicer func impl
         # which just squares the arguments
-        assert foo.bar.call(8) == 64
-        assert foo.baz.call(9) == 81
+        assert foo.bar.remote(8) == 64
+        assert foo.baz.remote(9) == 81
 
 
 stub_remote_3 = Stub()

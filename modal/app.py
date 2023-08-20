@@ -333,8 +333,6 @@ class _App:
         from .sandbox import _Sandbox
         from .stub import _default_image
 
-        self._client.track_function_invocation()
-
         resolver = Resolver(self._client, environment_name=self._environment_name, app_id=self.app_id)
         provider = _Sandbox._new(
             entrypoint_args,

@@ -60,8 +60,8 @@ def test_retries(client):
         stub.function(retries=modal.Retries(max_retries=2, backoff_coefficient=0.0))(dummy)
 
     with stub.run(client=client):
-        default_retries_from_int_modal.call()
-        fixed_delay_retries_modal.call()
-        exponential_backoff_modal.call()
-        exponential_with_max_delay_modal.call()
-        zero_retries_modal.call()
+        default_retries_from_int_modal.remote()
+        fixed_delay_retries_modal.remote()
+        exponential_backoff_modal.remote()
+        exponential_with_max_delay_modal.remote()
+        zero_retries_modal.remote()

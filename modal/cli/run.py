@@ -5,7 +5,6 @@ import functools
 import inspect
 import sys
 import time
-import warnings
 from typing import Any, Optional
 
 import click
@@ -104,7 +103,7 @@ def _get_click_command_for_function(stub: Stub, function_tag):
             show_progress=ctx.obj["show_progress"],
             environment_name=ctx.obj["env"],
         ):
-            stub[function_tag].call(*args, **kwargs)
+            stub[function_tag].remote(*args, **kwargs)
 
     # TODO: handle `self` when raw_func is an unbound method (e.g. method on lifecycle class)
     with_click_options = _add_click_options(f, inspect.signature(raw_func))
@@ -112,7 +111,7 @@ def _get_click_command_for_function(stub: Stub, function_tag):
 
 
 def _get_click_command_for_local_entrypoint(stub: Stub, entrypoint: LocalEntrypoint):
-    func = entrypoint.raw_f
+    func = entrypoint.info.raw_f
     isasync = inspect.iscoroutinefunction(func)
 
     @click.pass_context
@@ -127,18 +126,11 @@ def _get_click_command_for_local_entrypoint(stub: Stub, entrypoint: LocalEntrypo
             detach=ctx.obj["detach"],
             show_progress=ctx.obj["show_progress"],
             environment_name=ctx.obj["env"],
-        ) as app:
+        ):
             if isasync:
                 asyncio.run(func(*args, **kwargs))
             else:
                 func(*args, **kwargs)
-            if app.client.function_invocations == 0:
-                # TODO: better formatting for the warning message
-                warnings.warn(
-                    "Warning: no remote function calls were made.\n"
-                    "Note that Modal functions run locally when called directly (e.g. `f()`).\n"
-                    "In order to run a function remotely, you may use `f.call()`. (See https://modal.com/docs/reference/modal.Function for other options)."
-                )
 
     with_click_options = _add_click_options(f, inspect.signature(func))
     return click.command(with_click_options)

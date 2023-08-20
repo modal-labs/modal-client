@@ -64,7 +64,7 @@ def _run_container(
             webhook_config = api_pb2.WebhookConfig(
                 type=webhook_type,
                 method="GET",
-                wait_for_response=True,
+                async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
             )
         else:
             webhook_config = None
