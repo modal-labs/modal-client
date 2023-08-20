@@ -960,14 +960,6 @@ class _Function(_Provider, type_prefix="fu"):
         """mdmd:hidden"""
         return f"{inspect.getsource(self._raw_f)}\n{repr(self._build_args)}"
 
-    def get_globals(self):
-        from cloudpickle.cloudpickle import _extract_code_globals
-
-        func = self._raw_f
-        f_globals_ref = _extract_code_globals(func.__code__)
-        f_globals = {k: func.__globals__[k] for k in f_globals_ref if k in func.__globals__}
-        return f_globals
-
     def _bind_obj(self, obj, objtype):
         # This is needed to bind "self" to methods for direct __call__
         # TODO(erikbern): we're mutating self directly here, as opposed to returning a different _FunctionHandle

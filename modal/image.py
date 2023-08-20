@@ -197,7 +197,7 @@ class _Image(_Provider, type_prefix="im"):
                 build_function_def = build_function.get_build_def()
                 build_function_id = (await resolver.load(build_function)).object_id
 
-                globals = build_function.get_globals()
+                globals = build_function._get_info().get_globals()
                 # Cloudpickle function serialization produces unstable values.
                 # TODO: better way to filter out types that don't have a stable hash?
                 globals = {k: v for k, v in globals.items() if not isfunction(v)}

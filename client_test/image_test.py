@@ -277,8 +277,6 @@ def run_f():
 
 
 def test_image_run_function(client, servicer):
-    global X
-
     stub = Stub()
     volume = NetworkFileSystem.persisted("test-vol")
     stub["image"] = (
