@@ -1129,9 +1129,7 @@ class _Function(_Provider, type_prefix="fu"):
             return self._call_function(args, kwargs)
 
     def call(self, *args, **kwargs) -> Awaitable[Any]:  # TODO: Generics/TypeVars
-        deprecation_warning(
-            date(2018, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote(...)`", pending=True
-        )
+        deprecation_warning(date(2018, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote(...)`")
         return self.remote(*args, **kwargs)
 
     def shell(self, *args, **kwargs):
@@ -1185,7 +1183,6 @@ class _Function(_Provider, type_prefix="fu"):
             "Calling Modal functions like `f(...)` is deprecated. Use `f.local(...)` if you want to call the"
             " function in the same Python process. Use `f.remote(...)` if you want to call the function in"
             " a Modal container in the cloud",
-            pending=True,
         )
 
         info = self._get_info()
