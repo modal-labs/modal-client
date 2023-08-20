@@ -9,7 +9,7 @@ import cloudpickle
 from synchronicity.exceptions import UserCodeException
 
 from modal import NetworkFileSystem, Proxy, Stub, asgi_app, web_endpoint, wsgi_app
-from modal.exception import DeprecationError, InvalidError, PendingDeprecationError
+from modal.exception import DeprecationError, InvalidError
 from modal.functions import Function, FunctionCall, FunctionHandle, gather
 from modal.runner import deploy_stub
 from modal_proto import api_pb2
@@ -35,7 +35,7 @@ def test_run_function(client, servicer):
     assert len(servicer.cleared_function_calls) == 0
     with stub.run(client=client):
         # Old-style remote calls
-        with pytest.warns(PendingDeprecationError):
+        with pytest.warns(DeprecationError):
             assert foo.call(2, 4) == 20
             assert len(servicer.cleared_function_calls) == 1
 
@@ -53,7 +53,7 @@ def test_run_function(client, servicer):
 @pytest.mark.asyncio
 async def test_call_function_locally(client, servicer):
     # Old-style local calls
-    with pytest.warns(PendingDeprecationError):
+    with pytest.warns(DeprecationError):
         assert foo(22, 44) == 77  # call it locally
         assert await async_foo(22, 44) == 78
 
@@ -63,9 +63,9 @@ async def test_call_function_locally(client, servicer):
 
     with stub.run(client=client):
         assert foo.remote(2, 4) == 20
-        with pytest.warns(PendingDeprecationError):
+        with pytest.warns(DeprecationError):
             assert foo(22, 55) == 88
-        with pytest.warns(PendingDeprecationError):
+        with pytest.warns(DeprecationError):
             assert await async_foo(22, 44) == 78
         assert async_foo.remote(2, 4) == 20
         assert await async_foo.remote.aio(2, 4) == 20
@@ -73,9 +73,9 @@ async def test_call_function_locally(client, servicer):
         # Make sure we can also call the Function object
         assert isinstance(stub.foo, Function)
         assert isinstance(stub.async_foo, Function)
-        with pytest.warns(PendingDeprecationError):
+        with pytest.warns(DeprecationError):
             assert stub.foo(22, 55) == 88
-        with pytest.warns(PendingDeprecationError):
+        with pytest.warns(DeprecationError):
             assert await stub.async_foo(22, 44) == 78
 
 
