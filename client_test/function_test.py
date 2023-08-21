@@ -515,7 +515,13 @@ def test_from_id(client, servicer):
     function_id = foo.object_id
     assert function_id
     assert foo.web_url
-    rehydrated_function: FunctionHandle = FunctionHandle.from_id(function_id, client=client)
+
+    with pytest.raises(DeprecationError):
+        FunctionHandle.from_id(function_id, client=client)
+
+    rehydrated_function = Function.from_id(function_id, client=client)
+    assert isinstance(rehydrated_function, Function)
+
     assert rehydrated_function.object_id == function_id
     assert rehydrated_function.web_url == foo.web_url
 

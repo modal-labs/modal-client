@@ -112,18 +112,11 @@ class _Handle:
         return obj
 
     @classmethod
-    async def from_id(cls: Type[H], object_id: str, client: Optional[_Client] = None) -> H:
-        """Get an object of this type from a unique object id (retrieved from `obj.object_id`)"""
-        # This is used in a few examples to construct FunctionCall objects
-        # TODO(erikbern): this should probably be on the provider?
-        if client is None:
-            client = await _Client.from_env()
-        app_lookup_object_response: api_pb2.AppLookupObjectResponse = await retry_transient_errors(
-            client.stub.AppLookupObject, api_pb2.AppLookupObjectRequest(object_id=object_id)
+    async def from_id(cls, object_id: str, client: Optional[_Client] = None):
+        deprecation_error(
+            date(2023, 8, 20),
+            "`Handle.from_id` is no longer supported. Use the method on the object class (e.g. `Function.from_id`)",
         )
-
-        handle_metadata = get_proto_oneof(app_lookup_object_response, "handle_metadata_oneof")
-        return cls._new_hydrated(object_id, client, handle_metadata)
 
     @property
     def object_id(self) -> str:
@@ -241,6 +234,19 @@ class _Provider:
         rep = f"Provider({object_id})"  # TODO(erikbern): dumb
         obj._init(rep, handle=handle)
         return obj
+
+    @classmethod
+    async def from_id(cls: Type[P], object_id: str, client: Optional[_Client] = None) -> P:
+        """Get an object of this type from a unique object id (retrieved from `obj.object_id`)"""
+        # This is used in a few examples to construct FunctionCall objects
+        if client is None:
+            client = await _Client.from_env()
+        app_lookup_object_response: api_pb2.AppLookupObjectResponse = await retry_transient_errors(
+            client.stub.AppLookupObject, api_pb2.AppLookupObjectRequest(object_id=object_id)
+        )
+
+        handle_metadata = get_proto_oneof(app_lookup_object_response, "handle_metadata_oneof")
+        return cls._new_hydrated(object_id, client, handle_metadata)
 
     def __repr__(self):
         return self._rep

@@ -1238,7 +1238,11 @@ class _Function(_Provider, type_prefix="fu"):
 Function = synchronize_api(_Function)
 
 
-class _FunctionCall(_Handle, type_prefix="fc"):
+class _FunctionCallHandle(_Handle, type_prefix="fc"):
+    pass  # TODO(erikbern): Dumb temp thing, remove soon
+
+
+class _FunctionCall(_Provider, type_prefix="fc"):
     """A reference to an executed function call.
 
     Constructed using `.spawn(...)` on a Modal function with the same
