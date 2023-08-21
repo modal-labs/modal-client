@@ -287,11 +287,42 @@ def test_image_run_function(client, servicer):
         layers = get_image_layers(stub["image"].object_id, servicer)
         assert "foo!" in layers[0].build_function_def
         assert "Secret.from_dict([xyz])" in layers[0].build_function_def
+        # globals is none when no globals are referenced
+        assert layers[0].build_function_globals == b""
 
     function_id = servicer.image_build_function_ids[2]
     assert function_id
     assert servicer.app_functions[function_id].function_name == "run_f"
     assert len(servicer.app_functions[function_id].secret_ids) == 1
+
+
+X = 1
+
+
+def run_f_globals():
+    print("foo!", X)
+
+
+def test_image_run_function_globals(client, servicer):
+    global X
+
+    stub = Stub()
+    stub["image"] = Image.debian_slim().run_function(run_f_globals)
+
+    with stub.run(client=client):
+        layers = get_image_layers(stub["image"].object_id, servicer)
+        old_globals = layers[0].build_function_globals
+        assert old_globals is not None
+
+    X = 3
+    with stub.run(client=client):
+        layers = get_image_layers(stub["image"].object_id, servicer)
+        assert layers[0].build_function_globals != old_globals
+
+    X = 1
+    with stub.run(client=client):
+        layers = get_image_layers(stub["image"].object_id, servicer)
+        assert layers[0].build_function_globals == old_globals
 
 
 def test_poetry(client, servicer):
