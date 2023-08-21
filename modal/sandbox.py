@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
-from typing import Optional, Sequence
+from typing import List, Optional, Sequence
 
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
@@ -16,6 +16,7 @@ from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
 from .mount import _Mount
 from .object import _Handle, _Provider
+from .secret import _Secret
 
 
 class _LogsReader:
@@ -140,6 +141,7 @@ class _Sandbox(_Provider, type_prefix="sb"):
         entrypoint_args: Sequence[str],
         image: _Image,
         mounts: Sequence[_Mount],
+        secrets: Sequence[_Secret],
         timeout: Optional[int] = None,
         workdir: Optional[str] = None,
         gpu: GPU_T = None,
@@ -153,8 +155,8 @@ class _Sandbox(_Provider, type_prefix="sb"):
             raise InvalidError("entrypoint_args must not be empty")
 
         async def _load(resolver: Resolver, _existing_object_id: Optional[str], handle: _SandboxHandle):
-            async def _load_mounts():
-                handles = await asyncio.gather(*[resolver.load(mount) for mount in mounts])
+            async def _load_ids(objs: Sequence[_Provider]) -> List[str]:
+                handles = await asyncio.gather(*[resolver.load(obj) for obj in objs])
                 return [handle.object_id for handle in handles]
 
             async def _load_image():
@@ -169,11 +171,12 @@ class _Sandbox(_Provider, type_prefix="sb"):
                 raise InvalidError(f"Invalid fractional CPU value {cpu}. Cannot have less than 0.25 CPU resources.")
             milli_cpu = int(1000 * cpu) if cpu is not None else None
 
-            image_id, mount_ids = await asyncio.gather(_load_image(), _load_mounts())
+            image_id, mount_ids, secret_ids = await asyncio.gather(_load_image(), _load_ids(mounts), _load_ids(secrets))
             definition = api_pb2.Sandbox(
                 entrypoint_args=entrypoint_args,
                 image_id=image_id,
                 mount_ids=mount_ids,
+                secret_ids=secret_ids,
                 timeout_secs=timeout,
                 workdir=workdir,
                 resources=api_pb2.Resources(gpu_config=gpu_config, milli_cpu=milli_cpu, memory_mb=memory),

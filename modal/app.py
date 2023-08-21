@@ -316,7 +316,8 @@ class _App:
         self,
         *entrypoint_args: str,
         image: Optional["modal.image._Image"] = None,  # The image to run as the container for the sandbox.
-        mounts: Sequence["modal.image._Mount"] = (),
+        mounts: Sequence["modal.mount._Mount"] = (),  # Mounts to attach to the sandbox.
+        secrets: Sequence["modal.secret._Secret"] = (),  # Environment variables to inject into the sandbox.
         timeout: Optional[int] = None,  # Maximum execution time of the sandbox in seconds.
         workdir: Optional[str] = None,  # Working directory of the sandbox.
         gpu: GPU_T = None,
@@ -338,6 +339,7 @@ class _App:
             entrypoint_args,
             image=image or _default_image,
             mounts=mounts,
+            secrets=secrets,
             timeout=timeout,
             workdir=workdir,
             gpu=gpu,
