@@ -6,7 +6,7 @@ import pytest
 import time
 from pathlib import Path
 
-from modal import Image, Mount, Stub
+from modal import Image, Mount, Secret, Stub
 
 stub = Stub()
 
@@ -58,3 +58,12 @@ def test_sandbox_image(client, servicer, tmpdir):
     last_image = servicer.images[idx]
 
     assert all(c in last_image.dockerfile_commands[-1] for c in ["foo", "bar", "potato"])
+
+
+@skip_non_linux
+def test_sandbox_secret(client, servicer, tmpdir):
+    with stub.run(client=client) as app:
+        sb = app.spawn_sandbox("echo", "$FOO", secrets=[Secret.from_dict({"FOO": "BAR"})])
+        sb.wait()
+
+    assert len(servicer.sandbox_defs[0].secret_ids) == 1

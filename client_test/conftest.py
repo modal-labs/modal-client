@@ -134,6 +134,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.volume_commits: Dict[str, int] = defaultdict(lambda: 0)
         self.volume_reloads: Dict[str, int] = defaultdict(lambda: 0)
 
+        self.sandbox_defs = []
         self.sandbox: subprocess.Popen = None
 
         @self.function_body
@@ -597,6 +598,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.sandbox = subprocess.Popen(
             request.definition.entrypoint_args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
+        self.sandbox_defs.append(request.definition)
         await stream.send_message(api_pb2.SandboxCreateResponse(sandbox_id="sb-123"))
 
     async def SandboxGetLogs(self, stream):
