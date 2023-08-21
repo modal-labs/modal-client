@@ -855,10 +855,12 @@ message Image {
   // Note: field 13 is getting replaced field 16. The client now sends both fields,
   // but the server still only reads field 13.
   bool gpu = 13;
-  string build_function_def = 14;
   string context_mount_id = 15;
   GPUConfig gpu_config = 16;
   ImageRegistryConfig image_registry_config = 17;
+
+  string build_function_def = 14;
+  bytes build_function_globals = 18;
 }
 
 message ImageContextFile {
