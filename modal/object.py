@@ -88,30 +88,6 @@ class _Handle:
         return
 
     @classmethod
-    def _new_hydrated(cls: Type[H], object_id: str, client: _Client, handle_metadata: Optional[Message]) -> H:
-        """Similar to `_new` and `_hydrate` but does both at the same time."""
-
-        if cls._type_prefix is not None:
-            # This is called directly on a subclass, e.g. Secret.from_id
-            if not object_id.startswith(cls._type_prefix + "-"):
-                raise InvalidError(f"Object {object_id} does not start with {cls._type_prefix}")
-            object_cls = cls
-        else:
-            # This is called on the base class, e.g. Handle.from_id
-            parts = object_id.split("-")
-            if len(parts) != 2:
-                raise InvalidError(f"Object id {object_id} has no dash in it")
-            prefix = parts[0]
-            if prefix not in cls._prefix_to_type:
-                raise InvalidError(f"Object prefix {prefix} does not correspond to a type")
-            object_cls = cls._prefix_to_type[prefix]
-
-        # Instantiate object and return
-        obj = object_cls._new()
-        obj._hydrate(object_id, client, handle_metadata)
-        return obj
-
-    @classmethod
     async def from_id(cls, object_id: str, client: Optional[_Client] = None):
         deprecation_error(
             date(2023, 8, 20),
@@ -228,7 +204,26 @@ class _Provider:
 
     @classmethod
     def _new_hydrated(cls: Type[P], object_id: str, client: _Client, handle_metadata: Optional[Message]) -> P:
-        handle = _Handle._new_hydrated(object_id, client, handle_metadata)
+        if cls._type_prefix is not None:
+            # This is called directly on a subclass, e.g. Secret.from_id
+            if not object_id.startswith(cls._type_prefix + "-"):
+                raise InvalidError(f"Object {object_id} does not start with {cls._type_prefix}")
+            prefix = cls._type_prefix
+        else:
+            # This is called on the base class, e.g. Handle.from_id
+            parts = object_id.split("-")
+            if len(parts) != 2:
+                raise InvalidError(f"Object id {object_id} has no dash in it")
+            prefix = parts[0]
+            if prefix not in cls._prefix_to_type:
+                raise InvalidError(f"Object prefix {prefix} does not correspond to a type")
+
+        # Instantiate handle
+        handle_cls = _Handle._prefix_to_type[prefix]
+        handle = handle_cls._new()
+        handle._hydrate(object_id, client, handle_metadata)
+
+        # Instantiate provider
         provider_cls = cls._prefix_to_type[handle._type_prefix]
         obj = _Provider.__new__(provider_cls)
         rep = f"Provider({object_id})"  # TODO(erikbern): dumb
