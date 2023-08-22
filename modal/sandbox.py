@@ -96,10 +96,10 @@ SandboxHandle = synchronize_api(_SandboxHandle)
 
 
 class _Sandbox(_Provider, type_prefix="sb"):
-    """A `SandboxHandle` lets you interact with a spawned sandbox. This API is similar to Python's
+    """A `Sandbox` object lets you interact with a running sandbox. This API is similar to Python's
     [asyncio.subprocess.Process](https://docs.python.org/3/library/asyncio-subprocess.html#asyncio.subprocess.Process).
 
-    Refer to the [docs](/docs/guide/sandbox) on how to spawn and use sandboxes.
+    Refer to the [guide](/docs/guide/sandbox) on how to spawn and use sandboxes.
     """
 
     _result: Optional[api_pb2.GenericResult]
