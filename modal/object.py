@@ -225,6 +225,9 @@ class _Provider:
     def _hydrate(self, object_id: str, client: _Client, metadata: Optional[Message]):
         self._handle._hydrate(object_id, client, metadata)
 
+    def _hydrate(self, object_id: str, client: _Client, metadata: Optional[Message]):
+        self._handle.hydrate(object_id, client, metadata)
+
     def _hydrate_from_other(self, other: P):
         self._hydrate(other._handle._object_id, other._handle._client, other._handle._get_metadata())
 
