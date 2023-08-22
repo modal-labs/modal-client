@@ -99,41 +99,6 @@ class _Handle:
         """A unique object id for this instance. Can be used to retrieve the object using `.from_id()`"""
         return self._object_id
 
-    async def _hydrate_from_app(
-        self,
-        app_name: str,
-        tag: Optional[str] = None,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
-        client: Optional[_Client] = None,
-        environment_name: Optional[str] = None,
-    ):
-        """Returns a handle to a tagged object in a deployment on Modal."""
-        if environment_name is None:
-            environment_name = config.get("environment")
-
-        if client is None:
-            client = await _Client.from_env()
-        request = api_pb2.AppLookupObjectRequest(
-            app_name=app_name,
-            object_tag=tag,
-            namespace=namespace,
-            object_entity=self._type_prefix,
-            environment_name=environment_name,
-        )
-        try:
-            response = await retry_transient_errors(client.stub.AppLookupObject, request)
-            if not response.object_id:
-                # Legacy error message: remove soon
-                raise NotFoundError(response.error_message)
-        except GRPCError as exc:
-            if exc.status == Status.NOT_FOUND:
-                raise NotFoundError(exc.message)
-            else:
-                raise
-
-        handle_metadata = get_proto_oneof(response, "handle_metadata_oneof")
-        return self._hydrate(response.object_id, client, handle_metadata)
-
 
 Handle = synchronize_api(_Handle)
 
@@ -171,7 +136,6 @@ class _Provider:
         load: Optional[Callable[[Resolver, Optional[str], _Handle], Awaitable[None]]] = None,
         is_persisted_ref: bool = False,
         preload: Optional[Callable[[Resolver, Optional[str], _Handle], Awaitable[None]]] = None,
-        handle: Optional[_Handle] = None,
     ):
         self._local_uuid = str(uuid.uuid4())
         self._load = load
@@ -179,11 +143,9 @@ class _Provider:
         self._rep = rep
         self._is_persisted_ref = is_persisted_ref
 
-        if handle is None:
-            # Create an unhydrated handle
-            handle_cls = self._get_handle_cls()
-            handle = handle_cls._new()
-        self._handle = handle
+        # Create an unhydrated handle
+        handle_cls = self._get_handle_cls()
+        self._handle = handle_cls._new()
 
     def _init_from_other(self, other: "_Provider"):
         # Transient use case, see Dict, Queue, and SharedVolume
@@ -218,16 +180,13 @@ class _Provider:
             if prefix not in cls._prefix_to_type:
                 raise InvalidError(f"Object prefix {prefix} does not correspond to a type")
 
-        # Instantiate handle
-        handle_cls = _Handle._prefix_to_type[prefix]
-        handle = handle_cls._new()
-        handle._hydrate(object_id, client, handle_metadata)
-
         # Instantiate provider
-        provider_cls = cls._prefix_to_type[handle._type_prefix]
+        provider_cls = cls._prefix_to_type[prefix]
         obj = _Provider.__new__(provider_cls)
         rep = f"Provider({object_id})"  # TODO(erikbern): dumb
-        obj._init(rep, handle=handle)
+        obj._init(rep)
+        obj._handle._hydrate(object_id, client, handle_metadata)
+
         return obj
 
     @classmethod
@@ -242,6 +201,41 @@ class _Provider:
 
         handle_metadata = get_proto_oneof(app_lookup_object_response, "handle_metadata_oneof")
         return cls._new_hydrated(object_id, client, handle_metadata)
+
+    async def _hydrate_from_app(
+        self,
+        app_name: str,
+        tag: Optional[str] = None,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+    ):
+        """Returns a handle to a tagged object in a deployment on Modal."""
+        if environment_name is None:
+            environment_name = config.get("environment")
+
+        if client is None:
+            client = await _Client.from_env()
+        request = api_pb2.AppLookupObjectRequest(
+            app_name=app_name,
+            object_tag=tag,
+            namespace=namespace,
+            object_entity=self._type_prefix,
+            environment_name=environment_name,
+        )
+        try:
+            response = await retry_transient_errors(client.stub.AppLookupObject, request)
+            if not response.object_id:
+                # Legacy error message: remove soon
+                raise NotFoundError(response.error_message)
+        except GRPCError as exc:
+            if exc.status == Status.NOT_FOUND:
+                raise NotFoundError(exc.message)
+            else:
+                raise
+
+        handle_metadata = get_proto_oneof(response, "handle_metadata_oneof")
+        return self._handle._hydrate(response.object_id, client, handle_metadata)
 
     def __repr__(self):
         return self._rep
@@ -345,7 +339,7 @@ class _Provider:
                 # fall back on that one if no explicit environment was set in the call itself
                 environment_name = resolver.environment_name
 
-            await provider._handle._hydrate_from_app(
+            await provider._hydrate_from_app(
                 app_name, tag, namespace, client=resolver.client, environment_name=environment_name
             )
 
@@ -373,12 +367,10 @@ class _Provider:
         ```
         """
         # TODO(erikbern): this code is very duplicated. Clean up once handles are gone.
-        handle_cls = cls._get_handle_cls()
-        handle: _Handle = handle_cls._new()
-        await handle._hydrate_from_app(app_name, tag, namespace, client, environment_name=environment_name)
-        obj = _Provider.__new__(cls)
         rep = f"Provider({app_name})"  # TODO(erikbern): dumb
-        obj._init(rep, handle=handle)
+        obj = _Provider.__new__(cls)
+        obj._init(rep)
+        await obj._hydrate_from_app(app_name, tag, namespace, client, environment_name=environment_name)
         return obj
 
     @classmethod
