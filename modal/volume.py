@@ -11,16 +11,7 @@ from .object import _Handle, _Provider
 
 
 class _VolumeHandle(_Handle, type_prefix="vo"):
-    """Handle to a `Volume` object."""
-
-    _lock: asyncio.Lock
-
-    def _initialize_from_empty(self):
-        # To (mostly*) prevent multiple concurrent operations on the same volume, which can cause problems under
-        # some unlikely circumstances.
-        # *: You can bypass this by creating multiple handles to the same volume, e.g. via lookup. But this
-        # covers the typical case = good enough.
-        self._lock = asyncio.Lock()
+    pass
 
 
 VolumeHandle = synchronize_api(_VolumeHandle)
@@ -67,6 +58,15 @@ class _Volume(_Provider, type_prefix="vo"):
             print(f.read())
     ```
     """
+
+    _lock: asyncio.Lock
+
+    def _initialize_from_empty(self):
+        # To (mostly*) prevent multiple concurrent operations on the same volume, which can cause problems under
+        # some unlikely circumstances.
+        # *: You can bypass this by creating multiple handles to the same volume, e.g. via lookup. But this
+        # covers the typical case = good enough.
+        self._lock = asyncio.Lock()
 
     @staticmethod
     def new() -> "_Volume":
@@ -118,7 +118,7 @@ class _Volume(_Provider, type_prefix="vo"):
     # Methods on live handles
 
     async def _do_reload(self, lock=True):
-        async with self._handle._lock if lock else asyncnullcontext():
+        async with self._lock if lock else asyncnullcontext():
             req = api_pb2.VolumeReloadRequest(volume_id=self.object_id)
             _ = await retry_transient_errors(self._client.stub.VolumeReload, req)
 
@@ -131,7 +131,7 @@ class _Volume(_Provider, type_prefix="vo"):
 
         Committing will fail if there are open files for the volume.
         """
-        async with self._handle._lock:
+        async with self._lock:
             req = api_pb2.VolumeCommitRequest(volume_id=self.object_id)
             _ = await retry_transient_errors(self._client.stub.VolumeCommit, req)
             # Reload changes on successful commit.

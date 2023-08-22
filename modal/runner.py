@@ -83,7 +83,7 @@ async def _run_stub(
 
             # Update all functions client-side to have the output mgr
             for tag, obj in stub.registered_functions.items():
-                obj._handle._set_output_mgr(output_mgr)
+                obj._set_output_mgr(output_mgr)
 
             # Show logs from dynamically created images.
             # TODO: better way to do this

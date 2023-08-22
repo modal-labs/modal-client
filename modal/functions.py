@@ -496,53 +496,8 @@ class FunctionStats:
     num_total_runners: int
 
 
-class _FunctionHandle(_Handle, type_prefix="fu"):
-    """Interact with a Modal Function of a live app."""
-
-    _web_url: Optional[str]
-    _is_remote_cls_method: bool = False
-    _function_name: Optional[str]
-
-    def _initialize_from_empty(self):
-        self._progress = None
-        self._is_generator = None
-        self._web_url = None
-        self._output_mgr: Optional[OutputManager] = None
-        self._mute_cancellation = (
-            False  # set when a user terminates the app intentionally, to prevent useless traceback spam
-        )
-        self._function_name = None
-
-    def _hydrate_metadata(self, metadata: Message):
-        # makes function usable
-        assert isinstance(metadata, (api_pb2.Function, api_pb2.FunctionHandleMetadata))
-        self._is_generator = metadata.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
-        self._web_url = metadata.web_url
-        self._function_name = metadata.function_name
-
-    def _get_metadata(self):
-        return api_pb2.FunctionHandleMetadata(
-            function_name=self._function_name,
-            function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR
-            if self._is_generator
-            else api_pb2.Function.FUNCTION_TYPE_FUNCTION,
-            web_url=self._web_url,
-        )
-
-    def _set_mute_cancellation(self, value: bool = True):
-        self._mute_cancellation = value
-
-    def _set_output_mgr(self, output_mgr: OutputManager):
-        self._output_mgr = output_mgr
-
-    @property
-    def web_url(self) -> str:
-        """URL of a Function running as a web endpoint."""
-        return self._web_url
-
-    @property
-    def is_generator(self) -> bool:
-        return self._is_generator
+class _FunctionHandle(_Handle):
+    pass
 
 
 FunctionHandle = synchronize_api(_FunctionHandle)
@@ -561,6 +516,9 @@ class _Function(_Provider, type_prefix="fu"):
     _handle: _FunctionHandle
     _stub: "modal.stub._Stub"
     _self_obj: Any
+    _web_url: Optional[str]
+    _is_remote_cls_method: bool = False
+    _function_name: Optional[str]
 
     @staticmethod
     def from_args(
@@ -921,18 +879,18 @@ class _Function(_Provider, type_prefix="fu"):
         return obj
 
     @staticmethod
-    def from_parametrized(base_handle: _FunctionHandle, *args: Iterable[Any], **kwargs: Dict[str, Any]) -> "_Function":
-        assert base_handle._is_hydrated, "Cannot make bound function handle from unhydrated handle."
+    def from_parametrized(base_function: "_Function", *args: Iterable[Any], **kwargs: Dict[str, Any]) -> "_Function":
+        assert base_function._is_hydrated, "Cannot make bound function handle from unhydrated handle."
 
         async def _load(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             serialized_params = pickle.dumps((args, kwargs))  # TODO(erikbern): use modal._serialization?
             req = api_pb2.FunctionBindParamsRequest(
-                function_id=base_handle._object_id,
+                function_id=base_function._object_id,
                 serialized_params=serialized_params,
             )
             response = await retry_transient_errors(resolver.client.stub.FunctionBindParams, req)
             provider._hydrate(response.bound_function_id, resolver.client, response.handle_metadata)
-            provider._handle._is_remote_cls_method = True
+            provider._is_remote_cls_method = True
 
         return _Function._from_loader(_load, "Function(parametrized)")
 
@@ -965,27 +923,62 @@ class _Function(_Provider, type_prefix="fu"):
 
     # Live handle methods
 
+    def _initialize_from_empty(self):
+        # Overridden concrete implementation of base class method
+        self._progress = None
+        self._is_generator = None
+        self._web_url = None
+        self._output_mgr: Optional[OutputManager] = None
+        self._mute_cancellation = (
+            False  # set when a user terminates the app intentionally, to prevent useless traceback spam
+        )
+        self._function_name = None
+
+    def _hydrate_metadata(self, metadata: Message):
+        # Overridden concrete implementation of base class method
+        assert isinstance(metadata, (api_pb2.Function, api_pb2.FunctionHandleMetadata))
+        self._is_generator = metadata.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
+        self._web_url = metadata.web_url
+        self._function_name = metadata.function_name
+
+    def _get_metadata(self):
+        # Overridden concrete implementation of base class method
+        return api_pb2.FunctionHandleMetadata(
+            function_name=self._function_name,
+            function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR
+            if self._is_generator
+            else api_pb2.Function.FUNCTION_TYPE_FUNCTION,
+            web_url=self._web_url,
+        )
+
+    def _set_mute_cancellation(self, value: bool = True):
+        self._mute_cancellation = value
+
+    def _set_output_mgr(self, output_mgr: OutputManager):
+        self._output_mgr = output_mgr
+
     @property
     def web_url(self) -> str:
-        return self._handle.web_url
+        """URL of a Function running as a web endpoint."""
+        return self._web_url
 
     @property
     def is_generator(self) -> bool:
-        return self._handle._is_generator
+        return self._is_generator
 
     async def _map(self, input_stream: AsyncIterable[Any], order_outputs: bool, return_exceptions: bool, kwargs={}):
-        if self._handle._web_url:
+        if self._web_url:
             raise InvalidError(
                 "A web endpoint function cannot be directly invoked for parallel remote execution. "
-                f"Invoke this function via its web url '{self._handle._web_url}' or call it locally: {self._handle._function_name}()."
+                f"Invoke this function via its web url '{self._web_url}' or call it locally: {self._function_name}()."
             )
 
-        if order_outputs and self._handle._is_generator:
+        if order_outputs and self._is_generator:
             raise ValueError("Can't return ordered results for a generator")
 
         count_update_callback = (
-            self._handle._output_mgr.function_progress_callback(self._handle._function_name, total=None)
-            if self._handle._output_mgr
+            self._output_mgr.function_progress_callback(self._function_name, total=None)
+            if self._output_mgr
             else None
         )
 
@@ -994,7 +987,7 @@ class _Function(_Provider, type_prefix="fu"):
             input_stream,
             kwargs,
             self._client,
-            self._handle._is_generator,
+            self._is_generator,
             order_outputs,
             return_exceptions,
             count_update_callback,
@@ -1068,7 +1061,7 @@ class _Function(_Provider, type_prefix="fu"):
         ```
         """
         if order_outputs is None:
-            order_outputs = not self._handle._is_generator
+            order_outputs = not self._is_generator
 
         input_stream = stream.zip(*(stream.iterate(it) for it in input_iterators))
         async for item in self._map(input_stream, order_outputs, return_exceptions, kwargs):
@@ -1107,7 +1100,7 @@ class _Function(_Provider, type_prefix="fu"):
         ```
         """
         if order_outputs is None:
-            order_outputs = not self._handle._is_generator
+            order_outputs = not self._is_generator
 
         input_stream = stream.iterate(input_iterator)
         async for item in self._map(input_stream, order_outputs, return_exceptions, kwargs):
@@ -1117,12 +1110,12 @@ class _Function(_Provider, type_prefix="fu"):
         """
         Calls the function remotely, executing it with the given arguments and returning the execution's result.
         """
-        if self._handle._web_url:
+        if self._web_url:
             raise InvalidError(
                 "A web endpoint function cannot be invoked for remote execution with `.remote`. "
-                f"Invoke this function via its web url '{self._handle._web_url}' or call it locally: {self._handle._function_name}()."
+                f"Invoke this function via its web url '{self._web_url}' or call it locally: {self._function_name}()."
             )
-        if self._handle._is_generator:
+        if self._is_generator:
             return self._call_generator(args, kwargs)  # type: ignore
         else:
             return self._call_function(args, kwargs)
@@ -1133,17 +1126,13 @@ class _Function(_Provider, type_prefix="fu"):
 
     def shell(self, *args, **kwargs):
         # TOOD(erikbern): right now fairly duplicated
-        if self._handle._is_generator:
+        if self._is_generator:
             return self._call_generator(args, kwargs)  # type: ignore
         else:
             return self._call_function(args, kwargs)
 
-    def _get_handle(self) -> _FunctionHandle:
-        # TODO(erikbern): stupid workaround since __call__ runs on the "outer" object
-        return self._handle
-
     def _get_is_remote_cls_method(self):
-        return self._handle._is_remote_cls_method
+        return self._is_remote_cls_method
 
     def _get_info(self):
         return self._info
@@ -1209,7 +1198,7 @@ class _Function(_Provider, type_prefix="fu"):
         *Note:* `.spawn()` on a modal generator function does call and execute the generator, but does not currently
         return a function handle for polling the result.
         """
-        if self._handle._is_generator:
+        if self._is_generator:
             await self._call_generator_nowait(args, kwargs)
             return None
 

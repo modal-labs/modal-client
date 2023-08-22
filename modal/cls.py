@@ -47,9 +47,9 @@ def make_remote_cls_constructors(
         new_functions: Dict[str, _Function] = {}
 
         for k, v in partial_functions.items():
-            handle: _FunctionHandle = functions[k]._handle
-            client: _Client = handle._client
-            new_function: _Function = _Function.from_parametrized(handle, *params.args, **params.kwargs)
+            base_function: _Function = functions[k]
+            client: _Client = base_function._client
+            new_function: _Function = _Function.from_parametrized(base_function, *params.args, **params.kwargs)
             resolver = Resolver(client)
             await resolver.load(new_function)
             new_functions[k] = new_function
