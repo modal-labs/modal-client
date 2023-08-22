@@ -82,7 +82,7 @@ class _NetworkFileSystem(_Provider, type_prefix="sv"):
             status_row = resolver.add_status_row()
             if existing_object_id:
                 # Volume already exists; do nothing.
-                provider._handle._hydrate(existing_object_id, resolver.client, None)
+                provider._hydrate(existing_object_id, resolver.client, None)
                 return
 
             cloud_provider = parse_cloud_provider(cloud) if cloud else None
@@ -91,7 +91,7 @@ class _NetworkFileSystem(_Provider, type_prefix="sv"):
             req = api_pb2.SharedVolumeCreateRequest(app_id=resolver.app_id, cloud_provider=cloud_provider)
             resp = await retry_transient_errors(resolver.client.stub.SharedVolumeCreate, req)
             status_row.finish("Created network file system.")
-            provider._handle._hydrate(resp.shared_volume_id, resolver.client, None)
+            provider._hydrate(resp.shared_volume_id, resolver.client, None)
 
         return _NetworkFileSystem._from_loader(_load, "NetworkFileSystem()")
 

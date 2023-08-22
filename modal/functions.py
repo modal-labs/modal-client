@@ -694,7 +694,7 @@ class _Function(_Provider, type_prefix="fu"):
             )
             response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
             # Update the precreated function handle (todo: hack until we merge providers/handles)
-            provider._handle._hydrate(response.function_id, resolver.client, response.handle_metadata)
+            provider._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         async def _load(provider: _Provider, resolver: Resolver, existing_object_id: Optional[str]):
             # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
@@ -895,7 +895,7 @@ class _Function(_Provider, type_prefix="fu"):
             else:
                 status_row.finish(f"Created {tag}.")
 
-            provider._handle._hydrate(response.function_id, resolver.client, response.handle_metadata)
+            provider._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         rep = f"Function({tag})"
         obj = _Function._from_loader(_load, rep, preload=_preload)
@@ -931,7 +931,7 @@ class _Function(_Provider, type_prefix="fu"):
                 serialized_params=serialized_params,
             )
             response = await retry_transient_errors(resolver.client.stub.FunctionBindParams, req)
-            provider._handle._hydrate(response.bound_function_id, resolver.client, response.handle_metadata)
+            provider._hydrate(response.bound_function_id, resolver.client, response.handle_metadata)
             provider._handle._is_remote_cls_method = True
 
         return _Function._from_loader(_load, "Function(parametrized)")

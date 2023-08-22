@@ -111,7 +111,7 @@ class _App:
             if tag in stub_objects:
                 # This already exists on the stub (typically a function)
                 provider = stub_objects[tag]
-                provider._handle._hydrate(object_id, self._client, handle_metadata)
+                provider._hydrate(object_id, self._client, handle_metadata)
             else:
                 # Can't find the object, create a new one
                 provider = _Provider._new_hydrated(object_id, self._client, handle_metadata)

@@ -169,7 +169,7 @@ class _Image(_Provider, type_prefix="im"):
         async def _load(provider: _Image, resolver: Resolver, existing_object_id: Optional[str]):
             if ref:
                 image_id = (await resolver.load(ref)).object_id
-                provider._handle._hydrate(image_id, resolver.client, None)
+                provider._hydrate(image_id, resolver.client, None)
 
             # Recursively build base images
             base_image_ids: List[str] = []
@@ -291,7 +291,7 @@ class _Image(_Provider, type_prefix="im"):
             else:
                 raise RemoteError("Unknown status %s!" % result.status)
 
-            provider._handle._hydrate(image_id, resolver.client, None)
+            provider._hydrate(image_id, resolver.client, None)
 
         rep = f"Image({dockerfile_commands})"
         obj = _Image._from_loader(_load, rep)

@@ -61,7 +61,7 @@ class _Secret(_Provider, type_prefix="st"):
                 existing_secret_id=existing_object_id,
             )
             resp = await resolver.client.stub.SecretCreate(req)
-            provider._handle._hydrate(resp.secret_id, resolver.client, None)
+            provider._hydrate(resp.secret_id, resolver.client, None)
 
         rep = f"Secret.from_dict([{', '.join(env_dict.keys())}])"
         return _Secret._from_loader(_load, rep)
@@ -119,7 +119,7 @@ class _Secret(_Provider, type_prefix="st"):
             )
             resp = await resolver.client.stub.SecretCreate(req)
 
-            provider._handle._hydrate(resp.secret_id, resolver.client, None)
+            provider._hydrate(resp.secret_id, resolver.client, None)
 
         return _Secret._from_loader(_load, "Secret.from_dotenv()")
 

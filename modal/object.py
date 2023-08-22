@@ -170,7 +170,7 @@ class _Provider:
         obj = _Provider.__new__(provider_cls)
         rep = f"Provider({object_id})"  # TODO(erikbern): dumb
         obj._init(rep)
-        obj._handle._hydrate(object_id, client, handle_metadata)
+        obj._hydrate(object_id, client, handle_metadata)
 
         return obj
 
@@ -220,10 +220,13 @@ class _Provider:
                 raise
 
         handle_metadata = get_proto_oneof(response, "handle_metadata_oneof")
-        return self._handle._hydrate(response.object_id, client, handle_metadata)
+        return self._hydrate(response.object_id, client, handle_metadata)
+
+    def _hydrate(self, object_id: str, client: _Client, metadata: Optional[Message]):
+        self._handle._hydrate(object_id, client, metadata)
 
     def _hydrate_from_other(self, other: P):
-        self._handle._hydrate(other._handle._object_id, other._handle._client, other._handle._get_metadata())
+        self._hydrate(other._handle._object_id, other._handle._client, other._handle._get_metadata())
 
     def __repr__(self):
         return self._rep
