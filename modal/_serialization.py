@@ -5,7 +5,7 @@ import pickle
 import cloudpickle
 
 from .exception import InvalidError
-from .object import Handle, Provider, _Handle, _Provider
+from .object import Provider, _Provider
 
 PICKLE_PROTOCOL = 4  # Support older Python versions.
 
@@ -15,11 +15,7 @@ class Pickler(cloudpickle.Pickler):
         super().__init__(buf, protocol=PICKLE_PROTOCOL)
 
     def persistent_id(self, obj):
-        if isinstance(obj, _Handle):
-            flag = "_h"
-        elif isinstance(obj, Handle):
-            flag = "h"
-        elif isinstance(obj, _Provider):
+        if isinstance(obj, _Provider):
             flag = "_p"
         elif isinstance(obj, Provider):
             flag = "p"
@@ -37,11 +33,7 @@ class Unpickler(pickle.Unpickler):
 
     def persistent_load(self, pid):
         (object_id, flag, handle_proto) = pid
-        if flag == "h":
-            return Handle._new_hydrated(object_id, self.client, handle_proto)
-        elif flag == "_h":
-            return _Handle._new_hydrated(object_id, self.client, handle_proto)
-        elif flag == "p":
+        if flag == "p":
             return Provider._new_hydrated(object_id, self.client, handle_proto)
         elif flag == "_p":
             return _Provider._new_hydrated(object_id, self.client, handle_proto)
