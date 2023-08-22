@@ -198,7 +198,7 @@ class _Stub:
             # function at this point
             other_obj = self._app._get_object(tag)
             if other_obj is not None:
-                obj._handle._hydrate_from_other(other_obj._handle)
+                obj._hydrate_from_other(other_obj)
 
         self._blueprint[tag] = obj
 
