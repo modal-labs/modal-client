@@ -68,7 +68,7 @@ class _Handle:
         self._is_hydrated = True
 
     def _hydrate_from_other(self, other: "_Handle"):
-        self._hydrate(other.object_id, other._client, other._get_metadata())
+        self._hydrate(other._object_id, other._client, other._get_metadata())
 
     def is_hydrated(self) -> bool:
         """mdmd:hidden"""
@@ -93,11 +93,6 @@ class _Handle:
             date(2023, 8, 20),
             "`Handle.from_id` is no longer supported. Use the method on the object class (e.g. `Function.from_id`)",
         )
-
-    @property
-    def object_id(self) -> str:
-        """A unique object id for this instance. Can be used to retrieve the object using `.from_id()`"""
-        return self._object_id
 
 
 Handle = synchronize_api(_Handle)
@@ -247,7 +242,7 @@ class _Provider:
 
     @property
     def object_id(self):
-        return self._handle.object_id
+        return self._handle._object_id
 
     def _get_metadata(self) -> Optional[Message]:
         return self._handle._get_metadata()

@@ -927,7 +927,7 @@ class _Function(_Provider, type_prefix="fu"):
         async def _load(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             serialized_params = pickle.dumps((args, kwargs))  # TODO(erikbern): use modal._serialization?
             req = api_pb2.FunctionBindParamsRequest(
-                function_id=base_handle.object_id,
+                function_id=base_handle._object_id,
                 serialized_params=serialized_params,
             )
             response = await retry_transient_errors(resolver.client.stub.FunctionBindParams, req)
