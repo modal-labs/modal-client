@@ -922,12 +922,12 @@ class _Function(_Provider, type_prefix="fu"):
 
     @staticmethod
     def from_parametrized(base_handle: _FunctionHandle, *args: Iterable[Any], **kwargs: Dict[str, Any]) -> "_Function":
-        assert base_handle.is_hydrated(), "Cannot make bound function handle from unhydrated handle."
+        assert base_handle._is_hydrated, "Cannot make bound function handle from unhydrated handle."
 
         async def _load(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             serialized_params = pickle.dumps((args, kwargs))  # TODO(erikbern): use modal._serialization?
             req = api_pb2.FunctionBindParamsRequest(
-                function_id=base_handle.object_id,
+                function_id=base_handle._object_id,
                 serialized_params=serialized_params,
             )
             response = await retry_transient_errors(resolver.client.stub.FunctionBindParams, req)
