@@ -977,9 +977,7 @@ class _Function(_Provider, type_prefix="fu"):
             raise ValueError("Can't return ordered results for a generator")
 
         count_update_callback = (
-            self._output_mgr.function_progress_callback(self._function_name, total=None)
-            if self._output_mgr
-            else None
+            self._output_mgr.function_progress_callback(self._function_name, total=None) if self._output_mgr else None
         )
 
         async for item in _map_invocation(

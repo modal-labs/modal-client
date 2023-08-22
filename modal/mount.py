@@ -133,7 +133,6 @@ class _Mount(_Provider, type_prefix="mo"):
 
     _entries: List[_MountEntry]
 
-
     _content_checksum_sha256_hex: Optional[str]
 
     @staticmethod

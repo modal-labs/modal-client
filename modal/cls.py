@@ -7,7 +7,7 @@ from modal_utils.async_utils import synchronize_api
 
 from ._resolver import Resolver
 from .client import _Client
-from .functions import PartialFunction, _Function, _FunctionHandle, _PartialFunction
+from .functions import PartialFunction, _Function, _PartialFunction
 
 T = TypeVar("T")
 
