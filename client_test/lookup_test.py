@@ -3,7 +3,6 @@ import pytest
 
 from modal import Function, Queue, Stub, web_endpoint
 from modal.exception import NotFoundError
-from modal.queue import QueueHandle
 from modal.runner import deploy_stub
 
 
@@ -13,7 +12,7 @@ async def test_persistent_object(servicer, client):
     stub["q_1"] = Queue.new()
     await deploy_stub.aio(stub, "my-queue", client=client)
 
-    q: QueueHandle = await Queue.lookup.aio("my-queue", client=client)  # type: ignore
+    q: Queue = await Queue.lookup.aio("my-queue", client=client)  # type: ignore
     # TODO: remove type annotation here after genstub gets better Generic base class support
     assert isinstance(q, Queue)
     assert q.object_id == "qu-1"
@@ -64,7 +63,7 @@ async def test_deploy_exists(servicer, client):
     q1: Queue = Queue.new()
     await q1._deploy.aio("my-queue", client=client)
     assert await Queue._exists.aio("my-queue", client=client)  # type: ignore
-    q2: QueueHandle = await Queue.lookup.aio("my-queue", client=client)  # type: ignore
+    q2: Queue = await Queue.lookup.aio("my-queue", client=client)  # type: ignore
     assert q1.object_id == q2.object_id
 
 
