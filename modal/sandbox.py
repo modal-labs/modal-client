@@ -89,6 +89,13 @@ LogsReader = synchronize_api(_LogsReader)
 
 
 class _SandboxHandle(_Handle, type_prefix="sb"):
+    pass
+
+
+SandboxHandle = synchronize_api(_SandboxHandle)
+
+
+class _Sandbox(_Provider, type_prefix="sb"):
     """A `SandboxHandle` lets you interact with a spawned sandbox. This API is similar to Python's
     [asyncio.subprocess.Process](https://docs.python.org/3/library/asyncio-subprocess.html#asyncio.subprocess.Process).
 
@@ -98,43 +105,6 @@ class _SandboxHandle(_Handle, type_prefix="sb"):
     _result: Optional[api_pb2.GenericResult]
     _stdout: _LogsReader
     _stderr: _LogsReader
-
-    async def wait(self):
-        """Wait for the sandbox to finish running."""
-
-        while True:
-            req = api_pb2.SandboxWaitRequest(sandbox_id=self._object_id, timeout=50)
-            resp = await retry_transient_errors(self._client.stub.SandboxWait, req)
-            if resp.result:
-                self._result = resp.result
-                break
-
-    @property
-    def stdout(self) -> _LogsReader:
-        """`LogsReader` for the sandbox's stdout stream."""
-
-        return self._stdout
-
-    @property
-    def stderr(self) -> _LogsReader:
-        """`LogsReader` for the sandbox's stderr stream."""
-
-        return self._stderr
-
-    @property
-    def returncode(self) -> Optional[int]:
-        """Return code of the sandbox process if it has finished running, else `None`."""
-
-        if self._result is None:
-            return None
-        return self._result.exitcode
-
-
-SandboxHandle = synchronize_api(_SandboxHandle)
-
-
-class _Sandbox(_Provider, type_prefix="sb"):
-    """mdmd:hidden"""
 
     @staticmethod
     def _new(
@@ -188,27 +158,42 @@ class _Sandbox(_Provider, type_prefix="sb"):
 
             sandbox_id = create_resp.sandbox_id
             provider._handle._hydrate(sandbox_id, resolver.client, None)
-            provider._handle._stdout = LogsReader(api_pb2.FILE_DESCRIPTOR_STDOUT, sandbox_id, resolver.client)
-            provider._handle._stderr = LogsReader(api_pb2.FILE_DESCRIPTOR_STDERR, sandbox_id, resolver.client)
+            provider._stdout = LogsReader(api_pb2.FILE_DESCRIPTOR_STDOUT, sandbox_id, resolver.client)
+            provider._stderr = LogsReader(api_pb2.FILE_DESCRIPTOR_STDERR, sandbox_id, resolver.client)
 
         return _Sandbox._from_loader(_load, "Sandbox()")
 
     # Live handle methods
 
     async def wait(self):
-        return await self._handle.wait()
+        """Wait for the sandbox to finish running."""
+
+        while True:
+            req = api_pb2.SandboxWaitRequest(sandbox_id=self.object_id, timeout=50)
+            resp = await retry_transient_errors(self._client.stub.SandboxWait, req)
+            if resp.result:
+                self._result = resp.result
+                break
 
     @property
     def stdout(self) -> _LogsReader:
-        return self._handle.stdout
+        """`LogsReader` for the sandbox's stdout stream."""
+
+        return self._stdout
 
     @property
     def stderr(self) -> _LogsReader:
-        return self._handle.stderr
+        """`LogsReader` for the sandbox's stderr stream."""
+
+        return self._stderr
 
     @property
     def returncode(self) -> Optional[int]:
-        return self._handle.returncode
+        """Return code of the sandbox process if it has finished running, else `None`."""
+
+        if self._result is None:
+            return None
+        return self._result.exitcode
 
 
 Sandbox = synchronize_api(_Sandbox)
