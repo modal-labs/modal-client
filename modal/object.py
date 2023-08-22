@@ -67,9 +67,6 @@ class _Handle:
             self._hydrate_metadata(metadata)
         self._is_hydrated = True
 
-    def _hydrate_from_other(self, other: "_Handle"):
-        self._hydrate(other._object_id, other._client, other._get_metadata())
-
     def _hydrate_metadata(self, metadata: Message):
         # override this is subclasses that need additional data (other than an object_id) for a functioning Handle
         pass
@@ -225,6 +222,9 @@ class _Provider:
         handle_metadata = get_proto_oneof(response, "handle_metadata_oneof")
         return self._handle._hydrate(response.object_id, client, handle_metadata)
 
+    def _hydrate_from_other(self, other: P):
+        self._handle._hydrate(other._handle._object_id, other._handle._client, other._handle._get_metadata())
+
     def __repr__(self):
         return self._rep
 
@@ -291,7 +291,7 @@ class _Provider:
 
         async def _load_persisted(provider: _Provider, resolver: Resolver, existing_object_id: Optional[str]):
             await self._deploy(label, namespace, resolver.client, environment_name=environment_name)
-            provider._handle._hydrate_from_other(self._handle)
+            provider._hydrate_from_other(self)
 
         cls = type(self)
         rep = f"PersistedRef<{self}>({label})"
