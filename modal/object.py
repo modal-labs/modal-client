@@ -70,13 +70,6 @@ class _Handle:
     def _hydrate_from_other(self, other: "_Handle"):
         self._hydrate(other._object_id, other._client, other._get_metadata())
 
-    def is_hydrated(self) -> bool:
-        """mdmd:hidden"""
-
-        # A hydrated Handle is fully functional and linked to a live object in an app
-        # To hydrate Handles, run an app using stub.run() or look up the object from a running app using <HandleClass>.lookup()
-        return self._is_hydrated
-
     def _hydrate_metadata(self, metadata: Message):
         # override this is subclasses that need additional data (other than an object_id) for a functioning Handle
         pass
@@ -248,7 +241,7 @@ class _Provider:
         return self._handle._get_metadata()
 
     def is_hydrated(self) -> bool:
-        return self._handle.is_hydrated()
+        return self._handle._is_hydrated
 
     @property
     def _client(self) -> _Client:
