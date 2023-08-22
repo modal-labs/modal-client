@@ -69,7 +69,7 @@ class _Dict(_Provider, type_prefix="di"):
             )
             response = await resolver.client.stub.DictCreate(req)
             logger.debug("Created dict with id %s" % response.dict_id)
-            provider._handle._hydrate(response.dict_id, resolver.client, None)
+            provider._hydrate(response.dict_id, resolver.client, None)
 
         return _Dict._from_loader(_load, "Dict()")
 
