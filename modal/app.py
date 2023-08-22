@@ -327,7 +327,7 @@ class _App:
     ) -> "modal.sandbox._Sandbox":
         """Sandboxes are a way to run arbitrary commands in dynamically defined environments.
 
-        This function returns a [SandboxHandle](/docs/reference/modal.Sandbox#modalsandboxsandboxhandle), which can be used to interact with the running sandbox.
+        This function returns a [SandboxHandle](/docs/reference/modal.Sandbox#modalsandboxsandbox), which can be used to interact with the running sandbox.
 
         Refer to the [docs](/docs/guide/sandbox) on how to spawn and use sandboxes.
         """
