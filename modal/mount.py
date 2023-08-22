@@ -328,7 +328,7 @@ class _Mount(_Provider, type_prefix="mo"):
         status_row.finish(f"Created mount {message_label}")
 
         logger.debug(f"Uploaded {len(uploaded_hashes)}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
-        provider._handle._hydrate(resp.mount_id, resolver.client, resp.handle_metadata)
+        provider._hydrate(resp.mount_id, resolver.client, resp.handle_metadata)
 
     @staticmethod
     def from_local_python_packages(*module_names: str) -> "_Mount":

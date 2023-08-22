@@ -41,7 +41,7 @@ class _Queue(_Provider, type_prefix="qu"):
         async def _load(provider: _Queue, resolver: Resolver, existing_object_id: Optional[str]):
             request = api_pb2.QueueCreateRequest(app_id=resolver.app_id, existing_queue_id=existing_object_id)
             response = await resolver.client.stub.QueueCreate(request)
-            provider._handle._hydrate(response.queue_id, resolver.client, None)
+            provider._hydrate(response.queue_id, resolver.client, None)
 
         return _Queue._from_loader(_load, "Queue()")
 
