@@ -154,7 +154,7 @@ class _Sandbox(_Provider, type_prefix="sb"):
         if len(entrypoint_args) == 0:
             raise InvalidError("entrypoint_args must not be empty")
 
-        async def _load(resolver: Resolver, _existing_object_id: Optional[str], handle: _SandboxHandle):
+        async def _load(provider: _Sandbox, resolver: Resolver, _existing_object_id: Optional[str]):
             async def _load_ids(objs: Sequence[_Provider]) -> List[str]:
                 handles = await asyncio.gather(*[resolver.load(obj) for obj in objs])
                 return [handle.object_id for handle in handles]
@@ -187,10 +187,9 @@ class _Sandbox(_Provider, type_prefix="sb"):
             create_resp = await retry_transient_errors(resolver.client.stub.SandboxCreate, create_req)
 
             sandbox_id = create_resp.sandbox_id
-            handle._hydrate(sandbox_id, resolver.client, None)
-
-            handle._stdout = LogsReader(api_pb2.FILE_DESCRIPTOR_STDOUT, sandbox_id, resolver.client)
-            handle._stderr = LogsReader(api_pb2.FILE_DESCRIPTOR_STDERR, sandbox_id, resolver.client)
+            provider._handle._hydrate(sandbox_id, resolver.client, None)
+            provider._handle._stdout = LogsReader(api_pb2.FILE_DESCRIPTOR_STDOUT, sandbox_id, resolver.client)
+            provider._handle._stderr = LogsReader(api_pb2.FILE_DESCRIPTOR_STDERR, sandbox_id, resolver.client)
 
         return _Sandbox._from_loader(_load, "Sandbox()")
 

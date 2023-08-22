@@ -171,8 +171,8 @@ class _Provider:
     _type_prefix: ClassVar[Optional[str]] = None
     _prefix_to_type: ClassVar[Dict[str, type]] = {}
 
-    _load: Optional[Callable[[Resolver, Optional[str], _Handle], Awaitable[None]]]
-    _preload: Optional[Callable[[Resolver, Optional[str], _Handle], Awaitable[None]]]
+    _load: Optional[Callable[[P, Resolver, Optional[str]], Awaitable[None]]]
+    _preload: Optional[Callable[[P, Resolver, Optional[str]], Awaitable[None]]]
     _handle: _Handle
 
     @classmethod
@@ -312,9 +312,9 @@ class _Provider:
         if environment_name is None:
             environment_name = config.get("environment")
 
-        async def _load_persisted(resolver: Resolver, existing_object_id: Optional[str], handle: _Handle):
+        async def _load_persisted(provider: _Provider, resolver: Resolver, existing_object_id: Optional[str]):
             await self._deploy(label, namespace, resolver.client, environment_name=environment_name)
-            handle._hydrate_from_other(self._handle)
+            provider._handle._hydrate_from_other(self._handle)
 
         cls = type(self)
         rep = f"PersistedRef<{self}>({label})"
@@ -343,17 +343,16 @@ class _Provider:
         ```
         """
 
-        async def _load_remote(resolver: Resolver, existing_object_id: Optional[str], handle: _Handle):
+        async def _load_remote(provider: _Provider, resolver: Resolver, existing_object_id: Optional[str]):
             nonlocal environment_name
             if environment_name is None:
                 # resolver always has an environment name, associated with the current app setup
                 # fall back on that one if no explicit environment was set in the call itself
                 environment_name = resolver.environment_name
 
-            await handle._hydrate_from_app(
+            await provider._handle._hydrate_from_app(
                 app_name, tag, namespace, client=resolver.client, environment_name=environment_name
             )
-            return handle
 
         rep = f"Ref({app_name})"
         return cls._from_loader(_load_remote, rep)

@@ -679,7 +679,7 @@ class _Function(_Provider, type_prefix="fu"):
             else:
                 raise InvalidError("Webhooks cannot be generators")
 
-        async def _preload(resolver: Resolver, existing_object_id: Optional[str], handle: _FunctionHandle):
+        async def _preload(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             if is_generator:
                 function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
             else:
@@ -694,10 +694,9 @@ class _Function(_Provider, type_prefix="fu"):
             )
             response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
             # Update the precreated function handle (todo: hack until we merge providers/handles)
-            handle._hydrate(response.function_id, resolver.client, response.handle_metadata)
-            return handle
+            provider._handle._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
-        async def _load(resolver: Resolver, existing_object_id: Optional[str], handle: _FunctionHandle):
+        async def _load(provider: _Provider, resolver: Resolver, existing_object_id: Optional[str]):
             # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
             status_row = resolver.add_status_row()
             status_row.message(f"Creating {tag}...")
@@ -896,7 +895,7 @@ class _Function(_Provider, type_prefix="fu"):
             else:
                 status_row.finish(f"Created {tag}.")
 
-            handle._hydrate(response.function_id, resolver.client, response.handle_metadata)
+            provider._handle._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         rep = f"Function({tag})"
         obj = _Function._from_loader(_load, rep, preload=_preload)
@@ -925,15 +924,15 @@ class _Function(_Provider, type_prefix="fu"):
     def from_parametrized(base_handle: _FunctionHandle, *args: Iterable[Any], **kwargs: Dict[str, Any]) -> "_Function":
         assert base_handle.is_hydrated(), "Cannot make bound function handle from unhydrated handle."
 
-        async def _load(resolver: Resolver, existing_object_id: Optional[str], handle: _FunctionHandle):
+        async def _load(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             serialized_params = pickle.dumps((args, kwargs))  # TODO(erikbern): use modal._serialization?
             req = api_pb2.FunctionBindParamsRequest(
                 function_id=base_handle.object_id,
                 serialized_params=serialized_params,
             )
             response = await retry_transient_errors(resolver.client.stub.FunctionBindParams, req)
-            handle._hydrate(response.bound_function_id, resolver.client, response.handle_metadata)
-            handle._is_remote_cls_method = True
+            provider._handle._hydrate(response.bound_function_id, resolver.client, response.handle_metadata)
+            provider._handle._is_remote_cls_method = True
 
         return _Function._from_loader(_load, "Function(parametrized)")
 

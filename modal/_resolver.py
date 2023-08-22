@@ -91,7 +91,7 @@ class Resolver:
 
     async def preload(self, obj, existing_object_id: Optional[str]):
         if obj._preload is not None:
-            await obj._preload(self, existing_object_id, obj._handle)
+            await obj._preload(obj, self, existing_object_id)
 
     async def load(self, obj, existing_object_id: Optional[str] = None):
         cached_future = self._local_uuid_to_future.get(obj.local_uuid)
@@ -99,9 +99,8 @@ class Resolver:
         if not cached_future:
             # don't run any awaits within this if-block to prevent race conditions
             async def loader():
-                handle = obj._handle
-                await obj._load(self, existing_object_id, handle)
-                if existing_object_id is not None and handle.object_id != existing_object_id:
+                await obj._load(obj, self, existing_object_id)
+                if existing_object_id is not None and obj.object_id != existing_object_id:
                     # TODO(erikbern): ignoring images is an ugly fix to a problem that's on the server.
                     # Unlike every other object, images are not assigned random ids, but rather an
                     # id given by the hash of its contents. This means we can't _force_ an image to
@@ -113,7 +112,7 @@ class Resolver:
                     if not obj._is_persisted_ref and not existing_object_id.startswith("im-"):
                         raise Exception(
                             f"Tried creating an object using existing id {existing_object_id}"
-                            f" but it has id {handle.object_id}"
+                            f" but it has id {obj.object_id}"
                         )
 
                 return obj
