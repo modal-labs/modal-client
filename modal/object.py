@@ -118,9 +118,9 @@ class _Provider:
     def _init(
         self,
         rep: str,
-        load: Optional[Callable[[Resolver, Optional[str], _Handle], Awaitable[None]]] = None,
+        load: Optional[Callable[[P, Resolver, Optional[str]], Awaitable[None]]] = None,
         is_persisted_ref: bool = False,
-        preload: Optional[Callable[[Resolver, Optional[str], _Handle], Awaitable[None]]] = None,
+        preload: Optional[Callable[[P, Resolver, Optional[str]], Awaitable[None]]] = None,
     ):
         self._local_uuid = str(uuid.uuid4())
         self._load = load
@@ -139,10 +139,10 @@ class _Provider:
     @classmethod
     def _from_loader(
         cls,
-        load: Callable[[Resolver, Optional[str], _Handle], Awaitable[None]],
+        load: Callable[[P, Resolver, Optional[str]], Awaitable[None]],
         rep: str,
         is_persisted_ref: bool = False,
-        preload: Optional[Callable[[Resolver, Optional[str], _Handle], Awaitable[None]]] = None,
+        preload: Optional[Callable[[P, Resolver, Optional[str]], Awaitable[None]]] = None,
     ):
         # TODO(erikbern): flip the order of the two first arguments
         obj = _Provider.__new__(cls)
