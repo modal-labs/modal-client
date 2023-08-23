@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-import inspect
 import pickle
 from typing import Dict, Type, TypeVar
 
@@ -22,26 +21,26 @@ class ClsMixin:
         ...
 
 
+def check_picklability(key, arg):
+    try:
+        pickle.dumps(arg)
+    except Exception:
+        raise ValueError(
+            f"Only pickle-able types are allowed in remote class constructors. "
+            f"Argument {key} of type {type(arg)}."
+        )
+
+
 def make_remote_cls_constructors(
     user_cls: type,
     partial_functions: Dict[str, PartialFunction],
     functions: Dict[str, _Function],
 ):
-    original_sig = inspect.signature(user_cls.__init__)  # type: ignore
-    new_parameters = [param for name, param in original_sig.parameters.items() if name != "self"]
-    sig = inspect.Signature(new_parameters)
-
     async def _remote(*args, **kwargs):
-        params = sig.bind(*args, **kwargs)
-
-        for name, param in params.arguments.items():
-            try:
-                pickle.dumps(param)
-            except Exception:
-                raise ValueError(
-                    f"Only pickle-able types are allowed in remote class constructors. "
-                    f"Found {name}={param} of type {type(param)}."
-                )
+        for i, arg in enumerate(args):
+            check_picklability(i+1, arg)
+        for key, kwarg in kwargs.items():
+            check_picklability(key, kwarg)
 
         cls_dict = {}
         new_functions: Dict[str, _Function] = {}
@@ -49,7 +48,7 @@ def make_remote_cls_constructors(
         for k, v in partial_functions.items():
             base_function: _Function = functions[k]
             client: _Client = base_function._client
-            new_function: _Function = _Function.from_parametrized(base_function, *params.args, **params.kwargs)
+            new_function: _Function = _Function.from_parametrized(base_function, *args, **kwargs)
             resolver = Resolver(client)
             await resolver.load(new_function)
             new_functions[k] = new_function
