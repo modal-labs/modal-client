@@ -15,7 +15,7 @@ from .client import _Client
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
 from .mount import _Mount
-from .object import _Provider
+from .object import _Object
 from .secret import _Secret
 
 
@@ -88,7 +88,7 @@ class _LogsReader:
 LogsReader = synchronize_api(_LogsReader)
 
 
-class _Sandbox(_Provider, type_prefix="sb"):
+class _Sandbox(_Object, type_prefix="sb"):
     """A `Sandbox` object lets you interact with a running sandbox. This API is similar to Python's
     [asyncio.subprocess.Process](https://docs.python.org/3/library/asyncio-subprocess.html#asyncio.subprocess.Process).
 
@@ -118,7 +118,7 @@ class _Sandbox(_Provider, type_prefix="sb"):
             raise InvalidError("entrypoint_args must not be empty")
 
         async def _load(provider: _Sandbox, resolver: Resolver, _existing_object_id: Optional[str]):
-            async def _load_ids(objs: Sequence[_Provider]) -> List[str]:
+            async def _load_ids(objs: Sequence[_Object]) -> List[str]:
                 handles = await asyncio.gather(*[resolver.load(obj) for obj in objs])
                 return [handle.object_id for handle in handles]
 

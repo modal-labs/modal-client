@@ -16,14 +16,14 @@ from ._blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
 from ._resolver import Resolver
 from ._types import typechecked
 from .exception import deprecation_warning
-from .object import _Provider
+from .object import _Object
 
 NETWORK_FILE_SYSTEM_PUT_FILE_CLIENT_TIMEOUT = (
     10 * 60
 )  # 10 min max for transferring files (does not include upload time to s3)
 
 
-class _NetworkFileSystem(_Provider, type_prefix="sv"):
+class _NetworkFileSystem(_Object, type_prefix="sv"):
     """A shared, writable file system accessible by one or more Modal functions.
 
     By attaching this file system as a mount to one or more functions, they can

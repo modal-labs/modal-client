@@ -7,10 +7,10 @@ from modal_utils.async_utils import asyncnullcontext, synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors, unary_stream
 
 from ._resolver import Resolver
-from .object import _Provider
+from .object import _Object
 
 
-class _Volume(_Provider, type_prefix="vo"):
+class _Volume(_Object, type_prefix="vo"):
     """A writeable volume that can be used to share files between one or more Modal functions.
 
     The contents of a volume is exposed as a filesystem. You can use it to share data between different functions, or

@@ -12,10 +12,10 @@ from modal_utils.grpc_utils import retry_transient_errors
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from .exception import deprecation_error
-from .object import _Provider
+from .object import _Object
 
 
-class _Queue(_Provider, type_prefix="qu"):
+class _Queue(_Object, type_prefix="qu"):
     """A distributed, FIFO Queue available to Modal apps.
 
     The queue can contain any object serializable by `cloudpickle`.
