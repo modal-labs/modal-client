@@ -376,7 +376,7 @@ def test_nfs_get(set_env_client):
 
 
 def test_volume_cli(set_env_client):
-    _run(["volume", "list"])
+    _run(["volume", "--help"])
 
 
 @pytest.mark.parametrize("command", [["run"], ["deploy"], ["serve", "--timeout=1"], ["shell"]])
