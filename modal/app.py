@@ -139,7 +139,7 @@ class _App:
 
                 # Reset object_id in case the app runs twice
                 # TODO(erikbern): clean up the interface
-                provider._handle._init()
+                provider._unhydrate()
 
             # Preload all functions to make sure they have ids assigned before they are loaded.
             # This is important to make sure any enclosed function handle references in serialized
