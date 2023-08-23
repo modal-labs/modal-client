@@ -42,7 +42,6 @@ def make_remote_cls_constructors(
         for key, kwarg in kwargs.items():
             check_picklability(key, kwarg)
 
-        cls_dict = {}
         new_functions: Dict[str, _Function] = {}
 
         for k, v in partial_functions.items():
@@ -52,9 +51,8 @@ def make_remote_cls_constructors(
             resolver = Resolver(client)
             await resolver.load(new_function)
             new_functions[k] = new_function
-            cls_dict[k] = v
 
-        cls = type(f"Remote{user_cls.__name__}", (), cls_dict)
+        cls = type(f"Remote{user_cls.__name__}", (), partial_functions)
         _PartialFunction.initialize_cls(cls, new_functions)
         return cls()
 
