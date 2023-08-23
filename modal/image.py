@@ -170,6 +170,7 @@ class _Image(_Provider, type_prefix="im"):
             if ref:
                 image_id = (await resolver.load(ref)).object_id
                 provider._hydrate(image_id, resolver.client, None)
+                return
 
             # Recursively build base images
             base_image_ids: List[str] = []
