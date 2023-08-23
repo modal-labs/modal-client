@@ -19,7 +19,18 @@ from modal_utils.grpc_utils import retry_transient_errors
 
 FileType = api_pb2.VolumeListFilesEntry.FileType
 
-volume_cli = Typer(name="volume", help="[Preview] Read and edit modal.Volume volumes.", no_args_is_help=True)
+volume_cli = Typer(
+    name="volume",
+    no_args_is_help=True,
+    help="""
+    [Preview] Read and edit `modal.Volume` volumes.
+
+    This command is in preview and may change in the future.
+
+    Previous users of `modal.NetworkFileSystem` should replace their usage with
+    the `modal nfs` command instead.
+    """,
+)
 
 
 @volume_cli.command(name="list", help="List the names of all modal.Volume volumes.", hidden=True)

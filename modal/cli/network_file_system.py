@@ -32,7 +32,7 @@ from modal_utils.grpc_utils import retry_transient_errors
 FileType = api_pb2.SharedVolumeListFilesEntry.FileType
 
 
-nfs_cli = Typer(name="nfs", help="Read and edit modal.NetworkFileSystem volumes.", no_args_is_help=True)
+nfs_cli = Typer(name="nfs", help="Read and edit `modal.NetworkFileSystem` file systems.", no_args_is_help=True)
 
 
 @nfs_cli.command(name="list", help="List the names of all network file systems.")
