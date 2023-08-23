@@ -26,8 +26,7 @@ def check_picklability(key, arg):
         pickle.dumps(arg)
     except Exception:
         raise ValueError(
-            f"Only pickle-able types are allowed in remote class constructors. "
-            f"Argument {key} of type {type(arg)}."
+            f"Only pickle-able types are allowed in remote class constructors: argument {key} of type {type(arg)}."
         )
 
 
@@ -40,7 +39,7 @@ def make_remote_cls_constructors(
 
     async def _remote(*args, **kwargs):
         for i, arg in enumerate(args):
-            check_picklability(i+1, arg)
+            check_picklability(i + 1, arg)
         for key, kwarg in kwargs.items():
             check_picklability(key, kwarg)
 
