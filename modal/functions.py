@@ -68,7 +68,7 @@ from .gpu import GPU_T, display_gpu_config, parse_gpu_config
 from .image import _Image
 from .mount import _get_client_mount, _Mount
 from .network_file_system import _NetworkFileSystem
-from .object import _Handle, _Provider
+from .object import _Provider
 from .proxy import _Proxy
 from .retries import Retries
 from .schedule import Schedule
@@ -495,13 +495,6 @@ class FunctionStats:
     num_total_runners: int
 
 
-class _FunctionHandle(_Handle):
-    pass
-
-
-FunctionHandle = synchronize_api(_FunctionHandle)
-
-
 class _Function(_Provider, type_prefix="fu"):
     """Functions are the basic units of serverless execution on Modal.
 
@@ -512,7 +505,6 @@ class _Function(_Provider, type_prefix="fu"):
     # TODO: more type annotations
     _info: FunctionInfo
     _all_mounts: Collection[_Mount]
-    _handle: _FunctionHandle
     _stub: "modal.stub._Stub"
     _self_obj: Any
     _web_url: Optional[str]
@@ -1221,10 +1213,6 @@ class _Function(_Provider, type_prefix="fu"):
 
 
 Function = synchronize_api(_Function)
-
-
-class _FunctionCallHandle(_Handle, type_prefix="fc"):
-    pass  # TODO(erikbern): Dumb temp thing, remove soon
 
 
 class _FunctionCall(_Provider, type_prefix="fc"):

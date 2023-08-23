@@ -10,7 +10,7 @@ from synchronicity.exceptions import UserCodeException
 
 from modal import NetworkFileSystem, Proxy, Stub, asgi_app, web_endpoint, wsgi_app
 from modal.exception import DeprecationError, InvalidError
-from modal.functions import Function, FunctionCall, FunctionHandle, gather
+from modal.functions import Function, FunctionCall, gather
 from modal.runner import deploy_stub
 from modal_proto import api_pb2
 
@@ -516,20 +516,17 @@ def test_from_id(client, servicer):
     assert function_id
     assert foo.web_url
 
-    with pytest.raises(DeprecationError):
-        FunctionHandle.from_id(function_id, client=client)
-
     rehydrated_function = Function.from_id(function_id, client=client)
     assert isinstance(rehydrated_function, Function)
 
     assert rehydrated_function.object_id == function_id
     assert rehydrated_function.web_url == foo.web_url
 
-    function_call_handle = foo.spawn()
-    assert function_call_handle.object_id
+    function_call = foo.spawn()
+    assert function_call.object_id
     # Used in a few examples to construct FunctionCall objects
-    rehydrated_function_call_handle = FunctionCall.from_id(function_call_handle.object_id, client)
-    assert rehydrated_function_call_handle.object_id == function_call_handle.object_id
+    rehydrated_function_call = FunctionCall.from_id(function_call.object_id, client)
+    assert rehydrated_function_call.object_id == function_call.object_id
 
 
 def test_panel(client, servicer):

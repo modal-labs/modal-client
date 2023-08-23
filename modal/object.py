@@ -16,27 +16,6 @@ from .client import _Client
 from .config import config
 from .exception import InvalidError, NotFoundError, deprecation_error
 
-H = TypeVar("H", bound="_Handle")
-
-_BLOCKING_H = synchronize_api(H)
-
-
-class _Handle:
-    @classmethod
-    def __init_subclass__(cls, type_prefix: Optional[str] = None):
-        super().__init_subclass__()
-
-    @classmethod
-    async def from_id(cls, object_id: str, client: Optional[_Client] = None):
-        deprecation_error(
-            date(2023, 8, 20),
-            "`Handle.from_id` is no longer supported. Use the method on the object class (e.g. `Function.from_id`)",
-        )
-
-
-Handle = synchronize_api(_Handle)
-
-
 P = TypeVar("P", bound="_Provider")
 
 _BLOCKING_P = synchronize_api(P)
@@ -49,7 +28,6 @@ class _Provider:
     # For constructors
     _load: Optional[Callable[[P, Resolver, Optional[str]], Awaitable[None]]]
     _preload: Optional[Callable[[P, Resolver, Optional[str]], Awaitable[None]]]
-    _handle: _Handle
 
     # For hydrated objects
     _object_id: str

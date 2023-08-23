@@ -12,14 +12,7 @@ from modal_utils.grpc_utils import retry_transient_errors
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from .exception import deprecation_error
-from .object import _Handle, _Provider
-
-
-class _QueueHandle(_Handle, type_prefix="qu"):
-    pass
-
-
-QueueHandle = synchronize_api(_QueueHandle)
+from .object import _Provider
 
 
 class _Queue(_Provider, type_prefix="qu"):

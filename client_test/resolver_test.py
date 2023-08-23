@@ -6,7 +6,7 @@ from typing import Optional
 
 from modal._output import OutputManager
 from modal._resolver import Resolver
-from modal.object import _Handle, _Provider
+from modal.object import _Provider
 
 
 @pytest.mark.asyncio
@@ -15,9 +15,6 @@ async def test_multi_resolve_sequential_loads_once():
     resolver = Resolver(None, output_mgr=output_manager, environment_name="", app_id=None)
 
     load_count = 0
-
-    class _DumbHandle(_Handle, type_prefix="zz"):
-        pass
 
     class _DumbProvider(_Provider, type_prefix="zz"):
         pass
@@ -43,9 +40,6 @@ async def test_multi_resolve_concurrent_loads_once():
     resolver = Resolver(None, output_mgr=output_manager, environment_name="", app_id=None)
 
     load_count = 0
-
-    class _DumbHandle(_Handle, type_prefix="zz"):
-        pass
 
     class _DumbProvider(_Provider, type_prefix="zz"):
         pass

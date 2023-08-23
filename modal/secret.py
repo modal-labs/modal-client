@@ -8,15 +8,7 @@ from modal_utils.async_utils import synchronize_api
 
 from ._resolver import Resolver
 from .exception import InvalidError
-from .object import _Handle, _Provider
-
-
-class _SecretHandle(_Handle, type_prefix="st"):
-    pass
-
-
-SecretHandle = synchronize_api(_SecretHandle)
-
+from .object import _Provider
 
 ENV_DICT_WRONG_TYPE_ERR = "the env_dict argument to Secret has to be a dict[str, str]"
 

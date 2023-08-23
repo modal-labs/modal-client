@@ -7,14 +7,7 @@ from modal_utils.async_utils import asyncnullcontext, synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors, unary_stream
 
 from ._resolver import Resolver
-from .object import _Handle, _Provider
-
-
-class _VolumeHandle(_Handle, type_prefix="vo"):
-    pass
-
-
-VolumeHandle = synchronize_api(_VolumeHandle)
+from .object import _Provider
 
 
 class _Volume(_Provider, type_prefix="vo"):

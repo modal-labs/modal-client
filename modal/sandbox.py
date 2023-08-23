@@ -15,7 +15,7 @@ from .client import _Client
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
 from .mount import _Mount
-from .object import _Handle, _Provider
+from .object import _Provider
 from .secret import _Secret
 
 
@@ -88,13 +88,6 @@ class _LogsReader:
 LogsReader = synchronize_api(_LogsReader)
 
 
-class _SandboxHandle(_Handle, type_prefix="sb"):
-    pass
-
-
-SandboxHandle = synchronize_api(_SandboxHandle)
-
-
 class _Sandbox(_Provider, type_prefix="sb"):
     """A `Sandbox` object lets you interact with a running sandbox. This API is similar to Python's
     [asyncio.subprocess.Process](https://docs.python.org/3/library/asyncio-subprocess.html#asyncio.subprocess.Process).
@@ -118,7 +111,7 @@ class _Sandbox(_Provider, type_prefix="sb"):
         cloud: Optional[str] = None,
         cpu: Optional[float] = None,
         memory: Optional[int] = None,
-    ) -> _SandboxHandle:
+    ) -> "_Sandbox":
         """mdmd:hidden"""
 
         if len(entrypoint_args) == 0:

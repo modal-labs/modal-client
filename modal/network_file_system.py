@@ -16,18 +16,11 @@ from ._blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
 from ._resolver import Resolver
 from ._types import typechecked
 from .exception import deprecation_warning
-from .object import _Handle, _Provider
+from .object import _Provider
 
 NETWORK_FILE_SYSTEM_PUT_FILE_CLIENT_TIMEOUT = (
     10 * 60
 )  # 10 min max for transferring files (does not include upload time to s3)
-
-
-class _NetworkFileSystemHandle(_Handle, type_prefix="sv"):
-    pass
-
-
-NetworkFileSystemHandle = synchronize_api(_NetworkFileSystemHandle)
 
 
 class _NetworkFileSystem(_Provider, type_prefix="sv"):

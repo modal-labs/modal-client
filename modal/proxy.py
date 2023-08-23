@@ -1,11 +1,7 @@
 # Copyright Modal Labs 2022
 from modal_utils.async_utils import synchronize_api
 
-from .object import _Handle, _Provider
-
-
-class _ProxyHandle(_Handle, type_prefix="pr"):
-    pass
+from .object import _Provider
 
 
 class _Proxy(_Provider, type_prefix="pr"):
@@ -20,5 +16,4 @@ class _Proxy(_Provider, type_prefix="pr"):
     pass
 
 
-ProxyHandle = synchronize_api(_ProxyHandle, target_module=__name__)
 Proxy = synchronize_api(_Proxy, target_module=__name__)
