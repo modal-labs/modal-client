@@ -104,13 +104,7 @@ class _MountDir(_MountEntry):
 
 
 class _MountHandle(_Handle, type_prefix="mo"):
-    """Store content checksum for uploaded Mount"""
-
-    _content_checksum_sha256_hex: Optional[str]
-
-    def _hydrate_metadata(self, handle_metadata: Message):
-        assert isinstance(handle_metadata, api_pb2.MountHandleMetadata)
-        self._content_checksum_sha256_hex = handle_metadata.content_checksum_sha256_hex
+    pass  # deprecated
 
 
 MountHandle = synchronize_api(_MountHandle)
@@ -139,6 +133,8 @@ class _Mount(_Provider, type_prefix="mo"):
 
     _entries: List[_MountEntry]
 
+    _content_checksum_sha256_hex: Optional[str]
+
     @staticmethod
     def _from_entries(*entries: _MountEntry) -> "_Mount":
         rep = f"Mount({entries})"
@@ -155,6 +151,10 @@ class _Mount(_Provider, type_prefix="mo"):
     @property
     def entries(self):
         return self._entries
+
+    def _hydrate_metadata(self, handle_metadata: Message):
+        assert isinstance(handle_metadata, api_pb2.MountHandleMetadata)
+        self._content_checksum_sha256_hex = handle_metadata.content_checksum_sha256_hex
 
     def is_local(self) -> bool:
         """mdmd:hidden"""

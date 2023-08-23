@@ -22,60 +22,9 @@ _BLOCKING_H = synchronize_api(H)
 
 
 class _Handle:
-    """mdmd:hidden The shared base class of any synced/distributed object in Modal.
-
-    Examples of objects include Modal primitives like Images and Functions, as
-    well as distributed data structures like Queues or Dicts.
-    """
-
-    _type_prefix: ClassVar[Optional[str]] = None
-    _prefix_to_type: ClassVar[Dict[str, type]] = {}
-
-    _object_id: str
-    _client: _Client
-    _is_hydrated: bool
-
     @classmethod
     def __init_subclass__(cls, type_prefix: Optional[str] = None):
         super().__init_subclass__()
-        if type_prefix is not None:
-            cls._type_prefix = type_prefix
-            cls._prefix_to_type[type_prefix] = cls
-
-    def __init__(self):
-        raise Exception("__init__ disallowed, use proper classmethods")
-
-    def _init(self):
-        self._object_id = None
-        self._client = None
-        self._is_hydrated = False
-
-    @classmethod
-    def _new(cls: Type[H]) -> H:
-        obj = _Handle.__new__(cls)
-        obj._init()
-        obj._initialize_from_empty()
-        return obj
-
-    def _initialize_from_empty(self):
-        pass  # default implementation
-
-    def _hydrate(self, object_id: str, client: _Client, metadata: Optional[Message]):
-        self._object_id = object_id
-        self._client = client
-        if metadata:
-            self._hydrate_metadata(metadata)
-        self._is_hydrated = True
-
-    def _hydrate_metadata(self, metadata: Message):
-        # override this is subclasses that need additional data (other than an object_id) for a functioning Handle
-        pass
-
-    def _get_metadata(self) -> Optional[Message]:
-        # return the necessary metadata from this handle to be able to re-hydrate in another context if one is needed
-        # used to provide a handle's handle_metadata for serializing/pickling a live handle
-        # the object_id is already provided by other means
-        return
 
     @classmethod
     async def from_id(cls, object_id: str, client: Optional[_Client] = None):
@@ -97,9 +46,15 @@ class _Provider:
     _type_prefix: ClassVar[Optional[str]] = None
     _prefix_to_type: ClassVar[Dict[str, type]] = {}
 
+    # For constructors
     _load: Optional[Callable[[P, Resolver, Optional[str]], Awaitable[None]]]
     _preload: Optional[Callable[[P, Resolver, Optional[str]], Awaitable[None]]]
     _handle: _Handle
+
+    # For hydrated objects
+    _object_id: str
+    _client: _Client
+    _is_hydrated: bool
 
     @classmethod
     def __init_subclass__(cls, type_prefix: Optional[str] = None):
@@ -111,16 +66,12 @@ class _Provider:
     def __init__(self):
         raise Exception("__init__ disallowed, use proper classmethods")
 
-    @classmethod
-    def _get_handle_cls(cls) -> Type[_Handle]:
-        return _Handle._prefix_to_type[cls._type_prefix]
-
     def _init(
         self,
         rep: str,
-        load: Optional[Callable[[Resolver, Optional[str], _Handle], Awaitable[None]]] = None,
+        load: Optional[Callable[[P, Resolver, Optional[str]], Awaitable[None]]] = None,
         is_persisted_ref: bool = False,
-        preload: Optional[Callable[[Resolver, Optional[str], _Handle], Awaitable[None]]] = None,
+        preload: Optional[Callable[[P, Resolver, Optional[str]], Awaitable[None]]] = None,
     ):
         self._local_uuid = str(uuid.uuid4())
         self._load = load
@@ -128,9 +79,37 @@ class _Provider:
         self._rep = rep
         self._is_persisted_ref = is_persisted_ref
 
-        # Create an unhydrated handle
-        handle_cls = self._get_handle_cls()
-        self._handle = handle_cls._new()
+        self._object_id = None
+        self._client = None
+        self._is_hydrated = False
+
+        self._initialize_from_empty()
+
+    def _unhydrate(self):
+        self._object_id = None
+        self._client = None
+        self._is_hydrated = False
+
+    def _initialize_from_empty(self):
+        # default implementation, can be overriden in subclasses
+        pass
+
+    def _hydrate(self, object_id: str, client: _Client, metadata: Optional[Message]):
+        self._object_id = object_id
+        self._client = client
+        if metadata:
+            self._hydrate_metadata(metadata)
+        self._is_hydrated = True
+
+    def _hydrate_metadata(self, metadata: Message):
+        # override this is subclasses that need additional data (other than an object_id) for a functioning Handle
+        pass
+
+    def _get_metadata(self) -> Optional[Message]:
+        # return the necessary metadata from this handle to be able to re-hydrate in another context if one is needed
+        # used to provide a handle's handle_metadata for serializing/pickling a live handle
+        # the object_id is already provided by other means
+        return
 
     def _init_from_other(self, other: "_Provider"):
         # Transient use case, see Dict, Queue, and SharedVolume
@@ -139,10 +118,10 @@ class _Provider:
     @classmethod
     def _from_loader(
         cls,
-        load: Callable[[Resolver, Optional[str], _Handle], Awaitable[None]],
+        load: Callable[[P, Resolver, Optional[str]], Awaitable[None]],
         rep: str,
         is_persisted_ref: bool = False,
-        preload: Optional[Callable[[Resolver, Optional[str], _Handle], Awaitable[None]]] = None,
+        preload: Optional[Callable[[P, Resolver, Optional[str]], Awaitable[None]]] = None,
     ):
         # TODO(erikbern): flip the order of the two first arguments
         obj = _Provider.__new__(cls)
@@ -222,11 +201,8 @@ class _Provider:
         handle_metadata = get_proto_oneof(response, "handle_metadata_oneof")
         return self._hydrate(response.object_id, client, handle_metadata)
 
-    def _hydrate(self, object_id: str, client: _Client, metadata: Optional[Message]):
-        self._handle._hydrate(object_id, client, metadata)
-
     def _hydrate_from_other(self, other: P):
-        self._hydrate(other._handle._object_id, other._handle._client, other._handle._get_metadata())
+        self._hydrate(other._object_id, other._client, other._get_metadata())
 
     def __repr__(self):
         return self._rep
@@ -238,17 +214,10 @@ class _Provider:
 
     @property
     def object_id(self):
-        return self._handle._object_id
-
-    def _get_metadata(self) -> Optional[Message]:
-        return self._handle._get_metadata()
+        return self._object_id
 
     def is_hydrated(self) -> bool:
-        return self._handle._is_hydrated
-
-    @property
-    def _client(self) -> _Client:
-        return self._handle._client
+        return self._is_hydrated
 
     async def _deploy(
         self,
@@ -269,11 +238,9 @@ class _Provider:
         if client is None:
             client = await _Client.from_env()
 
-        handle_cls = self._get_handle_cls()
-        object_entity = handle_cls._type_prefix
         app = await _App._init_from_name(client, label, namespace, environment_name=environment_name)
         await app.create_one_object(self, environment_name)
-        await app.deploy(label, namespace, object_entity)  # TODO(erikbern): not needed if the app already existed
+        await app.deploy(label, namespace, self._type_prefix)  # TODO(erikbern): not needed if the app already existed
 
     def persist(
         self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
@@ -377,12 +344,11 @@ class _Provider:
         """
         if client is None:
             client = await _Client.from_env()
-        handle_cls = cls._get_handle_cls()
         request = api_pb2.AppLookupObjectRequest(
             app_name=app_name,
             object_tag=tag,
             namespace=namespace,
-            object_entity=handle_cls._type_prefix,
+            object_entity=cls._type_prefix,
         )
         try:
             response = await retry_transient_errors(client.stub.AppLookupObject, request)
