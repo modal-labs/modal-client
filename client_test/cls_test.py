@@ -73,7 +73,7 @@ def test_call_cls_remote_invalid_type(client):
             FooRemote.remote(42, my_function)
 
         exc = excinfo.value
-        assert "y=" in str(exc)
+        assert "function" in str(exc)
 
 
 stub_2 = Stub()

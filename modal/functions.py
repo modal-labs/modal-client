@@ -1331,6 +1331,10 @@ class _PartialFunction:
     def initialize_cls(user_cls: type, functions: Dict[str, _Function]):
         user_cls._modal_functions = functions
 
+    @staticmethod
+    def initialize_obj(user_obj, functions: Dict[str, _Function]):
+        user_obj._modal_functions = functions
+
     def __init__(
         self,
         raw_f: Callable[..., Any],
