@@ -375,12 +375,8 @@ def test_nfs_get(set_env_client):
             assert f.read() == "foo bar baz"
 
 
-def test_deprecated_volume(set_env_client):
-    _run(
-        ["volume", "create", "xyz-volume"],
-        expected_exit_code=1,
-        expected_stderr="DeprecationWarning: The command 'create' is deprecated.\n",
-    )
+def test_volume_cli(set_env_client):
+    _run(["volume", "list"])
 
 
 @pytest.mark.parametrize("command", [["run"], ["deploy"], ["serve", "--timeout=1"], ["shell"]])
