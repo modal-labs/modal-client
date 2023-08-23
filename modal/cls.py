@@ -36,6 +36,8 @@ def make_remote_cls_constructors(
     partial_functions: Dict[str, PartialFunction],
     functions: Dict[str, _Function],
 ):
+    cls = type(f"Remote{user_cls.__name__}", (), partial_functions)
+
     async def _remote(*args, **kwargs):
         for i, arg in enumerate(args):
             check_picklability(i+1, arg)
@@ -52,8 +54,8 @@ def make_remote_cls_constructors(
             await resolver.load(new_function)
             new_functions[k] = new_function
 
-        cls = type(f"Remote{user_cls.__name__}", (), partial_functions)
-        _PartialFunction.initialize_cls(cls, new_functions)
-        return cls()
+        obj = cls()
+        _PartialFunction.initialize_obj(obj, new_functions)
+        return obj
 
     return synchronize_api(_remote)
