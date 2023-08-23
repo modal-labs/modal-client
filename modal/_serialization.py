@@ -33,9 +33,9 @@ class Unpickler(pickle.Unpickler):
 
     def persistent_load(self, pid):
         (object_id, flag, handle_proto) = pid
-        if flag == "p":
+        if flag == "p" or flag == "h":
             return Provider._new_hydrated(object_id, self.client, handle_proto)
-        elif flag == "_p":
+        elif flag == "_p" or flag == "_h":
             return _Provider._new_hydrated(object_id, self.client, handle_proto)
         else:
             raise InvalidError("bad flag")
