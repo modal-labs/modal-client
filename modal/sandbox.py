@@ -171,7 +171,7 @@ class _Sandbox(_Provider, type_prefix="sb"):
         while True:
             req = api_pb2.SandboxWaitRequest(sandbox_id=self.object_id, timeout=50)
             resp = await retry_transient_errors(self._client.stub.SandboxWait, req)
-            if resp.result:
+            if resp.result.status:
                 self._result = resp.result
                 break
 
