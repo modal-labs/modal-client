@@ -257,12 +257,11 @@ class _Invocation:
         return await _process_result(result, self.stub, self.client)
 
     async def poll_function(self, timeout: Optional[float] = None):
-        # waits up to timeout for a result from a function
-        # * timeout=0 means a single poll
-        # * timeout=None means wait indefinitely
-        # raises TimeoutError if there is no result before timeout
-        # Intended to be used for future polling, and as such keeps
-        # results around after returning them
+        """Waits up to timeout for a result from a function.
+
+        If timeout is `None`, waits indefinitely. This function is not
+        cancellation-safe.
+        """
         results = await stream.list(self.pop_function_call_outputs(timeout=timeout, clear_on_success=False))
 
         if len(results) == 0:
@@ -1244,10 +1243,13 @@ class _FunctionCall(_Provider, type_prefix="fc"):
         return _Invocation(self._client.stub, self.object_id, self._client)
 
     async def get(self, timeout: Optional[float] = None):
-        """Gets the result of the function call
+        """Get the result of the function call.
 
-        Raises `TimeoutError` if no results are returned within `timeout` seconds.
-        Setting `timeout` to None (the default) waits indefinitely until there is a result
+        This function waits indefinitely by default. It takes an optional
+        `timeout` argument that specifies the maximum number of seconds to wait,
+        which can be set to `0` to poll for an output immediately.
+
+        The returned coroutine is not cancellation-safe.
         """
         return await self._invocation().poll_function(timeout=timeout)
 
