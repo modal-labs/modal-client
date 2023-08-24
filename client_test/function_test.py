@@ -231,7 +231,7 @@ async def test_generator(client, servicer):
     assert len(servicer.cleared_function_calls) == 0
     with stub.run(client=client):
         assert later_gen_modal.is_generator
-        res: typing.Generator = later_gen_modal.remote()  # type: ignore
+        res: typing.Generator = later_gen_modal.remote_gen()  # type: ignore
         # Generators fulfil the *iterator protocol*, which requires both these methods.
         # https://docs.python.org/3/library/stdtypes.html#typeiter
         assert hasattr(res, "__iter__")  # strangely inspect.isgenerator returns false
@@ -239,6 +239,11 @@ async def test_generator(client, servicer):
         assert next(res) == "bar"
         assert list(res) == ["baz", "boo"]
         assert len(servicer.cleared_function_calls) == 1
+
+        # Check deprecated interface
+        with pytest.warns(DeprecationError):
+            res = later_gen_modal.call()
+            assert next(res) == "bar"
 
 
 @pytest.mark.asyncio
@@ -256,7 +261,7 @@ async def test_generator_async(client, servicer):
     assert len(servicer.cleared_function_calls) == 0
     async with stub.run(client=client):
         assert later_gen_modal.is_generator
-        res = later_gen_modal.remote.aio()
+        res = later_gen_modal.remote_gen.aio()
         # Async generators fulfil the *asynchronous iterator protocol*, which requires both these methods.
         # https://peps.python.org/pep-0525/#support-for-asynchronous-iteration-protocol
         assert hasattr(res, "__aiter__")
