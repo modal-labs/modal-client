@@ -31,6 +31,14 @@ class TimeoutError(Error):
     """Base class for Modal timeouts."""
 
 
+class SandboxTimeoutError(TimeoutError):
+    """Raised when a Sandbox exceeds its execution duration limit and times out."""
+
+
+class SandboxTerminatedError(Error):
+    """Raised when a Sandbox is terminated for an internal reason."""
+
+
 class FunctionTimeoutError(TimeoutError):
     """Raised when a Function exceeds its execution duration limit and times out."""
 
