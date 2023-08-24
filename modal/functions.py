@@ -675,7 +675,7 @@ class _Function(_Object, type_prefix="fu"):
                     validated.append((path, vol))
                 return validated
 
-            async def _load_ids(providers) -> typing.List[str]:
+            async def _load_ids(providers) -> List[str]:
                 loaded_handles = await asyncio.gather(*[resolver.load(provider) for provider in providers])
                 return [handle.object_id for handle in loaded_handles]
 
@@ -1073,7 +1073,7 @@ class _Function(_Object, type_prefix="fu"):
     @warn_if_generator_is_not_consumed
     async def starmap(
         self, input_iterator, kwargs={}, order_outputs=None, return_exceptions=False
-    ) -> AsyncGenerator[typing.Any, None]:
+    ) -> AsyncGenerator[Any, None]:
         """Like `map` but spreads arguments over multiple function arguments
 
         Assumes every input is a sequence (e.g. a tuple).
@@ -1096,7 +1096,7 @@ class _Function(_Object, type_prefix="fu"):
         async for item in self._map(input_stream, order_outputs, return_exceptions, kwargs):
             yield item
 
-    def remote(self, *args, **kwargs) -> Awaitable[Any]:  # TODO: Generics/TypeVars
+    async def remote(self, *args, **kwargs) -> Awaitable[Any]:  # TODO: Generics/TypeVars
         """
         Calls the function remotely, executing it with the given arguments and returning the execution's result.
         """
@@ -1106,20 +1106,46 @@ class _Function(_Object, type_prefix="fu"):
                 f"Invoke this function via its web url '{self._web_url}' or call it locally: {self._function_name}()."
             )
         if self._is_generator:
-            return self._call_generator(args, kwargs)  # type: ignore
-        else:
-            return self._call_function(args, kwargs)
+            raise InvalidError(
+                "A generator function cannot be called with `.remote(...)`. Use `.remote_gen(...)` instead."
+            )
+
+        return await self._call_function(args, kwargs)
+
+    async def remote_gen(self, *args, **kwargs) -> AsyncGenerator[Any, None]:  # TODO: Generics/TypeVars
+        """
+        Calls the generator remotely, executing it with the given arguments and returning the execution's result.
+        """
+        if self._web_url:
+            raise InvalidError(
+                "A web endpoint function cannot be invoked for remote execution with `.remote`. "
+                f"Invoke this function via its web url '{self._web_url}' or call it locally: {self._function_name}()."
+            )
+
+        if not self._is_generator:
+            raise InvalidError(
+                "A non-generator function cannot be called with `.remote_gen(...)`. Use `.remote(...)` instead."
+            )
+        async for item in self._call_generator(args, kwargs):  # type: ignore
+            yield item
 
     def call(self, *args, **kwargs) -> Awaitable[Any]:  # TODO: Generics/TypeVars
-        deprecation_warning(date(2018, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote(...)`")
-        return self.remote(*args, **kwargs)
-
-    def shell(self, *args, **kwargs):
-        # TOOD(erikbern): right now fairly duplicated
         if self._is_generator:
-            return self._call_generator(args, kwargs)  # type: ignore
+            deprecation_warning(
+                date(2018, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote(...)`"
+            )
+            return self.remote_gen(*args, **kwargs)
         else:
-            return self._call_function(args, kwargs)
+            deprecation_warning(
+                date(2018, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote_gen(...)`"
+            )
+            return self.remote(*args, **kwargs)
+
+    async def shell(self, *args, **kwargs):
+        if self._is_generator:
+            # TOOD(erikbern): would be easy to add support, but it seems like a niche case tbh
+            raise InvalidError("`.shell` is not supported for generators right now")
+        return await self._call_function(args, kwargs)
 
     def _get_is_remote_cls_method(self):
         return self._is_remote_cls_method
