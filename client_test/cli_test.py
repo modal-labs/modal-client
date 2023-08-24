@@ -133,6 +133,12 @@ def test_run_async(servicer, set_env_client, test_dir):
     assert "called locally (async)" in res.stdout
 
 
+def test_run_generator(servicer, set_env_client, test_dir):
+    stub_file = test_dir / "supports" / "app_run_tests" / "generator.py"
+    result = _run(["run", stub_file.as_posix()], expected_exit_code=1)
+    assert "generator functions" in str(result.exception)
+
+
 def test_help_message_unspecified_function(servicer, set_env_client, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "stub_with_multiple_functions.py"
     result = _run(["run", stub_file.as_posix()], expected_exit_code=2, expected_stderr=None)
