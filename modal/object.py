@@ -16,40 +16,18 @@ from .client import _Client
 from .config import config
 from .exception import InvalidError, NotFoundError, deprecation_error
 
-H = TypeVar("H", bound="_Handle")
+O = TypeVar("O", bound="_Object")
 
-_BLOCKING_H = synchronize_api(H)
-
-
-class _Handle:
-    @classmethod
-    def __init_subclass__(cls, type_prefix: Optional[str] = None):
-        super().__init_subclass__()
-
-    @classmethod
-    async def from_id(cls, object_id: str, client: Optional[_Client] = None):
-        deprecation_error(
-            date(2023, 8, 20),
-            "`Handle.from_id` is no longer supported. Use the method on the object class (e.g. `Function.from_id`)",
-        )
+_BLOCKING_O = synchronize_api(O)
 
 
-Handle = synchronize_api(_Handle)
-
-
-P = TypeVar("P", bound="_Provider")
-
-_BLOCKING_P = synchronize_api(P)
-
-
-class _Provider:
+class _Object:
     _type_prefix: ClassVar[Optional[str]] = None
     _prefix_to_type: ClassVar[Dict[str, type]] = {}
 
     # For constructors
-    _load: Optional[Callable[[P, Resolver, Optional[str]], Awaitable[None]]]
-    _preload: Optional[Callable[[P, Resolver, Optional[str]], Awaitable[None]]]
-    _handle: _Handle
+    _load: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]]
+    _preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]]
 
     # For hydrated objects
     _object_id: str
@@ -69,9 +47,9 @@ class _Provider:
     def _init(
         self,
         rep: str,
-        load: Optional[Callable[[P, Resolver, Optional[str]], Awaitable[None]]] = None,
+        load: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
         is_persisted_ref: bool = False,
-        preload: Optional[Callable[[P, Resolver, Optional[str]], Awaitable[None]]] = None,
+        preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
     ):
         self._local_uuid = str(uuid.uuid4())
         self._load = load
@@ -111,25 +89,25 @@ class _Provider:
         # the object_id is already provided by other means
         return
 
-    def _init_from_other(self, other: "_Provider"):
+    def _init_from_other(self, other: O):
         # Transient use case, see Dict, Queue, and SharedVolume
         self._init(other._rep, other._load, other._is_persisted_ref, other._preload)
 
     @classmethod
     def _from_loader(
         cls,
-        load: Callable[[P, Resolver, Optional[str]], Awaitable[None]],
+        load: Callable[[O, Resolver, Optional[str]], Awaitable[None]],
         rep: str,
         is_persisted_ref: bool = False,
-        preload: Optional[Callable[[P, Resolver, Optional[str]], Awaitable[None]]] = None,
+        preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
     ):
         # TODO(erikbern): flip the order of the two first arguments
-        obj = _Provider.__new__(cls)
+        obj = _Object.__new__(cls)
         obj._init(rep, load, is_persisted_ref, preload)
         return obj
 
     @classmethod
-    def _new_hydrated(cls: Type[P], object_id: str, client: _Client, handle_metadata: Optional[Message]) -> P:
+    def _new_hydrated(cls: Type[O], object_id: str, client: _Client, handle_metadata: Optional[Message]) -> O:
         if cls._type_prefix is not None:
             # This is called directly on a subclass, e.g. Secret.from_id
             if not object_id.startswith(cls._type_prefix + "-"):
@@ -145,16 +123,16 @@ class _Provider:
                 raise InvalidError(f"Object prefix {prefix} does not correspond to a type")
 
         # Instantiate provider
-        provider_cls = cls._prefix_to_type[prefix]
-        obj = _Provider.__new__(provider_cls)
-        rep = f"Provider({object_id})"  # TODO(erikbern): dumb
+        obj_cls = cls._prefix_to_type[prefix]
+        obj = _Object.__new__(obj_cls)
+        rep = f"Object({object_id})"  # TODO(erikbern): dumb
         obj._init(rep)
         obj._hydrate(object_id, client, handle_metadata)
 
         return obj
 
     @classmethod
-    async def from_id(cls: Type[P], object_id: str, client: Optional[_Client] = None) -> P:
+    async def from_id(cls: Type[O], object_id: str, client: Optional[_Client] = None) -> O:
         """Get an object of this type from a unique object id (retrieved from `obj.object_id`)"""
         # This is used in a few examples to construct FunctionCall objects
         if client is None:
@@ -201,7 +179,7 @@ class _Provider:
         handle_metadata = get_proto_oneof(response, "handle_metadata_oneof")
         return self._hydrate(response.object_id, client, handle_metadata)
 
-    def _hydrate_from_other(self, other: P):
+    def _hydrate_from_other(self, other: O):
         self._hydrate(other._object_id, other._client, other._get_metadata())
 
     def __repr__(self):
@@ -245,7 +223,7 @@ class _Provider:
     def persist(
         self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
     ):
-        """`Provider.persist` is deprecated for generic objects. See `NetworkFileSystem.persisted` or `Dict.persisted`."""
+        """`Object.persist` is deprecated for generic objects. See `NetworkFileSystem.persisted` or `Dict.persisted`."""
         # Note: this method is overridden in SharedVolume and Dict to print a warning
         deprecation_error(
             date(2023, 6, 30),
@@ -259,9 +237,9 @@ class _Provider:
         if environment_name is None:
             environment_name = config.get("environment")
 
-        async def _load_persisted(provider: _Provider, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load_persisted(obj: _Object, resolver: Resolver, existing_object_id: Optional[str]):
             await self._deploy(label, namespace, resolver.client, environment_name=environment_name)
-            provider._hydrate_from_other(self)
+            obj._hydrate_from_other(self)
 
         cls = type(self)
         rep = f"PersistedRef<{self}>({label})"
@@ -269,12 +247,12 @@ class _Provider:
 
     @classmethod
     def from_name(
-        cls: Type[P],
+        cls: Type[O],
         app_name: str,
         tag: Optional[str] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
-    ) -> P:
+    ) -> O:
         """Returns a reference to an Modal object of any type
 
         Useful for referring to already created/deployed objects, e.g., Secrets
@@ -290,14 +268,14 @@ class _Provider:
         ```
         """
 
-        async def _load_remote(provider: _Provider, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load_remote(obj: _Object, resolver: Resolver, existing_object_id: Optional[str]):
             nonlocal environment_name
             if environment_name is None:
                 # resolver always has an environment name, associated with the current app setup
                 # fall back on that one if no explicit environment was set in the call itself
                 environment_name = resolver.environment_name
 
-            await provider._hydrate_from_app(
+            await obj._hydrate_from_app(
                 app_name, tag, namespace, client=resolver.client, environment_name=environment_name
             )
 
@@ -306,13 +284,13 @@ class _Provider:
 
     @classmethod
     async def lookup(
-        cls: Type[P],
+        cls: Type[O],
         app_name: str,
         tag: Optional[str] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
-    ) -> P:
+    ) -> O:
         """
         General purpose method to retrieve Modal objects such as functions, network file systems, and secrets.
         ```python notest
@@ -325,15 +303,15 @@ class _Provider:
         ```
         """
         # TODO(erikbern): this code is very duplicated. Clean up once handles are gone.
-        rep = f"Provider({app_name})"  # TODO(erikbern): dumb
-        obj = _Provider.__new__(cls)
+        rep = f"Object({app_name})"  # TODO(erikbern): dumb
+        obj = _Object.__new__(cls)
         obj._init(rep)
         await obj._hydrate_from_app(app_name, tag, namespace, client, environment_name=environment_name)
         return obj
 
     @classmethod
     async def _exists(
-        cls: Type[P],
+        cls: Type[O],
         app_name: str,
         tag: Optional[str] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
@@ -360,4 +338,4 @@ class _Provider:
                 raise
 
 
-Provider = synchronize_api(_Provider, target_module=__name__)
+Object = synchronize_api(_Object, target_module=__name__)

@@ -14,7 +14,7 @@ from .client import _Client
 from .config import logger
 from .exception import deprecation_warning
 from .gpu import GPU_T
-from .object import _Provider
+from .object import _Object
 
 if TYPE_CHECKING:
     from rich.tree import Tree
@@ -46,7 +46,7 @@ class _App:
     ```
     """
 
-    _tag_to_object: Dict[str, _Provider]
+    _tag_to_object: Dict[str, _Object]
     _tag_to_object_id: Dict[str, str]
     _tag_to_handle_metadata: Dict[str, Message]
 
@@ -64,7 +64,7 @@ class _App:
         app_id: str,
         app_page_url: str,
         output_mgr: Optional[OutputManager],
-        tag_to_object: Optional[Dict[str, _Provider]] = None,
+        tag_to_object: Optional[Dict[str, _Object]] = None,
         tag_to_object_id: Optional[Dict[str, str]] = None,
         stub_name: Optional[str] = None,
         environment_name: Optional[str] = None,
@@ -103,22 +103,22 @@ class _App:
         self._associated_stub = stub
 
         # Initialize objects on stub
-        stub_objects: dict[str, _Provider] = {}
+        stub_objects: dict[str, _Object] = {}
         if stub:
             stub_objects = dict(stub.get_objects())
         for tag, object_id in self._tag_to_object_id.items():
             handle_metadata = self._tag_to_handle_metadata.get(tag)
             if tag in stub_objects:
                 # This already exists on the stub (typically a function)
-                provider = stub_objects[tag]
-                provider._hydrate(object_id, self._client, handle_metadata)
+                obj = stub_objects[tag]
+                obj._hydrate(object_id, self._client, handle_metadata)
             else:
                 # Can't find the object, create a new one
-                provider = _Provider._new_hydrated(object_id, self._client, handle_metadata)
-            self._tag_to_object[tag] = provider
+                obj = _Object._new_hydrated(object_id, self._client, handle_metadata)
+            self._tag_to_object[tag] = obj
 
     async def _create_all_objects(
-        self, blueprint: Dict[str, _Provider], new_app_state: int, environment_name: str, shell: bool = False
+        self, blueprint: Dict[str, _Object], new_app_state: int, environment_name: str, shell: bool = False
     ):  # api_pb2.AppState.V
         """Create objects that have been defined but not created on the server."""
         resolver = Resolver(
@@ -134,31 +134,31 @@ class _App:
             self._tag_to_object_id = {}
 
             # Assign all objects
-            for tag, provider in blueprint.items():
-                self._tag_to_object[tag] = provider
+            for tag, obj in blueprint.items():
+                self._tag_to_object[tag] = obj
 
                 # Reset object_id in case the app runs twice
                 # TODO(erikbern): clean up the interface
-                provider._unhydrate()
+                obj._unhydrate()
 
             # Preload all functions to make sure they have ids assigned before they are loaded.
             # This is important to make sure any enclosed function handle references in serialized
             # functions have ids assigned to them when the function is serialized.
-            # Note: when handles/providers are merged, all objects will need to get ids pre-assigned
+            # Note: when handles/objs are merged, all objects will need to get ids pre-assigned
             # like this in order to be referrable within serialized functions
-            for tag, provider in blueprint.items():
+            for tag, obj in blueprint.items():
                 existing_object_id = tag_to_object_id.get(tag)
                 # Note: preload only currently implemented for Functions, returns None otherwise
                 # this is to ensure that directly referenced functions from the global scope has
                 # ids associated with them when they are serialized into other functions
-                await resolver.preload(provider, existing_object_id)
-                if provider.object_id is not None:
-                    tag_to_object_id[tag] = provider.object_id
+                await resolver.preload(obj, existing_object_id)
+                if obj.object_id is not None:
+                    tag_to_object_id[tag] = obj.object_id
 
-            for tag, provider in blueprint.items():
+            for tag, obj in blueprint.items():
                 existing_object_id = tag_to_object_id.get(tag)
-                await resolver.load(provider, existing_object_id)
-                self._tag_to_object_id[tag] = provider.object_id
+                await resolver.load(obj, existing_object_id)
+                self._tag_to_object_id[tag] = obj.object_id
 
         # Create the app (and send a list of all tagged obs)
         # TODO(erikbern): we should delete objects from a previous version that are no longer needed
@@ -196,7 +196,7 @@ class _App:
     def log_url(self):
         return self._app_page_url
 
-    def __getitem__(self, tag: str) -> _Provider:
+    def __getitem__(self, tag: str) -> _Object:
         deprecation_warning(date(2023, 8, 10), "`app[...]` is deprecated. Use the stub to get objects instead.")
         return self._tag_to_object[tag]
 
@@ -204,11 +204,11 @@ class _App:
         deprecation_warning(date(2023, 8, 10), "`obj in app` is deprecated. Use the stub to get objects instead.")
         return tag in self._tag_to_object
 
-    def __getattr__(self, tag: str) -> _Provider:
+    def __getattr__(self, tag: str) -> _Object:
         deprecation_warning(date(2023, 8, 10), "`app.obj` is deprecated. Use the stub to get objects instead.")
         return self._tag_to_object[tag]
 
-    def _get_object(self, tag: str) -> Optional[_Provider]:
+    def _get_object(self, tag: str) -> Optional[_Object]:
         # TODO(erikbern): remove objects from apps soon
         return self._tag_to_object.get(tag)
 
@@ -288,12 +288,12 @@ class _App:
                 client, name, detach=False, deploying=True, environment_name=environment_name, output_mgr=output_mgr
             )
 
-    async def create_one_object(self, provider: _Provider, environment_name: str) -> None:
+    async def create_one_object(self, obj: _Object, environment_name: str) -> None:
         existing_object_id: Optional[str] = self._tag_to_object_id.get("_object")
         resolver = Resolver(self._client, environment_name=environment_name, app_id=self.app_id)
-        await resolver.load(provider, existing_object_id)
-        indexed_object_ids = {"_object": provider.object_id}
-        unindexed_object_ids = [obj.object_id for obj in resolver.objects() if obj.object_id is not provider.object_id]
+        await resolver.load(obj, existing_object_id)
+        indexed_object_ids = {"_object": obj.object_id}
+        unindexed_object_ids = [obj.object_id for obj in resolver.objects() if obj.object_id is not obj.object_id]
         req_set = api_pb2.AppSetObjectsRequest(
             app_id=self.app_id,
             indexed_object_ids=indexed_object_ids,
@@ -335,7 +335,7 @@ class _App:
         from .stub import _default_image
 
         resolver = Resolver(self._client, environment_name=self._environment_name, app_id=self.app_id)
-        provider = _Sandbox._new(
+        obj = _Sandbox._new(
             entrypoint_args,
             image=image or _default_image,
             mounts=mounts,
@@ -347,8 +347,8 @@ class _App:
             cpu=cpu,
             memory=memory,
         )
-        await resolver.load(provider)
-        return provider
+        await resolver.load(obj)
+        return obj
 
     @staticmethod
     def _reset_container():

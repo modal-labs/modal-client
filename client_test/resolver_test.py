@@ -6,7 +6,7 @@ from typing import Optional
 
 from modal._output import OutputManager
 from modal._resolver import Resolver
-from modal.object import _Handle, _Provider
+from modal.object import _Object
 
 
 @pytest.mark.asyncio
@@ -16,18 +16,15 @@ async def test_multi_resolve_sequential_loads_once():
 
     load_count = 0
 
-    class _DumbHandle(_Handle, type_prefix="zz"):
+    class _DumbObject(_Object, type_prefix="zz"):
         pass
 
-    class _DumbProvider(_Provider, type_prefix="zz"):
-        pass
-
-    async def _load(provider: _DumbProvider, resolver: Resolver, existing_object_id: Optional[str]):
+    async def _load(provider: _DumbObject, resolver: Resolver, existing_object_id: Optional[str]):
         nonlocal load_count
         load_count += 1
         await asyncio.sleep(0.1)
 
-    obj = _DumbProvider._from_loader(_load, "DumbProvider()")
+    obj = _DumbObject._from_loader(_load, "DumbObject()")
 
     t0 = time.monotonic()
     await resolver.load(obj)
@@ -44,18 +41,15 @@ async def test_multi_resolve_concurrent_loads_once():
 
     load_count = 0
 
-    class _DumbHandle(_Handle, type_prefix="zz"):
+    class _DumbObject(_Object, type_prefix="zz"):
         pass
 
-    class _DumbProvider(_Provider, type_prefix="zz"):
-        pass
-
-    async def _load(provider: _DumbProvider, resolver: Resolver, existing_object_id: Optional[str]):
+    async def _load(provider: _DumbObject, resolver: Resolver, existing_object_id: Optional[str]):
         nonlocal load_count
         load_count += 1
         await asyncio.sleep(0.1)
 
-    obj = _DumbProvider._from_loader(_load, "DumbProvider()")
+    obj = _DumbObject._from_loader(_load, "DumbObject()")
     t0 = time.monotonic()
     await asyncio.gather(resolver.load(obj), resolver.load(obj))
     assert 0.1 < time.monotonic() - t0 < 0.15

@@ -8,20 +8,12 @@ from modal_utils.async_utils import synchronize_api
 
 from ._resolver import Resolver
 from .exception import InvalidError
-from .object import _Handle, _Provider
-
-
-class _SecretHandle(_Handle, type_prefix="st"):
-    pass
-
-
-SecretHandle = synchronize_api(_SecretHandle)
-
+from .object import _Object
 
 ENV_DICT_WRONG_TYPE_ERR = "the env_dict argument to Secret has to be a dict[str, str]"
 
 
-class _Secret(_Provider, type_prefix="st"):
+class _Secret(_Object, type_prefix="st"):
     """Secrets provide a dictionary of environment variables for images.
 
     Secrets are a secure way to add credentials and other sensitive information

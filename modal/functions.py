@@ -68,7 +68,7 @@ from .gpu import GPU_T, display_gpu_config, parse_gpu_config
 from .image import _Image
 from .mount import _get_client_mount, _Mount
 from .network_file_system import _NetworkFileSystem
-from .object import _Handle, _Provider
+from .object import _Object
 from .proxy import _Proxy
 from .retries import Retries
 from .schedule import Schedule
@@ -495,14 +495,7 @@ class FunctionStats:
     num_total_runners: int
 
 
-class _FunctionHandle(_Handle):
-    pass
-
-
-FunctionHandle = synchronize_api(_FunctionHandle)
-
-
-class _Function(_Provider, type_prefix="fu"):
+class _Function(_Object, type_prefix="fu"):
     """Functions are the basic units of serverless execution on Modal.
 
     Generally, you will not construct a `Function` directly. Instead, use the
@@ -512,7 +505,6 @@ class _Function(_Provider, type_prefix="fu"):
     # TODO: more type annotations
     _info: FunctionInfo
     _all_mounts: Collection[_Mount]
-    _handle: _FunctionHandle
     _stub: "modal.stub._Stub"
     _self_obj: Any
     _web_url: Optional[str]
@@ -653,7 +645,7 @@ class _Function(_Provider, type_prefix="fu"):
             # Update the precreated function handle (todo: hack until we merge providers/handles)
             provider._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
-        async def _load(provider: _Provider, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(provider: _Object, resolver: Resolver, existing_object_id: Optional[str]):
             # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
             status_row = resolver.add_status_row()
             status_row.message(f"Creating {tag}...")
@@ -1223,11 +1215,7 @@ class _Function(_Provider, type_prefix="fu"):
 Function = synchronize_api(_Function)
 
 
-class _FunctionCallHandle(_Handle, type_prefix="fc"):
-    pass  # TODO(erikbern): Dumb temp thing, remove soon
-
-
-class _FunctionCall(_Provider, type_prefix="fc"):
+class _FunctionCall(_Object, type_prefix="fc"):
     """A reference to an executed function call.
 
     Constructed using `.spawn(...)` on a Modal function with the same

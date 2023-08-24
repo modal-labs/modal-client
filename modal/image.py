@@ -25,7 +25,7 @@ from .exception import InvalidError, NotFoundError, RemoteError, deprecation_err
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem
-from .object import _Handle, _Provider
+from .object import _Object
 from .secret import _Secret
 
 
@@ -92,10 +92,6 @@ def _flatten_str_args(function_name: str, arg_name: str, args: Tuple[Union[str, 
     return ret
 
 
-class _ImageHandle(_Handle, type_prefix="im"):
-    pass
-
-
 class _ImageRegistryConfig:
     """mdmd:hidden"""
 
@@ -120,7 +116,7 @@ if typing.TYPE_CHECKING:
     import modal.functions
 
 
-class _Image(_Provider, type_prefix="im"):
+class _Image(_Object, type_prefix="im"):
     """Base class for container images to run functions in.
 
     Do not construct this class directly; instead use one of its static factory methods,
@@ -1239,5 +1235,4 @@ class _Image(_Provider, type_prefix="im"):
         return self.object_id == env_image_id
 
 
-ImageHandle = synchronize_api(_ImageHandle)
 Image = synchronize_api(_Image)

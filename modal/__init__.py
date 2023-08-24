@@ -5,11 +5,10 @@ from .app import App, container_app, is_local
 from .client import Client
 from .dict import Dict
 from .exception import Error
-from .functions import Function, FunctionHandle, asgi_app, current_input_id, method, web_endpoint, wsgi_app
+from .functions import Function, asgi_app, current_input_id, method, web_endpoint, wsgi_app
 from .image import Image
 from .mount import Mount, create_package_mounts
 from .network_file_system import NetworkFileSystem
-from .object import _BLOCKING_H, Handle  # noqa
 from .proxy import Proxy
 from .queue import Queue
 from .retries import Retries
@@ -27,7 +26,6 @@ __all__ = [
     "Dict",
     "Error",
     "Function",
-    "FunctionHandle",
     "Image",
     "Mount",
     "NetworkFileSystem",
