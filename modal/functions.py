@@ -865,6 +865,7 @@ class _Function(_Provider, type_prefix="fu"):
         obj._panel_items = panel_items
         obj._stub = stub  # Needed for CLI right now
         obj._self_obj = None
+        obj._is_generator = is_generator
 
         # Used to check whether we should rebuild an image using run_function
         # Plaintext source and arg definition for the function, so it's part of the image
