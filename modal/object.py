@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import uuid
 from datetime import date
+from functools import wraps
 from typing import Awaitable, Callable, ClassVar, Dict, Optional, Type, TypeVar
 
 from google.protobuf.message import Message
@@ -14,7 +15,7 @@ from modal_utils.grpc_utils import get_proto_oneof, retry_transient_errors
 from ._resolver import Resolver
 from .client import _Client
 from .config import config
-from .exception import InvalidError, NotFoundError, deprecation_error
+from .exception import ExecutionError, InvalidError, NotFoundError, deprecation_error
 
 O = TypeVar("O", bound="_Object")
 
@@ -199,6 +200,10 @@ class _Object:
         """mdmd:hidden"""
         return self._is_hydrated
 
+    def check_hydration(self):
+        if not self._is_hydrated:
+            raise ExecutionError("Method `{method.__name__}` requires object to be hydrated.")
+
     async def _deploy(
         self,
         label: str,
@@ -345,3 +350,22 @@ class _Object:
 
 
 Object = synchronize_api(_Object, target_module=__name__)
+
+
+def live_method(method):
+    @wraps(method)
+    async def wrapped(self, *args, **kwargs):
+        self.check_hydration()
+        return await method(self, *args, **kwargs)
+
+    return wrapped
+
+
+def live_method_gen(method):
+    @wraps(method)
+    async def wrapped(self, *args, **kwargs):
+        self.check_hydration()
+        async for item in method(self, *args, **kwargs):
+            yield item
+
+    return wrapped

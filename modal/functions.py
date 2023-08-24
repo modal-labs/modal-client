@@ -68,7 +68,7 @@ from .gpu import GPU_T, display_gpu_config, parse_gpu_config
 from .image import _Image
 from .mount import _get_client_mount, _Mount
 from .network_file_system import _NetworkFileSystem
-from .object import _Object
+from .object import _Object, live_method, live_method_gen
 from .proxy import _Proxy
 from .retries import Retries
 from .schedule import Schedule
@@ -997,6 +997,7 @@ class _Function(_Object, type_prefix="fu"):
         return await _Invocation.create(self.object_id, args, kwargs, self._client)
 
     @warn_if_generator_is_not_consumed
+    @live_method_gen
     async def _call_generator(self, args, kwargs):
         invocation = await _Invocation.create(self.object_id, args, kwargs, self._client)
         async for res in invocation.run_generator():
@@ -1006,6 +1007,7 @@ class _Function(_Object, type_prefix="fu"):
         return await _Invocation.create(self.object_id, args, kwargs, self._client)
 
     @warn_if_generator_is_not_consumed
+    @live_method_gen
     async def map(
         self,
         *input_iterators,  # one input iterator per argument in the mapped-over function/generator
@@ -1071,6 +1073,7 @@ class _Function(_Object, type_prefix="fu"):
             pass
 
     @warn_if_generator_is_not_consumed
+    @live_method_gen
     async def starmap(
         self, input_iterator, kwargs={}, order_outputs=None, return_exceptions=False
     ) -> AsyncGenerator[Any, None]:
@@ -1096,6 +1099,7 @@ class _Function(_Object, type_prefix="fu"):
         async for item in self._map(input_stream, order_outputs, return_exceptions, kwargs):
             yield item
 
+    @live_method
     async def remote(self, *args, **kwargs) -> Awaitable[Any]:  # TODO: Generics/TypeVars
         """
         Calls the function remotely, executing it with the given arguments and returning the execution's result.
@@ -1112,6 +1116,7 @@ class _Function(_Object, type_prefix="fu"):
 
         return await self._call_function(args, kwargs)
 
+    @live_method_gen
     async def remote_gen(self, *args, **kwargs) -> AsyncGenerator[Any, None]:  # TODO: Generics/TypeVars
         """
         Calls the generator remotely, executing it with the given arguments and returning the execution's result.
@@ -1141,6 +1146,7 @@ class _Function(_Object, type_prefix="fu"):
             )
             return self.remote(*args, **kwargs)
 
+    @live_method
     async def shell(self, *args, **kwargs) -> None:
         if self._is_generator:
             async for item in self._call_generator(args, kwargs):
@@ -1229,6 +1235,7 @@ class _Function(_Object, type_prefix="fu"):
 
         return self._info.raw_f
 
+    @live_method
     async def get_current_stats(self) -> FunctionStats:
         """Return a `FunctionStats` object describing the current function's queue and runner counts."""
 
