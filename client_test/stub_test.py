@@ -289,3 +289,15 @@ def test_redeploy_delete_objects(servicer, client):
 
     # Make sure d1 is deleted
     assert set(servicer.app_objects[app.app_id].keys()) == set(["d2", "d3"])
+
+
+@pytest.mark.asyncio
+async def test_unhydrate(servicer, client):
+    stub = Stub()
+    stub.d = Dict.new()
+    assert not stub.d.is_hydrated()
+    async with stub.run(client=client) as app:
+        assert stub.d.is_hydrated()
+
+    # After app finishes, it should unhydrate
+    assert not stub.d.is_hydrated()
