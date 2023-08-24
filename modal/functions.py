@@ -61,7 +61,7 @@ from .exception import (
     ExecutionError,
     InvalidError,
     RemoteError,
-    TimeoutError as _TimeoutError,
+    TimeoutError,
     deprecation_warning,
 )
 from .gpu import GPU_T, display_gpu_config, parse_gpu_config
@@ -114,7 +114,7 @@ async def _process_result(result, stub, client=None):
         data = result.data
 
     if result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
-        raise _TimeoutError(result.exception)
+        raise TimeoutError(result.exception)
     elif result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
         if data:
             try:
@@ -257,12 +257,13 @@ class _Invocation:
         return await _process_result(result, self.stub, self.client)
 
     async def poll_function(self, timeout: Optional[float] = None):
-        # waits up to timeout for a result from a function
-        # * timeout=0 means a single poll
-        # * timeout=None means wait indefinitely
-        # raises TimeoutError if there is no result before timeout
-        # Intended to be used for future polling, and as such keeps
-        # results around after returning them
+        # Waits for a result from a function, up to a provided timeout.
+        #
+        # * `timeout=0` means a single, immediate poll
+        # * `timeout=None` means to wait indefinitely
+        #
+        # Raises `TimeoutError`` if there is no result before the timeout. This
+        # function is not cancellation-safe and must be awaited to completion.
         results = await stream.list(self.pop_function_call_outputs(timeout=timeout, clear_on_success=False))
 
         if len(results) == 0:
