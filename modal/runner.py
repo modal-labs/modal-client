@@ -115,6 +115,7 @@ async def _run_stub(
                     "Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n"
                 )
         finally:
+            app._uncreate_all_objects()
             await app.disconnect()
 
     output_mgr.print_if_visible(step_completed("App completed."))

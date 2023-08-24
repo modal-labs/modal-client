@@ -296,7 +296,7 @@ async def test_unhydrate(servicer, client):
     stub = Stub()
     stub.d = Dict.new()
     assert not stub.d.is_hydrated()
-    async with stub.run(client=client) as app:
+    async with stub.run(client=client):
         assert stub.d.is_hydrated()
 
     # After app finishes, it should unhydrate
