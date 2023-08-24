@@ -301,7 +301,7 @@ class _Mount(_Object, type_prefix="mo"):
                 if response.exists:
                     return mount_file
 
-            raise modal.exception.TimeoutError(f"Mounting of {file_spec.filename} timed out")
+            raise modal.exception.MountUploadTimeoutError(f"Mounting of {file_spec.filename} timed out")
 
         logger.debug(f"Uploading mount using {n_concurrent_uploads} uploads")
 

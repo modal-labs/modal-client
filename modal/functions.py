@@ -59,9 +59,9 @@ from .client import _Client
 from .config import config, logger
 from .exception import (
     ExecutionError,
+    FunctionTimeoutError,
     InvalidError,
     RemoteError,
-    TimeoutError as _TimeoutError,
     deprecation_warning,
 )
 from .gpu import GPU_T, display_gpu_config, parse_gpu_config
@@ -114,7 +114,7 @@ async def _process_result(result, stub, client=None):
         data = result.data
 
     if result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
-        raise _TimeoutError(result.exception)
+        raise FunctionTimeoutError(result.exception)
     elif result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
         if data:
             try:

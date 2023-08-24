@@ -28,7 +28,15 @@ class RemoteError(Error):
 
 
 class TimeoutError(Error):
+    """Base class for Modal timeouts."""
+
+
+class FunctionTimeoutError(TimeoutError):
     """Raised when a Function exceeds its execution duration limit and times out."""
+
+
+class MountUploadTimeoutError(TimeoutError):
+    """Raised when a Mount upload times out."""
 
 
 class AuthError(Error):
