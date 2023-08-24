@@ -4,7 +4,7 @@ from typing import List, Optional, Sequence
 
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
-from modal.exception import InvalidError
+from modal.exception import InvalidError, SandboxTerminatedError, SandboxTimeoutError
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
@@ -166,6 +166,11 @@ class _Sandbox(_Object, type_prefix="sb"):
             resp = await retry_transient_errors(self._client.stub.SandboxWait, req)
             if resp.result.status:
                 self._result = resp.result
+
+                if resp.result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
+                    raise SandboxTimeoutError()
+                elif resp.result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
+                    raise SandboxTerminatedError()
                 break
 
     @property
@@ -186,7 +191,14 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         if self._result is None:
             return None
-        return self._result.exitcode
+        # Statuses are converted to exitcodes so we can conform to subprocess API.
+        # TODO: perhaps there should be a separate property that returns an enum directly?
+        elif self._result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
+            return 124
+        elif self._result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
+            return 137
+        else:
+            return self._result.exitcode
 
 
 Sandbox = synchronize_api(_Sandbox)
