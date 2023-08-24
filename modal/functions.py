@@ -1141,11 +1141,12 @@ class _Function(_Object, type_prefix="fu"):
             )
             return self.remote(*args, **kwargs)
 
-    async def shell(self, *args, **kwargs):
+    async def shell(self, *args, **kwargs) -> None:
         if self._is_generator:
-            # TOOD(erikbern): would be easy to add support, but it seems like a niche case tbh
-            raise InvalidError("`.shell` is not supported for generators right now")
-        return await self._call_function(args, kwargs)
+            async for item in self._call_generator(args, kwargs):
+                pass
+        else:
+            await self._call_function(args, kwargs)
 
     def _get_is_remote_cls_method(self):
         return self._is_remote_cls_method
