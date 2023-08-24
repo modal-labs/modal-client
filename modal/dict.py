@@ -11,21 +11,14 @@ from ._serialization import deserialize, serialize
 from ._types import typechecked
 from .config import logger
 from .exception import deprecation_error
-from .object import _Handle, _Provider
+from .object import _Object
 
 
 def _serialize_dict(data):
     return [api_pb2.DictEntry(key=serialize(k), value=serialize(v)) for k, v in data.items()]
 
 
-class _DictHandle(_Handle, type_prefix="di"):
-    pass
-
-
-DictHandle = synchronize_api(_DictHandle)
-
-
-class _Dict(_Provider, type_prefix="di"):
+class _Dict(_Object, type_prefix="di"):
     """A distributed dictionary available to Modal apps.
 
     Keys and values can be essentially any object, so long as it can be

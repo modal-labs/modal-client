@@ -31,7 +31,7 @@ async def test_use_object(client):
 
 def test_new_hydrated(client):
     from modal.dict import _Dict
-    from modal.object import _Provider
+    from modal.object import _Object
     from modal.queue import _Queue
 
     assert isinstance(_Dict._new_hydrated("di-123", client, None), _Dict)
@@ -40,8 +40,8 @@ def test_new_hydrated(client):
     with pytest.raises(InvalidError):
         _Queue._new_hydrated("di-123", client, None)  # Wrong prefix for type
 
-    assert isinstance(_Provider._new_hydrated("qu-123", client, None), _Queue)
-    assert isinstance(_Provider._new_hydrated("di-123", client, None), _Dict)
+    assert isinstance(_Object._new_hydrated("qu-123", client, None), _Queue)
+    assert isinstance(_Object._new_hydrated("di-123", client, None), _Dict)
 
     with pytest.raises(InvalidError):
-        _Provider._new_hydrated("xy-123", client, None)
+        _Object._new_hydrated("xy-123", client, None)
