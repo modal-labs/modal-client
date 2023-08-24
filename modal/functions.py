@@ -1249,7 +1249,7 @@ class _FunctionCall(_Provider, type_prefix="fc"):
         `timeout` argument that specifies the maximum number of seconds to wait,
         which can be set to `0` to poll for an output immediately.
 
-        This coroutine is not cancellation-safe.
+        The returned coroutine is not cancellation-safe.
         """
         return await self._invocation().poll_function(timeout=timeout)
 
