@@ -53,24 +53,26 @@ class A100(_GPUConfig):
         count: int = 1,  # Number of GPUs per container. Defaults to 1. Useful if you have very large models that don't fit on a single GPU.
         memory: int = 0,  # Set this to 20 if you want to use the 20GB version (with half as many cores)
     ):
-        allowed_memory_values = {0, 20, 40}
+        allowed_memory_values = {0, 20, 40, 80}
         if memory not in allowed_memory_values:
             raise ValueError(f"A100s can only have memory values of {allowed_memory_values} => memory={memory}")
-
-        gpu_type = api_pb2.GPU_TYPE_A100
 
         if memory == 20:
             if count != 1:
                 raise ValueError(f"Cannot request more than 1 A100 20GB unit. Requested {count}")
             super().__init__(api_pb2.GPU_TYPE_A100_20G, count, memory)
+        elif memory == 80:
+            super().__init__(api_pb2.GPU_TYPE_A100_80GB, count, memory)
         else:
-            super().__init__(gpu_type, count, memory)
+            super().__init__(api_pb2.GPU_TYPE_A100, count, memory)
 
     def __repr__(self):
         if self.memory == 20:
-            return f"GPU(A100-20G, count={self.count})"
+            return f"GPU(A100-20GB, count={self.count})"
+        elif self.memory == 80:
+            return f"GPU(A100-80GB, count={self.count})"
         else:
-            return f"GPU(A100-40G, count={self.count})"
+            return f"GPU(A100-40GB, count={self.count})"
 
 
 class A10G(_GPUConfig):
