@@ -877,19 +877,6 @@ class _Image(_Object, type_prefix="im"):
 
     @staticmethod
     @typechecked
-    def from_dockerhub(
-        tag: str,
-        setup_dockerfile_commands: List[str] = [],
-        force_build: bool = False,
-        **kwargs,
-    ) -> "_Image":
-        deprecation_warning(
-            date(2023, 8, 25), "`Image.from_dockerhub` is deprecated. Use `Image.from_registry` instead."
-        )
-        return _Image.from_registry(tag, setup_dockerfile_commands, force_build, **kwargs)
-
-    @staticmethod
-    @typechecked
     def from_registry(
         tag: str,
         setup_dockerfile_commands: List[str] = [],
@@ -927,6 +914,19 @@ class _Image(_Object, type_prefix="im"):
             force_build=force_build,
             **kwargs,
         )
+
+    @staticmethod
+    @typechecked
+    def from_dockerhub(
+        tag: str,
+        setup_dockerfile_commands: List[str] = [],
+        force_build: bool = False,
+        **kwargs,
+    ) -> "_Image":
+        deprecation_warning(
+            date(2023, 8, 25), "`Image.from_dockerhub` is deprecated. Use `Image.from_registry` instead."
+        )
+        return _Image.from_registry(tag, setup_dockerfile_commands, force_build, **kwargs)
 
     @staticmethod
     @typechecked
