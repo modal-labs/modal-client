@@ -608,10 +608,10 @@ def test_serialize_deserialize_function_handle(servicer, client):
     with stub.run(client=client):
         blob = serialize(my_handle)
 
-    rehydrated_function_handle = deserialize(blob, client)
-    assert rehydrated_function_handle.object_id == my_handle.object_id
-    assert isinstance(rehydrated_function_handle, Function)
-    assert rehydrated_function_handle.web_url == "http://xyz.internal"
+        rehydrated_function_handle = deserialize(blob, client)
+        assert rehydrated_function_handle.object_id == my_handle.object_id
+        assert isinstance(rehydrated_function_handle, Function)
+        assert rehydrated_function_handle.web_url == "http://xyz.internal"
 
 
 def test_invalid_web_decorator_usage():
