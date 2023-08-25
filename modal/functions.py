@@ -1132,12 +1132,12 @@ class _Function(_Object, type_prefix="fu"):
     def call(self, *args, **kwargs) -> Awaitable[Any]:  # TODO: Generics/TypeVars
         if self._is_generator:
             deprecation_warning(
-                date(2023, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote(...)`"
+                date(2023, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote_gen(...)`"
             )
             return self.remote_gen(*args, **kwargs)
         else:
             deprecation_warning(
-                date(2023, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote_gen(...)`"
+                date(2023, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote(...)`"
             )
             return self.remote(*args, **kwargs)
 
