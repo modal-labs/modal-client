@@ -4,14 +4,13 @@ import typer
 from modal.cli import run
 from modal.cli.environment import environment_cli
 
-from ._shared_volume import vol_cli as old_vol_cli
 from .app import app_cli
 from .config import config_cli
 from .network_file_system import nfs_cli
 from .profile import profile_cli
 from .secret import secret_cli
 from .token import token_cli
-from .volume import vol_cli
+from .volume import volume_cli
 
 
 def version_callback(value: bool):
@@ -46,12 +45,21 @@ def modal(
 entrypoint_cli_typer.add_typer(app_cli)
 entrypoint_cli_typer.add_typer(config_cli)
 entrypoint_cli_typer.add_typer(environment_cli)
-entrypoint_cli_typer.add_typer(old_vol_cli)
 entrypoint_cli_typer.add_typer(nfs_cli)
-entrypoint_cli_typer.add_typer(vol_cli)
+entrypoint_cli_typer.add_typer(volume_cli)
 entrypoint_cli_typer.add_typer(profile_cli)
 entrypoint_cli_typer.add_typer(secret_cli)
 entrypoint_cli_typer.add_typer(token_cli)
+
+
+# TODO: remove this in a future release
+def _deprecated_vol():
+    raise Exception("Please use `modal volume` instead of `modal vol`.")
+
+
+entrypoint_cli_typer.command("vol", help="Deprecated, use `modal volume` instead.", no_args_is_help=True)(
+    _deprecated_vol
+)
 
 entrypoint_cli_typer.command("deploy", help="Deploy a Modal stub as an application.", no_args_is_help=True)(run.deploy)
 entrypoint_cli_typer.command("serve", no_args_is_help=True)(run.serve)
