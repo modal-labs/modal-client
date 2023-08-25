@@ -21,7 +21,7 @@ from ._resolver import Resolver
 from ._serialization import serialize
 from .app import is_local
 from .config import config, logger
-from .exception import InvalidError, NotFoundError, RemoteError, deprecation_error
+from .exception import InvalidError, NotFoundError, RemoteError, deprecation_error, deprecation_warning
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem
@@ -120,7 +120,7 @@ class _Image(_Object, type_prefix="im"):
     """Base class for container images to run functions in.
 
     Do not construct this class directly; instead use one of its static factory methods,
-    such as `modal.Image.debian_slim`, `modal.Image.from_dockerhub`, or `modal.Image.conda`.
+    such as `modal.Image.debian_slim`, `modal.Image.from_registry`, or `modal.Image.conda`.
     """
 
     force_build: bool = False
@@ -824,7 +824,7 @@ class _Image(_Object, type_prefix="im"):
         """A Micromamba base image. Micromamba allows for fast building of small Conda-based containers."""
         _validate_python_version(python_version)
 
-        return _Image.from_dockerhub(
+        return _Image.from_registry(
             "mambaorg/micromamba:1.3.1-bullseye-slim",
             setup_dockerfile_commands=[
                 'SHELL ["/usr/local/bin/_dockerfile_shell.sh"]',
@@ -877,7 +877,7 @@ class _Image(_Object, type_prefix="im"):
 
     @staticmethod
     @typechecked
-    def from_dockerhub(
+    def from_registry(
         tag: str,
         setup_dockerfile_commands: List[str] = [],
         force_build: bool = False,
@@ -899,7 +899,7 @@ class _Image(_Object, type_prefix="im"):
         **Example**
 
         ```python
-        modal.Image.from_dockerhub(
+        modal.Image.from_registry(
           "gisops/valhalla:latest",
           setup_dockerfile_commands=["RUN apt-get update", "RUN apt-get install -y python3-pip"]
         )
@@ -917,6 +917,19 @@ class _Image(_Object, type_prefix="im"):
 
     @staticmethod
     @typechecked
+    def from_dockerhub(
+        tag: str,
+        setup_dockerfile_commands: List[str] = [],
+        force_build: bool = False,
+        **kwargs,
+    ) -> "_Image":
+        deprecation_warning(
+            date(2023, 8, 25), "`Image.from_dockerhub` is deprecated. Use `Image.from_registry` instead."
+        )
+        return _Image.from_registry(tag, setup_dockerfile_commands, force_build, **kwargs)
+
+    @staticmethod
+    @typechecked
     def from_gcp_artifact_registry(
         tag: str,
         secret: Optional[_Secret] = None,
@@ -931,7 +944,7 @@ class _Image(_Object, type_prefix="im"):
 
         The service account needs to have at least the "Artifact Registry Reader" role.
 
-        For the image, the same assumptions hold as `from_dockerhub`:
+        For the image, the same assumptions hold as `from_registry`:
 
         - Python 3.7 or above is present, and is available as `python`.
         - `pip` is installed correctly.
@@ -980,7 +993,7 @@ class _Image(_Object, type_prefix="im"):
         Refer to ["Private repository policies"](https://docs.aws.amazon.com/AmazonECR/latest/userguide/repository-policies.html)
         for details about IAM configuration.
 
-        The same assumptions hold from `from_dockerhub`:
+        The same assumptions hold from `from_registry`:
 
         - Python 3.7 or above is present, and is available as `python`.
         - `pip` is installed correctly.
