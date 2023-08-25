@@ -246,7 +246,7 @@ def test_conda_update_from_environment(servicer, client):
 
 
 def test_dockerhub_install(servicer, client):
-    stub = Stub(image=Image.from_dockerhub("gisops/valhalla:latest", setup_dockerfile_commands=["RUN apt-get update"]))
+    stub = Stub(image=Image.from_registry("gisops/valhalla:latest", setup_dockerfile_commands=["RUN apt-get update"]))
 
     with stub.run(client=client):
         layers = get_image_layers(stub["image"].object_id, servicer)
