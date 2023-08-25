@@ -695,6 +695,21 @@ class _Image(_Object, type_prefix="im"):
 
     @staticmethod
     @typechecked
+    def nvidia_cuda(force_build: bool = False) -> "_Image":
+        """A base image based on the official Nvidia CUDA image."""
+
+        return _Image.from_dockerhub(
+            "nvidia/cuda:12.2.0-devel-ubuntu22.04",
+            setup_dockerfile_commands=[
+                "RUN apt-get update",
+                "RUN apt-get install -y python3 python3-pip python-is-python3",
+            ],
+            force_build=force_build,
+            _namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
+        )
+
+    @staticmethod
+    @typechecked
     def conda(python_version: str = "3.9", force_build: bool = False) -> "_Image":
         """A Conda base image, using miniconda3 and derived from the official Docker Hub image."""
         _validate_python_version(python_version)
