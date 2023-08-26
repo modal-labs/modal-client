@@ -301,3 +301,11 @@ async def test_unhydrate(servicer, client):
 
     # After app finishes, it should unhydrate
     assert not stub.d.is_hydrated()
+
+
+def test_keyboard_interrupt(servicer, client):
+    stub = Stub()
+    stub.function()(square)
+    with stub.run(client=client):
+        # The exit handler should catch this interrupt and exit gracefully
+        raise KeyboardInterrupt()
