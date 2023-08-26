@@ -82,7 +82,7 @@ async def _run_stub(
             await app._create_all_objects(stub._blueprint, post_init_state, environment_name, shell=shell)
 
             # Update all functions client-side to have the output mgr
-            for tag, obj in stub.registered_functions.items():
+            for obj in stub.registered_functions.values():
                 obj._set_output_mgr(output_mgr)
 
             # Show logs from dynamically created images.
@@ -100,7 +100,7 @@ async def _run_stub(
                     yield app
         except KeyboardInterrupt:
             # mute cancellation errors on all function handles to prevent exception spam
-            for tag, obj in stub._function_handles.items():
+            for obj in stub.registered_functions.values():
                 obj._set_mute_cancellation(True)
 
             if detach:
