@@ -15,7 +15,7 @@ are currently in private beta**, and you can get a beta testing invite at
 This requires Python 3.7 or later. Install the package with:
 
 ```bash
-pip install modal-client
+pip install modal
 ```
 
 ## Support
