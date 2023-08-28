@@ -417,11 +417,17 @@ def _get_client_mount():
         return _Mount.from_name(client_mount_name(), namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
 
 
+_create_package_mounts_deprecation_msg = (
+    "modal.create_package_mounts() is being deprecated, use modal.Mount.from_local_python_packages() instead"
+)
+
+
 @typechecked
 def _create_package_mounts(module_names: Sequence[str]) -> List[_Mount]:
+    f"""{_create_package_mounts_deprecation_msg}"""
     modal.exception.deprecation_warning(
         date(2023, 7, 19),
-        "modal.create_package_mounts() is being deprecated, use modal.Mount.from_local_python_packages() instead",
+        _create_package_mounts_deprecation_msg,
         pending=True,
     )
     return [_Mount.from_local_python_packages(*module_names)]

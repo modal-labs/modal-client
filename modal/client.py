@@ -92,6 +92,7 @@ class _Client:
 
     @property
     def stub(self):
+        """mdmd:hidden"""
         return self._stub
 
     async def _open(self):
@@ -159,16 +160,19 @@ class _Client:
 
     @classmethod
     async def verify(cls, server_url, credentials):
+        """mdmd:hidden"""
         async with _Client(server_url, api_pb2.CLIENT_TYPE_CLIENT, credentials):
             pass  # Will call ClientHello
 
     @classmethod
     async def unauthenticated_client(cls, server_url: str):
+        """mdmd:hidden"""
         # Create a connection with no credentials
         # To be used with the token flow
         return _Client(server_url, api_pb2.CLIENT_TYPE_CLIENT, None, no_verify=True)
 
     async def start_token_flow(self, utm_source: Optional[str] = None) -> Tuple[str, str]:
+        """mdmd:hidden"""
         # Create token creation request
         # Send some strings identifying the computer (these are shown to the user for security reasons)
         req = api_pb2.TokenFlowCreateRequest(
@@ -180,6 +184,7 @@ class _Client:
         return (resp.token_flow_id, resp.web_url)
 
     async def finish_token_flow(self, token_flow_id) -> Tuple[str, str]:
+        """mdmd:hidden"""
         # Wait for token forever
         while True:
             req = api_pb2.TokenFlowWaitRequest(token_flow_id=token_flow_id, timeout=15.0)
@@ -189,6 +194,7 @@ class _Client:
 
     @classmethod
     async def from_env(cls, _override_config=None) -> "_Client":
+        """mdmd:hidden"""
         if _override_config:
             # Only used for testing
             c = _override_config
@@ -240,7 +246,8 @@ class _Client:
 
     @classmethod
     def set_env_client(cls, client):
-        """Just used from tests."""
+        """mdmd:hidden"""
+        # Just used from tests.
         cls._client_from_env = client
 
 
