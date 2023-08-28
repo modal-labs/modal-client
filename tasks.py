@@ -104,20 +104,20 @@ setup(version="{__version__}")
         f.write(
             f"""\
 [metadata]
-name = modal
+name = modal-client
 author = Modal Labs
-author_email = erik@modal.com
-description = Dummy alias that requires modal-client
-long_description = This package is a dummy package that just requires the modal-client package.
-            If you're looking for the active learning framework [modAL](https://modal-python.readthedocs.io/en/latest/),
-            it's now available using the package name `modAL-python`.
+author_email = support@modal.com
+description = Legacy name for the Modal client
+long_description = This is a legacy compatibility package that just requires the `modal` client library.
+            In versions before 0.51, the official name of the client library was called `modal-client`.
+            We have renamed it to `modal`, but this library is kept updated for compatibility.
 long_description_content_type = text/markdown
 project_urls =
     Homepage = https://modal.com
 
 [options]
 install_requires =
-    modal-client=={__version__}
+    modal=={__version__}
 """
         )
     with open("alias-package/pyproject.toml", "w") as f:
