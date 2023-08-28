@@ -199,6 +199,7 @@ class _App:
         await retry_transient_errors(self._client.stub.AppStop, req_disconnect)
 
     def log_url(self):
+        """URL link to a running app's logs page in the Modal dashboard."""
         return self._app_page_url
 
     def __getitem__(self, tag: str) -> _Object:
@@ -294,6 +295,7 @@ class _App:
             )
 
     async def create_one_object(self, obj: _Object, environment_name: str) -> None:
+        """mdmd:hidden"""
         existing_object_id: Optional[str] = self._tag_to_object_id.get("_object")
         resolver = Resolver(self._client, environment_name=environment_name, app_id=self.app_id)
         await resolver.load(obj, existing_object_id)
@@ -308,6 +310,7 @@ class _App:
         await retry_transient_errors(self._client.stub.AppSetObjects, req_set)
 
     async def deploy(self, name: str, namespace, object_entity: str) -> str:
+        """`App.deploy` is deprecated in favor of `modal.runner.deploy_stub`."""
         deploy_req = api_pb2.AppDeployRequest(
             app_id=self.app_id,
             name=name,

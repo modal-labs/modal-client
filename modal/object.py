@@ -192,9 +192,11 @@ class _Object:
 
     @property
     def object_id(self):
+        """mdmd:hidden"""
         return self._object_id
 
     def is_hydrated(self) -> bool:
+        """mdmd:hidden"""
         return self._is_hydrated
 
     async def _deploy(
