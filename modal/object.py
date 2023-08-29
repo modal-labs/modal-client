@@ -51,12 +51,14 @@ class _Object:
         load: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
         is_persisted_ref: bool = False,
         preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
+        hydrate_lazily: bool = False,
     ):
         self._local_uuid = str(uuid.uuid4())
         self._load = load
         self._preload = preload
         self._rep = rep
         self._is_persisted_ref = is_persisted_ref
+        self._hydrate_lazily = hydrate_lazily
 
         self._object_id = None
         self._client = None
@@ -101,10 +103,11 @@ class _Object:
         rep: str,
         is_persisted_ref: bool = False,
         preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
+        hydrate_lazily: bool = False,
     ):
         # TODO(erikbern): flip the order of the two first arguments
         obj = _Object.__new__(cls)
-        obj._init(rep, load, is_persisted_ref, preload)
+        obj._init(rep, load, is_persisted_ref, preload, hydrate_lazily)
         return obj
 
     @classmethod
@@ -198,6 +201,13 @@ class _Object:
 
     def is_hydrated(self) -> bool:
         """mdmd:hidden"""
+        return self._is_hydrated
+
+    async def _try_hydrate(self) -> bool:
+        if not self._is_hydrated and self._hydrate_lazily:
+            resolver = Resolver()
+            await resolver.load(self)
+
         return self._is_hydrated
 
     async def _deploy(
@@ -351,7 +361,7 @@ Object = synchronize_api(_Object, target_module=__name__)
 def live_method(method):
     @wraps(method)
     async def wrapped(self, *args, **kwargs):
-        if not self._is_hydrated:
+        if not await self._try_hydrate():
             raise ExecutionError(f"Calling method `{method.__name__}` requires the object to be hydrated.")
         return await method(self, *args, **kwargs)
 
@@ -361,7 +371,7 @@ def live_method(method):
 def live_method_gen(method):
     @wraps(method)
     async def wrapped(self, *args, **kwargs):
-        if not self._is_hydrated:
+        if not await self._try_hydrate():
             raise ExecutionError(f"Calling method `{method.__name__}` requires the object to be hydrated.")
         async for item in method(self, *args, **kwargs):
             yield item

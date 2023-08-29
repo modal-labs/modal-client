@@ -872,9 +872,10 @@ class _Function(_Object, type_prefix="fu"):
             )
             response = await retry_transient_errors(self._client.stub.FunctionBindParams, req)
             provider._hydrate(response.bound_function_id, self._client, response.handle_metadata)
-            provider._is_remote_cls_method = True
 
-        return _Function._from_loader(_load, "Function(parametrized)")
+        provider = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
+        provider._is_remote_cls_method = True
+        return provider
 
     def get_panel_items(self) -> List[str]:
         """mdmd:hidden"""
