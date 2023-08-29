@@ -318,17 +318,21 @@ class _Object:
         tag: Optional[str] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
     ) -> bool:
         """
         Internal for now - will make this "public" later.
         """
         if client is None:
             client = await _Client.from_env()
+        if environment_name is None:
+            environment_name = config.get("environment")
         request = api_pb2.AppLookupObjectRequest(
             app_name=app_name,
             object_tag=tag,
             namespace=namespace,
             object_entity=cls._type_prefix,
+            environment_name=environment_name,
         )
         try:
             response = await retry_transient_errors(client.stub.AppLookupObject, request)
