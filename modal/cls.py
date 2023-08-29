@@ -47,8 +47,8 @@ def make_remote_cls_constructors(
 
         for k, v in partial_functions.items():
             base_function: _Function = functions[k]
+            new_function: _Function = base_function.from_parametrized(args, kwargs)
             client: _Client = base_function._client
-            new_function: _Function = _Function.from_parametrized(base_function, *args, **kwargs)
             resolver = Resolver(client)
             await resolver.load(new_function)
             new_functions[k] = new_function
