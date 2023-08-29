@@ -9,7 +9,7 @@ import cloudpickle
 from synchronicity.exceptions import UserCodeException
 
 from modal import NetworkFileSystem, Proxy, Stub, asgi_app, web_endpoint, wsgi_app
-from modal.exception import DeprecationError, InvalidError
+from modal.exception import DeprecationError, ExecutionError, InvalidError
 from modal.functions import Function, FunctionCall, gather
 from modal.runner import deploy_stub
 from modal_proto import api_pb2
@@ -646,3 +646,8 @@ def test_default_cloud_provider(client, servicer, monkeypatch):
         f = servicer.app_functions[app._get_object("dummy").object_id]
 
     assert f.cloud_provider == api_pb2.CLOUD_PROVIDER_OCI
+
+
+def test_not_hydrated():
+    with pytest.raises(ExecutionError):
+        assert foo.remote(2, 4) == 20
