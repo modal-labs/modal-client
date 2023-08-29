@@ -8,7 +8,7 @@ from grpclib import GRPCError, Status
 
 import modal.app
 from modal import Dict, Image, Queue, Stub, web_endpoint
-from modal.exception import DeprecationError, InvalidError
+from modal.exception import DeprecationError, ExecutionError, InvalidError
 from modal.runner import deploy_stub
 from modal_proto import api_pb2
 from modal_test_support import module_1, module_2
@@ -134,10 +134,11 @@ def test_run_function_without_app_error():
     stub = Stub()
     dummy_modal = stub.function()(dummy)
 
-    with pytest.raises(InvalidError) as excinfo:
+    with pytest.raises(ExecutionError) as excinfo:
         dummy_modal.remote()
 
-    assert "stub.run" in str(excinfo.value)
+    assert "hydrated" in str(excinfo.value)
+    assert "remote" in str(excinfo.value)
 
 
 def test_is_inside_basic():
