@@ -883,12 +883,11 @@ class _Image(_Object, type_prefix="im"):
         force_build: bool = False,
         **kwargs,
     ) -> "_Image":
-        """
-        Build a Modal image from a pre-existing image on Docker Hub.
+        """Build a Modal image from a public image registry, such as Docker Hub.
 
-        This assumes the following about the image:
+        The image must satisfy the following requirements:
 
-        - Python 3.7 or above is present, and is available as `python`.
+        - Python 3.7 or above is present, and is on PATH as `python`.
         - `pip` is installed correctly.
         - The image is built for the `linux/amd64` platform.
 
@@ -900,8 +899,8 @@ class _Image(_Object, type_prefix="im"):
 
         ```python
         modal.Image.from_registry(
-          "gisops/valhalla:latest",
-          setup_dockerfile_commands=["RUN apt-get update", "RUN apt-get install -y python3-pip"]
+            "gisops/valhalla:latest",
+            setup_dockerfile_commands=["RUN apt-get update", "RUN apt-get install -y python3-pip"],
         )
         ```
         """
