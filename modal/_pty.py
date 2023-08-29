@@ -119,10 +119,14 @@ def run_in_pty(fn, queue, pty_info: api_pb2.PTYInfo):
         def _read():
             while True:
                 try:
-                    char = queue.get()
-                    if char is None:
+                    data_segments = queue.get_many(1024)
+                    assert data_segments  # cannot be empty, since we read in blocking mode
+                    if data_segments[-1] is None:
+                        if len(data_segments) > 1:
+                            writer.write(b"".join(data_segments[:-1]))
+                            writer.flush()
                         return
-                    writer.write(char)
+                    writer.write(b"".join(data_segments))
                     writer.flush()
                 except asyncio.CancelledError:
                     return
@@ -165,7 +169,7 @@ async def write_stdin_to_pty_stream(queue: _Queue):
     set_nonblocking(sys.stdin.fileno())
 
     @asyncify
-    def _read_char() -> Optional[bytes]:
+    def _read_stdin() -> Optional[bytes]:
         nonlocal quit_pipe_read
         # TODO: Windows support.
         (readable, _, _) = select.select([sys.stdin.buffer, quit_pipe_read], [], [])
@@ -175,10 +179,10 @@ async def write_stdin_to_pty_stream(queue: _Queue):
 
     async def _write():
         while True:
-            char = await _read_char()
-            if char is None:
+            data = await _read_stdin()
+            if data is None:
                 return
-            await queue.put(char)
+            await queue.put(data)
 
     async with TaskContext(grace=0.1) as tc:
         write_task = tc.create_task(_write())
