@@ -120,7 +120,11 @@ def run_in_pty(fn, queue, pty_info: api_pb2.PTYInfo):
             while True:
                 try:
                     data_segments = queue.get_many(1024)
-                    if data_segments is None:
+                    assert data_segments  # cannot be empty, since we read in blocking mode
+                    if data_segments[-1] is None:
+                        if len(data_segments) > 1:
+                            writer.write(b"".join(data_segments[:-1]))
+                            writer.flush()
                         return
                     writer.write(b"".join(data_segments))
                     writer.flush()
