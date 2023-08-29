@@ -35,7 +35,7 @@ def make_remote_cls_constructors(
 ):
     cls = type(f"Remote{user_cls.__name__}", (), partial_functions)
 
-    async def _remote(*args, **kwargs):
+    def _remote(*args, **kwargs):
         for i, arg in enumerate(args):
             check_picklability(i + 1, arg)
         for key, kwarg in kwargs.items():
