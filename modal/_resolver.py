@@ -52,7 +52,7 @@ class Resolver:
 
     def __init__(
         self,
-        client,
+        client=None,
         *,
         output_mgr=None,
         environment_name: Optional[str] = None,
