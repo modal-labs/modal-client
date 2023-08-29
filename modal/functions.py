@@ -187,16 +187,7 @@ class _Invocation:
         self.function_call_id = function_call_id  # TODO: remove and use only input_id
 
     @staticmethod
-    async def create(function_id, args, kwargs, client):
-        if not function_id:
-            raise InvalidError(
-                "The function has not been initialized.\n"
-                "\n"
-                "Modal functions can only be called within an app. "
-                "Try calling it from another running modal function or from an app run context:\n\n"
-                "with stub.run():\n"
-                "    my_modal_function.remote()\n"
-            )
+    async def create(function_id: str, args, kwargs, client: _Client):
         request = api_pb2.FunctionMapRequest(
             function_id=function_id,
             parent_input_id=current_input_id(),

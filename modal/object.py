@@ -200,10 +200,6 @@ class _Object:
         """mdmd:hidden"""
         return self._is_hydrated
 
-    def check_hydration(self):
-        if not self._is_hydrated:
-            raise ExecutionError("Method `{method.__name__}` requires object to be hydrated.")
-
     async def _deploy(
         self,
         label: str,
@@ -355,7 +351,8 @@ Object = synchronize_api(_Object, target_module=__name__)
 def live_method(method):
     @wraps(method)
     async def wrapped(self, *args, **kwargs):
-        self.check_hydration()
+        if not self._is_hydrated:
+            raise ExecutionError(f"Calling method `{method.__name__}` requires the object to be hydrated.")
         return await method(self, *args, **kwargs)
 
     return wrapped
@@ -364,7 +361,8 @@ def live_method(method):
 def live_method_gen(method):
     @wraps(method)
     async def wrapped(self, *args, **kwargs):
-        self.check_hydration()
+        if not self._is_hydrated:
+            raise ExecutionError(f"Calling method `{method.__name__}` requires the object to be hydrated.")
         async for item in method(self, *args, **kwargs):
             yield item
 
