@@ -870,8 +870,8 @@ class _Function(_Object, type_prefix="fu"):
                 function_id=self._object_id,
                 serialized_params=serialized_params,
             )
-            response = await retry_transient_errors(resolver.client.stub.FunctionBindParams, req)
-            provider._hydrate(response.bound_function_id, resolver.client, response.handle_metadata)
+            response = await retry_transient_errors(self._client.stub.FunctionBindParams, req)
+            provider._hydrate(response.bound_function_id, self._client, response.handle_metadata)
             provider._is_remote_cls_method = True
 
         return _Function._from_loader(_load, "Function(parametrized)")

@@ -5,7 +5,6 @@ from typing import Dict, Type, TypeVar
 from modal_utils.async_utils import synchronize_api
 
 from ._resolver import Resolver
-from .client import _Client
 from .functions import PartialFunction, _Function, _PartialFunction
 
 T = TypeVar("T")
@@ -48,8 +47,7 @@ def make_remote_cls_constructors(
         for k, v in partial_functions.items():
             base_function: _Function = functions[k]
             new_function: _Function = base_function.from_parametrized(args, kwargs)
-            client: _Client = base_function._client
-            resolver = Resolver(client)
+            resolver = Resolver()
             await resolver.load(new_function)
             new_functions[k] = new_function
 
