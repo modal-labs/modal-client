@@ -873,7 +873,7 @@ class _Image(_Object, type_prefix="im"):
         if add_python:
             add_python_commands = [
                 "COPY /python/. /usr/local",
-                "RUN chmod +x /usr/local/bin/* && ln -s /usr/local/bin/python3 /usr/local/bin/python",
+                "RUN ln -s /usr/local/bin/python3 /usr/local/bin/python",
                 "ENV TERMINFO_DIRS=/etc/terminfo:/lib/terminfo:/usr/share/terminfo:/usr/lib/terminfo",
             ]
         return [
