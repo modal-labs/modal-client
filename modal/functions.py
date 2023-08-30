@@ -758,13 +758,13 @@ class _Function(_Object, type_prefix="fu"):
                     raise InvalidError(
                         f"Function {info.raw_f} has size {len(function_serialized)} bytes when packaged. "
                         "This is larger than the maximum limit of 16 MiB. "
-                        "Try reducing the size of the closure by passing data as arguments, not large global variables."
+                        "Try reducing the size of the closure by using parameters or mounts, not large global variables."
                     )
                 elif len(function_serialized) > 256 << 10:  # 256 KiB
                     warnings.warn(
                         f"Function {info.raw_f} has size {len(function_serialized)} bytes when packaged. "
                         "This is larger than the recommended limit of 256 KiB. "
-                        "Try reducing the size of the closure by passing data as arguments, not large global variables."
+                        "Try reducing the size of the closure by using parameters or mounts, not large global variables."
                     )
             else:
                 function_serialized = None
