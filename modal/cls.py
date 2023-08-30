@@ -1,10 +1,12 @@
 # Copyright Modal Labs 2022
+from datetime import date
 import pickle
 from typing import Dict, Type, TypeVar
 
 from modal_utils.async_utils import synchronize_api
 
 from .functions import PartialFunction, _Function, _PartialFunction
+from .exception import deprecation_warning
 
 T = TypeVar("T")
 
@@ -51,7 +53,10 @@ def wrap_cls(
         return obj
 
     async def _remote(*args, **kwargs):
-        # TODO(erikbern): deprecate
+        deprecation_warning(
+            date(2023, 8, 29),
+            "`Cls.remote(...)` on classes is deprecated. Use the constructor: `Cls(...)`."
+        )
         return _new(None, *args, **kwargs)
 
     user_cls.__new__ = _new

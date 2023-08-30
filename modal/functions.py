@@ -1171,7 +1171,11 @@ class _Function(_Object, type_prefix="fu"):
     @synchronizer.nowrap
     def __call__(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
         if self._get_is_remote_cls_method():  # TODO(elias): change parametrization so this is isn't needed
-            # TODO(erikbern): deprecate this soon too
+            deprecation_warning(
+                date(2023, 8, 29),
+                "Calling remove class methods like `obj.f(...)` is deprecated. Use `obj.f.remote(...)` for remote calls"
+                " and `obj.f.local(...)` for local calls"
+            )
             return self.remote(*args, **kwargs)
 
         deprecation_warning(
