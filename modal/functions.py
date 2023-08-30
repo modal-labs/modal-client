@@ -751,6 +751,21 @@ class _Function(_Object, type_prefix="fu"):
                 # otherwise we can't capture a surrounding class for lifetime methods etc.
                 function_serialized = info.serialized_function()
                 class_serialized = serialize(cls) if cls is not None else None
+
+                # Ensure that large data in global variables does not blow up the gRPC payload,
+                # which has maximum size 100 MiB. We set the limit lower for performance reasons.
+                if len(function_serialized) > 16 << 20:  # 16 MiB
+                    raise InvalidError(
+                        f"Function {info.raw_f} has size {len(function_serialized)} bytes when packaged. "
+                        "This is larger than the maximum limit of 16 MiB. "
+                        "Try reducing the size of the closure by passing data as arguments, not large global variables."
+                    )
+                elif len(function_serialized) > 256 << 10:  # 256 KiB
+                    warnings.warn(
+                        f"Function {info.raw_f} has size {len(function_serialized)} bytes when packaged. "
+                        "This is larger than the recommended limit of 256 KiB. "
+                        "Try reducing the size of the closure by passing data as arguments, not large global variables."
+                    )
             else:
                 function_serialized = None
                 class_serialized = None
@@ -810,6 +825,8 @@ class _Function(_Object, type_prefix="fu"):
                     raise InvalidError(exc.message)
                 if exc.status == Status.FAILED_PRECONDITION:
                     raise InvalidError(exc.message)
+                if "Received :status = '413'" in exc.message:
+                    raise InvalidError(f"Function {raw_f} is too large to deploy.")
                 raise
 
             if response.function.web_url:
