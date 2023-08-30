@@ -31,10 +31,12 @@ async def test_get_files(servicer, client, tmpdir):
     assert files["/small.py"].use_blob is False
     assert files["/small.py"].content == small_content
     assert files["/small.py"].sha256_hex == hashlib.sha256(small_content).hexdigest()
+    assert files["/small.py"].mode == 0o644
 
     assert files["/large.py"].use_blob is True
     assert files["/large.py"].content is None
     assert files["/large.py"].sha256_hex == hashlib.sha256(large_content).hexdigest()
+    assert files["/large.py"].mode == 0o644
 
     app = await App._init_new.aio(client)
     await app.create_one_object.aio(m, "")
