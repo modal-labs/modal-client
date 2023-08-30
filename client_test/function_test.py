@@ -651,3 +651,27 @@ def test_default_cloud_provider(client, servicer, monkeypatch):
 def test_not_hydrated():
     with pytest.raises(ExecutionError):
         assert foo.remote(2, 4) == 20
+
+
+def test_invalid_large_serialization(client):
+    big_data = b"1" * 500000
+
+    def f():
+        return big_data
+
+    with pytest.warns(UserWarning, match="larger than the recommended limit"):
+        stub = Stub()
+        stub.function(serialized=True)(f)
+        with stub.run(client=client):
+            pass
+
+    bigger_data = b"1" * 50000000
+
+    def g():
+        return bigger_data
+
+    with pytest.raises(InvalidError):
+        stub = Stub()
+        stub.function(serialized=True)(g)
+        with stub.run(client=client):
+            pass
