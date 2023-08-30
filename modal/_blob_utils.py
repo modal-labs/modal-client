@@ -4,6 +4,7 @@ import dataclasses
 import hashlib
 import io
 import os
+import platform
 from contextlib import contextmanager
 from pathlib import Path
 from typing import AsyncIterator, BinaryIO, List, Optional, Union
@@ -345,7 +346,9 @@ def get_file_upload_spec(filename: Path, mount_filename: str) -> FileUploadSpec:
         use_blob=use_blob,
         content=content,
         sha256_hex=sha256_hex,
-        mode=stat.st_mode & 0o7777,
+        # Python appears to give files 0o666 bits on Windows, so we mask those to 0o644 for
+        # compatibility with POSIX-based permissions.
+        mode=stat.st_mode & (0o7777 if platform.system() != "Windows" else 0o644),
         size=stat.st_size,
     )
 
