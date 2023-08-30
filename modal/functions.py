@@ -862,9 +862,8 @@ class _Function(_Object, type_prefix="fu"):
         return obj
 
     def from_parametrized(self, args: Iterable[Any], kwargs: Dict[str, Any]) -> "_Function":
-        assert self._is_hydrated, "Cannot make bound function handle from unhydrated handle."
-
         async def _load(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
+            assert self._is_hydrated, "Cannot make bound function handle from unhydrated handle."
             serialized_params = pickle.dumps((args, kwargs))  # TODO(erikbern): use modal._serialization?
             req = api_pb2.FunctionBindParamsRequest(
                 function_id=self._object_id,
@@ -873,9 +872,9 @@ class _Function(_Object, type_prefix="fu"):
             response = await retry_transient_errors(self._client.stub.FunctionBindParams, req)
             provider._hydrate(response.bound_function_id, self._client, response.handle_metadata)
 
-        provider = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
-        provider._is_remote_cls_method = True
-        return provider
+        obj = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
+        obj._is_remote_cls_method = True
+        return obj
 
     def get_panel_items(self) -> List[str]:
         """mdmd:hidden"""

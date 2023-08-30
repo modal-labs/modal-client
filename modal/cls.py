@@ -28,14 +28,12 @@ def check_picklability(key, arg):
         )
 
 
-def make_remote_cls_constructors(
+def wrap_cls(
     user_cls: type,
     partial_functions: Dict[str, PartialFunction],
     functions: Dict[str, _Function],
 ):
-    cls = type(f"Remote{user_cls.__name__}", (), partial_functions)
-
-    async def _remote(*args, **kwargs):
+    def _new(cls, *args, **kwargs):
         for i, arg in enumerate(args):
             check_picklability(i + 1, arg)
         for key, kwarg in kwargs.items():
@@ -46,8 +44,15 @@ def make_remote_cls_constructors(
         for k, v in partial_functions.items():
             new_functions[k] = functions[k].from_parametrized(args, kwargs)
 
-        obj = cls()
+        obj = super(user_cls, user_cls).__new__(user_cls)
+        obj.__init__(*args, **kwargs)
+
         _PartialFunction.initialize_obj(obj, new_functions)
         return obj
 
-    return synchronize_api(_remote)
+    async def _remote(*args, **kwargs):
+        # TODO(erikbern): deprecate
+        return _new(None, *args, **kwargs)
+
+    user_cls.__new__ = _new
+    user_cls.remote = synchronize_api(_remote)
