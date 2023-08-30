@@ -82,7 +82,7 @@ class _Dict(_Object, type_prefix="di"):
     def persist(
         self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
     ) -> "_Dict":
-        """`Dict().persist("my-dict")` is deprecated. Use `Dict.persisted("my-dict")` instead."""
+        """`Dict.new().persist("my-dict")` is deprecated. Use `Dict.persisted("my-dict")` instead."""
         deprecation_error(date(2023, 6, 30), self.persist.__doc__)
         return self.persisted(label, namespace, environment_name)
 
