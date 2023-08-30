@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import uuid
 from datetime import date
+from functools import wraps
 from typing import Awaitable, Callable, ClassVar, Dict, Optional, Type, TypeVar
 
 from google.protobuf.message import Message
@@ -14,7 +15,7 @@ from modal_utils.grpc_utils import get_proto_oneof, retry_transient_errors
 from ._resolver import Resolver
 from .client import _Client
 from .config import config
-from .exception import InvalidError, NotFoundError, deprecation_error
+from .exception import ExecutionError, InvalidError, NotFoundError, deprecation_error
 
 O = TypeVar("O", bound="_Object")
 
@@ -50,12 +51,14 @@ class _Object:
         load: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
         is_persisted_ref: bool = False,
         preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
+        hydrate_lazily: bool = False,
     ):
         self._local_uuid = str(uuid.uuid4())
         self._load = load
         self._preload = preload
         self._rep = rep
         self._is_persisted_ref = is_persisted_ref
+        self._hydrate_lazily = hydrate_lazily
 
         self._object_id = None
         self._client = None
@@ -100,10 +103,11 @@ class _Object:
         rep: str,
         is_persisted_ref: bool = False,
         preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
+        hydrate_lazily: bool = False,
     ):
         # TODO(erikbern): flip the order of the two first arguments
         obj = _Object.__new__(cls)
-        obj._init(rep, load, is_persisted_ref, preload)
+        obj._init(rep, load, is_persisted_ref, preload, hydrate_lazily)
         return obj
 
     @classmethod
@@ -192,9 +196,18 @@ class _Object:
 
     @property
     def object_id(self):
+        """mdmd:hidden"""
         return self._object_id
 
     def is_hydrated(self) -> bool:
+        """mdmd:hidden"""
+        return self._is_hydrated
+
+    async def _try_hydrate(self) -> bool:
+        if not self._is_hydrated and self._hydrate_lazily:
+            resolver = Resolver()
+            await resolver.load(self)
+
         return self._is_hydrated
 
     async def _deploy(
@@ -316,17 +329,21 @@ class _Object:
         tag: Optional[str] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
     ) -> bool:
         """
         Internal for now - will make this "public" later.
         """
         if client is None:
             client = await _Client.from_env()
+        if environment_name is None:
+            environment_name = config.get("environment")
         request = api_pb2.AppLookupObjectRequest(
             app_name=app_name,
             object_tag=tag,
             namespace=namespace,
             object_entity=cls._type_prefix,
+            environment_name=environment_name,
         )
         try:
             response = await retry_transient_errors(client.stub.AppLookupObject, request)
@@ -339,3 +356,24 @@ class _Object:
 
 
 Object = synchronize_api(_Object, target_module=__name__)
+
+
+def live_method(method):
+    @wraps(method)
+    async def wrapped(self, *args, **kwargs):
+        if not await self._try_hydrate():
+            raise ExecutionError(f"Calling method `{method.__name__}` requires the object to be hydrated.")
+        return await method(self, *args, **kwargs)
+
+    return wrapped
+
+
+def live_method_gen(method):
+    @wraps(method)
+    async def wrapped(self, *args, **kwargs):
+        if not await self._try_hydrate():
+            raise ExecutionError(f"Calling method `{method.__name__}` requires the object to be hydrated.")
+        async for item in method(self, *args, **kwargs):
+            yield item
+
+    return wrapped

@@ -68,7 +68,7 @@ from .gpu import GPU_T, display_gpu_config, parse_gpu_config
 from .image import _Image
 from .mount import _get_client_mount, _Mount
 from .network_file_system import _NetworkFileSystem
-from .object import _Object
+from .object import _Object, live_method, live_method_gen
 from .proxy import _Proxy
 from .retries import Retries
 from .schedule import Schedule
@@ -187,16 +187,7 @@ class _Invocation:
         self.function_call_id = function_call_id  # TODO: remove and use only input_id
 
     @staticmethod
-    async def create(function_id, args, kwargs, client):
-        if not function_id:
-            raise InvalidError(
-                "The function has not been initialized.\n"
-                "\n"
-                "Modal functions can only be called within an app. "
-                "Try calling it from another running modal function or from an app run context:\n\n"
-                "with stub.run():\n"
-                "    my_modal_function.remote()\n"
-            )
+    async def create(function_id: str, args, kwargs, client: _Client):
         request = api_pb2.FunctionMapRequest(
             function_id=function_id,
             parent_input_id=current_input_id(),
@@ -870,21 +861,21 @@ class _Function(_Object, type_prefix="fu"):
 
         return obj
 
-    @staticmethod
-    def from_parametrized(base_function: "_Function", *args: Iterable[Any], **kwargs: Dict[str, Any]) -> "_Function":
-        assert base_function._is_hydrated, "Cannot make bound function handle from unhydrated handle."
+    def from_parametrized(self, args: Iterable[Any], kwargs: Dict[str, Any]) -> "_Function":
+        assert self._is_hydrated, "Cannot make bound function handle from unhydrated handle."
 
         async def _load(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             serialized_params = pickle.dumps((args, kwargs))  # TODO(erikbern): use modal._serialization?
             req = api_pb2.FunctionBindParamsRequest(
-                function_id=base_function._object_id,
+                function_id=self._object_id,
                 serialized_params=serialized_params,
             )
-            response = await retry_transient_errors(resolver.client.stub.FunctionBindParams, req)
-            provider._hydrate(response.bound_function_id, resolver.client, response.handle_metadata)
-            provider._is_remote_cls_method = True
+            response = await retry_transient_errors(self._client.stub.FunctionBindParams, req)
+            provider._hydrate(response.bound_function_id, self._client, response.handle_metadata)
 
-        return _Function._from_loader(_load, "Function(parametrized)")
+        provider = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
+        provider._is_remote_cls_method = True
+        return provider
 
     def get_panel_items(self) -> List[str]:
         """mdmd:hidden"""
@@ -997,6 +988,7 @@ class _Function(_Object, type_prefix="fu"):
         return await _Invocation.create(self.object_id, args, kwargs, self._client)
 
     @warn_if_generator_is_not_consumed
+    @live_method_gen
     async def _call_generator(self, args, kwargs):
         invocation = await _Invocation.create(self.object_id, args, kwargs, self._client)
         async for res in invocation.run_generator():
@@ -1006,6 +998,7 @@ class _Function(_Object, type_prefix="fu"):
         return await _Invocation.create(self.object_id, args, kwargs, self._client)
 
     @warn_if_generator_is_not_consumed
+    @live_method_gen
     async def map(
         self,
         *input_iterators,  # one input iterator per argument in the mapped-over function/generator
@@ -1071,6 +1064,7 @@ class _Function(_Object, type_prefix="fu"):
             pass
 
     @warn_if_generator_is_not_consumed
+    @live_method_gen
     async def starmap(
         self, input_iterator, kwargs={}, order_outputs=None, return_exceptions=False
     ) -> AsyncGenerator[Any, None]:
@@ -1096,6 +1090,7 @@ class _Function(_Object, type_prefix="fu"):
         async for item in self._map(input_stream, order_outputs, return_exceptions, kwargs):
             yield item
 
+    @live_method
     async def remote(self, *args, **kwargs) -> Awaitable[Any]:  # TODO: Generics/TypeVars
         """
         Calls the function remotely, executing it with the given arguments and returning the execution's result.
@@ -1112,6 +1107,7 @@ class _Function(_Object, type_prefix="fu"):
 
         return await self._call_function(args, kwargs)
 
+    @live_method_gen
     async def remote_gen(self, *args, **kwargs) -> AsyncGenerator[Any, None]:  # TODO: Generics/TypeVars
         """
         Calls the generator remotely, executing it with the given arguments and returning the execution's result.
@@ -1141,6 +1137,7 @@ class _Function(_Object, type_prefix="fu"):
             )
             return self.remote(*args, **kwargs)
 
+    @live_method
     async def shell(self, *args, **kwargs) -> None:
         if self._is_generator:
             async for item in self._call_generator(args, kwargs):
@@ -1229,6 +1226,7 @@ class _Function(_Object, type_prefix="fu"):
 
         return self._info.raw_f
 
+    @live_method
     async def get_current_stats(self) -> FunctionStats:
         """Return a `FunctionStats` object describing the current function's queue and runner counts."""
 
