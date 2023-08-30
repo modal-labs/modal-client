@@ -39,6 +39,7 @@ from ._traceback import extract_traceback
 from ._tracing import extract_tracing_context, set_span_tag, trace, wrap
 from .app import _App
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
+from .cls import Cls
 from .config import logger
 from .exception import InvalidError
 from .functions import Function, _set_current_input_id  # type: ignore
@@ -580,6 +581,8 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun, ser_params
 
     # Instantiate the class if it's defined
     if cls:
+        if isinstance(cls, Cls):
+            cls = cls.get_user_cls()
         if ser_params:
             args, kwargs = pickle.loads(ser_params)
             obj = cls(*args, **kwargs)

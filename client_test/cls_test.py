@@ -5,7 +5,6 @@ import pytest
 from modal import Stub, method
 from modal._serialization import deserialize
 from modal.cls import ClsMixin
-from modal.functions import Function
 from modal_proto import api_pb2
 
 stub = Stub()
@@ -59,6 +58,11 @@ def test_call_cls_remote_sync(client):
         foo_remote = FooRemote.remote(3, "hello")
         # Mock servicer just squares the argument
         # This means remote function call is taking place.
+        assert foo_remote.bar.remote(8) == 64
+        assert foo_remote.bar(8) == 64
+
+        # Check new syntax
+        foo_remote = FooRemote(3, "hello")
         assert foo_remote.bar.remote(8) == 64
         assert foo_remote.bar(8) == 64
 
@@ -118,7 +122,6 @@ def test_run_class_serialized(client, servicer):
     obj = cls()
     meth = fun.__get__(obj, cls)
 
-    assert isinstance(obj.bar, Function)
     # Make sure it's callable
     assert meth(100) == 1000000
 
