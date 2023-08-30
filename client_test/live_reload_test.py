@@ -60,6 +60,7 @@ async def test_no_change(stub_ref, server_url_env, servicer):
 
 
 @pytest.mark.asyncio
+@skip_windows("this flakes a lot of the time by giving 5 heartbeats")
 async def test_heartbeats(stub_ref, server_url_env, servicer):
     with mock.patch("modal.runner.HEARTBEAT_INTERVAL", 1):
         async with serve_stub.aio(stub, stub_ref):
