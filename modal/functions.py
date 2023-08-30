@@ -1174,7 +1174,7 @@ class _Function(_Object, type_prefix="fu"):
             deprecation_warning(
                 date(2023, 8, 29),
                 "Calling remove class methods like `obj.f(...)` is deprecated. Use `obj.f.remote(...)` for remote calls"
-                " and `obj.f.local(...)` for local calls"
+                " and `obj.f.local(...)` for local calls",
             )
             return self.remote(*args, **kwargs)
 

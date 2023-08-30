@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-import inspect
 import pytest
 
 from modal import Stub, method
