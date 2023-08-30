@@ -346,9 +346,9 @@ def get_file_upload_spec(filename: Path, mount_filename: str) -> FileUploadSpec:
         use_blob=use_blob,
         content=content,
         sha256_hex=sha256_hex,
-        # Python appears to give files 0o666 bits on Windows, so we mask those to 0o644 for
-        # compatibility with POSIX-based permissions.
-        mode=stat.st_mode & (0o7777 if platform.system() != "Windows" else 0o644),
+        # Python appears to give files 0o666 bits on Windows (equal for user, group, and global),
+        # so we mask those out to 0o755 for compatibility with POSIX-based permissions.
+        mode=stat.st_mode & (0o7777 if platform.system() != "Windows" else 0o7755),
         size=stat.st_size,
     )
 
