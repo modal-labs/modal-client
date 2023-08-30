@@ -130,7 +130,7 @@ class _Stub:
         Any "blueprint" objects are loaded as part of running or deploying the app,
         and are accessible by name on the running container app, e.g.:
         ```python
-        stub = modal.Stub(key_value_store=modal.Dict())
+        stub = modal.Stub(key_value_store=modal.Dict.new())
 
         @stub.function()
         def store_something(key: str, value: str):
