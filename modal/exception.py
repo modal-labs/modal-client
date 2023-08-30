@@ -132,7 +132,7 @@ def simulate_preemption(wait_seconds: int, jitter_seconds: int = 0):
 
     **Usage:**
 
-    ```python
+    ```python notest
     import time
     from modal.exception import simulate_preemption
 
