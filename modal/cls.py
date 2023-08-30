@@ -41,11 +41,11 @@ def wrap_cls(
 
         new_functions: Dict[str, _Function] = {}
 
-        for k, v in partial_functions.items():
-            new_functions[k] = functions[k].from_parametrized(args, kwargs)
-
         obj = super(user_cls, user_cls).__new__(user_cls)
         obj.__init__(*args, **kwargs)
+
+        for k, v in partial_functions.items():
+            new_functions[k] = functions[k].from_parametrized(obj, args, kwargs)
 
         _PartialFunction.initialize_obj(obj, new_functions)
         return obj

@@ -861,7 +861,7 @@ class _Function(_Object, type_prefix="fu"):
 
         return obj
 
-    def from_parametrized(self, args: Iterable[Any], kwargs: Dict[str, Any]) -> "_Function":
+    def from_parametrized(self, self_obj: Any, args: Iterable[Any], kwargs: Dict[str, Any]) -> "_Function":
         async def _load(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             assert self._is_hydrated, "Cannot make bound function handle from unhydrated handle."
             serialized_params = pickle.dumps((args, kwargs))  # TODO(erikbern): use modal._serialization?
@@ -874,6 +874,7 @@ class _Function(_Object, type_prefix="fu"):
 
         obj = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
         obj._is_remote_cls_method = True
+        obj._self_obj = self_obj
         return obj
 
     def get_panel_items(self) -> List[str]:
@@ -896,12 +897,6 @@ class _Function(_Object, type_prefix="fu"):
     def get_build_def(self) -> str:
         """mdmd:hidden"""
         return f"{inspect.getsource(self._raw_f)}\n{repr(self._build_args)}"
-
-    def _bind_obj(self, obj, objtype):
-        # This is needed to bind "self" to methods for direct __call__
-        # TODO(erikbern): we're mutating self directly here, as opposed to returning a different _FunctionHandle
-        # We should fix this in the future since it probably precludes using classmethods/staticmethods
-        self._self_obj = obj
 
     # Live handle methods
 
@@ -1362,13 +1357,9 @@ class _PartialFunction:
         self.wrapped = False  # Make sure that this was converted into a FunctionHandle
 
     def __get__(self, obj, objtype=None) -> _Function:
+        assert obj
         k = self.raw_f.__name__
-        if obj:  # Cls().fun
-            function = obj._modal_functions[k]
-        else:  # Cls.fun
-            function = objtype._modal_functions[k]
-        function._bind_obj(obj, objtype)  # TODO(erikbern): don't mutate
-        return function
+        return obj._modal_functions[k]
 
     def __del__(self):
         if self.wrapped is False:
