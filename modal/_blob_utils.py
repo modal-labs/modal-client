@@ -322,13 +322,14 @@ class FileUploadSpec:
     use_blob: bool
     content: Optional[bytes]  # typically None if using blob, required otherwise
     sha256_hex: str
+    mode: int  # file permission bits (last 12 bits of st_mode)
     size: int
 
 
 def get_file_upload_spec(filename: Path, mount_filename: str) -> FileUploadSpec:
     # Somewhat CPU intensive, so we run it in a thread/process
-    size = os.path.getsize(filename)
-    if size >= LARGE_FILE_LIMIT:
+    stat = os.stat(filename)
+    if stat.st_size >= LARGE_FILE_LIMIT:
         use_blob = True
         content = None
         with open(filename, "rb") as fp:
@@ -339,7 +340,13 @@ def get_file_upload_spec(filename: Path, mount_filename: str) -> FileUploadSpec:
             content = fp.read()
         sha256_hex = get_sha256_hex(content)
     return FileUploadSpec(
-        filename, mount_filename, use_blob=use_blob, content=content, sha256_hex=sha256_hex, size=size
+        filename,
+        mount_filename,
+        use_blob=use_blob,
+        content=content,
+        sha256_hex=sha256_hex,
+        mode=stat.st_mode & 0o7777,
+        size=stat.st_size,
     )
 
 

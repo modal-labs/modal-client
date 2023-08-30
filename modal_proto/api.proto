@@ -920,7 +920,9 @@ message MountHandleMetadata {
 
 message MountFile {
   string filename = 1;
-  string sha256_hex = 3;
+  string sha256_hex = 3; // SHA-256 checksum of the file.
+  optional uint64 size = 4; // Size of the file in bytes — ignored in MountBuild().
+  optional uint32 mode = 5; // Unix file permission bits `st_mode`.
 }
 
 message MountPutFileRequest {
