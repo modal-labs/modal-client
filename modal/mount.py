@@ -239,7 +239,7 @@ class _Mount(_Object, type_prefix="mo"):
                 futs.append(loop.run_in_executor(exe, get_file_upload_spec, local_filename, remote_filename))
 
             logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} workers")
-            for i, fut in enumerate(asyncio.as_completed(futs)):
+            for fut in asyncio.as_completed(futs):
                 try:
                     yield await fut
                 except FileNotFoundError as exc:
@@ -270,7 +270,11 @@ class _Mount(_Object, type_prefix="mo"):
             )
 
             remote_filename = file_spec.mount_filename
-            mount_file = api_pb2.MountFile(filename=remote_filename, sha256_hex=file_spec.sha256_hex)
+            mount_file = api_pb2.MountFile(
+                filename=remote_filename,
+                sha256_hex=file_spec.sha256_hex,
+                mode=file_spec.mode,
+            )
 
             if file_spec.sha256_hex in uploaded_hashes:
                 return mount_file
