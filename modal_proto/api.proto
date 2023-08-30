@@ -794,6 +794,8 @@ message Sandbox {
   uint32 timeout_secs = 7;
 
   optional string workdir = 8;
+
+  repeated SharedVolumeMount nfs_mounts = 9;
 }
 
 message SandboxCreateRequest {
