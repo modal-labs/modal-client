@@ -156,6 +156,7 @@ _SETTINGS = {
     "function_runtime": _Setting(),
     "environment": _Setting(),
     "default_cloud": _Setting(None, transform=lambda x: x if x else None),
+    "worker_id": _Setting(),  # For internal debugging use.
 }
 
 
