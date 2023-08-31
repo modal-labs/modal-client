@@ -809,6 +809,7 @@ class _Function(_Object, type_prefix="fu"):
                 stub_name=stub_name,
                 is_builder_function=is_builder_function,
                 allow_concurrent_inputs=allow_concurrent_inputs,
+                worker_id=config.get("worker_id"),
             )
             request = api_pb2.FunctionCreateRequest(
                 app_id=resolver.app_id,
