@@ -751,6 +751,21 @@ class _Function(_Object, type_prefix="fu"):
                 # otherwise we can't capture a surrounding class for lifetime methods etc.
                 function_serialized = info.serialized_function()
                 class_serialized = serialize(cls) if cls is not None else None
+
+                # Ensure that large data in global variables does not blow up the gRPC payload,
+                # which has maximum size 100 MiB. We set the limit lower for performance reasons.
+                if len(function_serialized) > 16 << 20:  # 16 MiB
+                    raise InvalidError(
+                        f"Function {info.raw_f} has size {len(function_serialized)} bytes when packaged. "
+                        "This is larger than the maximum limit of 16 MiB. "
+                        "Try reducing the size of the closure by using parameters or mounts, not large global variables."
+                    )
+                elif len(function_serialized) > 256 << 10:  # 256 KiB
+                    warnings.warn(
+                        f"Function {info.raw_f} has size {len(function_serialized)} bytes when packaged. "
+                        "This is larger than the recommended limit of 256 KiB. "
+                        "Try reducing the size of the closure by using parameters or mounts, not large global variables."
+                    )
             else:
                 function_serialized = None
                 class_serialized = None
@@ -810,6 +825,8 @@ class _Function(_Object, type_prefix="fu"):
                     raise InvalidError(exc.message)
                 if exc.status == Status.FAILED_PRECONDITION:
                     raise InvalidError(exc.message)
+                if "Received :status = '413'" in exc.message:
+                    raise InvalidError(f"Function {raw_f} is too large to deploy.")
                 raise
 
             if response.function.web_url:
@@ -861,21 +878,21 @@ class _Function(_Object, type_prefix="fu"):
 
         return obj
 
-    @staticmethod
-    def from_parametrized(base_function: "_Function", *args: Iterable[Any], **kwargs: Dict[str, Any]) -> "_Function":
-        assert base_function._is_hydrated, "Cannot make bound function handle from unhydrated handle."
+    def from_parametrized(self, args: Iterable[Any], kwargs: Dict[str, Any]) -> "_Function":
+        assert self._is_hydrated, "Cannot make bound function handle from unhydrated handle."
 
         async def _load(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             serialized_params = pickle.dumps((args, kwargs))  # TODO(erikbern): use modal._serialization?
             req = api_pb2.FunctionBindParamsRequest(
-                function_id=base_function._object_id,
+                function_id=self._object_id,
                 serialized_params=serialized_params,
             )
-            response = await retry_transient_errors(resolver.client.stub.FunctionBindParams, req)
-            provider._hydrate(response.bound_function_id, resolver.client, response.handle_metadata)
-            provider._is_remote_cls_method = True
+            response = await retry_transient_errors(self._client.stub.FunctionBindParams, req)
+            provider._hydrate(response.bound_function_id, self._client, response.handle_metadata)
 
-        return _Function._from_loader(_load, "Function(parametrized)")
+        provider = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
+        provider._is_remote_cls_method = True
+        return provider
 
     def get_panel_items(self) -> List[str]:
         """mdmd:hidden"""

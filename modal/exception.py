@@ -1,4 +1,6 @@
 # Copyright Modal Labs 2022
+import random
+import signal
 import sys
 import warnings
 from datetime import date
@@ -114,3 +116,38 @@ def deprecation_warning(deprecated_on: date, msg: str, pending=False):
 
     # This is a lower-level function that warnings.warn uses
     warnings.warn_explicit(f"{deprecated_on}: {msg}", warning_cls, filename, lineno)
+
+
+def _simulate_preemption_interrupt(signum, frame):
+    signal.alarm(30)  # simulate a SIGKILL after 30s
+    raise KeyboardInterrupt("Simulated preemption interrupt from modal-client!")
+
+
+def simulate_preemption(wait_seconds: int, jitter_seconds: int = 0):
+    """
+    Utility for simulating a preemption interrupt after `wait_seconds` seconds.
+    The first interrupt is the SIGINT/SIGTERM signal. After 30 seconds a second
+    interrupt will trigger. This second interrupt simulates SIGKILL, and should not be caught.
+    Optionally add between zero and `jitter_seconds` seconds of additional waiting before first interrupt.
+
+    **Usage:**
+
+    ```python notest
+    import time
+    from modal.exception import simulate_preemption
+
+    simulate_preemption(3)
+
+    try:
+        time.sleep(4)
+    except KeyboardInterrupt:
+        print("got preempted") # Handle interrupt
+        raise
+    ```
+
+    See https://modal.com/docs/guide/preemption for more details on preemption
+    handling.
+    """
+    signal.signal(signal.SIGALRM, _simulate_preemption_interrupt)
+    jitter = random.randrange(0, jitter_seconds) if jitter_seconds else 0
+    signal.alarm(wait_seconds + jitter)

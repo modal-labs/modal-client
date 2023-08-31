@@ -372,19 +372,6 @@ _is_container_app = False
 _container_app = _App(None, None, None, None)
 container_app = synchronize_api(_container_app)
 assert isinstance(container_app, App)
-__doc__container_app = """A reference to the running `modal.App`, accessible from within a running Modal function.
-Useful for accessing object handles for any Modal objects declared on the stub, e.g:
-
-```python
-stub = modal.Stub()
-stub.data = modal.Dict()
-
-@stub.function()
-def store_something(key, value):
-    data: modal.Dict = modal.container_app.data
-    data.put(key, value)
-```
-"""
 
 
 def is_local() -> bool:

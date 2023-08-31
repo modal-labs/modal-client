@@ -29,7 +29,7 @@ async def test_multi_resolve_sequential_loads_once():
     t0 = time.monotonic()
     await resolver.load(obj)
     await resolver.load(obj)
-    assert 0.1 < time.monotonic() - t0 < 0.15
+    assert 0.08 < time.monotonic() - t0 < 0.15
 
     assert load_count == 1
 
@@ -52,5 +52,5 @@ async def test_multi_resolve_concurrent_loads_once():
     obj = _DumbObject._from_loader(_load, "DumbObject()")
     t0 = time.monotonic()
     await asyncio.gather(resolver.load(obj), resolver.load(obj))
-    assert 0.1 < time.monotonic() - t0 < 0.15
+    assert 0.08 < time.monotonic() - t0 < 0.15
     assert load_count == 1

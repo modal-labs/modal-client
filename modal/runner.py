@@ -37,6 +37,7 @@ async def _run_stub(
     environment_name: Optional[str] = None,
     shell=False,
 ) -> AsyncGenerator[_App, None]:
+    """mdmd:hidden"""
     if environment_name is None:
         environment_name = config.get("environment")
 
@@ -127,6 +128,7 @@ async def _serve_update(
     is_ready: Event,
     environment_name: str,
 ) -> None:
+    """mdmd:hidden"""
     # Used by child process to reinitialize a served app
     client = await _Client.from_env()
     try:
