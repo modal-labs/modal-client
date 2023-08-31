@@ -137,7 +137,7 @@ class _Object:
 
     @classmethod
     async def from_id(cls: Type[O], object_id: str, client: Optional[_Client] = None) -> O:
-        """Get an object of this type from a unique object id (retrieved from `obj.object_id`)"""
+        """Retrieve an object from its unique ID (accessed through `obj.object_id`)."""
         # This is used in a few examples to construct FunctionCall objects
         if client is None:
             client = await _Client.from_env()
@@ -266,18 +266,24 @@ class _Object:
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
     ) -> O:
-        """Returns a reference to an Modal object of any type
+        """Retrieve an object with a given name and tag.
 
-        Useful for referring to already created/deployed objects, e.g., Secrets
+        Useful for referencing secrets, as well as calling a function from a different app.
+        Use this when attaching the object to a stub or function.
 
-        ```python
-        import modal
+        **Examples**
 
-        stub = modal.Stub()
+        ```python notest
+        # Retrieve a secret
+        stub.my_secret = Secret.from_name("my-secret")
 
-        @stub.function(secret=modal.Secret.from_name("my-secret-name"))
-        def some_function():
-            pass
+        # Retrieve a function from a different app
+        stub.other_function = Function.from_name("other-app", "function")
+
+        # Retrieve a persisted Volume, Queue, or Dict
+        stub.my_volume = Volume.from_name("my-volume")
+        stub.my_queue = Queue.from_name("my-queue")
+        stub.my_dict = Dict.from_name("my-dict")
         ```
         """
 
@@ -304,15 +310,24 @@ class _Object:
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
     ) -> O:
-        """
-        General purpose method to retrieve Modal objects such as functions, network file systems, and secrets.
+        """Lookup an object with a given name and tag.
+
+        This is a general-purpose method for objects like functions, network file systems,
+        and secrets. It gives a reference to the object in a running app.
+
+        **Examples**
+
         ```python notest
-        import modal
-        square = modal.Function.lookup("my-shared-app", "square")
-        assert square(3) == 9
-        nfs = modal.NetworkFileSystem.lookup("my-nfs")
-        for chunk in nfs.read_file("my_db_dump.csv"):
-            ...
+        # Lookup a secret
+        my_secret = Secret.lookup("my-secret")
+
+        # Lookup a function from a different app
+        other_function = Function.lookup("other-app", "function")
+
+        # Lookup a persisted Volume, Queue, or Dict
+        my_volume = Volume.lookup("my-volume")
+        my_queue = Queue.lookup("my-queue")
+        my_dict = Dict.lookup("my-dict")
         ```
         """
         # TODO(erikbern): this code is very duplicated. Clean up once handles are gone.
@@ -331,9 +346,7 @@ class _Object:
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
     ) -> bool:
-        """
-        Internal for now - will make this "public" later.
-        """
+        """Internal for now - will make this "public" later."""
         if client is None:
             client = await _Client.from_env()
         if environment_name is None:

@@ -16,21 +16,36 @@ from .object import _Object
 
 
 class _Queue(_Object, type_prefix="qu"):
-    """A distributed, FIFO Queue available to Modal apps.
+    """Distributed, FIFO queue for data flow in Modal apps.
 
-    The queue can contain any object serializable by `cloudpickle`.
+    The queue can contain any object serializable by `cloudpickle`, including Modal objects.
+
+    **Usage**
+
+    Create a new `Queue` with `Queue.new()`, then assign it to a stub or function.
 
     ```python
-    stub.some_queue = modal.Queue.new()
+    from modal import Queue, Stub
 
-    if __name__ == "__main__":
-        with stub.run():
-            stub.some_queue.put({"some": "object"})
+    stub = Stub()
+    stub.my_queue = Queue.new()
+
+    @stub.local_entrypoint()
+    def main():
+        stub.my_queue.put("some value")
+        stub.my_queue.put(123)
+
+        assert stub.my_queue.get() == "some value"
+        assert stub.my_queue.get() == 123
     ```
+
+    For more examples, see the [guide](/docs/guide/dicts-and-queues#modal-queues).
     """
 
     @staticmethod
     def new():
+        """Create an empty Queue."""
+
         async def _load(provider: _Queue, resolver: Resolver, existing_object_id: Optional[str]):
             request = api_pb2.QueueCreateRequest(app_id=resolver.app_id, existing_queue_id=existing_object_id)
             response = await resolver.client.stub.QueueCreate(request)
@@ -39,8 +54,8 @@ class _Queue(_Object, type_prefix="qu"):
         return _Queue._from_loader(_load, "Queue()")
 
     def __init__(self):
-        """`Queue({...})` is deprecated. Please use `Queue.new({...})` instead."""
-        deprecation_error(date(2023, 6, 27), self.__init__.__doc__)
+        """mdmd:hidden"""
+        deprecation_error(date(2023, 6, 27), "`Queue()` is deprecated. Please use `Queue.new()` instead.")
         obj = _Queue.new()
         self._init_from_other(obj)
 
@@ -48,9 +63,22 @@ class _Queue(_Object, type_prefix="qu"):
     def persisted(
         label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
     ) -> "_Queue":
-        return _Queue.new()._persist(label, namespace, environment_name)
+        """Deploy a Modal app containing this object.
 
-    # Live handle methods
+        The deployed object can then be imported from other apps, or by calling
+        `Queue.from_name(label)` from that same app.
+
+        **Examples**
+
+        ```python notest
+        # In one app:
+        stub.queue = Queue.persisted("my-queue")
+
+        # Later, in another app or Python file:
+        stub.queue = Queue.from_name("my-queue")
+        ```
+        """
+        return _Queue.new()._persist(label, namespace, environment_name)
 
     async def _get_nonblocking(self, n_values: int) -> List[Any]:
         request = api_pb2.QueueGetRequest(
@@ -97,8 +125,8 @@ class _Queue(_Object, type_prefix="qu"):
         """Remove and return the next object in the queue.
 
         If `block` is `True` (the default) and the queue is empty, `get` will wait indefinitely for
-        an object, or until `timeout` if a `timeout` is specified. Raises the native Python `queue.Empty`
-        exception if the `timeout` is reached.
+        an object, or until `timeout` if specified. Raises a native `queue.Empty` exception
+        if the `timeout` is reached.
 
         If `block` is `False`, `get` returns `None` immediately if the queue is empty. The `timeout` is
         ignored in this case.
@@ -119,10 +147,11 @@ class _Queue(_Object, type_prefix="qu"):
     async def get_many(self, n_values: int, block: bool = True, timeout: Optional[float] = None) -> List[Any]:
         """Remove and return up to `n_values` objects from the queue.
 
+        If there are fewer than `n_values` items in the queue, return all of them.
+
         If `block` is `True` (the default) and the queue is empty, `get` will wait indefinitely for
-        the next object, or until `timeout` if a `timeout` is specified. Raises the native Python `queue.Empty`
-        exception if the `timeout` is reached. Returns as many objects as are available (less then `n_values`)
-        as soon as the queue becomes non-empty.
+        at least 1 object to be present, or until `timeout` if specified. Raises a native `queue.Empty`
+        exception if the `timeout` is reached.
 
         If `block` is `False`, `get` returns `None` immediately if the queue is empty. The `timeout` is
         ignored in this case.
@@ -137,19 +166,15 @@ class _Queue(_Object, type_prefix="qu"):
 
     async def put(self, v: Any) -> None:
         """Add an object to the end of the queue."""
-
         await self.put_many([v])
 
     async def put_many(self, vs: List[Any]) -> None:
         """Add several objects to the end of the queue."""
-
         vs_encoded = [serialize(v) for v in vs]
-
         request = api_pb2.QueuePutRequest(
             queue_id=self.object_id,
             values=vs_encoded,
         )
-
         await retry_transient_errors(self._client.stub.QueuePut, request)
 
     async def len(self) -> int:
