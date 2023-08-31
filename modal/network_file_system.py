@@ -95,25 +95,24 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         environment_name: Optional[str] = None,
         cloud: Optional[str] = None,
     ) -> "_NetworkFileSystem":
-        """Deploy a Modal app containing this object. This object can then be imported from other apps using
-        the returned reference, or by calling `modal.NetworkFileSystem.from_name(label)` (or the equivalent method
-        on respective class).
+        """Deploy a Modal app containing this object.
 
-        **Example Usage**
+        The deployed object can then be imported from other apps, or by calling
+        `NetworkFileSystem.from_name(label)` from that same app.
 
-        ```python
-        import modal
+        **Examples**
 
-        volume = modal.NetworkFileSystem.persisted("my-volume")
+        ```python notest
+        # In one app:
+        volume = NetworkFileSystem.persisted("my-volume")
 
-        stub = modal.Stub()
+        # Later, in another app or Python file:
+        volume = NetworkFileSystem.from_name("my-volume")
 
-        # Volume refers to the same object, even across instances of `stub`.
         @stub.function(network_file_systems={"/vol": volume})
         def f():
             pass
         ```
-
         """
         return _NetworkFileSystem.new(cloud)._persist(label, namespace, environment_name)
 
