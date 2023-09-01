@@ -3,13 +3,11 @@ import asyncio
 import inspect
 import os
 import pickle
-import posixpath
 import time
 import typing
 import warnings
 from dataclasses import dataclass
 from datetime import date
-from pathlib import PurePath
 from typing import (
     Any,
     AsyncGenerator,
@@ -22,7 +20,6 @@ from typing import (
     List,
     Optional,
     Set,
-    Tuple,
     Union,
 )
 
@@ -50,6 +47,7 @@ from ._blob_utils import (
 )
 from ._function_utils import FunctionInfo
 from ._location import parse_cloud_provider
+from ._mount_utils import validate_mount_points
 from ._output import OutputManager
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
@@ -67,7 +65,7 @@ from .exception import (
 from .gpu import GPU_T, display_gpu_config, parse_gpu_config
 from .image import _Image
 from .mount import _get_client_mount, _Mount
-from .network_file_system import _NetworkFileSystem
+from .network_file_system import _NetworkFileSystem, load_network_file_systems
 from .object import _Object, live_method, live_method_gen
 from .proxy import _Proxy
 from .retries import Retries
@@ -646,26 +644,6 @@ class _Function(_Object, type_prefix="fu"):
             else:
                 proxy_id = None
 
-            # Mount point path validation for volumes and network file systems.
-            def _validate_mount_points(
-                display_name: str, volume_likes: Dict[Union[str, os.PathLike], Union[_Volume, _NetworkFileSystem]]
-            ) -> List[Tuple[str, Union[_Volume, _NetworkFileSystem]]]:
-                validated = []
-                for path, vol in volume_likes.items():
-                    path = PurePath(path).as_posix()
-                    abs_path = posixpath.abspath(path)
-
-                    if path != abs_path:
-                        raise InvalidError(f"{display_name} {path} must be a canonical, absolute path.")
-                    elif abs_path == "/":
-                        raise InvalidError(f"{display_name} {path} cannot be mounted into root directory.")
-                    elif abs_path == "/root":
-                        raise InvalidError(f"{display_name} {path} cannot be mounted at '/root'.")
-                    elif abs_path == "/tmp":
-                        raise InvalidError(f"{display_name} {path} cannot be mounted at '/tmp'.")
-                    validated.append((path, vol))
-                return validated
-
             async def _load_ids(providers) -> List[str]:
                 loaded_handles = await asyncio.gather(*[resolver.load(provider) for provider in providers])
                 return [handle.object_id for handle in loaded_handles]
@@ -680,29 +658,10 @@ class _Function(_Object, type_prefix="fu"):
                 return image_id
 
             # validation
-            if not isinstance(network_file_systems, dict):
-                raise InvalidError(
-                    "network_file_systems must be a dict[str, NetworkFileSystem] where the keys are paths"
-                )
-            validated_network_file_systems = _validate_mount_points("Shared volume", network_file_systems)
-
-            async def network_file_system_loader():
-                network_file_system_mounts = []
-                volume_ids = await _load_ids([vol for _, vol in validated_network_file_systems])
-                # Relies on dicts being ordered (true as of Python 3.6).
-                for (path, _), volume_id in zip(validated_network_file_systems, volume_ids):
-                    network_file_system_mounts.append(
-                        api_pb2.SharedVolumeMount(
-                            mount_path=path,
-                            shared_volume_id=volume_id,
-                            allow_cross_region=allow_cross_region_volumes,
-                        )
-                    )
-                return network_file_system_mounts
 
             if not isinstance(volumes, dict):
                 raise InvalidError("volumes must be a dict[str, Volume] where the keys are paths")
-            validated_volumes = _validate_mount_points("Volume", volumes)
+            validated_volumes = validate_mount_points("Volume", volumes)
             # We don't support mounting a volume in more than one location
             volume_to_paths: Dict[_Volume, List[str]] = {}
             for path, volume in validated_volumes:
@@ -778,7 +737,7 @@ class _Function(_Object, type_prefix="fu"):
                 _load_ids(all_mounts),
                 _load_ids(secrets),
                 image_loader(),
-                network_file_system_loader(),
+                load_network_file_systems(network_file_systems, allow_cross_region_volumes, resolver),
                 volume_loader(),
             )
 

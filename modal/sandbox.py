@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
-from typing import List, Optional, Sequence
+import os
+from typing import Dict, List, Optional, Sequence, Union
 
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
@@ -15,6 +16,7 @@ from .client import _Client
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
 from .mount import _Mount
+from .network_file_system import _NetworkFileSystem, load_network_file_systems
 from .object import _Object
 from .secret import _Secret
 
@@ -111,6 +113,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         cloud: Optional[str] = None,
         cpu: Optional[float] = None,
         memory: Optional[int] = None,
+        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
     ) -> "_Sandbox":
         """mdmd:hidden"""
 
@@ -134,7 +137,12 @@ class _Sandbox(_Object, type_prefix="sb"):
                 raise InvalidError(f"Invalid fractional CPU value {cpu}. Cannot have less than 0.25 CPU resources.")
             milli_cpu = int(1000 * cpu) if cpu is not None else None
 
-            image_id, mount_ids, secret_ids = await asyncio.gather(_load_image(), _load_ids(mounts), _load_ids(secrets))
+            image_id, mount_ids, secret_ids, nfs_mounts = await asyncio.gather(
+                _load_image(),
+                _load_ids(mounts),
+                _load_ids(secrets),
+                load_network_file_systems(network_file_systems, False, resolver),
+            )
             definition = api_pb2.Sandbox(
                 entrypoint_args=entrypoint_args,
                 image_id=image_id,
@@ -144,6 +152,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 workdir=workdir,
                 resources=api_pb2.Resources(gpu_config=gpu_config, milli_cpu=milli_cpu, memory_mb=memory),
                 cloud_provider=cloud_provider,
+                nfs_mounts=nfs_mounts,
             )
 
             create_req = api_pb2.SandboxCreateRequest(app_id=resolver.app_id, definition=definition)
