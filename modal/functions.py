@@ -853,7 +853,7 @@ class _Function(_Object, type_prefix="fu"):
         if len(args) + len(kwargs) == 0:
             # Edge case that lets us hydrate all objects right away
             provider._hydrate_from_other(self)
-        provider._is_remote_cls_method = True
+        provider._is_remote_cls_method = True  # TODO(erikbern): deprecated
         provider._info = self._info
         provider._obj = obj
         return provider
@@ -1151,8 +1151,12 @@ class _Function(_Object, type_prefix="fu"):
 
     @synchronizer.nowrap
     def __call__(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
-        if self._get_is_remote_cls_method():  # TODO(elias): change parametrization so this is isn't needed
-            # TODO(erikbern): deprecate this soon too
+        if self._get_is_remote_cls_method():
+            deprecation_warning(
+                date(2023, 9, 1),
+                "Calling remote class methods like `obj.f(...)` is deprecated. Use `obj.f.remote(...)` for remote calls"
+                " and `obj.f.local(...)` for local calls",
+            )
             return self.remote(*args, **kwargs)
 
         deprecation_warning(

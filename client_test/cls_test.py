@@ -8,6 +8,7 @@ from typing_extensions import assert_type
 from modal import Function, Stub, method
 from modal._serialization import deserialize
 from modal.cls import ClsMixin
+from modal.exception import DeprecationError
 from modal_proto import api_pb2
 
 stub = Stub()
@@ -59,11 +60,14 @@ class FooRemote(ClsMixin):
 
 def test_call_cls_remote_sync(client):
     with stub_remote.run(client=client):
-        foo_remote: FooRemote = FooRemote.remote(3, "hello")
+        foo_remote: FooRemote
+        with pytest.warns(DeprecationError):
+            foo_remote = FooRemote.remote(3, "hello")
         # Mock servicer just squares the argument
         # This means remote function call is taking place.
         assert foo_remote.bar.remote(8) == 64
-        assert foo_remote.bar(8) == 64
+        with pytest.warns(DeprecationError):
+            assert foo_remote.bar(8) == 64
 
         # Check new syntax
         foo_remote_2: FooRemote = FooRemote(3, "hello")
@@ -80,7 +84,7 @@ def test_call_cls_remote_invalid_type(client):
             print("Hello, world!")
 
         with pytest.raises(ValueError) as excinfo:
-            FooRemote.remote(42, my_function)
+            FooRemote(42, my_function)
 
         exc = excinfo.value
         assert "function" in str(exc)
@@ -99,6 +103,8 @@ class Bar:
 @pytest.mark.asyncio
 async def test_call_class_async(client, servicer):
     async with stub_2.run(client=client):
+        with pytest.warns(DeprecationError):
+            bar = await Bar.remote.aio()
         bar = Bar()
         assert await bar.baz.remote.aio(42) == 1764
 
@@ -151,11 +157,13 @@ async def test_call_cls_remote_async(client):
     async with stub_remote_2.run(client=client):
         coro = BarRemote.remote.aio(3, "hello")  # type: ignore
         assert inspect.iscoroutine(coro)
-        bar_remote = await coro
+        with pytest.warns(DeprecationError):
+            bar_remote = await coro
         # Mock servicer just squares the argument
         # This means remote function call is taking place.
         assert await bar_remote.baz.remote.aio(8) == 64
-        assert bar_remote.baz(8) == 64
+        with pytest.warns(DeprecationError):
+            assert bar_remote.baz(8) == 64
 
 
 stub_local = Stub()
@@ -202,10 +210,16 @@ class NoArgRemote(ClsMixin):
 
 def test_call_cls_remote_no_args(client):
     with stub_remote_3.run(client=client):
-        foo_remote = NoArgRemote.remote()
+        with pytest.warns(DeprecationError):
+            foo_remote = NoArgRemote.remote()
         # Mock servicer just squares the argument
         # This means remote function call is taking place.
         assert foo_remote.baz(8) == 64
+        with pytest.warns(DeprecationError):
+            assert foo_remote.baz(8) == 64
+
+        foo_remote = NoArgRemote()
+        assert foo_remote.baz.remote(8) == 64
 
 
 if TYPE_CHECKING:
