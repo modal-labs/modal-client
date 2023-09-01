@@ -221,6 +221,7 @@ def test_call_cls_remote_no_args(client):
 
 def test_deprecated_mixin():
     with pytest.warns(DeprecationError):
+
         class FooRemote(ClsMixin):
             pass
 
