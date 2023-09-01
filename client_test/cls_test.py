@@ -1,11 +1,13 @@
 # Copyright Modal Labs 2022
 import inspect
 import pytest
+from typing import TYPE_CHECKING
 
-from modal import Stub, method
+from typing_extensions import assert_type
+
+from modal import Function, Stub, method
 from modal._serialization import deserialize
 from modal.cls import ClsMixin
-from modal.functions import Function
 from modal_proto import api_pb2
 
 stub = Stub()
@@ -14,8 +16,8 @@ stub = Stub()
 @stub.cls(cpu=42)
 class Foo:
     @method()
-    def bar(self, x):
-        return x**3
+    def bar(self, x: int) -> float:
+        return x**3.5
 
 
 def test_run_class(client, servicer):
@@ -33,8 +35,9 @@ def test_run_class(client, servicer):
 
 def test_call_class_sync(client, servicer):
     with stub.run(client=client):
-        foo = Foo()
-        assert foo.bar.remote(42) == 1764
+        foo: Foo = Foo()
+        ret: float = foo.bar.remote(42)
+        assert ret == 1764
 
 
 # Reusing the stub runs into an issue with stale function handles.
@@ -56,11 +59,18 @@ class FooRemote(ClsMixin):
 
 def test_call_cls_remote_sync(client):
     with stub_remote.run(client=client):
-        foo_remote = FooRemote.remote(3, "hello")
+        foo_remote: FooRemote = FooRemote.remote(3, "hello")
         # Mock servicer just squares the argument
         # This means remote function call is taking place.
         assert foo_remote.bar.remote(8) == 64
         assert foo_remote.bar(8) == 64
+
+        # Check new syntax
+        foo_remote_2: FooRemote = FooRemote(3, "hello")
+        ret: float = foo_remote_2.bar.remote(8)
+        assert ret == 64
+        ret_2: float = foo_remote_2.bar(8)
+        assert ret_2 == 64
 
 
 def test_call_cls_remote_invalid_type(client):
@@ -118,7 +128,6 @@ def test_run_class_serialized(client, servicer):
     obj = cls()
     meth = fun.__get__(obj, cls)
 
-    assert isinstance(obj.bar, Function)
     # Make sure it's callable
     assert meth(100) == 1000000
 
@@ -197,3 +206,9 @@ def test_call_cls_remote_no_args(client):
         # Mock servicer just squares the argument
         # This means remote function call is taking place.
         assert foo_remote.baz(8) == 64
+
+
+if TYPE_CHECKING:
+    # Check that type annotations carry through to the decorated classes
+    assert_type(Foo(), Foo)
+    assert_type(Foo().bar, Function)

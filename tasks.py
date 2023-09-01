@@ -133,9 +133,11 @@ build-backend = "setuptools.build_meta"
 @task
 def type_stubs(ctx):
     # we only generate type stubs for modules that contain synchronicity wrapped types
+    # TODO(erikbern): can we automate this list?
     modules = [
         "modal.app",
         "modal.client",
+        "modal.cls",
         "modal.dict",
         "modal.environments",
         "modal.functions",
