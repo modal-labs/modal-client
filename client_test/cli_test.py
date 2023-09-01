@@ -48,6 +48,7 @@ def _run(args: List[str], expected_exit_code: int = 0, expected_stderr: Optional
         res = runner.invoke(entrypoint_cli, args)
     if res.exit_code != expected_exit_code:
         print("stdout:", repr(res.stdout))
+        print("stderr:", repr(res.stderr))
         traceback.print_tb(res.exc_info[2])
         print(res.exception, file=sys.stderr)
         assert res.exit_code == expected_exit_code

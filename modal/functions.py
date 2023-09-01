@@ -495,7 +495,7 @@ class _Function(_Object, type_prefix="fu"):
     _info: FunctionInfo
     _all_mounts: Collection[_Mount]
     _stub: "modal.stub._Stub"
-    _self_obj: Any
+    _obj: Any
     _web_url: Optional[str]
     _is_remote_cls_method: bool = False
     _function_name: Optional[str]
@@ -823,7 +823,7 @@ class _Function(_Object, type_prefix="fu"):
         obj._all_mounts = all_mounts  # needed for modal.serve file watching
         obj._panel_items = panel_items
         obj._stub = stub  # Needed for CLI right now
-        obj._self_obj = None
+        obj._obj = None
         obj._is_generator = is_generator
 
         # Used to check whether we should rebuild an image using run_function
@@ -838,10 +838,9 @@ class _Function(_Object, type_prefix="fu"):
 
         return obj
 
-    def from_parametrized(self, args: Iterable[Any], kwargs: Dict[str, Any]) -> "_Function":
-        assert self._is_hydrated, "Cannot make bound function handle from unhydrated handle."
-
+    def from_parametrized(self, obj, args: Iterable[Any], kwargs: Dict[str, Any]) -> "_Function":
         async def _load(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
+            assert self._is_hydrated, "Cannot make bound function handle from unhydrated handle."
             serialized_params = pickle.dumps((args, kwargs))  # TODO(erikbern): use modal._serialization?
             req = api_pb2.FunctionBindParamsRequest(
                 function_id=self._object_id,
@@ -851,7 +850,12 @@ class _Function(_Object, type_prefix="fu"):
             provider._hydrate(response.bound_function_id, self._client, response.handle_metadata)
 
         provider = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
+        if len(args) + len(kwargs) == 0:
+            # Edge case that lets us hydrate all objects right away
+            provider._hydrate_from_other(self)
         provider._is_remote_cls_method = True
+        provider._info = self._info
+        provider._obj = obj
         return provider
 
     def get_panel_items(self) -> List[str]:
@@ -874,12 +878,6 @@ class _Function(_Object, type_prefix="fu"):
     def get_build_def(self) -> str:
         """mdmd:hidden"""
         return f"{inspect.getsource(self._raw_f)}\n{repr(self._build_args)}"
-
-    def _bind_obj(self, obj, objtype):
-        # This is needed to bind "self" to methods for direct __call__
-        # TODO(erikbern): we're mutating self directly here, as opposed to returning a different _FunctionHandle
-        # We should fix this in the future since it probably precludes using classmethods/staticmethods
-        self._self_obj = obj
 
     # Live handle methods
 
@@ -1129,7 +1127,7 @@ class _Function(_Object, type_prefix="fu"):
         return self._info
 
     def _get_self_obj(self):
-        return self._self_obj
+        return self._obj.get_local_obj() if self._obj else None
 
     @synchronizer.nowrap
     def local(self, *args, **kwargs) -> Any:
@@ -1320,14 +1318,6 @@ def _set_current_input_id(input_id: Optional[str]):
 class _PartialFunction:
     """Intermediate function, produced by @method or @web_endpoint"""
 
-    @staticmethod
-    def initialize_cls(user_cls: type, functions: Dict[str, _Function]):
-        user_cls._modal_functions = functions
-
-    @staticmethod
-    def initialize_obj(user_obj, functions: Dict[str, _Function]):
-        user_obj._modal_functions = functions
-
     def __init__(
         self,
         raw_f: Callable[..., Any],
@@ -1340,12 +1330,12 @@ class _PartialFunction:
         self.wrapped = False  # Make sure that this was converted into a FunctionHandle
 
     def __get__(self, obj, objtype=None) -> _Function:
+        # This only happens inside user methods when they refer to other methods
         k = self.raw_f.__name__
         if obj:  # Cls().fun
-            function = obj._modal_functions[k]
+            function = getattr(obj, "_modal_functions")[k]
         else:  # Cls.fun
-            function = objtype._modal_functions[k]
-        function._bind_obj(obj, objtype)  # TODO(erikbern): don't mutate
+            function = getattr(objtype, "_modal_functions")[k]
         return function
 
     def __del__(self):

@@ -16,7 +16,7 @@ from ._ipython import is_notebook
 from ._output import OutputManager
 from .app import _App, _container_app, is_local
 from .client import _Client
-from .cls import make_remote_cls_constructors
+from .cls import _Cls
 from .config import logger
 from .exception import InvalidError, deprecation_error
 from .functions import PartialFunction, _Function, _PartialFunction
@@ -544,7 +544,7 @@ class _Stub:
         interactive: bool = False,  # Whether to run the function in interactive mode.
         keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
-    ) -> Callable[[CLS_T], CLS_T]:
+    ) -> Callable[[CLS_T], _Cls]:
         decorator: Callable[[PartialFunction, type], _Function] = self.function(
             image=image,
             secret=secret,
@@ -569,7 +569,7 @@ class _Stub:
             cloud=cloud,
         )
 
-        def wrapper(user_cls: CLS_T) -> CLS_T:
+        def wrapper(user_cls: CLS_T) -> _Cls:
             partial_functions: Dict[str, PartialFunction] = {}
             functions: Dict[str, _Function] = {}
 
@@ -579,10 +579,7 @@ class _Stub:
                     partial_function = synchronizer._translate_in(v)  # TODO: remove need for?
                     functions[k] = decorator(partial_function, user_cls)
 
-            _PartialFunction.initialize_cls(user_cls, functions)
-            remote = make_remote_cls_constructors(user_cls, partial_functions, functions)
-            user_cls.remote = remote
-            return user_cls
+            return _Cls(user_cls, functions)
 
         return wrapper
 
