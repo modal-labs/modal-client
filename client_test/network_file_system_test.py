@@ -4,7 +4,6 @@ from unittest import mock
 
 import modal
 from modal.exception import DeprecationError, InvalidError
-from modal.network_file_system import NetworkFileSystem
 from modal.runner import deploy_stub
 
 from .supports.skip import skip_windows
@@ -113,15 +112,10 @@ async def test_network_file_system_handle_big_file(client, tmp_path, servicer, b
 
 def test_old_syntax(client, servicer):
     stub = modal.Stub()
-    with pytest.warns(DeprecationError):
+    with pytest.raises(DeprecationError):
         stub.vol1 = modal.SharedVolume()
-    with pytest.warns(DeprecationError):
+    with pytest.raises(DeprecationError):
         stub.vol2 = modal.SharedVolume.new()
-    stub.vol3 = modal.NetworkFileSystem.new()
-    with stub.run(client=client):
-        assert isinstance(stub.vol1, NetworkFileSystem)
-        assert isinstance(stub.vol2, NetworkFileSystem)
-        assert isinstance(stub.vol3, NetworkFileSystem)
 
 
 def test_redeploy(servicer, client):
