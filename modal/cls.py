@@ -12,6 +12,11 @@ T = TypeVar("T")
 
 
 class ClsMixin:
+    def __init_subclass__(cls):
+        deprecation_warning(
+            date(2023, 9, 1), "`ClsMixin` is deprecated and can be safely removed."
+       )
+
     @classmethod
     def remote(cls: Type[T], *args, **kwargs) -> T:
         ...

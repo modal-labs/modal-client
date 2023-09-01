@@ -48,7 +48,7 @@ stub_remote = Stub()
 
 
 @stub_remote.cls(cpu=42)
-class FooRemote(ClsMixin):
+class FooRemote:
     def __init__(self, x: int, y: str) -> None:
         self.x = x
         self.y = y
@@ -142,7 +142,7 @@ stub_remote_2 = Stub()
 
 
 @stub_remote_2.cls(cpu=42)
-class BarRemote(ClsMixin):
+class BarRemote:
     def __init__(self, x: int, y: str) -> None:
         self.x = x
         self.y = y
@@ -199,7 +199,7 @@ stub_remote_3 = Stub()
 
 
 @stub_remote_3.cls(cpu=42)
-class NoArgRemote(ClsMixin):
+class NoArgRemote:
     def __init__(self) -> None:
         pass
 
@@ -220,6 +220,12 @@ def test_call_cls_remote_no_args(client):
 
         foo_remote = NoArgRemote()
         assert foo_remote.baz.remote(8) == 64
+
+
+def test_deprecated_mixin():
+    with pytest.warns(DeprecationError):
+        class FooRemote(ClsMixin):
+            pass
 
 
 if TYPE_CHECKING:
