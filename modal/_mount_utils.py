@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 def validate_mount_points(
     display_name: str, volume_likes: Dict[Union[str, os.PathLike], Union["_Volume", "_NetworkFileSystem"]]
-) -> List[Tuple[str, Union[_Volume, _NetworkFileSystem]]]:
+) -> List[Tuple[str, Union["_Volume", "_NetworkFileSystem"]]]:
     """Mount point path validation for volumes and network file systems."""
 
     validated = []
