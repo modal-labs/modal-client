@@ -18,7 +18,7 @@ from .app import _App, _container_app, is_local
 from .client import _Client
 from .cls import make_remote_cls_constructors
 from .config import logger
-from .exception import InvalidError, deprecation_warning
+from .exception import InvalidError, deprecation_error
 from .functions import PartialFunction, _Function, _PartialFunction
 from .gpu import GPU_T
 from .image import _Image
@@ -448,11 +448,10 @@ class _Stub:
         secrets = [*self._secrets, *secrets]
 
         if shared_volumes:
-            deprecation_warning(
+            deprecation_error(
                 date(2023, 7, 5),
                 "`shared_volumes` is deprecated. Use the argument `network_file_systems` instead.",
             )
-            network_file_systems = {**network_file_systems, **shared_volumes}
 
         def wrapped(
             f: Union[_PartialFunction, Callable[..., Any]],
