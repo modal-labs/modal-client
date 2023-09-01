@@ -62,7 +62,7 @@ def test_call_cls_remote_sync(client):
     with stub_remote.run(client=client):
         foo_remote: FooRemote
         with pytest.warns(DeprecationError):
-            foo_remote = FooRemote.remote(3, "hello")
+            foo_remote = FooRemote.remote(3, "hello")  # type: ignore
         # Mock servicer just squares the argument
         # This means remote function call is taking place.
         assert foo_remote.bar.remote(8) == 64
@@ -82,7 +82,7 @@ def test_call_cls_remote_invalid_type(client):
             print("Hello, world!")
 
         with pytest.raises(ValueError) as excinfo:
-            FooRemote(42, my_function)
+            FooRemote(42, my_function)  # type: ignore
 
         exc = excinfo.value
         assert "function" in str(exc)
@@ -102,7 +102,7 @@ class Bar:
 async def test_call_class_async(client, servicer):
     async with stub_2.run(client=client):
         with pytest.warns(DeprecationError):
-            bar = await Bar.remote.aio()
+            bar = await Bar.remote.aio()  # type: ignore
         bar = Bar()
         assert await bar.baz.remote.aio(42) == 1764
 
@@ -209,7 +209,7 @@ class NoArgRemote:
 def test_call_cls_remote_no_args(client):
     with stub_remote_3.run(client=client):
         with pytest.warns(DeprecationError):
-            foo_remote = NoArgRemote.remote()
+            foo_remote = NoArgRemote.remote()  # type: ignore
         # Mock servicer just squares the argument
         # This means remote function call is taking place.
         with pytest.warns(DeprecationError):
