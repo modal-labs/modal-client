@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
+import os
 from datetime import date
-from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, TypeVar
+from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, TypeVar, Union
 
 from google.protobuf.message import Message
 
@@ -14,6 +15,7 @@ from .client import _Client
 from .config import logger
 from .exception import deprecation_warning
 from .gpu import GPU_T
+from .network_file_system import _NetworkFileSystem
 from .object import _Object
 
 if TYPE_CHECKING:
@@ -326,6 +328,7 @@ class _App:
         image: Optional["modal.image._Image"] = None,  # The image to run as the container for the sandbox.
         mounts: Sequence["modal.mount._Mount"] = (),  # Mounts to attach to the sandbox.
         secrets: Sequence["modal.secret._Secret"] = (),  # Environment variables to inject into the sandbox.
+        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         timeout: Optional[int] = None,  # Maximum execution time of the sandbox in seconds.
         workdir: Optional[str] = None,  # Working directory of the sandbox.
         gpu: GPU_T = None,
@@ -354,6 +357,7 @@ class _App:
             cloud=cloud,
             cpu=cpu,
             memory=memory,
+            network_file_systems=network_file_systems,
         )
         await resolver.load(obj)
         return obj
