@@ -2,7 +2,6 @@
 import asyncio
 import os
 import time
-from datetime import date
 from pathlib import Path, PurePosixPath
 from typing import AsyncIterator, BinaryIO, Dict, List, Optional, Union
 
@@ -17,7 +16,7 @@ from ._blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
 from ._mount_utils import validate_mount_points
 from ._resolver import Resolver
 from ._types import typechecked
-from .exception import InvalidError, deprecation_warning
+from .exception import InvalidError
 from .object import _Object
 
 NETWORK_FILE_SYSTEM_PUT_FILE_CLIENT_TIMEOUT = (
@@ -149,9 +148,8 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         cloud: Optional[str] = None,
-    ) -> "_NetworkFileSystem":
+    ):
         """`NetworkFileSystem().persist("my-volume")` is deprecated. Use `NetworkFileSystem.persisted("my-volume")` instead."""
-        deprecation_warning(date(2023, 6, 30), self.persist.__doc__)
         return self.persisted(label, namespace, environment_name, cloud)
 
     # Methods on live handles

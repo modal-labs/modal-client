@@ -3,28 +3,23 @@ from datetime import date
 
 from modal_utils.async_utils import synchronize_api
 
-from .exception import deprecation_warning
-from .network_file_system import _NetworkFileSystem
+from .exception import deprecation_error
 
 
-class _SharedVolume(_NetworkFileSystem):
-    def __init__(self, *args, **kwargs) -> None:
+class _SharedVolume:
+    def __init__(self, *args, **kwargs):
         """`SharedVolume(...)` is deprecated. Please use `NetworkFileSystem.new(...)` instead."""
-        deprecation_warning(date(2023, 7, 5), _SharedVolume.__init__.__doc__)
-        obj = _NetworkFileSystem.new(*args, **kwargs)
-        self._init_from_other(obj)
+        deprecation_error(date(2023, 7, 5), _SharedVolume.__init__.__doc__)
 
     @staticmethod
-    def new(*args, **kwargs) -> "_NetworkFileSystem":
+    def new(*args, **kwargs):
         """`SharedVolume.new(...)` is deprecated. Please use `NetworkFileSystem.new(...)` instead."""
-        deprecation_warning(date(2023, 7, 5), _SharedVolume.new.__doc__)
-        return _NetworkFileSystem.new(*args, **kwargs)
+        deprecation_error(date(2023, 7, 5), _SharedVolume.new.__doc__)
 
     @staticmethod
-    def persisted(*args, **kwargs) -> _NetworkFileSystem:
+    def persisted(*args, **kwargs):
         """`SharedVolume.persisted(...)` is deprecated. Please use `NetworkFileSystem.persisted(...)` instead."""
-        deprecation_warning(date(2023, 7, 5), _SharedVolume.persisted.__doc__)
-        return _NetworkFileSystem.persisted(*args, **kwargs)
+        deprecation_error(date(2023, 7, 5), _SharedVolume.persisted.__doc__)
 
 
 SharedVolume = synchronize_api(_SharedVolume)
