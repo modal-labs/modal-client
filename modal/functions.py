@@ -1158,29 +1158,29 @@ class _Function(_Object, type_prefix="fu"):
                 " and `obj.f.local(...)` for local calls",
             )
             return self.remote(*args, **kwargs)
-
-        deprecation_warning(
-            date(2023, 8, 16),
-            "Calling Modal functions like `f(...)` is deprecated. Use `f.local(...)` if you want to call the"
-            " function in the same Python process. Use `f.remote(...)` if you want to call the function in"
-            " a Modal container in the cloud",
-        )
-
-        info = self._get_info()
-        if not info:
-            msg = (
-                "The definition for this function is missing so it is not possible to invoke it locally. "
-                "If this function was retrieved via `Function.lookup` you need to use `.remote()`."
-            )
-            raise AttributeError(msg)
-
-        self_obj = self._get_self_obj()
-        if self_obj:
-            # This is a method on a class, so bind the self to the function
-            fun = info.raw_f.__get__(self_obj)
         else:
-            fun = info.raw_f
-        return fun(*args, **kwargs)
+            deprecation_warning(
+                date(2023, 8, 16),
+                "Calling Modal functions like `f(...)` is deprecated. Use `f.local(...)` if you want to call the"
+                " function in the same Python process. Use `f.remote(...)` if you want to call the function in"
+                " a Modal container in the cloud",
+            )
+
+            info = self._get_info()
+            if not info:
+                msg = (
+                    "The definition for this function is missing so it is not possible to invoke it locally. "
+                    "If this function was retrieved via `Function.lookup` you need to use `.remote()`."
+                )
+                raise AttributeError(msg)
+
+            self_obj = self._get_self_obj()
+            if self_obj:
+                # This is a method on a class, so bind the self to the function
+                fun = info.raw_f.__get__(self_obj)
+            else:
+                fun = info.raw_f
+            return fun(*args, **kwargs)
 
     async def spawn(self, *args, **kwargs) -> Optional["_FunctionCall"]:
         """Calls the function with the given arguments, without waiting for the results.
