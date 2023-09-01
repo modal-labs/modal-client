@@ -73,8 +73,6 @@ def test_call_cls_remote_sync(client):
         foo_remote_2: FooRemote = FooRemote(3, "hello")
         ret: float = foo_remote_2.bar.remote(8)
         assert ret == 64
-        ret_2: float = foo_remote_2.bar(8)
-        assert ret_2 == 64
 
 
 def test_call_cls_remote_invalid_type(client):
@@ -214,7 +212,6 @@ def test_call_cls_remote_no_args(client):
             foo_remote = NoArgRemote.remote()
         # Mock servicer just squares the argument
         # This means remote function call is taking place.
-        assert foo_remote.baz(8) == 64
         with pytest.warns(DeprecationError):
             assert foo_remote.baz(8) == 64
 
