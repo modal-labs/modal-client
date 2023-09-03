@@ -16,9 +16,11 @@ from typing import (
     Callable,
     Collection,
     Dict,
+    Generic,
     Iterable,
     List,
     Optional,
+    ParamSpec,
     Set,
     Union,
 )
@@ -484,7 +486,10 @@ class FunctionStats:
     num_total_runners: int
 
 
-class _Function(_Object, type_prefix="fu"):
+P = ParamSpec("P")
+
+
+class _Function(_Object, Generic[P], type_prefix="fu"):
     """Functions are the basic units of serverless execution on Modal.
 
     Generally, you will not construct a `Function` directly. Instead, use the
@@ -1066,7 +1071,7 @@ class _Function(_Object, type_prefix="fu"):
             yield item
 
     @live_method
-    async def remote(self, *args, **kwargs) -> Awaitable[Any]:  # TODO: Generics/TypeVars
+    async def remote(self, *args: P.args, **kwargs: P.kwargs) -> Awaitable[Any]:  # TODO: Generics/TypeVars
         """
         Calls the function remotely, executing it with the given arguments and returning the execution's result.
         """
@@ -1217,6 +1222,7 @@ class _Function(_Object, type_prefix="fu"):
         )
 
 
+synchronize_api(Generic)  # dumb, needed or synchronicity
 Function = synchronize_api(_Function)
 
 

@@ -19,7 +19,7 @@ from .client import _Client
 from .cls import _Cls
 from .config import logger
 from .exception import InvalidError, deprecation_error
-from .functions import PartialFunction, _Function, _PartialFunction
+from .functions import P, PartialFunction, _Function, _PartialFunction
 from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount
@@ -70,12 +70,11 @@ CLS_T = typing.TypeVar("CLS_T", bound=typing.Type)
 
 
 class _FunctionDecorator(Protocol):
-    def __call__(self, function: Union[_PartialFunction, Callable[..., Any]], _cls: Optional[CLS_T] = None) -> _Function:
+    def __call__(self, function: Union[_PartialFunction, Callable[P, Any]], _cls: Optional[CLS_T] = None) -> _Function[P]:
         ...
 
 
-synchronize_api(Generic)  # dumb, needed or synchronicity
-synchronize_api(Protocol)  # same
+synchronize_api(Protocol)  # dumb, needed or synchronicity
 FunctionDecorator = synchronize_api(_FunctionDecorator)  # think needed for type stubs?
 
 
@@ -466,7 +465,7 @@ class _Stub:
         def wrapped(
             f: Union[_PartialFunction, Callable[..., Any]],
             _cls: Optional[type] = None,  # Used for methods only
-        ) -> _Function:
+        ) -> _Function[P]:
             is_generator_override: Optional[bool] = is_generator
 
             if isinstance(f, _PartialFunction):
