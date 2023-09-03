@@ -2,7 +2,7 @@
 import pytest
 
 from modal import Function, Queue, Stub, web_endpoint
-from modal.exception import NotFoundError
+from modal.exception import DeprecationError, ExecutionError, NotFoundError
 from modal.runner import deploy_stub
 
 
@@ -45,6 +45,16 @@ async def test_lookup_function(servicer, client):
     # Make sure we can call this function
     assert await f.remote.aio(2, 4) == 20
     assert [r async for r in f.map([5, 2], [4, 3])] == [41, 13]
+
+    # Make sure the new-style local calls raise an error
+    with pytest.raises(ExecutionError):
+        assert f.local(2, 4) == 20
+
+    # Make sure the old-style local calls raise an error
+    with pytest.raises(ExecutionError):
+        # It also throws a deprecation warning, so let's ignore that
+        with pytest.warns(DeprecationError):
+            assert f(2, 4) == 20
 
 
 @pytest.mark.asyncio
