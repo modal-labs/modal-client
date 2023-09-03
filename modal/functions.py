@@ -891,6 +891,7 @@ class _Function(_Object, type_prefix="fu"):
             False  # set when a user terminates the app intentionally, to prevent useless traceback spam
         )
         self._function_name = None
+        self._info = None
 
     def _hydrate_metadata(self, metadata: Message):
         # Overridden concrete implementation of base class method
@@ -1139,7 +1140,7 @@ class _Function(_Object, type_prefix="fu"):
                 "The definition for this function is missing so it is not possible to invoke it locally. "
                 "If this function was retrieved via `Function.lookup` you need to use `.remote()`."
             )
-            raise AttributeError(msg)
+            raise ExecutionError(msg)
 
         self_obj = self._get_self_obj()
         if self_obj:
@@ -1172,7 +1173,7 @@ class _Function(_Object, type_prefix="fu"):
                     "The definition for this function is missing so it is not possible to invoke it locally. "
                     "If this function was retrieved via `Function.lookup` you need to use `.remote()`."
                 )
-                raise AttributeError(msg)
+                raise ExecutionError(msg)
 
             self_obj = self._get_self_obj()
             if self_obj:
