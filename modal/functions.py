@@ -853,7 +853,7 @@ class _Function(_Object, type_prefix="fu"):
         if len(args) + len(kwargs) == 0:
             # Edge case that lets us hydrate all objects right away
             provider._hydrate_from_other(self)
-        provider._is_remote_cls_method = True
+        provider._is_remote_cls_method = True  # TODO(erikbern): deprecated
         provider._info = self._info
         provider._obj = obj
         return provider
@@ -1151,32 +1151,36 @@ class _Function(_Object, type_prefix="fu"):
 
     @synchronizer.nowrap
     def __call__(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
-        if self._get_is_remote_cls_method():  # TODO(elias): change parametrization so this is isn't needed
-            # TODO(erikbern): deprecate this soon too
-            return self.remote(*args, **kwargs)
-
-        deprecation_warning(
-            date(2023, 8, 16),
-            "Calling Modal functions like `f(...)` is deprecated. Use `f.local(...)` if you want to call the"
-            " function in the same Python process. Use `f.remote(...)` if you want to call the function in"
-            " a Modal container in the cloud",
-        )
-
-        info = self._get_info()
-        if not info:
-            msg = (
-                "The definition for this function is missing so it is not possible to invoke it locally. "
-                "If this function was retrieved via `Function.lookup` you need to use `.remote()`."
+        if self._get_is_remote_cls_method():
+            deprecation_warning(
+                date(2023, 9, 1),
+                "Calling remote class methods like `obj.f(...)` is deprecated. Use `obj.f.remote(...)` for remote calls"
+                " and `obj.f.local(...)` for local calls",
             )
-            raise AttributeError(msg)
-
-        self_obj = self._get_self_obj()
-        if self_obj:
-            # This is a method on a class, so bind the self to the function
-            fun = info.raw_f.__get__(self_obj)
+            return self.remote(*args, **kwargs)
         else:
-            fun = info.raw_f
-        return fun(*args, **kwargs)
+            deprecation_warning(
+                date(2023, 8, 16),
+                "Calling Modal functions like `f(...)` is deprecated. Use `f.local(...)` if you want to call the"
+                " function in the same Python process. Use `f.remote(...)` if you want to call the function in"
+                " a Modal container in the cloud",
+            )
+
+            info = self._get_info()
+            if not info:
+                msg = (
+                    "The definition for this function is missing so it is not possible to invoke it locally. "
+                    "If this function was retrieved via `Function.lookup` you need to use `.remote()`."
+                )
+                raise AttributeError(msg)
+
+            self_obj = self._get_self_obj()
+            if self_obj:
+                # This is a method on a class, so bind the self to the function
+                fun = info.raw_f.__get__(self_obj)
+            else:
+                fun = info.raw_f
+            return fun(*args, **kwargs)
 
     async def spawn(self, *args, **kwargs) -> Optional["_FunctionCall"]:
         """Calls the function with the given arguments, without waiting for the results.
