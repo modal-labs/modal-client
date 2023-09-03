@@ -1325,12 +1325,12 @@ def _set_current_input_id(input_id: Optional[str]):
     _current_input_id = input_id
 
 
-class _PartialFunction:
+class _PartialFunction(Generic[P]):
     """Intermediate function, produced by @method or @web_endpoint"""
 
     def __init__(
         self,
-        raw_f: Callable[..., Any],
+        raw_f: Callable[P, Any],
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         is_generator: Optional[bool] = None,
     ):

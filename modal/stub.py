@@ -70,7 +70,7 @@ CLS_T = typing.TypeVar("CLS_T", bound=typing.Type)
 
 
 class _FunctionDecorator(Protocol):
-    def __call__(self, function: Union[_PartialFunction, Callable[P, Any]], _cls: Optional[CLS_T] = None) -> _Function[P]:
+    def __call__(self, function: Union[_PartialFunction[P], Callable[P, Any]], _cls: Optional[CLS_T] = None) -> _Function[P]:
         ...
 
 
@@ -463,7 +463,7 @@ class _Stub:
             )
 
         def wrapped(
-            f: Union[_PartialFunction, Callable[..., Any]],
+            f: Union[_PartialFunction[P], Callable[P, Any]],
             _cls: Optional[type] = None,  # Used for methods only
         ) -> _Function[P]:
             is_generator_override: Optional[bool] = is_generator

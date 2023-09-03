@@ -3,7 +3,7 @@ import asyncio
 import inspect
 import pytest
 import time
-import typing
+from typing import TYPE_CHECKING, Generator, assert_type
 
 import cloudpickle
 from synchronicity.exceptions import UserCodeException
@@ -18,12 +18,12 @@ stub = Stub()
 
 
 @stub.function()
-def foo(p, q):
+def foo(p: float, q: float):
     return p + q + 11  # not actually used in test (servicer returns sum of square of all args)
 
 
 @stub.function()
-async def async_foo(p, q):
+async def async_foo(p: float, q: float):
     return p + q + 12
 
 
@@ -231,7 +231,7 @@ async def test_generator(client, servicer):
     assert len(servicer.cleared_function_calls) == 0
     with stub.run(client=client):
         assert later_gen_modal.is_generator
-        res: typing.Generator = later_gen_modal.remote_gen()  # type: ignore
+        res: Generator = later_gen_modal.remote_gen()  # type: ignore
         # Generators fulfil the *iterator protocol*, which requires both these methods.
         # https://docs.python.org/3/library/stdtypes.html#typeiter
         assert hasattr(res, "__iter__")  # strangely inspect.isgenerator returns false
@@ -672,3 +672,8 @@ def test_invalid_large_serialization(client):
         stub.function(serialized=True)(g)
         with stub.run(client=client):
             pass
+
+
+if TYPE_CHECKING:
+    # Check that type annotations carry through to the decorated classes
+    assert_type(foo, Function[[float, float], Any])
