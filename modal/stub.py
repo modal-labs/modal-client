@@ -4,7 +4,7 @@ import os
 import typing
 import warnings
 from datetime import date
-from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, Generic, List, Optional, Protocol, Sequence, Tuple, Union
 
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -67,6 +67,16 @@ def check_sequence(items: typing.Sequence[typing.Any], item_type: typing.Type[ty
 
 
 CLS_T = typing.TypeVar("CLS_T", bound=typing.Type)
+
+
+class _FunctionDecorator(Protocol):
+    def __call__(self, function: Union[_PartialFunction, Callable[..., Any]], _cls: Optional[CLS_T] = None) -> _Function:
+        ...
+
+
+synchronize_api(Generic)  # dumb, needed or synchronicity
+synchronize_api(Protocol)  # same
+FunctionDecorator = synchronize_api(_FunctionDecorator)  # think needed for type stubs?
 
 
 class _Stub:
@@ -440,7 +450,7 @@ class _Stub:
             bool
         ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
-    ) -> Callable[..., _Function]:
+    ) -> FunctionDecorator:
         """Decorator to register a new Modal function with this stub."""
         if image is None:
             image = self._get_default_image()
