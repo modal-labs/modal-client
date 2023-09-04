@@ -5,6 +5,7 @@ import functools
 import os
 import platform
 import select
+import signal
 import sys
 import traceback
 from typing import Optional, Tuple, no_type_check
@@ -63,13 +64,22 @@ def raw_terminal():
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 
+def _child_sig_handler(signum, frame):
+    assert signum == signal.SIGCHLD
+    raise KeyboardInterrupt(f"Received {signal.strsignal(signum)}. Interrupting pty.")
+
+
 @no_type_check
 def _pty_spawn(pty_info: api_pb2.PTYInfo, fn, args, kwargs):
     """Modified from pty.spawn, so we can set the window size on the forked FD
     and run a custom function in the forked child process."""
 
     import pty
+    import termios
     import tty
+
+    # https://github.com/google/gvisor/issues/9333
+    signal.signal(signal.SIGCHLD, _child_sig_handler)
 
     pid, master_fd = pty.fork()
     if pid == pty.CHILD:
@@ -89,15 +99,15 @@ def _pty_spawn(pty_info: api_pb2.PTYInfo, fn, args, kwargs):
 
     try:
         mode = tty.tcgetattr(pty.STDIN_FILENO)
-        tty.setraw(pty.STDIN_FILENO)
+        tty.setraw(pty.STDIN_FILENO, when=termios.TCSANOW)
         restore = 1
     except tty.error:  # This is the same as termios.error
         restore = 0
     try:
         pty._copy(master_fd, pty._read, pty._read)
-    except OSError:
+    except (KeyboardInterrupt, OSError):
         if restore:
-            tty.tcsetattr(pty.STDIN_FILENO, tty.TCSAFLUSH, mode)
+            tty.tcsetattr(pty.STDIN_FILENO, tty.TCSANOW, mode)
 
     os.close(master_fd)
     return os.waitpid(pid, 0)[1]
