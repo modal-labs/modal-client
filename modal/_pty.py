@@ -5,6 +5,7 @@ import functools
 import os
 import platform
 import select
+import signal
 import sys
 import termios
 import traceback
@@ -64,6 +65,11 @@ def raw_terminal():
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 
+def _child_sig_handler(signum, frame):
+    assert signum == signal.SIGCHLD
+    raise KeyboardInterrupt(f"Received {signal.strsignal(signum)}. Interrupting pty.")
+
+
 @no_type_check
 def _pty_spawn(pty_info: api_pb2.PTYInfo, fn, args, kwargs):
     """Modified from pty.spawn, so we can set the window size on the forked FD
@@ -71,6 +77,9 @@ def _pty_spawn(pty_info: api_pb2.PTYInfo, fn, args, kwargs):
 
     import pty
     import tty
+
+    # https://github.com/google/gvisor/issues/9333
+    signal.signal(signal.SIGCHLD, _child_sig_handler)
 
     pid, master_fd = pty.fork()
     if pid == pty.CHILD:
@@ -96,7 +105,7 @@ def _pty_spawn(pty_info: api_pb2.PTYInfo, fn, args, kwargs):
         restore = 0
     try:
         pty._copy(master_fd, pty._read, pty._read)
-    except OSError:
+    except (KeyboardInterrupt, OSError):
         if restore:
             tty.tcsetattr(pty.STDIN_FILENO, tty.TCSANOW, mode)
 
