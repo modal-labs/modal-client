@@ -7,7 +7,6 @@ import platform
 import select
 import signal
 import sys
-import termios
 import traceback
 from typing import Optional, Tuple, no_type_check
 
@@ -76,6 +75,7 @@ def _pty_spawn(pty_info: api_pb2.PTYInfo, fn, args, kwargs):
     and run a custom function in the forked child process."""
 
     import pty
+    import termios
     import tty
 
     # https://github.com/google/gvisor/issues/9333
