@@ -6,6 +6,7 @@ import os
 import platform
 import select
 import sys
+import termios
 import traceback
 from typing import Optional, Tuple, no_type_check
 
@@ -89,7 +90,7 @@ def _pty_spawn(pty_info: api_pb2.PTYInfo, fn, args, kwargs):
 
     try:
         mode = tty.tcgetattr(pty.STDIN_FILENO)
-        tty.setraw(pty.STDIN_FILENO)
+        tty.setraw(pty.STDIN_FILENO, when=termios.TCSANOW)
         restore = 1
     except tty.error:  # This is the same as termios.error
         restore = 0
@@ -97,7 +98,7 @@ def _pty_spawn(pty_info: api_pb2.PTYInfo, fn, args, kwargs):
         pty._copy(master_fd, pty._read, pty._read)
     except OSError:
         if restore:
-            tty.tcsetattr(pty.STDIN_FILENO, tty.TCSAFLUSH, mode)
+            tty.tcsetattr(pty.STDIN_FILENO, tty.TCSANOW, mode)
 
     os.close(master_fd)
     return os.waitpid(pid, 0)[1]
