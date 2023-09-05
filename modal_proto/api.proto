@@ -152,7 +152,7 @@ message AppGetObjectsItem {
   string tag = 1;
   string object_id = 2;
   oneof handle_metadata_oneof {
-    FunctionHandleMetadata function = 3;
+    FunctionHandleMetadata function_handle_metadata = 3;
     MountHandleMetadata mount_handle_metadata = 4;
     ClassHandleMetadata class_handle_metadata = 5;
   }
