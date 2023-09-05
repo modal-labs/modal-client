@@ -150,12 +150,13 @@ message AppGetObjectsRequest {
 
 message AppGetObjectsItem {
   string tag = 1;
-  string object_id = 2;
-  oneof handle_metadata_oneof {
+  string object_id = 2;  // deprecated soon
+  oneof handle_metadata_oneof {  // deprecated soon
     FunctionHandleMetadata function_handle_metadata = 3;
     MountHandleMetadata mount_handle_metadata = 4;
     ClassHandleMetadata class_handle_metadata = 5;
   }
+  Object object = 6;
 }
 
 message AppGetObjectsResponse {
@@ -193,13 +194,14 @@ message AppLookupObjectRequest {
 }
 
 message AppLookupObjectResponse {
-  string object_id = 1;
+  string object_id = 1; // deprecated soon
   string error_message = 2;
-  oneof handle_metadata_oneof {
+  oneof handle_metadata_oneof { // deprecated soon
     FunctionHandleMetadata function_handle_metadata = 3;
     MountHandleMetadata mount_handle_metadata = 4;
     ClassHandleMetadata class_handle_metadata = 5;
   }
+  Object object = 6;
 }
 
 message AppSetObjectsRequest {
@@ -959,6 +961,15 @@ message MountPutFileRequest {
 
 message MountPutFileResponse {
   bool exists = 2;
+}
+
+message Object {
+  string object_id = 1;
+  oneof handle_metadata_oneof {
+    FunctionHandleMetadata function_handle_metadata = 3;
+    MountHandleMetadata mount_handle_metadata = 4;
+    ClassHandleMetadata class_handle_metadata = 5;
+  }
 }
 
 message ProxyInfo {
