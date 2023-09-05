@@ -644,7 +644,7 @@ class _Image(_Object, type_prefix="im"):
     @typechecked
     def dockerfile_commands(
         self,
-        dockerfile_commands: Union[str, List[str]],
+        *dockerfile_commands: Union[str, List[str]],
         context_files: Dict[str, str] = {},
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
@@ -654,13 +654,11 @@ class _Image(_Object, type_prefix="im"):
         force_build: bool = False,
     ) -> "_Image":
         """Extend an image with arbitrary Dockerfile-like commands."""
+        cmds = _flatten_str_args("dockerfile_commands", "dockerfile_commands", dockerfile_commands)
+        if not cmds:
+            return self
 
-        _dockerfile_commands = ["FROM base"]
-
-        if isinstance(dockerfile_commands, str):
-            _dockerfile_commands += dockerfile_commands.split("\n")
-        else:
-            _dockerfile_commands += dockerfile_commands
+        _dockerfile_commands = ["FROM base", *cmds]
 
         return self.extend(
             dockerfile_commands=_dockerfile_commands,
