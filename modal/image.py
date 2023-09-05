@@ -1229,9 +1229,17 @@ class _Image(_Object, type_prefix="im"):
         )
         ```
         """
-        return self.extend(
-            dockerfile_commands=["FROM base"] + [f"ENV {key}={shlex.quote(val)}" for (key, val) in vars.items()]
-        )
+        dockerfile_commands = ["FROM base"]
+        for key, val in vars.items():
+            if key == "PYTHONPATH":
+                # Extend the env variable
+                command = f'ENV {key}="${key}:{shlex.quote(val)}"'
+            else:
+                # Override the env variable
+                command = f"ENV {key}={shlex.quote(val)}"
+            dockerfile_commands.append(command)
+
+        return self.extend(dockerfile_commands=dockerfile_commands)
 
     @typechecked
     def workdir(self, path: str) -> "_Image":
