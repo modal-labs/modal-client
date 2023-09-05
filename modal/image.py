@@ -23,7 +23,7 @@ from .app import is_local
 from .config import config, logger
 from .exception import InvalidError, NotFoundError, RemoteError, deprecation_error, deprecation_warning
 from .gpu import GPU_T, parse_gpu_config
-from .mount import _Mount
+from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
 from .object import _Object
 from .secret import _Secret
@@ -866,49 +866,74 @@ class _Image(_Object, type_prefix="im"):
         )
 
     @staticmethod
-    def _registry_setup_commands(tag: str, setup_dockerfile_commands: List[str]) -> List[str]:
+    def _registry_setup_commands(
+        tag: str, setup_dockerfile_commands: List[str], add_python: Optional[str]
+    ) -> List[str]:
+        add_python_commands: List[str] = []
+        if add_python:
+            add_python_commands = [
+                "COPY /python/. /usr/local",
+                "RUN ln -s /usr/local/bin/python3 /usr/local/bin/python",
+                "ENV TERMINFO_DIRS=/etc/terminfo:/lib/terminfo:/usr/share/terminfo:/usr/lib/terminfo",
+            ]
         return [
             f"FROM {tag}",
+            *add_python_commands,
             *setup_dockerfile_commands,
             "COPY /modal_requirements.txt /modal_requirements.txt",
             "RUN python -m pip install --upgrade pip",
             "RUN python -m pip install -r /modal_requirements.txt",
+            # TODO: We should add this next line at some point to clean up the image, but it would
+            # trigger a hash change, so batch it with the next rebuild-triggering change.
+            #
+            # "RUN rm /modal_requirements.txt",
         ]
 
     @staticmethod
     @typechecked
     def from_registry(
         tag: str,
+        *,
         setup_dockerfile_commands: List[str] = [],
         force_build: bool = False,
+        add_python: Optional[str] = None,
         **kwargs,
     ) -> "_Image":
         """Build a Modal image from a public image registry, such as Docker Hub.
 
-        The image must satisfy the following requirements:
+        The image must be built for the `linux/amd64` platform and have Python 3.7 or above
+        installed and available on PATH as `python`. It should also have `pip`.
 
-        - Python 3.7 or above is present, and is on PATH as `python`.
-        - `pip` is installed correctly.
-        - The image is built for the `linux/amd64` platform.
+        If your image does not come with Python installed, you can use the `add_python` parameter
+        to specify a version of Python to add to the image. Supported versions are `3.8`, `3.9`,
+        `3.10`, and `3.11`. For Alpine-based images, use `3.8-musl` through `3.11-musl`, which
+        are statically-linked Python installations.
 
-        You may use `setup_dockerfile_commands` to run Dockerfile commands
-        before the remaining commands run. This might be useful if Python or pip is
-        not installed, or you need to set a `SHELL` for `python` to be available.
+        You may also use `setup_dockerfile_commands` to run Dockerfile commands before the
+        remaining commands run. This might be useful if you want a custom Python installation or to
+        set a `SHELL`. Prefer `run_commands()` when possible though.
 
-        **Example**
+        **Examples**
 
         ```python
-        modal.Image.from_registry(
-            "gisops/valhalla:latest",
-            setup_dockerfile_commands=["RUN apt-get update", "RUN apt-get install -y python3-pip"],
-        )
+        modal.Image.from_registry("python:3.11-slim-bookworm")
+        modal.Image.from_registry("ubuntu:22.04", add_python="3.11")
+        modal.Image.from_registry("alpine:3.18.3", add_python="3.11-musl")
         ```
         """
         requirements_path = _get_client_requirements_path()
-        dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands)
+        dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands, add_python)
+
+        context_mount = None
+        if add_python:
+            context_mount = _Mount.from_name(
+                python_standalone_mount_name(add_python),
+                namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
+            )
 
         return _Image._from_args(
             dockerfile_commands=dockerfile_commands,
+            context_mount=context_mount,
             context_files={"/modal_requirements.txt": requirements_path},
             force_build=force_build,
             **kwargs,
@@ -925,52 +950,49 @@ class _Image(_Object, type_prefix="im"):
         deprecation_warning(
             date(2023, 8, 25), "`Image.from_dockerhub` is deprecated. Use `Image.from_registry` instead."
         )
-        return _Image.from_registry(tag, setup_dockerfile_commands, force_build, **kwargs)
+        return _Image.from_registry(
+            tag,
+            setup_dockerfile_commands=setup_dockerfile_commands,
+            force_build=force_build,
+            **kwargs,
+        )
 
     @staticmethod
     @typechecked
     def from_gcp_artifact_registry(
         tag: str,
         secret: Optional[_Secret] = None,
+        *,
         setup_dockerfile_commands: List[str] = [],
         force_build: bool = False,
+        add_python: Optional[str] = None,
         **kwargs,
     ) -> "_Image":
-        """
-        Build a Modal image from a pre-existing image in GCP Artifact Registry.
+        """Build a Modal image from a private image in GCP Artifact Registry.
+
         You will need to pass a `modal.Secret` containing your GCP service account key
         as `SERVICE_ACCOUNT_JSON`. This can be done from the [Secrets](/secrets) page.
+        The service account needs to have at least an "Artifact Registry Reader" role.
 
-        The service account needs to have at least the "Artifact Registry Reader" role.
+        See `Image.from_registry()` for information about the other parameters.
 
-        For the image, the same assumptions hold as `from_registry`:
-
-        - Python 3.7 or above is present, and is available as `python`.
-        - `pip` is installed correctly.
-        - The image is built for the `linux/amd64` platform.
-
-        You may use `setup_dockerfile_commands` to run Dockerfile commands
-        before the remaining commands run. This might be useful if Python or pip is
-        not installed, or you need to set a `SHELL` for `python` to be available.
         **Example**
 
         ```python
         modal.Image.from_gcp_artifact_registry(
-          "us-east1-docker.pkg.dev/my-project-1234/my-repo/my-image:my-version",
-          secret=modal.Secret.from_name("my-gcp-secret"),
-          setup_dockerfile_commands=["RUN apt-get update", "RUN apt-get install -y python3-pip"]
+            "us-east1-docker.pkg.dev/my-project-1234/my-repo/my-image:my-version",
+            secret=modal.Secret.from_name("my-gcp-secret"),
+            add_python="3.11",
         )
         ```
         """
-        requirements_path = _get_client_requirements_path()
-
-        dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands)
-
-        return _Image._from_args(
-            dockerfile_commands=dockerfile_commands,
-            context_files={"/modal_requirements.txt": requirements_path},
-            image_registry_config=_ImageRegistryConfig(api_pb2.RegistryType.GCP_ARTIFACT_REGISTRY, secret),
+        image_registry_config = _ImageRegistryConfig(api_pb2.RegistryType.GCP_ARTIFACT_REGISTRY, secret)
+        return _Image.from_registry(
+            tag,
+            setup_dockerfile_commands=setup_dockerfile_commands,
             force_build=force_build,
+            add_python=add_python,
+            image_registry_config=image_registry_config,
             **kwargs,
         )
 
@@ -979,46 +1001,39 @@ class _Image(_Object, type_prefix="im"):
     def from_aws_ecr(
         tag: str,
         secret: Optional[_Secret] = None,
+        *,
         setup_dockerfile_commands: List[str] = [],
         force_build: bool = False,
+        add_python: Optional[str] = None,
         **kwargs,
     ) -> "_Image":
-        """
-        Build a Modal image from a pre-existing image on a private AWS Elastic
-        Container Registry (ECR). You will need to pass a `modal.Secret` containing
-        an AWS key (`AWS_ACCESS_KEY_ID`) and secret (`AWS_SECRET_ACCESS_KEY`)
-        with permissions to access the target ECR registry.
+        """Build a Modal image from a private image in AWS Elastic Container Registry (ECR).
 
-        Refer to ["Private repository policies"](https://docs.aws.amazon.com/AmazonECR/latest/userguide/repository-policies.html)
-        for details about IAM configuration.
+        You will need to pass a `modal.Secret` containing an AWS key (`AWS_ACCESS_KEY_ID`) and
+        secret (`AWS_SECRET_ACCESS_KEY`) with permissions to access the target ECR registry.
 
-        The same assumptions hold from `from_registry`:
+        IAM configuration details can be found in the AWS documentation for
+        ["Private repository policies"](https://docs.aws.amazon.com/AmazonECR/latest/userguide/repository-policies.html).
 
-        - Python 3.7 or above is present, and is available as `python`.
-        - `pip` is installed correctly.
-        - The image is built for the `linux/amd64` platform.
+        See `Image.from_registry()` for information about the other parameters.
 
-        You may use `setup_dockerfile_commands` to run Dockerfile commands
-        before the remaining commands run. This might be useful if Python or pip is
-        not installed, or you need to set a `SHELL` for `python` to be available.
         **Example**
 
         ```python
         modal.Image.from_aws_ecr(
-          "000000000000.dkr.ecr.us-east-1.amazonaws.com/my-private-registry:my-version",
-          secret=modal.Secret.from_name("aws"),
-          setup_dockerfile_commands=["RUN apt-get update", "RUN apt-get install -y python3-pip"]
+            "000000000000.dkr.ecr.us-east-1.amazonaws.com/my-private-registry:my-version",
+            secret=modal.Secret.from_name("aws"),
+            add_python="3.11",
         )
         ```
         """
-        requirements_path = _get_client_requirements_path()
-        dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands)
-
-        return _Image._from_args(
-            dockerfile_commands=dockerfile_commands,
-            context_files={"/modal_requirements.txt": requirements_path},
-            image_registry_config=_ImageRegistryConfig(api_pb2.RegistryType.ECR, secret),
+        image_registry_config = _ImageRegistryConfig(api_pb2.RegistryType.ECR, secret)
+        return _Image.from_registry(
+            tag,
+            setup_dockerfile_commands=setup_dockerfile_commands,
             force_build=force_build,
+            add_python=add_python,
+            image_registry_config=image_registry_config,
             **kwargs,
         )
 
