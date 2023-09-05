@@ -28,7 +28,7 @@ def test_run_stub_profile_env_with_refs(servicer, client, monkeypatch):
     assert ctx.calls == []  # all calls should be deferred
 
     with servicer.intercept() as ctx:
-        ctx.add_response("AppLookupObject", api_pb2.AppLookupObjectResponse(object_id="st-123"))
+        ctx.add_response("AppLookupObject", api_pb2.AppLookupObjectResponse(object=api_pb2.Object(object_id="st-123")))
         with run_stub(dummy_stub, client=client):
             pass
 
@@ -51,8 +51,8 @@ def test_run_stub_custom_env_with_refs(servicer, client, monkeypatch):
     )  # explicit lookup
 
     with servicer.intercept() as ctx:
-        ctx.add_response("AppLookupObject", api_pb2.AppLookupObjectResponse(object_id="st-123"))
-        ctx.add_response("AppLookupObject", api_pb2.AppLookupObjectResponse(object_id="st-456"))
+        ctx.add_response("AppLookupObject", api_pb2.AppLookupObjectResponse(object=api_pb2.Object(object_id="st-123")))
+        ctx.add_response("AppLookupObject", api_pb2.AppLookupObjectResponse(object=api_pb2.Object(object_id="st-456")))
         with run_stub(dummy_stub, client=client, environment_name="custom"):
             pass
 
