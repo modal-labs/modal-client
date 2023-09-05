@@ -227,8 +227,8 @@ class _App:
         req = api_pb2.AppGetObjectsRequest(app_id=self._app_id)
         resp = await retry_transient_errors(self._client.stub.AppGetObjects, req)
         for item in resp.items:
-            self._tag_to_object_id[item.tag] = item.object_id
-            handle_metadata: Optional[Message] = get_proto_oneof(item, "handle_metadata_oneof")
+            self._tag_to_object_id[item.tag] = item.object.object_id
+            handle_metadata: Optional[Message] = get_proto_oneof(item.object, "handle_metadata_oneof")
             if handle_metadata is not None:
                 self._tag_to_handle_metadata[item.tag] = handle_metadata
 
@@ -248,7 +248,7 @@ class _App:
         obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
         obj_resp = await retry_transient_errors(client.stub.AppGetObjects, obj_req)
         app_page_url = f"https://modal.com/apps/{existing_app_id}"  # TODO (elias): this should come from the backend
-        object_ids = {item.tag: item.object_id for item in obj_resp.items}
+        object_ids = {item.tag: item.object.object_id for item in obj_resp.items}
         return _App(client, existing_app_id, app_page_url, output_mgr, tag_to_object_id=object_ids)
 
     @staticmethod

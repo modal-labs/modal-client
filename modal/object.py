@@ -141,11 +141,11 @@ class _Object:
         # This is used in a few examples to construct FunctionCall objects
         if client is None:
             client = await _Client.from_env()
-        app_lookup_object_response: api_pb2.AppLookupObjectResponse = await retry_transient_errors(
+        response: api_pb2.AppLookupObjectResponse = await retry_transient_errors(
             client.stub.AppLookupObject, api_pb2.AppLookupObjectRequest(object_id=object_id)
         )
 
-        handle_metadata = get_proto_oneof(app_lookup_object_response, "handle_metadata_oneof")
+        handle_metadata = get_proto_oneof(response.object, "handle_metadata_oneof")
         return cls._new_hydrated(object_id, client, handle_metadata)
 
     async def _hydrate_from_app(
@@ -171,7 +171,7 @@ class _Object:
         )
         try:
             response = await retry_transient_errors(client.stub.AppLookupObject, request)
-            if not response.object_id:
+            if not response.object.object_id:
                 # Legacy error message: remove soon
                 raise NotFoundError(response.error_message)
         except GRPCError as exc:
@@ -180,8 +180,8 @@ class _Object:
             else:
                 raise
 
-        handle_metadata = get_proto_oneof(response, "handle_metadata_oneof")
-        return self._hydrate(response.object_id, client, handle_metadata)
+        handle_metadata = get_proto_oneof(response.object, "handle_metadata_oneof")
+        return self._hydrate(response.object.object_id, client, handle_metadata)
 
     def _hydrate_from_other(self, other: O):
         self._hydrate(other._object_id, other._client, other._get_metadata())
@@ -360,7 +360,7 @@ class _Object:
         )
         try:
             response = await retry_transient_errors(client.stub.AppLookupObject, request)
-            return bool(response.object_id)  # old code path - change to `return True` shortly
+            return bool(response.object.object_id)  # old code path - change to `return True` shortly
         except GRPCError as exc:
             if exc.status == Status.NOT_FOUND:
                 return False
