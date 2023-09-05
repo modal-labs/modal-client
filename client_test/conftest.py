@@ -189,7 +189,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             api_pb2.AppGetObjectsItem(
                 tag=tag,
                 object_id=object_id,
-                function=function_definition_to_handle_metadata(self.app_functions.get(object_id)),
+                function_handle_metadata=function_definition_to_handle_metadata(self.app_functions.get(object_id)),
             )
             for tag, object_id in object_ids.items()
         ]
