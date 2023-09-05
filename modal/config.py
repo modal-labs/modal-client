@@ -79,7 +79,6 @@ from datetime import date
 
 import toml
 
-from ._traceback import setup_rich_traceback
 from .exception import deprecation_error
 
 # Locate config file and read it
@@ -237,7 +236,3 @@ warnings.filterwarnings(
     category=DeprecationWarning,
     module="modal",
 )
-
-# Set up rich tracebacks, but only on user's end.
-if _user_config:
-    setup_rich_traceback()

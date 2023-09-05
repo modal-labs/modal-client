@@ -70,5 +70,5 @@ entrypoint_cli.add_command(run.run, name="run")  # type: ignore
 entrypoint_cli.list_commands(None)  # type: ignore
 
 if __name__ == "__main__":
-    # this module is only called from tests, otherwise the parent package __init__.py is used as the entrypoint
+    # this module is only called from tests, otherwise the parent package __main__.py is used as the entrypoint
     entrypoint_cli()
