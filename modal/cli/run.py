@@ -11,14 +11,13 @@ import click
 import typer
 from rich.console import Console
 
-from modal.config import config
-from modal.exception import InvalidError
-from modal.runner import deploy_stub, interactive_shell, run_stub
-from modal.serving import serve_stub
-from modal.stub import LocalEntrypoint, Stub
-
+from ..config import config
 from ..environments import ensure_env
+from ..exception import InvalidError
 from ..functions import Function
+from ..runner import deploy_stub, interactive_shell, run_stub
+from ..serving import serve_stub
+from ..stub import LocalEntrypoint, Stub
 from .import_refs import import_function, import_stub
 from .utils import ENV_OPTION, ENV_OPTION_HELP
 
@@ -206,9 +205,8 @@ def deploy(
     name: str = typer.Option(None, help="Name of the deployment."),
     env: str = ENV_OPTION,
 ):
-    env = ensure_env(
-        env
-    )  # this ensures that `modal.lookup()` without environment specification uses the same env as specified
+    # this ensures that `modal.lookup()` without environment specification uses the same env as specified
+    env = ensure_env(env)
 
     stub = import_stub(stub_ref)
 
