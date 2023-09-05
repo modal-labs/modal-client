@@ -399,12 +399,12 @@ def test_environment_flag(test_dir, servicer, command):
     with servicer.intercept() as ctx:
         ctx.add_response(
             "AppLookupObject",
-            api_pb2.AppLookupObjectResponse(object_id="mo-123"),
+            api_pb2.AppLookupObjectResponse(object=api_pb2.Object(object_id="mo-123")),
             request_filter=lambda req: req.app_name.startswith("modal-client-mount"),
         )  # built-in client lookup
         ctx.add_response(
             "AppLookupObject",
-            api_pb2.AppLookupObjectResponse(object_id="sv-123"),
+            api_pb2.AppLookupObjectResponse(object=api_pb2.Object(object_id="sv-123")),
             request_filter=lambda req: req.app_name == "volume_app",
         )
         _run(command + ["--env=staging", str(stub_file)])
@@ -437,12 +437,12 @@ def test_environment_noflag(test_dir, servicer, command, monkeypatch):
     with servicer.intercept() as ctx:
         ctx.add_response(
             "AppLookupObject",
-            api_pb2.AppLookupObjectResponse(object_id="mo-123"),
+            api_pb2.AppLookupObjectResponse(object=api_pb2.Object(object_id="mo-123")),
             request_filter=lambda req: req.app_name.startswith("modal-client-mount"),
         )  # built-in client lookup
         ctx.add_response(
             "AppLookupObject",
-            api_pb2.AppLookupObjectResponse(object_id="sv-123"),
+            api_pb2.AppLookupObjectResponse(object=api_pb2.Object(object_id="sv-123")),
             request_filter=lambda req: req.app_name == "volume_app",
         )
         _run(command + [str(stub_file)])

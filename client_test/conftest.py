@@ -188,8 +188,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         items = [
             api_pb2.AppGetObjectsItem(
                 tag=tag,
-                object_id=object_id,
-                function_handle_metadata=function_definition_to_handle_metadata(self.app_functions.get(object_id)),
+                object=api_pb2.Object(
+                    object_id=object_id,
+                    function_handle_metadata=function_definition_to_handle_metadata(self.app_functions.get(object_id)),
+                ),
             )
             for tag, object_id in object_ids.items()
         ]
@@ -236,7 +238,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         function_handle_metadata = function_definition_to_handle_metadata(self.app_functions.get(object_id))
         await stream.send_message(
-            api_pb2.AppLookupObjectResponse(object_id=object_id, function_handle_metadata=function_handle_metadata)
+            api_pb2.AppLookupObjectResponse(
+                object=api_pb2.Object(object_id=object_id, function_handle_metadata=function_handle_metadata),
+            )
         )
 
     async def AppHeartbeat(self, stream):
