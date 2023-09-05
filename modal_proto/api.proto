@@ -1328,6 +1328,9 @@ service ModalClient {
   rpc BlobCreate(BlobCreateRequest) returns (BlobCreateResponse);
   rpc BlobGet(BlobGetRequest) returns (BlobGetResponse);
 
+  // Classes
+  rpc ClassCreate(ClassCreateRequest) returns (ClassCreateResponse);
+
   // Clients
   rpc ClientCreate(ClientCreateRequest) returns (ClientCreateResponse);
   rpc ClientHello(google.protobuf.Empty) returns (ClientHelloResponse);
