@@ -234,8 +234,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if object_id:
                 assert object_id.startswith(request.object_entity)
 
-        function = function_definition_to_handle_metadata(self.app_functions.get(object_id))
-        await stream.send_message(api_pb2.AppLookupObjectResponse(object_id=object_id, function=function))
+        function_handle_metadata = function_definition_to_handle_metadata(self.app_functions.get(object_id))
+        await stream.send_message(
+            api_pb2.AppLookupObjectResponse(object_id=object_id, function_handle_metadata=function_handle_metadata)
+        )
 
     async def AppHeartbeat(self, stream):
         request: api_pb2.AppHeartbeatRequest = await stream.recv_message()
