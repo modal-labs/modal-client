@@ -154,6 +154,7 @@ message AppGetObjectsItem {
   oneof handle_metadata_oneof {
     FunctionHandleMetadata function = 3;
     MountHandleMetadata mount_handle_metadata = 4;
+    ClassHandleMetadata class_handle_metadata = 5;
   }
 }
 
@@ -215,6 +216,24 @@ message AppHeartbeatRequest {
   string app_id = 1;
 }
 
+message ClassMethod {
+  string function_name = 1;
+  string function_id = 2;
+}
+
+message ClassCreateRequest {
+  string app_id = 1;
+  string existing_class_id = 2;
+  repeated ClassMethod methods = 3;
+}
+
+message ClassCreateResponse {
+  string class_id = 1;
+}
+
+message ClassHandleMetadata {
+  repeated ClassMethod methods = 1;
+}
 
 message EnvironmentCreateRequest {
   string name = 1;
@@ -316,7 +335,6 @@ message ContainerArguments {  // This is used to pass data from the worker to th
   map<string, string> tracing_context = 9;
   bytes serialized_params = 10;
 }
-
 
 message ContainerHeartbeatRequest {
   string current_input_id = 1;
