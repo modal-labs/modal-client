@@ -81,10 +81,11 @@ Obj = synchronize_api(_Obj)
 
 
 class _Cls(_Object, type_prefix="cs"):
-    _user_cls: type
+    _user_cls: Optional[type]
     _functions: Dict[str, _Function]
 
     def _initialize_from_empty(self):
+        self._user_cls = None
         self._base_functions = {}
 
     def _hydrate_metadata(self, metadata: Message):

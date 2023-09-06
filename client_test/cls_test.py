@@ -8,7 +8,7 @@ from typing_extensions import assert_type
 from modal import Cls, Function, Stub, method
 from modal._serialization import deserialize
 from modal.cls import ClsMixin
-from modal.exception import DeprecationError
+from modal.exception import DeprecationError, ExecutionError
 from modal_proto import api_pb2
 from modal.runner import deploy_stub
 
@@ -243,6 +243,13 @@ def test_lookup(client, servicer):
     # Check that function properties are preserved
     assert cls.bar.is_generator is False
 
-    # Make sure we can all this methods
+    # Make sure we can instantiate the class
+    obj = cls("foo", 234)
+
+    # Make sure we can methods
     # (mock servicer just returns the sum of the squares of the args)
-    assert cls.bar.remote(42, 77) == 7693
+    assert obj.bar.remote(42, 77) == 7693
+
+    # Make sure local calls fail
+    with pytest.raises(ExecutionError):
+        assert obj.bar.local(1, 2)
