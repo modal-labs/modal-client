@@ -66,7 +66,8 @@ def raw_terminal():
 
 def _child_sig_handler(signum, frame):
     assert signum == signal.SIGCHLD
-    raise KeyboardInterrupt(f"Received {signal.strsignal(signum)}. Interrupting pty.")
+    if os.environ.get("MODAL_FUNCTION_RUNTIME") == "gvisor":
+        raise KeyboardInterrupt(f"Received {signal.strsignal(signum)}. Interrupting pty.")
 
 
 @no_type_check
@@ -77,9 +78,6 @@ def _pty_spawn(pty_info: api_pb2.PTYInfo, fn, args, kwargs):
     import pty
     import termios
     import tty
-
-    # https://github.com/google/gvisor/issues/9333
-    signal.signal(signal.SIGCHLD, _child_sig_handler)
 
     pid, master_fd = pty.fork()
     if pid == pty.CHILD:
@@ -93,6 +91,9 @@ def _pty_spawn(pty_info: api_pb2.PTYInfo, fn, args, kwargs):
                 "Return values from interactive functions are currently ignored. Ignoring result of %s." % fn.__name__
             )
         os._exit(0)
+
+    # https://github.com/google/gvisor/issues/9333
+    signal.signal(signal.SIGCHLD, _child_sig_handler)
 
     if pty_info.winsz_rows or pty_info.winsz_cols:
         set_winsz(master_fd, pty_info.winsz_rows, pty_info.winsz_cols)
