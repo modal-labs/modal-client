@@ -579,7 +579,10 @@ class _Stub:
                     partial_function = synchronizer._translate_in(v)  # TODO: remove need for?
                     functions[k] = decorator(partial_function, user_cls)
 
-            return _Cls(user_cls, functions)
+            tag: str = user_cls.__name__
+            cls: _Cls = _Cls.from_local(user_cls, functions)
+            self._add_object(tag, cls)
+            return cls
 
         return wrapper
 
