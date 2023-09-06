@@ -26,6 +26,7 @@ def test_run_class(client, servicer):
     assert servicer.n_functions == 0
     with stub.run(client=client) as app:
         function_id = Foo.bar.object_id
+        assert isinstance(Foo, Cls)
         class_id = Foo.object_id
 
     objects = servicer.app_objects[app.app_id]
