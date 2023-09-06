@@ -91,7 +91,9 @@ class _Cls(_Object, type_prefix="cs"):
     def _hydrate_metadata(self, metadata: Message):
         self._base_functions = {}
         for method in metadata.methods:
-            function: _Function = _Function._new_hydrated(method.function_id, self._client, method.function_handle_metadata)
+            function: _Function = _Function._new_hydrated(
+                method.function_id, self._client, method.function_handle_metadata
+            )
             self._base_functions[method.function_name] = function
 
     @staticmethod

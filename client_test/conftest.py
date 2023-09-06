@@ -14,7 +14,7 @@ import tempfile
 import traceback
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict
 
 import aiohttp.web
 import aiohttp.web_runner
@@ -306,7 +306,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     ### Class
 
     async def ClassCreate(self, stream):
-        request: ClassCreateRequest = await stream.recv_message()
+        request: api_pb2.ClassCreateRequest = await stream.recv_message()
         methods: dict[str, str] = {method.function_name: method.function_id for method in request.methods}
         class_id = "cs-" + str(len(self.classes))
         self.classes[class_id] = methods

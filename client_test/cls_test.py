@@ -9,8 +9,8 @@ from modal import Cls, Function, Stub, method
 from modal._serialization import deserialize
 from modal.cls import ClsMixin
 from modal.exception import DeprecationError, ExecutionError
-from modal_proto import api_pb2
 from modal.runner import deploy_stub
+from modal_proto import api_pb2
 
 stub = Stub()
 
