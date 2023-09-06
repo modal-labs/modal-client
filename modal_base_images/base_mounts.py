@@ -40,7 +40,7 @@ def publish_python_standalone(client, version: str, libc: str) -> None:
     profile_environment = config.get("environment")
     mount_name = python_standalone_mount_name(f"{version}-{libc}")
     try:
-        Mount.lookup(mount_name + "#", namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL, client=client)
+        Mount.lookup(mount_name, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL, client=client)
         print(f"✅ Found existing mount {mount_name} in global namespace.")
     except NotFoundError:
         print(f"📦 Unpacking python-build-standalone for {version}-{libc}.")
