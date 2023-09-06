@@ -22,7 +22,7 @@ if TRACING_ENABLED:
     if any(os.environ.get(k) for k in ("DD_TRACE_AGENT_URL", "DD_AGENT_HOST")):
         tracer.configure()
     else:
-        tracer.configure(hostname="172.19.0.1")
+        tracer.configure(hostname="127.0.0.1")
 
 if config.get("profiling_enabled"):
     try:
