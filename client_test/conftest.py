@@ -137,23 +137,31 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self._function_body = func
         return func
 
-    def get_object(self, object_id) -> api_pb2.Object:
+    def get_function_metadata(self, object_id: str) -> api_pb2.FunctionHandleMetadata:
+        definition: api_pb2.Function = self.app_functions[object_id]
+        return api_pb2.FunctionHandleMetadata(
+            function_name=definition.function_name,
+            function_type=definition.function_type,
+            web_url=definition.web_url,
+        )
+
+    def get_object_metadata(self, object_id) -> api_pb2.Object:
         # TODO(erikbern): support mount metadata
         function_handle_metadata: api_pb2.FunctionHandleMetadata = None
         class_handle_metadata: api_pb2.ClassHandleMetadata = None
 
         if object_id.startswith("fu-"):
-            definition: api_pb2.Function = self.app_functions[object_id]
-            function_handle_metadata = api_pb2.FunctionHandleMetadata(
-                function_name=definition.function_name,
-                function_type=definition.function_type,
-                web_url=definition.web_url,
-            )
+            function_handle_metadata = self.get_function_metadata(object_id)
 
         elif object_id.startswith("cs-"):
             class_handle_metadata = api_pb2.ClassHandleMetadata()
             for f_name, f_id in self.classes[object_id].items():
-                class_handle_metadata.methods.append(api_pb2.ClassMethod(function_name=f_name, function_id=f_id))
+                function_handle_metadata = self.get_function_metadata(f_id)
+                class_handle_metadata.methods.append(
+                    api_pb2.ClassMethod(
+                        function_name=f_name, function_id=f_id, function_handle_metadata=function_handle_metadata
+                    )
+                )
 
         return api_pb2.Object(
             object_id=object_id,
@@ -203,7 +211,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         items = [
             api_pb2.AppGetObjectsItem(
                 tag=tag,
-                object=self.get_object(object_id),
+                object=self.get_object_metadata(object_id),
             )
             for tag, object_id in object_ids.items()
         ]
@@ -248,7 +256,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if object_id:
                 assert object_id.startswith(request.object_entity)
 
-        await stream.send_message(api_pb2.AppLookupObjectResponse(object=self.get_object(object_id)))
+        await stream.send_message(api_pb2.AppLookupObjectResponse(object=self.get_object_metadata(object_id)))
 
     async def AppHeartbeat(self, stream):
         request: api_pb2.AppHeartbeatRequest = await stream.recv_message()

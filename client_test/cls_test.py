@@ -239,3 +239,10 @@ def test_lookup(client, servicer):
 
     assert cls.object_id.startswith("cs-")
     assert cls.bar.object_id.startswith("fu-")
+
+    # Check that function properties are preserved
+    assert cls.bar.is_generator is False
+
+    # Make sure we can all this methods
+    # (mock servicer just returns the sum of the squares of the args)
+    assert cls.bar.remote(42, 77) == 7693
