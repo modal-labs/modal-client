@@ -362,7 +362,7 @@ def use_md5(url: str) -> bool:
     host = urlparse(url).netloc.split(":")[0]
     if host.endswith(".amazonaws.com"):
         return True
-    elif host in ["127.0.0.1", "localhost", "172.19.0.1"]:
+    elif host in ["127.0.0.1", "localhost", "172.21.0.1"]:
         return False
     else:
         raise Exception(f"Unknown S3 host: {host}")
