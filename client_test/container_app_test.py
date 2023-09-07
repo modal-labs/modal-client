@@ -7,6 +7,7 @@ from unittest import mock
 import modal.secret
 from modal import App, Image, Stub
 from modal.exception import InvalidError
+from modal_proto import api_pb2
 
 from .supports.skip import skip_windows_unix_socket
 
@@ -26,6 +27,8 @@ async def test_container_function_lazily_imported(unix_servicer, container_clien
         "my_f_1": "fu-123",
         "my_f_2": "fu-456",
     }
+    unix_servicer.app_functions["fu-123"] = api_pb2.Function()
+    unix_servicer.app_functions["fu-456"] = api_pb2.Function()
 
     await App.init_container.aio(container_client, "ap-123")
     stub = Stub()
