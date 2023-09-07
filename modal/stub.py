@@ -396,6 +396,12 @@ class _Stub:
         information on usage.
 
         """
+        if callable(name):
+            raise InvalidError(
+                "Invalid value for `name`. Did you forget parantheses? Suggestion: `@stub.local_entrypoint()`."
+            )
+        if name is not None and not isinstance(name, str):
+            raise InvalidError("Invalid value for `name`: Must be string.")
 
         def wrapped(raw_f: Callable[..., Any]) -> None:
             info = FunctionInfo(raw_f)
