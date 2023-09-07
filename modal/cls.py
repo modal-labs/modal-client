@@ -1,12 +1,18 @@
 # Copyright Modal Labs 2022
+import asyncio
 import pickle
 from datetime import date
-from typing import Any, Callable, Dict, Type, TypeVar
+from typing import Any, Callable, Dict, Optional, Type, TypeVar
 
+from google.protobuf.message import Message
+
+from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
 
+from ._resolver import Resolver
 from .exception import deprecation_warning
 from .functions import _Function
+from .object import _Object
 
 T = TypeVar("T")
 
@@ -74,15 +80,41 @@ class _Obj:
 Obj = synchronize_api(_Obj)
 
 
-class _Cls:
-    # TODO(erikbern): Make this inherit from Object (needs backend support for this)
-    _user_cls: type
+class _Cls(_Object, type_prefix="cs"):
+    _user_cls: Optional[type]
     _functions: Dict[str, _Function]
 
-    def __init__(self, user_cls, base_functions: Dict[str, _Function]):
-        self._user_cls = user_cls
-        self._base_functions = base_functions
-        setattr(self._user_cls, "_modal_functions", base_functions)  # Needed for PartialFunction.__get__
+    def _initialize_from_empty(self):
+        self._user_cls = None
+        self._base_functions = {}
+
+    def _hydrate_metadata(self, metadata: Message):
+        self._base_functions = {}
+        for method in metadata.methods:
+            function: _Function = _Function._new_hydrated(
+                method.function_id, self._client, method.function_handle_metadata
+            )
+            self._base_functions[method.function_name] = function
+
+    @staticmethod
+    def from_local(user_cls, base_functions: Dict[str, _Function]) -> "_Cls":
+        async def _load(provider: _Object, resolver: Resolver, existing_object_id: Optional[str]):
+            # Make sure all functions are loaded
+            await asyncio.gather(*[resolver.load(function) for function in base_functions.values()])
+
+            # Create class remotely
+            req = api_pb2.ClassCreateRequest(app_id=resolver.app_id, existing_class_id=existing_object_id)
+            for f_name, f in base_functions.items():
+                req.methods.append(api_pb2.ClassMethod(function_name=f_name, function_id=f.object_id))
+            resp = await resolver.client.stub.ClassCreate(req)
+            provider._hydrate(resp.class_id, resolver.client, None)
+
+        rep = f"Cls({user_cls.__name__})"
+        cls = _Cls._from_loader(_load, rep)
+        cls._user_cls = user_cls
+        cls._base_functions = base_functions
+        setattr(cls._user_cls, "_modal_functions", base_functions)  # Needed for PartialFunction.__get__
+        return cls
 
     def get_user_cls(self):
         # Used by the container entrypoint
