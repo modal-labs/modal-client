@@ -94,7 +94,7 @@ def test_memory_selection_gpu_variant(client, servicer, memory, gpu_type):
     stub = Stub()
 
     ctx_mgr = pytest.warns(DeprecationError) if memory == 20 else contextlib.nullcontext()
-    with ctx_mgr:
+    with ctx_mgr:  # type: ignore
         stub.function(gpu=modal.gpu.A100(memory=memory))(dummy)
     with stub.run(client=client):
         pass
