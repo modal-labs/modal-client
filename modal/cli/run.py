@@ -93,10 +93,10 @@ def _get_click_command_for_function(stub: Stub, function_tag):
         raise InvalidError("`modal run` is not supported for generator functions")
 
     if function.info.cls is not None:
-        obj = function.info.cls()
-        raw_func = functools.partial(function.info.raw_f, obj)
+        self = None
+        signature = inspect.signature(functools.partial(function.info.raw_f, self))
     else:
-        raw_func = function.info.raw_f
+        signature = inspect.signature(function.info.raw_f)
 
     @click.pass_context
     def f(ctx, *args, **kwargs):
@@ -109,7 +109,7 @@ def _get_click_command_for_function(stub: Stub, function_tag):
             stub[function_tag].remote(*args, **kwargs)
 
     # TODO: handle `self` when raw_func is an unbound method (e.g. method on lifecycle class)
-    with_click_options = _add_click_options(f, inspect.signature(raw_func))
+    with_click_options = _add_click_options(f, signature)
     return click.command(with_click_options)
 
 
