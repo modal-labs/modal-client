@@ -3,6 +3,7 @@ from modal_version import __version__
 
 from .app import App, container_app, is_local
 from .client import Client
+from .cls import Cls
 from .dict import Dict
 from .exception import Error
 from .functions import Function, asgi_app, current_input_id, method, web_endpoint, wsgi_app
@@ -22,6 +23,7 @@ __all__ = [
     "__version__",
     "App",
     "Client",
+    "Cls",
     "Cron",
     "Dict",
     "Error",

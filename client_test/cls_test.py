@@ -5,10 +5,11 @@ from typing import TYPE_CHECKING
 
 from typing_extensions import assert_type
 
-from modal import Function, Stub, method
+from modal import Cls, Function, Stub, method
 from modal._serialization import deserialize
 from modal.cls import ClsMixin
-from modal.exception import DeprecationError
+from modal.exception import DeprecationError, ExecutionError
+from modal.runner import deploy_stub
 from modal_proto import api_pb2
 
 stub = Stub()
@@ -24,14 +25,14 @@ class Foo:
 def test_run_class(client, servicer):
     assert servicer.n_functions == 0
     with stub.run(client=client) as app:
-        pass
+        function_id = Foo.bar.object_id
+        assert isinstance(Foo, Cls)
+        class_id = Foo.object_id
 
-    assert servicer.n_functions == 1
-    (function_id,) = servicer.app_functions.keys()
-    function = servicer.app_functions[function_id]
-    assert function.function_name == "Foo.bar"
     objects = servicer.app_objects[app.app_id]
-    assert objects == {"Foo.bar": function_id}
+    assert len(objects) == 2  # class and functions
+    assert objects["Foo.bar"] == function_id
+    assert objects["Foo"] == class_id
 
 
 def test_call_class_sync(client, servicer):
@@ -230,3 +231,26 @@ if TYPE_CHECKING:
     # Check that type annotations carry through to the decorated classes
     assert_type(Foo(), Foo)
     assert_type(Foo().bar, Function)
+
+
+def test_lookup(client, servicer):
+    deploy_stub(stub, "my-cls-app", client=client)
+
+    cls: Cls = Cls.lookup("my-cls-app", "Foo", client=client)
+
+    assert cls.object_id.startswith("cs-")
+    assert cls.bar.object_id.startswith("fu-")
+
+    # Check that function properties are preserved
+    assert cls.bar.is_generator is False
+
+    # Make sure we can instantiate the class
+    obj = cls("foo", 234)
+
+    # Make sure we can methods
+    # (mock servicer just returns the sum of the squares of the args)
+    assert obj.bar.remote(42, 77) == 7693
+
+    # Make sure local calls fail
+    with pytest.raises(ExecutionError):
+        assert obj.bar.local(1, 2)
