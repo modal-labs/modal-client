@@ -103,7 +103,7 @@ class _Cls(_Object, type_prefix="cs"):
             await asyncio.gather(*[resolver.load(function) for function in base_functions.values()])
 
             # Create class remotely
-            req = api_pb2.ClassCreateRequest()
+            req = api_pb2.ClassCreateRequest(app_id=resolver.app_id, existing_class_id=existing_object_id)
             for f_name, f in base_functions.items():
                 req.methods.append(api_pb2.ClassMethod(function_name=f_name, function_id=f.object_id))
             resp = await resolver.client.stub.ClassCreate(req)

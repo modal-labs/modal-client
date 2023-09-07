@@ -307,6 +307,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def ClassCreate(self, stream):
         request: api_pb2.ClassCreateRequest = await stream.recv_message()
+        assert request.app_id
         methods: dict[str, str] = {method.function_name: method.function_id for method in request.methods}
         class_id = "cs-" + str(len(self.classes))
         self.classes[class_id] = methods
