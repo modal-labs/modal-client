@@ -2,6 +2,7 @@
 import os
 import pytest
 import sys
+import threading
 from tempfile import NamedTemporaryFile
 from typing import List
 
@@ -296,15 +297,16 @@ def test_image_run_function(client, servicer):
     assert len(servicer.app_functions[function_id].secret_ids) == 1
 
 
-X = 1
+VARIABLE_1 = 1
+VARIABLE_2 = 3
 
 
 def run_f_globals():
-    print("foo!", X)
+    print("foo!", VARIABLE_1)
 
 
 def test_image_run_function_globals(client, servicer):
-    global X
+    global VARIABLE_1, VARIABLE_2
 
     stub = Stub()
     stub["image"] = Image.debian_slim().run_function(run_f_globals)
@@ -312,17 +314,36 @@ def test_image_run_function_globals(client, servicer):
     with stub.run(client=client):
         layers = get_image_layers(stub["image"].object_id, servicer)
         old_globals = layers[0].build_function_globals
-        assert old_globals is not None
+        assert b"VARIABLE_1" in old_globals
+        assert b"VARIABLE_2" not in old_globals
 
-    X = 3
+    VARIABLE_1 = 3
     with stub.run(client=client):
         layers = get_image_layers(stub["image"].object_id, servicer)
         assert layers[0].build_function_globals != old_globals
 
-    X = 1
+    VARIABLE_1 = 1
     with stub.run(client=client):
         layers = get_image_layers(stub["image"].object_id, servicer)
         assert layers[0].build_function_globals == old_globals
+
+
+VARIABLE_3 = threading.Lock()
+VARIABLE_4 = "bar"
+
+
+def run_f_unserializable_globals():
+    print("foo!", VARIABLE_3, VARIABLE_4)
+
+
+def test_image_run_unserializable_function(client, servicer):
+    stub = Stub()
+    stub["image"] = Image.debian_slim().run_function(run_f_unserializable_globals)
+
+    with stub.run(client=client):
+        layers = get_image_layers(stub["image"].object_id, servicer)
+        old_globals = layers[0].build_function_globals
+        assert b"VARIABLE_4" in old_globals
 
 
 def test_poetry(client, servicer):
