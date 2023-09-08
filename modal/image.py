@@ -202,7 +202,10 @@ class _Image(_Object, type_prefix="im"):
                     try:
                         serialize(v)
                     except Exception:
-                        # Silently skip unserializable values for now.
+                        # Skip unserializable values for now.
+                        logger.warning(
+                            f"Skipping unserializable global variable {k} for {build_function._get_info().function_name}. Changes to this variable won't invalidate the image."
+                        )
                         continue
                     filtered_globals[k] = v
 
