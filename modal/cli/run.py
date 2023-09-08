@@ -99,14 +99,14 @@ def _get_click_command_for_function(stub: Stub, function_tag):
         signature = inspect.signature(function.info.raw_f)
 
     @click.pass_context
-    def f(ctx, *args, **kwargs):
+    def f(ctx, **kwargs):
         with run_stub(
             stub,
             detach=ctx.obj["detach"],
             show_progress=ctx.obj["show_progress"],
             environment_name=ctx.obj["env"],
         ):
-            stub[function_tag].remote(*args, **kwargs)
+            stub[function_tag].remote(**kwargs)
 
     # TODO: handle `self` when raw_func is an unbound method (e.g. method on lifecycle class)
     with_click_options = _add_click_options(f, signature)
