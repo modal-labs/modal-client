@@ -68,6 +68,7 @@ class _Obj:
         # Construct local object lazily. Used for .local() calls
         if not self._has_local_obj:
             self._local_obj = self._local_obj_constr()
+            # TODO(erikbern): run __enter__?
             setattr(self._local_obj, "_modal_functions", self._functions)  # Needed for PartialFunction.__get__
             self._has_local_obj = True
 

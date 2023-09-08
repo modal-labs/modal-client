@@ -457,3 +457,10 @@ def test_environment_noflag(test_dir, servicer, command, monkeypatch):
     app_lookup_object2: api_pb2.AppLookupObjectRequest = ctx.pop_request("AppLookupObject")
     assert app_lookup_object2.app_name == "volume_app"
     assert app_lookup_object2.environment_name == "some_weird_default_env"
+
+
+def test_cls(servicer, set_env_client, test_dir):
+    stub_file = test_dir / "supports" / "app_run_tests" / "cls.py"
+
+    _run(["run", stub_file.as_posix(), "--x", "42", "--y", "1000"])
+    _run(["run", f"{stub_file.as_posix()}::AParametrized.some_method", "--x", "42", "--y", "1000"])
