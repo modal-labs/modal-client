@@ -99,13 +99,14 @@ def _get_click_command_for_function(stub: Stub, function_tag):
     if function.is_generator:
         raise InvalidError("`modal run` is not supported for generator functions")
 
+    signature: Dict[str, inspect.Parameter]
     if function.info.cls is not None:
         cls_signature = _get_signature(function.info.cls)
         fun_signature = _get_signature(function.info.raw_f, is_method=True)
         signature = cls_signature | fun_signature  # Pool all arguments
         # TODO(erikbern): assert there's no overlap?
     else:
-        signature = inspect.signature(function.info.raw_f)
+        signature = _get_signature(function.info.raw_f)
 
     @click.pass_context
     def f(ctx, **kwargs):
