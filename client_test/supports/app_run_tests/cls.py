@@ -1,4 +1,4 @@
-# Copyright Modal Labs 2022
+# Copyright Modal Labs 2023
 import modal
 
 stub = modal.Stub()
