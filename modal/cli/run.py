@@ -103,7 +103,7 @@ def _get_click_command_for_function(stub: Stub, function_tag):
     if function.info.cls is not None:
         cls_signature = _get_signature(function.info.cls)
         fun_signature = _get_signature(function.info.raw_f, is_method=True)
-        signature = cls_signature | fun_signature  # Pool all arguments
+        signature = dict(**cls_signature, **fun_signature)  # Pool all arguments
         # TODO(erikbern): assert there's no overlap?
     else:
         signature = _get_signature(function.info.raw_f)
