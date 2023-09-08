@@ -5,7 +5,7 @@ import functools
 import inspect
 import sys
 import time
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Dict, Optional
 
 import click
 import typer
@@ -50,14 +50,14 @@ class NoParserAvailable(InvalidError):
     pass
 
 
-def _get_signature(f: Callable, is_method: bool = False) -> dict[str, inspect.Parameter]:
+def _get_signature(f: Callable, is_method: bool = False) -> Dict[str, inspect.Parameter]:
     if is_method:
         self = None  # Dummy, doesn't matter
         f = functools.partial(f, self)
     return {param.name: param for param in inspect.signature(f).parameters.values()}
 
 
-def _add_click_options(func, signature: dict[str, inspect.Parameter]):
+def _add_click_options(func, signature: Dict[str, inspect.Parameter]):
     """Adds @click.option based on function signature
 
     Kind of like typer, but using options instead of positional arguments
