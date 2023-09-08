@@ -5,7 +5,7 @@ import functools
 import inspect
 import sys
 import time
-from typing import Any, Optional
+from typing import Any, Callable, Dict, Optional
 
 import click
 import typer
@@ -50,12 +50,19 @@ class NoParserAvailable(InvalidError):
     pass
 
 
-def _add_click_options(func, signature: inspect.Signature):
+def _get_signature(f: Callable, is_method: bool = False) -> Dict[str, inspect.Parameter]:
+    if is_method:
+        self = None  # Dummy, doesn't matter
+        f = functools.partial(f, self)
+    return {param.name: param for param in inspect.signature(f).parameters.values()}
+
+
+def _add_click_options(func, signature: Dict[str, inspect.Parameter]):
     """Adds @click.option based on function signature
 
     Kind of like typer, but using options instead of positional arguments
     """
-    for param in signature.parameters.values():
+    for param in signature.values():
         param_type = Any if param.annotation is inspect.Signature.empty else param.annotation
         param_name = param.name.replace("_", "-")
         cli_name = "--" + param_name
@@ -92,23 +99,33 @@ def _get_click_command_for_function(stub: Stub, function_tag):
     if function.is_generator:
         raise InvalidError("`modal run` is not supported for generator functions")
 
+    signature: Dict[str, inspect.Parameter]
     if function.info.cls is not None:
-        self = None
-        signature = inspect.signature(functools.partial(function.info.raw_f, self))
+        cls_signature = _get_signature(function.info.cls)
+        fun_signature = _get_signature(function.info.raw_f, is_method=True)
+        signature = dict(**cls_signature, **fun_signature)  # Pool all arguments
+        # TODO(erikbern): assert there's no overlap?
     else:
-        signature = inspect.signature(function.info.raw_f)
+        signature = _get_signature(function.info.raw_f)
 
     @click.pass_context
-    def f(ctx, *args, **kwargs):
+    def f(ctx, **kwargs):
         with run_stub(
             stub,
             detach=ctx.obj["detach"],
             show_progress=ctx.obj["show_progress"],
             environment_name=ctx.obj["env"],
         ):
-            stub[function_tag].remote(*args, **kwargs)
+            if function.info.cls is None:
+                function.remote(**kwargs)
+            else:
+                # unpool class and method arguments
+                # TODO(erikbern): this code is a bit hacky
+                cls_kwargs = {k: kwargs[k] for k in cls_signature}
+                fun_kwargs = {k: kwargs[k] for k in fun_signature}
+                method = function.from_parametrized(None, tuple(), cls_kwargs)
+                method.remote(**fun_kwargs)
 
-    # TODO: handle `self` when raw_func is an unbound method (e.g. method on lifecycle class)
     with_click_options = _add_click_options(f, signature)
     return click.command(with_click_options)
 
@@ -135,7 +152,7 @@ def _get_click_command_for_local_entrypoint(stub: Stub, entrypoint: LocalEntrypo
             else:
                 func(*args, **kwargs)
 
-    with_click_options = _add_click_options(f, inspect.signature(func))
+    with_click_options = _add_click_options(f, _get_signature(func))
     return click.command(with_click_options)
 
 
