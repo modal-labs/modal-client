@@ -195,10 +195,23 @@ class _Image(_Object, type_prefix="im"):
                 build_function_id = (await resolver.load(build_function)).object_id
 
                 globals = build_function._get_info().get_globals()
+                filtered_globals = {}
+                for k, v in globals.items():
+                    if isfunction(v):
+                        continue
+                    try:
+                        serialize(v)
+                    except Exception:
+                        # Skip unserializable values for now.
+                        logger.warning(
+                            f"Skipping unserializable global variable {k} for {build_function._get_info().function_name}. Changes to this variable won't invalidate the image."
+                        )
+                        continue
+                    filtered_globals[k] = v
+
                 # Cloudpickle function serialization produces unstable values.
                 # TODO: better way to filter out types that don't have a stable hash?
-                globals = {k: v for k, v in globals.items() if not isfunction(v)}
-                build_function_globals = serialize(globals) if globals else None
+                build_function_globals = serialize(filtered_globals) if filtered_globals else None
             else:
                 build_function_def = None
                 build_function_id = None
