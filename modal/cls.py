@@ -47,7 +47,7 @@ class _Obj:
     _functions: Dict[str, _Function]
     _has_local_obj: bool
     _local_obj: Any
-    _local_obj_constr: Callable[[], Any]
+    _local_obj_constr: Optional[Callable[[], Any]]
 
     def __init__(self, user_cls: type, base_functions: Dict[str, _Function], args, kwargs):
         for i, arg in enumerate(args):
@@ -62,7 +62,10 @@ class _Obj:
         # Used for construction local object lazily
         self._has_local_obj = False
         self._local_obj = None
-        self._local_obj_constr = lambda: user_cls(*args, **kwargs)
+        if user_cls:
+            self._local_obj_constr = lambda: user_cls(*args, **kwargs)
+        else:
+            self._local_obj_constr = None
 
     def get_local_obj(self):
         # Construct local object lazily. Used for .local() calls
@@ -75,7 +78,13 @@ class _Obj:
         return self._local_obj
 
     def __getattr__(self, k):
-        return self._functions[k]
+        if k in self._functions:
+            return self._functions[k]
+        elif self._local_obj_constr:
+            obj = self.get_local_obj()
+            return getattr(obj, k)
+        else:
+            raise AttributeError(k)
 
 
 Obj = synchronize_api(_Obj)
