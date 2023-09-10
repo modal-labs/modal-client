@@ -30,7 +30,7 @@ def test_run_class(client, servicer):
         class_id = Foo.object_id
 
     objects = servicer.app_objects[app.app_id]
-    assert len(objects) == 2  # class and functions
+    assert len(objects) == 3  # classes and functions
     assert objects["Foo.bar"] == function_id
     assert objects["Foo"] == class_id
 
@@ -254,3 +254,18 @@ def test_lookup(client, servicer):
     # Make sure local calls fail
     with pytest.raises(ExecutionError):
         assert obj.bar.local(1, 2)
+
+
+@stub.cls()
+class Baz:
+    def __init__(self, x):
+        self.x = x
+
+    def not_modal_method(self, y: int) -> int:
+        return self.x * y
+
+
+def test_call_not_modal_method():
+    baz: Baz = Baz(5)
+    assert baz.x == 5
+    assert baz.not_modal_method(7) == 35
