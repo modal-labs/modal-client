@@ -21,7 +21,7 @@ from ._resolver import Resolver
 from ._serialization import serialize
 from .app import is_local
 from .config import config, logger
-from .exception import InvalidError, NotFoundError, RemoteError, deprecation_error, deprecation_warning
+from .exception import InvalidError, NotFoundError, RemoteError, deprecation_warning
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
@@ -1205,9 +1205,9 @@ class _Image(_Object, type_prefix="im"):
         info = FunctionInfo(raw_f)
 
         if shared_volumes or network_file_systems:
-            deprecation_error(
+            deprecation_warning(
                 date(2023, 8, 19),
-                "`run_function` no longer supports mounting NetworkFileSystems or Volumes. If you are trying to download model weights, downloading it to the image itself is recommended and sufficient. Please refer to the docs for more on this.",
+                "Support for mounting NetworkFileSystems or Volumes will soon be removed from `run_function`. If you are trying to download model weights, downloading it to the image itself is recommended and sufficient. Please refer to the docs for more on this, or reach out to us if your use case is not covered.",
             )
 
         function = _Function.from_args(
