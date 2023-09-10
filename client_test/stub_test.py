@@ -312,7 +312,7 @@ def test_keyboard_interrupt(servicer, client):
         raise KeyboardInterrupt()
 
 
-def test_local_entrypoint_without_parantheses():
+def test_local_entrypoint_forgot_parentheses():
     stub = Stub()
 
     with pytest.raises(InvalidError) as excinfo:
@@ -322,3 +322,27 @@ def test_local_entrypoint_without_parantheses():
             pass
 
     assert "local_entrypoint()" in str(excinfo.value)
+
+
+def test_function_forgot_parentheses():
+    stub = Stub()
+
+    with pytest.raises(InvalidError) as excinfo:
+
+        @stub.function  # type: ignore
+        def f():
+            pass
+
+    assert "function()" in str(excinfo.value)
+
+
+def test_cls_forgot_parentheses():
+    stub = Stub()
+
+    with pytest.raises(InvalidError) as excinfo:
+
+        @stub.cls  # type: ignore
+        class XYZ:
+            pass
+
+    assert "cls()" in str(excinfo.value)

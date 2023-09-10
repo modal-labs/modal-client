@@ -348,7 +348,9 @@ class _Stub:
         """Names of web endpoint (ie. webhook) functions registered on the stub."""
         return self._web_endpoints
 
-    def local_entrypoint(self, name: Optional[str] = None) -> Callable[[Callable[..., Any]], None]:
+    def local_entrypoint(
+        self, _warn_parentheses_missing=None, *, name: Optional[str] = None
+    ) -> Callable[[Callable[..., Any]], None]:
         """Decorate a function to be used as a CLI entrypoint for a Modal App.
 
         These functions can be used to define code that runs locally to set up the app,
@@ -396,10 +398,8 @@ class _Stub:
         information on usage.
 
         """
-        if callable(name):
-            raise InvalidError(
-                "Invalid value for `name`. Did you forget parantheses? Suggestion: `@stub.local_entrypoint()`."
-            )
+        if _warn_parentheses_missing:
+            raise InvalidError("Did you forget parentheses? Suggestion: `@stub.local_entrypoint()`.")
         if name is not None and not isinstance(name, str):
             raise InvalidError("Invalid value for `name`: Must be string.")
 
@@ -414,6 +414,8 @@ class _Stub:
     @typechecked
     def function(
         self,
+        _warn_parentheses_missing=None,
+        *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
         secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
@@ -448,6 +450,9 @@ class _Stub:
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
     ) -> Callable[..., _Function]:
         """Decorator to register a new Modal function with this stub."""
+        if _warn_parentheses_missing:
+            raise InvalidError("Did you forget parentheses? Suggestion: `@stub.function()`.")
+
         if image is None:
             image = self._get_default_image()
 
@@ -527,6 +532,8 @@ class _Stub:
 
     def cls(
         self,
+        _warn_parentheses_missing=None,
+        *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
         secrets: Sequence[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
@@ -551,6 +558,9 @@ class _Stub:
         keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
     ) -> Callable[[CLS_T], _Cls]:
+        if _warn_parentheses_missing:
+            raise InvalidError("Did you forget parentheses? Suggestion: `@stub.cls()`.")
+
         decorator: Callable[[PartialFunction, type], _Function] = self.function(
             image=image,
             secret=secret,
