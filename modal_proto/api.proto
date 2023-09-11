@@ -1445,7 +1445,7 @@ service ModalClient {
   // Volumes
   rpc VolumeCreate(VolumeCreateRequest) returns (VolumeCreateResponse);
   rpc VolumeCommit(VolumeCommitRequest) returns (google.protobuf.Empty);
-  rpc VolumeGetFile(VolumeGetFileRequest) returns (VolumeGetFileResponse);
+  rpc VolumeGetFile(VolumeGetFileRequest) returns (stream google.protobuf.BytesValue);
   rpc VolumeList(VolumeListRequest) returns (VolumeListResponse);
   rpc VolumeListFiles(VolumeListFilesRequest) returns (stream VolumeListFilesResponse);
   rpc VolumeReload(VolumeReloadRequest) returns (google.protobuf.Empty);
