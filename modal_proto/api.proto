@@ -1262,13 +1262,6 @@ message VolumeGetFileRequest {
   bytes path = 2;
 }
 
-message VolumeGetFileResponse {
-  oneof data_oneof {
-    bytes data = 1;
-    string data_blob_id = 2;
-  }
-}
-
 message VolumeListFilesEntry {
   enum FileType {
     UNSPECIFIED = 0;
