@@ -19,7 +19,7 @@ from .app import _App, _container_app, is_local
 from .client import _Client
 from .cls import _Cls
 from .config import logger
-from .exception import InvalidError, deprecation_error
+from .exception import InvalidError, deprecation_error, deprecation_warning
 from .functions import PartialFunction, _Function, _PartialFunction
 from .gpu import GPU_T
 from .image import _Image
@@ -179,6 +179,7 @@ class _Stub:
     @property
     def app(self) -> Optional[_App]:
         """Reference to the currently running app, if any."""
+        deprecation_warning(date(2023, 9, 11), "Access to `.app` is deprecated.")
         return self._app
 
     @property
