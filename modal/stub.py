@@ -107,7 +107,6 @@ class _Stub:
 
     _name: Optional[str]
     _description: Optional[str]
-    _app_id: str
     _blueprint: Dict[str, _Object]
     _function_mounts: Dict[str, _Mount]
     _mounts: Sequence[_Mount]
@@ -181,6 +180,11 @@ class _Stub:
         """Reference to the currently running app, if any."""
         deprecation_warning(date(2023, 9, 11), "Access to `.app` is deprecated.")
         return self._app
+
+    @property
+    def app_id(self) -> Optional[str]:
+        """Return the app_id, if the stub is running."""
+        return self._app.app_id if self._app else None
 
     @property
     def description(self) -> Optional[str]:
@@ -644,7 +648,7 @@ class _Stub:
             raise InvalidError("`stub.spawn_sandbox` requires a running app.")
 
         # TODO(erikbern): pulling a lot of app internals here, let's clean up shortly
-        resolver = Resolver(self._app._client, environment_name=self._app._environment_name, app_id=self._app._app_id)
+        resolver = Resolver(self._app._client, environment_name=self._app._environment_name, app_id=self.app_id)
         obj = _Sandbox._new(
             entrypoint_args,
             image=image or _default_image,
