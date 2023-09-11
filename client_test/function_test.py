@@ -8,9 +8,9 @@ import typing
 import cloudpickle
 from synchronicity.exceptions import UserCodeException
 
-from modal import NetworkFileSystem, Proxy, Stub, asgi_app, web_endpoint, wsgi_app
-from modal.exception import DeprecationError, InvalidError
-from modal.functions import Function, FunctionCall, FunctionHandle, gather
+from modal import NetworkFileSystem, Proxy, Stub, web_endpoint
+from modal.exception import DeprecationError, ExecutionError, InvalidError
+from modal.functions import Function, FunctionCall, gather
 from modal.runner import deploy_stub
 from modal_proto import api_pb2
 
@@ -34,33 +34,49 @@ def dummy():
 def test_run_function(client, servicer):
     assert len(servicer.cleared_function_calls) == 0
     with stub.run(client=client):
-        assert foo.call(2, 4) == 20
-        assert len(servicer.cleared_function_calls) == 1
+        # Old-style remote calls
+        with pytest.warns(DeprecationError):
+            assert foo.call(2, 4) == 20
+            assert len(servicer.cleared_function_calls) == 1
+
+        # New-style remote calls
+        assert foo.remote(2, 4) == 20
+        assert len(servicer.cleared_function_calls) == 2
 
         # Make sure we can also call the Function object
         fun = stub.foo
         assert isinstance(fun, Function)
-        assert fun.call(2, 4) == 20
-        assert len(servicer.cleared_function_calls) == 2
+        assert fun.remote(2, 4) == 20
+        assert len(servicer.cleared_function_calls) == 3
 
 
 @pytest.mark.asyncio
 async def test_call_function_locally(client, servicer):
-    assert foo(22, 44) == 77  # call it locally
-    assert await async_foo(22, 44) == 78
+    # Old-style local calls
+    with pytest.warns(DeprecationError):
+        assert foo(22, 44) == 77  # call it locally
+        assert await async_foo(22, 44) == 78
+
+    # New-style local calls
+    assert foo.local(22, 44) == 77  # call it locally
+    assert await async_foo.local(22, 44) == 78
 
     with stub.run(client=client):
-        assert foo.call(2, 4) == 20
-        assert foo(22, 55) == 88
-        assert await async_foo(22, 44) == 78
-        assert async_foo.call(2, 4) == 20
-        assert await async_foo.call.aio(2, 4) == 20
+        assert foo.remote(2, 4) == 20
+        with pytest.warns(DeprecationError):
+            assert foo(22, 55) == 88
+        with pytest.warns(DeprecationError):
+            assert await async_foo(22, 44) == 78
+        assert async_foo.remote(2, 4) == 20
+        assert await async_foo.remote.aio(2, 4) == 20
 
         # Make sure we can also call the Function object
         assert isinstance(stub.foo, Function)
         assert isinstance(stub.async_foo, Function)
-        assert stub.foo(22, 55) == 88
-        assert await stub.async_foo(22, 44) == 78
+        with pytest.warns(DeprecationError):
+            assert stub.foo(22, 55) == 88
+        with pytest.warns(DeprecationError):
+            assert await stub.async_foo(22, 44) == 78
 
 
 @pytest.mark.parametrize("slow_put_inputs", [False, True])
@@ -215,7 +231,7 @@ async def test_generator(client, servicer):
     assert len(servicer.cleared_function_calls) == 0
     with stub.run(client=client):
         assert later_gen_modal.is_generator
-        res: typing.Generator = later_gen_modal.call()  # type: ignore
+        res: typing.Generator = later_gen_modal.remote_gen()  # type: ignore
         # Generators fulfil the *iterator protocol*, which requires both these methods.
         # https://docs.python.org/3/library/stdtypes.html#typeiter
         assert hasattr(res, "__iter__")  # strangely inspect.isgenerator returns false
@@ -223,6 +239,11 @@ async def test_generator(client, servicer):
         assert next(res) == "bar"
         assert list(res) == ["baz", "boo"]
         assert len(servicer.cleared_function_calls) == 1
+
+        # Check deprecated interface
+        with pytest.warns(DeprecationError):
+            res = later_gen_modal.call()
+            assert next(res) == "bar"
 
 
 @pytest.mark.asyncio
@@ -240,7 +261,7 @@ async def test_generator_async(client, servicer):
     assert len(servicer.cleared_function_calls) == 0
     async with stub.run(client=client):
         assert later_gen_modal.is_generator
-        res = later_gen_modal.call.aio()
+        res = later_gen_modal.remote_gen.aio()
         # Async generators fulfil the *asynchronous iterator protocol*, which requires both these methods.
         # https://peps.python.org/pep-0525/#support-for-asynchronous-iteration-protocol
         assert hasattr(res, "__aiter__")
@@ -381,7 +402,7 @@ def test_function_exception(client, servicer):
     failure_modal = stub.function()(servicer.function_body(failure))
     with stub.run(client=client):
         with pytest.raises(CustomException) as excinfo:
-            failure_modal.call()
+            failure_modal.remote()
         assert "foo!" in str(excinfo.value)
 
 
@@ -392,7 +413,7 @@ async def test_function_exception_async(client, servicer):
     failure_modal = stub.function()(servicer.function_body(failure))
     async with stub.run(client=client):
         with pytest.raises(CustomException) as excinfo:
-            coro = failure_modal.call.aio()
+            coro = failure_modal.remote.aio()
             assert inspect.isawaitable(
                 coro
             )  # mostly for mypy, since output could technically be an async generator which isn't awaitable in the same sense
@@ -434,7 +455,7 @@ def test_function_relative_import_hint(client, servicer):
 
     with stub.run(client=client):
         with pytest.raises(ImportError) as excinfo:
-            import_failure_modal.call()
+            import_failure_modal.remote()
         assert "HINT" in str(excinfo.value)
 
 
@@ -499,15 +520,18 @@ def test_from_id(client, servicer):
     function_id = foo.object_id
     assert function_id
     assert foo.web_url
-    rehydrated_function: FunctionHandle = FunctionHandle.from_id(function_id, client=client)
+
+    rehydrated_function = Function.from_id(function_id, client=client)
+    assert isinstance(rehydrated_function, Function)
+
     assert rehydrated_function.object_id == function_id
     assert rehydrated_function.web_url == foo.web_url
 
-    function_call_handle = foo.spawn()
-    assert function_call_handle.object_id
+    function_call = foo.spawn()
+    assert function_call.object_id
     # Used in a few examples to construct FunctionCall objects
-    rehydrated_function_call_handle = FunctionCall.from_id(function_call_handle.object_id, client)
-    assert rehydrated_function_call_handle.object_id == function_call_handle.object_id
+    rehydrated_function_call = FunctionCall.from_id(function_call.object_id, client)
+    assert rehydrated_function_call.object_id == function_call.object_id
 
 
 def test_panel(client, servicer):
@@ -561,11 +585,8 @@ def test_allow_cross_region_volumes_webhook(client, servicer):
 def test_shared_volumes(client, servicer):
     stub = Stub()
     vol = NetworkFileSystem.new()
-    with pytest.warns(DeprecationError):
-        stub.function(shared_volumes={"/sv-1": vol})(dummy)
-
-    with stub.run(client=client):
-        assert len(servicer.app_functions) == 1
+    with pytest.raises(DeprecationError):
+        stub.function(shared_volumes={"/sv-1": vol})
 
 
 def test_serialize_deserialize_function_handle(servicer, client):
@@ -584,33 +605,10 @@ def test_serialize_deserialize_function_handle(servicer, client):
     with stub.run(client=client):
         blob = serialize(my_handle)
 
-    rehydrated_function_handle = deserialize(blob, client)
-    assert rehydrated_function_handle.object_id == my_handle.object_id
-    assert isinstance(rehydrated_function_handle, Function)
-    assert rehydrated_function_handle.web_url == "http://xyz.internal"
-
-
-def test_invalid_web_decorator_usage():
-    with pytest.raises(InvalidError, match="Add empty parens to the decorator"):
-
-        @stub.function()  # type: ignore
-        @web_endpoint  # type: ignore
-        def my_handle():
-            pass
-
-    with pytest.raises(InvalidError, match="Add empty parens to the decorator"):
-
-        @stub.function()  # type: ignore
-        @asgi_app  # type: ignore
-        def my_handle_asgi():
-            pass
-
-    with pytest.raises(InvalidError, match="Add empty parens to the decorator"):
-
-        @stub.function()  # type: ignore
-        @wsgi_app  # type: ignore
-        def my_handle_wsgi():
-            pass
+        rehydrated_function_handle = deserialize(blob, client)
+        assert rehydrated_function_handle.object_id == my_handle.object_id
+        assert isinstance(rehydrated_function_handle, Function)
+        assert rehydrated_function_handle.web_url == "http://xyz.internal"
 
 
 def test_default_cloud_provider(client, servicer, monkeypatch):
@@ -619,6 +617,35 @@ def test_default_cloud_provider(client, servicer, monkeypatch):
     monkeypatch.setenv("MODAL_DEFAULT_CLOUD", "oci")
     stub.function()(dummy)
     with stub.run(client=client) as app:
-        f = servicer.app_functions[app.dummy.object_id]
+        f = servicer.app_functions[app._get_object("dummy").object_id]
 
     assert f.cloud_provider == api_pb2.CLOUD_PROVIDER_OCI
+
+
+def test_not_hydrated():
+    with pytest.raises(ExecutionError):
+        assert foo.remote(2, 4) == 20
+
+
+def test_invalid_large_serialization(client):
+    big_data = b"1" * 500000
+
+    def f():
+        return big_data
+
+    with pytest.warns(UserWarning, match="larger than the recommended limit"):
+        stub = Stub()
+        stub.function(serialized=True)(f)
+        with stub.run(client=client):
+            pass
+
+    bigger_data = b"1" * 50000000
+
+    def g():
+        return bigger_data
+
+    with pytest.raises(InvalidError):
+        stub = Stub()
+        stub.function(serialized=True)(g)
+        with stub.run(client=client):
+            pass

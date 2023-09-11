@@ -96,6 +96,7 @@ def _get_clean_stub_description(stub_ref: str) -> str:
 
 @contextlib.asynccontextmanager
 async def _serve_stub(
+    stub,
     stub_ref: str,
     stdout: Optional[io.TextIOWrapper] = None,
     show_progress: bool = True,
@@ -104,10 +105,6 @@ async def _serve_stub(
 ) -> AsyncGenerator[_App, None]:
     if environment_name is None:
         environment_name = config.get("environment")
-
-    stub = import_stub(stub_ref)
-    if stub._description is None:
-        stub._description = _get_clean_stub_description(stub_ref)
 
     client = await _Client.from_env()
 

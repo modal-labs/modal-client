@@ -52,8 +52,7 @@ jobs:
         run: pytest -v -s client_test
 
       - name: Run docstring tests
-        run: pytest -s --markdown-docs -m markdown-docs modal --ignore modal/aio.py
-
+        run: pytest -s --markdown-docs -m markdown-docs modal
 
   publish-base-images:
     name: |
@@ -147,7 +146,7 @@ jobs:
           MODAL_LOGLEVEL: DEBUG
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-        run: python -m modal_base_images.client_mount
+        run: python -m modal_base_images.base_mounts
 
       - name: Upload to PyPI
         env:

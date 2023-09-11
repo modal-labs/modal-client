@@ -4,6 +4,7 @@ import shlex
 import sys
 import typing
 from datetime import date
+from inspect import isfunction
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
@@ -17,13 +18,14 @@ from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_
 
 from ._function_utils import FunctionInfo
 from ._resolver import Resolver
+from ._serialization import serialize
 from .app import is_local
 from .config import config, logger
-from .exception import InvalidError, NotFoundError, RemoteError, deprecation_error, deprecation_warning
+from .exception import InvalidError, NotFoundError, RemoteError, deprecation_warning
 from .gpu import GPU_T, parse_gpu_config
-from .mount import _Mount
+from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
-from .object import _Handle, _Provider
+from .object import _Object
 from .secret import _Secret
 
 
@@ -90,16 +92,12 @@ def _flatten_str_args(function_name: str, arg_name: str, args: Tuple[Union[str, 
     return ret
 
 
-class _ImageHandle(_Handle, type_prefix="im"):
-    pass
-
-
 class _ImageRegistryConfig:
     """mdmd:hidden"""
 
     def __init__(
         self,
-        registry_type: "api_pb2.RegistryType.ValueType" = api_pb2.RegistryType.DOCKERHUB,
+        registry_type: int = api_pb2.RegistryType.DOCKERHUB,
         secret: Optional[_Secret] = None,
     ):
         self.registry_type = registry_type
@@ -118,11 +116,11 @@ if typing.TYPE_CHECKING:
     import modal.functions
 
 
-class _Image(_Provider, type_prefix="im"):
+class _Image(_Object, type_prefix="im"):
     """Base class for container images to run functions in.
 
     Do not construct this class directly; instead use one of its static factory methods,
-    such as `modal.Image.debian_slim`, `modal.Image.from_dockerhub`, or `modal.Image.conda`.
+    such as `modal.Image.debian_slim`, `modal.Image.from_registry`, or `modal.Image.conda`.
     """
 
     force_build: bool = False
@@ -136,12 +134,12 @@ class _Image(_Provider, type_prefix="im"):
         secrets: Sequence[_Secret] = [],
         ref=None,
         gpu_config: Optional[api_pb2.GPUConfig] = None,
-        build_function: "modal.functions._Function" = None,
+        build_function: Optional["modal.functions._Function"] = None,
         context_mount: Optional[_Mount] = None,
         image_registry_config: Optional[_ImageRegistryConfig] = None,
         force_build: bool = False,
         # For internal use only.
-        _namespace: "api_pb2.DeploymentNamespace.ValueType" = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        _namespace: int = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
     ):
         if gpu_config is None:
             gpu_config = api_pb2.GPUConfig()
@@ -164,10 +162,11 @@ class _Image(_Provider, type_prefix="im"):
         if build_function and len(base_images) != 1:
             raise InvalidError("Cannot run a build function with multiple base images!")
 
-        async def _load(resolver: Resolver, existing_object_id: Optional[str], handle: _ImageHandle):
+        async def _load(provider: _Image, resolver: Resolver, existing_object_id: Optional[str]):
             if ref:
                 image_id = (await resolver.load(ref)).object_id
-                handle._hydrate(image_id, resolver.client, None)
+                provider._hydrate(image_id, resolver.client, None)
+                return
 
             # Recursively build base images
             base_image_ids: List[str] = []
@@ -194,9 +193,29 @@ class _Image(_Provider, type_prefix="im"):
             if build_function:
                 build_function_def = build_function.get_build_def()
                 build_function_id = (await resolver.load(build_function)).object_id
+
+                globals = build_function._get_info().get_globals()
+                filtered_globals = {}
+                for k, v in globals.items():
+                    if isfunction(v):
+                        continue
+                    try:
+                        serialize(v)
+                    except Exception:
+                        # Skip unserializable values for now.
+                        logger.warning(
+                            f"Skipping unserializable global variable {k} for {build_function._get_info().function_name}. Changes to this variable won't invalidate the image."
+                        )
+                        continue
+                    filtered_globals[k] = v
+
+                # Cloudpickle function serialization produces unstable values.
+                # TODO: better way to filter out types that don't have a stable hash?
+                build_function_globals = serialize(filtered_globals) if filtered_globals else None
             else:
                 build_function_def = None
                 build_function_id = None
+                build_function_globals = None
 
             dockerfile_commands_list: List[str]
             if callable(dockerfile_commands):
@@ -217,6 +236,7 @@ class _Image(_Provider, type_prefix="im"):
                 secret_ids=secret_ids,
                 gpu=bool(gpu_config.type),  # Note: as of 2023-01-27, server still uses this
                 build_function_def=build_function_def,
+                build_function_globals=build_function_globals,
                 context_mount_id=context_mount_id,
                 gpu_config=gpu_config,  # Note: as of 2023-01-27, server ignores this
                 image_registry_config=await image_registry_config.resolve(
@@ -281,7 +301,7 @@ class _Image(_Provider, type_prefix="im"):
             else:
                 raise RemoteError("Unknown status %s!" % result.status)
 
-            handle._hydrate(image_id, resolver.client, None)
+            provider._hydrate(image_id, resolver.client, None)
 
         rep = f"Image({dockerfile_commands})"
         obj = _Image._from_loader(_load, rep)
@@ -332,14 +352,6 @@ class _Image(_Provider, type_prefix="im"):
             dockerfile_commands=["FROM base", f"COPY . {remote_path}"],  # copy everything from the supplied mount
             context_mount=mount,
         )
-
-    def copy(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
-        deprecation_error(
-            date(2023, 5, 21),
-            "`Image.copy` is deprecated in favor of `Image.copy_mount`, `Image.copy_local_file`,"
-            " and `Image.copy_local_dir`.",
-        )
-        return self.copy_mount(mount, remote_path)
 
     def copy_local_file(self, local_path: Union[str, Path], remote_path: Union[str, Path] = "./") -> "_Image":
         """Copy a file into the image as a part of building it.
@@ -645,7 +657,7 @@ class _Image(_Provider, type_prefix="im"):
     @typechecked
     def dockerfile_commands(
         self,
-        dockerfile_commands: Union[str, List[str]],
+        *dockerfile_commands: Union[str, List[str]],
         context_files: Dict[str, str] = {},
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
@@ -655,13 +667,11 @@ class _Image(_Provider, type_prefix="im"):
         force_build: bool = False,
     ) -> "_Image":
         """Extend an image with arbitrary Dockerfile-like commands."""
+        cmds = _flatten_str_args("dockerfile_commands", "dockerfile_commands", dockerfile_commands)
+        if not cmds:
+            return self
 
-        _dockerfile_commands = ["FROM base"]
-
-        if isinstance(dockerfile_commands, str):
-            _dockerfile_commands += dockerfile_commands.split("\n")
-        else:
-            _dockerfile_commands += dockerfile_commands
+        _dockerfile_commands = ["FROM base", *cmds]
 
         return self.extend(
             dockerfile_commands=_dockerfile_commands,
@@ -825,7 +835,7 @@ class _Image(_Provider, type_prefix="im"):
         """A Micromamba base image. Micromamba allows for fast building of small Conda-based containers."""
         _validate_python_version(python_version)
 
-        return _Image.from_dockerhub(
+        return _Image.from_registry(
             "mambaorg/micromamba:1.3.1-bullseye-slim",
             setup_dockerfile_commands=[
                 'SHELL ["/usr/local/bin/_dockerfile_shell.sh"]',
@@ -867,14 +877,78 @@ class _Image(_Provider, type_prefix="im"):
         )
 
     @staticmethod
-    def _registry_setup_commands(tag: str, setup_dockerfile_commands: List[str]) -> List[str]:
+    def _registry_setup_commands(
+        tag: str, setup_dockerfile_commands: List[str], add_python: Optional[str]
+    ) -> List[str]:
+        add_python_commands: List[str] = []
+        if add_python:
+            add_python_commands = [
+                "COPY /python/. /usr/local",
+                "RUN ln -s /usr/local/bin/python3 /usr/local/bin/python",
+                "ENV TERMINFO_DIRS=/etc/terminfo:/lib/terminfo:/usr/share/terminfo:/usr/lib/terminfo",
+            ]
         return [
             f"FROM {tag}",
+            *add_python_commands,
             *setup_dockerfile_commands,
             "COPY /modal_requirements.txt /modal_requirements.txt",
             "RUN python -m pip install --upgrade pip",
             "RUN python -m pip install -r /modal_requirements.txt",
+            # TODO: We should add this next line at some point to clean up the image, but it would
+            # trigger a hash change, so batch it with the next rebuild-triggering change.
+            #
+            # "RUN rm /modal_requirements.txt",
         ]
+
+    @staticmethod
+    @typechecked
+    def from_registry(
+        tag: str,
+        *,
+        setup_dockerfile_commands: List[str] = [],
+        force_build: bool = False,
+        add_python: Optional[str] = None,
+        **kwargs,
+    ) -> "_Image":
+        """Build a Modal image from a public image registry, such as Docker Hub.
+
+        The image must be built for the `linux/amd64` platform and have Python 3.7 or above
+        installed and available on PATH as `python`. It should also have `pip`.
+
+        If your image does not come with Python installed, you can use the `add_python` parameter
+        to specify a version of Python to add to the image. Supported versions are `3.8`, `3.9`,
+        `3.10`, and `3.11`. For Alpine-based images, use `3.8-musl` through `3.11-musl`, which
+        are statically-linked Python installations.
+
+        You may also use `setup_dockerfile_commands` to run Dockerfile commands before the
+        remaining commands run. This might be useful if you want a custom Python installation or to
+        set a `SHELL`. Prefer `run_commands()` when possible though.
+
+        **Examples**
+
+        ```python
+        modal.Image.from_registry("python:3.11-slim-bookworm")
+        modal.Image.from_registry("ubuntu:22.04", add_python="3.11")
+        modal.Image.from_registry("alpine:3.18.3", add_python="3.11-musl")
+        ```
+        """
+        requirements_path = _get_client_requirements_path()
+        dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands, add_python)
+
+        context_mount = None
+        if add_python:
+            context_mount = _Mount.from_name(
+                python_standalone_mount_name(add_python),
+                namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
+            )
+
+        return _Image._from_args(
+            dockerfile_commands=dockerfile_commands,
+            context_mount=context_mount,
+            context_files={"/modal_requirements.txt": requirements_path},
+            force_build=force_build,
+            **kwargs,
+        )
 
     @staticmethod
     @typechecked
@@ -884,34 +958,12 @@ class _Image(_Provider, type_prefix="im"):
         force_build: bool = False,
         **kwargs,
     ) -> "_Image":
-        """
-        Build a Modal image from a pre-existing image on Docker Hub.
-
-        This assumes the following about the image:
-
-        - Python 3.7 or above is present, and is available as `python`.
-        - `pip` is installed correctly.
-        - The image is built for the `linux/amd64` platform.
-
-        You may use `setup_dockerfile_commands` to run Dockerfile commands
-        before the remaining commands run. This might be useful if Python or pip is
-        not installed, or you need to set a `SHELL` for `python` to be available.
-
-        **Example**
-
-        ```python
-        modal.Image.from_dockerhub(
-          "gisops/valhalla:latest",
-          setup_dockerfile_commands=["RUN apt-get update", "RUN apt-get install -y python3-pip"]
+        deprecation_warning(
+            date(2023, 8, 25), "`Image.from_dockerhub` is deprecated. Use `Image.from_registry` instead."
         )
-        ```
-        """
-        requirements_path = _get_client_requirements_path()
-        dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands)
-
-        return _Image._from_args(
-            dockerfile_commands=dockerfile_commands,
-            context_files={"/modal_requirements.txt": requirements_path},
+        return _Image.from_registry(
+            tag,
+            setup_dockerfile_commands=setup_dockerfile_commands,
             force_build=force_build,
             **kwargs,
         )
@@ -921,45 +973,37 @@ class _Image(_Provider, type_prefix="im"):
     def from_gcp_artifact_registry(
         tag: str,
         secret: Optional[_Secret] = None,
+        *,
         setup_dockerfile_commands: List[str] = [],
         force_build: bool = False,
+        add_python: Optional[str] = None,
         **kwargs,
     ) -> "_Image":
-        """
-        Build a Modal image from a pre-existing image in GCP Artifact Registry.
+        """Build a Modal image from a private image in GCP Artifact Registry.
+
         You will need to pass a `modal.Secret` containing your GCP service account key
         as `SERVICE_ACCOUNT_JSON`. This can be done from the [Secrets](/secrets) page.
+        The service account needs to have at least an "Artifact Registry Reader" role.
 
-        The service account needs to have at least the "Artifact Registry Reader" role.
+        See `Image.from_registry()` for information about the other parameters.
 
-        For the image, the same assumptions hold as `from_dockerhub`:
-
-        - Python 3.7 or above is present, and is available as `python`.
-        - `pip` is installed correctly.
-        - The image is built for the `linux/amd64` platform.
-
-        You may use `setup_dockerfile_commands` to run Dockerfile commands
-        before the remaining commands run. This might be useful if Python or pip is
-        not installed, or you need to set a `SHELL` for `python` to be available.
         **Example**
 
         ```python
         modal.Image.from_gcp_artifact_registry(
-          "us-east1-docker.pkg.dev/my-project-1234/my-repo/my-image:my-version",
-          secret=modal.Secret.from_name("my-gcp-secret"),
-          setup_dockerfile_commands=["RUN apt-get update", "RUN apt-get install -y python3-pip"]
+            "us-east1-docker.pkg.dev/my-project-1234/my-repo/my-image:my-version",
+            secret=modal.Secret.from_name("my-gcp-secret"),
+            add_python="3.11",
         )
         ```
         """
-        requirements_path = _get_client_requirements_path()
-
-        dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands)
-
-        return _Image._from_args(
-            dockerfile_commands=dockerfile_commands,
-            context_files={"/modal_requirements.txt": requirements_path},
-            image_registry_config=_ImageRegistryConfig(api_pb2.RegistryType.GCP_ARTIFACT_REGISTRY, secret),
+        image_registry_config = _ImageRegistryConfig(api_pb2.RegistryType.GCP_ARTIFACT_REGISTRY, secret)
+        return _Image.from_registry(
+            tag,
+            setup_dockerfile_commands=setup_dockerfile_commands,
             force_build=force_build,
+            add_python=add_python,
+            image_registry_config=image_registry_config,
             **kwargs,
         )
 
@@ -968,46 +1012,39 @@ class _Image(_Provider, type_prefix="im"):
     def from_aws_ecr(
         tag: str,
         secret: Optional[_Secret] = None,
+        *,
         setup_dockerfile_commands: List[str] = [],
         force_build: bool = False,
+        add_python: Optional[str] = None,
         **kwargs,
     ) -> "_Image":
-        """
-        Build a Modal image from a pre-existing image on a private AWS Elastic
-        Container Registry (ECR). You will need to pass a `modal.Secret` containing
-        an AWS key (`AWS_ACCESS_KEY_ID`) and secret (`AWS_SECRET_ACCESS_KEY`)
-        with permissions to access the target ECR registry.
+        """Build a Modal image from a private image in AWS Elastic Container Registry (ECR).
 
-        Refer to ["Private repository policies"](https://docs.aws.amazon.com/AmazonECR/latest/userguide/repository-policies.html)
-        for details about IAM configuration.
+        You will need to pass a `modal.Secret` containing an AWS key (`AWS_ACCESS_KEY_ID`) and
+        secret (`AWS_SECRET_ACCESS_KEY`) with permissions to access the target ECR registry.
 
-        The same assumptions hold from `from_dockerhub`:
+        IAM configuration details can be found in the AWS documentation for
+        ["Private repository policies"](https://docs.aws.amazon.com/AmazonECR/latest/userguide/repository-policies.html).
 
-        - Python 3.7 or above is present, and is available as `python`.
-        - `pip` is installed correctly.
-        - The image is built for the `linux/amd64` platform.
+        See `Image.from_registry()` for information about the other parameters.
 
-        You may use `setup_dockerfile_commands` to run Dockerfile commands
-        before the remaining commands run. This might be useful if Python or pip is
-        not installed, or you need to set a `SHELL` for `python` to be available.
         **Example**
 
         ```python
         modal.Image.from_aws_ecr(
-          "000000000000.dkr.ecr.us-east-1.amazonaws.com/my-private-registry:my-version",
-          secret=modal.Secret.from_name("aws"),
-          setup_dockerfile_commands=["RUN apt-get update", "RUN apt-get install -y python3-pip"]
+            "000000000000.dkr.ecr.us-east-1.amazonaws.com/my-private-registry:my-version",
+            secret=modal.Secret.from_name("aws"),
+            add_python="3.11",
         )
         ```
         """
-        requirements_path = _get_client_requirements_path()
-        dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands)
-
-        return _Image._from_args(
-            dockerfile_commands=dockerfile_commands,
-            context_files={"/modal_requirements.txt": requirements_path},
-            image_registry_config=_ImageRegistryConfig(api_pb2.RegistryType.ECR, secret),
+        image_registry_config = _ImageRegistryConfig(api_pb2.RegistryType.ECR, secret)
+        return _Image.from_registry(
+            tag,
+            setup_dockerfile_commands=setup_dockerfile_commands,
             force_build=force_build,
+            add_python=add_python,
+            image_registry_config=image_registry_config,
             **kwargs,
         )
 
@@ -1167,12 +1204,11 @@ class _Image(_Provider, type_prefix="im"):
 
         info = FunctionInfo(raw_f)
 
-        if shared_volumes:
+        if shared_volumes or network_file_systems:
             deprecation_warning(
-                date(2023, 7, 5),
-                "`shared_volumes` is deprecated. Use the argument `network_file_systems` instead.",
+                date(2023, 8, 19),
+                "Support for mounting NetworkFileSystems or Volumes will soon be removed from `run_function`. If you are trying to download model weights, downloading it to the image itself is recommended and sufficient. Please refer to the docs for more on this, or reach out to us if your use case is not covered.",
             )
-            network_file_systems = {**network_file_systems, **shared_volumes}
 
         function = _Function.from_args(
             info,
@@ -1182,7 +1218,6 @@ class _Image(_Provider, type_prefix="im"):
             secrets=secrets,
             gpu=gpu,
             mounts=mounts,
-            network_file_systems=network_file_systems,
             memory=memory,
             timeout=timeout,
             cpu=cpu,
@@ -1238,5 +1273,4 @@ class _Image(_Provider, type_prefix="im"):
         return self.object_id == env_image_id
 
 
-ImageHandle = synchronize_api(_ImageHandle)
 Image = synchronize_api(_Image)

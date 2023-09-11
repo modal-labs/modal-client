@@ -7,26 +7,10 @@ from modal_utils.async_utils import asyncnullcontext, synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors, unary_stream
 
 from ._resolver import Resolver
-from .object import _Handle, _Provider
+from .object import _Object
 
 
-class _VolumeHandle(_Handle, type_prefix="vo"):
-    """Handle to a `Volume` object."""
-
-    _lock: asyncio.Lock
-
-    def _initialize_from_empty(self):
-        # To (mostly*) prevent multiple concurrent operations on the same volume, which can cause problems under
-        # some unlikely circumstances.
-        # *: You can bypass this by creating multiple handles to the same volume, e.g. via lookup. But this
-        # covers the typical case = good enough.
-        self._lock = asyncio.Lock()
-
-
-VolumeHandle = synchronize_api(_VolumeHandle)
-
-
-class _Volume(_Provider, type_prefix="vo"):
+class _Volume(_Object, type_prefix="vo"):
     """A writeable volume that can be used to share files between one or more Modal functions.
 
     The contents of a volume is exposed as a filesystem. You can use it to share data between different functions, or
@@ -68,22 +52,31 @@ class _Volume(_Provider, type_prefix="vo"):
     ```
     """
 
+    _lock: asyncio.Lock
+
+    def _initialize_from_empty(self):
+        # To (mostly*) prevent multiple concurrent operations on the same volume, which can cause problems under
+        # some unlikely circumstances.
+        # *: You can bypass this by creating multiple handles to the same volume, e.g. via lookup. But this
+        # covers the typical case = good enough.
+        self._lock = asyncio.Lock()
+
     @staticmethod
     def new() -> "_Volume":
         """Construct a new volume, which is empty by default."""
 
-        async def _load(resolver: Resolver, existing_object_id: Optional[str], handle: _VolumeHandle):
+        async def _load(provider: _Volume, resolver: Resolver, existing_object_id: Optional[str]):
             status_row = resolver.add_status_row()
             if existing_object_id:
                 # Volume already exists; do nothing.
-                handle._hydrate(existing_object_id, resolver.client, None)
+                provider._hydrate(existing_object_id, resolver.client, None)
                 return
 
             status_row.message("Creating volume...")
             req = api_pb2.VolumeCreateRequest(app_id=resolver.app_id)
             resp = await retry_transient_errors(resolver.client.stub.VolumeCreate, req)
             status_row.finish("Created volume.")
-            handle._hydrate(resp.volume_id, resolver.client, None)
+            provider._hydrate(resp.volume_id, resolver.client, None)
 
         return _Volume._from_loader(_load, "Volume()")
 
@@ -118,7 +111,7 @@ class _Volume(_Provider, type_prefix="vo"):
     # Methods on live handles
 
     async def _do_reload(self, lock=True):
-        async with self._handle._lock if lock else asyncnullcontext():
+        async with self._lock if lock else asyncnullcontext():
             req = api_pb2.VolumeReloadRequest(volume_id=self.object_id)
             _ = await retry_transient_errors(self._client.stub.VolumeReload, req)
 
@@ -131,9 +124,10 @@ class _Volume(_Provider, type_prefix="vo"):
 
         Committing will fail if there are open files for the volume.
         """
-        async with self._handle._lock:
+        async with self._lock:
             req = api_pb2.VolumeCommitRequest(volume_id=self.object_id)
-            _ = await retry_transient_errors(self._client.stub.VolumeCommit, req)
+            # TODO(gongy): only apply indefinite retries on 504 status.
+            _ = await retry_transient_errors(self._client.stub.VolumeCommit, req, max_retries=90)
             # Reload changes on successful commit.
             await self._do_reload(lock=False)
 
@@ -155,7 +149,7 @@ class _Volume(_Provider, type_prefix="vo"):
         * Passing a file path returns a list containing only that file's listing description
         * Passing a glob path (including at least one * or ** sequence) returns all files matching that glob path (using absolute paths)
         """
-        req = api_pb2.VolumeListFilesRequest(volume_id=self._object_id, path=path)
+        req = api_pb2.VolumeListFilesRequest(volume_id=self.object_id, path=path)
         async for batch in unary_stream(self._client.stub.VolumeListFiles, req):
             for entry in batch.entries:
                 yield entry

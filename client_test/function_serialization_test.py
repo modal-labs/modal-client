@@ -11,17 +11,17 @@ async def test_serialize_deserialize_function(servicer, client):
 
     @stub.function(serialized=True, name="foo")
     def foo():
-        2 * foo.call()
+        2 * foo.remote()
 
     assert foo.object_id is None
 
     with stub.run(client=client):
-        pass
+        object_id = foo.object_id
 
-    assert foo.object_id is not None
-    assert {foo.object_id} == servicer.precreated_functions
+    assert object_id is not None
+    assert {object_id} == servicer.precreated_functions
 
-    foo_def = servicer.app_functions[foo.object_id]
+    foo_def = servicer.app_functions[object_id]
 
     assert len(servicer.client_calls) == 0
 
@@ -29,4 +29,4 @@ async def test_serialize_deserialize_function(servicer, client):
     deserialized_function_body()  # call locally as if in container, this should trigger a "remote" foo() call
     assert len(servicer.client_calls) == 1
     function_call_id = list(servicer.client_calls.keys())[0]
-    assert servicer.function_id_for_function_call[function_call_id] == foo.object_id
+    assert servicer.function_id_for_function_call[function_call_id] == object_id

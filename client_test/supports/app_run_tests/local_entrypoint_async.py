@@ -11,7 +11,7 @@ def foo():
 
 
 @stub.local_entrypoint()
-def main():
-    print("called locally")
-    foo.remote()
-    foo.remote()
+async def main():
+    print("called locally (async)")
+    await foo.remote.aio()
+    await foo.remote.aio()

@@ -5,7 +5,7 @@ from typing import Optional, Union
 
 from modal_proto import api_pb2
 
-from .exception import InvalidError, deprecation_error
+from .exception import InvalidError, deprecation_error, deprecation_warning
 
 
 @dataclass
@@ -44,33 +44,36 @@ class A100(_GPUConfig):
     """
     [NVIDIA A100 Tensor Core](https://www.nvidia.com/en-us/data-center/a100/) GPU class.
 
-    The most powerful GPU available in the cloud. Available in 20GiB and 40GiB GPU memory configurations.
+    The most powerful GPU available in the cloud. Available in 40GiB and 80GiB GPU memory configurations.
     """
 
     def __init__(
         self,
         *,
         count: int = 1,  # Number of GPUs per container. Defaults to 1. Useful if you have very large models that don't fit on a single GPU.
-        memory: int = 0,  # Set this to 20 if you want to use the 20GB version (with half as many cores)
+        memory: int = 0,  # Set this to 80 if you want to use the 80GB version. Otherwise defaults to 40.
     ):
-        allowed_memory_values = {0, 20, 40}
+        allowed_memory_values = {0, 20, 40, 80}
         if memory not in allowed_memory_values:
             raise ValueError(f"A100s can only have memory values of {allowed_memory_values} => memory={memory}")
 
-        gpu_type = api_pb2.GPU_TYPE_A100
-
         if memory == 20:
+            deprecation_warning(date(2023, 9, 7), "20GB A100s are deprecated and may be unsupported in the future.")
             if count != 1:
                 raise ValueError(f"Cannot request more than 1 A100 20GB unit. Requested {count}")
             super().__init__(api_pb2.GPU_TYPE_A100_20G, count, memory)
+        elif memory == 80:
+            super().__init__(api_pb2.GPU_TYPE_A100_80GB, count, memory)
         else:
-            super().__init__(gpu_type, count, memory)
+            super().__init__(api_pb2.GPU_TYPE_A100, count, memory)
 
     def __repr__(self):
         if self.memory == 20:
-            return f"GPU(A100-20G, count={self.count})"
+            return f"GPU(A100-20GB, count={self.count})"
+        elif self.memory == 80:
+            return f"GPU(A100-80GB, count={self.count})"
         else:
-            return f"GPU(A100-40G, count={self.count})"
+            return f"GPU(A100-40GB, count={self.count})"
 
 
 class A10G(_GPUConfig):
@@ -115,7 +118,6 @@ class Any(_GPUConfig):
 STRING_TO_GPU_CONFIG = {
     "t4": T4(),
     "a100": A100(),
-    "a100-20g": A100(memory=20),
     "a10g": A10G(),
     "inf2": Inferentia2(),
     "any": Any(),
@@ -139,11 +141,14 @@ def _parse_gpu_config(value: GPU_T, raise_on_true: bool = True) -> Optional[_GPU
     if isinstance(value, _GPUConfig):
         return value
     elif isinstance(value, str):
-        if value.lower() not in STRING_TO_GPU_CONFIG:
+        if value.lower() == "a100-20g":
+            return A100(memory=20)  # trigger deprecation warning at this point
+        elif value.lower() not in STRING_TO_GPU_CONFIG:
             raise InvalidError(
                 f"Invalid GPU type: {value}. Value must be one of {list(STRING_TO_GPU_CONFIG.keys())} (case-insensitive)."
             )
-        return STRING_TO_GPU_CONFIG[value.lower()]
+        else:
+            return STRING_TO_GPU_CONFIG[value.lower()]
     elif value is True:
         if raise_on_true:
             deprecation_error(

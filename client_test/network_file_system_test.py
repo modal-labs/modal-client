@@ -4,7 +4,6 @@ from unittest import mock
 
 import modal
 from modal.exception import DeprecationError, InvalidError
-from modal.network_file_system import NetworkFileSystem
 from modal.runner import deploy_stub
 
 from .supports.skip import skip_windows
@@ -22,7 +21,7 @@ def test_network_file_system_files(client, test_dir, servicer):
     )(dummy)
 
     with stub.run(client=client):
-        dummy_modal.call()
+        dummy_modal.remote()
 
 
 @skip_windows("TODO: implement client-side path check on Windows.")
@@ -35,17 +34,17 @@ def test_network_file_system_bad_paths(client, test_dir, servicer):
     dummy_modal = stub.function(network_file_systems={"/root/../../foo": modal.NetworkFileSystem.new()})(dummy)
     with pytest.raises(InvalidError):
         with stub.run(client=client):
-            dummy_modal.call()
+            dummy_modal.remote()
 
     dummy_modal = stub.function(network_file_systems={"/": modal.NetworkFileSystem.new()})(dummy)
     with pytest.raises(InvalidError):
         with stub.run(client=client):
-            dummy_modal.call()
+            dummy_modal.remote()
 
     dummy_modal = stub.function(network_file_systems={"/tmp/": modal.NetworkFileSystem.new()})(dummy)
     with pytest.raises(InvalidError):
         with stub.run(client=client):
-            dummy_modal.call()
+            dummy_modal.remote()
 
 
 def test_network_file_system_handle_single_file(client, tmp_path, servicer):
@@ -54,18 +53,17 @@ def test_network_file_system_handle_single_file(client, tmp_path, servicer):
     local_file_path = tmp_path / "some_file"
     local_file_path.write_text("hello world")
 
-    with stub.run(client=client) as app:
-        handle = app.vol
-        assert isinstance(handle, NetworkFileSystem)
-        handle.add_local_file(local_file_path)
-        handle.add_local_file(local_file_path.as_posix(), remote_path="/foo/other_destination")
+    with stub.run(client=client):
+        stub.vol.add_local_file(local_file_path)
+        stub.vol.add_local_file(local_file_path.as_posix(), remote_path="/foo/other_destination")
+        object_id = stub.vol.object_id
 
-    assert servicer.nfs_files[handle.object_id].keys() == {
+    assert servicer.nfs_files[object_id].keys() == {
         "/some_file",
         "/foo/other_destination",
     }
-    assert servicer.nfs_files[handle.object_id]["/some_file"].data == b"hello world"
-    assert servicer.nfs_files[handle.object_id]["/foo/other_destination"].data == b"hello world"
+    assert servicer.nfs_files[object_id]["/some_file"].data == b"hello world"
+    assert servicer.nfs_files[object_id]["/foo/other_destination"].data == b"hello world"
 
 
 @pytest.mark.asyncio
@@ -80,17 +78,16 @@ async def test_network_file_system_handle_dir(client, tmp_path, servicer):
     subdir.mkdir()
     (subdir / "other").write_text("####")
 
-    with stub.run(client=client) as app:
-        handle = app.vol
-        assert isinstance(handle, NetworkFileSystem)
-        handle.add_local_dir(local_dir)
+    with stub.run(client=client):
+        stub.vol.add_local_dir(local_dir)
+        object_id = stub.vol.object_id
 
-    assert servicer.nfs_files[handle.object_id].keys() == {
+    assert servicer.nfs_files[object_id].keys() == {
         "/some_dir/smol",
         "/some_dir/subdir/other",
     }
-    assert servicer.nfs_files[handle.object_id]["/some_dir/smol"].data == b"###"
-    assert servicer.nfs_files[handle.object_id]["/some_dir/subdir/other"].data == b"####"
+    assert servicer.nfs_files[object_id]["/some_dir/smol"].data == b"###"
+    assert servicer.nfs_files[object_id]["/some_dir/subdir/other"].data == b"####"
 
 
 @pytest.mark.asyncio
@@ -101,14 +98,13 @@ async def test_network_file_system_handle_big_file(client, tmp_path, servicer, b
         local_file_path = tmp_path / "bigfile"
         local_file_path.write_text("hello world, this is a lot of text")
 
-        async with stub.run(client=client) as app:
-            handle = app.vol
-            assert isinstance(handle, NetworkFileSystem)
-            await handle.add_local_file.aio(local_file_path)
+        async with stub.run(client=client):
+            await stub.vol.add_local_file.aio(local_file_path)
+            object_id = stub.vol.object_id
 
-        assert servicer.nfs_files[handle.object_id].keys() == {"/bigfile"}
-        assert servicer.nfs_files[handle.object_id]["/bigfile"].data == b""
-        assert servicer.nfs_files[handle.object_id]["/bigfile"].data_blob_id == "bl-1"
+        assert servicer.nfs_files[object_id].keys() == {"/bigfile"}
+        assert servicer.nfs_files[object_id]["/bigfile"].data == b""
+        assert servicer.nfs_files[object_id]["/bigfile"].data_blob_id == "bl-1"
 
         _, blobs = blob_server
         assert blobs["bl-1"] == b"hello world, this is a lot of text"
@@ -116,15 +112,10 @@ async def test_network_file_system_handle_big_file(client, tmp_path, servicer, b
 
 def test_old_syntax(client, servicer):
     stub = modal.Stub()
-    with pytest.warns(DeprecationError):
+    with pytest.raises(DeprecationError):
         stub.vol1 = modal.SharedVolume()
-    with pytest.warns(DeprecationError):
+    with pytest.raises(DeprecationError):
         stub.vol2 = modal.SharedVolume.new()
-    stub.vol3 = modal.NetworkFileSystem.new()
-    with stub.run(client=client) as app:
-        assert isinstance(app.vol1, NetworkFileSystem)
-        assert isinstance(app.vol2, NetworkFileSystem)
-        assert isinstance(app.vol3, NetworkFileSystem)
 
 
 def test_redeploy(servicer, client):
@@ -134,12 +125,12 @@ def test_redeploy(servicer, client):
     stub.n3 = modal.NetworkFileSystem.new()
 
     # Deploy app once
-    app1 = deploy_stub(stub, "my-app", client=client)
-    app1_ids = [app1.n1.object_id, app1.n2.object_id, app1.n3.object_id]
+    deploy_stub(stub, "my-app", client=client)
+    app1_ids = [stub.n1.object_id, stub.n2.object_id, stub.n3.object_id]
 
     # Deploy app again
-    app2 = deploy_stub(stub, "my-app", client=client)
-    app2_ids = [app2.n1.object_id, app2.n2.object_id, app2.n3.object_id]
+    deploy_stub(stub, "my-app", client=client)
+    app2_ids = [stub.n1.object_id, stub.n2.object_id, stub.n3.object_id]
 
     # Make sure ids are stable
     assert app1_ids == app2_ids
@@ -149,8 +140,8 @@ def test_redeploy(servicer, client):
     assert len(set(app2_ids)) == 3
 
     # Deploy to a different app
-    app3 = deploy_stub(stub, "my-other-app", client=client)
-    app3_ids = [app3.n1.object_id, app3.n2.object_id, app3.n3.object_id]
+    deploy_stub(stub, "my-other-app", client=client)
+    app3_ids = [stub.n1.object_id, stub.n2.object_id, stub.n3.object_id]
 
     # Should be unique and different
     assert len(set(app3_ids)) == 3
@@ -163,10 +154,8 @@ def test_write_file(client, tmp_path, servicer):
     local_file_path = tmp_path / "some_file"
     local_file_path.write_text("hello world")
 
-    with stub.run(client=client) as app:
-        handle = app.vol
-        assert isinstance(handle, NetworkFileSystem)
-        handle.write_file("remote_path.txt", open(local_file_path, "rb"))
+    with stub.run(client=client):
+        stub.vol.write_file("remote_path.txt", open(local_file_path, "rb"))
 
         # Make sure we can write through the provider too
         stub.vol.write_file("remote_path.txt", open(local_file_path, "rb"))

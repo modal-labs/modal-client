@@ -19,10 +19,21 @@ from modal_utils.grpc_utils import retry_transient_errors
 
 FileType = api_pb2.VolumeListFilesEntry.FileType
 
-vol_cli = Typer(name="vol", help="[Preview] Read and edit modal.Volume volumes.", no_args_is_help=True)
+volume_cli = Typer(
+    name="volume",
+    no_args_is_help=True,
+    help="""
+    [Preview] Read and edit `modal.Volume` volumes.
+
+    This command is in preview and may change in the future.
+
+    Previous users of `modal.NetworkFileSystem` should replace their usage with
+    the `modal nfs` command instead.
+    """,
+)
 
 
-@vol_cli.command(name="list", help="List the names of all modal.Volume volumes.", hidden=True)
+@volume_cli.command(name="list", help="List the names of all modal.Volume volumes.", hidden=True)
 @synchronizer.create_blocking
 async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     env = ensure_env(env)
@@ -42,7 +53,7 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     display_table(column_names, rows, json, title=f"Volumes{env_part}")
 
 
-@vol_cli.command(name="ls", help="List files and directories in a modal.Volume volume.")
+@volume_cli.command(name="ls", help="List files and directories in a modal.Volume volume.")
 @synchronizer.create_blocking
 async def ls(
     volume_name: str,

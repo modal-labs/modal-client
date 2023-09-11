@@ -4,6 +4,7 @@ import dataclasses
 import hashlib
 import io
 import os
+import platform
 from contextlib import contextmanager
 from pathlib import Path
 from typing import AsyncIterator, BinaryIO, List, Optional, Union
@@ -322,13 +323,14 @@ class FileUploadSpec:
     use_blob: bool
     content: Optional[bytes]  # typically None if using blob, required otherwise
     sha256_hex: str
+    mode: int  # file permission bits (last 12 bits of st_mode)
     size: int
 
 
 def get_file_upload_spec(filename: Path, mount_filename: str) -> FileUploadSpec:
     # Somewhat CPU intensive, so we run it in a thread/process
-    size = os.path.getsize(filename)
-    if size >= LARGE_FILE_LIMIT:
+    stat = os.stat(filename)
+    if stat.st_size >= LARGE_FILE_LIMIT:
         use_blob = True
         content = None
         with open(filename, "rb") as fp:
@@ -339,7 +341,15 @@ def get_file_upload_spec(filename: Path, mount_filename: str) -> FileUploadSpec:
             content = fp.read()
         sha256_hex = get_sha256_hex(content)
     return FileUploadSpec(
-        filename, mount_filename, use_blob=use_blob, content=content, sha256_hex=sha256_hex, size=size
+        filename,
+        mount_filename,
+        use_blob=use_blob,
+        content=content,
+        sha256_hex=sha256_hex,
+        # Python appears to give files 0o666 bits on Windows (equal for user, group, and global),
+        # so we mask those out to 0o755 for compatibility with POSIX-based permissions.
+        mode=stat.st_mode & (0o7777 if platform.system() != "Windows" else 0o7755),
+        size=stat.st_size,
     )
 
 
@@ -352,7 +362,7 @@ def use_md5(url: str) -> bool:
     host = urlparse(url).netloc.split(":")[0]
     if host.endswith(".amazonaws.com"):
         return True
-    elif host in ["127.0.0.1", "localhost", "172.19.0.1"]:
+    elif host in ["127.0.0.1", "localhost", "172.21.0.1"]:
         return False
     else:
         raise Exception(f"Unknown S3 host: {host}")

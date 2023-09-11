@@ -8,7 +8,7 @@ from grpclib import GRPCError, Status
 
 import modal.app
 from modal import Dict, Image, Queue, Stub, web_endpoint
-from modal.exception import InvalidError
+from modal.exception import DeprecationError, ExecutionError, InvalidError
 from modal.runner import deploy_stub
 from modal_proto import api_pb2
 from modal_test_support import module_1, module_2
@@ -22,10 +22,15 @@ async def test_kwargs(servicer, client):
     )
     async with stub.run(client=client) as app:
         # TODO: interface to get type safe objects from live apps
-        await app["d"].put.aio("foo", "bar")  # type: ignore
-        await app["q"].put.aio("baz")  # type: ignore
-        assert await app["d"].get.aio("foo") == "bar"  # type: ignore
-        assert await app["q"].get.aio() == "baz"  # type: ignore
+        await stub["d"].put.aio("foo", "bar")  # type: ignore
+        await stub["q"].put.aio("baz")  # type: ignore
+        assert await stub["d"].get.aio("foo") == "bar"  # type: ignore
+        assert await stub["q"].get.aio() == "baz"  # type: ignore
+
+        with pytest.warns(DeprecationError):
+            assert isinstance(app["d"], Dict)
+        with pytest.warns(DeprecationError):
+            assert isinstance(app["q"], Queue)
 
 
 @pytest.mark.asyncio
@@ -34,10 +39,15 @@ async def test_attrs(servicer, client):
     stub.d = Dict.new()
     stub.q = Queue.new()
     async with stub.run(client=client) as app:
-        await app.d.put.aio("foo", "bar")  # type: ignore
-        await app.q.put.aio("baz")  # type: ignore
-        assert await app.d.get.aio("foo") == "bar"  # type: ignore
-        assert await app.q.get.aio() == "baz"  # type: ignore
+        await stub.d.put.aio("foo", "bar")  # type: ignore
+        await stub.q.put.aio("baz")  # type: ignore
+        assert await stub.d.get.aio("foo") == "bar"  # type: ignore
+        assert await stub.q.get.aio() == "baz"  # type: ignore
+
+        with pytest.warns(DeprecationError):
+            assert isinstance(app.d, Dict)
+        with pytest.warns(DeprecationError):
+            assert isinstance(app.q, Queue)
 
 
 @pytest.mark.asyncio
@@ -124,10 +134,11 @@ def test_run_function_without_app_error():
     stub = Stub()
     dummy_modal = stub.function()(dummy)
 
-    with pytest.raises(InvalidError) as excinfo:
-        dummy_modal.call()
+    with pytest.raises(ExecutionError) as excinfo:
+        dummy_modal.remote()
 
-    assert "stub.run" in str(excinfo.value)
+    assert "hydrated" in str(excinfo.value)
+    assert "remote" in str(excinfo.value)
 
 
 def test_is_inside_basic():
@@ -259,3 +270,56 @@ async def test_redeploy_persist(servicer, client):
     app = await deploy_stub.aio(stub, "my-app", client=client)
     assert app.app_id == "ap-1"
     assert servicer.app_objects["ap-1"]["d"] == "di-1"
+
+
+def test_redeploy_delete_objects(servicer, client):
+    # Deploy an app with objects d1 and d2
+    stub = Stub()
+    stub.d1 = Dict.new()
+    stub.d2 = Dict.new()
+    app = deploy_stub(stub, "xyz", client=client)
+
+    # Check objects
+    assert set(servicer.app_objects[app.app_id].keys()) == set(["d1", "d2"])
+
+    # Deploy an app with objects d2 and d3
+    stub = Stub()
+    stub.d2 = Dict.new()
+    stub.d3 = Dict.new()
+    app = deploy_stub(stub, "xyz", client=client)
+
+    # Make sure d1 is deleted
+    assert set(servicer.app_objects[app.app_id].keys()) == set(["d2", "d3"])
+
+
+@pytest.mark.asyncio
+async def test_unhydrate(servicer, client):
+    stub = Stub()
+    stub.d = Dict.new()
+    assert not stub.d.is_hydrated()
+    async with stub.run(client=client):
+        assert stub.d.is_hydrated()
+
+    # After app finishes, it should unhydrate
+    assert not stub.d.is_hydrated()
+
+
+def test_keyboard_interrupt(servicer, client):
+    stub = Stub()
+    stub.function()(square)
+    with stub.run(client=client):
+        # The exit handler should catch this interrupt and exit gracefully
+        raise KeyboardInterrupt()
+
+
+def test_function_image_positional():
+    stub = Stub()
+    image = Image.debian_slim()
+
+    with pytest.raises(InvalidError) as excinfo:
+
+        @stub.function(image)  # type: ignore
+        def f():
+            pass
+
+    assert "function(image=image)" in str(excinfo.value)

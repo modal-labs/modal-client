@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2022
 import os
-from datetime import date
 from typing import Dict, Optional
 
 from modal._types import typechecked
@@ -8,21 +7,13 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
 
 from ._resolver import Resolver
-from .exception import InvalidError, deprecation_error
-from .object import _Handle, _Provider
-
-
-class _SecretHandle(_Handle, type_prefix="st"):
-    pass
-
-
-SecretHandle = synchronize_api(_SecretHandle)
-
+from .exception import InvalidError
+from .object import _Object
 
 ENV_DICT_WRONG_TYPE_ERR = "the env_dict argument to Secret has to be a dict[str, str]"
 
 
-class _Secret(_Provider, type_prefix="st"):
+class _Secret(_Object, type_prefix="st"):
     """Secrets provide a dictionary of environment variables for images.
 
     Secrets are a secure way to add credentials and other sensitive information
@@ -54,7 +45,7 @@ class _Secret(_Provider, type_prefix="st"):
         ):
             raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
 
-        async def _load(resolver: Resolver, existing_object_id: Optional[str], handle: _SecretHandle):
+        async def _load(provider: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.SecretCreateRequest(
                 app_id=resolver.app_id,
                 env_dict=env_dict,
@@ -62,14 +53,10 @@ class _Secret(_Provider, type_prefix="st"):
                 existing_secret_id=existing_object_id,
             )
             resp = await resolver.client.stub.SecretCreate(req)
-            handle._hydrate(resp.secret_id, resolver.client, None)
+            provider._hydrate(resp.secret_id, resolver.client, None)
 
         rep = f"Secret.from_dict([{', '.join(env_dict.keys())}])"
         return _Secret._from_loader(_load, rep)
-
-    def __init__(self, env_dict: Dict[str, str]):
-        """`Secret({...})` is deprecated. Please use `Secret.from_dict({...})` instead."""
-        deprecation_error(date(2023, 5, 1), self.__init__.__doc__)
 
     @staticmethod
     def from_dotenv(path=None):
@@ -91,7 +78,7 @@ class _Secret(_Provider, type_prefix="st"):
         starting point for finding the `.env` file.
         """
 
-        async def _load(resolver: Resolver, existing_object_id: Optional[str], handle: _SecretHandle):
+        async def _load(provider: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
             try:
                 from dotenv import dotenv_values, find_dotenv
                 from dotenv.main import _walk_to_root
@@ -124,7 +111,7 @@ class _Secret(_Provider, type_prefix="st"):
             )
             resp = await resolver.client.stub.SecretCreate(req)
 
-            handle._hydrate(resp.secret_id, resolver.client, None)
+            provider._hydrate(resp.secret_id, resolver.client, None)
 
         return _Secret._from_loader(_load, "Secret.from_dotenv()")
 

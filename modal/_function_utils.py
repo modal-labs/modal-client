@@ -153,6 +153,14 @@ class FunctionInfo:
         logger.debug(f"Serializing {self.raw_f.__qualname__}, size is {len(serialized_bytes)}")
         return serialized_bytes
 
+    def get_globals(self):
+        from cloudpickle.cloudpickle import _extract_code_globals
+
+        func = self.raw_f
+        f_globals_ref = _extract_code_globals(func.__code__)
+        f_globals = {k: func.__globals__[k] for k in f_globals_ref if k in func.__globals__}
+        return f_globals
+
     def get_mounts(self) -> Dict[str, _Mount]:
         """
         Includes:

@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import contextlib
 import pytest
 
 from modal import Stub
@@ -26,7 +27,6 @@ def test_gpu_any_function(client, servicer):
 
     assert len(servicer.app_functions) == 1
     func_def = next(iter(servicer.app_functions.values()))
-    assert func_def.resources.gpu == 0
     assert func_def.resources.gpu_config.count == 1
     assert func_def.resources.gpu_config.type == api_pb2.GPU_TYPE_ANY
 
@@ -44,7 +44,6 @@ def test_gpu_string_config(client, servicer):
 
     assert len(servicer.app_functions) == 1
     func_def = next(iter(servicer.app_functions.values()))
-    assert func_def.resources.gpu == 0
     assert func_def.resources.gpu_config.count == 1
     assert func_def.resources.gpu_config.type == api_pb2.GPU_TYPE_A100
 
@@ -60,7 +59,6 @@ def test_gpu_config_function(client, servicer):
 
     assert len(servicer.app_functions) == 1
     func_def = next(iter(servicer.app_functions.values()))
-    assert func_def.resources.gpu == 0
     assert func_def.resources.gpu_config.count == 1
     assert func_def.resources.gpu_config.type == api_pb2.GPU_TYPE_A100
 
@@ -95,7 +93,9 @@ def test_memory_selection_gpu_variant(client, servicer, memory, gpu_type):
 
     stub = Stub()
 
-    stub.function(gpu=modal.gpu.A100(memory=memory))(dummy)
+    ctx_mgr = pytest.warns(DeprecationError) if memory == 20 else contextlib.nullcontext()
+    with ctx_mgr:  # type: ignore
+        stub.function(gpu=modal.gpu.A100(memory=memory))(dummy)
     with stub.run(client=client):
         pass
 
@@ -118,7 +118,8 @@ def test_gpu_type_selection_from_count(client, servicer, count, gpu_type):
     # Functions that use A100 20GB can only request one GPU
     # at a time.
     with pytest.raises(ValueError):
-        stub.function(gpu=modal.gpu.A100(count=2, memory=20))(dummy)
+        with pytest.warns(DeprecationError):
+            stub.function(gpu=modal.gpu.A100(count=2, memory=20))(dummy)
         with stub.run(client=client):
             pass
 

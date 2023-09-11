@@ -1,18 +1,26 @@
 # Copyright Modal Labs 2022
-import inspect
+import asyncio
 import pickle
-from typing import Dict, Type, TypeVar
+from datetime import date
+from typing import Any, Callable, Dict, Optional, Type, TypeVar
 
+from google.protobuf.message import Message
+
+from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
 
 from ._resolver import Resolver
-from .client import _Client
-from .functions import PartialFunction, _Function, _FunctionHandle, _PartialFunction
+from .exception import deprecation_warning
+from .functions import _Function
+from .object import _Object
 
 T = TypeVar("T")
 
 
 class ClsMixin:
+    def __init_subclass__(cls):
+        deprecation_warning(date(2023, 9, 1), "`ClsMixin` is deprecated and can be safely removed.")
+
     @classmethod
     def remote(cls: Type[T], *args, **kwargs) -> T:
         ...
@@ -22,41 +30,122 @@ class ClsMixin:
         ...
 
 
-def make_remote_cls_constructors(
-    user_cls: type,
-    partial_functions: Dict[str, PartialFunction],
-    functions: Dict[str, _Function],
-):
-    original_sig = inspect.signature(user_cls.__init__)  # type: ignore
-    new_parameters = [param for name, param in original_sig.parameters.items() if name != "self"]
-    sig = inspect.Signature(new_parameters)
+def check_picklability(key, arg):
+    try:
+        pickle.dumps(arg)
+    except Exception:
+        raise ValueError(
+            f"Only pickle-able types are allowed in remote class constructors: argument {key} of type {type(arg)}."
+        )
 
-    async def _remote(*args, **kwargs):
-        params = sig.bind(*args, **kwargs)
 
-        for name, param in params.arguments.items():
-            try:
-                pickle.dumps(param)
-            except Exception:
-                raise ValueError(
-                    f"Only pickle-able types are allowed in remote class constructors. "
-                    f"Found {name}={param} of type {type(param)}."
-                )
+class _Obj:
+    """An instance of a `Cls`, i.e. `Cls("foo", 42)` returns an `Obj`.
 
-        cls_dict = {}
-        new_functions: Dict[str, _Function] = {}
+    All this class does is to return `Function` objects."""
 
-        for k, v in partial_functions.items():
-            handle: _FunctionHandle = functions[k]._handle
-            client: _Client = handle._client
-            new_function: _Function = _Function.from_parametrized(handle, *params.args, **params.kwargs)
-            resolver = Resolver(client)
-            await resolver.load(new_function)
-            new_functions[k] = new_function
-            cls_dict[k] = v
+    _functions: Dict[str, _Function]
+    _has_local_obj: bool
+    _local_obj: Any
+    _local_obj_constr: Optional[Callable[[], Any]]
 
-        cls = type(f"Remote{user_cls.__name__}", (), cls_dict)
-        _PartialFunction.initialize_cls(cls, new_functions)
-        return cls()
+    def __init__(self, user_cls: type, base_functions: Dict[str, _Function], args, kwargs):
+        for i, arg in enumerate(args):
+            check_picklability(i + 1, arg)
+        for key, kwarg in kwargs.items():
+            check_picklability(key, kwarg)
 
-    return synchronize_api(_remote)
+        self._functions = {}
+        for k, fun in base_functions.items():
+            self._functions[k] = fun.from_parametrized(self, args, kwargs)
+
+        # Used for construction local object lazily
+        self._has_local_obj = False
+        self._local_obj = None
+        if user_cls:
+            self._local_obj_constr = lambda: user_cls(*args, **kwargs)
+        else:
+            self._local_obj_constr = None
+
+    def get_local_obj(self):
+        # Construct local object lazily. Used for .local() calls
+        if not self._has_local_obj:
+            self._local_obj = self._local_obj_constr()
+            # TODO(erikbern): run __enter__?
+            setattr(self._local_obj, "_modal_functions", self._functions)  # Needed for PartialFunction.__get__
+            self._has_local_obj = True
+
+        return self._local_obj
+
+    def __getattr__(self, k):
+        if k in self._functions:
+            return self._functions[k]
+        elif self._local_obj_constr:
+            obj = self.get_local_obj()
+            return getattr(obj, k)
+        else:
+            raise AttributeError(k)
+
+
+Obj = synchronize_api(_Obj)
+
+
+class _Cls(_Object, type_prefix="cs"):
+    _user_cls: Optional[type]
+    _functions: Dict[str, _Function]
+
+    def _initialize_from_empty(self):
+        self._user_cls = None
+        self._base_functions = {}
+
+    def _hydrate_metadata(self, metadata: Message):
+        self._base_functions = {}
+        for method in metadata.methods:
+            function: _Function = _Function._new_hydrated(
+                method.function_id, self._client, method.function_handle_metadata
+            )
+            self._base_functions[method.function_name] = function
+
+    @staticmethod
+    def from_local(user_cls, base_functions: Dict[str, _Function]) -> "_Cls":
+        async def _load(provider: _Object, resolver: Resolver, existing_object_id: Optional[str]):
+            # Make sure all functions are loaded
+            await asyncio.gather(*[resolver.load(function) for function in base_functions.values()])
+
+            # Create class remotely
+            req = api_pb2.ClassCreateRequest(app_id=resolver.app_id, existing_class_id=existing_object_id)
+            for f_name, f in base_functions.items():
+                req.methods.append(api_pb2.ClassMethod(function_name=f_name, function_id=f.object_id))
+            resp = await resolver.client.stub.ClassCreate(req)
+            provider._hydrate(resp.class_id, resolver.client, None)
+
+        rep = f"Cls({user_cls.__name__})"
+        cls = _Cls._from_loader(_load, rep)
+        cls._user_cls = user_cls
+        cls._base_functions = base_functions
+        setattr(cls._user_cls, "_modal_functions", base_functions)  # Needed for PartialFunction.__get__
+        return cls
+
+    def get_user_cls(self):
+        # Used by the container entrypoint
+        return self._user_cls
+
+    def get_base_function(self, k: str) -> _Function:
+        return self._base_functions[k]
+
+    def __call__(self, *args, **kwargs) -> _Obj:
+        """This acts as the class constructor."""
+        return _Obj(self._user_cls, self._base_functions, args, kwargs)
+
+    async def remote(self, *args, **kwargs) -> _Obj:
+        deprecation_warning(
+            date(2023, 9, 1), "`Cls.remote(...)` on classes is deprecated. Use the constructor: `Cls(...)`."
+        )
+        return self(*args, **kwargs)
+
+    def __getattr__(self, k):
+        # Used by CLI and container entrypoint
+        return self._base_functions[k]
+
+
+Cls = synchronize_api(_Cls)

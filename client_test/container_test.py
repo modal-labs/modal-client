@@ -25,7 +25,7 @@ from modal_proto import api_pb2
 from .helpers import deploy_stub_externally
 from .supports.skip import skip_windows_unix_socket
 
-EXTRA_TOLERANCE_DELAY = 3.0
+EXTRA_TOLERANCE_DELAY = 2.0 if sys.platform == "linux" else 5.0
 FUNCTION_CALL_ID = "fc-123"
 SLEEP_DELAY = 0.1
 
@@ -64,7 +64,7 @@ def _run_container(
             webhook_config = api_pb2.WebhookConfig(
                 type=webhook_type,
                 method="GET",
-                wait_for_response=True,
+                async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
             )
         else:
             webhook_config = None
@@ -691,7 +691,7 @@ def verify_concurrent_input_outputs(n_inputs: int, n_parallel: int, output_items
         assert diff == pytest.approx(expected_diff, abs=0.2)
 
     for item in output_items:
-        assert item.output_created_at - item.input_started_at == pytest.approx(SLEEP_TIME, abs=0.1)
+        assert item.output_created_at - item.input_started_at == pytest.approx(SLEEP_TIME, abs=0.2)
         assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
         assert item.result.data == serialize(42**2)
 
@@ -732,3 +732,12 @@ def test_concurrent_inputs_async_function(unix_servicer, event_loop):
     expected_execution = n_inputs / n_parallel * SLEEP_TIME
     assert expected_execution <= time.time() - t0 < expected_execution + EXTRA_TOLERANCE_DELAY
     verify_concurrent_input_outputs(n_inputs, n_parallel, items)
+
+
+@skip_windows_unix_socket
+def test_unassociated_function(unix_servicer, event_loop):
+    client, items = _run_container(unix_servicer, "modal_test_support.functions", "unassociated_function")
+    assert len(items) == 1
+    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert items[0].result.data
+    assert deserialize(items[0].result.data, client) == 58

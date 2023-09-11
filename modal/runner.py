@@ -15,8 +15,7 @@ from .app import _App, is_local
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config
 from .exception import InvalidError
-from .functions import _FunctionHandle
-from .queue import _Queue
+from .functions import _Function
 
 
 async def _heartbeat(client, app_id):
@@ -38,6 +37,7 @@ async def _run_stub(
     environment_name: Optional[str] = None,
     shell=False,
 ) -> AsyncGenerator[_App, None]:
+    """mdmd:hidden"""
     if environment_name is None:
         environment_name = config.get("environment")
 
@@ -83,8 +83,8 @@ async def _run_stub(
             await app._create_all_objects(stub._blueprint, post_init_state, environment_name, shell=shell)
 
             # Update all functions client-side to have the output mgr
-            for tag, obj in stub.registered_functions.items():
-                obj._handle._set_output_mgr(output_mgr)
+            for obj in stub.registered_functions.values():
+                obj._set_output_mgr(output_mgr)
 
             # Show logs from dynamically created images.
             # TODO: better way to do this
@@ -93,9 +93,7 @@ async def _run_stub(
             # Yield to context
             if stub._pty_input_stream:
                 output_mgr._visible_progress = False
-                handle = app._pty_input_stream
-                assert isinstance(handle, _Queue)
-                async with _pty.write_stdin_to_pty_stream(handle):
+                async with _pty.write_stdin_to_pty_stream(stub._pty_input_stream):
                     yield app
                 output_mgr._visible_progress = True
             else:
@@ -103,7 +101,7 @@ async def _run_stub(
                     yield app
         except KeyboardInterrupt:
             # mute cancellation errors on all function handles to prevent exception spam
-            for tag, obj in stub._function_handles.items():
+            for obj in stub.registered_functions.values():
                 obj._set_mute_cancellation(True)
 
             if detach:
@@ -118,6 +116,7 @@ async def _run_stub(
                     "Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n"
                 )
         finally:
+            app._uncreate_all_objects()
             await app.disconnect()
 
     output_mgr.print_if_visible(step_completed("App completed."))
@@ -129,6 +128,7 @@ async def _serve_update(
     is_ready: Event,
     environment_name: str,
 ) -> None:
+    """mdmd:hidden"""
     # Used by child process to reinitialize a served app
     client = await _Client.from_env()
     try:
@@ -224,7 +224,7 @@ async def _deploy_stub(
     return app
 
 
-async def _interactive_shell(_function_handle: _FunctionHandle, cmd: str, environment_name: str = ""):
+async def _interactive_shell(_function: _Function, cmd: str, environment_name: str = ""):
     """Run an interactive shell (like `bash`) within the image for this app.
 
     This is useful for online debugging and interactive exploration of the
@@ -245,10 +245,10 @@ async def _interactive_shell(_function_handle: _FunctionHandle, cmd: str, enviro
     modal shell script.py --cmd /bin/bash
     ```
     """
-    _stub = _function_handle._stub
+    _stub = _function._stub
     _stub._add_pty_input_stream()  # TOOD(erikbern): slightly hacky
     async with _run_stub(_stub, environment_name=environment_name, shell=True):
-        await _function_handle.shell(cmd)
+        await _function.shell(cmd)
 
 
 run_stub = synchronize_api(_run_stub)

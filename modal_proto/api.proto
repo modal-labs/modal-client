@@ -150,11 +150,13 @@ message AppGetObjectsRequest {
 
 message AppGetObjectsItem {
   string tag = 1;
-  string object_id = 2;
-  oneof handle_metadata_oneof {
-    FunctionHandleMetadata function = 3;
+  string object_id = 2;  // deprecated
+  oneof handle_metadata_oneof {  // deprecated
+    FunctionHandleMetadata function_handle_metadata = 3;
     MountHandleMetadata mount_handle_metadata = 4;
+    ClassHandleMetadata class_handle_metadata = 5;
   }
+  Object object = 6;
 }
 
 message AppGetObjectsResponse {
@@ -192,12 +194,14 @@ message AppLookupObjectRequest {
 }
 
 message AppLookupObjectResponse {
-  string object_id = 1;
+  string object_id = 1; // deprecated
   string error_message = 2;
-  oneof handle_metadata_oneof {
-    FunctionHandleMetadata function = 3;
+  oneof handle_metadata_oneof { // deprecated
+    FunctionHandleMetadata function_handle_metadata = 3;
     MountHandleMetadata mount_handle_metadata = 4;
+    ClassHandleMetadata class_handle_metadata = 5;
   }
+  Object object = 6;
 }
 
 message AppSetObjectsRequest {
@@ -215,6 +219,27 @@ message AppHeartbeatRequest {
   string app_id = 1;
 }
 
+message ClassMethod {
+  string function_name = 1;
+  string function_id = 2;
+
+  // Class methods need to hydrate all functions on the class
+  FunctionHandleMetadata function_handle_metadata = 3;
+}
+
+message ClassCreateRequest {
+  string app_id = 1;
+  string existing_class_id = 2;
+  repeated ClassMethod methods = 3;
+}
+
+message ClassCreateResponse {
+  string class_id = 1;
+}
+
+message ClassHandleMetadata {
+  repeated ClassMethod methods = 1;
+}
 
 message EnvironmentCreateRequest {
   string name = 1;
@@ -316,7 +341,6 @@ message ContainerArguments {  // This is used to pass data from the worker to th
   map<string, string> tracing_context = 9;
   bytes serialized_params = 10;
 }
-
 
 message ContainerHeartbeatRequest {
   string current_input_id = 1;
@@ -512,6 +536,8 @@ message Function {
   uint32 allow_concurrent_inputs = 34;
 
   repeated CustomDomainInfo custom_domain_info = 35;
+
+  string worker_id = 36; // For internal debugging use only.
 }
 
 message FunctionHandleMetadata {
@@ -794,6 +820,8 @@ message Sandbox {
   uint32 timeout_secs = 7;
 
   optional string workdir = 8;
+
+  repeated SharedVolumeMount nfs_mounts = 9;
 }
 
 message SandboxCreateRequest {
@@ -855,10 +883,12 @@ message Image {
   // Note: field 13 is getting replaced field 16. The client now sends both fields,
   // but the server still only reads field 13.
   bool gpu = 13;
-  string build_function_def = 14;
   string context_mount_id = 15;
   GPUConfig gpu_config = 16;
   ImageRegistryConfig image_registry_config = 17;
+
+  string build_function_def = 14;
+  bytes build_function_globals = 18;
 }
 
 message ImageContextFile {
@@ -918,7 +948,9 @@ message MountHandleMetadata {
 
 message MountFile {
   string filename = 1;
-  string sha256_hex = 3;
+  string sha256_hex = 3; // SHA-256 checksum of the file.
+  optional uint64 size = 4; // Size of the file in bytes — ignored in MountBuild().
+  optional uint32 mode = 5; // Unix file permission bits `st_mode`.
 }
 
 message MountPutFileRequest {
@@ -932,6 +964,15 @@ message MountPutFileRequest {
 
 message MountPutFileResponse {
   bool exists = 2;
+}
+
+message Object {
+  string object_id = 1;
+  oneof handle_metadata_oneof {
+    FunctionHandleMetadata function_handle_metadata = 3;
+    MountHandleMetadata mount_handle_metadata = 4;
+    ClassHandleMetadata class_handle_metadata = 5;
+  }
 }
 
 message ProxyInfo {
@@ -965,6 +1006,14 @@ message QueuePutRequest {
   repeated bytes values = 4;
 }
 
+message QueueLenRequest {
+  string queue_id = 1;
+}
+
+message QueueLenResponse {
+  int32 len = 1;
+}
+
 message RateLimit {
   int32 limit = 1;
   RateLimitInterval interval = 2;
@@ -979,7 +1028,8 @@ enum GPUType {
   GPU_TYPE_A100_20G = 5;
   GPU_TYPE_A100_40GB_MANY = 6 [deprecated=true];
   GPU_TYPE_INFERENTIA2 = 7;
-  GPU_TYPE_L4 = 8;
+  GPU_TYPE_A100_80GB = 8;
+  GPU_TYPE_L4 = 9;
 }
 
 message GPUConfig {
@@ -989,7 +1039,6 @@ message GPUConfig {
 }
 
 message Resources {
-  bool gpu = 1; // Legacy GPU toggle.
   uint32 memory_mb = 2;
   uint32 milli_cpu = 3;
   GPUConfig gpu_config = 4;
@@ -1265,7 +1314,6 @@ message CustomDomainInfo {
 message WebhookConfig {
   WebhookType type = 1;
   string method = 2;
-  bool wait_for_response = 3 [deprecated=true]; // rolled into async_mode - remove when ending support for 0.44
   string requested_suffix = 4;
   WebhookAsyncMode async_mode = 5;
   repeated CustomDomainConfig custom_domains = 6;
@@ -1295,6 +1343,9 @@ service ModalClient {
   // Blobs
   rpc BlobCreate(BlobCreateRequest) returns (BlobCreateResponse);
   rpc BlobGet(BlobGetRequest) returns (BlobGetResponse);
+
+  // Classes
+  rpc ClassCreate(ClassCreateRequest) returns (ClassCreateResponse);
 
   // Clients
   rpc ClientCreate(ClientCreateRequest) returns (ClientCreateResponse);
@@ -1351,6 +1402,7 @@ service ModalClient {
   rpc QueueCreate(QueueCreateRequest) returns (QueueCreateResponse);
   rpc QueueGet(QueueGetRequest) returns (QueueGetResponse);
   rpc QueuePut(QueuePutRequest) returns (google.protobuf.Empty);
+  rpc QueueLen(QueueLenRequest) returns (QueueLenResponse);
 
   // Sandboxes
   rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);

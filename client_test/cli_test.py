@@ -48,6 +48,7 @@ def _run(args: List[str], expected_exit_code: int = 0, expected_stderr: Optional
         res = runner.invoke(entrypoint_cli, args)
     if res.exit_code != expected_exit_code:
         print("stdout:", repr(res.stdout))
+        print("stderr:", repr(res.stderr))
         traceback.print_tb(res.exc_info[2])
         print(res.exception, file=sys.stderr)
         assert res.exit_code == expected_exit_code
@@ -123,18 +124,20 @@ def test_run(servicer, set_env_client, test_dir):
     _run(["run", file_with_entrypoint.as_posix() + "::stub.main"])
 
 
-@pytest.mark.filterwarnings("error")  # any warnings that aren't caught will fail this test
-def test_local_entrypoint_yes_remote_calls(servicer, set_env_client, test_dir):
-    file = test_dir / "supports" / "app_run_tests" / "local_entrypoint.py"
-    res = _run(["run", file.as_posix()])
-    assert "Warning: no remote function calls were made" not in res.stderr
+def test_run_async(servicer, set_env_client, test_dir):
+    sync_fn = test_dir / "supports" / "app_run_tests" / "local_entrypoint.py"
+    res = _run(["run", sync_fn.as_posix()])
+    assert "called locally" in res.stdout
+
+    async_fn = test_dir / "supports" / "app_run_tests" / "local_entrypoint_async.py"
+    res = _run(["run", async_fn.as_posix()])
+    assert "called locally (async)" in res.stdout
 
 
-@pytest.mark.filterwarnings("error")  # any warnings that aren't caught will fail this test
-def test_local_entrypoint_no_remote_calls(servicer, set_env_client, test_dir):
-    file = test_dir / "supports" / "app_run_tests" / "local_entrypoint_no_remote.py"
-    with pytest.warns(UserWarning, match="Warning: no remote function calls were made"):
-        _run(["run", file.as_posix()])
+def test_run_generator(servicer, set_env_client, test_dir):
+    stub_file = test_dir / "supports" / "app_run_tests" / "generator.py"
+    result = _run(["run", stub_file.as_posix()], expected_exit_code=1)
+    assert "generator functions" in str(result.exception)
 
 
 def test_help_message_unspecified_function(servicer, set_env_client, test_dir):
@@ -379,12 +382,8 @@ def test_nfs_get(set_env_client):
             assert f.read() == "foo bar baz"
 
 
-def test_deprecated_volume(set_env_client):
-    _run(
-        ["volume", "create", "xyz-volume"],
-        expected_exit_code=1,
-        expected_stderr="DeprecationWarning: The command 'create' is deprecated.\n",
-    )
+def test_volume_cli(set_env_client):
+    _run(["volume", "--help"])
 
 
 @pytest.mark.parametrize("command", [["run"], ["deploy"], ["serve", "--timeout=1"], ["shell"]])
@@ -400,12 +399,12 @@ def test_environment_flag(test_dir, servicer, command):
     with servicer.intercept() as ctx:
         ctx.add_response(
             "AppLookupObject",
-            api_pb2.AppLookupObjectResponse(object_id="mo-123"),
+            api_pb2.AppLookupObjectResponse(object=api_pb2.Object(object_id="mo-123")),
             request_filter=lambda req: req.app_name.startswith("modal-client-mount"),
         )  # built-in client lookup
         ctx.add_response(
             "AppLookupObject",
-            api_pb2.AppLookupObjectResponse(object_id="sv-123"),
+            api_pb2.AppLookupObjectResponse(object=api_pb2.Object(object_id="sv-123")),
             request_filter=lambda req: req.app_name == "volume_app",
         )
         _run(command + ["--env=staging", str(stub_file)])
@@ -438,12 +437,12 @@ def test_environment_noflag(test_dir, servicer, command, monkeypatch):
     with servicer.intercept() as ctx:
         ctx.add_response(
             "AppLookupObject",
-            api_pb2.AppLookupObjectResponse(object_id="mo-123"),
+            api_pb2.AppLookupObjectResponse(object=api_pb2.Object(object_id="mo-123")),
             request_filter=lambda req: req.app_name.startswith("modal-client-mount"),
         )  # built-in client lookup
         ctx.add_response(
             "AppLookupObject",
-            api_pb2.AppLookupObjectResponse(object_id="sv-123"),
+            api_pb2.AppLookupObjectResponse(object=api_pb2.Object(object_id="sv-123")),
             request_filter=lambda req: req.app_name == "volume_app",
         )
         _run(command + [str(stub_file)])
@@ -458,3 +457,10 @@ def test_environment_noflag(test_dir, servicer, command, monkeypatch):
     app_lookup_object2: api_pb2.AppLookupObjectRequest = ctx.pop_request("AppLookupObject")
     assert app_lookup_object2.app_name == "volume_app"
     assert app_lookup_object2.environment_name == "some_weird_default_env"
+
+
+def test_cls(servicer, set_env_client, test_dir):
+    stub_file = test_dir / "supports" / "app_run_tests" / "cls.py"
+
+    _run(["run", stub_file.as_posix(), "--x", "42", "--y", "1000"])
+    _run(["run", f"{stub_file.as_posix()}::AParametrized.some_method", "--x", "42", "--y", "1000"])

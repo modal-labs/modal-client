@@ -89,10 +89,10 @@ class _Client:
         self._pre_stop: Optional[Callable[[], Awaitable[None]]] = None
         self._channel = None
         self._stub = None
-        self._function_invocations = 0
 
     @property
     def stub(self):
+        """mdmd:hidden"""
         return self._stub
 
     async def _open(self):
@@ -139,7 +139,7 @@ class _Client:
         except GRPCError as exc:
             if exc.status == Status.FAILED_PRECONDITION:
                 raise VersionError(
-                    f"The client version {self.version} is too old. Please update to the latest package on PyPi: https://pypi.org/project/modal-client"
+                    f"The client version {self.version} is too old. Please update to the latest package on PyPi: https://pypi.org/project/modal"
                 )
             elif exc.status == Status.UNAUTHENTICATED:
                 raise AuthError(exc.message)
@@ -160,16 +160,19 @@ class _Client:
 
     @classmethod
     async def verify(cls, server_url, credentials):
+        """mdmd:hidden"""
         async with _Client(server_url, api_pb2.CLIENT_TYPE_CLIENT, credentials):
             pass  # Will call ClientHello
 
     @classmethod
     async def unauthenticated_client(cls, server_url: str):
+        """mdmd:hidden"""
         # Create a connection with no credentials
         # To be used with the token flow
         return _Client(server_url, api_pb2.CLIENT_TYPE_CLIENT, None, no_verify=True)
 
     async def start_token_flow(self, utm_source: Optional[str] = None) -> Tuple[str, str]:
+        """mdmd:hidden"""
         # Create token creation request
         # Send some strings identifying the computer (these are shown to the user for security reasons)
         req = api_pb2.TokenFlowCreateRequest(
@@ -181,6 +184,7 @@ class _Client:
         return (resp.token_flow_id, resp.web_url)
 
     async def finish_token_flow(self, token_flow_id) -> Tuple[str, str]:
+        """mdmd:hidden"""
         # Wait for token forever
         while True:
             req = api_pb2.TokenFlowWaitRequest(token_flow_id=token_flow_id, timeout=15.0)
@@ -190,6 +194,7 @@ class _Client:
 
     @classmethod
     async def from_env(cls, _override_config=None) -> "_Client":
+        """mdmd:hidden"""
         if _override_config:
             # Only used for testing
             c = _override_config
@@ -241,15 +246,9 @@ class _Client:
 
     @classmethod
     def set_env_client(cls, client):
-        """Just used from tests."""
+        """mdmd:hidden"""
+        # Just used from tests.
         cls._client_from_env = client
-
-    def track_function_invocation(self):
-        self._function_invocations += 1
-
-    @property
-    def function_invocations(self):
-        return self._function_invocations
 
 
 Client = synchronize_api(_Client)

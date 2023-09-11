@@ -39,6 +39,7 @@ from ._traceback import extract_traceback
 from ._tracing import extract_tracing_context, set_span_tag, trace, wrap
 from .app import _App
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
+from .cls import Cls
 from .config import logger
 from .exception import InvalidError
 from .functions import Function, _set_current_input_id  # type: ignore
@@ -124,10 +125,6 @@ class _FunctionIOManager:
     async def initialize_app(self):
         self._container_app = await _App.init_container(self._client, self.app_id, self._stub_name)
         return self._container_app
-
-    @wrap()
-    async def initialize_app_objects(self, stub: Optional[_Stub]):
-        await self._container_app._init_container_objects(stub)
 
     async def _heartbeat(self):
         request = api_pb2.ContainerHeartbeatRequest()
@@ -560,7 +557,7 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun, ser_params
     if isinstance(fun, Function):
         _function_proxy = synchronizer._translate_in(fun)
         fun = _function_proxy.get_raw_f()
-        active_stub = _function_proxy._handle._stub
+        active_stub = _function_proxy._stub
     elif module is not None and not function_def.is_builder_function:
         # This branch is reached in the special case that the imported function is 1) not serialized, and 2) isn't a FunctionHandle - i.e, not decorated at definition time
         # Look at all instantiated stubs - if there is only one with the indicated name, use that one
@@ -584,6 +581,8 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun, ser_params
 
     # Instantiate the class if it's defined
     if cls:
+        if isinstance(cls, Cls):
+            cls = cls.get_user_cls()
         if ser_params:
             args, kwargs = pickle.loads(ser_params)
             obj = cls(*args, **kwargs)
@@ -637,17 +636,15 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             ser_cls, ser_fun = None, None
 
         # Initialize the function
+        # Note: detecting the stub causes all objects to be associated with the app and hydrated
         with function_io_manager.handle_user_exception():
             imp_fun = import_function(container_args.function_def, ser_cls, ser_fun, container_args.serialized_params)
-
-        # Hydrate all app objects
-        function_io_manager.initialize_app_objects(imp_fun.stub)
 
         pty_info: api_pb2.PTYInfo = container_args.function_def.pty_info
         if pty_info.pty_type or pty_info.enabled:
             # TODO(erikbern): the second condition is for legacy compatibility, remove soon
             # TODO(erikbern): there is no client test for this branch
-            input_stream_unwrapped = synchronizer._translate_in(container_app._pty_input_stream)
+            input_stream_unwrapped = synchronizer._translate_in(container_app._get_object("_pty_input_stream"))
             input_stream_blocking = synchronizer._translate_out(input_stream_unwrapped, Interface.BLOCKING)
             imp_fun.fun = run_in_pty(imp_fun.fun, input_stream_blocking, pty_info)
 

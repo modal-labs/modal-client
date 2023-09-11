@@ -5,23 +5,19 @@ import functools
 import inspect
 import sys
 import time
-import warnings
-from typing import Any, Optional
+from typing import Any, Callable, Dict, Optional
 
 import click
 import typer
 from rich.console import Console
-from synchronicity import Interface
 
-from modal.config import config
-from modal.exception import InvalidError
-from modal.runner import deploy_stub, interactive_shell, run_stub
-from modal.serving import serve_stub
-from modal.stub import LocalEntrypoint
-from modal_utils.async_utils import synchronizer
-
+from ..config import config
 from ..environments import ensure_env
-from ..functions import _FunctionHandle
+from ..exception import InvalidError
+from ..functions import Function
+from ..runner import deploy_stub, interactive_shell, run_stub
+from ..serving import serve_stub
+from ..stub import LocalEntrypoint, Stub
 from .import_refs import import_function, import_stub
 from .utils import ENV_OPTION, ENV_OPTION_HELP
 
@@ -54,12 +50,19 @@ class NoParserAvailable(InvalidError):
     pass
 
 
-def _add_click_options(func, signature: inspect.Signature):
+def _get_signature(f: Callable, is_method: bool = False) -> Dict[str, inspect.Parameter]:
+    if is_method:
+        self = None  # Dummy, doesn't matter
+        f = functools.partial(f, self)
+    return {param.name: param for param in inspect.signature(f).parameters.values()}
+
+
+def _add_click_options(func, signature: Dict[str, inspect.Parameter]):
     """Adds @click.option based on function signature
 
     Kind of like typer, but using options instead of positional arguments
     """
-    for param in signature.parameters.values():
+    for param in signature.values():
         param_type = Any if param.annotation is inspect.Signature.empty else param.annotation
         param_name = param.name.replace("_", "-")
         cli_name = "--" + param_name
@@ -68,7 +71,7 @@ def _add_click_options(func, signature: inspect.Signature):
         parser = option_parsers.get(param_type)
         if parser is None:
             raise NoParserAvailable(repr(param_type))
-        kwargs = {
+        kwargs: Any = {
             "type": parser,
         }
         if param.default is not inspect.Signature.empty:
@@ -90,35 +93,45 @@ def _get_clean_stub_description(func_ref: str) -> str:
         return " ".join(sys.argv)
 
 
-def _get_click_command_for_function(_stub, function_tag):
-    blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
+def _get_click_command_for_function(stub: Stub, function_tag):
+    function = stub[function_tag]
 
-    _function = _stub[function_tag]
-    if _function._info.cls is not None:
-        obj = _function._info.cls()
-        raw_func = functools.partial(_function._info.raw_f, obj)
+    if function.is_generator:
+        raise InvalidError("`modal run` is not supported for generator functions")
+
+    signature: Dict[str, inspect.Parameter]
+    if function.info.cls is not None:
+        cls_signature = _get_signature(function.info.cls)
+        fun_signature = _get_signature(function.info.raw_f, is_method=True)
+        signature = dict(**cls_signature, **fun_signature)  # Pool all arguments
+        # TODO(erikbern): assert there's no overlap?
     else:
-        raw_func = _function._info.raw_f
+        signature = _get_signature(function.info.raw_f)
 
     @click.pass_context
-    def f(ctx, *args, **kwargs):
+    def f(ctx, **kwargs):
         with run_stub(
-            blocking_stub,
+            stub,
             detach=ctx.obj["detach"],
             show_progress=ctx.obj["show_progress"],
             environment_name=ctx.obj["env"],
-        ) as app:
-            _function_handle = app[function_tag]
-            _function_handle.call(*args, **kwargs)
+        ):
+            if function.info.cls is None:
+                function.remote(**kwargs)
+            else:
+                # unpool class and method arguments
+                # TODO(erikbern): this code is a bit hacky
+                cls_kwargs = {k: kwargs[k] for k in cls_signature}
+                fun_kwargs = {k: kwargs[k] for k in fun_signature}
+                method = function.from_parametrized(None, tuple(), cls_kwargs)
+                method.remote(**fun_kwargs)
 
-    # TODO: handle `self` when raw_func is an unbound method (e.g. method on lifecycle class)
-    with_click_options = _add_click_options(f, inspect.signature(raw_func))
+    with_click_options = _add_click_options(f, signature)
     return click.command(with_click_options)
 
 
-def _get_click_command_for_local_entrypoint(_stub, entrypoint: LocalEntrypoint):
-    blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
-    func = entrypoint.raw_f
+def _get_click_command_for_local_entrypoint(stub: Stub, entrypoint: LocalEntrypoint):
+    func = entrypoint.info.raw_f
     isasync = inspect.iscoroutinefunction(func)
 
     @click.pass_context
@@ -129,40 +142,33 @@ def _get_click_command_for_local_entrypoint(_stub, entrypoint: LocalEntrypoint):
             )
 
         with run_stub(
-            blocking_stub,
+            stub,
             detach=ctx.obj["detach"],
             show_progress=ctx.obj["show_progress"],
             environment_name=ctx.obj["env"],
-        ) as app:
+        ):
             if isasync:
                 asyncio.run(func(*args, **kwargs))
             else:
                 func(*args, **kwargs)
-            if app.client.function_invocations == 0:
-                # TODO: better formatting for the warning message
-                warnings.warn(
-                    "Warning: no remote function calls were made.\n"
-                    "Note that Modal functions run locally when called directly (e.g. `f()`).\n"
-                    "In order to run a function remotely, you may use `f.call()`. (See https://modal.com/docs/reference/modal.Function for other options)."
-                )
 
-    with_click_options = _add_click_options(f, inspect.signature(func))
+    with_click_options = _add_click_options(f, _get_signature(func))
     return click.command(with_click_options)
 
 
 class RunGroup(click.Group):
     def get_command(self, ctx, func_ref):
-        _function_handle_or_entrypoint = import_function(
+        function_or_entrypoint = import_function(
             func_ref, accept_local_entrypoint=True, interactive=False, base_cmd="modal run"
         )
-        _stub = _function_handle_or_entrypoint._stub
-        if _stub._description is None:
-            _stub._description = _get_clean_stub_description(func_ref)
-        if isinstance(_function_handle_or_entrypoint, LocalEntrypoint):
-            click_command = _get_click_command_for_local_entrypoint(_stub, _function_handle_or_entrypoint)
+        stub: Stub = function_or_entrypoint.stub
+        if stub.description is None:
+            stub.set_description(_get_clean_stub_description(func_ref))
+        if isinstance(function_or_entrypoint, LocalEntrypoint):
+            click_command = _get_click_command_for_local_entrypoint(stub, function_or_entrypoint)
         else:
-            tag = _function_handle_or_entrypoint._info.get_tag()
-            click_command = _get_click_command_for_function(_stub, tag)
+            tag = function_or_entrypoint.info.get_tag()
+            click_command = _get_click_command_for_function(stub, tag)
 
         return click_command
 
@@ -216,17 +222,15 @@ def deploy(
     name: str = typer.Option(None, help="Name of the deployment."),
     env: str = ENV_OPTION,
 ):
-    env = ensure_env(
-        env
-    )  # this ensures that `modal.lookup()` without environment specification uses the same env as specified
+    # this ensures that `modal.lookup()` without environment specification uses the same env as specified
+    env = ensure_env(env)
 
-    _stub = import_stub(stub_ref)
+    stub = import_stub(stub_ref)
 
     if name is None:
-        name = _stub.name
+        name = stub.name
 
-    blocking_stub = synchronizer._translate_out(_stub, interface=Interface.BLOCKING)
-    deploy_stub(blocking_stub, name=name, environment_name=env)
+    deploy_stub(stub, name=name, environment_name=env)
 
 
 def serve(
@@ -244,7 +248,11 @@ def serve(
     """
     env = ensure_env(env)
 
-    with serve_stub(stub_ref, environment_name=env):
+    stub = import_stub(stub_ref)
+    if stub.description is None:
+        stub.set_description(_get_clean_stub_description(stub_ref))
+
+    with serve_stub(stub, stub_ref, environment_name=env):
         if timeout is None:
             timeout = config["serve_timeout"]
         if timeout is None:
@@ -286,12 +294,12 @@ def shell(
     if not console.is_terminal:
         raise click.UsageError("`modal shell` can only be run from a terminal.")
 
-    _function_handle = import_function(
+    function = import_function(
         func_ref, accept_local_entrypoint=False, accept_webhook=True, interactive=True, base_cmd="modal shell"
     )
-    assert isinstance(_function_handle, _FunctionHandle)  # ensured by accept_local_entrypoint=False
+    assert isinstance(function, Function)  # ensured by accept_local_entrypoint=False
     interactive_shell(
-        _function_handle,
+        function,
         cmd,
         environment_name=env,
     )

@@ -14,7 +14,7 @@ import tempfile
 import traceback
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict
 
 import aiohttp.web
 import aiohttp.web_runner
@@ -35,16 +35,6 @@ from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_testing import patch_mock_servicer
 from modal_utils.grpc_utils import find_free_port
 from modal_utils.http_utils import run_temporary_http_server
-
-
-def function_definition_to_handle_metadata(definition: Optional[api_pb2.Function]) -> api_pb2.FunctionHandleMetadata:
-    if definition is None:
-        return None
-    return api_pb2.FunctionHandleMetadata(
-        function_name=definition.function_name,
-        function_type=definition.function_type,
-        web_url=definition.web_url,
-    )
 
 
 @patch_mock_servicer
@@ -96,6 +86,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.function_create_error = False
         self.heartbeat_status_code = None
         self.n_apps = 0
+        self.classes = {}
 
         self.task_result = None
 
@@ -134,6 +125,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.volume_commits: Dict[str, int] = defaultdict(lambda: 0)
         self.volume_reloads: Dict[str, int] = defaultdict(lambda: 0)
 
+        self.sandbox_defs = []
         self.sandbox: subprocess.Popen = None
 
         @self.function_body
@@ -144,6 +136,38 @@ class MockClientServicer(api_grpc.ModalClientBase):
         """Decorator for setting the function that will be called for any FunctionGetOutputs calls"""
         self._function_body = func
         return func
+
+    def get_function_metadata(self, object_id: str) -> api_pb2.FunctionHandleMetadata:
+        definition: api_pb2.Function = self.app_functions[object_id]
+        return api_pb2.FunctionHandleMetadata(
+            function_name=definition.function_name,
+            function_type=definition.function_type,
+            web_url=definition.web_url,
+        )
+
+    def get_object_metadata(self, object_id) -> api_pb2.Object:
+        # TODO(erikbern): support mount metadata
+        function_handle_metadata: api_pb2.FunctionHandleMetadata = None
+        class_handle_metadata: api_pb2.ClassHandleMetadata = None
+
+        if object_id.startswith("fu-"):
+            function_handle_metadata = self.get_function_metadata(object_id)
+
+        elif object_id.startswith("cs-"):
+            class_handle_metadata = api_pb2.ClassHandleMetadata()
+            for f_name, f_id in self.classes[object_id].items():
+                function_handle_metadata = self.get_function_metadata(f_id)
+                class_handle_metadata.methods.append(
+                    api_pb2.ClassMethod(
+                        function_name=f_name, function_id=f_id, function_handle_metadata=function_handle_metadata
+                    )
+                )
+
+        return api_pb2.Object(
+            object_id=object_id,
+            function_handle_metadata=function_handle_metadata,
+            class_handle_metadata=class_handle_metadata,
+        )
 
     ### App
 
@@ -187,8 +211,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         items = [
             api_pb2.AppGetObjectsItem(
                 tag=tag,
-                object_id=object_id,
-                function=function_definition_to_handle_metadata(self.app_functions.get(object_id)),
+                object=self.get_object_metadata(object_id),
             )
             for tag, object_id in object_ids.items()
         ]
@@ -233,8 +256,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if object_id:
                 assert object_id.startswith(request.object_entity)
 
-        function = function_definition_to_handle_metadata(self.app_functions.get(object_id))
-        await stream.send_message(api_pb2.AppLookupObjectResponse(object_id=object_id, function=function))
+        await stream.send_message(api_pb2.AppLookupObjectResponse(object=self.get_object_metadata(object_id)))
 
     async def AppHeartbeat(self, stream):
         request: api_pb2.AppHeartbeatRequest = await stream.recv_message()
@@ -281,6 +303,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
         download_url = f"{self.blob_host}/download?blob_id={request.blob_id}"
         await stream.send_message(api_pb2.BlobGetResponse(download_url=download_url))
 
+    ### Class
+
+    async def ClassCreate(self, stream):
+        request: api_pb2.ClassCreateRequest = await stream.recv_message()
+        assert request.app_id
+        methods: dict[str, str] = {method.function_name: method.function_id for method in request.methods}
+        class_id = "cs-" + str(len(self.classes))
+        self.classes[class_id] = methods
+        await stream.send_message(api_pb2.ClassCreateResponse(class_id=class_id))
+
     ### Client
 
     async def ClientHello(self, stream):
@@ -313,8 +345,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
     ### Dict
 
     async def DictCreate(self, stream):
-        dict_id = f"di-{len(self.dicts)}"
-        self.dicts[dict_id] = {}
+        request: api_pb2.DictCreateRequest = await stream.recv_message()
+        if request.existing_dict_id:
+            dict_id = request.existing_dict_id
+        else:
+            dict_id = f"di-{len(self.dicts)}"
+            self.dicts[dict_id] = {}
         await stream.send_message(api_pb2.DictCreateResponse(dict_id=dict_id))
 
     async def DictGet(self, stream):
@@ -581,6 +617,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
             values = []
         await stream.send_message(api_pb2.QueueGetResponse(values=values))
 
+    async def QueueLen(self, stream):
+        await stream.recv_message()
+        await stream.send_message(api_pb2.QueueLenResponse(len=len(self.queue)))
+
     ### Sandbox
 
     async def SandboxCreate(self, stream):
@@ -589,6 +629,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.sandbox = subprocess.Popen(
             request.definition.entrypoint_args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
+        self.sandbox_defs.append(request.definition)
         await stream.send_message(api_pb2.SandboxCreateResponse(sandbox_id="sb-123"))
 
     async def SandboxGetLogs(self, stream):
