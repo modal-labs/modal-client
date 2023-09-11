@@ -310,3 +310,16 @@ def test_keyboard_interrupt(servicer, client):
     with stub.run(client=client):
         # The exit handler should catch this interrupt and exit gracefully
         raise KeyboardInterrupt()
+
+
+def test_function_image_positional():
+    stub = Stub()
+    image = Image.debian_slim()
+
+    with pytest.raises(InvalidError) as excinfo:
+
+        @stub.function(image)  # type: ignore
+        def f():
+            pass
+
+    assert "function(image=image)" in str(excinfo.value)

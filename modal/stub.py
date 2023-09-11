@@ -450,6 +450,9 @@ class _Stub:
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
     ) -> Callable[..., _Function]:
         """Decorator to register a new Modal function with this stub."""
+        if isinstance(_warn_parentheses_missing, _Image):
+            # Handle edge case where maybe (?) some users passed image as a positional arg
+            raise InvalidError("`image` needs to be a positional argument: `@stub.function(image=image)`.")
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@stub.function()`.")
 
