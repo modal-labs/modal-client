@@ -1426,11 +1426,11 @@ def _web_endpoint(
     """
     if isinstance(_warn_parentheses_missing, str):
         # Probably passing the method string as a positional argument.
-        raise InvalidError(
-            'Positional arguments to `@web_endpoint` are not allowed. Suggestion: `@web_endpoint(method="GET")`.'
-        )
+        raise InvalidError('Positional arguments are not allowed. Suggestion: `@web_endpoint(method="GET")`.')
     elif _warn_parentheses_missing:
-        raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@web_endpoint()`.")
+        raise InvalidError(
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@web_endpoint()`."
+        )
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         if isinstance(raw_f, _Function):
@@ -1495,8 +1495,12 @@ def _asgi_app(
     * wait_for_response=True - tries to fulfill the request on the original URL, but returns a 302 redirect after ~150s to a result URL (original URL with an added `__modal_function_id=fc-1234abcd` query parameter)
     * wait_for_response=False - immediately returns a 202 ACCEPTED response with a JSON payload: `{"result_url": "..."}` containing the result "redirect" url from above (which in turn redirects to itself every 150s)
     """
-    if _warn_parentheses_missing:
-        raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@asgi_app()`.")
+    if isinstance(_warn_parentheses_missing, str):
+        raise InvalidError('Positional arguments are not allowed. Suggestion: `@asgi_app(label="foo")`.')
+    elif _warn_parentheses_missing:
+        raise InvalidError(
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@asgi_app()`."
+        )
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         if not wait_for_response:
@@ -1549,8 +1553,12 @@ def _wsgi_app(
 
     For documentation on this decorator's arguments see [`asgi_app`](/docs/reference/modal.asgi_app).
     """
-    if _warn_parentheses_missing:
-        raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@wsgi_app()`.")
+    if isinstance(_warn_parentheses_missing, str):
+        raise InvalidError('Positional arguments are not allowed. Suggestion: `@wsgi_app(label="foo")`.')
+    elif _warn_parentheses_missing:
+        raise InvalidError(
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@wsgi_app()`."
+        )
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         if not wait_for_response:
