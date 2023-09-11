@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2023
 import asyncio
-from typing import AsyncIterator, List, Optional
+from typing import AsyncIterator, List, Optional, Union
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import asyncnullcontext, synchronize_api
@@ -164,8 +164,10 @@ class _Volume(_Object, type_prefix="vo"):
         """
         return [entry async for entry in self.iterdir(path)]
 
-    async def read_file(self, path: str) -> AsyncIterator[bytes]:
+    async def read_file(self, path: Union[str, bytes]) -> AsyncIterator[bytes]:
         """Read a file from the modal.Volume."""
+        if isinstance(path, str):
+            path = path.encode("utf-8")
         req = api_pb2.VolumeGetFileRequest(volume_id=self.object_id, path=path)
         response = await retry_transient_errors(self._client.stub.VolumeGetFile, req)
         if response.WhichOneof("data_oneof") == "data":
