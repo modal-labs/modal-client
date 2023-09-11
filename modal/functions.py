@@ -1355,6 +1355,7 @@ PartialFunction = synchronize_api(_PartialFunction)
 
 
 def _method(
+    _warn_parentheses_missing=None,
     *,
     # Set this to True if it's a non-generator function returning
     # a [sync/async] generator object
@@ -1373,6 +1374,8 @@ def _method(
             ...
     ```
     """
+    if _warn_parentheses_missing:
+        raise InvalidError("Did you forget parentheses? Suggestion: `@method()`.")
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         return _PartialFunction(raw_f, is_generator=is_generator)
