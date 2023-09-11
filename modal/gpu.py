@@ -134,6 +134,7 @@ class Any(_GPUConfig):
 
 STRING_TO_GPU_CONFIG = {
     "t4": T4(),
+    "l4": L4(),
     "a100": A100(),
     "a10g": A10G(),
     "inf2": Inferentia2(),
