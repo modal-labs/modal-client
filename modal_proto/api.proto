@@ -1259,7 +1259,7 @@ message VolumeCommitRequest {
 
 message VolumeGetFileRequest {
   string volume_id = 1;
-  string path = 2;
+  bytes path = 2;
 }
 
 message VolumeGetFileResponse {
