@@ -57,8 +57,6 @@ class L4(_GPUConfig):
         return f"GPU(L4, count={self.count})"
 
 
-
-
 class A100(_GPUConfig):
     """
     [NVIDIA A100 Tensor Core](https://www.nvidia.com/en-us/data-center/a100/) GPU class.
