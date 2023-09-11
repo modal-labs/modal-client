@@ -42,8 +42,8 @@ class _Object:
             cls._type_prefix = type_prefix
             cls._prefix_to_type[type_prefix] = cls
 
-    def __init__(self):
-        raise Exception("__init__ disallowed, use proper classmethods")
+    def __init__(self, *args, **kwargs):
+        raise InvalidError(f"Class {type(self).__name__} has no constructor. Use class constructor methods instead.")
 
     def _init(
         self,
