@@ -979,6 +979,7 @@ enum GPUType {
   GPU_TYPE_A100_20G = 5;
   GPU_TYPE_A100_40GB_MANY = 6 [deprecated=true];
   GPU_TYPE_INFERENTIA2 = 7;
+  GPU_TYPE_L4 = 8;
 }
 
 message GPUConfig {
