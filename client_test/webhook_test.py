@@ -134,3 +134,12 @@ async def test_asgi_wsgi(servicer, client):
     assert len(servicer.app_functions) == 2
     assert servicer.app_functions["fu-1"].webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP
     assert servicer.app_functions["fu-2"].webhook_config.type == api_pb2.WEBHOOK_TYPE_WSGI_APP
+
+
+def test_positional_method(servicer, client):
+    with pytest.raises(InvalidError, match="method="):
+        web_endpoint("GET")
+    with pytest.raises(InvalidError, match="label="):
+        asgi_app("baz")
+    with pytest.raises(InvalidError, match="label="):
+        wsgi_app("baz")

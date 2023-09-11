@@ -8,7 +8,7 @@ import typing
 import cloudpickle
 from synchronicity.exceptions import UserCodeException
 
-from modal import NetworkFileSystem, Proxy, Stub, asgi_app, web_endpoint, wsgi_app
+from modal import NetworkFileSystem, Proxy, Stub, web_endpoint
 from modal.exception import DeprecationError, ExecutionError, InvalidError
 from modal.functions import Function, FunctionCall, gather
 from modal.runner import deploy_stub
@@ -609,29 +609,6 @@ def test_serialize_deserialize_function_handle(servicer, client):
         assert rehydrated_function_handle.object_id == my_handle.object_id
         assert isinstance(rehydrated_function_handle, Function)
         assert rehydrated_function_handle.web_url == "http://xyz.internal"
-
-
-def test_invalid_web_decorator_usage():
-    with pytest.raises(InvalidError, match="Add empty parens to the decorator"):
-
-        @stub.function()  # type: ignore
-        @web_endpoint  # type: ignore
-        def my_handle():
-            pass
-
-    with pytest.raises(InvalidError, match="Add empty parens to the decorator"):
-
-        @stub.function()  # type: ignore
-        @asgi_app  # type: ignore
-        def my_handle_asgi():
-            pass
-
-    with pytest.raises(InvalidError, match="Add empty parens to the decorator"):
-
-        @stub.function()  # type: ignore
-        @wsgi_app  # type: ignore
-        def my_handle_wsgi():
-            pass
 
 
 def test_default_cloud_provider(client, servicer, monkeypatch):
