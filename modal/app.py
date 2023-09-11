@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
-import os
 from datetime import date
-from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Dict, Optional, TypeVar
 
 from google.protobuf.message import Message
 
@@ -14,8 +13,6 @@ from ._resolver import Resolver
 from .client import _Client
 from .config import logger
 from .exception import deprecation_warning
-from .gpu import GPU_T
-from .network_file_system import _NetworkFileSystem
 from .object import _Object
 
 if TYPE_CHECKING:
@@ -324,43 +321,12 @@ class _App:
 
     async def spawn_sandbox(
         self,
-        *entrypoint_args: str,
-        image: Optional["modal.image._Image"] = None,  # The image to run as the container for the sandbox.
-        mounts: Sequence["modal.mount._Mount"] = (),  # Mounts to attach to the sandbox.
-        secrets: Sequence["modal.secret._Secret"] = (),  # Environment variables to inject into the sandbox.
-        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
-        timeout: Optional[int] = None,  # Maximum execution time of the sandbox in seconds.
-        workdir: Optional[str] = None,  # Working directory of the sandbox.
-        gpu: GPU_T = None,
-        cloud: Optional[str] = None,
-        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
-        memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
+        *args,
+        **kwargs,
     ) -> "modal.sandbox._Sandbox":
-        """Sandboxes are a way to run arbitrary commands in dynamically defined environments.
-
-        This function returns a [SandboxHandle](/docs/reference/modal.Sandbox#modalsandboxsandbox), which can be used to interact with the running sandbox.
-
-        Refer to the [docs](/docs/guide/sandbox) on how to spawn and use sandboxes.
-        """
-        from .sandbox import _Sandbox
-        from .stub import _default_image
-
-        resolver = Resolver(self._client, environment_name=self._environment_name, app_id=self.app_id)
-        obj = _Sandbox._new(
-            entrypoint_args,
-            image=image or _default_image,
-            mounts=mounts,
-            secrets=secrets,
-            timeout=timeout,
-            workdir=workdir,
-            gpu=gpu,
-            cloud=cloud,
-            cpu=cpu,
-            memory=memory,
-            network_file_systems=network_file_systems,
-        )
-        await resolver.load(obj)
-        return obj
+        """Deprecated. Use `Stub.spawn_sandbox` instead."""
+        deprecation_warning(date(2023, 9, 11), _App.spawn_sandbox.__doc__)
+        return self._associated_stub.spawn_sandbox(*args, **kwargs)
 
     @staticmethod
     def _reset_container():
