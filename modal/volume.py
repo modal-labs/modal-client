@@ -164,7 +164,19 @@ class _Volume(_Object, type_prefix="vo"):
         return [entry async for entry in self.iterdir(path)]
 
     async def read_file(self, path: Union[str, bytes]) -> AsyncIterator[bytes]:
-        """Read a file from the modal.Volume."""
+        """
+        Read a file from the modal.Volume.
+
+        **Example:**
+
+        ```python notest
+        vol = modal.Volume.lookup("my-modal-volume")
+        data = b""
+        for chunk in vol.read_file("1mb.csv"):
+            data += chunk
+        print(len(data))  # == 1024 * 1024
+        ```
+        """
         if isinstance(path, str):
             path = path.encode("utf-8")
         req = api_pb2.VolumeGetFileRequest(volume_id=self.object_id, path=path)
