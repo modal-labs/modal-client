@@ -66,7 +66,7 @@ async def _run_stub(
         environment_name=environment_name,
         output_mgr=output_mgr,
     )
-    async with stub._set_app(app), TaskContext(grace=config["logs_timeout"]) as tc:
+    async with stub._set_local_app(app), TaskContext(grace=config["logs_timeout"]) as tc:
         # Start heartbeats loop to keep the client alive
         tc.infinite_loop(lambda: _heartbeat(client, app.app_id), sleep=HEARTBEAT_INTERVAL)
 

@@ -90,7 +90,7 @@ class _App:
         """A unique identifier for this running App."""
         return self._app_id
 
-    def _associate_stub(self, stub):
+    def _associate_stub_container(self, stub):
         if self._associated_stub:
             if self._stub_name:
                 warning_sub_message = f"stub with the same name ('{self._stub_name}')"
@@ -115,6 +115,9 @@ class _App:
                 # Can't find the object, create a new one
                 obj = _Object._new_hydrated(object_id, self._client, handle_metadata)
             self._tag_to_object[tag] = obj
+
+    def _associate_stub_local(self, stub):
+        self._associated_stub = stub
 
     async def _create_all_objects(
         self, blueprint: Dict[str, _Object], new_app_state: int, environment_name: str, shell: bool = False

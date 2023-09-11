@@ -165,7 +165,7 @@ class _Stub:
         string_name = self._name or ""
 
         if not is_local() and _container_app._stub_name == string_name:
-            _container_app._associate_stub(self)
+            _container_app._associate_stub_container(self)
             # note that all stubs with the correct name will get the container app assigned
             self._app = _container_app
 
@@ -265,8 +265,9 @@ class _Stub:
         return image._is_inside()
 
     @asynccontextmanager
-    async def _set_app(self, app: _App) -> AsyncGenerator[None, None]:
+    async def _set_local_app(self, app: _App) -> AsyncGenerator[None, None]:
         self._app = app
+        app._associate_stub_local(self)
         try:
             yield
         finally:
