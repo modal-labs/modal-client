@@ -312,13 +312,14 @@ def test_keyboard_interrupt(servicer, client):
         raise KeyboardInterrupt()
 
 
-def test_local_entrypoint_without_parantheses():
+def test_function_image_positional():
     stub = Stub()
+    image = Image.debian_slim()
 
     with pytest.raises(InvalidError) as excinfo:
 
-        @stub.local_entrypoint  # type: ignore
+        @stub.function(image)  # type: ignore
         def f():
             pass
 
-    assert "local_entrypoint()" in str(excinfo.value)
+    assert "function(image=image)" in str(excinfo.value)
