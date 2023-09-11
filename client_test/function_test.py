@@ -8,7 +8,7 @@ import typing
 import cloudpickle
 from synchronicity.exceptions import UserCodeException
 
-from modal import NetworkFileSystem, Proxy, Stub, asgi_app, web_endpoint, wsgi_app
+from modal import NetworkFileSystem, Proxy, Stub, web_endpoint
 from modal.exception import DeprecationError, ExecutionError, InvalidError
 from modal.functions import Function, FunctionCall, gather
 from modal.runner import deploy_stub

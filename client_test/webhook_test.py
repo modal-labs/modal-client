@@ -137,9 +137,9 @@ async def test_asgi_wsgi(servicer, client):
 
 
 def test_positional_method(servicer, client):
-    with pytest.raises(InvalidError, match="method=") as excinfo:
+    with pytest.raises(InvalidError, match="method="):
         web_endpoint("GET")
-    with pytest.raises(InvalidError, match="label=") as excinfo:
+    with pytest.raises(InvalidError, match="label="):
         asgi_app("baz")
-    with pytest.raises(InvalidError, match="label=") as excinfo:
+    with pytest.raises(InvalidError, match="label="):
         wsgi_app("baz")

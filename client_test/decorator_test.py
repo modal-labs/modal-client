@@ -1,14 +1,14 @@
 # Copyright Modal Labs 2023
 import pytest
 
-from modal import Stub, method, web_endpoint, asgi_app, wsgi_app
+from modal import Stub, asgi_app, method, web_endpoint, wsgi_app
 from modal.exception import InvalidError
 
 
 def test_local_entrypoint_forgot_parentheses():
     stub = Stub()
 
-    with pytest.raises(InvalidError, match="local_entrypoint()") as excinfo:
+    with pytest.raises(InvalidError, match="local_entrypoint()"):
 
         @stub.local_entrypoint  # type: ignore
         def f():
@@ -18,7 +18,7 @@ def test_local_entrypoint_forgot_parentheses():
 def test_function_forgot_parentheses():
     stub = Stub()
 
-    with pytest.raises(InvalidError, match="function()") as excinfo:
+    with pytest.raises(InvalidError, match="function()"):
 
         @stub.function  # type: ignore
         def f():
@@ -28,7 +28,7 @@ def test_function_forgot_parentheses():
 def test_cls_forgot_parentheses():
     stub = Stub()
 
-    with pytest.raises(InvalidError, match="cls()") as excinfo:
+    with pytest.raises(InvalidError, match="cls()"):
 
         @stub.cls  # type: ignore
         class XYZ:
@@ -38,7 +38,7 @@ def test_cls_forgot_parentheses():
 def test_method_forgot_parentheses():
     stub = Stub()
 
-    with pytest.raises(InvalidError, match="method()") as excinfo:
+    with pytest.raises(InvalidError, match="method()"):
 
         @stub.cls()
         class XYZ:
