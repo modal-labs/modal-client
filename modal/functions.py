@@ -1375,7 +1375,7 @@ def _method(
     ```
     """
     if _warn_parentheses_missing:
-        raise InvalidError("Did you forget parentheses? Suggestion: `@method()`.")
+        raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@method()`.")
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         return _PartialFunction(raw_f, is_generator=is_generator)
@@ -1430,7 +1430,7 @@ def _web_endpoint(
             'Positional arguments to `@web_endpoint` are not allowed. Suggestion: `@web_endpoint(method="GET")`.'
         )
     elif _warn_parentheses_missing:
-        raise InvalidError("Did you forget parentheses? Suggestion: `@web_endpoint()`.")
+        raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@web_endpoint()`.")
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         if isinstance(raw_f, _Function):
@@ -1462,6 +1462,8 @@ def _web_endpoint(
 
 @typechecked
 def _asgi_app(
+    _warn_parentheses_missing=None,
+    *,
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
     custom_domains: Optional[
@@ -1493,12 +1495,8 @@ def _asgi_app(
     * wait_for_response=True - tries to fulfill the request on the original URL, but returns a 302 redirect after ~150s to a result URL (original URL with an added `__modal_function_id=fc-1234abcd` query parameter)
     * wait_for_response=False - immediately returns a 202 ACCEPTED response with a JSON payload: `{"result_url": "..."}` containing the result "redirect" url from above (which in turn redirects to itself every 150s)
     """
-    if label and not isinstance(label, str):
-        raise InvalidError(
-            f"Unexpected argument {label} of type {type(label)} for `label` parameter. "
-            "Add empty parens to the decorator, e.g. @asgi_app() if there are no arguments. "
-            "Otherwise, pass an argument of type `str`: @asgi_app(label='mylabel')"
-        )
+    if _warn_parentheses_missing:
+        raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@asgi_app()`.")
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         if not wait_for_response:
@@ -1521,6 +1519,8 @@ def _asgi_app(
 
 @typechecked
 def _wsgi_app(
+    _warn_parentheses_missing=None,
+    *,
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
     custom_domains: Optional[
@@ -1549,12 +1549,8 @@ def _wsgi_app(
 
     For documentation on this decorator's arguments see [`asgi_app`](/docs/reference/modal.asgi_app).
     """
-    if label and not isinstance(label, str):
-        raise InvalidError(
-            f"Unexpected argument {label} of type {type(label)} for `label` parameter. "
-            "Add empty parens to the decorator, e.g. @wsgi_app() if there are no arguments. "
-            "Otherwise, pass an argument of type `str`: @wsgi_app(label='mylabel')"
-        )
+    if _warn_parentheses_missing:
+        raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@wsgi_app()`.")
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         if not wait_for_response:

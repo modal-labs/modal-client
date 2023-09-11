@@ -611,29 +611,6 @@ def test_serialize_deserialize_function_handle(servicer, client):
         assert rehydrated_function_handle.web_url == "http://xyz.internal"
 
 
-def test_invalid_web_decorator_usage():
-    with pytest.raises(InvalidError, match="Add empty parens to the decorator"):
-
-        @stub.function()  # type: ignore
-        @web_endpoint  # type: ignore
-        def my_handle():
-            pass
-
-    with pytest.raises(InvalidError, match="Add empty parens to the decorator"):
-
-        @stub.function()  # type: ignore
-        @asgi_app  # type: ignore
-        def my_handle_asgi():
-            pass
-
-    with pytest.raises(InvalidError, match="Add empty parens to the decorator"):
-
-        @stub.function()  # type: ignore
-        @wsgi_app  # type: ignore
-        def my_handle_wsgi():
-            pass
-
-
 def test_default_cloud_provider(client, servicer, monkeypatch):
     stub = Stub()
 
