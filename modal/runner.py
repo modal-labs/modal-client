@@ -47,7 +47,7 @@ async def _run_stub(
             " Are you calling stub.run() directly?"
             " Consider using the `modal run` shell command."
         )
-    if stub.app:
+    if stub._app:
         raise InvalidError(
             "App is already running and can't be started again.\n"
             "You should not use `stub.run` or `run_stub` within a Modal local_entrypoint"
@@ -66,7 +66,7 @@ async def _run_stub(
         environment_name=environment_name,
         output_mgr=output_mgr,
     )
-    async with stub._set_app(app), TaskContext(grace=config["logs_timeout"]) as tc:
+    async with stub._set_local_app(app), TaskContext(grace=config["logs_timeout"]) as tc:
         # Start heartbeats loop to keep the client alive
         tc.infinite_loop(lambda: _heartbeat(client, app.app_id), sleep=HEARTBEAT_INTERVAL)
 
