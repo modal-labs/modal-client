@@ -668,7 +668,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         items = [api_pb2.SecretListItem(label=f"dummy-secret-{i}") for i, _ in enumerate(self.secrets)]
         await stream.send_message(api_pb2.SecretListResponse(items=items))
 
-    ### Shared volume
+    ### Network File System (née Shared volume)
 
     async def SharedVolumeCreate(self, stream):
         nfs_id = f"sv-{len(self.nfs_files)}"
@@ -711,6 +711,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 token_secret="xyz",
             )
         )
+
+    ### Volume
 
     async def VolumeCreate(self, stream):
         await stream.recv_message()
