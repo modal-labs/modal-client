@@ -1394,6 +1394,8 @@ def _parse_custom_domains(custom_domains: Optional[Iterable[str]] = None) -> Lis
 
 @typechecked
 def _web_endpoint(
+    _warn_parentheses_missing=None,
+    *,
     method: str = "GET",  # REST method for the created endpoint.
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
@@ -1422,12 +1424,13 @@ def _web_endpoint(
     * `wait_for_response=True` - tries to fulfill the request on the original URL, but returns a 302 redirect after ~150s to a result URL (original URL with an added `__modal_function_id=...` query parameter)
     * `wait_for_response=False` - immediately returns a 202 ACCEPTED response with a JSON payload: `{"result_url": "..."}` containing the result "redirect" URL from above (which in turn redirects to itself every ~150s)
     """
-    if not isinstance(method, str):
+    if isinstance(_warn_parentheses_missing, str):
+        # Probably passing the method string as a positional argument.
         raise InvalidError(
-            f"Unexpected argument {method} of type {type(method)} for `method` parameter. "
-            "Add empty parens to the decorator, e.g. @web_endpoint() if there are no arguments. "
-            "Otherwise, pass an argument of type `str`: @web_endpoint(method='POST')"
+            'Positional arguments to `@web_endpoint` are not allowed. Suggestion: `@web_endpoint(method="GET")`.'
         )
+    elif _warn_parentheses_missing:
+        raise InvalidError("Did you forget parentheses? Suggestion: `@web_endpoint()`.")
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         if isinstance(raw_f, _Function):
