@@ -431,9 +431,9 @@ def test_cls_function(unix_servicer, event_loop):
 
 @skip_windows_unix_socket
 def test_param_cls_function(unix_servicer, event_loop):
-    serialized_parmas = pickle.dumps(([111], {"y": "foo"}))
+    serialized_params = pickle.dumps(([111], {"y": "foo"}))
     client, items = _run_container(
-        unix_servicer, "modal_test_support.functions", "ParamCls.f", serialized_params=serialized_parmas
+        unix_servicer, "modal_test_support.functions", "ParamCls.f", serialized_params=serialized_params
     )
     assert len(items) == 1
     assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
@@ -741,3 +741,14 @@ def test_unassociated_function(unix_servicer, event_loop):
     assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     assert items[0].result.data
     assert deserialize(items[0].result.data, client) == 58
+
+
+@skip_windows_unix_socket
+def test_param_cls_function_calling_local(unix_servicer, event_loop):
+    serialized_params = pickle.dumps(([111], {"y": "foo"}))
+    client, items = _run_container(
+        unix_servicer, "modal_test_support.functions", "ParamCls.g", serialized_params=serialized_params
+    )
+    assert len(items) == 1
+    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert items[0].result.data == serialize("111 foo 42")
