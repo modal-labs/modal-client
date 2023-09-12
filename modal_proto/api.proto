@@ -1262,6 +1262,13 @@ message VolumeGetFileRequest {
   bytes path = 2;
 }
 
+message VolumeGetFileResponse {
+  oneof data_oneof {
+    bytes data = 1;
+    string data_blob_id = 2;
+  }
+}
+
 message VolumeListFilesEntry {
   enum FileType {
     UNSPECIFIED = 0;
@@ -1438,7 +1445,7 @@ service ModalClient {
   // Volumes
   rpc VolumeCreate(VolumeCreateRequest) returns (VolumeCreateResponse);
   rpc VolumeCommit(VolumeCommitRequest) returns (google.protobuf.Empty);
-  rpc VolumeGetFile(VolumeGetFileRequest) returns (stream google.protobuf.BytesValue);
+  rpc VolumeGetFile(VolumeGetFileRequest) returns (VolumeGetFileResponse);
   rpc VolumeList(VolumeListRequest) returns (VolumeListResponse);
   rpc VolumeListFiles(VolumeListFilesRequest) returns (stream VolumeListFilesResponse);
   rpc VolumeReload(VolumeReloadRequest) returns (google.protobuf.Empty);
