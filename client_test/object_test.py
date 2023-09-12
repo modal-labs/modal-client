@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import pytest
 
-from modal import Queue, Stub
+from modal import Queue, Secret, Stub
 from modal.exception import DeprecationError, InvalidError
 
 
@@ -45,3 +45,11 @@ def test_new_hydrated(client):
 
     with pytest.raises(InvalidError):
         _Object._new_hydrated("xy-123", client, None)
+
+
+def test_constructor():
+    with pytest.raises(InvalidError) as excinfo:
+        Secret({"foo": 123})
+
+    assert "Secret" in str(excinfo.value)
+    assert "constructor" in str(excinfo.value)

@@ -1209,6 +1209,7 @@ class _Image(_Object, type_prefix="im"):
                 date(2023, 8, 19),
                 "Support for mounting NetworkFileSystems or Volumes will soon be removed from `run_function`. If you are trying to download model weights, downloading it to the image itself is recommended and sufficient. Please refer to the docs for more on this, or reach out to us if your use case is not covered.",
             )
+            network_file_systems = {**network_file_systems, **shared_volumes}
 
         function = _Function.from_args(
             info,
@@ -1218,6 +1219,7 @@ class _Image(_Object, type_prefix="im"):
             secrets=secrets,
             gpu=gpu,
             mounts=mounts,
+            network_file_systems=network_file_systems,
             memory=memory,
             timeout=timeout,
             cpu=cpu,

@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 
 from modal import Image, Mount, NetworkFileSystem, Secret, Stub
-from modal.exception import InvalidError
+from modal.exception import DeprecationError, InvalidError
 
 stub = Stub()
 
@@ -17,8 +17,8 @@ skip_non_linux = pytest.mark.skipif(platform.system() != "Linux", reason="sandbo
 
 @skip_non_linux
 def test_spawn_sandbox(client, servicer):
-    with stub.run(client=client) as app:
-        sb = app.spawn_sandbox("bash", "-c", "echo bye >&2 && sleep 1 && echo hi && exit 42", timeout=600)
+    with stub.run(client=client):
+        sb = stub.spawn_sandbox("bash", "-c", "echo bye >&2 && sleep 1 && echo hi && exit 42", timeout=600)
 
         t0 = time.time()
         sb.wait()
@@ -35,8 +35,8 @@ def test_spawn_sandbox(client, servicer):
 def test_sandbox_mount(client, servicer, tmpdir):
     tmpdir.join("a.py").write(b"foo")
 
-    with stub.run(client=client) as app:
-        sb = app.spawn_sandbox(
+    with stub.run(client=client):
+        sb = stub.spawn_sandbox(
             "echo",
             "hi",
             mounts=[Mount.from_local_dir(Path(tmpdir), remote_path="/m")],
@@ -51,8 +51,8 @@ def test_sandbox_mount(client, servicer, tmpdir):
 def test_sandbox_image(client, servicer, tmpdir):
     tmpdir.join("a.py").write(b"foo")
 
-    with stub.run(client=client) as app:
-        sb = app.spawn_sandbox("echo", "hi", image=Image.debian_slim().pip_install("foo", "bar", "potato"))
+    with stub.run(client=client):
+        sb = stub.spawn_sandbox("echo", "hi", image=Image.debian_slim().pip_install("foo", "bar", "potato"))
         sb.wait()
 
     idx = max(servicer.images.keys())
@@ -63,8 +63,8 @@ def test_sandbox_image(client, servicer, tmpdir):
 
 @skip_non_linux
 def test_sandbox_secret(client, servicer, tmpdir):
-    with stub.run(client=client) as app:
-        sb = app.spawn_sandbox("echo", "$FOO", secrets=[Secret.from_dict({"FOO": "BAR"})])
+    with stub.run(client=client):
+        sb = stub.spawn_sandbox("echo", "$FOO", secrets=[Secret.from_dict({"FOO": "BAR"})])
         sb.wait()
 
     assert len(servicer.sandbox_defs[0].secret_ids) == 1
@@ -72,12 +72,19 @@ def test_sandbox_secret(client, servicer, tmpdir):
 
 @skip_non_linux
 def test_sandbox_nfs(client, servicer, tmpdir):
-    with stub.run(client=client) as app:
+    with stub.run(client=client):
         nfs = NetworkFileSystem.new()
 
         with pytest.raises(InvalidError):
-            app.spawn_sandbox("echo", "foo > /cache/a.txt", network_file_systems={"/": nfs})
+            stub.spawn_sandbox("echo", "foo > /cache/a.txt", network_file_systems={"/": nfs})
 
-        app.spawn_sandbox("echo", "foo > /cache/a.txt", network_file_systems={"/cache": nfs})
+        stub.spawn_sandbox("echo", "foo > /cache/a.txt", network_file_systems={"/cache": nfs})
 
     assert len(servicer.sandbox_defs[0].nfs_mounts) == 1
+
+
+@skip_non_linux
+def test_spawn_sandbox_on_app_deprecated(client, servicer):
+    with stub.run(client=client) as app:
+        with pytest.warns(DeprecationError):
+            app.spawn_sandbox("bash", "-c", "echo bye >&2 && sleep 1 && echo hi && exit 42", timeout=600)

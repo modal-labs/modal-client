@@ -40,6 +40,23 @@ class T4(_GPUConfig):
         return f"GPU(T4, count={self.count})"
 
 
+class L4(_GPUConfig):
+    """
+    [NVIDIA L4](https://www.nvidia.com/en-us/data-center/l4/) GPU class.
+
+    Mid-tier GPU option, providing 24GiB of GPU memory.
+    """
+
+    def __init__(
+        self,
+        count: int = 1,  # Number of GPUs per container. Defaults to 1. Useful if you have very large models that don't fit on a single GPU.
+    ):
+        super().__init__(api_pb2.GPU_TYPE_L4, count, 0)
+
+    def __repr__(self):
+        return f"GPU(L4, count={self.count})"
+
+
 class A100(_GPUConfig):
     """
     [NVIDIA A100 Tensor Core](https://www.nvidia.com/en-us/data-center/a100/) GPU class.
@@ -117,6 +134,7 @@ class Any(_GPUConfig):
 
 STRING_TO_GPU_CONFIG = {
     "t4": T4(),
+    "l4": L4(),
     "a100": A100(),
     "a10g": A10G(),
     "inf2": Inferentia2(),
