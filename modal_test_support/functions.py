@@ -169,6 +169,10 @@ class ParamCls:
     def f(self, z: int):
         return f"{self.x} {self.y} {z}"
 
+    @method()
+    def g(self, z):
+        return self.f.local(z)
+
 
 @stub.function(allow_concurrent_inputs=5)
 def sleep_700_sync(x):
