@@ -1128,6 +1128,9 @@ class _Function(_Object, type_prefix="fu"):
         return self._info
 
     def _get_self_obj(self):
+        # TODO(erikbern): See https://github.com/modal-labs/modal-client/pull/864
+        # We should keep track of "has a self object" separately from "needs a self object",
+        # and raise an exception here if a self object should be present but isn't.
         return self._obj.get_local_obj() if self._obj else None
 
     @synchronizer.nowrap

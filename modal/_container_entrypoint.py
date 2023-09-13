@@ -581,15 +581,15 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun, ser_params
 
     # Instantiate the class if it's defined
     if cls:
-        if isinstance(cls, Cls):
-            cls = cls.get_user_cls()
         if ser_params:
             args, kwargs = pickle.loads(ser_params)
-            obj = cls(*args, **kwargs)
         else:
-            obj = cls()
+            args, kwargs = (), {}
+        obj = cls(*args, **kwargs)
+        if isinstance(cls, Cls):
+            obj = obj.get_local_obj()
         # Bind the function to the instance (using the descriptor protocol!)
-        fun = fun.__get__(obj, cls)
+        fun = fun.__get__(obj)
     else:
         obj = None
 
