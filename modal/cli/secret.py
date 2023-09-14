@@ -53,7 +53,7 @@ def create(
     env_dict = {}
     for arg in keyvalues:
         if "=" in arg:
-            key, value = arg.split("=")
+            key, value = arg.split("=", 1)
             if value == "-":
                 value = get_text_from_editor(key)
             env_dict[key] = value

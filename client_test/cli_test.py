@@ -99,11 +99,13 @@ def test_secret_list(servicer, set_env_client):
 
     _run(["secret", "create", "foo", "bar=baz"])
     _run(["secret", "create", "bar", "baz=buz"])
+    _run(["secret", "create", "eric", "baz=bu 123z=b\n\t\r #(Q)JO5️⃣5️⃣😤WMLE🔧:GWam "])
 
     res = _run(["secret", "list"])
     assert "dummy-secret-0" in res.stdout
     assert "dummy-secret-1" in res.stdout
-    assert "dummy-secret-2" not in res.stdout
+    assert "dummy-secret-2" in res.stdout
+    assert "dummy-secret-3" not in res.stdout
 
 
 def test_app_token_new(servicer, set_env_client, server_url_env):
