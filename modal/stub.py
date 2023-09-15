@@ -177,8 +177,10 @@ class _Stub:
 
     @property
     def app(self) -> Optional[_App]:
-        """Reference to the currently running app, if any."""
-        deprecation_warning(date(2023, 9, 11), "Access to `.app` is deprecated.")
+        """`stub.app` is deprecated: use e.g. `stub.obj` instead of `stub.app.obj`
+        if you need to access objects on the running app.
+        """
+        deprecation_warning(date(2023, 9, 11), _Stub.app.__doc__)
         return self._app
 
     @property
