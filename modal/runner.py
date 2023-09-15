@@ -86,6 +86,10 @@ async def _run_stub(
             for obj in stub.registered_functions.values():
                 obj._set_output_mgr(output_mgr)
 
+            # Update all the classes client-side to propagate output manager to their methods.
+            for obj in stub.registered_classes.values():
+                obj._set_output_mgr(output_mgr)
+
             # Show logs from dynamically created images.
             # TODO: better way to do this
             output_mgr.enable_image_logs()
