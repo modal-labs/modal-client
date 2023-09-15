@@ -765,6 +765,7 @@ class _Function(_Object, type_prefix="fu"):
                 cloud_provider=cloud_provider,
                 warm_pool_size=keep_warm,
                 runtime=config.get("function_runtime"),
+                runtime_debug=config.get("function_runtime_debug"),
                 stub_name=stub_name,
                 is_builder_function=is_builder_function,
                 allow_concurrent_inputs=allow_concurrent_inputs,
