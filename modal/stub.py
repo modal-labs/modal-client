@@ -346,7 +346,12 @@ class _Stub:
     @property
     def registered_functions(self) -> Dict[str, _Function]:
         """All modal.Function objects registered on the stub."""
-        return {tag: obj for tag, obj in self._blueprint.items() if isinstance(obj, (_Function, _Cls))}
+        return {tag: obj for tag, obj in self._blueprint.items() if isinstance(obj, _Function)}
+
+    @property
+    def registered_classes(self) -> Dict[str, _Function]:
+        """All modal.Cls objects registered on the stub."""
+        return {tag: obj for tag, obj in self._blueprint.items() if isinstance(obj, _Cls)}
 
     @property
     def registered_entrypoints(self) -> Dict[str, _LocalEntrypoint]:
