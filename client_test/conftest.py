@@ -91,6 +91,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.task_result = None
 
         self.nfs_files: Dict[str, Dict[str, api_pb2.SharedVolumePutFileRequest]] = defaultdict(dict)
+        self.volume_files: Dict[str, Dict[str, bytes]] = defaultdict(dict)
         self.images = {}
         self.image_build_function_ids = {}
         self.force_built_images = []
@@ -256,7 +257,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if object_id:
                 assert object_id.startswith(request.object_entity)
 
-        await stream.send_message(api_pb2.AppLookupObjectResponse(object=self.get_object_metadata(object_id)))
+        response = api_pb2.AppLookupObjectResponse(object=self.get_object_metadata(object_id))
+        await stream.send_message(response)
 
     async def AppHeartbeat(self, stream):
         request: api_pb2.AppHeartbeatRequest = await stream.recv_message()
@@ -668,7 +670,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         items = [api_pb2.SecretListItem(label=f"dummy-secret-{i}") for i, _ in enumerate(self.secrets)]
         await stream.send_message(api_pb2.SecretListResponse(items=items))
 
-    ### Shared volume
+    ### Network File System (née Shared volume)
 
     async def SharedVolumeCreate(self, stream):
         nfs_id = f"sv-{len(self.nfs_files)}"
@@ -712,10 +714,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
             )
         )
 
+    ### Volume
+
     async def VolumeCreate(self, stream):
         await stream.recv_message()
         self.volume_counter += 1
-        await stream.send_message(api_pb2.VolumeCreateResponse(volume_id=f"vo-{self.volume_counter}"))
+        volume_id = f"vo-{self.volume_counter}"
+        self.volume_files[volume_id] = {}
+        await stream.send_message(api_pb2.VolumeCreateResponse(volume_id=volume_id))
 
     async def VolumeCommit(self, stream):
         req = await stream.recv_message()
@@ -726,6 +732,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
         req = await stream.recv_message()
         self.volume_reloads[req.volume_id] += 1
         await stream.send_message(Empty())
+
+    async def VolumeGetFile(self, stream):
+        req = await stream.recv_message()
+        data = self.volume_files[req.volume_id][req.path]
+        await stream.send_message(api_pb2.VolumeGetFileResponse(data=data))
 
 
 @pytest_asyncio.fixture

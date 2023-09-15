@@ -1,11 +1,12 @@
 # Copyright Modal Labs 2023
 import asyncio
-from typing import AsyncIterator, List, Optional
+from typing import AsyncIterator, List, Optional, Union
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import asyncnullcontext, synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors, unary_stream
 
+from ._blob_utils import blob_iter
 from ._resolver import Resolver
 from .object import _Object
 
@@ -162,6 +163,30 @@ class _Volume(_Object, type_prefix="vo"):
         * Passing a glob path (including at least one * or ** sequence) returns all files matching that glob path (using absolute paths)
         """
         return [entry async for entry in self.iterdir(path)]
+
+    async def read_file(self, path: Union[str, bytes]) -> AsyncIterator[bytes]:
+        """
+        Read a file from the modal.Volume.
+
+        **Example:**
+
+        ```python notest
+        vol = modal.Volume.lookup("my-modal-volume")
+        data = b""
+        for chunk in vol.read_file("1mb.csv"):
+            data += chunk
+        print(len(data))  # == 1024 * 1024
+        ```
+        """
+        if isinstance(path, str):
+            path = path.encode("utf-8")
+        req = api_pb2.VolumeGetFileRequest(volume_id=self.object_id, path=path)
+        response = await retry_transient_errors(self._client.stub.VolumeGetFile, req)
+        if response.WhichOneof("data_oneof") == "data":
+            yield response.data
+        else:
+            async for data in blob_iter(response.data_blob_id, self._client.stub):
+                yield data
 
 
 Volume = synchronize_api(_Volume)
