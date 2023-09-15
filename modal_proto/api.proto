@@ -538,6 +538,8 @@ message Function {
   repeated CustomDomainInfo custom_domain_info = 35;
 
   string worker_id = 36; // For internal debugging use only.
+
+  bool runtime_debug = 37; // For internal debugging use only.
 }
 
 message FunctionHandleMetadata {

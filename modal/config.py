@@ -153,6 +153,7 @@ _SETTINGS = {
     "profiling_enabled": _Setting(False, transform=lambda x: x not in ("", "0")),
     "heartbeat_interval": _Setting(15, float),
     "function_runtime": _Setting(),
+    "function_runtime_debug": _Setting(False, transform=lambda x: x not in ("", "0")),  # For internal debugging use.
     "environment": _Setting(),
     "default_cloud": _Setting(None, transform=lambda x: x if x else None),
     "worker_id": _Setting(),  # For internal debugging use.
