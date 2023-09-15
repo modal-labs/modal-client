@@ -9,6 +9,7 @@ from google.protobuf.message import Message
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
 
+from ._output import OutputManager
 from ._resolver import Resolver
 from .exception import deprecation_warning
 from .functions import _Function
@@ -49,7 +50,7 @@ class _Obj:
     _local_obj: Any
     _local_obj_constr: Optional[Callable[[], Any]]
 
-    def __init__(self, user_cls: type, base_functions: Dict[str, _Function], args, kwargs):
+    def __init__(self, user_cls: type, output_mgr: Optional[OutputManager], base_functions: Dict[str, _Function], args, kwargs):
         for i, arg in enumerate(args):
             check_picklability(i + 1, arg)
         for key, kwarg in kwargs.items():
@@ -58,6 +59,8 @@ class _Obj:
         self._functions = {}
         for k, fun in base_functions.items():
             self._functions[k] = fun.from_parametrized(self, args, kwargs)
+            self._functions[k]._set_output_mgr(output_mgr)
+
 
         # Used for construction local object lazily
         self._has_local_obj = False
@@ -97,6 +100,13 @@ class _Cls(_Object, type_prefix="cs"):
     def _initialize_from_empty(self):
         self._user_cls = None
         self._base_functions = {}
+        self._output_mgr: Optional[OutputManager] = None
+
+    def _set_output_mgr(self, output_mgr: OutputManager):
+        for f in self._base_functions.values():
+            f._set_output_mgr(output_mgr)
+
+        self._output_mgr = output_mgr # Save to propagate to parameterized functions
 
     def _hydrate_metadata(self, metadata: Message):
         self._base_functions = {}
@@ -135,7 +145,7 @@ class _Cls(_Object, type_prefix="cs"):
 
     def __call__(self, *args, **kwargs) -> _Obj:
         """This acts as the class constructor."""
-        return _Obj(self._user_cls, self._base_functions, args, kwargs)
+        return _Obj(self._user_cls, self._output_mgr, self._base_functions, args, kwargs)
 
     async def remote(self, *args, **kwargs) -> _Obj:
         deprecation_warning(
