@@ -70,6 +70,29 @@ def test_volume_commit(client, servicer):
         assert servicer.volume_reloads[stub.vol.object_id] == 2
 
 
+@pytest.mark.asyncio
+async def test_volume_get(servicer, client):
+    stub = modal.Stub()
+    vol = modal.Volume.persisted("my-vol")
+    stub.vol = vol
+    await vol._deploy.aio("my-vol", client=client)
+    assert await modal.Volume._exists.aio("my-vol", client=client)  # type: ignore
+
+    file_path = b"foo.txt"
+    file_contents = b"hello world"
+
+    with stub.run(client=client):
+        object_id = stub.vol.object_id
+    # TODO: A PUT implementation for volumes will make this test simpler.
+    servicer.volume_files[object_id][file_path] = file_contents
+
+    vol = await modal.Volume.lookup.aio("my-vol", client=client)  # type: ignore
+    data = b""
+    for chunk in vol.read_file(file_path):
+        data += chunk
+    assert data == file_contents
+
+
 def test_volume_reload(client, servicer):
     stub = modal.Stub()
     stub.vol = modal.Volume.new()
