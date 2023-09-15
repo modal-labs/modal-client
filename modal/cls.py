@@ -104,10 +104,7 @@ class _Cls(_Object, type_prefix="cs"):
         self._output_mgr: Optional[OutputManager] = None
 
     def _set_output_mgr(self, output_mgr: OutputManager):
-        for f in self._base_functions.values():
-            f._set_output_mgr(output_mgr)
-
-        self._output_mgr = output_mgr  # Save to propagate to parameterized functions
+        self._output_mgr = output_mgr
 
     def _hydrate_metadata(self, metadata: Message):
         self._base_functions = {}
