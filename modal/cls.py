@@ -50,7 +50,9 @@ class _Obj:
     _local_obj: Any
     _local_obj_constr: Optional[Callable[[], Any]]
 
-    def __init__(self, user_cls: type, output_mgr: Optional[OutputManager], base_functions: Dict[str, _Function], args, kwargs):
+    def __init__(
+        self, user_cls: type, output_mgr: Optional[OutputManager], base_functions: Dict[str, _Function], args, kwargs
+    ):
         for i, arg in enumerate(args):
             check_picklability(i + 1, arg)
         for key, kwarg in kwargs.items():
@@ -60,7 +62,6 @@ class _Obj:
         for k, fun in base_functions.items():
             self._functions[k] = fun.from_parametrized(self, args, kwargs)
             self._functions[k]._set_output_mgr(output_mgr)
-
 
         # Used for construction local object lazily
         self._has_local_obj = False
@@ -106,7 +107,7 @@ class _Cls(_Object, type_prefix="cs"):
         for f in self._base_functions.values():
             f._set_output_mgr(output_mgr)
 
-        self._output_mgr = output_mgr # Save to propagate to parameterized functions
+        self._output_mgr = output_mgr  # Save to propagate to parameterized functions
 
     def _hydrate_metadata(self, metadata: Message):
         self._base_functions = {}
