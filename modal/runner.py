@@ -28,7 +28,7 @@ async def _heartbeat(client, app_id):
 
 @contextlib.asynccontextmanager
 async def _run_stub(
-    stub,
+    stub: "_Stub",
     client: Optional[_Client] = None,
     stdout=None,
     show_progress: bool = True,
@@ -36,7 +36,7 @@ async def _run_stub(
     output_mgr: Optional[OutputManager] = None,
     environment_name: Optional[str] = None,
     shell=False,
-) -> AsyncGenerator[_App, None]:
+) -> AsyncGenerator["_Stub", None]:
     """mdmd:hidden"""
     if environment_name is None:
         environment_name = config.get("environment")
@@ -98,11 +98,11 @@ async def _run_stub(
             if stub._pty_input_stream:
                 output_mgr._visible_progress = False
                 async with _pty.write_stdin_to_pty_stream(stub._pty_input_stream):
-                    yield app
+                    yield stub
                 output_mgr._visible_progress = True
             else:
                 with output_mgr.show_status_spinner():
-                    yield app
+                    yield stub
         except KeyboardInterrupt:
             # mute cancellation errors on all function handles to prevent exception spam
             for obj in stub.registered_functions.values():
@@ -150,7 +150,7 @@ async def _serve_update(
 
 
 async def _deploy_stub(
-    stub,
+    stub: "_Stub",
     name: str = None,
     namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
     client=None,

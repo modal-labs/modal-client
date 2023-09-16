@@ -20,7 +20,7 @@ async def test_kwargs(servicer, client):
         d=Dict.new(),
         q=Queue.new(),
     )
-    async with stub.run(client=client) as app:
+    async with stub.run(client=client):
         # TODO: interface to get type safe objects from live apps
         await stub["d"].put.aio("foo", "bar")  # type: ignore
         await stub["q"].put.aio("baz")  # type: ignore
@@ -28,9 +28,9 @@ async def test_kwargs(servicer, client):
         assert await stub["q"].get.aio() == "baz"  # type: ignore
 
         with pytest.warns(DeprecationError):
-            assert isinstance(app["d"], Dict)
+            assert isinstance(stub.app["d"], Dict)
         with pytest.warns(DeprecationError):
-            assert isinstance(app["q"], Queue)
+            assert isinstance(stub.app["q"], Queue)
 
 
 @pytest.mark.asyncio
@@ -38,16 +38,16 @@ async def test_attrs(servicer, client):
     stub = Stub()
     stub.d = Dict.new()
     stub.q = Queue.new()
-    async with stub.run(client=client) as app:
+    async with stub.run(client=client):
         await stub.d.put.aio("foo", "bar")  # type: ignore
         await stub.q.put.aio("baz")  # type: ignore
         assert await stub.d.get.aio("foo") == "bar"  # type: ignore
         assert await stub.q.get.aio() == "baz"  # type: ignore
 
         with pytest.warns(DeprecationError):
-            assert isinstance(app.d, Dict)
+            assert isinstance(stub.app.d, Dict)
         with pytest.warns(DeprecationError):
-            assert isinstance(app.q, Queue)
+            assert isinstance(stub.app.q, Queue)
 
 
 @pytest.mark.asyncio
@@ -174,8 +174,8 @@ def test_same_function_name(caplog):
 
 def test_run_state(client, servicer):
     stub = Stub()
-    with stub.run(client=client) as app:
-        assert servicer.app_state_history[app.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_EPHEMERAL]
+    with stub.run(client=client):
+        assert servicer.app_state_history[stub.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_EPHEMERAL]
 
 
 def test_deploy_state(client, servicer):
@@ -186,8 +186,8 @@ def test_deploy_state(client, servicer):
 
 def test_detach_state(client, servicer):
     stub = Stub()
-    with stub.run(client=client, detach=True) as app:
-        assert servicer.app_state_history[app.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DETACHED]
+    with stub.run(client=client, detach=True):
+        assert servicer.app_state_history[stub.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DETACHED]
 
 
 @pytest.mark.asyncio

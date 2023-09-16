@@ -96,13 +96,13 @@ def _get_clean_stub_description(stub_ref: str) -> str:
 
 @contextlib.asynccontextmanager
 async def _serve_stub(
-    stub,
+    stub: "_Stub",
     stub_ref: str,
     stdout: Optional[io.TextIOWrapper] = None,
     show_progress: bool = True,
     _watcher: Optional[AsyncGenerator[None, None]] = None,  # for testing
     environment_name: Optional[str] = None,
-) -> AsyncGenerator[_App, None]:
+) -> AsyncGenerator["_Stub", None]:
     if environment_name is None:
         environment_name = config.get("environment")
 
@@ -115,11 +115,11 @@ async def _serve_stub(
         mounts_to_watch = stub._get_watch_mounts()
         watcher = watch(mounts_to_watch, output_mgr)
 
-    async with _run_stub(stub, client=client, output_mgr=output_mgr, environment_name=environment_name) as app:
-        client.set_pre_stop(app.disconnect)
+    async with _run_stub(stub, client=client, output_mgr=output_mgr, environment_name=environment_name):
+        client.set_pre_stop(stub._app.disconnect)
         async with TaskContext(grace=0.1) as tc:
-            tc.create_task(_run_watch_loop(stub_ref, app.app_id, output_mgr, watcher, environment_name))
-            yield app
+            tc.create_task(_run_watch_loop(stub_ref, stub.app_id, output_mgr, watcher, environment_name))
+            yield stub
 
 
 serve_stub = synchronize_api(_serve_stub)
