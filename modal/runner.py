@@ -2,7 +2,7 @@
 import asyncio
 import contextlib
 from multiprocessing.synchronize import Event
-from typing import AsyncGenerator, Optional
+from typing import TYPE_CHECKING, AsyncGenerator, Optional, TypeVar
 
 from modal_proto import api_pb2
 from modal_utils.app_utils import is_valid_app_name
@@ -17,6 +17,11 @@ from .config import config
 from .exception import InvalidError
 from .functions import _Function
 
+if TYPE_CHECKING:
+    from .stub import _Stub
+else:
+    _Stub = TypeVar("_Stub")
+
 
 async def _heartbeat(client, app_id):
     request = api_pb2.AppHeartbeatRequest(app_id=app_id)
@@ -28,7 +33,7 @@ async def _heartbeat(client, app_id):
 
 @contextlib.asynccontextmanager
 async def _run_stub(
-    stub: "_Stub",
+    stub: _Stub,
     client: Optional[_Client] = None,
     stdout=None,
     show_progress: bool = True,
@@ -36,7 +41,7 @@ async def _run_stub(
     output_mgr: Optional[OutputManager] = None,
     environment_name: Optional[str] = None,
     shell=False,
-) -> AsyncGenerator["_Stub", None]:
+) -> AsyncGenerator[_Stub, None]:
     """mdmd:hidden"""
     if environment_name is None:
         environment_name = config.get("environment")
@@ -150,7 +155,7 @@ async def _serve_update(
 
 
 async def _deploy_stub(
-    stub: "_Stub",
+    stub: _Stub,
     name: str = None,
     namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
     client=None,

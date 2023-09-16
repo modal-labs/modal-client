@@ -4,6 +4,7 @@ import pytest
 import threading
 from unittest import mock
 
+from modal import Function
 from modal.serving import serve_stub
 
 from .supports.app_run_tests.webhook import stub
@@ -40,6 +41,7 @@ def test_file_changes_trigger_reloads(stub_ref, server_url_env, servicer):
     assert servicer.app_set_objects_count == 4  # 1 + number of file changes
     assert servicer.app_client_disconnect_count == 1
     assert servicer.app_get_logs_initial_count == 1
+    assert isinstance(stub.foo, Function)
     assert stub.foo.web_url.startswith("http://")
 
 

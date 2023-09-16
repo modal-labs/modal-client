@@ -6,7 +6,7 @@ import platform
 import sys
 from multiprocessing.context import SpawnProcess
 from multiprocessing.synchronize import Event
-from typing import AsyncGenerator, Optional
+from typing import TYPE_CHECKING, AsyncGenerator, Optional, TypeVar
 
 from synchronicity import Interface
 
@@ -14,11 +14,15 @@ from modal_utils.async_utils import TaskContext, asyncify, synchronize_api, sync
 
 from ._output import OutputManager
 from ._watcher import watch
-from .app import _App
 from .cli.import_refs import import_stub
 from .client import _Client
 from .config import config
 from .runner import _run_stub, serve_update
+
+if TYPE_CHECKING:
+    from .stub import _Stub
+else:
+    _Stub = TypeVar("_Stub")
 
 
 def _run_serve(stub_ref: str, existing_app_id: str, is_ready: Event, environment_name: str):
