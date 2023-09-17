@@ -12,7 +12,7 @@ from modal_utils.grpc_utils import retry_transient_errors
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from .exception import deprecation_error
-from .object import _Object
+from .object import _Object, live_method
 
 
 class _Queue(_Object, type_prefix="qu"):
@@ -121,6 +121,7 @@ class _Queue(_Object, type_prefix="qu"):
 
         raise queue.Empty()
 
+    @live_method
     async def get(self, block: bool = True, timeout: Optional[float] = None) -> Optional[Any]:
         """Remove and return the next object in the queue.
 
@@ -144,6 +145,7 @@ class _Queue(_Object, type_prefix="qu"):
         else:
             return None
 
+    @live_method
     async def get_many(self, n_values: int, block: bool = True, timeout: Optional[float] = None) -> List[Any]:
         """Remove and return up to `n_values` objects from the queue.
 
@@ -164,10 +166,12 @@ class _Queue(_Object, type_prefix="qu"):
                 warnings.warn("Timeout is ignored for non-blocking get.")
             return await self._get_nonblocking(n_values)
 
+    @live_method
     async def put(self, v: Any) -> None:
         """Add an object to the end of the queue."""
         await self.put_many([v])
 
+    @live_method
     async def put_many(self, vs: List[Any]) -> None:
         """Add several objects to the end of the queue."""
         vs_encoded = [serialize(v) for v in vs]
@@ -177,6 +181,7 @@ class _Queue(_Object, type_prefix="qu"):
         )
         await retry_transient_errors(self._client.stub.QueuePut, request)
 
+    @live_method
     async def len(self) -> int:
         """Return the number of objects in the queue."""
         request = api_pb2.QueueLenRequest(queue_id=self.object_id)
