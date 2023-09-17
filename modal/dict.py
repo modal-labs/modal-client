@@ -11,7 +11,7 @@ from ._serialization import deserialize, serialize
 from ._types import typechecked
 from .config import logger
 from .exception import deprecation_error
-from .object import _Object
+from .object import _Object, live_method
 
 
 def _serialize_dict(data):
@@ -105,6 +105,7 @@ class _Dict(_Object, type_prefix="di"):
         )
         return self.persisted(label, namespace, environment_name)
 
+    @live_method
     async def get(self, key: Any) -> Any:
         """Get the value associated with a key.
 
@@ -116,18 +117,21 @@ class _Dict(_Object, type_prefix="di"):
             raise KeyError(f"KeyError: {key} not in dict {self.object_id}")
         return deserialize(resp.value, self._client)
 
+    @live_method
     async def contains(self, key: Any) -> bool:
         """Return if a key is present."""
         req = api_pb2.DictContainsRequest(dict_id=self.object_id, key=serialize(key))
         resp = await retry_transient_errors(self._client.stub.DictContains, req)
         return resp.found
 
+    @live_method
     async def len(self) -> int:
         """Return the length of the dictionary, including any expired keys."""
         req = api_pb2.DictLenRequest(dict_id=self.object_id)
         resp = await retry_transient_errors(self._client.stub.DictLen, req)
         return resp.len
 
+    @live_method
     async def __getitem__(self, key: Any) -> Any:
         """Get the value associated with a key.
 
@@ -135,12 +139,14 @@ class _Dict(_Object, type_prefix="di"):
         """
         return await self.get(key)
 
+    @live_method
     async def update(self, **kwargs) -> None:
         """Update the dictionary with additional items."""
         serialized = _serialize_dict(kwargs)
         req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized)
         await retry_transient_errors(self._client.stub.DictUpdate, req)
 
+    @live_method
     async def put(self, key: Any, value: Any) -> None:
         """Add a specific key-value pair to the dictionary."""
         updates = {key: value}
@@ -148,6 +154,7 @@ class _Dict(_Object, type_prefix="di"):
         req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized)
         await retry_transient_errors(self._client.stub.DictUpdate, req)
 
+    @live_method
     async def __setitem__(self, key: Any, value: Any) -> None:
         """Set a specific key-value pair to the dictionary.
 
@@ -155,6 +162,7 @@ class _Dict(_Object, type_prefix="di"):
         """
         return await self.put(key, value)
 
+    @live_method
     async def pop(self, key: Any) -> Any:
         """Remove a key from the dictionary, returning the value if it exists."""
         req = api_pb2.DictPopRequest(dict_id=self.object_id, key=serialize(key))
@@ -163,6 +171,7 @@ class _Dict(_Object, type_prefix="di"):
             raise KeyError(f"KeyError: {key} not in dict {self.object_id}")
         return deserialize(resp.value, self._client)
 
+    @live_method
     async def __delitem__(self, key: Any) -> Any:
         """Delete a key from the dictionary.
 
@@ -170,6 +179,7 @@ class _Dict(_Object, type_prefix="di"):
         """
         return await self.pop(key)
 
+    @live_method
     async def __contains__(self, key: Any) -> bool:
         """Return if a key is present.
 
