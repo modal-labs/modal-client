@@ -1069,13 +1069,20 @@ class _Image(_Object, type_prefix="im"):
         *,
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
+        add_python: Optional[str] = None,
     ) -> "_Image":
         """Build a Modal image from a local Dockerfile.
 
-        Note that the following must be true about the image you provide:
+        If your image does not come with Python installed, you can use the `add_python` parameter
+        to specify a version of Python to add to the image. Supported versions are `3.8`, `3.9`,
+        `3.10`, and `3.11`. For Alpine-based images, use `3.8-musl` through `3.11-musl`, which
+        are statically-linked Python installations.
 
-        - Python 3.7 or above needs to be present and available as `python`.
-        - `pip` needs to be installed and available as `pip`.
+        **Example**
+
+        ```python
+        image = modal.Image.from_dockerfile("./Dockerfile", add_python="3.10")
+        ```
         """
 
         path = os.path.expanduser(path)
@@ -1095,8 +1102,22 @@ class _Image(_Object, type_prefix="im"):
 
         requirements_path = _get_client_requirements_path()
 
+        context_mount = None
+        add_python_commands = []
+        if add_python:
+            add_python_commands = [
+                "COPY /python/. /usr/local",
+                "RUN ln -s /usr/local/bin/python3 /usr/local/bin/python",
+                "ENV TERMINFO_DIRS=/etc/terminfo:/lib/terminfo:/usr/share/terminfo:/usr/lib/terminfo",
+            ]
+            context_mount = _Mount.from_name(
+                python_standalone_mount_name(add_python),
+                namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
+            )
+
         dockerfile_commands = [
             "FROM base",
+            *add_python_commands,
             "COPY /modal_requirements.txt /modal_requirements.txt",
             "RUN python -m pip install --upgrade pip",
             "RUN python -m pip install -r /modal_requirements.txt",
@@ -1105,6 +1126,7 @@ class _Image(_Object, type_prefix="im"):
         return base_image.extend(
             dockerfile_commands=dockerfile_commands,
             context_files={"/modal_requirements.txt": requirements_path},
+            context_mount=context_mount,
             force_build=force_build,
         )
 
