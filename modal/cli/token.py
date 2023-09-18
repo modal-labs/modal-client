@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import getpass
+import itertools
 import webbrowser
 from typing import Optional
 
@@ -61,8 +62,14 @@ def new(profile: Optional[str] = profile_option, no_verify: bool = False, source
                 )
             console.print(f"\n[link={web_url}]{web_url}[/link]\n")
 
-        with console.status("Waiting for token flow to complete...", spinner="dots"):
-            token_id, token_secret = client.finish_token_flow(token_flow_id)
+        with console.status("Waiting for token flow to complete...", spinner="dots") as status:
+            for attempt in itertools.count():
+                res = client.finish_token_flow(token_flow_id)
+                if res is None:
+                    status.update(f"Waiting for token flow to complete... (attempt {attempt+2})")
+                else:
+                    token_id, token_secret = res
+                    break
 
         console.print("[green]Web authentication finished successfully![/green]")
 
