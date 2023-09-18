@@ -860,8 +860,10 @@ class _Image(_Object, type_prefix="im"):
     @typechecked
     def micromamba_install(
         self,
-        *packages: Union[str, List[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
-        channels: List[str] = [],  # A list of Conda channels, eg. ["conda-forge", "nvidia"]
+        # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
+        *packages: Union[str, List[str]],
+        # A list of Conda channels, eg. ["conda-forge", "nvidia"]
+        channels: List[str] = [],
         force_build: bool = False,
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,

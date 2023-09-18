@@ -167,7 +167,7 @@ class _Mount(_Object, type_prefix="mo"):
 
     @staticmethod
     def new() -> "_Mount":
-        """Instantiate an empty Mount object."""
+        """mdmd:hidden"""
         return _Mount._from_entries()
 
     @property
@@ -190,12 +190,16 @@ class _Mount(_Object, type_prefix="mo"):
         self,
         local_path: Union[str, Path],
         *,
-        remote_path: Union[str, PurePosixPath, None] = None,  # Where the directory is placed within in the mount
-        condition: Optional[
-            Callable[[str], bool]
-        ] = None,  # Filter function for file selection, default to include all files
-        recursive: bool = True,  # add files from subdirectories as well
+        # Where the directory is placed within in the mount
+        remote_path: Union[str, PurePosixPath, None] = None,
+        # Filter function for file selection; defaults to including all files
+        condition: Optional[Callable[[str], bool]] = None,
+        # add files from subdirectories as well
+        recursive: bool = True,
     ) -> "_Mount":
+        """
+        Add a local directory to the `Mount` object.
+        """
         local_path = Path(local_path)
         if remote_path is None:
             remote_path = local_path.name
@@ -222,10 +226,26 @@ class _Mount(_Object, type_prefix="mo"):
     def from_local_dir(
         local_path: Union[str, Path],
         *,
-        remote_path: Union[str, PurePosixPath, None] = None,  # Where the directory is placed within in the mount
-        condition: Optional[Callable[[str], bool]] = None,  # Filter function for file selection - default all files
-        recursive: bool = True,  # add files from subdirectories as well
+        # Where the directory is placed within in the mount
+        remote_path: Union[str, PurePosixPath, None] = None,
+        # Filter function for file selection - default all files
+        condition: Optional[Callable[[str], bool]] = None,
+        # add files from subdirectories as well
+        recursive: bool = True,
     ) -> "_Mount":
+        """
+        Create a `Mount` from a local directory.
+
+        **Usage**
+
+        ```python
+        assets = modal.Mount.from_local_dir(
+            "~/assets",
+            condition=lambda pth: not ".venv" in pth,
+            remote_path="/assets",
+        )
+        ```
+        """
         return _Mount._from_entries().add_local_dir(
             local_path, remote_path=remote_path, condition=condition, recursive=recursive
         )
@@ -234,6 +254,9 @@ class _Mount(_Object, type_prefix="mo"):
     def add_local_file(
         self, local_path: Union[str, Path], remote_path: Union[str, PurePosixPath, None] = None
     ) -> "_Mount":
+        """
+        Add a local file to the `Mount` object.
+        """
         local_path = Path(local_path)
         if remote_path is None:
             remote_path = local_path.name
@@ -249,6 +272,19 @@ class _Mount(_Object, type_prefix="mo"):
     @staticmethod
     @typechecked
     def from_local_file(local_path: Union[str, Path], remote_path: Union[str, PurePosixPath, None] = None) -> "_Mount":
+        """
+        Create a `Mount` mounting a single local file.
+
+        **Usage**
+
+        ```python
+        # Mount the DBT profile in user's home directory into container.
+        dbt_profiles = modal.Mount.from_local_file(
+            local_path="~/profiles.yml",
+            remote_path="/root/dbt_profile/profiles.yml"),
+        )
+        ```
+        """
         return _Mount._from_entries().add_local_file(local_path, remote_path=remote_path)
 
     @staticmethod
