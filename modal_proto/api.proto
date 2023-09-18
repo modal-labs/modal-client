@@ -1244,6 +1244,7 @@ message TokenFlowWaitResponse {
   string token_id = 1;
   string token_secret = 2;
   bool timeout = 3;
+  string workspace_username = 4;
 }
 
 message VolumeCreateRequest {
