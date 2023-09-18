@@ -40,13 +40,15 @@ class _TokenFlow:
             self.token_flow_id = resp.token_flow_id
             yield (resp.token_flow_id, resp.web_url)
 
-    async def finish(self, timeout: float = 40.0, grpc_extra_timeout: float = 5.0) -> Optional[Tuple[str, str]]:
+    async def finish(
+        self, timeout: float = 40.0, grpc_extra_timeout: float = 5.0
+    ) -> Optional[api_pb2.TokenFlowWaitResponse]:
         """mdmd:hidden"""
         # Wait for token flow to finish
         req = api_pb2.TokenFlowWaitRequest(token_flow_id=self.token_flow_id, timeout=timeout)
         resp = await self.stub.TokenFlowWait(req, timeout=(timeout + grpc_extra_timeout))
         if not resp.timeout:
-            return (resp.token_id, resp.token_secret)
+            return resp
         else:
             return None
 
