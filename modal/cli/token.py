@@ -10,6 +10,7 @@ from rich.console import Console
 
 from modal.client import Client
 from modal.config import _store_user_config, config, user_config_path
+from modal.token_flow import TokenFlow
 
 token_cli = typer.Typer(name="token", help="Manage tokens.", no_args_is_help=True)
 
@@ -50,26 +51,30 @@ def new(profile: Optional[str] = profile_option, no_verify: bool = False, source
     console = Console()
 
     with Client.unauthenticated_client(server_url) as client:
-        token_flow_id, web_url = client.start_token_flow(source)
-        with console.status("Waiting for authentication in the web browser", spinner="dots"):
-            # Open the web url in the browser
-            if webbrowser.open_new_tab(web_url):
-                console.print("If the web browser didn't open, please copy this URL into your web browser manually:")
-            else:
-                console.print(
-                    "[red]Was not able to launch web browser[/red]"
-                    " - please go to this URL manually and complete the flow:"
-                )
-            console.print(f"\n[link={web_url}]{web_url}[/link]\n")
+        token_flow = TokenFlow(client)
 
-        with console.status("Waiting for token flow to complete...", spinner="dots") as status:
-            for attempt in itertools.count():
-                res = client.finish_token_flow(token_flow_id)
-                if res is None:
-                    status.update(f"Waiting for token flow to complete... (attempt {attempt+2})")
+        with token_flow.start(source) as (token_flow_id, web_url):
+            with console.status("Waiting for authentication in the web browser", spinner="dots"):
+                # Open the web url in the browser
+                if webbrowser.open_new_tab(web_url):
+                    console.print(
+                        "If the web browser didn't open, please copy this URL into your web browser manually:"
+                    )
                 else:
-                    token_id, token_secret = res
-                    break
+                    console.print(
+                        "[red]Was not able to launch web browser[/red]"
+                        " - please go to this URL manually and complete the flow:"
+                    )
+                console.print(f"\n[link={web_url}]{web_url}[/link]\n")
+
+            with console.status("Waiting for token flow to complete...", spinner="dots") as status:
+                for attempt in itertools.count():
+                    res = token_flow.finish()
+                    if res is None:
+                        status.update(f"Waiting for token flow to complete... (attempt {attempt+2})")
+                    else:
+                        token_id, token_secret = res
+                        break
 
         console.print("[green]Web authentication finished successfully![/green]")
 

@@ -129,6 +129,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.sandbox_defs = []
         self.sandbox: subprocess.Popen = None
 
+        self.token_flow_localhost_port = None
+
         @self.function_body
         def default_function_body(*args, **kwargs):
             return sum(arg**2 for arg in args) + sum(value**2 for key, value in kwargs.items())
@@ -702,6 +704,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
     ### Token flow
 
     async def TokenFlowCreate(self, stream):
+        request: api_pb2.TokenFlowCreateRequest = await stream.recv_message()
+        self.token_flow_localhost_port = request.localhost_port
         await stream.send_message(
             api_pb2.TokenFlowCreateResponse(token_flow_id="tc-123", web_url="https://localhost/xyz/abc")
         )
