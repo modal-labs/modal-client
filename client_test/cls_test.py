@@ -24,12 +24,13 @@ class Foo:
 
 def test_run_class(client, servicer):
     assert servicer.n_functions == 0
-    with stub.run(client=client) as app:
+    with stub.run(client=client):
         function_id = Foo.bar.object_id
         assert isinstance(Foo, Cls)
         class_id = Foo.object_id
+        app_id = stub.app_id
 
-    objects = servicer.app_objects[app.app_id]
+    objects = servicer.app_objects[app_id]
     assert len(objects) == 3  # classes and functions
     assert objects["Foo.bar"] == function_id
     assert objects["Foo"] == class_id

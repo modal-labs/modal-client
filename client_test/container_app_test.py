@@ -50,13 +50,13 @@ async def test_is_inside(servicer, unix_servicer, client, container_client):
     stub = get_stub()
 
     # Run container
-    async with stub.run(client=client) as app:
+    async with stub.run(client=client):
         # We're not inside the container (yet)
         assert not stub.is_inside()
         assert not stub.is_inside(stub.image)
         assert not stub.is_inside(stub.image_2)
 
-        app_id = app.app_id
+        app_id = stub.app_id
         image_1_id = stub["image"].object_id
         image_2_id = stub["image_2"].object_id
 

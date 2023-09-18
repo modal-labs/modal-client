@@ -288,18 +288,20 @@ class _Stub:
         show_progress: bool = True,
         detach: bool = False,
         output_mgr: Optional[OutputManager] = None,
-    ) -> AsyncGenerator[_App, None]:
+    ) -> AsyncGenerator["_Stub", None]:
         """Context manager that runs an app on Modal.
 
         Use this as the main entry point for your Modal application. All calls
         to Modal functions should be made within the scope of this context
         manager, and they will correspond to the current app.
 
-        See the documentation for the [`App`](modal.App) class for more details.
+        Note that this method used to return a separate "App" object. This is
+        no longer useful since you can use the stub itself for access to all
+        objects. For backwards compatibility reasons, it returns the same stub.
         """
         # TODO(erikbern): deprecate this one too?
-        async with _run_stub(self, client, stdout, show_progress, detach, output_mgr) as app:
-            yield app
+        async with _run_stub(self, client, stdout, show_progress, detach, output_mgr):
+            yield self
 
     def _get_default_image(self):
         if "image" in self._blueprint:
