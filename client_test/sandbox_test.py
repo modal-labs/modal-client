@@ -85,6 +85,8 @@ def test_sandbox_nfs(client, servicer, tmpdir):
 
 @skip_non_linux
 def test_spawn_sandbox_on_app_deprecated(client, servicer):
-    with stub.run(client=client) as app:
+    with stub.run(client=client):
+        with pytest.warns(DeprecationError):
+            app = stub.app
         with pytest.warns(DeprecationError):
             app.spawn_sandbox("bash", "-c", "echo bye >&2 && sleep 1 && echo hi && exit 42", timeout=600)
