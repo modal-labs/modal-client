@@ -11,6 +11,7 @@ from rich.console import Console
 from modal.client import Client
 from modal.config import _store_user_config, config, user_config_path
 from modal.token_flow import TokenFlow
+from modal_proto import api_pb2
 
 token_cli = typer.Typer(name="token", help="Manage tokens.", no_args_is_help=True)
 
@@ -50,6 +51,7 @@ def new(profile: Optional[str] = profile_option, no_verify: bool = False, source
 
     console = Console()
 
+    result: Optional[api_pb2.TokenFlowWaitResponse] = None
     with Client.unauthenticated_client(server_url) as client:
         token_flow = TokenFlow(client)
 
@@ -69,20 +71,23 @@ def new(profile: Optional[str] = profile_option, no_verify: bool = False, source
 
             with console.status("Waiting for token flow to complete...", spinner="dots") as status:
                 for attempt in itertools.count():
-                    res = token_flow.finish()
-                    if res is None:
-                        status.update(f"Waiting for token flow to complete... (attempt {attempt+2})")
-                    else:
-                        token_id, token_secret = res
+                    result = token_flow.finish()
+                    if result is not None:
                         break
+                    status.update(f"Waiting for token flow to complete... (attempt {attempt+2})")
 
         console.print("[green]Web authentication finished successfully![/green]")
 
+    assert result is not None
+
+    if result.workspace_username:
+        console.print(f"[green]Token is connected to the [white]{result.workspace_username}[/white] workspace.[/green]")
+
     if not no_verify:
         with console.status(f"Verifying token against [blue]{server_url}[/blue]", spinner="dots"):
-            Client.verify(server_url, (token_id, token_secret))
+            Client.verify(server_url, (result.token_id, result.token_secret))
             console.print("[green]Token verified successfully![/green]")
 
     with console.status("Storing token", spinner="dots"):
-        _store_user_config({"token_id": token_id, "token_secret": token_secret}, profile=profile)
+        _store_user_config({"token_id": result.token_id, "token_secret": result.token_secret}, profile=profile)
         console.print(f"[green]Token written to [white]{user_config_path}[/white] successfully![/green]")
