@@ -23,7 +23,7 @@ from .exception import InvalidError
 
 
 async def control_send(writer: asyncio.StreamWriter, obj: Any) -> None:
-    writer.write(json.dumps(obj).encode() + "\0")
+    writer.write(json.dumps(obj).encode() + b"\0")
     await writer.drain()
 
 
