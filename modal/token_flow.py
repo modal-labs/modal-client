@@ -1,12 +1,13 @@
 # Copyright Modal Labs 2023
-import aiohttp.web
-from contextlib import asynccontextmanager
 import platform
+from contextlib import asynccontextmanager
 from typing import Optional, Tuple
 
+import aiohttp.web
+
+from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
 from modal_utils.http_utils import run_temporary_http_server
-from modal_proto import api_grpc, api_pb2
 
 from .client import _Client
 

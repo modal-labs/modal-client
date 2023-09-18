@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2023
-import aiohttp
 import pytest
+
+import aiohttp
 
 from modal.token_flow import TokenFlow
 
@@ -8,7 +9,7 @@ from modal.token_flow import TokenFlow
 @pytest.mark.asyncio
 async def test_token_flow_server(servicer, client):
     tf = TokenFlow(client)
-    async with tf.start() as (token_flow_id, web_url):
+    async with tf.start() as (token_flow_id, _):
         # Make a request against the local web server and make sure it validates
         localhost_url = f"http://localhost:{servicer.token_flow_localhost_port}"
         async with aiohttp.ClientSession() as session:

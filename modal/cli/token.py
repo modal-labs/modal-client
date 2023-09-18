@@ -9,8 +9,8 @@ import typer
 from rich.console import Console
 
 from modal.client import Client
-from modal.token_flow import TokenFlow
 from modal.config import _store_user_config, config, user_config_path
+from modal.token_flow import TokenFlow
 
 token_cli = typer.Typer(name="token", help="Manage tokens.", no_args_is_help=True)
 
