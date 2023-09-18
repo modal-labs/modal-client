@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2023
 import platform
 from contextlib import asynccontextmanager
-from typing import Optional, Tuple
+from typing import AsyncGenerator, Optional, Tuple
 
 import aiohttp.web
 
@@ -17,7 +17,7 @@ class _TokenFlow:
         self.stub = client.stub
 
     @asynccontextmanager
-    async def start(self, utm_source: Optional[str] = None) -> Tuple[str, str]:
+    async def start(self, utm_source: Optional[str] = None) -> AsyncGenerator[Tuple[str, str], None]:
         """mdmd:hidden"""
         # Run a temporary http server returning the token id on /
         # This helps us add direct validation later
@@ -48,7 +48,7 @@ class _TokenFlow:
         if not resp.timeout:
             return (resp.token_id, resp.token_secret)
         else:
-            return
+            return None
 
 
 TokenFlow = synchronize_api(_TokenFlow)
