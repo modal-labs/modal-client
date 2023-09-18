@@ -183,14 +183,15 @@ class _Client:
         resp = await self.stub.TokenFlowCreate(req)
         return (resp.token_flow_id, resp.web_url)
 
-    async def finish_token_flow(self, token_flow_id) -> Tuple[str, str]:
+    async def finish_token_flow(self, token_flow_id: str, timeout: float = 40) -> Optional[Tuple[str, str]]:
         """mdmd:hidden"""
-        # Wait for token forever
-        while True:
-            req = api_pb2.TokenFlowWaitRequest(token_flow_id=token_flow_id, timeout=15.0)
-            resp = await self.stub.TokenFlowWait(req)
-            if not resp.timeout:
-                return (resp.token_id, resp.token_secret)
+        # Wait for token flow to finish
+        req = api_pb2.TokenFlowWaitRequest(token_flow_id=token_flow_id, timeout=timeout)
+        resp = await self.stub.TokenFlowWait(req)
+        if not resp.timeout:
+            return (resp.token_id, resp.token_secret)
+        else:
+            return
 
     @classmethod
     async def from_env(cls, _override_config=None) -> "_Client":
