@@ -167,10 +167,12 @@ class _Mount(_Object, type_prefix="mo"):
 
     @staticmethod
     def new() -> "_Mount":
+        """Instantiate an empty Mount object."""
         return _Mount._from_entries()
 
     @property
     def entries(self):
+        """mdmd:hidden"""
         return self._entries
 
     def _hydrate_metadata(self, handle_metadata: Message):
