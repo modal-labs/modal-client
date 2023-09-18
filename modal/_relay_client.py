@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2023
 """Client for Modal relay servers, allowing users to expose TLS.
 
 Based on the Rust implementation in our internal modal-relay crate. That one is
