@@ -1075,7 +1075,7 @@ class _Image(_Object, type_prefix="im"):
     ) -> "_Image":
         """Build a Modal image from a local Dockerfile.
 
-        If your image does not come with Python installed, you can use the `add_python` parameter
+        If your Dockerfile does not have Python installed, you can use the `add_python` parameter
         to specify a version of Python to add to the image. Supported versions are `3.8`, `3.9`,
         `3.10`, and `3.11`. For Alpine-based images, use `3.8-musl` through `3.11-musl`, which
         are statically-linked Python installations.
