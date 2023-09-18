@@ -88,10 +88,10 @@ class _Client:
         self.no_verify = no_verify
         self._pre_stop: Optional[Callable[[], Awaitable[None]]] = None
         self._channel = None
-        self._stub = None
+        self._stub: Optional[api_grpc.ModalClientStub] = None
 
     @property
-    def stub(self):
+    def stub(self) -> Optional[api_grpc.ModalClientStub]:
         """mdmd:hidden"""
         return self._stub
 
