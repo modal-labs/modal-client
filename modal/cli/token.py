@@ -9,6 +9,7 @@ import typer
 from rich.console import Console
 
 from modal.client import Client
+from modal.token_flow import TokenFlow
 from modal.config import _store_user_config, config, user_config_path
 
 token_cli = typer.Typer(name="token", help="Manage tokens.", no_args_is_help=True)
@@ -50,7 +51,9 @@ def new(profile: Optional[str] = profile_option, no_verify: bool = False, source
     console = Console()
 
     with Client.unauthenticated_client(server_url) as client:
-        token_flow_id, web_url = client.start_token_flow(source)
+        token_flow = TokenFlow(client)
+
+        token_flow_id, web_url = token_flow.start(source)
         with console.status("Waiting for authentication in the web browser", spinner="dots"):
             # Open the web url in the browser
             if webbrowser.open_new_tab(web_url):
@@ -64,7 +67,7 @@ def new(profile: Optional[str] = profile_option, no_verify: bool = False, source
 
         with console.status("Waiting for token flow to complete...", spinner="dots") as status:
             for attempt in itertools.count():
-                res = client.finish_token_flow(token_flow_id)
+                res = token_flow.finish()
                 if res is None:
                     status.update(f"Waiting for token flow to complete... (attempt {attempt+2})")
                 else:
