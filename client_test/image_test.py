@@ -297,6 +297,23 @@ def test_image_run_function(client, servicer):
     assert len(servicer.app_functions[function_id].secret_ids) == 1
 
 
+def test_image_run_function_interactivity(client, servicer):
+    stub = Stub()
+    NetworkFileSystem.persisted("test-vol")
+    stub["image"] = Image.debian_slim().pip_install("pandas").run_function(run_f)
+
+    from modal.runner import run_stub
+
+    with run_stub(stub, client=client, shell=True):
+        layers = get_image_layers(stub["image"].object_id, servicer)
+        assert "foo!" in layers[0].build_function_def
+
+    function_id = servicer.image_build_function_ids[2]
+    assert function_id
+    assert servicer.app_functions[function_id].function_name == "run_f"
+    assert not servicer.app_functions[function_id].pty_info.enabled
+
+
 VARIABLE_1 = 1
 VARIABLE_2 = 3
 
