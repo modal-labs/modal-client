@@ -1228,6 +1228,7 @@ message TokenFlowCreateRequest {
   string platform_name = 2;
   string utm_source = 3;
   int32 localhost_port = 4;
+  string next_url = 5;
 }
 
 message TokenFlowCreateResponse {
