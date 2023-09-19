@@ -2,7 +2,9 @@
 # type: ignore
 import os
 import secrets
+import socket
 import subprocess
+import threading
 import time
 import webbrowser
 
@@ -13,14 +15,27 @@ stub = Stub()
 stub.image = Image.debian_slim().pip_install("jupyterlab")
 stub.q = Queue.new()
 
-token = secrets.token_urlsafe(13)
+
+def wait_for_port(url: str):
+    start_time = time.monotonic()
+    while True:
+        try:
+            with socket.create_connection(("localhost", 8888), timeout=5.0):
+                break
+        except OSError as exc:
+            time.sleep(0.01)
+            if time.monotonic() - start_time >= 5.0:
+                raise TimeoutError("Waited too long for port 8888 to accept connections") from exc
+    stub.q.put(url)
 
 
 @stub.function(timeout=3600)
 def run_jupyter():
+    os.mkdir("/lab")
+    token = secrets.token_urlsafe(13)
     with forward(8888) as tunnel:
         url = tunnel.url + "/?token=" + token
-        stub.q.put(url)
+        threading.Thread(target=wait_for_port, args=(url,)).start()
         subprocess.run(
             [
                 "jupyter",
@@ -28,6 +43,7 @@ def run_jupyter():
                 "--no-browser",
                 "--allow-root",
                 "--port=8888",
+                "--notebook-dir=/lab",
                 "--LabApp.allow_origin='*'",
                 "--LabApp.allow_remote_access=1",
             ],
