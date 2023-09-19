@@ -23,7 +23,8 @@ class _TokenFlow:
         # This helps us add direct validation later
 
         async def slash(request):
-            return aiohttp.web.Response(text=self.token_flow_id)
+            headers = {"Access-Control-Allow-Origin": "*"}
+            return aiohttp.web.Response(text=self.token_flow_id, headers=headers)
 
         app = aiohttp.web.Application()
         app.add_routes([aiohttp.web.get("/", slash)])
