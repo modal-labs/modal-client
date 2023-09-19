@@ -28,6 +28,8 @@ from .network_file_system import _NetworkFileSystem
 from .object import _Object
 from .secret import _Secret
 
+_from_dockerhub_deprecation_msg = "`Image.from_dockerhub` is deprecated. Use `Image.from_registry` instead."
+
 
 def _validate_python_version(version: str) -> None:
     components = version.split(".")
@@ -356,7 +358,7 @@ class _Image(_Object, type_prefix="im"):
     def copy_local_file(self, local_path: Union[str, Path], remote_path: Union[str, Path] = "./") -> "_Image":
         """Copy a file into the image as a part of building it.
 
-        This works in a similar way to `COPY` in a `Dockerfile`."""
+        This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy) in a `Dockerfile`."""
         basename = str(Path(local_path).name)
         mount = _Mount.from_local_file(local_path, remote_path=f"/{basename}")
         return self.extend(
@@ -367,7 +369,7 @@ class _Image(_Object, type_prefix="im"):
     def copy_local_dir(self, local_path: Union[str, Path], remote_path: Union[str, Path] = ".") -> "_Image":
         """Copy a directory into the image as a part of building the image.
 
-        This works in a similar way to `COPY` in a `Dockerfile`."""
+        This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy) in a `Dockerfile`."""
         mount = _Mount.from_local_dir(local_path, remote_path="/")
         return self.extend(
             dockerfile_commands=["FROM base", f"COPY . {remote_path}"],
@@ -581,14 +583,18 @@ class _Image(_Object, type_prefix="im"):
     def poetry_install_from_file(
         self,
         poetry_pyproject_toml: str,
-        poetry_lockfile: Optional[
-            str
-        ] = None,  # Path to the lockfile. If not provided, uses poetry.lock in the same directory.
-        ignore_lockfile: bool = False,  # If set to True, it will not use poetry.lock
-        old_installer: bool = False,  # If set to True, use old installer. See https://github.com/python-poetry/poetry/issues/3336
+        # Path to the lockfile. If not provided, uses poetry.lock in the same directory.
+        poetry_lockfile: Optional[str] = None,
+        # If set to True, it will not use poetry.lock
+        ignore_lockfile: bool = False,
+        # If set to True, use old installer. See https://github.com/python-poetry/poetry/issues/3336
+        old_installer: bool = False,
         force_build: bool = False,
+        # Selected optional dependency groups to install (See https://python-poetry.org/docs/cli/#install)
         with_: List[str] = [],
+        # Selected optional dependency groups to exclude (See https://python-poetry.org/docs/cli/#install)
         without: List[str] = [],
+        # Only install dependency groups specifed in this list.
         only: List[str] = [],
         *,
         secrets: Sequence[_Secret] = [],
@@ -661,9 +667,8 @@ class _Image(_Object, type_prefix="im"):
         context_files: Dict[str, str] = {},
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
-        context_mount: Optional[
-            _Mount
-        ] = None,  # modal.Mount with local files to supply as build context for COPY commands
+        # modal.Mount with local files to supply as build context for COPY commands
+        context_mount: Optional[_Mount] = None,
         force_build: bool = False,
     ) -> "_Image":
         """Extend an image with arbitrary Dockerfile-like commands."""
@@ -707,7 +712,10 @@ class _Image(_Object, type_prefix="im"):
     @staticmethod
     @typechecked
     def conda(python_version: str = "3.9", force_build: bool = False) -> "_Image":
-        """A Conda base image, using miniconda3 and derived from the official Docker Hub image."""
+        """
+        A Conda base image, using miniconda3 and derived from the official Docker Hub image.
+        In most cases, using [`Image.micromamba()`](/docs/reference/modal.Image#micromamba) with [`micromamba_install`](/docs/reference/modal.Image#micromamba_install) is recommended over `Image.conda()`, as it leads to significantly faster image build times.
+        """
         _validate_python_version(python_version)
         requirements_path = _get_client_requirements_path()
         # Doesn't use the official continuumio/miniconda3 image as a base. That image has maintenance
@@ -772,8 +780,8 @@ class _Image(_Object, type_prefix="im"):
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ) -> "_Image":
-        """Install a list of additional packages using Conda. Note that in most cases, using `Image.micromamba()`
-        is recommended over `Image.conda()`, as it leads to significantly faster image build times."""
+        """Install a list of additional packages using Conda. Note that in most cases, using [`Image.micromamba()`](/docs/reference/modal.Image#micromamba) with [`micromamba_install`](/docs/reference/modal.Image#micromamba_install)
+        is recommended over `conda_install`, as it leads to significantly faster image build times."""
 
         pkgs = _flatten_str_args("conda_install", "packages", packages)
         if not pkgs:
@@ -832,7 +840,10 @@ class _Image(_Object, type_prefix="im"):
         python_version: str = "3.9",
         force_build: bool = False,
     ) -> "_Image":
-        """A Micromamba base image. Micromamba allows for fast building of small Conda-based containers."""
+        """
+        A Micromamba base image. Micromamba allows for fast building of small Conda-based containers.
+        In most cases it will be faster than using [`Image.conda()`](/docs/reference/modal.Image#conda).
+        """
         _validate_python_version(python_version)
 
         return _Image.from_registry(
@@ -849,8 +860,10 @@ class _Image(_Object, type_prefix="im"):
     @typechecked
     def micromamba_install(
         self,
-        *packages: Union[str, List[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
-        channels: List[str] = [],  # A list of Conda channels, eg. ["conda-forge", "nvidia"]
+        # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
+        *packages: Union[str, List[str]],
+        # A list of Conda channels, eg. ["conda-forge", "nvidia"]
+        channels: List[str] = [],
         force_build: bool = False,
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
@@ -958,9 +971,8 @@ class _Image(_Object, type_prefix="im"):
         force_build: bool = False,
         **kwargs,
     ) -> "_Image":
-        deprecation_warning(
-            date(2023, 8, 25), "`Image.from_dockerhub` is deprecated. Use `Image.from_registry` instead."
-        )
+        f"""{_from_dockerhub_deprecation_msg}"""
+        deprecation_warning(date(2023, 8, 25), _from_dockerhub_deprecation_msg)
         return _Image.from_registry(
             tag,
             setup_dockerfile_commands=setup_dockerfile_commands,
@@ -1059,13 +1071,20 @@ class _Image(_Object, type_prefix="im"):
         *,
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
+        add_python: Optional[str] = None,
     ) -> "_Image":
         """Build a Modal image from a local Dockerfile.
 
-        Note that the following must be true about the image you provide:
+        If your Dockerfile does not have Python installed, you can use the `add_python` parameter
+        to specify a version of Python to add to the image. Supported versions are `3.8`, `3.9`,
+        `3.10`, and `3.11`. For Alpine-based images, use `3.8-musl` through `3.11-musl`, which
+        are statically-linked Python installations.
 
-        - Python 3.7 or above needs to be present and available as `python`.
-        - `pip` needs to be installed and available as `pip`.
+        **Example**
+
+        ```python
+        image = modal.Image.from_dockerfile("./Dockerfile", add_python="3.10")
+        ```
         """
 
         path = os.path.expanduser(path)
@@ -1085,8 +1104,22 @@ class _Image(_Object, type_prefix="im"):
 
         requirements_path = _get_client_requirements_path()
 
+        context_mount = None
+        add_python_commands = []
+        if add_python:
+            add_python_commands = [
+                "COPY /python/. /usr/local",
+                "RUN ln -s /usr/local/bin/python3 /usr/local/bin/python",
+                "ENV TERMINFO_DIRS=/etc/terminfo:/lib/terminfo:/usr/share/terminfo:/usr/lib/terminfo",
+            ]
+            context_mount = _Mount.from_name(
+                python_standalone_mount_name(add_python),
+                namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
+            )
+
         dockerfile_commands = [
             "FROM base",
+            *add_python_commands,
             "COPY /modal_requirements.txt /modal_requirements.txt",
             "RUN python -m pip install --upgrade pip",
             "RUN python -m pip install -r /modal_requirements.txt",
@@ -1095,6 +1128,7 @@ class _Image(_Object, type_prefix="im"):
         return base_image.extend(
             dockerfile_commands=dockerfile_commands,
             context_files={"/modal_requirements.txt": requirements_path},
+            context_mount=context_mount,
             force_build=force_build,
         )
 
@@ -1181,7 +1215,7 @@ class _Image(_Object, type_prefix="im"):
 
         **Note**
 
-        Only the source code of `raw_function` and the contents of `**kwargs` are used to determine whether the image has changed
+        Only the source code of `raw_function`, the contents of `**kwargs`, and any referenced *global* variables are used to determine whether the image has changed
         and needs to be rebuilt. If this function references other functions or variables, the image will not be rebuilt if you
         make changes to them. You can force a rebuild by changing the function's source code itself.
 
