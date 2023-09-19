@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2023
+# type: ignore
 import os
 import secrets
 import subprocess
