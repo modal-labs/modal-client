@@ -73,11 +73,11 @@ Some "meta-options" are set using environment variables only:
 
 import logging
 import os
-import typing
 import warnings
 from datetime import date
+from typing import Any, Callable, NamedTuple, Optional
 
-import toml
+import tomlkit
 
 from .exception import deprecation_error
 
@@ -89,7 +89,7 @@ user_config_path: str = os.environ.get("MODAL_CONFIG_PATH") or os.path.expanduse
 def _read_user_config():
     if os.path.exists(user_config_path):
         with open(user_config_path) as f:
-            return toml.load(f)
+            return tomlkit.load(f)
     else:
         return {}
 
@@ -119,7 +119,8 @@ def config_set_active_profile(env: str):
         values.pop("active", None)
 
     _user_config[env]["active"] = True
-    _write_user_config(_user_config)
+    with open(user_config_path, "w") as f:
+        tomlkit.dump(_user_config, f)
 
 
 if "MODAL_ENV" in os.environ:
@@ -130,9 +131,9 @@ _profile = os.environ.get("MODAL_PROFILE", _config_active_profile())
 # Define settings
 
 
-class _Setting(typing.NamedTuple):
-    default: typing.Any = None
-    transform: typing.Callable[[str], typing.Any] = lambda x: x  # noqa: E731
+class _Setting(NamedTuple):
+    default: Any = None
+    transform: Callable[[str], Any] = lambda x: x  # noqa: E731
 
 
 _SETTINGS = {
@@ -216,18 +217,17 @@ logger.addHandler(ch)
 # Utils to write config
 
 
-def _store_user_config(new_settings, profile=None):
+def _store_user_config(new_settings, profile: Optional[str] = None, comment: Optional[str] = None):
     """Internal method, used by the CLI to set tokens."""
     if profile is None:
         profile = _profile
     user_config = _read_user_config()
-    user_config.setdefault(profile, {}).update(**new_settings)
-    _write_user_config(user_config)
-
-
-def _write_user_config(user_config):
+    d = user_config.setdefault(profile, {})
+    d.update(**new_settings)
+    if comment:
+        d.comment(comment)
     with open(user_config_path, "w") as f:
-        toml.dump(user_config, f)
+        tomlkit.dump(user_config, f)
 
 
 # Make sure all deprecation warnings are shown

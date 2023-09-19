@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import datetime
 import getpass
 import itertools
 import webbrowser
@@ -89,5 +90,10 @@ def new(profile: Optional[str] = profile_option, no_verify: bool = False, source
             console.print("[green]Token verified successfully![/green]")
 
     with console.status("Storing token", spinner="dots"):
-        _store_user_config({"token_id": result.token_id, "token_secret": result.token_secret}, profile=profile)
+        comment = "created on " + str(datetime.date.today())
+        if result.workspace_username:
+            comment += " for workspace " + result.workspace_username
+        _store_user_config(
+            {"token_id": result.token_id, "token_secret": result.token_secret}, profile=profile, comment=comment
+        )
         console.print(f"[green]Token written to [white]{user_config_path}[/white] successfully![/green]")
