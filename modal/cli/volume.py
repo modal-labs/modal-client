@@ -10,9 +10,11 @@ from typing import Optional
 from click import UsageError
 from grpclib import GRPCError, Status
 from rich.console import Console
+from rich.syntax import Syntax
 from rich.table import Table
 from typer import Argument, Typer
 
+import modal
 from modal.cli.utils import ENV_OPTION, display_table
 from modal.client import _Client
 from modal.environments import ensure_env
@@ -36,6 +38,26 @@ volume_cli = Typer(
     the `modal nfs` command instead.
     """,
 )
+
+
+@volume_cli.command(name="create", help="Create a named, persistent modal.Volume.")
+def create(
+    name: str,
+    env: Optional[str] = ENV_OPTION,
+):
+    env_name = ensure_env(env)
+    volume = modal.Volume.new()
+    volume._deploy(name, environment_name=env)
+    usage_code = f"""
+@stub.function(volumes={{"/my_vol": modal.Volume.from_name("{name}")}})
+def some_func():
+    os.listdir("/my_vol")
+"""
+
+    console = Console()
+    console.print(f"Created volume '{name}' in environment '{env_name}'. \n\nCode example:\n")
+    usage = Syntax(usage_code, "python")
+    console.print(usage)
 
 
 @volume_cli.command(name="get")
