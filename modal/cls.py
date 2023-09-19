@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
 import pickle
-import warnings
 from datetime import date
 from typing import Any, Callable, Dict, Optional, Type, TypeVar
 
@@ -76,10 +75,7 @@ class _Obj:
         # Construct local object lazily. Used for .local() calls
         if not self._has_local_obj:
             self._local_obj = self._local_obj_constr()
-            if hasattr(self._local_obj, "__enter__"):
-                self._local_obj.__enter__()
-            elif hasattr(self._local_obj, "__aenter__"):
-                warnings.warn("Not running asynchronous enter handlers on local objects")
+            # TODO(erikbern): run __enter__?
             setattr(self._local_obj, "_modal_functions", self._functions)  # Needed for PartialFunction.__get__
             self._has_local_obj = True
 
