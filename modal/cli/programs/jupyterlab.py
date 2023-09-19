@@ -7,12 +7,15 @@ import subprocess
 import threading
 import time
 import webbrowser
+from typing import Any
 
 from modal import Image, Queue, Stub
 from modal._relay_client import forward
 
+args: Any = {}
+
 stub = Stub()
-stub.image = Image.debian_slim().pip_install("jupyterlab")
+stub.image = Image.from_registry(args["image"], add_python=args["add_python"]).pip_install("jupyterlab")
 stub.q = Queue.new()
 
 
@@ -29,7 +32,7 @@ def wait_for_port(url: str):
     stub.q.put(url)
 
 
-@stub.function(timeout=3600)
+@stub.function(cpu=args["cpu"], memory=args["memory"], gpu=args["gpu"], timeout=args["timeout"])
 def run_jupyter():
     os.mkdir("/lab")
     token = secrets.token_urlsafe(13)
