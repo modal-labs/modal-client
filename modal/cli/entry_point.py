@@ -1,11 +1,11 @@
 # Copyright Modal Labs 2022
 import typer
 
-from modal.cli import run
-from modal.cli.environment import environment_cli
-
+from . import run
 from .app import app_cli
 from .config import config_cli
+from .environment import environment_cli
+from .jupyter import jupyter_cli
 from .network_file_system import nfs_cli
 from .profile import profile_cli
 from .secret import secret_cli
@@ -45,11 +45,12 @@ def modal(
 entrypoint_cli_typer.add_typer(app_cli)
 entrypoint_cli_typer.add_typer(config_cli)
 entrypoint_cli_typer.add_typer(environment_cli)
+entrypoint_cli_typer.add_typer(jupyter_cli)
 entrypoint_cli_typer.add_typer(nfs_cli)
-entrypoint_cli_typer.add_typer(volume_cli)
 entrypoint_cli_typer.add_typer(profile_cli)
 entrypoint_cli_typer.add_typer(secret_cli)
 entrypoint_cli_typer.add_typer(token_cli)
+entrypoint_cli_typer.add_typer(volume_cli)
 
 
 # TODO: remove this in a future release
