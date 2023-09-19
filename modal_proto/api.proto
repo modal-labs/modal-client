@@ -1283,10 +1283,12 @@ message VolumeListFilesEntry {
     UNSPECIFIED = 0;
     FILE = 1;
     DIRECTORY = 2;
+    SYMLINK = 3;
   }
   string path = 1;
   FileType type = 2;
   uint64 mtime = 3;
+  uint64 size = 4;
 }
 
 message VolumeListFilesRequest {
