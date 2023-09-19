@@ -123,10 +123,11 @@ class RelayDriver:
         reader, writer = await asyncio.open_connection(self.client.host, self.client.port, ssl=True)
         await control_send(writer, {"Accept": {"conn": conn}})
         local_reader, local_writer = await asyncio.open_connection(self.forwarded_host, self.forwarded_port)
-        await asyncio.wait(
-            [_asyncio_copy(reader, local_writer), _asyncio_copy(local_reader, writer)],
-            return_when=asyncio.FIRST_COMPLETED,
-        )
+        task1 = self.task_context.create_task(_asyncio_copy(reader, local_writer))
+        task2 = self.task_context.create_task(_asyncio_copy(local_reader, writer))
+        await asyncio.wait([task1, task2], return_when=asyncio.FIRST_COMPLETED)
+        task1.cancel()
+        task2.cancel()
         writer.close()
         local_writer.close()
 
