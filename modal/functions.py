@@ -696,10 +696,11 @@ class _Function(_Object, type_prefix="fu"):
             milli_cpu = int(1000 * cpu) if cpu is not None else None
 
             timeout_secs = timeout
-            if resolver.shell:
+            if resolver.shell and not is_builder_function:
                 timeout_secs = 86400
                 pty_info = _pty.get_pty_info(shell=True)
             elif interactive:
+                assert not is_builder_function, "builder functions do not support interactive usage"
                 pty_info = _pty.get_pty_info(shell=False)
             else:
                 pty_info = None
