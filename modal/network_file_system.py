@@ -17,7 +17,7 @@ from ._mount_utils import validate_mount_points
 from ._resolver import Resolver
 from ._types import typechecked
 from .exception import InvalidError
-from .object import _Object
+from .object import _Object, live_method, live_method_gen
 
 NETWORK_FILE_SYSTEM_PUT_FILE_CLIENT_TIMEOUT = (
     10 * 60
@@ -152,8 +152,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         """`NetworkFileSystem().persist("my-volume")` is deprecated. Use `NetworkFileSystem.persisted("my-volume")` instead."""
         return self.persisted(label, namespace, environment_name, cloud)
 
-    # Methods on live handles
-
+    @live_method
     async def write_file(self, remote_path: str, fp: BinaryIO) -> int:
         """Write from a file object to a path on the network file system, atomically.
 
@@ -191,6 +190,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
 
         return data_size  # might be better if this is returned from the server
 
+    @live_method_gen
     async def read_file(self, path: str) -> AsyncIterator[bytes]:
         """Read a file from the network file system"""
         req = api_pb2.SharedVolumeGetFileRequest(shared_volume_id=self.object_id, path=path)
@@ -201,6 +201,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
             async for data in blob_iter(response.data_blob_id, self._client.stub):
                 yield data
 
+    @live_method_gen
     async def iterdir(self, path: str) -> AsyncIterator[api_pb2.SharedVolumeListFilesEntry]:
         """Iterate over all files in a directory in the network file system.
 
@@ -213,6 +214,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
             for entry in batch.entries:
                 yield entry
 
+    @live_method
     async def add_local_file(
         self, local_path: Union[Path, str], remote_path: Optional[Union[str, PurePosixPath, None]] = None
     ):
@@ -225,6 +227,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         with local_path.open("rb") as local_file:
             return await self.write_file(remote_path, local_file)
 
+    @live_method
     async def add_local_dir(
         self,
         local_path: Union[Path, str],
@@ -247,6 +250,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
 
         await ConcurrencyPool(20).run_coros(gen_transfers(), return_exceptions=True)
 
+    @live_method
     async def listdir(self, path: str) -> List[api_pb2.SharedVolumeListFilesEntry]:
         """List all files in a directory in the network file system.
 
@@ -256,6 +260,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         """
         return [entry async for entry in self.iterdir(path)]
 
+    @live_method
     async def remove_file(self, path: str, recursive=False):
         """Remove a file in a network file system."""
         req = api_pb2.SharedVolumeRemoveFileRequest(shared_volume_id=self.object_id, path=path, recursive=recursive)

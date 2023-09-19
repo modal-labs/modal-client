@@ -8,7 +8,7 @@ from modal_utils.grpc_utils import retry_transient_errors, unary_stream
 
 from ._blob_utils import blob_iter
 from ._resolver import Resolver
-from .object import _Object
+from .object import _Object, live_method, live_method_gen
 
 
 class _Volume(_Object, type_prefix="vo"):
@@ -109,13 +109,13 @@ class _Volume(_Object, type_prefix="vo"):
         """
         return _Volume.new()._persist(label, namespace, environment_name)
 
-    # Methods on live handles
-
+    @live_method
     async def _do_reload(self, lock=True):
         async with self._lock if lock else asyncnullcontext():
             req = api_pb2.VolumeReloadRequest(volume_id=self.object_id)
             _ = await retry_transient_errors(self._client.stub.VolumeReload, req)
 
+    @live_method
     async def commit(self):
         """Commit changes to the volume and fetch any other changes made to the volume by other containers.
 
@@ -132,6 +132,7 @@ class _Volume(_Object, type_prefix="vo"):
             # Reload changes on successful commit.
             await self._do_reload(lock=False)
 
+    @live_method
     async def reload(self):
         """Make latest committed state of volume available in the running container.
 
@@ -143,6 +144,7 @@ class _Volume(_Object, type_prefix="vo"):
         """
         await self._do_reload()
 
+    @live_method_gen
     async def iterdir(self, path: str) -> AsyncIterator[api_pb2.VolumeListFilesEntry]:
         """Iterate over all files in a directory in the volume.
 
@@ -155,6 +157,7 @@ class _Volume(_Object, type_prefix="vo"):
             for entry in batch.entries:
                 yield entry
 
+    @live_method
     async def listdir(self, path: str) -> List[api_pb2.VolumeListFilesEntry]:
         """List all files under a path prefix in the modal.Volume.
 
@@ -164,6 +167,7 @@ class _Volume(_Object, type_prefix="vo"):
         """
         return [entry async for entry in self.iterdir(path)]
 
+    @live_method_gen
     async def read_file(self, path: Union[str, bytes]) -> AsyncIterator[bytes]:
         """
         Read a file from the modal.Volume.

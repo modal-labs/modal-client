@@ -4,6 +4,7 @@ import pytest
 import threading
 from unittest import mock
 
+from modal import Function
 from modal.serving import serve_stub
 
 from .supports.app_run_tests.webhook import stub
@@ -34,14 +35,14 @@ def test_file_changes_trigger_reloads(stub_ref, server_url_env, servicer):
             yield
         watcher_done.set()
 
-    with serve_stub(stub, stub_ref, _watcher=fake_watch()) as app:
+    with serve_stub(stub, stub_ref, _watcher=fake_watch()):
         watcher_done.wait()  # wait until watcher loop is done
 
     assert servicer.app_set_objects_count == 4  # 1 + number of file changes
     assert servicer.app_client_disconnect_count == 1
     assert servicer.app_get_logs_initial_count == 1
-    foo = app._get_object("foo")
-    assert foo.web_url.startswith("http://")
+    assert isinstance(stub.foo, Function)
+    assert stub.foo.web_url.startswith("http://")
 
 
 @pytest.mark.asyncio

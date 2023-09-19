@@ -23,7 +23,7 @@ async def f(x):
 
 @pytest.mark.asyncio
 async def test_webhook(servicer, client):
-    async with stub.run(client=client) as app:
+    async with stub.run(client=client):
         assert f.web_url
 
         assert servicer.app_functions["fu-1"].webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION
@@ -35,7 +35,7 @@ async def test_webhook(servicer, client):
         assert await f.local(100) == {"square": 10000}
 
         # Make sure the container gets the app id as well
-        container_app = await App.init_container.aio(client, app.app_id)
+        container_app = await App.init_container.aio(client, stub.app_id)
         container_app._associate_stub_container(stub)
         f_c = container_app._get_object("f")
         assert isinstance(f_c, Function)
