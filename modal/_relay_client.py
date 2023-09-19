@@ -70,7 +70,7 @@ class RelayDriver:
         self.token = token
         self.forwarded_host = forwarded_host
         self.forwarded_port = forwarded_port
-        self.task_context = TaskContext()
+        self.task_context = TaskContext(grace=1)
 
     async def start(self) -> None:
         await self.task_context.start()
@@ -123,10 +123,11 @@ class RelayDriver:
         reader, writer = await asyncio.open_connection(self.client.host, self.client.port, ssl=True)
         await control_send(writer, {"Accept": {"conn": conn}})
         local_reader, local_writer = await asyncio.open_connection(self.forwarded_host, self.forwarded_port)
-        await asyncio.wait(
-            [_asyncio_copy(reader, local_writer), _asyncio_copy(local_reader, writer)],
-            return_when=asyncio.FIRST_COMPLETED,
-        )
+        task1 = self.task_context.create_task(_asyncio_copy(reader, local_writer))
+        task2 = self.task_context.create_task(_asyncio_copy(local_reader, writer))
+        await asyncio.wait([task1, task2], return_when=asyncio.FIRST_COMPLETED)
+        task1.cancel()
+        task2.cancel()
         writer.close()
         local_writer.close()
 
@@ -134,7 +135,10 @@ class RelayDriver:
 async def _asyncio_copy(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
     """Pump bytes from a StreamReader to a StreamWriter."""
     while True:
-        data = await reader.read(8192)
+        try:
+            data = await reader.read(8192)
+        except ConnectionError:
+            break
         if not data:  # EOF
             break
         writer.write(data)
