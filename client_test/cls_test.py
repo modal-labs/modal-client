@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import inspect
 import pytest
+import threading
 from typing import TYPE_CHECKING
 
 from typing_extensions import assert_type
@@ -278,18 +279,26 @@ def test_call_not_modal_method():
 cls_with_enter_stub = Stub()
 
 
+def get_thread_id():
+    return threading.current_thread().name
+
+
 @cls_with_enter_stub.cls()
 class ClsWithEnter:
-    def __init__(self):
+    def __init__(self, thread_id):
         self.x = 0
+        self.thread_id = thread_id
+        assert get_thread_id() == self.thread_id
 
     def __enter__(self):
         self.x = 42
+        assert get_thread_id() == self.thread_id
 
     def f(self, y):
+        assert get_thread_id() == self.thread_id
         return self.x * y
 
 
 def test_local_enter():
-    obj = ClsWithEnter()
+    obj = ClsWithEnter(get_thread_id())
     assert obj.f(10) == 420
