@@ -7,9 +7,12 @@ import subprocess
 import threading
 import time
 import webbrowser
+from typing import Any
 
 from modal import Image, Queue, Stub
 from modal._relay_client import forward
+
+args: Any = {}
 
 stub = Stub()
 stub.image = Image.from_registry("codercom/code-server", add_python="3.11").dockerfile_commands("ENTRYPOINT []")
@@ -29,7 +32,7 @@ def wait_for_port(data):
     stub.q.put(data)
 
 
-@stub.function(timeout=3600)
+@stub.function(cpu=args["cpu"], memory=args["memory"], gpu=args["gpu"], timeout=args["timeout"])
 def run_jupyter():
     os.chdir("/home/coder")
     token = secrets.token_urlsafe(13)

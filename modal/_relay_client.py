@@ -8,9 +8,11 @@ end-to-end tested and is the source of truth for our client protocol.
 import asyncio
 import contextlib
 import json
+import ssl
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Tuple
 
+import certifi
 from google.protobuf.empty_pb2 import Empty
 
 from modal_proto import api_pb2
@@ -20,6 +22,8 @@ from modal_utils.grpc_utils import retry_transient_errors
 from .client import _Client
 from .config import config, logger
 from .exception import InvalidError
+
+ssl_context = ssl.create_default_context(cafile=certifi.where())
 
 
 async def control_send(writer: asyncio.StreamWriter, obj: Any) -> None:
@@ -43,7 +47,7 @@ class RelayClient:
     task_secret: str
 
     async def start_relay(self, forwarded_host: str, forwarded_port: int) -> Tuple["RelayDriver", str]:
-        reader, writer = await asyncio.open_connection(self.host, self.port, ssl=True)
+        reader, writer = await asyncio.open_connection(self.host, self.port, ssl=ssl_context)
         await control_send(writer, {"HelloNew": {"task_id": self.task_id, "task_secret": self.task_secret}})
 
         resp = await control_recv(reader)
@@ -102,7 +106,7 @@ class RelayDriver:
                     await asyncio.sleep(1)
 
     async def _reconnect(self) -> None:
-        reader, writer = await asyncio.open_connection(self.client.host, self.client.port, ssl=True)
+        reader, writer = await asyncio.open_connection(self.client.host, self.client.port, ssl=ssl_context)
         await control_send(writer, {"HelloReconnect": {"token": self.token}})
         resp = await control_recv(reader)
         self.token = resp["hello"]["token"]
@@ -120,7 +124,7 @@ class RelayDriver:
                 self.task_context.create_task(self._new_stream(conn))
 
     async def _new_stream(self, conn: str) -> None:
-        reader, writer = await asyncio.open_connection(self.client.host, self.client.port, ssl=True)
+        reader, writer = await asyncio.open_connection(self.client.host, self.client.port, ssl=ssl_context)
         await control_send(writer, {"Accept": {"conn": conn}})
         local_reader, local_writer = await asyncio.open_connection(self.forwarded_host, self.forwarded_port)
         task1 = self.task_context.create_task(_asyncio_copy(reader, local_writer))
