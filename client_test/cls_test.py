@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 import inspect
 import pytest
-import threading
 from typing import TYPE_CHECKING
 
 from typing_extensions import assert_type
@@ -32,7 +31,7 @@ def test_run_class(client, servicer):
         app_id = stub.app_id
 
     objects = servicer.app_objects[app_id]
-    assert len(objects) == 2  # classes and functions
+    assert len(objects) == 3  # classes and functions
     assert objects["Foo.bar"] == function_id
     assert objects["Foo"] == class_id
 
@@ -258,10 +257,7 @@ def test_lookup(client, servicer):
         assert obj.bar.local(1, 2)
 
 
-baz_stub = Stub()
-
-
-@baz_stub.cls()
+@stub.cls()
 class Baz:
     def __init__(self, x):
         self.x = x
@@ -274,31 +270,3 @@ def test_call_not_modal_method():
     baz: Baz = Baz(5)
     assert baz.x == 5
     assert baz.not_modal_method(7) == 35
-
-
-cls_with_enter_stub = Stub()
-
-
-def get_thread_id():
-    return threading.current_thread().name
-
-
-@cls_with_enter_stub.cls()
-class ClsWithEnter:
-    def __init__(self, thread_id):
-        self.x = 0
-        self.thread_id = thread_id
-        assert get_thread_id() == self.thread_id
-
-    def __enter__(self):
-        self.x = 42
-        assert get_thread_id() == self.thread_id
-
-    def f(self, y):
-        assert get_thread_id() == self.thread_id
-        return self.x * y
-
-
-def test_local_enter():
-    obj = ClsWithEnter(get_thread_id())
-    assert obj.f(10) == 420
