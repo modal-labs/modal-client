@@ -44,11 +44,11 @@ class RelayClient:
 
     async def start_relay(self, forwarded_host: str, forwarded_port: int) -> Tuple["RelayDriver", str]:
         reader, writer = await asyncio.open_connection(self.host, self.port, ssl=True)
-        await control_send(writer, {"helloNew": {"taskId": self.task_id, "taskSecret": self.task_secret}})
+        await control_send(writer, {"HelloNew": {"task_id": self.task_id, "task_secret": self.task_secret}})
 
         resp = await control_recv(reader)
-        host = resp["hello"]["host"]
-        token = resp["hello"]["token"]
+        host = resp["Hello"]["host"]
+        token = resp["Hello"]["token"]
 
         driver = RelayDriver(self, reader, writer, token, forwarded_host, forwarded_port)
         return driver, host
@@ -74,7 +74,7 @@ class RelayDriver:
 
     async def start(self) -> None:
         await self.task_context.start()
-        await self.task_context.create_task(self._run())
+        self.task_context.create_task(self._run())
 
     async def stop(self) -> None:
         await self.task_context.stop()
@@ -103,7 +103,7 @@ class RelayDriver:
 
     async def _reconnect(self) -> None:
         reader, writer = await asyncio.open_connection(self.client.host, self.client.port, ssl=True)
-        await control_send(writer, {"helloReconnect": {"token": self.token}})
+        await control_send(writer, {"HelloReconnect": {"token": self.token}})
         resp = await control_recv(reader)
         self.token = resp["hello"]["token"]
         self.reader = reader
@@ -112,13 +112,16 @@ class RelayDriver:
     async def _control(self) -> None:
         while True:
             resp = await control_recv(self.reader)
-            conn: str = resp["forward"]["conn"]
-            logger.debug(f"new relay connection, forwarding to {self.forwarded_host}:{self.forwarded_port}")
-            self.task_context.create_task(self._new_stream(conn))
+            if resp is None:
+                break
+            if "Forward" in resp:
+                conn: str = resp["Forward"]["conn"]
+                logger.debug(f"new relay connection, forwarding to {self.forwarded_host}:{self.forwarded_port}")
+                self.task_context.create_task(self._new_stream(conn))
 
     async def _new_stream(self, conn: str) -> None:
         reader, writer = await asyncio.open_connection(self.client.host, self.client.port, ssl=True)
-        await control_send(writer, {"accept": {"conn": conn}})
+        await control_send(writer, {"Accept": {"conn": conn}})
         local_reader, local_writer = await asyncio.open_connection(self.forwarded_host, self.forwarded_port)
         await asyncio.wait(
             [_asyncio_copy(reader, local_writer), _asyncio_copy(local_reader, writer)],
