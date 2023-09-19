@@ -1,14 +1,20 @@
 # Copyright Modal Labs 2022
+import shutil
 import sys
+from contextlib import contextmanager
 from datetime import datetime
+from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Optional
 
 from click import UsageError
 from grpclib import GRPCError, Status
 from rich.console import Console
+from rich.syntax import Syntax
 from rich.table import Table
 from typer import Argument, Typer
 
+import modal
 from modal.cli.utils import ENV_OPTION, display_table
 from modal.client import _Client
 from modal.environments import ensure_env
@@ -18,12 +24,13 @@ from modal_utils.async_utils import synchronizer
 from modal_utils.grpc_utils import retry_transient_errors
 
 FileType = api_pb2.VolumeListFilesEntry.FileType
+PIPE_PATH = Path("-")
 
 volume_cli = Typer(
     name="volume",
     no_args_is_help=True,
     help="""
-    [Preview] Read and edit `modal.Volume` volumes.
+    [Beta] Read and edit `modal.Volume` volumes.
 
     This command is in preview and may change in the future.
 
@@ -31,6 +38,83 @@ volume_cli = Typer(
     the `modal nfs` command instead.
     """,
 )
+
+
+@volume_cli.command(name="create", help="Create a named, persistent modal.Volume.")
+def create(
+    name: str,
+    env: Optional[str] = ENV_OPTION,
+):
+    env_name = ensure_env(env)
+    volume = modal.Volume.new()
+    volume._deploy(name, environment_name=env)
+    usage_code = f"""
+@stub.function(volumes={{"/my_vol": modal.Volume.from_name("{name}")}})
+def some_func():
+    os.listdir("/my_vol")
+"""
+
+    console = Console()
+    console.print(f"Created volume '{name}' in environment '{env_name}'. \n\nCode example:\n")
+    usage = Syntax(usage_code, "python")
+    console.print(usage)
+
+
+@volume_cli.command(name="get")
+@synchronizer.create_blocking
+async def get(
+    volume_name: str,
+    remote_path: str,
+    local_destination: str = Argument("."),
+    force: bool = False,
+    env: Optional[str] = ENV_OPTION,
+):
+    """Download a file from a modal.Volume.
+
+    **Example**
+
+    ```bash
+    modal volume get <volume-name> logs/april-12-1.txt .
+    ```
+
+    Use "-" (a hyphen) as LOCAL_DESTINATION to write contents of file to stdout (only for non-glob paths).
+    """
+    ensure_env(env)
+    destination = Path(local_destination)
+    volume = await _Volume.lookup(volume_name, environment_name=env)
+
+    if destination != PIPE_PATH:
+        if destination.is_dir():
+            destination = destination / remote_path.rsplit("/")[-1]
+
+        if destination.exists() and not force:
+            raise UsageError(f"'{destination}' already exists")
+        elif not destination.parent.exists():
+            raise UsageError(f"Local directory '{destination.parent}' does not exist")
+
+    @contextmanager
+    def _destination_stream():
+        if destination == PIPE_PATH:
+            yield sys.stdout.buffer
+        else:
+            with NamedTemporaryFile(delete=False) as fp:
+                yield fp
+            shutil.move(fp.name, destination)
+
+    b = 0
+    try:
+        with _destination_stream() as fp:
+            async for chunk in volume.read_file(remote_path.lstrip("/")):
+                n = fp.write(chunk)
+                b += n
+                if n != len(chunk):
+                    raise IOError(f"failed to write {len(chunk)} bytes from {remote_path} to {fp}")
+    except GRPCError as exc:
+        if exc.status in (Status.NOT_FOUND, Status.INVALID_ARGUMENT):
+            raise UsageError(exc.message)
+
+    if destination != PIPE_PATH:
+        print(f"Wrote {b} bytes to '{destination}'", file=sys.stderr)
 
 
 @volume_cli.command(name="list", help="List the names of all modal.Volume volumes.", hidden=True)
