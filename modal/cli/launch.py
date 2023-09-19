@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2023
-import json
 import subprocess
 import tempfile
 from pathlib import Path
@@ -20,7 +19,7 @@ launch_cli = Typer(
 
 def _launch_program(name: str, args) -> None:
     contents = (Path(__file__).parent / "programs" / name).read_text()
-    contents = contents.replace("args: Any = {}", f"args: Any = {json.dumps(args)}")
+    contents = contents.replace("args: Any = {}", f"args: Any = {repr(args)}")
 
     # TODO: This is a big hack and can break for unexpected $PATH reasons. Make an actual code path
     # for correctly setting up and running a program in the CLI.
