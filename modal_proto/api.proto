@@ -1321,6 +1321,12 @@ message VolumeReloadRequest {
   string volume_id = 1;
 }
 
+message VolumePutFilesRequest {
+  string volume_id = 1;
+  // TODO(staffan): This is obviously unfortunately named, but provides what we need - consider renaming.
+  repeated MountFile files = 2;
+}
+
 message VolumeMount {
   string volume_id = 1;
   string mount_path = 2;
@@ -1462,5 +1468,6 @@ service ModalClient {
   rpc VolumeGetFile(VolumeGetFileRequest) returns (VolumeGetFileResponse);
   rpc VolumeList(VolumeListRequest) returns (VolumeListResponse);
   rpc VolumeListFiles(VolumeListFilesRequest) returns (stream VolumeListFilesResponse);
+  rpc VolumePutFiles(VolumePutFilesRequest) returns (google.protobuf.Empty);
   rpc VolumeReload(VolumeReloadRequest) returns (google.protobuf.Empty);
 }
