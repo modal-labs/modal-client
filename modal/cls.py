@@ -72,15 +72,20 @@ class _Obj:
         else:
             self._local_obj_constr = None
 
+    def get_obj(self):
+        """Constructs obj without any caching. Used by container entrypoint."""
+        self._local_obj = self._local_obj_constr()
+        setattr(self._local_obj, "_modal_functions", self._functions)  # Needed for PartialFunction.__get__
+        return self._local_obj
+
     def get_local_obj(self):
-        # Construct local object lazily. Used for .local() calls
+        """Construct local object lazily. Used for .local() calls."""
         if not self._has_local_obj:
-            self._local_obj = self._local_obj_constr()
+            self.get_obj()  # Instantiate object
             if hasattr(self._local_obj, "__enter__"):
                 self._local_obj.__enter__()
             elif hasattr(self._local_obj, "__aenter__"):
                 warnings.warn("Not running asynchronous enter handlers on local objects")
-            setattr(self._local_obj, "_modal_functions", self._functions)  # Needed for PartialFunction.__get__
             self._has_local_obj = True
 
         return self._local_obj
