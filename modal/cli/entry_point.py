@@ -9,7 +9,7 @@ from .launch import launch_cli
 from .network_file_system import nfs_cli
 from .profile import profile_cli
 from .secret import secret_cli
-from .token import token_cli
+from .token import setup, token_cli
 from .volume import volume_cli
 
 
@@ -65,6 +65,7 @@ entrypoint_cli_typer.command("vol", help="Deprecated, use `modal volume` instead
 entrypoint_cli_typer.command("deploy", help="Deploy a Modal stub as an application.", no_args_is_help=True)(run.deploy)
 entrypoint_cli_typer.command("serve", no_args_is_help=True)(run.serve)
 entrypoint_cli_typer.command("shell", no_args_is_help=True)(run.shell)
+entrypoint_cli_typer.command("setup", help="Bootstrap Modal's configuration.")(setup)
 
 entrypoint_cli = typer.main.get_command(entrypoint_cli_typer)
 entrypoint_cli.add_command(run.run, name="run")  # type: ignore

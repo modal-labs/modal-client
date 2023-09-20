@@ -113,6 +113,11 @@ def test_app_token_new(servicer, set_env_client, server_url_env):
         _run(["token", "new", "--profile", "_test"])
 
 
+def test_app_setup(servicer, set_env_client, server_url_env):
+    with unittest.mock.patch("webbrowser.open_new_tab", lambda url: False):
+        _run(["setup"])
+
+
 def test_run(servicer, set_env_client, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
     _run(["run", stub_file.as_posix()])

@@ -17,7 +17,9 @@ class _TokenFlow:
         self.stub = client.stub
 
     @asynccontextmanager
-    async def start(self, utm_source: Optional[str] = None) -> AsyncGenerator[Tuple[str, str], None]:
+    async def start(
+        self, utm_source: Optional[str] = None, next_url: Optional[str] = None
+    ) -> AsyncGenerator[Tuple[str, str], None]:
         """mdmd:hidden"""
         # Run a temporary http server returning the token id on /
         # This helps us add direct validation later
@@ -35,6 +37,7 @@ class _TokenFlow:
                 node_name=platform.node(),
                 platform_name=platform.platform(),
                 utm_source=utm_source,
+                next_url=next_url,
                 localhost_port=int(url.split(":")[-1]),
             )
             resp = await self.stub.TokenFlowCreate(req)

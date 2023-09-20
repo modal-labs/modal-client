@@ -45,8 +45,9 @@ def set(
     rich.print(f"Token written to {user_config_path}")
 
 
-@token_cli.command(help="Creates a new token by using an authenticated web session.")
-def new(profile: Optional[str] = profile_option, no_verify: bool = False, source: Optional[str] = None):
+def _new_token(
+    profile: Optional[str] = None, no_verify: bool = False, source: Optional[str] = None, next_url: Optional[str] = None
+):
     server_url = config.get("server_url", profile=profile)
 
     console = Console()
@@ -55,7 +56,7 @@ def new(profile: Optional[str] = profile_option, no_verify: bool = False, source
     with Client.unauthenticated_client(server_url) as client:
         token_flow = TokenFlow(client)
 
-        with token_flow.start(source) as (token_flow_id, web_url):
+        with token_flow.start(source, next_url) as (token_flow_id, web_url):
             with console.status("Waiting for authentication in the web browser", spinner="dots"):
                 # Open the web url in the browser
                 if webbrowser.open_new_tab(web_url):
@@ -91,3 +92,13 @@ def new(profile: Optional[str] = profile_option, no_verify: bool = False, source
     with console.status("Storing token", spinner="dots"):
         _store_user_config({"token_id": result.token_id, "token_secret": result.token_secret}, profile=profile)
         console.print(f"[green]Token written to [white]{user_config_path}[/white] successfully![/green]")
+
+
+@token_cli.command(help="Creates a new token by using an authenticated web session.")
+def new(profile: Optional[str] = profile_option, no_verify: bool = False, source: Optional[str] = None):
+    _new_token(profile, no_verify, source)
+
+
+def setup():
+    """The `modal setup` command is identical to `modal token new` except it redirects to /home when it's done."""
+    _new_token(next_url="/home")
