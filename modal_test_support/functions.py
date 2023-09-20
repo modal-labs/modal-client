@@ -127,8 +127,11 @@ def fastapi_app():
 
 @stub.cls()
 class Cls:
+    def __init__(self):
+        self._k = 11
+
     def __enter__(self):
-        self._k = 111
+        self._k += 100
 
     @method()
     def f(self, x):
