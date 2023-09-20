@@ -13,10 +13,8 @@ from pathlib import Path
 from typing import Any, Optional, Union
 
 import click
-from rich.console import Console, Group
+from rich.console import Console
 from rich.markdown import Markdown
-from rich.panel import Panel
-from rich.prompt import Prompt
 
 import modal
 from modal.functions import Function
@@ -110,35 +108,8 @@ def get_by_object_path(obj: Any, obj_path: str):
     return obj
 
 
-def make_function_panel(idx: int, tag: str, function: Function, stub: Stub) -> Panel:
-    items = [f"- {i}" for i in function.get_panel_items()]
-    return Panel(
-        Markdown("\n".join(items)),
-        title=f"[bright_magenta]{idx}. [/bright_magenta][bold]{tag}[/bold]",
-        title_align="left",
-    )
-
-
-def choose_function_interactive(stub: Stub, console: Console) -> str:
-    # TODO: allow selection of local_entrypoints when used from `modal run`
-    functions = list(stub.registered_functions.items())
-    function_panels = [make_function_panel(idx, tag, obj, stub) for idx, (tag, obj) in enumerate(functions)]
-
-    renderable = Panel(Group(*function_panels))
-    console.print(renderable)
-
-    choice = Prompt.ask(
-        "[yellow] Pick a function definition: [/yellow]",
-        choices=[str(i) for i in range(len(functions))],
-        default="0",
-        show_default=False,
-    )
-
-    return functions[int(choice)][0]
-
-
 def infer_function_or_help(
-    stub: Stub, interactive: bool, accept_local_entrypoint: bool, accept_webhook: bool
+    stub: Stub, accept_local_entrypoint: bool, accept_webhook: bool
 ) -> Union[Function, LocalEntrypoint]:
     function_choices = set(stub.registered_functions.keys())
     if not accept_webhook:
@@ -160,9 +131,6 @@ def infer_function_or_help(
         else:
             err_msg = "Modal stub has no registered functions. Nothing to run."
         raise click.UsageError(err_msg)
-    elif interactive:
-        console = Console()
-        function_name = choose_function_interactive(stub, console)
     else:
         help_text = f"""You need to specify a Modal function or local entrypoint to run, e.g.
 
@@ -242,7 +210,7 @@ You would run foo as [bold green]{base_cmd} app.py::foo[/bold green]"""
 
 
 def import_function(
-    func_ref: str, base_cmd: str, accept_local_entrypoint=True, accept_webhook=False, interactive=False
+    func_ref: str, base_cmd: str, accept_local_entrypoint=True, accept_webhook=False
 ) -> Union[Function, LocalEntrypoint]:
     import_ref = parse_import_ref(func_ref)
     try:
@@ -256,7 +224,7 @@ def import_function(
     if isinstance(stub_or_function, Stub):
         # infer function or display help for how to select one
         stub = stub_or_function
-        function_handle = infer_function_or_help(stub, interactive, accept_local_entrypoint, accept_webhook)
+        function_handle = infer_function_or_help(stub, accept_local_entrypoint, accept_webhook)
         return function_handle
     elif isinstance(stub_or_function, Function):
         return stub_or_function

@@ -62,7 +62,7 @@ from .exception import (
     RemoteError,
     deprecation_warning,
 )
-from .gpu import GPU_T, display_gpu_config, parse_gpu_config
+from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
 from .mount import _get_client_mount, _Mount
 from .network_file_system import _NetworkFileSystem, load_network_file_systems
@@ -593,21 +593,6 @@ class _Function(_Object, type_prefix="fu"):
         else:
             cloud_provider = None
 
-        panel_items = [
-            str(i)
-            for i in [
-                *mounts,
-                image,
-                *secrets,
-                *network_file_systems.values(),
-                *volumes.values(),
-            ]
-        ]
-        if gpu:
-            panel_items.append(display_gpu_config(gpu))
-        if cloud:
-            panel_items.append(f"Cloud({cloud.upper()})")
-
         if is_generator and webhook_config:
             if webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
                 raise InvalidError(
@@ -823,7 +808,6 @@ class _Function(_Object, type_prefix="fu"):
         obj._info = info
         obj._tag = tag
         obj._all_mounts = all_mounts  # needed for modal.serve file watching
-        obj._panel_items = panel_items
         obj._stub = stub  # Needed for CLI right now
         obj._obj = None
         obj._is_generator = is_generator
@@ -859,10 +843,6 @@ class _Function(_Object, type_prefix="fu"):
         provider._info = self._info
         provider._obj = obj
         return provider
-
-    def get_panel_items(self) -> List[str]:
-        """mdmd:hidden"""
-        return self._panel_items
 
     @property
     def tag(self):
