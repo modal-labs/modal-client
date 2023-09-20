@@ -162,7 +162,10 @@ def _parse_gpu_config(value: GPU_T, raise_on_true: bool = True) -> Optional[_GPU
         count = 1
         if ":" in value:
             value, count_str = value.split(":", 1)
-            count = int(count_str)
+            try:
+                count = int(count_str)
+            except ValueError:
+                raise InvalidError(f"Invalid GPU count: {count_str}. Value must be an integer.")
 
         if value.lower() == "a100-20g":
             return A100(memory=20, count=count)  # trigger deprecation warning at this point
