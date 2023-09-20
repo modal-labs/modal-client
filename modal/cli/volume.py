@@ -40,6 +40,22 @@ volume_cli = Typer(
 )
 
 
+def humanize_filesize(value: int) -> str:
+    if value < 0:
+        raise ValueError("filesize should be >= 0")
+    suffix = (" KiB", " MiB", " GiB", " TiB", " PiB", " EiB", " ZiB")
+    format = "%.1f"
+    base = 1024
+    bytes_ = float(value)
+    if bytes_ < base:
+        return f"{bytes_:0.0f} B"
+    for i, s in enumerate(suffix):
+        unit = base ** (i + 2)
+        if bytes_ < unit:
+            break
+    return format % (base * bytes_ / unit) + s
+
+
 @volume_cli.command(name="create", help="Create a named, persistent modal.Volume.")
 def create(
     name: str,
@@ -160,16 +176,22 @@ async def ls(
         console = Console()
         console.print(f"Directory listing of '{path}' in '{volume_name}'")
         table = Table()
-        for name in ["filename", "type", "created/modified"]:
+        for name in ["filename", "type", "created/modified", "size"]:
             table.add_column(name)
 
         locale_tz = datetime.now().astimezone().tzinfo
         for entry in entries:
-            filetype = "dir" if entry.type == FileType.DIRECTORY else "file"
+            if entry.type == FileType.DIRECTORY:
+                filetype = "dir"
+            elif entry.type == FileType.SYMLINK:
+                filetype = "link"
+            else:
+                filetype = "file"
             table.add_row(
                 entry.path,
                 filetype,
                 str(datetime.fromtimestamp(entry.mtime, tz=locale_tz)),
+                humanize_filesize(entry.size),
             )
         console.print(table)
     else:
