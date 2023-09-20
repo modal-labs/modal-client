@@ -133,14 +133,14 @@ class Any(_GPUConfig):
 
 
 STRING_TO_GPU_CONFIG = {
-    "t4": T4(),
-    "l4": L4(),
-    "a100": A100(),
-    "a10g": A10G(),
-    "inf2": Inferentia2(),
-    "any": Any(),
+    "t4": T4,
+    "l4": L4,
+    "a100": A100,
+    "a10g": A10G,
+    "inf2": Inferentia2,
+    "any": Any,
 }
-display_string_to_config = "\n".join(f'- "{key}" → `{value}`' for key, value in STRING_TO_GPU_CONFIG.items())
+display_string_to_config = "\n".join(f'- "{key}" → `{cls()}`' for key, cls in STRING_TO_GPU_CONFIG.items())
 __doc__ = f"""
 **GPU configuration shortcodes**
 
@@ -159,14 +159,22 @@ def _parse_gpu_config(value: GPU_T, raise_on_true: bool = True) -> Optional[_GPU
     if isinstance(value, _GPUConfig):
         return value
     elif isinstance(value, str):
+        count = 1
+        if ":" in value:
+            value, count_str = value.split(":", 1)
+            try:
+                count = int(count_str)
+            except ValueError:
+                raise InvalidError(f"Invalid GPU count: {count_str}. Value must be an integer.")
+
         if value.lower() == "a100-20g":
-            return A100(memory=20)  # trigger deprecation warning at this point
+            return A100(memory=20, count=count)  # trigger deprecation warning at this point
         elif value.lower() not in STRING_TO_GPU_CONFIG:
             raise InvalidError(
                 f"Invalid GPU type: {value}. Value must be one of {list(STRING_TO_GPU_CONFIG.keys())} (case-insensitive)."
             )
         else:
-            return STRING_TO_GPU_CONFIG[value.lower()]
+            return STRING_TO_GPU_CONFIG[value.lower()](count=count)
     elif value is True:
         if raise_on_true:
             deprecation_error(
