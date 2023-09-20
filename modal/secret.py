@@ -2,6 +2,8 @@
 import os
 from typing import Dict, Optional
 
+from grpclib import GRPCError, Status
+
 from modal._types import typechecked
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
@@ -52,7 +54,14 @@ class _Secret(_Object, type_prefix="st"):
                 template_type=template_type,
                 existing_secret_id=existing_object_id,
             )
-            resp = await resolver.client.stub.SecretCreate(req)
+            try:
+                resp = await resolver.client.stub.SecretCreate(req)
+            except GRPCError as exc:
+                if exc.status == Status.INVALID_ARGUMENT:
+                    raise InvalidError(exc.message)
+                if exc.status == Status.FAILED_PRECONDITION:
+                    raise InvalidError(exc.message)
+                raise
             provider._hydrate(resp.secret_id, resolver.client, None)
 
         rep = f"Secret.from_dict([{', '.join(env_dict.keys())}])"
