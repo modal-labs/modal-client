@@ -48,6 +48,25 @@ def test_gpu_string_config(client, servicer):
     assert func_def.resources.gpu_config.type == api_pb2.GPU_TYPE_A100
 
 
+def test_gpu_string_count_config(client, servicer):
+    stub = Stub()
+
+    # Invalid count values.
+    with pytest.raises(InvalidError):
+        stub.function(gpu="A10G:hello")(dummy)
+    with pytest.raises(InvalidError):
+        stub.function(gpu="Nonexistent:2")(dummy)
+
+    stub.function(gpu="A10G:4")(dummy)
+    with stub.run(client=client):
+        pass
+
+    assert len(servicer.app_functions) == 1
+    func_def = next(iter(servicer.app_functions.values()))
+    assert func_def.resources.gpu_config.count == 4
+    assert func_def.resources.gpu_config.type == api_pb2.GPU_TYPE_A10G
+
+
 def test_gpu_config_function(client, servicer):
     import modal
 
