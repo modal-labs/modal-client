@@ -13,10 +13,8 @@ from pathlib import Path
 from typing import Any, Optional, Union
 
 import click
-from rich.console import Console, Group
+from rich.console import Console
 from rich.markdown import Markdown
-from rich.panel import Panel
-from rich.prompt import Prompt
 
 import modal
 from modal.functions import Function

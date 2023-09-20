@@ -62,7 +62,7 @@ from .exception import (
     RemoteError,
     deprecation_warning,
 )
-from .gpu import GPU_T, display_gpu_config, parse_gpu_config
+from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
 from .mount import _get_client_mount, _Mount
 from .network_file_system import _NetworkFileSystem, load_network_file_systems
