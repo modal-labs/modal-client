@@ -3,6 +3,7 @@ from datetime import date
 from typing import TYPE_CHECKING, Any, Dict, Optional, TypeVar
 
 from google.protobuf.message import Message
+from grpclib import GRPCError, Status
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
@@ -12,7 +13,7 @@ from ._output import OutputManager
 from ._resolver import Resolver
 from .client import _Client
 from .config import logger
-from .exception import deprecation_warning
+from .exception import InvalidError, deprecation_warning
 from .object import _Object
 
 if TYPE_CHECKING:
@@ -319,7 +320,14 @@ class _App:
             namespace=namespace,
             object_entity=object_entity,
         )
-        deploy_response = await retry_transient_errors(self._client.stub.AppDeploy, deploy_req)
+        try:
+            deploy_response = await retry_transient_errors(self._client.stub.AppDeploy, deploy_req)
+        except GRPCError as exc:
+            if exc.status == Status.INVALID_ARGUMENT:
+                raise InvalidError(exc.message)
+            if exc.status == Status.FAILED_PRECONDITION:
+                raise InvalidError(exc.message)
+            raise
         return deploy_response.url
 
     async def spawn_sandbox(
