@@ -79,7 +79,7 @@ class _Volume(_Object, type_prefix="vo"):
             status_row.finish("Created volume.")
             provider._hydrate(resp.volume_id, resolver.client, None)
 
-        return _Volume._from_loader(_load, "Volume()")
+        return _Volume._from_loader(_load)
 
     @staticmethod
     def persisted(

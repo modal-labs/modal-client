@@ -158,9 +158,8 @@ class _Mount(_Object, type_prefix="mo"):
 
     @staticmethod
     def _from_entries(*entries: _MountEntry) -> "_Mount":
-        rep = f"Mount({entries})"
         load = functools.partial(_Mount._load_mount, entries)
-        obj = _Mount._from_loader(load, rep)
+        obj = _Mount._from_loader(load)
         obj._entries = entries
         obj._is_local = True
         return obj

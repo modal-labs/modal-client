@@ -64,8 +64,7 @@ class _Secret(_Object, type_prefix="st"):
                 raise
             provider._hydrate(resp.secret_id, resolver.client, None)
 
-        rep = f"Secret.from_dict([{', '.join(env_dict.keys())}])"
-        return _Secret._from_loader(_load, rep)
+        return _Secret._from_loader(_load)
 
     @staticmethod
     def from_dotenv(path=None):
@@ -122,7 +121,7 @@ class _Secret(_Object, type_prefix="st"):
 
             provider._hydrate(resp.secret_id, resolver.client, None)
 
-        return _Secret._from_loader(_load, "Secret.from_dotenv()")
+        return _Secret._from_loader(_load)
 
 
 Secret = synchronize_api(_Secret)

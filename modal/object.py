@@ -47,7 +47,6 @@ class _Object:
 
     def _init(
         self,
-        rep: str,
         load: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
         is_persisted_ref: bool = False,
         preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
@@ -56,7 +55,6 @@ class _Object:
         self._local_uuid = str(uuid.uuid4())
         self._load = load
         self._preload = preload
-        self._rep = rep
         self._is_persisted_ref = is_persisted_ref
         self._hydrate_lazily = hydrate_lazily
 
@@ -94,20 +92,18 @@ class _Object:
 
     def _init_from_other(self, other: O):
         # Transient use case, see Dict, Queue, and SharedVolume
-        self._init(other._rep, other._load, other._is_persisted_ref, other._preload)
+        self._init(other._load, other._is_persisted_ref, other._preload)
 
     @classmethod
     def _from_loader(
         cls,
         load: Callable[[O, Resolver, Optional[str]], Awaitable[None]],
-        rep: str,
         is_persisted_ref: bool = False,
         preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
         hydrate_lazily: bool = False,
     ):
-        # TODO(erikbern): flip the order of the two first arguments
         obj = _Object.__new__(cls)
-        obj._init(rep, load, is_persisted_ref, preload, hydrate_lazily)
+        obj._init(load, is_persisted_ref, preload, hydrate_lazily)
         return obj
 
     @classmethod
@@ -129,8 +125,7 @@ class _Object:
         # Instantiate provider
         obj_cls = cls._prefix_to_type[prefix]
         obj = _Object.__new__(obj_cls)
-        rep = f"Object({object_id})"  # TODO(erikbern): dumb
-        obj._init(rep)
+        obj._init()
         obj._hydrate(object_id, client, handle_metadata)
 
         return obj
@@ -185,9 +180,6 @@ class _Object:
 
     def _hydrate_from_other(self, other: O):
         self._hydrate(other._object_id, other._client, other._get_metadata())
-
-    def __repr__(self):
-        return self._rep
 
     @property
     def local_uuid(self):
@@ -255,8 +247,7 @@ class _Object:
             obj._hydrate_from_other(self)
 
         cls = type(self)
-        rep = f"PersistedRef<{self}>({label})"
-        return cls._from_loader(_load_persisted, rep, is_persisted_ref=True)
+        return cls._from_loader(_load_persisted, is_persisted_ref=True)
 
     @classmethod
     def from_name(
@@ -298,8 +289,7 @@ class _Object:
                 app_name, tag, namespace, client=resolver.client, environment_name=environment_name
             )
 
-        rep = f"Ref({app_name})"
-        return cls._from_loader(_load_remote, rep)
+        return cls._from_loader(_load_remote)
 
     @classmethod
     async def lookup(
@@ -331,9 +321,8 @@ class _Object:
         ```
         """
         # TODO(erikbern): this code is very duplicated. Clean up once handles are gone.
-        rep = f"Object({app_name})"  # TODO(erikbern): dumb
         obj = _Object.__new__(cls)
-        obj._init(rep)
+        obj._init()
         await obj._hydrate_from_app(app_name, tag, namespace, client, environment_name=environment_name)
         return obj
 

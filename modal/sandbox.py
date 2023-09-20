@@ -163,7 +163,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             provider._stdout = LogsReader(api_pb2.FILE_DESCRIPTOR_STDOUT, sandbox_id, resolver.client)
             provider._stderr = LogsReader(api_pb2.FILE_DESCRIPTOR_STDERR, sandbox_id, resolver.client)
 
-        return _Sandbox._from_loader(_load, "Sandbox()")
+        return _Sandbox._from_loader(_load)
 
     # Live handle methods
 

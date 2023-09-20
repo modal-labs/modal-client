@@ -801,8 +801,7 @@ class _Function(_Object, type_prefix="fu"):
 
             provider._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
-        rep = f"Function({tag})"
-        obj = _Function._from_loader(_load, rep, preload=_preload)
+        obj = _Function._from_loader(_load, preload=_preload)
 
         obj._raw_f = raw_f
         obj._info = info

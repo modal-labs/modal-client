@@ -305,8 +305,7 @@ class _Image(_Object, type_prefix="im"):
 
             provider._hydrate(image_id, resolver.client, None)
 
-        rep = f"Image({dockerfile_commands})"
-        obj = _Image._from_loader(_load, rep)
+        obj = _Image._from_loader(_load)
         obj.force_build = force_build
         return obj
 

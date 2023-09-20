@@ -112,7 +112,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
             status_row.finish("Created network file system.")
             provider._hydrate(resp.shared_volume_id, resolver.client, None)
 
-        return _NetworkFileSystem._from_loader(_load, "NetworkFileSystem()")
+        return _NetworkFileSystem._from_loader(_load)
 
     @staticmethod
     def persisted(

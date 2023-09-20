@@ -51,7 +51,7 @@ class _Queue(_Object, type_prefix="qu"):
             response = await resolver.client.stub.QueueCreate(request)
             provider._hydrate(response.queue_id, resolver.client, None)
 
-        return _Queue._from_loader(_load, "Queue()")
+        return _Queue._from_loader(_load)
 
     def __init__(self):
         """mdmd:hidden"""
