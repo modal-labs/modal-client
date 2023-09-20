@@ -158,9 +158,7 @@ def _get_click_command_for_local_entrypoint(stub: Stub, entrypoint: LocalEntrypo
 
 class RunGroup(click.Group):
     def get_command(self, ctx, func_ref):
-        function_or_entrypoint = import_function(
-            func_ref, accept_local_entrypoint=True, interactive=False, base_cmd="modal run"
-        )
+        function_or_entrypoint = import_function(func_ref, accept_local_entrypoint=True, base_cmd="modal run")
         stub: Stub = function_or_entrypoint.stub
         if stub.description is None:
             stub.set_description(_get_clean_stub_description(func_ref))
@@ -294,9 +292,7 @@ def shell(
     if not console.is_terminal:
         raise click.UsageError("`modal shell` can only be run from a terminal.")
 
-    function = import_function(
-        func_ref, accept_local_entrypoint=False, accept_webhook=True, interactive=True, base_cmd="modal shell"
-    )
+    function = import_function(func_ref, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell")
     assert isinstance(function, Function)  # ensured by accept_local_entrypoint=False
     interactive_shell(
         function,

@@ -534,15 +534,6 @@ def test_from_id(client, servicer):
     assert rehydrated_function_call.object_id == function_call.object_id
 
 
-def test_panel(client, servicer):
-    stub = Stub()
-    stub.function()(dummy)
-    function = stub["dummy"]
-    assert isinstance(function, Function)
-    image = stub._get_default_image()
-    assert function.get_panel_items() == [repr(image)]
-
-
 lc_stub = Stub()
 
 
