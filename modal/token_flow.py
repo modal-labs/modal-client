@@ -20,7 +20,7 @@ class _TokenFlow:
     @asynccontextmanager
     async def start(
         self, utm_source: Optional[str] = None, next_url: Optional[str] = None
-    ) -> AsyncGenerator[Tuple[str, str], None]:
+    ) -> AsyncGenerator[Tuple[str, str, str], None]:
         """mdmd:hidden"""
         # Create a unique random value that's used to identify this client
         self.client_secret = str(uuid.uuid4())
@@ -48,7 +48,7 @@ class _TokenFlow:
             )
             resp = await self.stub.TokenFlowCreate(req)
             self.token_flow_id = resp.token_flow_id
-            yield (resp.token_flow_id, resp.web_url)
+            yield (resp.token_flow_id, resp.web_url, resp.code)
 
     async def finish(
         self, timeout: float = 40.0, grpc_extra_timeout: float = 5.0

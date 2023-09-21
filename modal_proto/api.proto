@@ -1239,6 +1239,7 @@ message TokenFlowCreateRequest {
 message TokenFlowCreateResponse {
   string token_flow_id = 1;
   string web_url = 2;
+  string code = 3;
 };
 
 message TokenFlowWaitRequest {
