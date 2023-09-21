@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2023
 import platform
+import uuid
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Optional, Tuple
 
@@ -21,8 +22,12 @@ class _TokenFlow:
         self, utm_source: Optional[str] = None, next_url: Optional[str] = None
     ) -> AsyncGenerator[Tuple[str, str], None]:
         """mdmd:hidden"""
+        # Create a unique random value that's used to identify this client
+        self.client_secret = str(uuid.uuid4())
+
         # Run a temporary http server returning the token id on /
         # This helps us add direct validation later
+        # TODO(erikbern): handle failure launching server
 
         async def slash(request):
             headers = {"Access-Control-Allow-Origin": "*"}
@@ -39,6 +44,7 @@ class _TokenFlow:
                 utm_source=utm_source,
                 next_url=next_url,
                 localhost_port=int(url.split(":")[-1]),
+                client_secret=self.client_secret,
             )
             resp = await self.stub.TokenFlowCreate(req)
             self.token_flow_id = resp.token_flow_id
@@ -49,7 +55,9 @@ class _TokenFlow:
     ) -> Optional[api_pb2.TokenFlowWaitResponse]:
         """mdmd:hidden"""
         # Wait for token flow to finish
-        req = api_pb2.TokenFlowWaitRequest(token_flow_id=self.token_flow_id, timeout=timeout)
+        req = api_pb2.TokenFlowWaitRequest(
+            token_flow_id=self.token_flow_id, timeout=timeout, client_secret=self.client_secret
+        )
         resp = await self.stub.TokenFlowWait(req, timeout=(timeout + grpc_extra_timeout))
         if not resp.timeout:
             return resp

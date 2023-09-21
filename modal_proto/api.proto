@@ -1233,6 +1233,7 @@ message TokenFlowCreateRequest {
   string utm_source = 3;
   int32 localhost_port = 4;
   string next_url = 5;
+  string client_secret = 6;
 }
 
 message TokenFlowCreateResponse {
@@ -1243,6 +1244,7 @@ message TokenFlowCreateResponse {
 message TokenFlowWaitRequest {
   float timeout = 1;
   string token_flow_id = 2;
+  string client_secret = 3;
 }
 
 message TokenFlowWaitResponse {
