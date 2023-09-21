@@ -426,7 +426,7 @@ def test_cls_function(unix_servicer, event_loop):
     client, items = _run_container(unix_servicer, "modal_test_support.functions", "Cls.f")
     assert len(items) == 1
     assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert items[0].result.data == serialize(42 * 111)
+    assert deserialize(items[0].result.data, client) == 42 * 111
 
 
 @skip_windows_unix_socket
@@ -437,7 +437,7 @@ def test_param_cls_function(unix_servicer, event_loop):
     )
     assert len(items) == 1
     assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert items[0].result.data == serialize("111 foo 42")
+    assert deserialize(items[0].result.data, client) == "111 foo 42"
 
 
 @skip_windows_unix_socket
