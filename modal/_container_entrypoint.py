@@ -587,7 +587,7 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun, ser_params
             args, kwargs = (), {}
         obj = cls(*args, **kwargs)
         if isinstance(cls, Cls):
-            obj = obj.get_local_obj()
+            obj = obj.get_obj()
         # Bind the function to the instance (using the descriptor protocol!)
         fun = fun.__get__(obj)
     else:
