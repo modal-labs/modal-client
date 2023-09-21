@@ -609,11 +609,14 @@ class _Stub:
             partial_functions: Dict[str, PartialFunction] = {}
             functions: Dict[str, _Function] = {}
 
-            for k, v in user_cls.__dict__.items():
-                if isinstance(v, PartialFunction):
-                    partial_functions[k] = v
-                    partial_function = synchronizer._translate_in(v)  # TODO: remove need for?
-                    functions[k] = decorator(partial_function, user_cls)
+            for parent_cls in user_cls.mro():
+                if parent_cls is object:
+                    continue
+                for k, v in parent_cls.__dict__.items():
+                    if isinstance(v, PartialFunction):
+                        partial_functions[k] = v
+                        partial_function = synchronizer._translate_in(v)  # TODO: remove need for?
+                        functions[k] = decorator(partial_function, user_cls)
 
             tag: str = user_cls.__name__
             cls: _Cls = _Cls.from_local(user_cls, functions)

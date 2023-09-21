@@ -191,3 +191,17 @@ async def sleep_700_async(x):
 
 def unassociated_function(x):
     return 100 - x
+
+
+class BaseCls:
+    def __enter__(self):
+        self.x = 2
+
+    @method()
+    def run(self, y):
+        return self.x * y
+
+
+@stub.cls()
+class DerivedCls(BaseCls):
+    pass
