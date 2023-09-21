@@ -86,8 +86,16 @@ class FunctionInfo:
     def __init__(self, f, serialized=False, name_override: Optional[str] = None, cls: Optional[Type] = None):
         self.raw_f = f
         self.cls = cls
-        # TODO(erikbern): if f.__qualname__ != f.__name__,  we should infer the class name instead
-        self.function_name = name_override if name_override is not None else f.__qualname__
+
+        if name_override is not None:
+            self.function_name = name_override
+        elif f.__qualname__ != f.__name__:
+            # Class function.
+            # TODO: this doesn't work for functions in doubly-nested classes etc.
+            self.function_name = f"{cls.__name__}.{f.__name__}"
+        else:
+            self.function_name = f.__name__
+
         self.signature = inspect.signature(f)
         module = inspect.getmodule(f)
 
