@@ -91,7 +91,8 @@ class FunctionInfo:
             self.function_name = name_override
         elif f.__qualname__ != f.__name__:
             # Class function.
-            # TODO: this doesn't work for functions in doubly-nested classes etc.
+            if len(f.__qualname__.split(".")) > 1:
+                raise InvalidError("@stub.cls classes must be defined in global scope")
             self.function_name = f"{cls.__name__}.{f.__name__}"
         else:
             self.function_name = f.__name__
