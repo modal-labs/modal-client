@@ -90,6 +90,53 @@ enum WebhookAsyncMode {
   WEBHOOK_ASYNC_MODE_AUTO = 4; // redirect to polling endpoint if execution time nears the http timeout
 }
 
+// An opinionated interpretation of a message in the ASGI HTTP specification.
+// Spec: https://asgi.readthedocs.io/en/latest/specs/www.html
+message AsgiProtocol {
+  // Single-request connection scope
+  message Scope {
+    string http_version = 1;
+    string method = 2;
+    string scheme = 3;
+    string path = 4;
+    bytes query_string = 5;
+    repeated bytes headers = 6; // Flat list of alternating header names and values
+    optional string client_host = 7;
+    optional uint32 client_port = 8;
+  }
+
+  // Message of type "http.request"
+  message HttpRequest {
+    bytes body = 1;
+    bool more_body = 2;
+  }
+
+  // Message of type "http.response.start"
+  message HttpResponseStart {
+    uint32 status = 1;
+    repeated bytes headers = 2; // Flat list of alternating header names and values
+    bool trailers = 3;
+  }
+
+  // Message of type "http.response.body"
+  message HttpResponseBody {
+    bytes body = 1;
+    bool more_body = 2;
+  }
+
+  // Message of type "http.disconnect"
+  message HttpDisconnect {
+  }
+
+  oneof type {
+    Scope scope = 1;
+    HttpRequest http_request = 2;
+    HttpResponseStart http_response_start = 3;
+    HttpResponseBody http_response_body = 4;
+    HttpDisconnect http_disconnect = 5;
+  }
+}
+
 message AppClientDisconnectRequest {
   string app_id = 1;
 }
