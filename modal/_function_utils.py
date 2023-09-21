@@ -91,7 +91,7 @@ class FunctionInfo:
             self.function_name = name_override
         elif f.__qualname__ != f.__name__:
             # Class function.
-            if len(f.__qualname__.split(".")) > 1:
+            if len(f.__qualname__.split(".")) > 2 and not serialized:
                 raise InvalidError("@stub.cls classes must be defined in global scope")
             self.function_name = f"{cls.__name__}.{f.__name__}"
         else:

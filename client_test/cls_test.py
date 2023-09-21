@@ -302,3 +302,26 @@ class ClsWithEnter:
 def test_local_enter():
     obj = ClsWithEnter(get_thread_id())
     assert obj.f(10) == 420
+
+
+inheritance_stub = Stub()
+
+
+class BaseCls:
+    def __enter__(self):
+        self.x = 2
+
+    @method()
+    def run(self, y):
+        return self.x * y
+
+
+@inheritance_stub.cls()
+class DerivedCls(BaseCls):
+    pass
+
+
+def test_derived_cls(client, servicer):
+    with inheritance_stub.run(client=client):
+        # default servicer fn just squares the number
+        assert DerivedCls.run.remote(3) == 9
