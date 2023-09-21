@@ -744,6 +744,17 @@ def test_unassociated_function(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
+def test_param_cls_function_calling_local(unix_servicer, event_loop):
+    serialized_params = pickle.dumps(([111], {"y": "foo"}))
+    client, items = _run_container(
+        unix_servicer, "modal_test_support.functions", "ParamCls.g", serialized_params=serialized_params
+    )
+    assert len(items) == 1
+    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert items[0].result.data == serialize("111 foo 42")
+
+
+@skip_windows_unix_socket
 def test_derived_cls(unix_servicer, event_loop):
     client, items = _run_container(
         unix_servicer, "modal_test_support.functions", "DerivedCls.run", inputs=_get_inputs(((3,), {}))
