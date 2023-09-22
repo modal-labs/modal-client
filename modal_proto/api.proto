@@ -38,6 +38,13 @@ enum ClientType {
   CLIENT_TYPE_WEB_SERVER = 5;
 }
 
+// Which data format a binary message is encoded with.
+enum DataFormat {
+  DATA_FORMAT_UNSPECIFIED = 0; // Equivalent to PICKLE in client version 0.52 and earlier.
+  DATA_FORMAT_PICKLE = 1; // Cloudpickle
+  DATA_FORMAT_ASGI = 2; // "Asgi" protobuf message
+}
+
 enum DeploymentNamespace {
   DEPLOYMENT_NAMESPACE_UNSPECIFIED = 0;
   DEPLOYMENT_NAMESPACE_WORKSPACE = 1;
@@ -670,6 +677,7 @@ message FunctionGetOutputsItem {
   int32 idx = 2;
   string input_id = 3;
   int32 gen_index = 4;
+  DataFormat data_format = 5; // for result.data_oneof
 }
 
 message FunctionGetOutputsRequest {
@@ -702,6 +710,7 @@ message FunctionInput {
     string args_blob_id = 7;
   }
   bool final_input = 9;
+  DataFormat data_format = 10; // For args_oneof.
 }
 
 message FunctionMapRequest {
@@ -741,6 +750,7 @@ message FunctionPutOutputsItem {
   double input_started_at = 3;
   double output_created_at = 4;
   int32 gen_index = 6; // ordering for generator outputs
+  DataFormat data_format = 7; // for result.data_oneof
 }
 
 message FunctionPutOutputsRequest {

@@ -160,12 +160,12 @@ async def _create_input(args, kwargs, client, idx=None) -> api_pb2.FunctionPutIn
         args_blob_id = await blob_upload(args_serialized, client.stub)
 
         return api_pb2.FunctionPutInputsItem(
-            input=api_pb2.FunctionInput(args_blob_id=args_blob_id),
+            input=api_pb2.FunctionInput(args_blob_id=args_blob_id, data_format=api_pb2.DATA_FORMAT_PICKLE),
             idx=idx,
         )
     else:
         return api_pb2.FunctionPutInputsItem(
-            input=api_pb2.FunctionInput(args=args_serialized),
+            input=api_pb2.FunctionInput(args=args_serialized, data_format=api_pb2.DATA_FORMAT_PICKLE),
             idx=idx,
         )
 

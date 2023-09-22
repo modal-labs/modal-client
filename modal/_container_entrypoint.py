@@ -288,6 +288,7 @@ class _FunctionIOManager:
             output_created_at=time.time(),
             gen_index=gen_index,
             result=api_pb2.GenericResult(**kwargs),
+            data_format=api_pb2.DATA_FORMAT_PICKLE,
         )
         await self.output_queue.put(output)
 

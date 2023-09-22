@@ -31,7 +31,7 @@ SLEEP_DELAY = 0.1
 
 
 def _get_inputs(args: Tuple[Tuple, Dict] = ((42,), {}), n: int = 1) -> list[api_pb2.FunctionGetInputsResponse]:
-    input_pb = api_pb2.FunctionInput(args=serialize(args))
+    input_pb = api_pb2.FunctionInput(args=serialize(args), data_format=api_pb2.DATA_FORMAT_PICKLE)
 
     return [
         api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(input_id=f"in-xyz{i}", input=input_pb)])
