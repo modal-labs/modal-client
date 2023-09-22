@@ -12,6 +12,7 @@ from modal.cls import ClsMixin
 from modal.exception import DeprecationError, ExecutionError
 from modal.runner import deploy_stub
 from modal_proto import api_pb2
+from modal_test_support.base_class import BaseCls2
 
 stub = Stub()
 
@@ -324,4 +325,18 @@ class DerivedCls(BaseCls):
 def test_derived_cls(client, servicer):
     with inheritance_stub.run(client=client):
         # default servicer fn just squares the number
-        assert DerivedCls.run.remote(3) == 9
+        assert DerivedCls().run.remote(3) == 9
+
+
+inheritance_stub_2 = Stub()
+
+
+@inheritance_stub_2.cls()
+class DerivedCls2(BaseCls2):
+    pass
+
+
+def test_derived_cls_external_file(client, servicer):
+    with inheritance_stub_2.run(client=client):
+        # default servicer fn just squares the number
+        assert DerivedCls2().run.remote(3) == 9
