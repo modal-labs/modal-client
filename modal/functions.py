@@ -106,7 +106,7 @@ manually, for example:
     return exc
 
 
-async def _process_result(result: api_pb2.GenericResult, data_format: api_pb2.DataFormat, stub, client=None):
+async def _process_result(result: api_pb2.GenericResult, data_format: int, stub, client=None):
     if result.WhichOneof("data_oneof") == "data_blob_id":
         data = await blob_download(result.data_blob_id, stub)
     else:
