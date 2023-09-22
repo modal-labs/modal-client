@@ -746,7 +746,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def VolumeGetFile(self, stream):
         req = await stream.recv_message()
-        vol_file = self.volume_files[req.volume_id][req.path]
+        vol_file = self.volume_files[req.volume_id][req.path.decode("utf-8")]
         if vol_file.data_blob_id:
             await stream.send_message(api_pb2.VolumeGetFileResponse(data_blob_id=vol_file.data_blob_id))
         else:

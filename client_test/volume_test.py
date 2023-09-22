@@ -6,6 +6,7 @@ import modal
 from modal.exception import InvalidError
 from modal.runner import deploy_stub
 
+from .conftest import VolumeFile
 from .supports.skip import skip_windows
 
 
@@ -84,7 +85,7 @@ async def test_volume_get(servicer, client):
     with stub.run(client=client):
         object_id = stub.vol.object_id
     # TODO: A PUT implementation for volumes will make this test simpler.
-    servicer.volume_files[object_id][file_path] = file_contents
+    servicer.volume_files[object_id][file_path.decode("utf-8")] = VolumeFile(data=file_contents, data_blob_id="")
 
     vol = await modal.Volume.lookup.aio("my-vol", client=client)  # type: ignore
     data = b""
