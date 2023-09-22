@@ -200,6 +200,16 @@ class _Volume(_Object, type_prefix="vo"):
     async def add_local_file(
         self, local_path: Union[Path, str], remote_path: Optional[Union[str, PurePosixPath, None]] = None
     ):
+        """
+        Upload a local file to the modal.Volume.
+
+        **Example:**
+
+        ```python notest
+        vol = modal.Volume.lookup("my-modal-volume")
+        vol.add_local_file("my-file.txt", "/remote-path/")
+        ```
+        """
         mount_file = await self._upload_file(local_path, remote_path)
         request = api_pb2.VolumePutFilesRequest(volume_id=self.object_id, files=[mount_file])
         await retry_transient_errors(self._client.stub.VolumePutFiles, request, base_delay=1)
@@ -208,6 +218,16 @@ class _Volume(_Object, type_prefix="vo"):
     async def add_local_dir(
         self, local_path: Union[Path, str], remote_path: Optional[Union[str, PurePosixPath, None]] = None
     ):
+        """
+        Upload a local directory to the modal.Volume.
+
+        **Example:**
+
+        ```python notest
+        vol = modal.Volume.lookup("my-modal-volume")
+        vol.add_local_dir("my-local-dir", "/remote-path/")
+        ```
+        """
         _local_path = Path(local_path)
         if remote_path is None:
             remote_path = PurePosixPath("/", _local_path.name).as_posix()
