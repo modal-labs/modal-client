@@ -98,7 +98,12 @@ class FunctionInfo:
             self.function_name = f.__qualname__
 
         self.signature = inspect.signature(f)
-        module = inspect.getmodule(f)
+
+        # If it's a cls, the @method could be defined in a base class in a different file.
+        if cls is not None:
+            module = inspect.getmodule(cls)
+        else:
+            module = inspect.getmodule(f)
 
         if getattr(module, "__package__", None) and not serialized:
             # This is a "real" module, eg. examples.logs.f
@@ -128,7 +133,12 @@ class FunctionInfo:
         elif hasattr(module, "__file__") and not serialized:
             # This generally covers the case where it's invoked with
             # python foo/bar/baz.py
-            self.file = os.path.abspath(inspect.getfile(f))
+
+            # If it's a cls, the @method could be defined in a base class in a different file.
+            if cls is not None:
+                self.file = os.path.abspath(inspect.getfile(cls))
+            else:
+                self.file = os.path.abspath(inspect.getfile(f))
             self.module_name = inspect.getmodulename(self.file)
             self.base_dir = os.path.dirname(self.file)
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
