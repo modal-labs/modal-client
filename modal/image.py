@@ -501,7 +501,7 @@ class _Image(_Object, type_prefix="im"):
             )
 
         dockerfile_commands.extend(["RUN apt-get update && apt-get install -y git"])
-        dockerfile_commands.extend([f"RUN python3 -m pip install {shlex.quote(url)}" for url in install_urls])
+        dockerfile_commands.extend([f'RUN python3 -m pip install "{url}"' for url in install_urls])
 
         gpu_config = parse_gpu_config(gpu)
 
