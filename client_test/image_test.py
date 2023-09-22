@@ -202,11 +202,11 @@ def test_image_pip_install_private_repos(servicer, client):
         layers = get_image_layers(stub["image"].object_id, servicer)
         assert len(layers[0].secret_ids) == 2
         assert any(
-            "pip install git+https://erikbern:$GITHUB_TOKEN@github.com/corp/private-one@1.0.0" in cmd
+            'pip install "git+https://erikbern:$GITHUB_TOKEN@github.com/corp/private-one@1.0.0"' in cmd
             for cmd in layers[0].dockerfile_commands
         )
         assert any(
-            "pip install git+https://erikbern:$GITLAB_TOKEN@gitlab.com/corp2/private-two@0.0.2" in cmd
+            'pip install "git+https://erikbern:$GITLAB_TOKEN@gitlab.com/corp2/private-two@0.0.2"' in cmd
             for cmd in layers[0].dockerfile_commands
         )
 
