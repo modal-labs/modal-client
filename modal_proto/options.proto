@@ -10,3 +10,8 @@ package modal.options;
 extend google.protobuf.FieldOptions {
   optional bool audit_target_attr = 50000;
 }
+
+extend google.protobuf.MethodOptions {
+  optional string audit_event_name = 50000;
+  optional string audit_event_description = 50001;
+}
