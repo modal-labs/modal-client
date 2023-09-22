@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package modal.client;
 
+import "modal_proto/options.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/wrappers.proto";
 
@@ -1357,7 +1358,10 @@ message WebUrlInfo {
 
 service ModalClient {
   // Apps
-  rpc AppCreate(AppCreateRequest) returns (AppCreateResponse);
+  rpc AppCreate(AppCreateRequest) returns (AppCreateResponse) {
+    option (modal.options.audit_event_name) = "Create App";
+    option (modal.options.audit_event_description) = "Creates Modal app";
+  }; 
   rpc AppClientDisconnect(AppClientDisconnectRequest) returns (google.protobuf.Empty);
   rpc AppGetLogs(AppGetLogsRequest) returns (stream TaskLogsBatch);
   rpc AppSetObjects(AppSetObjectsRequest) returns (google.protobuf.Empty);
