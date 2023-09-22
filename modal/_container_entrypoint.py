@@ -161,10 +161,10 @@ class _FunctionIOManager:
     def deserialize(self, data: bytes) -> Any:
         return deserialize(data, self._client)
 
-    def serialize_data_format(self, obj: Any, data_format: api_pb2.DataFormat) -> bytes:
+    def serialize_data_format(self, obj: Any, data_format: int) -> bytes:
         return serialize_data_format(obj, data_format)
 
-    def deserialize_data_format(self, data: bytes, data_format: api_pb2.DataFormat) -> Any:
+    def deserialize_data_format(self, data: bytes, data_format: int) -> Any:
         return deserialize_data_format(data, data_format, self._client)
 
     @wrap()
@@ -395,9 +395,7 @@ class _FunctionIOManager:
         self.calls_completed += 1
         self._semaphore.release()
 
-    async def enqueue_output(
-        self, input_id, started_at: float, output_index: int, data: Any, data_format: api_pb2.DataFormat
-    ) -> None:
+    async def enqueue_output(self, input_id, started_at: float, output_index: int, data: Any, data_format: int) -> None:
         await self._enqueue_output(
             input_id,
             started_at=started_at,
@@ -409,7 +407,7 @@ class _FunctionIOManager:
         await self.complete_call(started_at)
 
     async def enqueue_generator_value(
-        self, input_id, started_at: float, output_index: int, data: Any, data_format: api_pb2.DataFormat
+        self, input_id, started_at: float, output_index: int, data: Any, data_format: int
     ) -> None:
         await self._enqueue_output(
             input_id,

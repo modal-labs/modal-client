@@ -163,7 +163,7 @@ def _deserialize_asgi(asgi: api_pb2.Asgi) -> Any:
         return None
 
 
-def serialize_data_format(obj: Any, data_format: api_pb2.DataFormat) -> bytes:
+def serialize_data_format(obj: Any, data_format: int) -> bytes:
     """Similar to serialize(), but supports other data formats."""
     if data_format == api_pb2.DATA_FORMAT_PICKLE:
         return serialize(obj)
@@ -173,7 +173,7 @@ def serialize_data_format(obj: Any, data_format: api_pb2.DataFormat) -> bytes:
         raise InvalidError(f"Unknown data format {data_format!r}")
 
 
-def deserialize_data_format(s: bytes, data_format: api_pb2.DataFormat, client) -> Any:
+def deserialize_data_format(s: bytes, data_format: int, client) -> Any:
     if data_format == api_pb2.DATA_FORMAT_UNSPECIFIED:
         # TODO: Remove this after Modal client version 0.52, when the data_format field is always set.
         return deserialize(s, client)

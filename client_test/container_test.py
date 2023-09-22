@@ -106,14 +106,14 @@ def _run_container(
         return client, items
 
 
-def _unwrap_asgi_response(item: api_pb2.FunctionGetOutputsItem) -> Any:
+def _unwrap_asgi_response(item: api_pb2.FunctionPutOutputsItem) -> Any:
     assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     assert item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
     assert item.data_format == api_pb2.DATA_FORMAT_ASGI
     return deserialize_data_format(item.result.data, item.data_format, None)
 
 
-def _unwrap_asgi_done(item: api_pb2.FunctionGetOutputsItem) -> None:
+def _unwrap_asgi_done(item: api_pb2.FunctionPutOutputsItem) -> None:
     assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     assert item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE
 
