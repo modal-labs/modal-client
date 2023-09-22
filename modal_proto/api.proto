@@ -90,9 +90,17 @@ enum WebhookAsyncMode {
   WEBHOOK_ASYNC_MODE_AUTO = 4; // redirect to polling endpoint if execution time nears the http timeout
 }
 
-// An opinionated interpretation of a message in the ASGI HTTP specification.
-// Spec: https://asgi.readthedocs.io/en/latest/specs/www.html
-message AsgiProtocol {
+// A web endpoint connection-related message.
+//
+// Modal's internal web endpoint runtime effectively acts as a global web server
+// that schedules requests to tasks that are spawned on-demand, so we need an
+// internal protocol to model HTTP requests. This is that protocol.
+//
+// We base this protocol on Python's ASGI specification, which is a popular
+// interface between applications and web servers.
+//
+// ASGI Spec: https://asgi.readthedocs.io/en/latest/specs/www.html
+message Asgi {
   // Single-request connection scope
   message Scope {
     string http_version = 1;
