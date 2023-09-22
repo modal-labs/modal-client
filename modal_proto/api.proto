@@ -1238,11 +1238,14 @@ message TokenFlowCreateRequest {
 message TokenFlowCreateResponse {
   string token_flow_id = 1;
   string web_url = 2;
+  string code = 3;
+  string wait_secret = 4;
 };
 
 message TokenFlowWaitRequest {
   float timeout = 1;
   string token_flow_id = 2;
+  string wait_secret = 3;
 }
 
 message TokenFlowWaitResponse {

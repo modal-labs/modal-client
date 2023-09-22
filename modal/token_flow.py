@@ -19,10 +19,11 @@ class _TokenFlow:
     @asynccontextmanager
     async def start(
         self, utm_source: Optional[str] = None, next_url: Optional[str] = None
-    ) -> AsyncGenerator[Tuple[str, str], None]:
+    ) -> AsyncGenerator[Tuple[str, str, str], None]:
         """mdmd:hidden"""
         # Run a temporary http server returning the token id on /
         # This helps us add direct validation later
+        # TODO(erikbern): handle failure launching server
 
         async def slash(request):
             headers = {"Access-Control-Allow-Origin": "*"}
@@ -42,14 +43,17 @@ class _TokenFlow:
             )
             resp = await self.stub.TokenFlowCreate(req)
             self.token_flow_id = resp.token_flow_id
-            yield (resp.token_flow_id, resp.web_url)
+            self.wait_secret = resp.wait_secret
+            yield (resp.token_flow_id, resp.web_url, resp.code)
 
     async def finish(
         self, timeout: float = 40.0, grpc_extra_timeout: float = 5.0
     ) -> Optional[api_pb2.TokenFlowWaitResponse]:
         """mdmd:hidden"""
         # Wait for token flow to finish
-        req = api_pb2.TokenFlowWaitRequest(token_flow_id=self.token_flow_id, timeout=timeout)
+        req = api_pb2.TokenFlowWaitRequest(
+            token_flow_id=self.token_flow_id, timeout=timeout, wait_secret=self.wait_secret
+        )
         resp = await self.stub.TokenFlowWait(req, timeout=(timeout + grpc_extra_timeout))
         if not resp.timeout:
             return resp

@@ -56,7 +56,7 @@ def _new_token(
     with Client.unauthenticated_client(server_url) as client:
         token_flow = TokenFlow(client)
 
-        with token_flow.start(source, next_url) as (token_flow_id, web_url):
+        with token_flow.start(source, next_url) as (token_flow_id, web_url, code):
             with console.status("Waiting for authentication in the web browser", spinner="dots"):
                 # Open the web url in the browser
                 if webbrowser.open_new_tab(web_url):
@@ -69,6 +69,8 @@ def _new_token(
                         " - please go to this URL manually and complete the flow:"
                     )
                 console.print(f"\n[link={web_url}]{web_url}[/link]\n")
+                if code:
+                    console.print(f"Enter this code: [yellow]{code}[/yellow]\n")
 
             with console.status("Waiting for token flow to complete...", spinner="dots") as status:
                 for attempt in itertools.count():
