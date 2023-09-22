@@ -99,7 +99,7 @@ class FunctionInfo:
 
         self.signature = inspect.signature(f)
 
-        # If it's a cls, the @method could be defined in a baseclass in a different file.
+        # If it's a cls, the @method could be defined in a base class in a different file.
         if cls is not None:
             module = inspect.getmodule(cls)
         else:
@@ -134,7 +134,7 @@ class FunctionInfo:
             # This generally covers the case where it's invoked with
             # python foo/bar/baz.py
 
-            # If it's a cls, the @method could be defined in a baseclass in a different file.
+            # If it's a cls, the @method could be defined in a base class in a different file.
             if cls is not None:
                 self.file = os.path.abspath(inspect.getfile(cls))
             else:
