@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import os
 import shutil
 import sys
 from contextlib import contextmanager
@@ -10,11 +11,13 @@ from typing import Optional
 from click import UsageError
 from grpclib import GRPCError, Status
 from rich.console import Console
+from rich.live import Live
 from rich.syntax import Syntax
 from rich.table import Table
 from typer import Argument, Typer
 
 import modal
+from modal._output import step_completed, step_progress
 from modal.cli.utils import ENV_OPTION, display_table
 from modal.client import _Client
 from modal.environments import ensure_env
@@ -197,3 +200,42 @@ async def ls(
     else:
         for entry in entries:
             print(entry.path)
+
+
+@volume_cli.command(
+    name="put",
+    help="""Upload a file or directory to a volume.
+
+Remote parent directories will be created as needed.
+
+Ending the REMOTE_PATH with a forward slash (/), it's assumed to be a directory and the file will be uploaded with its current name under that directory.
+""",
+)
+@synchronizer.create_blocking
+async def put(
+    volume_name: str,
+    local_path: str = Argument(),
+    remote_path: str = Argument(default="/"),
+    env: Optional[str] = ENV_OPTION,
+):
+    ensure_env(env)
+    vol = await _Volume.lookup(volume_name, environment_name=env)
+    if not isinstance(vol, _Volume):
+        raise UsageError("The specified app entity is not a modal.Volume")
+    if remote_path.endswith("/"):
+        remote_path = remote_path + os.path.basename(local_path)
+    console = Console()
+
+    if Path(local_path).is_dir():
+        spinner = step_progress(f"Uploading directory '{local_path}' to '{remote_path}'...")
+        with Live(spinner, console=console):
+            await vol.add_local_dir(local_path, remote_path)
+        console.print(step_completed(f"Uploaded directory '{local_path}' to '{remote_path}'"))
+
+    elif "*" in local_path:
+        raise UsageError("Glob uploads are currently not supported")
+    else:
+        spinner = step_progress(f"Uploading file '{local_path}' to '{remote_path}'...")
+        with Live(spinner, console=console):
+            await vol.add_local_file(local_path, remote_path)
+        console.print(step_completed(f"Uploaded file '{local_path}' to '{remote_path}'"))
