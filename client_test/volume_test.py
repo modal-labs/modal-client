@@ -6,7 +6,6 @@ import modal
 from modal.exception import InvalidError
 from modal.runner import deploy_stub
 
-from .conftest import VolumeFile
 from .supports.skip import skip_windows
 
 
@@ -72,22 +71,20 @@ def test_volume_commit(client, servicer):
 
 
 @pytest.mark.asyncio
-async def test_volume_get(servicer, client):
+async def test_volume_get(servicer, client, tmp_path):
     stub = modal.Stub()
     vol = modal.Volume.persisted("my-vol")
     stub.vol = vol
     await vol._deploy.aio("my-vol", client=client)
     assert await modal.Volume._exists.aio("my-vol", client=client)  # type: ignore
-
-    file_path = b"foo.txt"
-    file_contents = b"hello world"
-
-    with stub.run(client=client):
-        object_id = stub.vol.object_id
-    # TODO: A PUT implementation for volumes will make this test simpler.
-    servicer.volume_files[object_id][file_path.decode("utf-8")] = VolumeFile(data=file_contents, data_blob_id="")
-
     vol = await modal.Volume.lookup.aio("my-vol", client=client)  # type: ignore
+
+    file_contents = b"hello world"
+    file_path = b"foo.txt"
+    local_file_path = tmp_path / file_path.decode("utf-8")
+    local_file_path.write_bytes(file_contents)
+    await vol.add_local_file.aio(local_file_path, file_path.decode("utf-8"))
+
     data = b""
     for chunk in vol.read_file(file_path):
         data += chunk
