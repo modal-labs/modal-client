@@ -108,8 +108,8 @@ enum WebhookAsyncMode {
 //
 // ASGI Spec: https://asgi.readthedocs.io/en/latest/specs/www.html
 message Asgi {
-  // Single-request connection scope
-  message Scope {
+  // Message of type "http" (connection scope)
+  message Http {
     string http_version = 1;
     string method = 2;
     string scheme = 3;
@@ -139,16 +139,23 @@ message Asgi {
     bool more_body = 2;
   }
 
+  // Message of type "http.response.trailers"
+  message HttpResponseTrailers {
+    repeated bytes headers = 1; // Flat list of alternating header names and values
+    bool more_trailers = 2;
+  }
+
   // Message of type "http.disconnect"
   message HttpDisconnect {
   }
 
   oneof type {
-    Scope scope = 1;
+    Http http = 1;
     HttpRequest http_request = 2;
     HttpResponseStart http_response_start = 3;
     HttpResponseBody http_response_body = 4;
-    HttpDisconnect http_disconnect = 5;
+    HttpResponseTrailers http_response_trailers = 5;
+    HttpDisconnect http_disconnect = 6;
   }
 }
 
