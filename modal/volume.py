@@ -243,7 +243,7 @@ class _Volume(_Object, type_prefix="vo"):
                 relpath_str = subpath.relative_to(_local_path).as_posix()
                 yield self._upload_file(subpath, PurePosixPath(remote_path, relpath_str))
 
-        files = await ConcurrencyPool(20).run_coros(gen_transfers(), return_exceptions=True)
+        files = await ConcurrencyPool(20).run_coros(gen_transfers(), return_exceptions=False)
         request = api_pb2.VolumePutFilesRequest(volume_id=self.object_id, files=files)
         await retry_transient_errors(self._client.stub.VolumePutFiles, request, base_delay=1)
 
