@@ -337,10 +337,28 @@ class ConcurrencyPool:
 
     async def run_coros(self, coros: typing.Iterable[typing.Coroutine], return_exceptions=False):
         async def blocking_wrapper(coro):
-            async with self.semaphore:
-                return await coro
+            # Not using async with on the semaphore is intentional here - if return_exceptions=False
+            # manual release prevents starting extraneous tasks after exceptions.
+            await self.semaphore.acquire()
+            try:
+                res = await coro
+                self.semaphore.release()
+                return res
+            except Exception as e:
+                if return_exceptions:
+                    self.semaphore.release()
+                raise e
 
-        return await asyncio.gather(*coros, return_exceptions=return_exceptions)
+        # asyncio.gather() is weird - it doesn't cancel outstanding awaitables on exceptions when
+        # return_exceptions=False --> wrap the coros in tasks are cancel them explicitly on exception.
+        tasks = [asyncio.create_task(blocking_wrapper(coro)) for coro in coros]
+        g = asyncio.gather(*tasks, return_exceptions=return_exceptions)
+        try:
+            return await g
+        except Exception as e:
+            for t in tasks:
+                t.cancel()
+            raise e
 
 
 @asynccontextmanager

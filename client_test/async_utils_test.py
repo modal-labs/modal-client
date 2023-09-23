@@ -9,6 +9,7 @@ from synchronicity import Synchronizer
 
 from modal_utils import async_utils
 from modal_utils.async_utils import (
+    ConcurrencyPool,
     TaskContext,
     queue_batch_iterator,
     retry,
@@ -202,3 +203,60 @@ def test_exit_handler():
 
     sync._close_loop()  # this is called on exit by synchronicity, which shuts down the event loop
     assert result == "bye"
+
+
+@pytest.mark.asyncio
+async def test_concurrency_pool():
+    max_running = 0
+    running = 0
+
+    async def f():
+        nonlocal running, max_running
+        running += 1
+        max_running = max(max_running, running)
+        await asyncio.sleep(0.1)
+        running -= 1
+
+    def gen():
+        for i in range(100):
+            yield f()
+
+    await asyncio.wait_for(ConcurrencyPool(50).run_coros(gen()), 0.3)
+    assert max_running == 50
+
+
+@pytest.mark.asyncio
+async def test_concurrency_pool_cancels_non_started():
+    counter = 0
+
+    async def f():
+        nonlocal counter
+        counter += 1
+        raise RuntimeError("some error")
+
+    def gen():
+        for i in range(100):
+            yield f()
+
+    with pytest.raises(RuntimeError):
+        await ConcurrencyPool(2).run_coros(gen(), return_exceptions=False)
+    await asyncio.sleep(0.1)
+    assert counter == 2
+
+
+@pytest.mark.asyncio
+async def test_concurrency_pool_return_exceptions():
+    async def f(x):
+        if x % 2:
+            raise RuntimeError("some error")
+        else:
+            return 42
+
+    def gen():
+        for x in range(4):
+            yield f(x)
+
+    res = await asyncio.wait_for(ConcurrencyPool(2).run_coros(gen(), return_exceptions=True), 0.1)
+    assert res[0] == res[2] == 42
+    assert isinstance(res[1], RuntimeError)
+    assert isinstance(res[3], RuntimeError)
