@@ -39,6 +39,13 @@ enum ClientType {
   CLIENT_TYPE_WEB_SERVER = 5;
 }
 
+// Which data format a binary message is encoded with.
+enum DataFormat {
+  DATA_FORMAT_UNSPECIFIED = 0; // Equivalent to PICKLE in client version 0.52 and earlier.
+  DATA_FORMAT_PICKLE = 1; // Cloudpickle
+  DATA_FORMAT_ASGI = 2; // "Asgi" protobuf message
+}
+
 enum DeploymentNamespace {
   DEPLOYMENT_NAMESPACE_UNSPECIFIED = 0;
   DEPLOYMENT_NAMESPACE_WORKSPACE = 1;
@@ -89,6 +96,68 @@ enum WebhookAsyncMode {
   WEBHOOK_ASYNC_MODE_DISABLED = 2; // no redirect, fail after timeout
   WEBHOOK_ASYNC_MODE_TRIGGER = 3; // return immediately, roughly same as old wait_for_response=False
   WEBHOOK_ASYNC_MODE_AUTO = 4; // redirect to polling endpoint if execution time nears the http timeout
+}
+
+// A web endpoint connection-related message.
+//
+// Modal's internal web endpoint runtime effectively acts as a global web server
+// that schedules requests to tasks that are spawned on-demand, so we need an
+// internal protocol to model HTTP requests. This is that protocol.
+//
+// We base this protocol on Python's ASGI specification, which is a popular
+// interface between applications and web servers.
+//
+// ASGI Spec: https://asgi.readthedocs.io/en/latest/specs/www.html
+message Asgi {
+  // Message of type "http" (connection scope)
+  message Http {
+    string http_version = 1;
+    string method = 2;
+    string scheme = 3;
+    string path = 4;
+    bytes query_string = 5;
+    repeated bytes headers = 6; // Flat list of alternating header names and values
+    optional string client_host = 7;
+    optional uint32 client_port = 8;
+  }
+
+  // Message of type "http.request"
+  message HttpRequest {
+    bytes body = 1;
+    bool more_body = 2;
+  }
+
+  // Message of type "http.response.start"
+  message HttpResponseStart {
+    uint32 status = 1;
+    repeated bytes headers = 2; // Flat list of alternating header names and values
+    bool trailers = 3;
+  }
+
+  // Message of type "http.response.body"
+  message HttpResponseBody {
+    bytes body = 1;
+    bool more_body = 2;
+  }
+
+  // Message of type "http.response.trailers"
+  message HttpResponseTrailers {
+    repeated bytes headers = 1; // Flat list of alternating header names and values
+    bool more_trailers = 2;
+  }
+
+  // Message of type "http.disconnect"
+  message HttpDisconnect {
+  }
+
+  oneof type {
+    Http http = 1;
+    HttpRequest http_request = 2;
+    HttpResponseStart http_response_start = 3;
+    HttpResponseBody http_response_body = 4;
+    HttpResponseTrailers http_response_trailers = 5;
+    HttpDisconnect http_disconnect = 6;
+  }
 }
 
 message AppClientDisconnectRequest {
@@ -616,6 +685,7 @@ message FunctionGetOutputsItem {
   int32 idx = 2;
   string input_id = 3;
   int32 gen_index = 4;
+  DataFormat data_format = 5; // for result.data_oneof
 }
 
 message FunctionGetOutputsRequest {
@@ -648,6 +718,7 @@ message FunctionInput {
     string args_blob_id = 7;
   }
   bool final_input = 9;
+  DataFormat data_format = 10; // For args_oneof.
 }
 
 message FunctionMapRequest {
@@ -687,6 +758,7 @@ message FunctionPutOutputsItem {
   double input_started_at = 3;
   double output_created_at = 4;
   int32 gen_index = 6; // ordering for generator outputs
+  DataFormat data_format = 7; // for result.data_oneof
 }
 
 message FunctionPutOutputsRequest {
