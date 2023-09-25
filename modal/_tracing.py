@@ -2,9 +2,12 @@
 import contextlib
 import logging
 import os
-from typing import Dict
+from typing import Dict, TYPE_CHECKING
 
 from .config import config, logger
+
+if TYPE_CHECKING:
+    from ddtrace import tracer
 
 if config.get("tracing_enabled") or os.environ.get("DD_TRACE_ENABLED") == "true":
     try:
