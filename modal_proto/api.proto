@@ -896,6 +896,7 @@ message Image {
 
   string build_function_def = 14;
   bytes build_function_globals = 18;
+  bool is_auto_snapshot = 19;
 }
 
 message ImageContextFile {
