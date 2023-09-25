@@ -344,7 +344,7 @@ class ConcurrencyPool:
                 res = await coro
                 self.semaphore.release()
                 return res
-            except Exception as e:
+            except BaseException as e:
                 if return_exceptions:
                     self.semaphore.release()
                 raise e
@@ -355,7 +355,7 @@ class ConcurrencyPool:
         g = asyncio.gather(*tasks, return_exceptions=return_exceptions)
         try:
             return await g
-        except Exception as e:
+        except BaseException as e:
             for t in tasks:
                 t.cancel()
             raise e
