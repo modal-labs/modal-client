@@ -1,13 +1,17 @@
 # Copyright Modal Labs 2023
 import asyncio
+import time
+from pathlib import Path, PurePosixPath
 from typing import AsyncIterator, List, Optional, Union
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import asyncnullcontext, synchronize_api
+from modal_utils.async_utils import ConcurrencyPool, asyncnullcontext, synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors, unary_stream
 
-from ._blob_utils import blob_iter
+from ._blob_utils import blob_iter, blob_upload_file, get_file_upload_spec
 from ._resolver import Resolver
+from .config import logger
+from .mount import MOUNT_PUT_FILE_CLIENT_TIMEOUT
 from .object import _Object, live_method, live_method_gen
 
 
@@ -191,6 +195,76 @@ class _Volume(_Object, type_prefix="vo"):
         else:
             async for data in blob_iter(response.data_blob_id, self._client.stub):
                 yield data
+
+    @live_method
+    async def _add_local_file(
+        self, local_path: Union[Path, str], remote_path: Optional[Union[str, PurePosixPath, None]] = None
+    ):
+        mount_file = await self._upload_file(local_path, remote_path)
+        request = api_pb2.VolumePutFilesRequest(volume_id=self.object_id, files=[mount_file])
+        await retry_transient_errors(self._client.stub.VolumePutFiles, request, base_delay=1)
+
+    @live_method
+    async def _add_local_dir(
+        self, local_path: Union[Path, str], remote_path: Optional[Union[str, PurePosixPath, None]] = None
+    ):
+        _local_path = Path(local_path)
+        if remote_path is None:
+            remote_path = PurePosixPath("/", _local_path.name).as_posix()
+        else:
+            remote_path = PurePosixPath(remote_path).as_posix()
+
+        assert _local_path.is_dir()
+
+        def gen_transfers():
+            for subpath in _local_path.rglob("*"):
+                if subpath.is_dir():
+                    continue
+                relpath_str = subpath.relative_to(_local_path).as_posix()
+                yield self._upload_file(subpath, PurePosixPath(remote_path, relpath_str))
+
+        files = await ConcurrencyPool(20).run_coros(gen_transfers(), return_exceptions=False)
+        request = api_pb2.VolumePutFilesRequest(volume_id=self.object_id, files=files)
+        await retry_transient_errors(self._client.stub.VolumePutFiles, request, base_delay=1)
+
+    @live_method
+    async def _upload_file(
+        self, local_path: Union[Path, str], remote_path: Optional[Union[str, PurePosixPath, None]] = None
+    ) -> api_pb2.MountFile:
+        local_path = Path(local_path)
+        if remote_path is None:
+            remote_path = PurePosixPath("/", local_path.name).as_posix()
+        else:
+            remote_path = PurePosixPath(remote_path).as_posix()
+
+        file_spec = get_file_upload_spec(local_path, str(remote_path))
+        remote_filename = file_spec.mount_filename
+
+        request = api_pb2.MountPutFileRequest(sha256_hex=file_spec.sha256_hex)
+        response = await retry_transient_errors(self._client.stub.MountPutFile, request, base_delay=1)
+
+        if not response.exists:
+            if file_spec.use_blob:
+                logger.debug(f"Creating blob file for {file_spec.filename} ({file_spec.size} bytes)")
+                with open(file_spec.filename, "rb") as fp:
+                    blob_id = await blob_upload_file(fp, self._client.stub)
+                logger.debug(f"Uploading blob file {file_spec.filename} as {remote_filename}")
+                request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=file_spec.sha256_hex)
+            else:
+                logger.debug(f"Uploading file {file_spec.filename} to {remote_filename} ({file_spec.size} bytes)")
+                request2 = api_pb2.MountPutFileRequest(data=file_spec.content, sha256_hex=file_spec.sha256_hex)
+
+            start_time = time.monotonic()
+            while time.monotonic() - start_time < MOUNT_PUT_FILE_CLIENT_TIMEOUT:
+                response = await retry_transient_errors(self._client.stub.MountPutFile, request2, base_delay=1)
+                if response.exists:
+                    break
+
+        return api_pb2.MountFile(
+            filename=remote_filename,
+            sha256_hex=file_spec.sha256_hex,
+            mode=file_spec.mode,
+        )
 
 
 Volume = synchronize_api(_Volume)

@@ -403,8 +403,7 @@ def test_volume_get(servicer, set_env_client):
         with open(upload_path, "wb") as f:
             f.write(file_contents)
             f.flush()
-        # TODO: when PUT is implemented, do: _run(["volume", "put", vol_name, upload_path, file_path])
-        servicer.volume_files["vo-1"][file_path] = file_contents
+        _run(["volume", "put", vol_name, upload_path, file_path.decode()])
 
         _run(["volume", "get", vol_name, file_path.decode(), tmpdir])
         with open(os.path.join(tmpdir, file_path.decode()), "r") as f:

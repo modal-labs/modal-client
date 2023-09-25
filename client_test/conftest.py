@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import dataclasses
 import hashlib
 import inspect
 import os
@@ -35,6 +36,12 @@ from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_testing import patch_mock_servicer
 from modal_utils.grpc_utils import find_free_port
 from modal_utils.http_utils import run_temporary_http_server
+
+
+@dataclasses.dataclass
+class VolumeFile:
+    data: bytes
+    data_blob_id: str
 
 
 @patch_mock_servicer
@@ -91,7 +98,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.task_result = None
 
         self.nfs_files: Dict[str, Dict[str, api_pb2.SharedVolumePutFileRequest]] = defaultdict(dict)
-        self.volume_files: Dict[str, Dict[str, bytes]] = defaultdict(dict)
+        self.volume_files: Dict[str, Dict[str, VolumeFile]] = defaultdict(dict)
         self.images = {}
         self.image_build_function_ids = {}
         self.force_built_images = []
@@ -742,8 +749,20 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def VolumeGetFile(self, stream):
         req = await stream.recv_message()
-        data = self.volume_files[req.volume_id][req.path]
-        await stream.send_message(api_pb2.VolumeGetFileResponse(data=data))
+        vol_file = self.volume_files[req.volume_id][req.path.decode("utf-8")]
+        if vol_file.data_blob_id:
+            await stream.send_message(api_pb2.VolumeGetFileResponse(data_blob_id=vol_file.data_blob_id))
+        else:
+            await stream.send_message(api_pb2.VolumeGetFileResponse(data=vol_file.data))
+
+    async def VolumePutFiles(self, stream):
+        req = await stream.recv_message()
+        for file in req.files:
+            blob_data = self.files_sha2data[file.sha256_hex]
+            self.volume_files[req.volume_id][file.filename] = VolumeFile(
+                data=blob_data["data"], data_blob_id=blob_data["data_blob_id"]
+            )
+        await stream.send_message(Empty())
 
 
 @pytest_asyncio.fixture

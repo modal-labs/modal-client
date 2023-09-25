@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package modal.client;
 
+import "modal_proto/options.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/wrappers.proto";
 
@@ -164,7 +165,7 @@ message AppClientDisconnectRequest {
 }
 
 message AppCreateRequest {
-  string client_id = 1;
+  string client_id = 1 [ (modal.options.audit_target_attr) = true ];
   string description = 2;    // Human readable label for the app
   bool detach = 3; // deprecated, but needed until 0.48 is the minimum version
   bool initializing = 4; // deprecated, but needed until 0.48 is the minimum version
@@ -177,11 +178,11 @@ message AppCreateResponse {
 }
 
 message AppStopRequest {
-  string app_id = 1;
+  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
 }
 
 message AppDeployRequest {
-  string app_id = 1;
+  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
   DeploymentNamespace namespace = 2;
   string name = 3;
   string object_entity = 4;
@@ -297,7 +298,7 @@ message ClassMethod {
 }
 
 message ClassCreateRequest {
-  string app_id = 1;
+  string app_id = 1  [ (modal.options.audit_target_attr) = true ];
   string existing_class_id = 2;
   repeated ClassMethod methods = 3;
 }
@@ -381,7 +382,7 @@ message BlobGetResponse {
 }
 
 message ClientCreateRequest {
-  ClientType client_type = 1;
+  ClientType client_type = 1  [ (modal.options.audit_target_attr) = true ];
   string version = 2;
 }
 
@@ -427,7 +428,7 @@ message DictContainsResponse {
 
 message DictCreateRequest {
   repeated DictEntry data = 1;
-  string app_id = 2;
+  string app_id = 2  [ (modal.options.audit_target_attr) = true ];
   string existing_dict_id = 3;
 }
 
@@ -489,7 +490,7 @@ message DNSRecord {
 }
 
 message DomainCreateRequest {
-  string domain_name = 1;
+  string domain_name = 1  [ (modal.options.audit_target_attr) = true ];
 }
 
 message DomainCreateResponse {
@@ -624,14 +625,14 @@ message FunctionHandleMetadata {
 
 message FunctionCreateRequest {
   Function function = 1;
-  string app_id = 2;
+  string app_id = 2  [ (modal.options.audit_target_attr) = true ];
   Schedule schedule = 6;
   string existing_function_id = 7;
 }
 
 message FunctionPrecreateRequest {
   string app_id = 1;
-  string function_name = 2;
+  string function_name = 2  [ (modal.options.audit_target_attr) = true ];
   string existing_function_id = 3;
   Function.FunctionType function_type = 4;
   WebhookConfig webhook_config = 5;
@@ -903,7 +904,7 @@ message Sandbox {
 }
 
 message SandboxCreateRequest {
-  string app_id = 1;
+  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
   Sandbox definition = 2;
 }
 
@@ -967,6 +968,7 @@ message Image {
 
   string build_function_def = 14;
   bytes build_function_globals = 18;
+  bool is_auto_snapshot = 19;
 }
 
 message ImageContextFile {
@@ -1010,7 +1012,7 @@ message ImageJoinStreamingResponse {
 }
 
 message MountBuildRequest {
-  string app_id = 2;
+  string app_id = 2 [ (modal.options.audit_target_attr) = true ];
   string existing_mount_id = 3;
   repeated MountFile files = 4;
 }
@@ -1152,7 +1154,7 @@ message Schedule {
 
 message SecretCreateRequest {
   map<string, string> env_dict = 1;
-  string app_id = 2;
+  string app_id = 2 [ (modal.options.audit_target_attr) = true ];
   string template_type = 3;
   string existing_secret_id = 4;
 }
@@ -1179,7 +1181,7 @@ message SecretListResponse {
 }
 
 message SharedVolumeCreateRequest {
-  string app_id = 1;
+  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
   CloudProvider cloud_provider = 2;
 }
 
@@ -1209,7 +1211,7 @@ message SharedVolumeListFilesRequest {
 }
 
 message SharedVolumePutFileRequest {
-  string shared_volume_id = 1;
+  string shared_volume_id = 1 [ (modal.options.audit_target_attr) = true ];
   string path = 2;
   string sha256_hex = 3;
   oneof data_oneof {
@@ -1236,7 +1238,7 @@ message SharedVolumeGetFileResponse {
 }
 
 message SharedVolumeRemoveFileRequest {
-  string shared_volume_id = 1;
+  string shared_volume_id = 1 [ (modal.options.audit_target_attr) = true ];
   string path = 2;
   bool recursive = 3;
 }
@@ -1300,7 +1302,7 @@ message TaskResultRequest {
 }
 
 message TokenFlowCreateRequest {
-  string node_name = 1;
+  string node_name = 1 [ (modal.options.audit_target_attr) = true ];
   string platform_name = 2;
   string utm_source = 3;
   int32 localhost_port = 4;
@@ -1328,7 +1330,7 @@ message TokenFlowWaitResponse {
 }
 
 message VolumeCreateRequest {
-  string app_id = 1;
+  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
 }
 
 message VolumeCreateResponse {
@@ -1338,7 +1340,7 @@ message VolumeCreateResponse {
 message VolumeCommitRequest {
   // NOTE(staffan): Mounting a volume in multiple locations is not supported, so volume_id alone uniquely identifies
   // a volume mount.
-  string volume_id = 1;
+  string volume_id = 1 [ (modal.options.audit_target_attr) = true ];
 }
 
 message VolumeGetFileRequest {
