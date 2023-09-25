@@ -508,7 +508,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     exception=repr(exc),
                     traceback="".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
                 )
-                output_exc = api_pb2.FunctionGetOutputsItem(input_id=input_id, idx=idx, result=result, gen_index=0)
+                output_exc = api_pb2.FunctionGetOutputsItem(
+                    input_id=input_id, idx=idx, result=result, gen_index=0, data_format=api_pb2.DATA_FORMAT_PICKLE
+                )
 
             outputs = []
             for index, value in enumerate(results):
@@ -526,6 +528,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     idx=idx,
                     result=result,
                     gen_index=index,
+                    data_format=api_pb2.DATA_FORMAT_PICKLE,
                 )
                 outputs.append(item)
 
