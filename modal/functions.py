@@ -12,6 +12,7 @@ from typing import (
     Any,
     AsyncGenerator,
     AsyncIterable,
+    AsyncIterator,
     Awaitable,
     Callable,
     Collection,
@@ -50,7 +51,7 @@ from ._location import parse_cloud_provider
 from ._mount_utils import validate_mount_points
 from ._output import OutputManager
 from ._resolver import Resolver
-from ._serialization import deserialize, serialize
+from ._serialization import deserialize, deserialize_data_format, serialize
 from ._traceback import append_modal_tb
 from .call_graph import InputInfo, _reconstruct_call_graph
 from .client import _Client
@@ -105,7 +106,7 @@ manually, for example:
     return exc
 
 
-async def _process_result(result, stub, client=None):
+async def _process_result(result: api_pb2.GenericResult, data_format: int, stub, client=None):
     if result.WhichOneof("data_oneof") == "data_blob_id":
         data = await blob_download(result.data_blob_id, stub)
     else:
@@ -140,7 +141,7 @@ async def _process_result(result, stub, client=None):
         raise RemoteError(result.exception)
 
     try:
-        return deserialize(data, client)
+        return deserialize_data_format(data, data_format, client)
     except ModuleNotFoundError as deser_exc:
         raise ExecutionError(
             "Could not deserialize result due to error:\n"
@@ -160,12 +161,12 @@ async def _create_input(args, kwargs, client, idx=None) -> api_pb2.FunctionPutIn
         args_blob_id = await blob_upload(args_serialized, client.stub)
 
         return api_pb2.FunctionPutInputsItem(
-            input=api_pb2.FunctionInput(args_blob_id=args_blob_id),
+            input=api_pb2.FunctionInput(args_blob_id=args_blob_id, data_format=api_pb2.DATA_FORMAT_PICKLE),
             idx=idx,
         )
     else:
         return api_pb2.FunctionPutInputsItem(
-            input=api_pb2.FunctionInput(args=args_serialized),
+            input=api_pb2.FunctionInput(args=args_serialized, data_format=api_pb2.DATA_FORMAT_PICKLE),
             idx=idx,
         )
 
@@ -208,7 +209,9 @@ class _Invocation:
             raise Exception("Could not create function call - the input queue seems to be full")
         return _Invocation(client.stub, function_call_id, client)
 
-    async def pop_function_call_outputs(self, timeout: Optional[float], clear_on_success: bool):
+    async def pop_function_call_outputs(
+        self, timeout: Optional[float], clear_on_success: bool
+    ) -> AsyncIterator[api_pb2.FunctionGetOutputsItem]:
         t0 = time.time()
         if timeout is None:
             backend_timeout = config["outputs_timeout"]
@@ -223,14 +226,14 @@ class _Invocation:
                 last_entry_id="0-0",
                 clear_on_success=clear_on_success,
             )
-            response = await retry_transient_errors(
+            response: api_pb2.FunctionGetOutputsResponse = await retry_transient_errors(
                 self.stub.FunctionGetOutputs,
                 request,
                 attempt_timeout=backend_timeout + ATTEMPT_TIMEOUT_GRACE_PERIOD,
             )
             if len(response.outputs) > 0:
                 for item in response.outputs:
-                    yield item.result
+                    yield item
                 return
 
             if timeout is not None:
@@ -241,9 +244,11 @@ class _Invocation:
 
     async def run_function(self):
         # waits indefinitely for a single result for the function, and clear the outputs buffer after
-        result = (await stream.list(self.pop_function_call_outputs(timeout=None, clear_on_success=True)))[0]
-        assert not result.gen_status
-        return await _process_result(result, self.stub, self.client)
+        item: api_pb2.FunctionGetOutputsItem = (
+            await stream.list(self.pop_function_call_outputs(timeout=None, clear_on_success=True))
+        )[0]
+        assert not item.result.gen_status
+        return await _process_result(item.result, item.data_format, self.stub, self.client)
 
     async def poll_function(self, timeout: Optional[float] = None):
         """Waits up to timeout for a result from a function.
@@ -251,12 +256,14 @@ class _Invocation:
         If timeout is `None`, waits indefinitely. This function is not
         cancellation-safe.
         """
-        results = await stream.list(self.pop_function_call_outputs(timeout=timeout, clear_on_success=False))
+        items: List[api_pb2.FunctionGetOutputsItem] = await stream.list(
+            self.pop_function_call_outputs(timeout=timeout, clear_on_success=False)
+        )
 
-        if len(results) == 0:
+        if len(items) == 0:
             raise TimeoutError()
 
-        return await _process_result(results[0], self.stub, self.client)
+        return await _process_result(items[0].result, items[0].data_format, self.stub, self.client)
 
     async def run_generator(self):
         last_entry_id = "0-0"
@@ -269,7 +276,7 @@ class _Invocation:
                     last_entry_id=last_entry_id,
                     clear_on_success=False,  # there could be more results
                 )
-                response = await retry_transient_errors(
+                response: api_pb2.FunctionGetOutputsResponse = await retry_transient_errors(
                     self.stub.FunctionGetOutputs,
                     request,
                     attempt_timeout=config["outputs_timeout"] + ATTEMPT_TIMEOUT_GRACE_PERIOD,
@@ -280,7 +287,7 @@ class _Invocation:
                         if item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
                             completed = True
                             break
-                        yield await _process_result(item.result, self.stub, self.client)
+                        yield await _process_result(item.result, item.data_format, self.stub, self.client)
         finally:
             # "ack" that we have all outputs we are interested in and let backend clear results
             request = api_pb2.FunctionGetOutputsRequest(
@@ -430,9 +437,9 @@ async def _map_invocation(
             )
             await retry_transient_errors(client.stub.FunctionGetOutputs, request)
 
-    async def fetch_output(item):
+    async def fetch_output(item: api_pb2.FunctionGetOutputsItem):
         try:
-            output = await _process_result(item.result, client.stub, client)
+            output = await _process_result(item.result, item.data_format, client.stub, client)
         except Exception as e:
             if return_exceptions:
                 output = e

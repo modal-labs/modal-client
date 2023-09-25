@@ -34,7 +34,7 @@ from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._function_utils import load_function_from_module
 from ._proxy_tunnel import proxy_tunnel
 from ._pty import run_in_pty
-from ._serialization import deserialize, serialize
+from ._serialization import deserialize, deserialize_data_format, serialize, serialize_data_format
 from ._traceback import extract_traceback
 from ._tracing import extract_tracing_context, set_span_tag, trace, wrap
 from .app import _App
@@ -167,6 +167,12 @@ class _FunctionIOManager:
     def deserialize(self, data: bytes) -> Any:
         return deserialize(data, self._client)
 
+    def serialize_data_format(self, obj: Any, data_format: int) -> bytes:
+        return serialize_data_format(obj, data_format)
+
+    def deserialize_data_format(self, data: bytes, data_format: int) -> Any:
+        return deserialize_data_format(data, data_format, self._client)
+
     @wrap()
     async def populate_input_blobs(self, item: api_pb2.FunctionInput):
         args = await blob_download(item.args_blob_id, self.client.stub)
@@ -282,7 +288,14 @@ class _FunctionIOManager:
                 # send the eof to _send_outputs loop
                 await self._output_queue.put(None)
 
-    async def _enqueue_output(self, input_id, started_at: float, gen_index: int, **kwargs):
+    async def _enqueue_output(
+        self,
+        input_id,
+        started_at: float,
+        gen_index: int,
+        data_format=api_pb2.DATA_FORMAT_UNSPECIFIED,
+        **kwargs,
+    ) -> None:
         # upload data to S3 if too big.
         if "data" in kwargs and kwargs["data"] and len(kwargs["data"]) > MAX_OBJECT_SIZE_BYTES:
             data_blob_id = await blob_upload(kwargs["data"], self.client.stub)
@@ -296,6 +309,7 @@ class _FunctionIOManager:
             output_created_at=time.time(),
             gen_index=gen_index,
             result=api_pb2.GenericResult(**kwargs),
+            data_format=data_format,
         )
         await self._output_queue.put(output)
 
@@ -374,6 +388,7 @@ class _FunctionIOManager:
                 input_id,
                 started_at=started_at,
                 gen_index=output_index.value,
+                data_format=api_pb2.DATA_FORMAT_PICKLE,
                 status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
                 data=self.serialize_exception(exc),
                 exception=repr(exc),
@@ -388,27 +403,31 @@ class _FunctionIOManager:
         self.calls_completed += 1
         self._semaphore.release()
 
-    async def enqueue_output(self, input_id, started_at: float, output_index: int, data):
+    async def enqueue_output(self, input_id, started_at: float, output_index: int, data: Any, data_format: int) -> None:
         await self._enqueue_output(
             input_id,
             started_at=started_at,
             gen_index=output_index,
+            data_format=data_format,
             status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
-            data=self.serialize(data),
+            data=self.serialize_data_format(data, data_format),
         )
         await self.complete_call(started_at)
 
-    async def enqueue_generator_value(self, input_id, started_at: float, output_index: int, data):
+    async def enqueue_generator_value(
+        self, input_id, started_at: float, output_index: int, data: Any, data_format: int
+    ) -> None:
         await self._enqueue_output(
             input_id,
             started_at=started_at,
             gen_index=output_index,
+            data_format=data_format,
             status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
-            data=self.serialize(data),
+            data=self.serialize_data_format(data, data_format),
             gen_status=api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE,
         )
 
-    async def enqueue_generator_eof(self, input_id, started_at: float, output_index: int):
+    async def enqueue_generator_eof(self, input_id, started_at: float, output_index: int) -> None:
         await self._enqueue_output(
             input_id,
             started_at=started_at,
@@ -451,7 +470,9 @@ def call_function_sync(
                         raise InvalidError(f"Generator function returned value of type {type(res)}")
 
                     for value in res:
-                        function_io_manager.enqueue_generator_value(input_id, started_at, output_index.value, value)
+                        function_io_manager.enqueue_generator_value(
+                            input_id, started_at, output_index.value, value, imp_fun.data_format
+                        )
                         output_index.increase()
 
                     function_io_manager.enqueue_generator_eof(input_id, started_at, output_index.value)
@@ -461,7 +482,9 @@ def call_function_sync(
                             f"Sync (non-generator) function return value of type {type(res)}."
                             " You might need to use @stub.function(..., is_generator=True)."
                         )
-                    function_io_manager.enqueue_output(input_id, started_at, output_index.value, res)
+                    function_io_manager.enqueue_output(
+                        input_id, started_at, output_index.value, res, imp_fun.data_format
+                    )
 
         if imp_fun.input_concurrency > 1:
             with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -505,7 +528,7 @@ async def call_function_async(
                         raise InvalidError(f"Async generator function returned value of type {type(res)}")
                     async for value in res:
                         await function_io_manager.enqueue_generator_value.aio(
-                            input_id, started_at, output_index.value, value
+                            input_id, started_at, output_index.value, value, imp_fun.data_format
                         )
                         output_index.increase()
                     await function_io_manager.enqueue_generator_eof.aio(input_id, started_at, output_index.value)
@@ -516,7 +539,9 @@ async def call_function_async(
                             " You might need to use @stub.function(..., is_generator=True)."
                         )
                     value = await res
-                    await function_io_manager.enqueue_output.aio(input_id, started_at, output_index.value, value)
+                    await function_io_manager.enqueue_output.aio(
+                        input_id, started_at, output_index.value, value, imp_fun.data_format
+                    )
 
         if imp_fun.input_concurrency > 1:
             async with TaskContext() as execution_context:
@@ -544,6 +569,7 @@ class ImportedFunction:
     stub: Optional[_Stub]
     is_async: bool
     is_generator: bool
+    data_format: int  # api_pb2.DataFormat
     input_concurrency: int
 
 
@@ -584,6 +610,9 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun, ser_params
     # Use the function definition for whether this is a generator (overriden by webhooks)
     is_generator = function_def.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
 
+    # What data format is used for function inputs and outputs
+    data_format = api_pb2.DATA_FORMAT_PICKLE
+
     # Container can fetch multiple inputs simultaneously
     input_concurrency = function_def.allow_concurrent_inputs or 1
 
@@ -607,20 +636,23 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun, ser_params
         fun = asgi_app_wrapper(asgi_app)
         is_async = True
         is_generator = True
+        data_format = api_pb2.DATA_FORMAT_ASGI
     elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_WSGI_APP:
         # function returns an wsgi_app, that we can use as a callable.
         wsgi_app = fun()
         fun = wsgi_app_wrapper(wsgi_app)
         is_async = True
         is_generator = True
+        data_format = api_pb2.DATA_FORMAT_ASGI
     elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
         # function is webhook without an ASGI app. Create one for it.
         asgi_app = webhook_asgi_app(fun, function_def.webhook_config.method)
         fun = asgi_app_wrapper(asgi_app)
         is_async = True
         is_generator = True
+        data_format = api_pb2.DATA_FORMAT_ASGI
 
-    return ImportedFunction(obj, fun, active_stub, is_async, is_generator, input_concurrency)
+    return ImportedFunction(obj, fun, active_stub, is_async, is_generator, data_format, input_concurrency)
 
 
 def main(container_args: api_pb2.ContainerArguments, client: Client):
