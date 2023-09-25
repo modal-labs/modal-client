@@ -410,6 +410,15 @@ class _FunctionIOManager:
         )
         await self.complete_call(started_at)
 
+    
+    async def checkpoint(self) -> None:
+        """Message server indicating that function is ready to be checkpointed.
+        This message is intercepted by Modal runtime, triggering the checkpointing
+        routine."""
+        logger.debug("checkpointing function")
+        request = api_pb2.ContainerCheckpointRequest()
+        await self.client.stub.FunctionGetSerialized(request)
+
 
 # just to mark the class as synchronized, we don't care about the interfaces
 FunctionIOManager = synchronize_api(_FunctionIOManager)
@@ -639,6 +648,10 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Note: detecting the stub causes all objects to be associated with the app and hydrated
         with function_io_manager.handle_user_exception():
             imp_fun = import_function(container_args.function_def, ser_cls, ser_fun, container_args.serialized_params)
+
+        # Checkpoint container after import.
+        if container_args.checkpoint_required:
+            function_io_manager.checkpoint()
 
         pty_info: api_pb2.PTYInfo = container_args.function_def.pty_info
         if pty_info.pty_type or pty_info.enabled:
