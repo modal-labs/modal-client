@@ -153,7 +153,7 @@ def _deserialize_asgi(asgi: api_pb2.Asgi) -> Any:
     elif msg_type == "http_response_trailers":
         return {
             "type": "http.response.trailers",
-            "trailers": unflatten_headers(asgi.http_response_trailers.headers),
+            "headers": unflatten_headers(asgi.http_response_trailers.headers),
             "more_trailers": asgi.http_response_trailers.more_trailers,
         }
     elif msg_type == "http_disconnect":
