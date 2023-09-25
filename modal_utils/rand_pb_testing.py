@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2023
 """Utilities to generate random valid Protobuf messages for testing.
 
 This is based on https://github.com/yupingso/randomproto but customizable for
@@ -75,15 +76,13 @@ def _fill(msg, desc: Descriptor, rand: Random) -> None:
 def rand_pb(proto: Type[T], rand: Optional[Random] = None) -> T:
     """Generate a pseudorandom protobuf message.
 
-    **Example:**
-
     ```python
-    r = random.
-    definition = rand_pb(api_pb2.Function, random)
+    rand = random.Random(42)
+    definition = rand_pb(api_pb2.Function, rand)
     ```
     """
     if rand is None:
         rand = Random(0)  # note: deterministic seed if not specified
     msg = proto()
-    _fill(msg, proto.DESCRIPTOR, rand)
+    _fill(msg, proto.DESCRIPTOR, rand)  # type: ignore
     return msg
