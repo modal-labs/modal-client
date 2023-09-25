@@ -6,7 +6,7 @@ import threading
 from tempfile import NamedTemporaryFile
 from typing import List
 
-from modal import Image, Mount, NetworkFileSystem, Secret, Stub, gpu
+from modal import Image, Mount, NetworkFileSystem, Secret, Stub, gpu, method
 from modal.exception import InvalidError, NotFoundError
 from modal.image import _dockerhub_python_version
 from modal_proto import api_pb2
@@ -85,16 +85,16 @@ def test_image_kwargs_validation(servicer, client):
 
 def test_wrong_type(servicer, client):
     image = Image.debian_slim()
-    for method in [image.pip_install, image.apt_install, image.run_commands]:
-        method(["xyz"])  # type: ignore
-        method("xyz")  # type: ignore
-        method("xyz", ["def", "foo"], "ghi")  # type: ignore
+    for m in [image.pip_install, image.apt_install, image.run_commands]:
+        m(["xyz"])  # type: ignore
+        m("xyz")  # type: ignore
+        m("xyz", ["def", "foo"], "ghi")  # type: ignore
         with pytest.raises(InvalidError):
-            method(3)  # type: ignore
+            m(3)  # type: ignore
         with pytest.raises(InvalidError):
-            method([3])  # type: ignore
+            m([3])  # type: ignore
         with pytest.raises(InvalidError):
-            method([["double-nested-package"]])  # type: ignore
+            m([["double-nested-package"]])  # type: ignore
 
 
 def test_image_requirements_txt(servicer, client):
@@ -464,3 +464,33 @@ def test_workdir(servicer, client):
         layers = get_image_layers(stub["image"].object_id, servicer)
 
         assert any("WORKDIR /foo/bar" in cmd for cmd in layers[0].dockerfile_commands)
+
+
+cls_stub = Stub()
+
+
+@cls_stub.cls(image=Image.debian_slim().pip_install("pandas"), secrets=[Secret.from_dict({"xyz": "123"})])
+class Foo:
+    def __enter__(self):
+        print("foo!")
+
+    @method()
+    def f(self):
+        print("bar!")
+
+
+def test_image_auto_snapshot(client, servicer):
+    with cls_stub.run(client=client):
+        idx = max(*servicer.images.keys())
+        layers = get_image_layers(f"im-{idx}", servicer)
+        print(layers)
+        assert "foo!" in layers[0].build_function_def
+        assert "bar!" not in layers[0].build_function_def
+        assert "Secret.from_dict([xyz])" in layers[0].build_function_def
+    #     # globals is none when no globals are referenced
+    #     assert layers[0].build_function_globals == b""
+
+    # function_id = servicer.image_build_function_ids[2]
+    # assert function_id
+    # assert servicer.app_functions[function_id].function_name == "run_f"
+    # assert len(servicer.app_functions[function_id].secret_ids) == 1
