@@ -83,7 +83,7 @@ async def test_volume_get(servicer, client, tmp_path):
     file_path = b"foo.txt"
     local_file_path = tmp_path / file_path.decode("utf-8")
     local_file_path.write_bytes(file_contents)
-    await vol.add_local_file.aio(local_file_path, file_path.decode("utf-8"))
+    await vol._add_local_file.aio(local_file_path, file_path.decode("utf-8"))
 
     data = b""
     for chunk in vol.read_file(file_path):
@@ -140,8 +140,8 @@ async def test_volume_add_local_file(servicer, client, tmp_path):
     local_file_path.write_text("hello world")
 
     with stub.run(client=client):
-        stub.vol.add_local_file(local_file_path)
-        stub.vol.add_local_file(local_file_path.as_posix(), remote_path="/foo/other_destination")
+        stub.vol._add_local_file(local_file_path)
+        stub.vol._add_local_file(local_file_path.as_posix(), remote_path="/foo/other_destination")
         object_id = stub.vol.object_id
 
     assert servicer.volume_files[object_id].keys() == {
@@ -165,7 +165,7 @@ async def test_volume_add_local_dir(client, tmp_path, servicer):
     (subdir / "other").write_text("####")
 
     with stub.run(client=client):
-        stub.vol.add_local_dir(local_dir)
+        stub.vol._add_local_dir(local_dir)
         object_id = stub.vol.object_id
 
     assert servicer.volume_files[object_id].keys() == {
@@ -185,7 +185,7 @@ async def test_volume_put_large_file(client, tmp_path, servicer, blob_server, *a
         local_file_path.write_text("hello world, this is a lot of text")
 
         async with stub.run(client=client):
-            await stub.vol.add_local_file.aio(local_file_path)
+            await stub.vol._add_local_file.aio(local_file_path)
             object_id = stub.vol.object_id
 
         assert servicer.volume_files[object_id].keys() == {"/bigfile"}

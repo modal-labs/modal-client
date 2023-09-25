@@ -229,7 +229,7 @@ async def put(
     if Path(local_path).is_dir():
         spinner = step_progress(f"Uploading directory '{local_path}' to '{remote_path}'...")
         with Live(spinner, console=console):
-            await vol.add_local_dir(local_path, remote_path)
+            await vol._add_local_dir(local_path, remote_path)
         console.print(step_completed(f"Uploaded directory '{local_path}' to '{remote_path}'"))
 
     elif "*" in local_path:
@@ -237,5 +237,5 @@ async def put(
     else:
         spinner = step_progress(f"Uploading file '{local_path}' to '{remote_path}'...")
         with Live(spinner, console=console):
-            await vol.add_local_file(local_path, remote_path)
+            await vol._add_local_file(local_path, remote_path)
         console.print(step_completed(f"Uploaded file '{local_path}' to '{remote_path}'"))
