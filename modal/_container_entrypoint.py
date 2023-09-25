@@ -455,6 +455,9 @@ def call_function_sync(
         elif hasattr(imp_fun.obj, "__aenter__"):
             logger.warning("Not running asynchronous enter/exit handlers with a sync function")
 
+    if imp_fun.is_auto_snapshot:
+        return
+
     try:
 
         def run_inputs(input_id, args, kwargs):
@@ -514,6 +517,9 @@ async def call_function_async(
             async with function_io_manager.handle_user_exception.aio():
                 imp_fun.obj.__enter__()
 
+    if imp_fun.is_auto_snapshot:
+        return
+
     try:
 
         async def run_input(input_id, args, kwargs):
@@ -571,6 +577,7 @@ class ImportedFunction:
     is_generator: bool
     data_format: int  # api_pb2.DataFormat
     input_concurrency: int
+    is_auto_snapshot: bool
 
 
 @wrap()
@@ -652,7 +659,9 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun, ser_params
         is_generator = True
         data_format = api_pb2.DATA_FORMAT_ASGI
 
-    return ImportedFunction(obj, fun, active_stub, is_async, is_generator, data_format, input_concurrency)
+    return ImportedFunction(
+        obj, fun, active_stub, is_async, is_generator, data_format, input_concurrency, function_def.is_auto_snapshot
+    )
 
 
 def main(container_args: api_pb2.ContainerArguments, client: Client):
