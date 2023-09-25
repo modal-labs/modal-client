@@ -142,6 +142,7 @@ class _Image(_Object, type_prefix="im"):
         force_build: bool = False,
         # For internal use only.
         _namespace: int = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        _is_auto_snapshot: bool = False,
     ):
         if gpu_config is None:
             gpu_config = api_pb2.GPUConfig()
@@ -244,6 +245,7 @@ class _Image(_Object, type_prefix="im"):
                 image_registry_config=await image_registry_config.resolve(
                     resolver
                 ),  # Resolves private registry secret.
+                is_auto_snapshot=_is_auto_snapshot,
             )
 
             req = api_pb2.ImageGetOrCreateRequest(

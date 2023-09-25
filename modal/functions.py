@@ -602,7 +602,9 @@ class _Function(_Object, type_prefix="fu"):
                 is_builder_function=True,
                 is_auto_snapshot=True,
             )
-            image = image.extend(build_function=snapshot_function, force_build=image.force_build)
+            image = image.extend(
+                build_function=snapshot_function, force_build=image.force_build, _is_auto_snapshot=True
+            )
 
         if interactive and concurrency_limit and concurrency_limit > 1:
             warnings.warn(
