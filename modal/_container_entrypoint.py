@@ -447,16 +447,13 @@ def call_function_sync(
     imp_fun: ImportedFunction,
 ):
     # If this function is on a class, instantiate it and enter it
-    if imp_fun.obj is not None:
+    if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
         if hasattr(imp_fun.obj, "__enter__"):
             # Call a user-defined method
             with function_io_manager.handle_user_exception():
                 imp_fun.obj.__enter__()
         elif hasattr(imp_fun.obj, "__aenter__"):
             logger.warning("Not running asynchronous enter/exit handlers with a sync function")
-
-    if imp_fun.is_auto_snapshot:
-        return
 
     try:
 
@@ -508,7 +505,7 @@ async def call_function_async(
     imp_fun: ImportedFunction,
 ):
     # If this function is on a class, instantiate it and enter it
-    if imp_fun.obj is not None:
+    if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
         if hasattr(imp_fun.obj, "__aenter__"):
             # Call a user-defined method
             async with function_io_manager.handle_user_exception.aio():
@@ -516,9 +513,6 @@ async def call_function_async(
         elif hasattr(imp_fun.obj, "__enter__"):
             async with function_io_manager.handle_user_exception.aio():
                 imp_fun.obj.__enter__()
-
-    if imp_fun.is_auto_snapshot:
-        return
 
     try:
 

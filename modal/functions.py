@@ -586,8 +586,13 @@ class _Function(_Object, type_prefix="fu"):
                 image = image.apt_install("autossh")
 
         if not is_auto_snapshot and (hasattr(info.cls, "__enter__") or hasattr(info.cls, "__aenter__")):
+            if hasattr(info.cls, "__enter__"):
+                snapshot_info = FunctionInfo(info.cls.__enter__, cls=info.cls)
+            else:
+                snapshot_info = FunctionInfo(info.cls.__aenter__, cls=info.cls)
+
             snapshot_function = _Function.from_args(
-                info,
+                snapshot_info,
                 stub=None,
                 image=image,
                 secret=secret,
@@ -602,9 +607,7 @@ class _Function(_Object, type_prefix="fu"):
                 is_builder_function=True,
                 is_auto_snapshot=True,
             )
-            image = image.extend(
-                build_function=snapshot_function, force_build=image.force_build, _is_auto_snapshot=True
-            )
+            image = image.extend(build_function=snapshot_function, force_build=image.force_build)
 
         if interactive and concurrency_limit and concurrency_limit > 1:
             warnings.warn(

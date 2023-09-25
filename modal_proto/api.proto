@@ -610,8 +610,8 @@ message Function {
   bool runtime_debug = 37; // For internal debugging use only.
 
   // TODO: combine into enum?
-  bool is_auto_snapshot = 32;
-  bool is_builder_function = 38;
+  bool is_builder_function = 32;
+  bool is_auto_snapshot = 38;
 }
 
 message FunctionHandleMetadata {
@@ -970,7 +970,6 @@ message Image {
 
   string build_function_def = 14;
   bytes build_function_globals = 18;
-  bool is_auto_snapshot = 19;
 }
 
 message ImageContextFile {
