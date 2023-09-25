@@ -14,7 +14,7 @@ import sys
 import time
 import traceback
 from dataclasses import dataclass
-from typing import Any, AsyncGenerator, AsyncIterator, Callable, Optional
+from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, Optional
 
 from grpclib import Status
 from synchronicity.interface import Interface
@@ -43,6 +43,9 @@ from .cls import Cls
 from .config import logger
 from .exception import InvalidError
 from .functions import Function, _set_current_input_id  # type: ignore
+
+if TYPE_CHECKING:
+    from types import ModuleType
 
 MAX_OUTPUT_BATCH_SIZE = 100
 
@@ -104,25 +107,28 @@ class _FunctionIOManager:
     Then we could potentially move a bunch of the global functions onto it.
     """
 
-    def __init__(self, container_args, client):
+    def __init__(self, container_args: api_pb2.ContainerArguments, client: Client):
         self.task_id = container_args.task_id
         self.function_id = container_args.function_id
         self.app_id = container_args.app_id
         self.function_def = container_args.function_def
         self.client = client
         self.calls_completed = 0
-        self.total_user_time: float = 0
+        self.total_user_time: float = 0.0
         self.current_input_id: Optional[str] = None
         self.current_input_started_at: Optional[float] = None
+
+        self._stub_name = self.function_def.stub_name
         self._input_concurrency: Optional[int] = None
         self._semaphore: Optional[asyncio.Semaphore] = None
+        self._output_queue: Optional[asyncio.Queue] = None
+        self._container_app: Optional[_App] = None
+
         self._client = synchronizer._translate_in(self.client)  # make it a _Client object
-        self._stub_name = self.function_def.stub_name
-        self._container_app = None
         assert isinstance(self._client, _Client)
 
     @wrap()
-    async def initialize_app(self):
+    async def initialize_app(self) -> _App:
         self._container_app = await _App.init_container(self._client, self.app_id, self._stub_name)
         return self._container_app
 
@@ -138,7 +144,7 @@ class _FunctionIOManager:
 
     @contextlib.asynccontextmanager
     async def heartbeats(self):
-        async with TaskContext(grace=1) as tc:
+        async with TaskContext(grace=1.0) as tc:
             tc.infinite_loop(self._heartbeat, sleep=HEARTBEAT_INTERVAL)
             yield
 
@@ -162,7 +168,7 @@ class _FunctionIOManager:
         return deserialize(data, self._client)
 
     @wrap()
-    async def populate_input_blobs(self, item):
+    async def populate_input_blobs(self, item: api_pb2.FunctionInput):
         args = await blob_download(item.args_blob_id, self.client.stub)
 
         # Mutating
@@ -198,7 +204,9 @@ class _FunctionIOManager:
                 with trace("get_inputs"):
                     set_span_tag("iteration", str(iteration))  # force this to be a tag string
                     iteration += 1
-                    response = await retry_transient_errors(self.client.stub.FunctionGetInputs, request)
+                    response: api_pb2.FunctionGetInputsResponse = await retry_transient_errors(
+                        self.client.stub.FunctionGetInputs, request
+                    )
 
                 if response.rate_limit_sleep_duration:
                     logger.info(
@@ -234,7 +242,7 @@ class _FunctionIOManager:
         """Background task that tries to drain output queue until it's empty,
         or the output buffer changes, and then sends the entire batch in one request.
         """
-        async for outputs in queue_batch_iterator(self.output_queue, MAX_OUTPUT_BATCH_SIZE, 0):
+        async for outputs in queue_batch_iterator(self._output_queue, MAX_OUTPUT_BATCH_SIZE, 0):
             req = api_pb2.FunctionPutOutputsRequest(outputs=outputs)
             await retry_transient_errors(
                 self.client.stub.FunctionPutOutputs,
@@ -243,12 +251,12 @@ class _FunctionIOManager:
                 total_timeout=20.0,
                 additional_status_codes=[Status.RESOURCE_EXHAUSTED],
             )
-            # TODO(erikbern): we'll get a RESOURCE_EXCHAUSTED if the buffer is full server-side.
+            # TODO(erikbern): we'll get a RESOURCE_EXHAUSTED if the buffer is full server-side.
             # It's possible we want to retry "harder" for this particular error.
 
     async def run_inputs_outputs(self, input_concurrency: int = 1):
         # This also makes sure to terminate the outputs
-        self.output_queue: asyncio.Queue = asyncio.Queue()
+        self._output_queue = asyncio.Queue()
 
         # Ensure we do not fetch new inputs when container is too busy.
         # Before trying to fetch an input, acquire the semaphore:
@@ -272,14 +280,14 @@ class _FunctionIOManager:
                 for _ in range(input_concurrency):
                     await self._semaphore.acquire()
                 # send the eof to _send_outputs loop
-                await self.output_queue.put(None)
+                await self._output_queue.put(None)
 
     async def _enqueue_output(self, input_id, started_at: float, gen_index: int, **kwargs):
         # upload data to S3 if too big.
         if "data" in kwargs and kwargs["data"] and len(kwargs["data"]) > MAX_OBJECT_SIZE_BYTES:
             data_blob_id = await blob_upload(kwargs["data"], self.client.stub)
             # mutating kwargs.
-            kwargs.pop("data")
+            del kwargs["data"]
             kwargs["data_blob_id"] = data_blob_id
 
         output = api_pb2.FunctionPutOutputsItem(
@@ -289,7 +297,7 @@ class _FunctionIOManager:
             gen_index=gen_index,
             result=api_pb2.GenericResult(**kwargs),
         )
-        await self.output_queue.put(output)
+        await self._output_queue.put(output)
 
     def serialize_exception(self, exc: BaseException) -> Optional[bytes]:
         try:
@@ -543,7 +551,7 @@ class ImportedFunction:
 def import_function(function_def: api_pb2.Function, ser_cls, ser_fun, ser_params: Optional[bytes]) -> ImportedFunction:
     # This is not in function_io_manager, so that any global scope code that runs during import
     # runs on the main thread.
-    module = None
+    module: Optional[ModuleType] = None
     if ser_fun is not None:
         # This is a serialized function we already fetched from the server
         cls, fun = ser_cls, ser_fun
@@ -553,7 +561,7 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun, ser_params
         cls, fun = load_function_from_module(module, function_def.function_name)
 
     # The decorator is typically in global scope, but may have been applied independently
-    active_stub = None
+    active_stub: Optional[_Stub] = None
     if isinstance(fun, Function):
         _function_proxy = synchronizer._translate_in(fun)
         fun = _function_proxy.get_raw_f()
@@ -636,7 +644,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             ser_cls, ser_fun = None, None
 
         # Initialize the function
-        # Note: detecting the stub causes all objects to be associated with the app and hydrated
+        # NOTE: detecting the stub causes all objects to be associated with the app and hydrated
         with function_io_manager.handle_user_exception():
             imp_fun = import_function(container_args.function_def, ser_cls, ser_fun, container_args.serialized_params)
 
