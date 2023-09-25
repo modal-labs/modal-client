@@ -7,6 +7,8 @@ from modal._serialization import deserialize, deserialize_data_format, serialize
 from modal_proto import api_pb2
 from modal_utils.rand_pb_testing import rand_pb
 
+from .supports.skip import skip_old_py
+
 stub = Stub()
 
 stub.q = Queue.new()
@@ -31,6 +33,7 @@ async def test_roundtrip(servicer, client):
         assert q.object_id == q_roundtrip.object_id
 
 
+@skip_old_py("random.randbytes() was introduced in python 3.9", (3, 9))
 @pytest.mark.asyncio
 async def test_asgi_roundtrip():
     rand = random.Random(42)
