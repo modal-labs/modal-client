@@ -14,7 +14,7 @@ import sys
 import time
 import traceback
 from dataclasses import dataclass
-from typing import Any, AsyncGenerator, AsyncIterator, Callable, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, Optional
 
 from grpclib import Status
 from synchronicity.interface import Interface
