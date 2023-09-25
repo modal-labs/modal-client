@@ -62,6 +62,9 @@ def _serialize_asgi(obj: Any) -> api_pb2.Asgi:
     def flatten_headers(obj):
         return [s for k, v in obj for s in (k, v)]
 
+    if obj is None:
+        return api_pb2.Asgi()
+
     msg_type = obj.get("type")
     if msg_type == "http":
         return api_pb2.Asgi(
@@ -168,7 +171,7 @@ def serialize_data_format(obj: Any, data_format: int) -> bytes:
     if data_format == api_pb2.DATA_FORMAT_PICKLE:
         return serialize(obj)
     elif data_format == api_pb2.DATA_FORMAT_ASGI:
-        return _serialize_asgi(obj).SerializeToString()
+        return _serialize_asgi(obj).SerializeToString(deterministic=True)
     else:
         raise InvalidError(f"Unknown data format {data_format!r}")
 
