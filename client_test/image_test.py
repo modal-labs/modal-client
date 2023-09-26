@@ -472,7 +472,11 @@ VARIABLE_5 = 1
 VARIABLE_6 = 1
 
 
-@cls_stub.cls(image=Image.debian_slim().pip_install("pandas"), secrets=[Secret.from_dict({"xyz": "123"})])
+@cls_stub.cls(
+    image=Image.debian_slim().pip_install("pandas"),
+    secrets=[Secret.from_dict({"xyz": "123"})],
+    auto_snapshot_enabled=True,
+)
 class Foo:
     def __enter__(self):
         global VARIABLE_5
@@ -486,7 +490,7 @@ class Foo:
         print("bar!", VARIABLE_6)
 
 
-def test_image_auto_snapshot(client, servicer):
+def test_image_auto_snapshot_on(client, servicer):
     with cls_stub.run(client=client):
         idx = max(*servicer.images.keys())
         layers = get_image_layers(f"im-{idx}", servicer)
@@ -506,3 +510,32 @@ def test_image_auto_snapshot(client, servicer):
     assert function_id
     assert servicer.app_functions[function_id].function_name == "Foo.__enter__"
     assert len(servicer.app_functions[function_id].secret_ids) == 1
+
+
+cls_stub_2 = Stub()
+
+
+@cls_stub_2.cls(
+    image=Image.debian_slim().pip_install("pandas"),
+    secrets=[Secret.from_dict({"xyz": "123"})],
+)
+class Foo2:
+    def __enter__(self):
+        global VARIABLE_5
+
+        print("foo!", VARIABLE_5)
+
+    @method()
+    def f(self):
+        global VARIABLE_6
+
+        print("bar!", VARIABLE_6)
+
+
+def test_image_auto_snapshot_off(client, servicer):
+    with cls_stub_2.run(client=client):
+        idx = max(*servicer.images.keys())
+        layers = get_image_layers(f"im-{idx}", servicer)
+
+        assert not layers[0].build_function_def
+        assert any("pip install pandas" in cmd for cmd in layers[0].dockerfile_commands)
