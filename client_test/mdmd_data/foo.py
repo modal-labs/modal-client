@@ -1,7 +1,9 @@
+# Copyright Modal Labs 2023
 """This module does cool stuff"""
 
 
-some_dict = {}  # global untyped objects are currently not documented
+# global untyped objects are currently not documented
+some_dict = {}  # type: ignore
 
 
 class Foo:
