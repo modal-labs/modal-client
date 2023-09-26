@@ -216,9 +216,13 @@ class _App:
             raise AttributeError(f"No such attribute `{tag}`")  # Dumb workaround for doc thing
         deprecation_error(date(2023, 8, 10), "`app.obj` is no longer supported. Use the stub to get objects instead.")
 
-    def _get_object(self, tag: str) -> Optional[_Object]:
-        # TODO(erikbern): remove objects from apps soon
-        return self._tag_to_object.get(tag)
+    def _has_object(self, tag: str) -> bool:
+        return tag in self._tag_to_object_id
+
+    def _hydrate_object(self, obj, tag: str):
+        object_id: str = self._tag_to_object_id[tag]
+        metadata: Message = self._tag_to_handle_metadata[tag]
+        obj._hydrate(object_id, self._client, metadata)
 
     async def _init_container(self, client: _Client, app_id: str, stub_name: str):
         self._client = client
