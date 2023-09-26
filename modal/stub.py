@@ -251,6 +251,11 @@ class _Stub:
         """Used by the container app to initialize objects."""
         return list(self._blueprint.items())
 
+    def _uncreate_all_objects(self):
+        # TODO(erikbern): this doesn't unhydrate objects that aren't tagged
+        for obj in self._blueprint.values():
+            obj._unhydrate()
+
     @typechecked
     def is_inside(self, image: Optional[_Image] = None) -> bool:
         """Returns if the program is currently running inside a container for this app."""

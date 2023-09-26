@@ -180,11 +180,6 @@ class _App:
         await retry_transient_errors(self._client.stub.AppSetObjects, req_set)
         return self._tag_to_object
 
-    def _uncreate_all_objects(self):
-        # TODO(erikbern): this doesn't unhydrate objects that aren't tagged
-        for obj in self._tag_to_object.values():
-            obj._unhydrate()
-
     async def disconnect(self):
         """Tell the server the client has disconnected for this app. Terminates all running tasks
         for ephemeral apps."""
