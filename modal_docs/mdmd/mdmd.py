@@ -115,12 +115,14 @@ def module_str(header, module, title_level="#", filter_items: Callable[[ModuleTy
             funcdoc = function_str(name, item)
             object_docs.append(f"{member_title_level} {qual_name}\n\n")
             object_docs.append(funcdoc)
-        elif item_doc := getattr(module, f"__doc__{name}", None):
-            # variable documentation
-            object_docs.append(f"{member_title_level} {qual_name}\n\n")
-            object_docs.append(item_doc)
         else:
-            warnings.warn(f"Not sure how to document: {name} ({item}")
+            item_doc = getattr(module, f"__doc__{name}", None)
+            if item_doc:
+                # variable documentation
+                object_docs.append(f"{member_title_level} {qual_name}\n\n")
+                object_docs.append(item_doc)
+            else:
+                warnings.warn(f"Not sure how to document: {name} ({item}")
 
     if object_docs:
         return "".join(header + object_docs)
