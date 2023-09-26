@@ -46,6 +46,7 @@ class _App:
     ```
     """
 
+    _tag_to_object: Dict[str, _Object]
     _tag_to_object_id: Dict[str, str]
     _tag_to_handle_metadata: Dict[str, Message]
 
@@ -63,6 +64,7 @@ class _App:
         app_id: str,
         app_page_url: str,
         output_mgr: Optional[OutputManager],
+        tag_to_object: Optional[Dict[str, _Object]] = None,
         tag_to_object_id: Optional[Dict[str, str]] = None,
         stub_name: Optional[str] = None,
         environment_name: Optional[str] = None,
@@ -71,6 +73,7 @@ class _App:
         self._app_id = app_id
         self._app_page_url = app_page_url
         self._client = client
+        self._tag_to_object = tag_to_object or {}
         self._tag_to_object_id = tag_to_object_id or {}
         self._tag_to_handle_metadata = {}
         self._stub_name = stub_name
@@ -112,6 +115,7 @@ class _App:
             else:
                 # Can't find the object, create a new one
                 obj = _Object._new_hydrated(object_id, self._client, handle_metadata)
+            self._tag_to_object[tag] = obj
 
     def _associate_stub_local(self, stub):
         self._associated_stub = stub
@@ -134,6 +138,8 @@ class _App:
 
             # Assign all objects
             for tag, obj in blueprint.items():
+                self._tag_to_object[tag] = obj
+
                 # Reset object_id in case the app runs twice
                 # TODO(erikbern): clean up the interface
                 obj._unhydrate()
@@ -164,7 +170,9 @@ class _App:
         assert indexed_object_ids == self._tag_to_object_id
         all_objects = resolver.objects()
 
-        unindexed_object_ids = list(set(obj.object_id for obj in all_objects) - set(self._tag_to_object_id.values()))
+        unindexed_object_ids = list(
+            set(obj.object_id for obj in all_objects) - set(obj.object_id for obj in self._tag_to_object.values())
+        )
         req_set = api_pb2.AppSetObjectsRequest(
             app_id=self._app_id,
             indexed_object_ids=indexed_object_ids,
@@ -172,6 +180,12 @@ class _App:
             new_app_state=new_app_state,  # type: ignore
         )
         await retry_transient_errors(self._client.stub.AppSetObjects, req_set)
+        return self._tag_to_object
+
+    def _uncreate_all_objects(self):
+        # TODO(erikbern): this doesn't unhydrate objects that aren't tagged
+        for obj in self._tag_to_object.values():
+            obj._unhydrate()
 
     async def disconnect(self):
         """Tell the server the client has disconnected for this app. Terminates all running tasks
@@ -193,27 +207,19 @@ class _App:
 
     def __getitem__(self, tag: str) -> _Object:
         deprecation_warning(date(2023, 8, 10), "`app[...]` is deprecated. Use the stub to get objects instead.")
-        if not self._associated_stub:
-            raise KeyError("no stub")
-        return self._associated_stub[tag]
+        return self._tag_to_object[tag]
 
     def __contains__(self, tag: str) -> bool:
         deprecation_warning(date(2023, 8, 10), "`obj in app` is deprecated. Use the stub to get objects instead.")
-        return self._associated_stub and tag in self._associated_stub
+        return tag in self._tag_to_object
 
     def __getattr__(self, tag: str) -> _Object:
         deprecation_warning(date(2023, 8, 10), "`app.obj` is deprecated. Use the stub to get objects instead.")
-        if not self._associated_stub:
-            raise KeyError("no stub")
-        return self._associated_stub[tag]
+        return self._tag_to_object[tag]
 
-    def _has_object(self, tag: str) -> bool:
-        return tag in self._tag_to_object_id
-
-    def _hydrate_object(self, obj, tag: str):
-        object_id: str = self._tag_to_object_id[tag]
-        metadata: Message = self._tag_to_handle_metadata[tag]
-        obj._hydrate(object_id, self._client, metadata)
+    def _get_object(self, tag: str) -> Optional[_Object]:
+        # TODO(erikbern): remove objects from apps soon
+        return self._tag_to_object.get(tag)
 
     async def _init_container(self, client: _Client, app_id: str, stub_name: str):
         self._client = client
