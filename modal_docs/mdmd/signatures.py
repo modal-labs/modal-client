@@ -3,9 +3,10 @@ import ast
 import inspect
 import textwrap
 import warnings
+from typing import Tuple
 
 
-def _signature_from_ast(func) -> tuple[str, str]:
+def _signature_from_ast(func) -> Tuple[str, str]:
     """Get function signature, including decorators and comments, from source code
 
     Traverses functools.wraps-wrappings to get source of underlying function.
