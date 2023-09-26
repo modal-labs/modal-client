@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2023
 import sys
 from pathlib import Path
 from typing import Optional, cast
