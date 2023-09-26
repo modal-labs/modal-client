@@ -46,7 +46,6 @@ class _App:
     ```
     """
 
-    _tag_to_object: Dict[str, _Object]
     _tag_to_object_id: Dict[str, str]
     _tag_to_handle_metadata: Dict[str, Message]
 
@@ -64,7 +63,6 @@ class _App:
         app_id: str,
         app_page_url: str,
         output_mgr: Optional[OutputManager],
-        tag_to_object: Optional[Dict[str, _Object]] = None,
         tag_to_object_id: Optional[Dict[str, str]] = None,
         stub_name: Optional[str] = None,
         environment_name: Optional[str] = None,
@@ -73,7 +71,6 @@ class _App:
         self._app_id = app_id
         self._app_page_url = app_page_url
         self._client = client
-        self._tag_to_object = tag_to_object or {}
         self._tag_to_object_id = tag_to_object_id or {}
         self._tag_to_handle_metadata = {}
         self._stub_name = stub_name
@@ -115,7 +112,6 @@ class _App:
             else:
                 # Can't find the object, create a new one
                 obj = _Object._new_hydrated(object_id, self._client, handle_metadata)
-            self._tag_to_object[tag] = obj
 
     def _associate_stub_local(self, stub):
         self._associated_stub = stub
@@ -138,8 +134,6 @@ class _App:
 
             # Assign all objects
             for tag, obj in blueprint.items():
-                self._tag_to_object[tag] = obj
-
                 # Reset object_id in case the app runs twice
                 # TODO(erikbern): clean up the interface
                 obj._unhydrate()
@@ -178,7 +172,6 @@ class _App:
             new_app_state=new_app_state,  # type: ignore
         )
         await retry_transient_errors(self._client.stub.AppSetObjects, req_set)
-        return self._tag_to_object
 
     async def disconnect(self):
         """Tell the server the client has disconnected for this app. Terminates all running tasks
