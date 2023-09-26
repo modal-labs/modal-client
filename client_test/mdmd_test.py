@@ -123,6 +123,7 @@ The possible values are:
 * `BAR`
 * `XYZ`
 """
+
     assert mdmd.class_str("bar", Eee) == expected
 
 

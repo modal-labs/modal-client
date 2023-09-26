@@ -46,6 +46,10 @@ class {name}{bases_str}
     parts = [decl]
     docstring = format_docstring(obj.__doc__)
 
+    if isinstance(obj, EnumMeta) and not docstring:
+        # Python 3.11 removed the docstring from enums
+        docstring = "An enumeration.\n"
+
     if docstring:
         parts.append(docstring + "\n")
 
@@ -53,10 +57,11 @@ class {name}{bases_str}
         enum_vals = "\n".join(f"* `{k}`" for k in obj.__members__.keys())
         parts.append(f"The possible values are:\n\n{enum_vals}\n")
 
-    init = inspect.unwrap(obj.__init__)
+    else:
+        init = inspect.unwrap(obj.__init__)
 
-    if (inspect.isfunction(init) or inspect.ismethod(init)) and not object_is_private("constructor", init):
-        parts.append(function_str("__init__", init))
+        if (inspect.isfunction(init) or inspect.ismethod(init)) and not object_is_private("constructor", init):
+            parts.append(function_str("__init__", init))
 
     member_title_level = title_level + "#"
 
