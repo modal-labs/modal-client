@@ -205,8 +205,9 @@ class _Stub:
             # If this is inside a container, and some module is loaded lazily, then a function may be
             # defined later than the container initialization. If this happens then lets hydrate the
             # function at this point
-            if self._app._has_object(tag):
-                self._app._hydrate_object(obj, tag)
+            other_obj = self._app._get_object(tag)
+            if other_obj is not None:
+                obj._hydrate_from_other(other_obj)
 
         self._blueprint[tag] = obj
 
@@ -239,11 +240,6 @@ class _Stub:
     def get_objects(self) -> List[Tuple[str, _Object]]:
         """Used by the container app to initialize objects."""
         return list(self._blueprint.items())
-
-    def _uncreate_all_objects(self):
-        # TODO(erikbern): this doesn't unhydrate objects that aren't tagged
-        for obj in self._blueprint.values():
-            obj._unhydrate()
 
     @typechecked
     def is_inside(self, image: Optional[_Image] = None) -> bool:
