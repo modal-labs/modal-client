@@ -6,7 +6,7 @@ import threading
 from tempfile import NamedTemporaryFile
 from typing import List
 
-from modal import Image, Mount, NetworkFileSystem, Secret, Stub, gpu
+from modal import Image, Mount, NetworkFileSystem, Secret, Stub, gpu, method
 from modal.exception import InvalidError, NotFoundError
 from modal.image import _dockerhub_python_version
 from modal_proto import api_pb2
@@ -85,16 +85,16 @@ def test_image_kwargs_validation(servicer, client):
 
 def test_wrong_type(servicer, client):
     image = Image.debian_slim()
-    for method in [image.pip_install, image.apt_install, image.run_commands]:
-        method(["xyz"])  # type: ignore
-        method("xyz")  # type: ignore
-        method("xyz", ["def", "foo"], "ghi")  # type: ignore
+    for m in [image.pip_install, image.apt_install, image.run_commands]:
+        m(["xyz"])  # type: ignore
+        m("xyz")  # type: ignore
+        m("xyz", ["def", "foo"], "ghi")  # type: ignore
         with pytest.raises(InvalidError):
-            method(3)  # type: ignore
+            m(3)  # type: ignore
         with pytest.raises(InvalidError):
-            method([3])  # type: ignore
+            m([3])  # type: ignore
         with pytest.raises(InvalidError):
-            method([["double-nested-package"]])  # type: ignore
+            m([["double-nested-package"]])  # type: ignore
 
 
 def test_image_requirements_txt(servicer, client):
@@ -464,3 +464,78 @@ def test_workdir(servicer, client):
         layers = get_image_layers(stub["image"].object_id, servicer)
 
         assert any("WORKDIR /foo/bar" in cmd for cmd in layers[0].dockerfile_commands)
+
+
+cls_stub = Stub()
+
+VARIABLE_5 = 1
+VARIABLE_6 = 1
+
+
+@cls_stub.cls(
+    image=Image.debian_slim().pip_install("pandas"),
+    secrets=[Secret.from_dict({"xyz": "123"})],
+    auto_snapshot_enabled=True,
+)
+class Foo:
+    def __enter__(self):
+        global VARIABLE_5
+
+        print("foo!", VARIABLE_5)
+
+    @method()
+    def f(self):
+        global VARIABLE_6
+
+        print("bar!", VARIABLE_6)
+
+
+def test_image_auto_snapshot_on(client, servicer):
+    with cls_stub.run(client=client):
+        idx = max(*servicer.images.keys())
+        layers = get_image_layers(f"im-{idx}", servicer)
+
+        assert "foo!" in layers[0].build_function_def
+        assert "Secret.from_dict([xyz])" in layers[0].build_function_def
+        assert any("pip install pandas" in cmd for cmd in layers[1].dockerfile_commands)
+
+        globals = layers[0].build_function_globals
+        assert b"VARIABLE_5" in globals
+
+        # Globals and def for the main function should not affect __enter__.
+        assert "bar!" not in layers[0].build_function_def
+        assert b"VARIABLE_6" not in globals
+
+    function_id = servicer.image_build_function_ids[idx]
+    assert function_id
+    assert servicer.app_functions[function_id].function_name == "Foo.__enter__"
+    assert len(servicer.app_functions[function_id].secret_ids) == 1
+
+
+cls_stub_2 = Stub()
+
+
+@cls_stub_2.cls(
+    image=Image.debian_slim().pip_install("pandas"),
+    secrets=[Secret.from_dict({"xyz": "123"})],
+)
+class Foo2:
+    def __enter__(self):
+        global VARIABLE_5
+
+        print("foo!", VARIABLE_5)
+
+    @method()
+    def f(self):
+        global VARIABLE_6
+
+        print("bar!", VARIABLE_6)
+
+
+def test_image_auto_snapshot_off(client, servicer):
+    with cls_stub_2.run(client=client):
+        idx = max(*servicer.images.keys())
+        layers = get_image_layers(f"im-{idx}", servicer)
+
+        assert not layers[0].build_function_def
+        assert any("pip install pandas" in cmd for cmd in layers[0].dockerfile_commands)

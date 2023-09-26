@@ -599,8 +599,6 @@ message Function {
 
   string stub_name = 31;
 
-  bool is_builder_function = 32;
-
   repeated VolumeMount volume_mounts = 33;
 
   uint32 allow_concurrent_inputs = 34;
@@ -610,6 +608,10 @@ message Function {
   string worker_id = 36; // For internal debugging use only.
 
   bool runtime_debug = 37; // For internal debugging use only.
+
+  // TODO: combine into enum?
+  bool is_builder_function = 32;
+  bool is_auto_snapshot = 38;
 }
 
 message FunctionHandleMetadata {
@@ -968,7 +970,6 @@ message Image {
 
   string build_function_def = 14;
   bytes build_function_globals = 18;
-  bool is_auto_snapshot = 19;
 }
 
 message ImageContextFile {

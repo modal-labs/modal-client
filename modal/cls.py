@@ -162,7 +162,9 @@ class _Cls(_Object, type_prefix="cs"):
 
     def __getattr__(self, k):
         # Used by CLI and container entrypoint
-        return self._base_functions[k]
+        if k in self._base_functions:
+            return self._base_functions[k]
+        return getattr(self._user_cls, k)
 
 
 Cls = synchronize_api(_Cls)
