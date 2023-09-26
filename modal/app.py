@@ -170,9 +170,7 @@ class _App:
         assert indexed_object_ids == self._tag_to_object_id
         all_objects = resolver.objects()
 
-        unindexed_object_ids = list(
-            set(obj.object_id for obj in all_objects) - set(obj.object_id for obj in self._tag_to_object.values())
-        )
+        unindexed_object_ids = list(set(obj.object_id for obj in all_objects) - set(self._tag_to_object_id.values()))
         req_set = api_pb2.AppSetObjectsRequest(
             app_id=self._app_id,
             indexed_object_ids=indexed_object_ids,
