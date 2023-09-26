@@ -538,6 +538,7 @@ class _Function(_Object, type_prefix="fu"):
         is_builder_function: bool = False,
         cls: Optional[type] = None,
         is_auto_snapshot: bool = False,
+        auto_snapshot_enabled: bool = False,
     ) -> None:
         """mdmd:hidden"""
         tag = info.get_tag()
@@ -585,7 +586,11 @@ class _Function(_Object, type_prefix="fu"):
             if image:
                 image = image.apt_install("autossh")
 
-        if not is_auto_snapshot and (hasattr(info.cls, "__enter__") or hasattr(info.cls, "__aenter__")):
+        if (
+            auto_snapshot_enabled
+            and not is_auto_snapshot  # Don't snapshot the snapshot function
+            and (hasattr(info.cls, "__enter__") or hasattr(info.cls, "__aenter__"))
+        ):
             if hasattr(info.cls, "__enter__"):
                 snapshot_info = FunctionInfo(info.cls.__enter__, cls=info.cls)
             else:
