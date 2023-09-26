@@ -16,6 +16,9 @@ jobs:
 
       - uses: ./.github/actions/setup-cached-python
 
+      - name: Build protobuf
+        run: inv protoc
+
       - name: Generate reference docs
         run: python -m modal_docs.gen_reference_docs reference_docs_output
 
