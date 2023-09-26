@@ -193,14 +193,18 @@ class _App:
 
     def __getitem__(self, tag: str) -> _Object:
         deprecation_warning(date(2023, 8, 10), "`app[...]` is deprecated. Use the stub to get objects instead.")
+        if not self._associated_stub:
+            raise KeyError("no stub")
         return self._associated_stub[tag]
 
     def __contains__(self, tag: str) -> bool:
         deprecation_warning(date(2023, 8, 10), "`obj in app` is deprecated. Use the stub to get objects instead.")
-        return tag in self._associated_stub
+        return self._associated_stub and tag in self._associated_stub
 
     def __getattr__(self, tag: str) -> _Object:
         deprecation_warning(date(2023, 8, 10), "`app.obj` is deprecated. Use the stub to get objects instead.")
+        if not self._associated_stub:
+            raise KeyError("no stub")
         return self._associated_stub[tag]
 
     def _has_object(self, tag: str) -> bool:
