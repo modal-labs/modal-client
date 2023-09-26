@@ -6,6 +6,8 @@ from asgiref.wsgi import WsgiToAsgi
 
 from modal_utils.async_utils import TaskContext
 
+from ._blob_utils import MAX_OBJECT_SIZE_BYTES
+
 
 def asgi_app_wrapper(asgi_app):
     async def fn(scope, body=None):
@@ -15,8 +17,19 @@ def asgi_app_wrapper(asgi_app):
         messages_to_app: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
         await messages_to_app.put({"type": "http.request", "body": body})
 
-        async def send(message):
-            await messages_from_app.put(message)
+        async def send(msg):
+            # Automatically split body chunks that are greater than the output size limit, to
+            # prevent them from being uploaded to S3.
+            if msg["type"] == "http.response.body":
+                body_chunk_size = MAX_OBJECT_SIZE_BYTES - 1024  # reserve 1 KiB for framing
+                size = len(msg.get("body", b""))
+                if size > body_chunk_size:
+                    chunks = [msg["body"][i : i + body_chunk_size] for i in range(0, size, body_chunk_size)]
+                    for chunk in chunks[:-1]:
+                        await messages_from_app.put({"type": "http.response.body", "body": chunk, "more_body": True})
+                    msg["body"] = chunks[-1]
+
+            await messages_from_app.put(msg)
 
         async def receive():
             return await messages_to_app.get()
