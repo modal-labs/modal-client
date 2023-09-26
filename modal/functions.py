@@ -299,7 +299,7 @@ class _Invocation:
             await self.stub.FunctionGetOutputs(request)
 
 
-MAP_INVOCATION_CHUNK_SIZE = 100
+MAP_INVOCATION_CHUNK_SIZE = 49
 
 
 async def _map_invocation(
