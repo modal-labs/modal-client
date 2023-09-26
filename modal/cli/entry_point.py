@@ -52,16 +52,6 @@ entrypoint_cli_typer.add_typer(secret_cli)
 entrypoint_cli_typer.add_typer(token_cli)
 entrypoint_cli_typer.add_typer(volume_cli)
 
-
-# TODO: remove this in a future release
-def _deprecated_vol():
-    raise Exception("Please use `modal volume` instead of `modal vol`.")
-
-
-entrypoint_cli_typer.command("vol", help="Deprecated, use `modal volume` instead.", no_args_is_help=True)(
-    _deprecated_vol
-)
-
 entrypoint_cli_typer.command("deploy", help="Deploy a Modal stub as an application.", no_args_is_help=True)(run.deploy)
 entrypoint_cli_typer.command("serve", no_args_is_help=True)(run.serve)
 entrypoint_cli_typer.command("shell", no_args_is_help=True)(run.shell)
