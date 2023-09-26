@@ -23,7 +23,7 @@ def asgi_app_wrapper(asgi_app):
             if msg["type"] == "http.response.body":
                 body_chunk_size = MAX_OBJECT_SIZE_BYTES - 1024  # reserve 1 KiB for framing
                 size = len(msg.get("body", b""))
-                if size > body_chunk_size:
+                if body_chunk_size < size <= 100 * body_chunk_size:
                     chunks = [msg["body"][i : i + body_chunk_size] for i in range(0, size, body_chunk_size)]
                     for chunk in chunks[:-1]:
                         await messages_from_app.put({"type": "http.response.body", "body": chunk, "more_body": True})
