@@ -767,3 +767,14 @@ def test_call_function_that_calls_function(unix_servicer, event_loop):
         unix_servicer, "modal_test_support.functions", "stub", "cube", inputs=_get_inputs(((42,), {}))
     )
     assert result == 42**3
+
+
+@skip_windows_unix_socket
+def test_call_function_that_calls_method(unix_servicer, event_loop):
+    _run_e2e_function(
+        unix_servicer,
+        "modal_test_support.functions",
+        "stub",
+        "function_calling_method",
+        inputs=_get_inputs(((42, "abc", 123), {})),
+    )
