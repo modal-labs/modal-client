@@ -421,21 +421,17 @@ def test_webhook_streaming_async(unix_servicer, event_loop):
 
 @skip_windows_unix_socket
 def test_cls_function(unix_servicer, event_loop):
-    client, items = _run_container(unix_servicer, "modal_test_support.functions", "Cls.f")
-    assert len(items) == 1
-    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert deserialize(items[0].result.data, client) == 42 * 111
+    result = _run_e2e_function(unix_servicer, "modal_test_support.functions", "stub", "Cls.f")
+    assert result == 42 * 111
 
 
 @skip_windows_unix_socket
 def test_param_cls_function(unix_servicer, event_loop):
     serialized_params = pickle.dumps(([111], {"y": "foo"}))
-    client, items = _run_container(
-        unix_servicer, "modal_test_support.functions", "ParamCls.f", serialized_params=serialized_params
+    result = _run_e2e_function(
+        unix_servicer, "modal_test_support.functions", "stub", "ParamCls.f", serialized_params=serialized_params
     )
-    assert len(items) == 1
-    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert deserialize(items[0].result.data, client) == "111 foo 42"
+    assert result == "111 foo 42"
 
 
 @skip_windows_unix_socket
@@ -545,6 +541,7 @@ def _run_e2e_function(
     function_definition_type=api_pb2.Function.DEFINITION_TYPE_FILE,
     inputs=None,
     is_builder_function: bool = False,
+    serialized_params=None,
 ):
     # TODO(elias): make this a bit more prod-like in how it connects the load and run parts by returning function definitions from _load_stub so we don't have to double specify things like definition type
     _Stub._all_stubs = {}  # reset _Stub tracking state between runs
@@ -557,6 +554,7 @@ def _run_e2e_function(
         definition_type=function_definition_type,
         inputs=inputs,
         is_builder_function=is_builder_function,
+        serialized_params=serialized_params,
     )
     assert items[0].result.status == assert_result
     return deserialize(items[0].result.data, client)
@@ -767,3 +765,14 @@ def test_call_function_that_calls_function(unix_servicer, event_loop):
         unix_servicer, "modal_test_support.functions", "stub", "cube", inputs=_get_inputs(((42,), {}))
     )
     assert result == 42**3
+
+
+@skip_windows_unix_socket
+def test_call_function_that_calls_method(unix_servicer, event_loop):
+    _run_e2e_function(
+        unix_servicer,
+        "modal_test_support.functions",
+        "stub",
+        "function_calling_method",
+        inputs=_get_inputs(((42, "abc", 123), {})),
+    )

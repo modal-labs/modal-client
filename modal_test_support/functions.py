@@ -214,3 +214,9 @@ def cube(x):
     # regardless of the actual funtion.
     assert square.is_hydrated()
     return square.remote(x) * x
+
+
+@stub.function()
+def function_calling_method(x, y, z):
+    obj = ParamCls(x, y)
+    return obj.f.remote(z)
