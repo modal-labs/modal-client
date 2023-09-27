@@ -205,3 +205,12 @@ class BaseCls:
 @stub.cls()
 class DerivedCls(BaseCls):
     pass
+
+
+@stub.function()
+def cube(x):
+    # Note: this ends up calling the servicer fixture,
+    # which always just returns the sum of the squares of the inputs,
+    # regardless of the actual funtion.
+    assert square.is_hydrated()
+    return square.remote(x) * x
