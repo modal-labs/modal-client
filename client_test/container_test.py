@@ -559,6 +559,7 @@ def _run_e2e_function(
         is_builder_function=is_builder_function,
     )
     assert items[0].result.status == assert_result
+    return deserialize(items[0].result.data, client)
 
 
 @skip_windows_unix_socket
@@ -758,3 +759,11 @@ def test_derived_cls(unix_servicer, event_loop):
     assert len(items) == 1
     assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     assert items[0].result.data == serialize(6)
+
+
+@skip_windows_unix_socket
+def test_call_function_that_calls_function(unix_servicer, event_loop):
+    result = _run_e2e_function(
+        unix_servicer, "modal_test_support.functions", "stub", "cube", inputs=_get_inputs(((42,), {}))
+    )
+    assert result == 42**3
