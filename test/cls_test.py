@@ -8,20 +8,21 @@ from typing_extensions import assert_type
 
 from modal import Cls, Function, Stub, method
 from modal._serialization import deserialize
+from modal.app import App
 from modal.cls import ClsMixin
 from modal.exception import DeprecationError, ExecutionError
 from modal.runner import deploy_stub
 from modal_proto import api_pb2
 from modal_test_support.base_class import BaseCls2
 
-stub = Stub()
+stub = Stub("stub")
 
 
 @stub.cls(cpu=42)
 class Foo:
     @method()
     def bar(self, x: int) -> float:
-        return x**3.5
+        return x**3
 
 
 def test_run_class(client, servicer):
@@ -340,3 +341,24 @@ def test_derived_cls_external_file(client, servicer):
     with inheritance_stub_2.run(client=client):
         # default servicer fn just squares the number
         assert DerivedCls2().run.remote(3) == 9
+
+
+def test_rehydrate(client, servicer):
+    # Issue introduced in #922 - brief description in #931
+
+    # Sanity check that local calls work
+    obj = Foo()
+    assert obj.bar.local(7) == 343
+
+    # Deploy stub to get an app id
+    app_id = deploy_stub(stub, "my-cls-app", client=client).app_id
+
+    # Initialize a container
+    app = App.init_container(client, app_id, "stub")
+
+    # Associate app with stub
+    app._associate_stub_container(stub)
+
+    # Hydration shouldn't overwrite local function definition
+    obj = Foo()
+    assert obj.bar.local(7) == 343
