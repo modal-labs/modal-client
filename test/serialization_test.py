@@ -1,8 +1,13 @@
 # Copyright Modal Labs 2022
 import pytest
+import random
 
 from modal import Queue, Stub
-from modal._serialization import deserialize, serialize
+from modal._serialization import deserialize, deserialize_data_format, serialize, serialize_data_format
+from modal_proto import api_pb2
+from modal_utils.rand_pb_testing import rand_pb
+
+from .supports.skip import skip_old_py
 
 stub = Stub()
 
@@ -26,3 +31,17 @@ async def test_roundtrip(servicer, client):
         q_roundtrip = deserialize(data, client)
         assert isinstance(q_roundtrip, Queue)
         assert q.object_id == q_roundtrip.object_id
+
+
+@skip_old_py("random.randbytes() was introduced in python 3.9", (3, 9))
+@pytest.mark.asyncio
+async def test_asgi_roundtrip():
+    rand = random.Random(42)
+    for _ in range(1000):
+        msg = rand_pb(api_pb2.Asgi, rand)
+        buf = msg.SerializeToString()
+        asgi_obj = deserialize_data_format(buf, api_pb2.DATA_FORMAT_ASGI, None)
+        assert asgi_obj is None or (isinstance(asgi_obj, dict) and asgi_obj["type"])
+        buf = serialize_data_format(asgi_obj, api_pb2.DATA_FORMAT_ASGI)
+        asgi_obj_roundtrip = deserialize_data_format(buf, api_pb2.DATA_FORMAT_ASGI, None)
+        assert asgi_obj == asgi_obj_roundtrip

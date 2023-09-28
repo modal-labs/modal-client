@@ -9,15 +9,13 @@ import pytest
 import subprocess
 import sys
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from grpclib.exceptions import GRPCError
 
 from modal import Client
 from modal._container_entrypoint import UserException, main
-
-# from modal_test_support import SLEEP_DELAY
-from modal._serialization import deserialize, serialize
+from modal._serialization import deserialize, deserialize_data_format, serialize
 from modal.exception import InvalidError
 from modal.stub import _Stub
 from modal_proto import api_pb2
@@ -31,7 +29,7 @@ SLEEP_DELAY = 0.1
 
 
 def _get_inputs(args: Tuple[Tuple, Dict] = ((42,), {}), n: int = 1) -> list[api_pb2.FunctionGetInputsResponse]:
-    input_pb = api_pb2.FunctionInput(args=serialize(args))
+    input_pb = api_pb2.FunctionInput(args=serialize(args), data_format=api_pb2.DATA_FORMAT_PICKLE)
 
     return [
         api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(input_id=f"in-xyz{i}", input=input_pb)])
@@ -106,6 +104,18 @@ def _run_container(
             items += list(req.outputs)
 
         return client, items
+
+
+def _unwrap_asgi_response(item: api_pb2.FunctionPutOutputsItem) -> Any:
+    assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
+    assert item.data_format == api_pb2.DATA_FORMAT_ASGI
+    return deserialize_data_format(item.result.data, item.data_format, None)
+
+
+def _unwrap_asgi_done(item: api_pb2.FunctionPutOutputsItem) -> None:
+    assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE
 
 
 @skip_windows_unix_socket
@@ -280,22 +290,17 @@ def test_webhook(unix_servicer, event_loop):
     assert len(items) == 3
 
     # Check the headers
-    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert items[0].result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
-    first_message = deserialize(items[0].result.data, client)
+    first_message = _unwrap_asgi_response(items[0])
     assert first_message["status"] == 200
     headers = dict(first_message["headers"])
     assert headers[b"content-type"] == b"application/json"
 
     # Check body
-    assert items[1].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert items[1].result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
-    second_message = deserialize(items[1].result.data, client)
+    second_message = _unwrap_asgi_response(items[1])
     assert json.loads(second_message["body"]) == {"hello": "space"}
 
     # Check EOF
-    assert items[2].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert items[2].result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE
+    _unwrap_asgi_done(items[2])
 
 
 @skip_windows_unix_socket
@@ -335,9 +340,7 @@ def test_webhook_serialized(unix_servicer, event_loop):
     )
 
     assert len(items) == 3
-    assert items[1].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert items[1].result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
-    second_message = deserialize(items[1].result.data, client)
+    second_message = _unwrap_asgi_response(items[1])
     assert second_message["body"] == b'"Hello, space"'  # Note: JSON-encoded
 
 
@@ -369,22 +372,17 @@ def test_asgi(unix_servicer, event_loop):
     assert len(items) == 3
 
     # Check the headers
-    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert items[0].result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
-    first_message = deserialize(items[0].result.data, client)
+    first_message = _unwrap_asgi_response(items[0])
     assert first_message["status"] == 200
     headers = dict(first_message["headers"])
     assert headers[b"content-type"] == b"application/json"
 
-    # Check body
-    assert items[1].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert items[1].result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
-    second_message = deserialize(items[1].result.data, client)
+    # Check body=
+    second_message = _unwrap_asgi_response(items[1])
     assert json.loads(second_message["body"]) == {"hello": "space"}
 
     # Check EOF
-    assert items[2].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert items[2].result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE
+    _unwrap_asgi_done(items[2])
 
 
 @skip_windows_unix_socket
@@ -399,7 +397,7 @@ def test_webhook_streaming_sync(unix_servicer, event_loop):
         function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
     )
 
-    data = [deserialize(item.result.data, None) for item in items if item.result.data]
+    data = [_unwrap_asgi_response(item) for item in items if item.result.data]
     bodies = [d["body"].decode() for d in data if d.get("body")]
     assert bodies == [f"{i}..." for i in range(10)]
 
@@ -416,28 +414,24 @@ def test_webhook_streaming_async(unix_servicer, event_loop):
         function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
     )
 
-    data = [deserialize(item.result.data, None) for item in items if item.result.data]
+    data = [_unwrap_asgi_response(item) for item in items if item.result.data]
     bodies = [d["body"].decode() for d in data if d.get("body")]
     assert bodies == [f"{i}..." for i in range(10)]
 
 
 @skip_windows_unix_socket
 def test_cls_function(unix_servicer, event_loop):
-    client, items = _run_container(unix_servicer, "modal_test_support.functions", "Cls.f")
-    assert len(items) == 1
-    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert deserialize(items[0].result.data, client) == 42 * 111
+    result = _run_e2e_function(unix_servicer, "modal_test_support.functions", "stub", "Cls.f")
+    assert result == 42 * 111
 
 
 @skip_windows_unix_socket
 def test_param_cls_function(unix_servicer, event_loop):
     serialized_params = pickle.dumps(([111], {"y": "foo"}))
-    client, items = _run_container(
-        unix_servicer, "modal_test_support.functions", "ParamCls.f", serialized_params=serialized_params
+    result = _run_e2e_function(
+        unix_servicer, "modal_test_support.functions", "stub", "ParamCls.f", serialized_params=serialized_params
     )
-    assert len(items) == 1
-    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert deserialize(items[0].result.data, client) == "111 foo 42"
+    assert result == "111 foo 42"
 
 
 @skip_windows_unix_socket
@@ -452,9 +446,7 @@ def test_cls_web_endpoint(unix_servicer, event_loop):
     )
 
     assert len(items) == 3
-    assert items[1].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert items[1].result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
-    second_message = deserialize(items[1].result.data, client)
+    second_message = _unwrap_asgi_response(items[1])
     assert json.loads(second_message["body"]) == {"ret": "space" * 111}
 
 
@@ -549,6 +541,7 @@ def _run_e2e_function(
     function_definition_type=api_pb2.Function.DEFINITION_TYPE_FILE,
     inputs=None,
     is_builder_function: bool = False,
+    serialized_params=None,
 ):
     # TODO(elias): make this a bit more prod-like in how it connects the load and run parts by returning function definitions from _load_stub so we don't have to double specify things like definition type
     _Stub._all_stubs = {}  # reset _Stub tracking state between runs
@@ -561,8 +554,10 @@ def _run_e2e_function(
         definition_type=function_definition_type,
         inputs=inputs,
         is_builder_function=is_builder_function,
+        serialized_params=serialized_params,
     )
     assert items[0].result.status == assert_result
+    return deserialize(items[0].result.data, client)
 
 
 @skip_windows_unix_socket
@@ -762,3 +757,22 @@ def test_derived_cls(unix_servicer, event_loop):
     assert len(items) == 1
     assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     assert items[0].result.data == serialize(6)
+
+
+@skip_windows_unix_socket
+def test_call_function_that_calls_function(unix_servicer, event_loop):
+    result = _run_e2e_function(
+        unix_servicer, "modal_test_support.functions", "stub", "cube", inputs=_get_inputs(((42,), {}))
+    )
+    assert result == 42**3
+
+
+@skip_windows_unix_socket
+def test_call_function_that_calls_method(unix_servicer, event_loop):
+    _run_e2e_function(
+        unix_servicer,
+        "modal_test_support.functions",
+        "stub",
+        "function_calling_method",
+        inputs=_get_inputs(((42, "abc", 123), {})),
+    )
