@@ -39,7 +39,7 @@ line-length = 120
 
 [tool.ruff.per-file-ignores]
 "*_test.py" = ['E712']
-"client_test/supports/notebooks/*.py" = ['E402']
+"test/supports/notebooks/*.py" = ['E402']
 
 [tool.ruff.isort]
 combine-as-imports = true
