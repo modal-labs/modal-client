@@ -83,6 +83,13 @@ enum TaskState {
   TASK_STATE_IDLE = 8;
 }
 
+enum CheckpointingState {
+  CHECKPOINTING_STATE_UNSPECIFIED = 0;
+  CHECKPOINTING_STATE_RUNNING = 1;
+  CHECKPOINTING_STATE_COMPLETED = 2;
+  CHECKPOINTING_STATE_FAILED = 3;
+}
+
 enum WebhookType {
   WEBHOOK_TYPE_UNSPECIFIED = 0;
   WEBHOOK_TYPE_ASGI_APP = 1;
@@ -410,11 +417,17 @@ message ContainerArguments {  // This is used to pass data from the worker to th
   ProxyInfo proxy_info = 8;
   map<string, string> tracing_context = 9;
   bytes serialized_params = 10;
+  string runtime = 11;
+  bool checkpoint = 12;
 }
 
 message ContainerHeartbeatRequest {
   string current_input_id = 1;
   double current_input_started_at = 2;
+}
+
+message ContainerCheckpointRequest {
+  string runtime = 1;
 }
 
 message DictContainsRequest {
@@ -1461,6 +1474,9 @@ service ModalClient {
 
   // Container
   rpc ContainerHeartbeat(ContainerHeartbeatRequest) returns (google.protobuf.Empty);
+
+  // Checkpointing
+  rpc ContainerCheckpoint(ContainerCheckpointRequest) returns (google.protobuf.Empty);
 
   // Dicts
   rpc DictCreate(DictCreateRequest) returns (DictCreateResponse);
