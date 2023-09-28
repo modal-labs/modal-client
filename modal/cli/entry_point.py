@@ -1,5 +1,9 @@
 # Copyright Modal Labs 2022
+import subprocess
+
 import typer
+from rich.console import Console
+from rich.rule import Rule
 
 from . import run
 from .app import app_cli
@@ -9,7 +13,7 @@ from .launch import launch_cli
 from .network_file_system import nfs_cli
 from .profile import profile_cli
 from .secret import secret_cli
-from .token import setup, token_cli
+from .token import _new_token, token_cli
 from .volume import volume_cli
 
 
@@ -40,6 +44,36 @@ def modal(
     version: bool = typer.Option(None, "--version", callback=version_callback),
 ):
     pass
+
+
+def check_path():
+    """Checks whether the `modal` executable is on the path and usable."""
+    url = "https://modal.com/docs/guide/troubleshooting#command-not-found-errors"
+    try:
+        subprocess.run(["modal", "--help"], capture_output=True)
+        # TODO(erikbern): check returncode?
+        return
+    except FileNotFoundError:
+        text = (
+            "[red]The `[white]modal[/white]` command was not found on your path!\n"
+            "You may need to add it to your path or use `[white]python -m modal[/white]` as a workaround.[/red]\n"
+        )
+    except PermissionError:
+        text = (
+            "[red]The `[white]modal[/white]` command is not executable!\n"
+            "You may need to give it permissions or use `[white]python -m modal[/white]` as a workaround.[/red]\n"
+        )
+    text += "See more information here:\n\n" f"[link={url}]{url}[/link]\n"
+    console = Console()
+    console.print(text)
+    console.print(Rule(style="white"))
+
+
+def setup():
+    check_path()
+
+    # Fetch a new token (same as `modal token new` but redirect to /home once finishes)
+    _new_token(next_url="/home")
 
 
 entrypoint_cli_typer.add_typer(app_cli)
