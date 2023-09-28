@@ -61,14 +61,15 @@ def _new_token(
                 # Open the web url in the browser
                 if webbrowser.open_new_tab(web_url):
                     console.print(
-                        "If the web browser didn't open, please copy this URL into your web browser manually:"
+                        "The web browser should have opened for you to authenticate and get an API token.\n"
+                        "If it didn't, please copy this URL into your web browser manually:\n"
                     )
                 else:
                     console.print(
-                        "[red]Was not able to launch web browser[/red]"
-                        " - please go to this URL manually and complete the flow:"
+                        "[red]Was not able to launch web browser[/red]\n"
+                        "Please go to this URL manually and complete the flow:\n"
                     )
-                console.print(f"\n[link={web_url}]{web_url}[/link]\n")
+                console.print(f"[link={web_url}]{web_url}[/link]\n")
                 if code:
                     console.print(f"Enter this code: [yellow]{code}[/yellow]\n")
 
@@ -99,8 +100,3 @@ def _new_token(
 @token_cli.command(help="Creates a new token by using an authenticated web session.")
 def new(profile: Optional[str] = profile_option, no_verify: bool = False, source: Optional[str] = None):
     _new_token(profile, no_verify, source)
-
-
-def setup():
-    """The `modal setup` command is identical to `modal token new` except it redirects to /home when it's done."""
-    _new_token(next_url="/home")
