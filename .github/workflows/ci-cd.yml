@@ -49,7 +49,7 @@ jobs:
         run: pip install -e .
 
       - name: Run client tests
-        run: pytest -v -s client_test
+        run: pytest -v -s
 
       - name: Run docstring tests
         run: pytest -s --markdown-docs -m markdown-docs modal
