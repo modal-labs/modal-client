@@ -1,5 +1,8 @@
 # Copyright Modal Labs 2022
+import subprocess
+
 import typer
+from rich.console import Console
 
 from . import run
 from .app import app_cli
@@ -9,7 +12,7 @@ from .launch import launch_cli
 from .network_file_system import nfs_cli
 from .profile import profile_cli
 from .secret import secret_cli
-from .token import setup, token_cli
+from .token import _new_token, token_cli
 from .volume import volume_cli
 
 
@@ -40,6 +43,25 @@ def modal(
     version: bool = typer.Option(None, "--version", callback=version_callback),
 ):
     pass
+
+
+def setup():
+    # Sanity check the path
+    try:
+        subprocess.run(["modal", "--help"], capture_output=True)
+        # TODO(erikbern): check returncode?
+    except FileNotFoundError:
+        console = Console()
+        url = "https://modal.com/docs/guide/troubleshooting#command-not-found-errors"
+        console.print(
+            "[red]The `[white]modal[/white]` command was not found on your path!\n"
+            "You may need to add it to your path or use `[white]python -m modal[/white]` as a workaround.\n"
+            "See more information here:[/red]\n\n"
+            f"[link={url}]{url}[/link]\n"
+        )
+
+    # Fetch a new token (same as `modal token new` but redirect to /home once finishes)
+    _new_token(next_url="/home")
 
 
 entrypoint_cli_typer.add_typer(app_cli)

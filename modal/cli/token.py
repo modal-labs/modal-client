@@ -99,8 +99,3 @@ def _new_token(
 @token_cli.command(help="Creates a new token by using an authenticated web session.")
 def new(profile: Optional[str] = profile_option, no_verify: bool = False, source: Optional[str] = None):
     _new_token(profile, no_verify, source)
-
-
-def setup():
-    """The `modal setup` command is identical to `modal token new` except it redirects to /home when it's done."""
-    _new_token(next_url="/home")
