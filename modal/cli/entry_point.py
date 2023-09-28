@@ -3,6 +3,7 @@ import subprocess
 
 import typer
 from rich.console import Console
+from rich.rule import Rule
 
 from . import run
 from .app import app_cli
@@ -47,26 +48,25 @@ def modal(
 
 def check_path():
     """Checks whether the `modal` executable is on the path and usable."""
-    console = Console()
     url = "https://modal.com/docs/guide/troubleshooting#command-not-found-errors"
     try:
         subprocess.run(["modal", "--help"], capture_output=True)
         # TODO(erikbern): check returncode?
         return
     except FileNotFoundError:
-        console.print(
+        text = (
             "[red]The `[white]modal[/white]` command was not found on your path!\n"
             "You may need to add it to your path or use `[white]python -m modal[/white]` as a workaround.[/red]\n"
         )
     except PermissionError:
-        console.print(
+        text = (
             "[red]The `[white]modal[/white]` command is not executable!\n"
             "You may need to give it permissions or use `[white]python -m modal[/white]` as a workaround.[/red]\n"
         )
-    console.print(
-        "See more information here:\n\n"
-        f"[link={url}]{url}[/link]\n"
-    )
+    text += "See more information here:\n\n" f"[link={url}]{url}[/link]\n"
+    console = Console()
+    console.print(text)
+    console.print(Rule(style="white"))
 
 
 def setup():
