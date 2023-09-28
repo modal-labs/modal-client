@@ -18,6 +18,7 @@ from typer import Argument, Typer
 
 import modal
 from modal._output import step_completed, step_progress
+from modal.cli._download import _glob_download
 from modal.cli.utils import ENV_OPTION, display_table
 from modal.client import _Client
 from modal.environments import ensure_env
@@ -101,6 +102,13 @@ async def get(
     ensure_env(env)
     destination = Path(local_destination)
     volume = await _Volume.lookup(volume_name, environment_name=env)
+
+    def is_file_fn(entry):
+        return entry.type == FileType.FILE
+
+    if "*" in remote_path:
+        await _glob_download(volume, is_file_fn, remote_path, destination, force)
+        return
 
     if destination != PIPE_PATH:
         if destination.is_dir():
