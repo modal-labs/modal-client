@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 from __future__ import annotations
 
+import os
 import asyncio
 import base64
 import concurrent.futures
@@ -112,6 +113,7 @@ class _FunctionIOManager:
         self.function_id = container_args.function_id
         self.app_id = container_args.app_id
         self.function_def = container_args.function_def
+        # self.runtime = container_args.runtime  # TODO: enable after proto update
         self.client = client
         self.calls_completed = 0
         self.total_user_time: float = 0.0
@@ -424,8 +426,14 @@ class _FunctionIOManager:
         This message is intercepted by Modal runtime, triggering the checkpointing
         routine."""
         logger.debug("checkpointing function")
-        request = api_pb2.ContainerCheckpointRequest()
+        request = api_pb2.ContainerCheckpointRequest(runtime="gvisor")
         await self.client.stub.FunctionGetSerialized(request)
+
+        # Busy-wait for the an eventual restore. `MODAL_CONTAINER_RESTORED` is
+        # only populated when a container is restored. A checkpointed container
+        # can only be restored with this variable populated.
+        while not os.getenv("MODAL_CONTAINER_RESTORED"):
+            continue
 
 
 # just to mark the class as synchronized, we don't care about the interfaces
@@ -657,8 +665,10 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         with function_io_manager.handle_user_exception():
             imp_fun = import_function(container_args.function_def, ser_cls, ser_fun, container_args.serialized_params)
 
-        # Checkpoint container after import.
-        if container_args.checkpoint_required:
+        # Checkpoint container after import. Checkpointed containers start from this point
+        # onwards. This assumes that everything up to this point has run successfully,
+        # including global imports.
+        if container_args.checkpoint:
             function_io_manager.checkpoint()
 
         pty_info: api_pb2.PTYInfo = container_args.function_def.pty_info
