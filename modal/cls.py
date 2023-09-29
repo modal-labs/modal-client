@@ -137,7 +137,7 @@ class _Cls(_Object, type_prefix="cs"):
             for f_name, f in base_functions.items():
                 req.methods.append(api_pb2.ClassMethod(function_name=f_name, function_id=f.object_id))
             resp = await resolver.client.stub.ClassCreate(req)
-            provider._hydrate(resp.class_id, resolver.client, None)
+            provider._hydrate(resp.class_id, resolver.client, resp.handle_metadata)
 
         rep = f"Cls({user_cls.__name__})"
         cls = _Cls._from_loader(_load, rep)
