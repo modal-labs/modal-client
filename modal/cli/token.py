@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import getpass
 import itertools
+import os
 import webbrowser
 from typing import Optional
 
@@ -47,11 +48,16 @@ def set(
 
 def _open_url(url: str) -> bool:
     # Make sure we open the URL in some sane web browser (i.e. not Lynx)
-    browser = webbrowser.get()
-    if isinstance(browser, webbrowser.GenericBrowser):
+    if "PYTEST_CURRENT_TEST" in os.environ:
         return False
-    else:
-        return browser.open_new_tab(url)
+    try:
+        browser = webbrowser.get()
+        if isinstance(browser, webbrowser.GenericBrowser):
+            return False
+        else:
+            return browser.open_new_tab(url)
+    except webbrowser.Error:
+        return False
 
 
 def _new_token(
