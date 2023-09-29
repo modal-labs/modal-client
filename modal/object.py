@@ -78,11 +78,10 @@ class _Object:
     def _hydrate(self, object_id: str, client: _Client, metadata: Optional[Message]):
         self._object_id = object_id
         self._client = client
-        if metadata:
-            self._hydrate_metadata(metadata)
+        self._hydrate_metadata(metadata)
         self._is_hydrated = True
 
-    def _hydrate_metadata(self, metadata: Message):
+    def _hydrate_metadata(self, metadata: Optional[Message]):
         # override this is subclasses that need additional data (other than an object_id) for a functioning Handle
         pass
 
