@@ -156,12 +156,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         )
 
     def get_object_metadata(self, object_id) -> api_pb2.Object:
-        # TODO(erikbern): support mount metadata
-        function_handle_metadata: api_pb2.FunctionHandleMetadata = None
-        class_handle_metadata: api_pb2.ClassHandleMetadata = None
-
         if object_id.startswith("fu-"):
-            function_handle_metadata = self.get_function_metadata(object_id)
+            res = api_pb2.Object(function_handle_metadata=self.get_function_metadata(object_id))
 
         elif object_id.startswith("cs-"):
             class_handle_metadata = api_pb2.ClassHandleMetadata()
@@ -172,12 +168,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
                         function_name=f_name, function_id=f_id, function_handle_metadata=function_handle_metadata
                     )
                 )
+            res = api_pb2.Object(class_handle_metadata=class_handle_metadata)
 
-        return api_pb2.Object(
-            object_id=object_id,
-            function_handle_metadata=function_handle_metadata,
-            class_handle_metadata=class_handle_metadata,
-        )
+        else:
+            res = api_pb2.Object()
+
+        res.object_id = object_id
+        return res
 
     ### App
 
