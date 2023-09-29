@@ -305,6 +305,7 @@ message ClassCreateRequest {
 
 message ClassCreateResponse {
   string class_id = 1;
+  ClassHandleMetadata handle_metadata = 2;
 }
 
 message ClassHandleMetadata {
