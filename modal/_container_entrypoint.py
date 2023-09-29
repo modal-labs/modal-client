@@ -444,7 +444,7 @@ class _FunctionIOManager:
         """Message server indicating that function is ready to be checkpointed.
         This message is intercepted by Modal runtime, triggering the checkpointing
         routine."""
-        logger.debug("checkpointing function")
+        logger.debug("initialization complete; sending checkpointing signal ...")
         request = api_pb2.ContainerCheckpointRequest(runtime="gvisor")
         await self.client.stub.FunctionGetSerialized(request)
 
