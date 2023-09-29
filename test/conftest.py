@@ -755,6 +755,18 @@ class MockClientServicer(api_grpc.ModalClientBase):
         else:
             await stream.send_message(api_pb2.VolumeGetFileResponse(data=vol_file.data))
 
+    async def VolumeListFiles(self, stream):
+        req = await stream.recv_message()
+        if req.path != "**":
+            raise NotImplementedError("Only '**' listing is supported.")
+        for k, vol_file in self.volume_files[req.volume_id].items():
+            entries = [
+                api_pb2.VolumeListFilesEntry(
+                    path=k, type=api_pb2.VolumeListFilesEntry.FileType.FILE, size=len(vol_file.data)
+                )
+            ]
+            await stream.send_message(api_pb2.VolumeListFilesResponse(entries=entries))
+
     async def VolumePutFiles(self, stream):
         req = await stream.recv_message()
         for file in req.files:
