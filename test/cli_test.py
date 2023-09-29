@@ -406,8 +406,13 @@ def test_volume_get(servicer, set_env_client):
         _run(["volume", "put", vol_name, upload_path, file_path.decode()])
 
         _run(["volume", "get", vol_name, file_path.decode(), tmpdir])
-        with open(os.path.join(tmpdir, file_path.decode()), "r") as f:
-            assert f.read() == "foo bar baz"
+        with open(os.path.join(tmpdir, file_path.decode()), "rb") as f:
+            assert f.read() == file_contents
+
+    with tempfile.TemporaryDirectory() as tmpdir2:
+        _run(["volume", "get", vol_name, "**", tmpdir2])
+        with open(os.path.join(tmpdir2, file_path.decode()), "rb") as f:
+            assert f.read() == file_contents
 
 
 @pytest.mark.parametrize("command", [["run"], ["deploy"], ["serve", "--timeout=1"], ["shell"]])
