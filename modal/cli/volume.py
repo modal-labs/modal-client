@@ -89,12 +89,16 @@ async def get(
     force: bool = False,
     env: Optional[str] = ENV_OPTION,
 ):
-    """Download a file from a modal.Volume.
+    """Download files from a modal.Volume.
+
+    Specifying a glob pattern (using any `*` or `**` patterns) as the `remote_path` will download all matching *files*, preserving
+    the source directory structure for the matched files.
 
     **Example**
 
     ```bash
     modal volume get <volume-name> logs/april-12-1.txt .
+    modal volume get <volume-name> "**" dump_volume
     ```
 
     Use "-" (a hyphen) as LOCAL_DESTINATION to write contents of file to stdout (only for non-glob paths).
