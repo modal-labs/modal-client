@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2023
 import asyncio
 import os
 import shutil
@@ -27,7 +28,7 @@ def _glob_download(
 
 @overload
 def _glob_download(
-    svolume: _NetworkFileSystem,
+    volume: _NetworkFileSystem,
     is_file_fn: Callable[[api_pb2.SharedVolumeListFilesEntry], bool],
     remote_glob_path: str,
     local_destination: Path,
@@ -37,8 +38,8 @@ def _glob_download(
 
 
 async def _glob_download(
-    volume: Union[_NetworkFileSystem, _Volume],
-    is_file_fn: Callable[[_Entry], bool],
+    volume,
+    is_file_fn,
     remote_glob_path: str,
     local_destination: Path,
     overwrite: bool,
