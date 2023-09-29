@@ -116,12 +116,15 @@ class _Cls(_Object, type_prefix="cs"):
         self._output_mgr = output_mgr
 
     def _hydrate_metadata(self, metadata: Message):
-        self._base_functions = {}
         for method in metadata.methods:
-            function: _Function = _Function._new_hydrated(
-                method.function_id, self._client, method.function_handle_metadata
-            )
-            self._base_functions[method.function_name] = function
+            if method.function_name in self._base_functions:
+                self._base_functions[method.function_name]._hydrate(
+                    method.function_id, self._client, method.function_handle_metadata
+                )
+            else:
+                self._base_functions[method.function_name] = _Function._new_hydrated(
+                    method.function_id, self._client, method.function_handle_metadata
+                )
 
     @staticmethod
     def from_local(user_cls, base_functions: Dict[str, _Function]) -> "_Cls":
