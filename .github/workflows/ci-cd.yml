@@ -5,9 +5,6 @@ on: push
 env:
   TERM: linux
   TERMINFO: /etc/terminfo
-  # Can't be set in `pytest-env` because pytest imports the client for filterwarnings
-  # before it applies the env vars for the plugin.
-  MODAL_SENTRY_DSN: ""
   PYTHONIOENCODING: utf-8
 
 jobs:
