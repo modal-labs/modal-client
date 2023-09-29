@@ -175,7 +175,7 @@ class _Mount(_Object, type_prefix="mo"):
         """mdmd:hidden"""
         return self._entries
 
-    def _hydrate_metadata(self, handle_metadata: Message):
+    def _hydrate_metadata(self, handle_metadata: Optional[Message]):
         assert isinstance(handle_metadata, api_pb2.MountHandleMetadata)
         self._content_checksum_sha256_hex = handle_metadata.content_checksum_sha256_hex
 

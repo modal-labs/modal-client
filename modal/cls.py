@@ -126,6 +126,16 @@ class _Cls(_Object, type_prefix="cs"):
                     method.function_id, self._client, method.function_handle_metadata
                 )
 
+    def _get_metadata(self) -> api_pb2.ClassHandleMetadata:
+        class_handle_metadata = api_pb2.ClassHandleMetadata()
+        for f_name, f in self._base_functions.items():
+            class_handle_metadata.methods.append(
+                api_pb2.ClassMethod(
+                    function_name=f_name, function_id=f.object_id, function_handle_metadata=f._get_metadata()
+                )
+            )
+        return class_handle_metadata
+
     @staticmethod
     def from_local(user_cls, base_functions: Dict[str, _Function]) -> "_Cls":
         async def _load(provider: _Object, resolver: Resolver, existing_object_id: Optional[str]):
