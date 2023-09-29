@@ -20,7 +20,6 @@ follow_imports = "skip"
 
 [tool.pytest.ini_options]
 timeout = 300
-env = ["MODAL_SENTRY_DSN="]
 addopts = "--ignore=modal/cli/programs"
 filterwarnings = [
     "error::DeprecationWarning",
