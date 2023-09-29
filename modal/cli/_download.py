@@ -45,6 +45,7 @@ async def _glob_download(
     overwrite: bool,
 ):
     q: asyncio.Queue[Tuple[Optional[Path], Optional[_Entry]]] = asyncio.Queue()
+    num_consumers = 10  # concurrency limit
 
     async def producer():
         async for entry in volume.iterdir(remote_glob_path):
@@ -60,11 +61,12 @@ async def _glob_download(
                         f"Output path '{output_path}' already exists. Use --force to overwrite the output directory"
                     )
             await q.put((output_path, entry))
-        for _ in range(10):
+        # No more entries to process; issue one shutdown message for each consumer.
+        for _ in range(num_consumers):
             await q.put((None, None))
 
     async def consumer():
-        while 1:
+        while True:
             output_path, entry = await q.get()
             if output_path is None:
                 return
@@ -80,9 +82,5 @@ async def _glob_download(
             finally:
                 q.task_done()
 
-    tasks = []
-    tasks.append(asyncio.create_task(producer()))
-    for _ in range(10):
-        tasks.append(asyncio.create_task(consumer()))
-
-    await asyncio.gather(*tasks)
+    consumers = [consumer() for _ in range(num_consumers)]
+    await asyncio.gather(producer(), *consumers)
