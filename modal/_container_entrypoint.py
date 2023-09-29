@@ -15,7 +15,7 @@ import sys
 import time
 import traceback
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, Optional
+from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, Optional, Type
 
 from grpclib import Status
 from synchronicity.interface import Interface
@@ -32,7 +32,7 @@ from modal_utils.grpc_utils import retry_transient_errors
 
 from ._asgi import asgi_app_wrapper, webhook_asgi_app, wsgi_app_wrapper
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
-from ._function_utils import load_function_from_module
+from ._function_utils import LocalFunctionError, is_global_function
 from ._proxy_tunnel import proxy_tunnel
 from ._pty import run_in_pty
 from ._serialization import deserialize, deserialize_data_format, serialize, serialize_data_format
@@ -596,13 +596,29 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun, ser_params
     # This is not in function_io_manager, so that any global scope code that runs during import
     # runs on the main thread.
     module: Optional[ModuleType] = None
+    cls: Optional[Type] = None
+    fun: Callable
     if ser_fun is not None:
         # This is a serialized function we already fetched from the server
         cls, fun = ser_cls, ser_fun
     else:
         # Load the module dynamically
         module = importlib.import_module(function_def.module_name)
-        cls, fun = load_function_from_module(module, function_def.function_name)
+        qual_name: str = function_def.function_name
+
+        if not is_global_function(qual_name):
+            raise LocalFunctionError("Attempted to load a function defined in a function scope")
+
+        parts = qual_name.split(".")
+        if len(parts) == 1:
+            cls = None
+            fun = getattr(module, qual_name)
+        elif len(parts) == 2:
+            cls_name, fun_name = parts
+            cls = getattr(module, cls_name)
+            fun = getattr(cls, fun_name)
+        else:
+            raise InvalidError(f"Invalid function qualname {qual_name}")
 
     # The decorator is typically in global scope, but may have been applied independently
     active_stub: Optional[_Stub] = None
