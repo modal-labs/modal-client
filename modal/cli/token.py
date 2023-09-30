@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import getpass
 import itertools
+import os
 import webbrowser
 from typing import Optional
 
@@ -45,6 +46,20 @@ def set(
     rich.print(f"Token written to {user_config_path}")
 
 
+def _open_url(url: str) -> bool:
+    """Opens url in web browser, making sure we use a modern one (not Lynx etc)"""
+    if "PYTEST_CURRENT_TEST" in os.environ:
+        return False
+    try:
+        browser = webbrowser.get()
+        if isinstance(browser, webbrowser.GenericBrowser):
+            return False
+        else:
+            return browser.open_new_tab(url)
+    except webbrowser.Error:
+        return False
+
+
 def _new_token(
     profile: Optional[str] = None, no_verify: bool = False, source: Optional[str] = None, next_url: Optional[str] = None
 ):
@@ -59,7 +74,7 @@ def _new_token(
         with token_flow.start(source, next_url) as (token_flow_id, web_url, code):
             with console.status("Waiting for authentication in the web browser", spinner="dots"):
                 # Open the web url in the browser
-                if webbrowser.open_new_tab(web_url):
+                if _open_url(web_url):
                     console.print(
                         "The web browser should have opened for you to authenticate and get an API token.\n"
                         "If it didn't, please copy this URL into your web browser manually:\n"
