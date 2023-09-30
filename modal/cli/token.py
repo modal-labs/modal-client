@@ -47,7 +47,7 @@ def set(
 
 
 def _open_url(url: str) -> bool:
-    # Make sure we open the URL in some sane web browser (i.e. not Lynx)
+    """Opens url in web browser, making sure we use a modern one (not Lynx etc)"""
     if "PYTEST_CURRENT_TEST" in os.environ:
         return False
     try:
