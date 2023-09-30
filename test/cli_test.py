@@ -4,7 +4,6 @@ import pytest
 import sys
 import tempfile
 import traceback
-import unittest.mock
 from typing import List, Optional
 from unittest import mock
 
@@ -109,13 +108,11 @@ def test_secret_list(servicer, set_env_client):
 
 
 def test_app_token_new(servicer, set_env_client, server_url_env):
-    with unittest.mock.patch("webbrowser.open_new_tab", lambda url: False):
-        _run(["token", "new", "--profile", "_test"])
+    _run(["token", "new", "--profile", "_test"])
 
 
 def test_app_setup(servicer, set_env_client, server_url_env):
-    with unittest.mock.patch("webbrowser.open_new_tab", lambda url: False):
-        _run(["setup"])
+    _run(["setup"])
 
 
 def test_run(servicer, set_env_client, test_dir):
