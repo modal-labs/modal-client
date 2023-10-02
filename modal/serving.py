@@ -120,7 +120,7 @@ async def _serve_stub(
         watcher = watch(mounts_to_watch, output_mgr)
 
     async with _run_stub(stub, client=client, output_mgr=output_mgr, environment_name=environment_name):
-        client.set_pre_stop(stub._app.disconnect)
+        client.set_pre_stop(stub._local_app.disconnect)
         async with TaskContext(grace=0.1) as tc:
             tc.create_task(_run_watch_loop(stub_ref, stub.app_id, output_mgr, watcher, environment_name))
             yield stub
