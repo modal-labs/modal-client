@@ -112,7 +112,7 @@ def test_app_token_new(servicer, set_env_client, server_url_env):
 
 
 def test_app_setup(servicer, set_env_client, server_url_env):
-    _run(["setup"])
+    _run(["setup", "--profile", "_test"])
 
 
 def test_run(servicer, set_env_client, test_dir):
