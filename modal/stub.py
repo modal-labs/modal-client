@@ -19,7 +19,7 @@ from .app import _App, _container_app, is_local
 from .client import _Client
 from .cls import _Cls
 from .config import config, logger
-from .exception import InvalidError, deprecation_error, deprecation_warning
+from .exception import ExecutionError, InvalidError, deprecation_error, deprecation_warning
 from .functions import PartialFunction, _Function, _PartialFunction
 from .gpu import GPU_T
 from .image import _Image
@@ -113,7 +113,8 @@ class _Stub:
     _secrets: Sequence[_Secret]
     _web_endpoints: List[str]  # Used by the CLI
     _local_entrypoints: Dict[str, _LocalEntrypoint]
-    _app: Optional[_App]
+    _container_app: Optional[_App]
+    _local_app: Optional[_App]
     _all_stubs: ClassVar[Dict[str, List["_Stub"]]] = {}
 
     @typechecked
@@ -159,14 +160,15 @@ class _Stub:
         self._secrets = secrets
         self._local_entrypoints = {}
         self._web_endpoints = []
-        self._app = None
+        self._local_app = None  # when this is the launcher process
+        self._container_app = None  # when this is inside a container
 
         string_name = self._name or ""
 
         if not is_local() and _container_app._stub_name == string_name:
             _container_app._associate_stub_container(self)
             # note that all stubs with the correct name will get the container app assigned
-            self._app = _container_app
+            self._container_app = _container_app
 
         _Stub._all_stubs.setdefault(string_name, []).append(self)
 
@@ -181,12 +183,22 @@ class _Stub:
         if you need to access objects on the running app.
         """
         deprecation_warning(date(2023, 9, 11), _Stub.app.__doc__)
-        return self._app
+        if self._container_app:
+            return self._container_app
+        elif self._local_app:
+            return self._local_app
+        else:
+            raise ExecutionError("No app available")
 
     @property
     def app_id(self) -> Optional[str]:
         """Return the app_id, if the stub is running."""
-        return self._app.app_id if self._app else None
+        if self._container_app:
+            return self._container_app._app_id
+        elif self._local_app:
+            return self._local_app._app_id
+        else:
+            return None
 
     @property
     def description(self) -> Optional[str]:
@@ -201,11 +213,11 @@ class _Stub:
             raise InvalidError(f"Stub attribute {key} with value {value} is not a valid Modal object")
 
     def _add_object(self, tag, obj):
-        if self._app:
+        if self._container_app:
             # If this is inside a container, and some module is loaded lazily, then a function may be
             # defined later than the container initialization. If this happens then lets hydrate the
             # function at this point
-            other_obj = self._app._get_object(tag)
+            other_obj = self._container_app._get_object(tag)
             if other_obj is not None:
                 obj._hydrate_from_other(other_obj)
 
@@ -244,9 +256,9 @@ class _Stub:
     @typechecked
     def is_inside(self, image: Optional[_Image] = None) -> bool:
         """Returns if the program is currently running inside a container for this app."""
-        if self._app is None:
+        if self._container_app is None:
             return False
-        elif self._app != _container_app:
+        elif self._container_app != _container_app:
             return False
         elif image is None:
             # stub.app is set, which means we're inside this stub (no specific image)
@@ -273,12 +285,12 @@ class _Stub:
 
     @asynccontextmanager
     async def _set_local_app(self, app: _App) -> AsyncGenerator[None, None]:
-        self._app = app
+        self._local_app = app
         app._associate_stub_local(self)
         try:
             yield
         finally:
-            self._app = None
+            self._local_app = None
 
     @asynccontextmanager
     async def run(
@@ -666,11 +678,15 @@ class _Stub:
         from .sandbox import _Sandbox
         from .stub import _default_image
 
-        if self._app is None:
+        if self._local_app:
+            app = self._local_app
+        elif self._container_app:
+            app = self._container_app
+        else:
             raise InvalidError("`stub.spawn_sandbox` requires a running app.")
 
         # TODO(erikbern): pulling a lot of app internals here, let's clean up shortly
-        resolver = Resolver(self._app._client, environment_name=self._app._environment_name, app_id=self.app_id)
+        resolver = Resolver(app._client, environment_name=app._environment_name, app_id=self.app_id)
         obj = _Sandbox._new(
             entrypoint_args,
             image=image or _default_image,
