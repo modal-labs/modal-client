@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import subprocess
+from typing import Optional
 
 import typer
 from rich.console import Console
@@ -69,11 +70,11 @@ def check_path():
     console.print(Rule(style="white"))
 
 
-def setup():
+def setup(profile: Optional[str] = None):
     check_path()
 
     # Fetch a new token (same as `modal token new` but redirect to /home once finishes)
-    _new_token(next_url="/home")
+    _new_token(profile=profile, next_url="/home")
 
 
 entrypoint_cli_typer.add_typer(app_cli)
