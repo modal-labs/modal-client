@@ -12,9 +12,8 @@ async def test_async_factory(client):
     async with stub.run(client=client):
         assert isinstance(stub["my_factory"], Queue)
         assert stub["my_factory"].object_id == "qu-1"
-        with pytest.warns(DeprecationError):
-            assert isinstance(stub.app["my_factory"], Queue)
-            assert stub.app["my_factory"].object_id == "qu-1"
+        with pytest.raises(DeprecationError):
+            stub.app["my_factory"]
 
 
 @pytest.mark.asyncio
@@ -25,8 +24,8 @@ async def test_use_object(client):
     stub["my_q"] = q
     async with stub.run(client=client):
         assert stub["my_q"].object_id == "qu-foo"
-        with pytest.warns(DeprecationError):
-            assert stub.app["my_q"].object_id == "qu-foo"
+        with pytest.raises(DeprecationError):
+            stub.app["my_q"]
 
 
 def test_new_hydrated(client):
