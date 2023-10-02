@@ -986,7 +986,7 @@ message ImageContextFile {
 
 message ImageGetOrCreateRequest {
   Image image = 2;
-  string app_id = 4;
+  string app_id = 4 [ (modal.options.audit_target_attr) = true ];
   string existing_image_id = 5;  // ignored
   string build_function_id = 6;
   bool force_build = 7;
