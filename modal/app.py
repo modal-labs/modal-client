@@ -13,7 +13,7 @@ from ._output import OutputManager
 from ._resolver import Resolver
 from .client import _Client
 from .config import logger
-from .exception import InvalidError, deprecation_warning
+from .exception import InvalidError, deprecation_error, deprecation_warning
 from .object import _Object
 
 if TYPE_CHECKING:
@@ -206,16 +206,17 @@ class _App:
         return self._app_page_url
 
     def __getitem__(self, tag: str) -> _Object:
-        deprecation_warning(date(2023, 8, 10), "`app[...]` is deprecated. Use the stub to get objects instead.")
-        return self._tag_to_object[tag]
+        deprecation_error(date(2023, 8, 10), "`app[...]` is no longer supported. Use the stub to get objects instead.")
 
     def __contains__(self, tag: str) -> bool:
-        deprecation_warning(date(2023, 8, 10), "`obj in app` is deprecated. Use the stub to get objects instead.")
-        return tag in self._tag_to_object
+        deprecation_error(
+            date(2023, 8, 10), "`obj in app` is no longer supported. Use the stub to get objects instead."
+        )
 
     def __getattr__(self, tag: str) -> _Object:
-        deprecation_warning(date(2023, 8, 10), "`app.obj` is deprecated. Use the stub to get objects instead.")
-        return self._tag_to_object[tag]
+        if tag.startswith("__"):
+            raise AttributeError(f"No such attribute `{tag}`")  # Dumb workaround for doc thing
+        deprecation_error(date(2023, 8, 10), "`app.obj` is no longer supported. Use the stub to get objects instead.")
 
     def _get_object(self, tag: str) -> Optional[_Object]:
         # TODO(erikbern): remove objects from apps soon
