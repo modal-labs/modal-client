@@ -4,7 +4,6 @@ import pytest
 import sys
 import tempfile
 import traceback
-import unittest.mock
 from typing import List, Optional
 from unittest import mock
 
@@ -109,13 +108,11 @@ def test_secret_list(servicer, set_env_client):
 
 
 def test_app_token_new(servicer, set_env_client, server_url_env):
-    with unittest.mock.patch("webbrowser.open_new_tab", lambda url: False):
-        _run(["token", "new", "--profile", "_test"])
+    _run(["token", "new", "--profile", "_test"])
 
 
 def test_app_setup(servicer, set_env_client, server_url_env):
-    with unittest.mock.patch("webbrowser.open_new_tab", lambda url: False):
-        _run(["setup"])
+    _run(["setup", "--profile", "_test"])
 
 
 def test_run(servicer, set_env_client, test_dir):
@@ -428,7 +425,12 @@ def test_environment_flag(test_dir, servicer, command):
     with servicer.intercept() as ctx:
         ctx.add_response(
             "AppLookupObject",
-            api_pb2.AppLookupObjectResponse(object=api_pb2.Object(object_id="mo-123")),
+            api_pb2.AppLookupObjectResponse(
+                object=api_pb2.Object(
+                    object_id="mo-123",
+                    mount_handle_metadata=api_pb2.MountHandleMetadata(content_checksum_sha256_hex="abc123"),
+                )
+            ),
             request_filter=lambda req: req.app_name.startswith("modal-client-mount"),
         )  # built-in client lookup
         ctx.add_response(
@@ -466,7 +468,12 @@ def test_environment_noflag(test_dir, servicer, command, monkeypatch):
     with servicer.intercept() as ctx:
         ctx.add_response(
             "AppLookupObject",
-            api_pb2.AppLookupObjectResponse(object=api_pb2.Object(object_id="mo-123")),
+            api_pb2.AppLookupObjectResponse(
+                object=api_pb2.Object(
+                    object_id="mo-123",
+                    mount_handle_metadata=api_pb2.MountHandleMetadata(content_checksum_sha256_hex="abc123"),
+                )
+            ),
             request_filter=lambda req: req.app_name.startswith("modal-client-mount"),
         )  # built-in client lookup
         ctx.add_response(

@@ -155,29 +155,33 @@ class MockClientServicer(api_grpc.ModalClientBase):
             web_url=definition.web_url,
         )
 
-    def get_object_metadata(self, object_id) -> api_pb2.Object:
-        # TODO(erikbern): support mount metadata
-        function_handle_metadata: api_pb2.FunctionHandleMetadata = None
-        class_handle_metadata: api_pb2.ClassHandleMetadata = None
+    def get_class_metadata(self, object_id: str) -> api_pb2.ClassHandleMetadata:
+        class_handle_metadata = api_pb2.ClassHandleMetadata()
+        for f_name, f_id in self.classes[object_id].items():
+            function_handle_metadata = self.get_function_metadata(f_id)
+            class_handle_metadata.methods.append(
+                api_pb2.ClassMethod(
+                    function_name=f_name, function_id=f_id, function_handle_metadata=function_handle_metadata
+                )
+            )
+        return class_handle_metadata
 
+    def get_object_metadata(self, object_id) -> api_pb2.Object:
         if object_id.startswith("fu-"):
-            function_handle_metadata = self.get_function_metadata(object_id)
+            res = api_pb2.Object(function_handle_metadata=self.get_function_metadata(object_id))
 
         elif object_id.startswith("cs-"):
-            class_handle_metadata = api_pb2.ClassHandleMetadata()
-            for f_name, f_id in self.classes[object_id].items():
-                function_handle_metadata = self.get_function_metadata(f_id)
-                class_handle_metadata.methods.append(
-                    api_pb2.ClassMethod(
-                        function_name=f_name, function_id=f_id, function_handle_metadata=function_handle_metadata
-                    )
-                )
+            res = api_pb2.Object(class_handle_metadata=self.get_class_metadata(object_id))
 
-        return api_pb2.Object(
-            object_id=object_id,
-            function_handle_metadata=function_handle_metadata,
-            class_handle_metadata=class_handle_metadata,
-        )
+        elif object_id.startswith("mo-"):
+            mount_handle_metadata = api_pb2.MountHandleMetadata(content_checksum_sha256_hex="abc123")
+            res = api_pb2.Object(mount_handle_metadata=mount_handle_metadata)
+
+        else:
+            res = api_pb2.Object()
+
+        res.object_id = object_id
+        return res
 
     ### App
 
@@ -322,7 +326,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         methods: dict[str, str] = {method.function_name: method.function_id for method in request.methods}
         class_id = "cs-" + str(len(self.classes))
         self.classes[class_id] = methods
-        await stream.send_message(api_pb2.ClassCreateResponse(class_id=class_id))
+        await stream.send_message(
+            api_pb2.ClassCreateResponse(class_id=class_id, handle_metadata=self.get_class_metadata(class_id))
+        )
 
     ### Client
 

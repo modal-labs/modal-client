@@ -27,10 +27,8 @@ async def test_kwargs(servicer, client):
         assert await stub["d"].get.aio("foo") == "bar"  # type: ignore
         assert await stub["q"].get.aio() == "baz"  # type: ignore
 
-        with pytest.warns(DeprecationError):
-            assert isinstance(stub.app["d"], Dict)
-        with pytest.warns(DeprecationError):
-            assert isinstance(stub.app["q"], Queue)
+        with pytest.raises(DeprecationError):
+            stub.app["d"]
 
 
 @pytest.mark.asyncio
@@ -44,10 +42,8 @@ async def test_attrs(servicer, client):
         assert await stub.d.get.aio("foo") == "bar"  # type: ignore
         assert await stub.q.get.aio() == "baz"  # type: ignore
 
-        with pytest.warns(DeprecationError):
-            assert isinstance(stub.app.d, Dict)
-        with pytest.warns(DeprecationError):
-            assert isinstance(stub.app.q, Queue)
+        with pytest.raises(DeprecationError):
+            stub.app.d
 
 
 @pytest.mark.asyncio
