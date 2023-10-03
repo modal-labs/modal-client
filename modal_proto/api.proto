@@ -422,6 +422,7 @@ message ContainerHeartbeatRequest {
 
 message ContainerCheckpointRequest {
   string runtime = 1;
+  string function_id = 2;
 }
 
 message DictContainsRequest {
