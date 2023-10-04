@@ -5,7 +5,7 @@ import pytest
 from unittest import mock
 
 import modal.secret
-from modal import App, Image, Stub
+from modal import App, Dict, Image, Stub
 from modal.exception import InvalidError
 from modal_proto import api_pb2
 
@@ -16,27 +16,26 @@ def my_f_1(x):
     pass
 
 
-def my_f_2(x):
-    pass
-
-
 @skip_windows_unix_socket
 @pytest.mark.asyncio
 async def test_container_function_lazily_imported(unix_servicer, container_client):
     unix_servicer.app_objects["ap-123"] = {
         "my_f_1": "fu-123",
-        "my_f_2": "fu-456",
+        "my_d": "di-123",
     }
     unix_servicer.app_functions["fu-123"] = api_pb2.Function()
-    unix_servicer.app_functions["fu-456"] = api_pb2.Function()
 
     await App.init_container.aio(container_client, "ap-123")
     stub = Stub()
 
-    # Now, let's create my_f_2 after the app started running
-    # This might happen if some local module is imported lazily
-    my_f_2_container = stub.function()(my_f_2)
-    assert await my_f_2_container.remote.aio(42) == 1764  # type: ignore
+    # Now, let's create my_f after the app started running and make sure it works
+    my_f_container = stub.function()(my_f_1)
+    assert await my_f_container.remote.aio(42) == 1764  # type: ignore
+
+    # Also make sure dicts work
+    my_d_container = Dict.new()
+    stub.my_d = my_d_container  # should trigger id assignment
+    assert my_d_container.object_id == "di-123"
 
 
 @skip_windows_unix_socket
