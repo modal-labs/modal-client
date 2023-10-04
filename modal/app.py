@@ -298,21 +298,6 @@ class _App:
                 client, name, detach=False, deploying=True, environment_name=environment_name, output_mgr=output_mgr
             )
 
-    async def create_one_object(self, obj: _Object, environment_name: str) -> None:
-        """mdmd:hidden"""
-        existing_object_id: Optional[str] = self._tag_to_object_id.get("_object")
-        resolver = Resolver(self._client, environment_name=environment_name, app_id=self.app_id)
-        await resolver.load(obj, existing_object_id)
-        indexed_object_ids = {"_object": obj.object_id}
-        unindexed_object_ids = [obj.object_id for obj in resolver.objects() if obj.object_id is not obj.object_id]
-        req_set = api_pb2.AppSetObjectsRequest(
-            app_id=self.app_id,
-            indexed_object_ids=indexed_object_ids,
-            unindexed_object_ids=unindexed_object_ids,
-            new_app_state=api_pb2.APP_STATE_UNSPECIFIED,  # app is either already deployed or will be set to deployed after this call
-        )
-        await retry_transient_errors(self._client.stub.AppSetObjects, req_set)
-
     async def deploy(self, name: str, namespace, object_entity: str) -> str:
         """`App.deploy` is deprecated in favor of `modal.runner.deploy_stub`."""
         deploy_req = api_pb2.AppDeployRequest(
@@ -346,7 +331,18 @@ class _App:
     ):
         """mdmd:hidden"""
         app = await _App._init_from_name(client, label, namespace, environment_name=environment_name)
-        await app.create_one_object(obj, environment_name)
+        existing_object_id: Optional[str] = app._tag_to_object_id.get("_object")
+        resolver = Resolver(app._client, environment_name=environment_name, app_id=app.app_id)
+        await resolver.load(obj, existing_object_id)
+        indexed_object_ids = {"_object": obj.object_id}
+        unindexed_object_ids = [obj.object_id for obj in resolver.objects() if obj.object_id is not obj.object_id]
+        req_set = api_pb2.AppSetObjectsRequest(
+            app_id=app.app_id,
+            indexed_object_ids=indexed_object_ids,
+            unindexed_object_ids=unindexed_object_ids,
+            new_app_state=api_pb2.APP_STATE_UNSPECIFIED,  # app is either already deployed or will be set to deployed after this call
+        )
+        await retry_transient_errors(client.stub.AppSetObjects, req_set)
         await app.deploy(label, namespace, type_prefix)  # TODO(erikbern): not needed if the app already existed
 
     @staticmethod
