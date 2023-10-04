@@ -341,6 +341,15 @@ class _App:
         return self._associated_stub.spawn_sandbox(*args, **kwargs)
 
     @staticmethod
+    async def _deploy_single_object(
+        obj: _Object, type_prefix: str, client: _Client, label: str, namespace: int, environment_name: int
+    ):
+        """mdmd:hidden"""
+        app = await _App._init_from_name(client, label, namespace, environment_name=environment_name)
+        await app.create_one_object(obj, environment_name)
+        await app.deploy(label, namespace, type_prefix)  # TODO(erikbern): not needed if the app already existed
+
+    @staticmethod
     def _reset_container():
         # Just used for tests
         global _is_container_app, _container_app
