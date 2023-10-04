@@ -47,7 +47,7 @@ class _App:
     """
 
     _tag_to_object_id: Dict[str, str]
-    _tag_to_handle_metadata: Dict[str, Message]
+    _tag_to_handle_metadata: Dict[str, Optional[Message]]
 
     _client: _Client
     _app_id: str
@@ -221,8 +221,7 @@ class _App:
         for item in resp.items:
             self._tag_to_object_id[item.tag] = item.object.object_id
             handle_metadata: Optional[Message] = get_proto_oneof(item.object, "handle_metadata_oneof")
-            if handle_metadata is not None:
-                self._tag_to_handle_metadata[item.tag] = handle_metadata
+            self._tag_to_handle_metadata[item.tag] = handle_metadata
 
     @staticmethod
     async def init_container(client: _Client, app_id: str, stub_name: str = "") -> "_App":
