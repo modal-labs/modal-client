@@ -243,7 +243,9 @@ class _Image(_Object, type_prefix="im"):
                 gpu_config=gpu_config,  # Note: as of 2023-01-27, server ignores this
                 image_registry_config=await image_registry_config.resolve(
                     resolver
-                ),  # Resolves private registry secret.
+                ),  # Resolves private registry secret.,
+                runtime=config.get("function_runtime"),
+                runtime_debug=config.get("function_runtime_debug"),
             )
 
             req = api_pb2.ImageGetOrCreateRequest(
