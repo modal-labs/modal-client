@@ -75,7 +75,10 @@ class A100(_GPUConfig):
             raise ValueError(f"A100s can only have memory values of {allowed_memory_values} => memory={memory}")
 
         if memory == 20:
-            deprecation_warning(date(2023, 9, 7), "20GB A100s are deprecated and may be unsupported in the future.")
+            deprecation_warning(
+                date(2023, 9, 7),
+                "A100 20GB is deprecated and will be unsupported in the future. Until then, it may incur A100 40GB prices.",
+            )
             if count != 1:
                 raise ValueError(f"Cannot request more than 1 A100 20GB unit. Requested {count}")
             super().__init__(api_pb2.GPU_TYPE_A100_20G, count, memory)
