@@ -216,9 +216,8 @@ class _Stub:
         if self._container_app:
             # If this is inside a container, then objects can be defined after app initialization.
             # So we may have to initialize objects once they get bound to the stub.
-            other_obj = self._container_app._get_object(tag)
-            if other_obj is not None:
-                obj._hydrate_from_other(other_obj)
+            if self._container_app._has_object(tag):
+                self._container_app._hydrate_object(obj, tag)
 
         self._blueprint[tag] = obj
 
@@ -251,6 +250,11 @@ class _Stub:
     def get_objects(self) -> List[Tuple[str, _Object]]:
         """Used by the container app to initialize objects."""
         return list(self._blueprint.items())
+
+    def _uncreate_all_objects(self):
+        # TODO(erikbern): this doesn't unhydrate objects that aren't tagged
+        for obj in self._blueprint.values():
+            obj._unhydrate()
 
     @typechecked
     def is_inside(self, image: Optional[_Image] = None) -> bool:
