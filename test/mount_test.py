@@ -5,7 +5,7 @@ import pytest
 import sys
 from pathlib import Path
 
-from modal import App, Stub
+from modal import Stub
 from modal._blob_utils import LARGE_FILE_LIMIT
 from modal.exception import NotFoundError
 from modal.mount import Mount
@@ -38,8 +38,7 @@ async def test_get_files(servicer, client, tmpdir):
     assert files["/large.py"].sha256_hex == hashlib.sha256(large_content).hexdigest()
     assert files["/large.py"].mode == 0o644
 
-    app = await App._init_new.aio(client)
-    await app.create_one_object.aio(m, "")
+    await m._deploy.aio("my-mount", client=client)
     blob_id = max(servicer.blobs.keys())  # last uploaded one
     assert len(servicer.blobs[blob_id]) == len(large_content)
     assert servicer.blobs[blob_id] == large_content
@@ -59,8 +58,7 @@ def test_create_mount(servicer, client):
 
     m = Mount.from_local_dir(local_dir, remote_path="/foo", condition=condition)
 
-    app = App._init_new(client)
-    app.create_one_object(m, "")
+    m._deploy("my-mount", client=client)
 
     assert m.object_id == "mo-123"
     assert f"/foo/{cur_filename}" in servicer.files_name2sha
@@ -71,16 +69,15 @@ def test_create_mount(servicer, client):
 
 
 def test_create_mount_file_errors(servicer, tmpdir, client):
-    app = App._init_new(client)
     m = Mount.from_local_dir(Path(tmpdir) / "xyz", remote_path="/xyz")
     with pytest.raises(FileNotFoundError):
-        app.create_one_object(m, "")
+        m._deploy("my-mount", client=client)
 
     with open(tmpdir / "abc", "w"):
         pass
     m = Mount.from_local_dir(Path(tmpdir) / "abc", remote_path="/abc")
     with pytest.raises(NotADirectoryError):
-        app.create_one_object(m, "")
+        m._deploy("my-mount", client=client)
 
 
 def dummy():

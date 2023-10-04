@@ -228,9 +228,7 @@ class _Object:
         if client is None:
             client = await _Client.from_env()
 
-        app = await _App._init_from_name(client, label, namespace, environment_name=environment_name)
-        await app.create_one_object(self, environment_name)
-        await app.deploy(label, namespace, self._type_prefix)  # TODO(erikbern): not needed if the app already existed
+        await _App._deploy_single_object(self, self._type_prefix, client, label, namespace, environment_name)
 
     def persist(
         self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
