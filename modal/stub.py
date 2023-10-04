@@ -214,9 +214,8 @@ class _Stub:
 
     def _add_object(self, tag, obj):
         if self._container_app:
-            # If this is inside a container, and some module is loaded lazily, then a function may be
-            # defined later than the container initialization. If this happens then lets hydrate the
-            # function at this point
+            # If this is inside a container, then objects can be defined after app initialization.
+            # So we may have to initialize objects once they get bound to the stub.
             other_obj = self._container_app._get_object(tag)
             if other_obj is not None:
                 obj._hydrate_from_other(other_obj)
