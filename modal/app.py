@@ -99,19 +99,14 @@ class _App:
             )
         self._associated_stub = stub
 
-        # Initialize objects on stub
-        stub_objects: dict[str, _Object] = {}
         if stub:
-            stub_objects = dict(stub.get_objects())
-        for tag, object_id in self._tag_to_object_id.items():
-            handle_metadata = self._tag_to_handle_metadata.get(tag)
-            if tag in stub_objects:
-                # This already exists on the stub (typically a function)
-                obj = stub_objects[tag]
-                obj._hydrate(object_id, self._client, handle_metadata)
-            else:
-                # Can't find the object, create a new one
-                obj = _Object._new_hydrated(object_id, self._client, handle_metadata)
+            # Initialize objects on stub
+            stub_objects: dict[str, _Object] = dict(stub.get_objects())
+            for tag, object_id in self._tag_to_object_id.items():
+                obj = stub_objects.get(tag)
+                if obj is not None:
+                    handle_metadata = self._tag_to_handle_metadata[tag]
+                    obj._hydrate(object_id, self._client, handle_metadata)
 
     def _associate_stub_local(self, stub):
         self._associated_stub = stub
