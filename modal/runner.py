@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import contextlib
+import dataclasses
 from multiprocessing.synchronize import Event
 from typing import TYPE_CHECKING, AsyncGenerator, Optional, TypeVar
 
@@ -154,6 +155,11 @@ async def _serve_update(
         pass
 
 
+@dataclasses.dataclass
+class DeployResult:
+    app_id: str
+
+
 async def _deploy_stub(
     stub: _Stub,
     name: str = None,
@@ -163,7 +169,7 @@ async def _deploy_stub(
     show_progress=True,
     object_entity="ap",
     environment_name: Optional[str] = None,
-) -> _App:
+) -> DeployResult:
     """Deploy an app and export its objects persistently.
 
     Typically, using the command-line tool `modal deploy <module or script>`
@@ -230,7 +236,7 @@ async def _deploy_stub(
 
     output_mgr.print_if_visible(step_completed("App deployed! 🎉"))
     output_mgr.print_if_visible(f"\nView Deployment: [magenta]{url}[/magenta]")
-    return app
+    return DeployResult(app_id=app.app_id)
 
 
 async def _interactive_shell(_function: _Function, cmd: str, environment_name: str = ""):
