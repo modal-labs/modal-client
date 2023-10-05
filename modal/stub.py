@@ -19,7 +19,7 @@ from .app import _App, _container_app, is_local
 from .client import _Client
 from .cls import _Cls
 from .config import config, logger
-from .exception import ExecutionError, InvalidError, deprecation_error, deprecation_warning
+from .exception import InvalidError, deprecation_error
 from .functions import PartialFunction, _Function, _PartialFunction
 from .gpu import GPU_T
 from .image import _Image
@@ -178,17 +178,11 @@ class _Stub:
         return self._name
 
     @property
-    def app(self) -> Optional[_App]:
+    def app(self):
         """`stub.app` is deprecated: use e.g. `stub.obj` instead of `stub.app.obj`
         if you need to access objects on the running app.
         """
-        deprecation_warning(date(2023, 9, 11), _Stub.app.__doc__)
-        if self._container_app:
-            return self._container_app
-        elif self._local_app:
-            return self._local_app
-        else:
-            raise ExecutionError("No app available")
+        deprecation_error(date(2023, 9, 11), _Stub.app.__doc__)
 
     @property
     def app_id(self) -> Optional[str]:

@@ -13,14 +13,12 @@ from ._output import OutputManager
 from ._resolver import Resolver
 from .client import _Client
 from .config import logger
-from .exception import InvalidError, deprecation_error, deprecation_warning
+from .exception import InvalidError, deprecation_error
 from .object import _Object
 
 if TYPE_CHECKING:
     from rich.tree import Tree
 
-    import modal.image
-    import modal.sandbox
 else:
     Tree = TypeVar("Tree")
 
@@ -304,10 +302,9 @@ class _App:
         self,
         *args,
         **kwargs,
-    ) -> "modal.sandbox._Sandbox":
+    ):
         """Deprecated. Use `Stub.spawn_sandbox` instead."""
-        deprecation_warning(date(2023, 9, 11), _App.spawn_sandbox.__doc__)
-        return self._associated_stub.spawn_sandbox(*args, **kwargs)
+        deprecation_error(date(2023, 9, 11), _App.spawn_sandbox.__doc__)
 
     @staticmethod
     async def _deploy_single_object(
