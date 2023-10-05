@@ -50,9 +50,7 @@ class _App:
     _client: _Client
     _app_id: str
     _app_page_url: str
-    _resolver: Optional[Resolver]
     _environment_name: str
-    _output_mgr: Optional[OutputManager]
     _associated_stub: Optional[Any]  # TODO(erikbern): type
 
     def __init__(
@@ -60,7 +58,6 @@ class _App:
         client: _Client,
         app_id: str,
         app_page_url: str,
-        output_mgr: Optional[OutputManager],
         tag_to_object_id: Optional[Dict[str, str]] = None,
         stub_name: Optional[str] = None,
         environment_name: Optional[str] = None,
@@ -73,7 +70,6 @@ class _App:
         self._tag_to_handle_metadata = {}
         self._stub_name = stub_name
         self._environment_name = environment_name
-        self._output_mgr = output_mgr
         self._associated_stub = None
 
     @property
@@ -110,12 +106,17 @@ class _App:
         self._associated_stub = stub
 
     async def _create_all_objects(
-        self, blueprint: Dict[str, _Object], new_app_state: int, environment_name: str, shell: bool = False
+        self,
+        blueprint: Dict[str, _Object],
+        new_app_state: int,
+        environment_name: str,
+        shell: bool = False,
+        output_mgr: Optional[OutputManager] = None,
     ):  # api_pb2.AppState.V
         """Create objects that have been defined but not created on the server."""
         resolver = Resolver(
             self._client,
-            output_mgr=self._output_mgr,
+            output_mgr=output_mgr,
             environment_name=environment_name,
             app_id=self.app_id,
             shell=shell,
@@ -225,15 +226,13 @@ class _App:
         return _container_app
 
     @staticmethod
-    async def _init_existing(
-        client: _Client, existing_app_id: str, output_mgr: Optional[OutputManager] = None
-    ) -> "_App":
+    async def _init_existing(client: _Client, existing_app_id: str) -> "_App":
         # Get all the objects first
         obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
         obj_resp = await retry_transient_errors(client.stub.AppGetObjects, obj_req)
         app_page_url = f"https://modal.com/apps/{existing_app_id}"  # TODO (elias): this should come from the backend
         object_ids = {item.tag: item.object.object_id for item in obj_resp.items}
-        return _App(client, existing_app_id, app_page_url, output_mgr, tag_to_object_id=object_ids)
+        return _App(client, existing_app_id, app_page_url, tag_to_object_id=object_ids)
 
     @staticmethod
     async def _init_new(
@@ -242,7 +241,6 @@ class _App:
         detach: bool = False,
         deploying: bool = False,
         environment_name: str = "",
-        output_mgr: Optional[OutputManager] = None,
     ) -> "_App":
         # Start app
         # TODO(erikbern): maybe this should happen outside of this method?
@@ -255,7 +253,7 @@ class _App:
         app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
         app_page_url = app_resp.app_logs_url
         logger.debug(f"Created new app with id {app_resp.app_id}")
-        return _App(client, app_resp.app_id, app_page_url, output_mgr, environment_name=environment_name)
+        return _App(client, app_resp.app_id, app_page_url, environment_name=environment_name)
 
     @staticmethod
     async def _init_from_name(
@@ -263,7 +261,6 @@ class _App:
         name: str,
         namespace,
         environment_name: str = "",
-        output_mgr: Optional[OutputManager] = None,
     ):
         # Look up any existing deployment
         app_req = api_pb2.AppGetByDeploymentNameRequest(
@@ -274,11 +271,9 @@ class _App:
 
         # Grab the app
         if existing_app_id is not None:
-            return await _App._init_existing(client, existing_app_id, output_mgr=output_mgr)
+            return await _App._init_existing(client, existing_app_id)
         else:
-            return await _App._init_new(
-                client, name, detach=False, deploying=True, environment_name=environment_name, output_mgr=output_mgr
-            )
+            return await _App._init_new(client, name, detach=False, deploying=True, environment_name=environment_name)
 
     async def deploy(self, name: str, namespace, object_entity: str) -> str:
         """`App.deploy` is deprecated in favor of `modal.runner.deploy_stub`."""
