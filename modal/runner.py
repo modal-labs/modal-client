@@ -85,7 +85,9 @@ async def _run_stub(
 
         try:
             # Create all members
-            await app._create_all_objects(stub._blueprint, post_init_state, environment_name, shell=shell)
+            await app._create_all_objects(
+                stub._blueprint, post_init_state, environment_name, shell=shell, output_mgr=output_mgr
+            )
 
             # Update all functions client-side to have the output mgr
             for obj in stub.registered_functions.values():
