@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 
 from modal import Image, Mount, NetworkFileSystem, Secret, Stub
-from modal.exception import DeprecationError, InvalidError
+from modal.exception import InvalidError
 
 stub = Stub()
 
@@ -81,12 +81,3 @@ def test_sandbox_nfs(client, servicer, tmpdir):
         stub.spawn_sandbox("echo", "foo > /cache/a.txt", network_file_systems={"/cache": nfs})
 
     assert len(servicer.sandbox_defs[0].nfs_mounts) == 1
-
-
-@skip_non_linux
-def test_spawn_sandbox_on_app_deprecated(client, servicer):
-    with stub.run(client=client):
-        with pytest.warns(DeprecationError):
-            app = stub.app
-        with pytest.warns(DeprecationError):
-            app.spawn_sandbox("bash", "-c", "echo bye >&2 && sleep 1 && echo hi && exit 42", timeout=600)
