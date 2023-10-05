@@ -8,7 +8,7 @@ from typing_extensions import assert_type
 
 from modal import Cls, Function, Stub, method
 from modal._serialization import deserialize
-from modal.app import App
+from modal.app import ContainerApp
 from modal.cls import ClsMixin
 from modal.exception import DeprecationError, ExecutionError
 from modal.runner import deploy_stub
@@ -354,7 +354,7 @@ def test_rehydrate(client, servicer):
     app_id = deploy_stub(stub, "my-cls-app", client=client).app_id
 
     # Initialize a container
-    app = App.init_container(client, app_id, "stub")
+    app = ContainerApp.init_container(client, app_id, "stub")
 
     # Associate app with stub
     app._associate_stub_container(stub)

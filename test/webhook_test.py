@@ -6,8 +6,9 @@ import sys
 
 from fastapi.testclient import TestClient
 
-from modal import App, Stub, asgi_app, web_endpoint, wsgi_app
+from modal import Stub, asgi_app, web_endpoint, wsgi_app
 from modal._asgi import webhook_asgi_app
+from modal.app import ContainerApp
 from modal.exception import InvalidError
 from modal.functions import Function
 from modal_proto import api_pb2
@@ -35,7 +36,7 @@ async def test_webhook(servicer, client):
         assert await f.local(100) == {"square": 10000}
 
         # Make sure the container gets the app id as well
-        container_app = await App.init_container.aio(client, stub.app_id)
+        container_app = await ContainerApp.init_container.aio(client, stub.app_id)
         container_app._associate_stub_container(stub)
         f_c = stub["f"]
         assert isinstance(f_c, Function)
