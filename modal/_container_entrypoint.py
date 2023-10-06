@@ -719,7 +719,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Checkpoint container after import. Checkpointed containers start from this point
         # onwards. This assumes that everything up to this point has run successfully,
         # including global imports.
-        if container_args.function_def.is_checkpointing_enabled:
+        if container_args.function_def.is_checkpointing_function:
             function_io_manager.checkpoint()
 
         pty_info: api_pb2.PTYInfo = container_args.function_def.pty_info
