@@ -13,14 +13,12 @@ from ._output import OutputManager
 from ._resolver import Resolver
 from .client import _Client
 from .config import logger
-from .exception import InvalidError, deprecation_error, deprecation_warning
+from .exception import InvalidError, deprecation_error
 from .object import _Object
 
 if TYPE_CHECKING:
     from rich.tree import Tree
 
-    import modal.image
-    import modal.sandbox
 else:
     Tree = TypeVar("Tree")
 
@@ -46,16 +44,13 @@ class _App:
     ```
     """
 
-    _tag_to_object: Dict[str, _Object]
     _tag_to_object_id: Dict[str, str]
-    _tag_to_handle_metadata: Dict[str, Message]
+    _tag_to_handle_metadata: Dict[str, Optional[Message]]
 
     _client: _Client
     _app_id: str
     _app_page_url: str
-    _resolver: Optional[Resolver]
     _environment_name: str
-    _output_mgr: Optional[OutputManager]
     _associated_stub: Optional[Any]  # TODO(erikbern): type
 
     def __init__(
@@ -63,8 +58,6 @@ class _App:
         client: _Client,
         app_id: str,
         app_page_url: str,
-        output_mgr: Optional[OutputManager],
-        tag_to_object: Optional[Dict[str, _Object]] = None,
         tag_to_object_id: Optional[Dict[str, str]] = None,
         stub_name: Optional[str] = None,
         environment_name: Optional[str] = None,
@@ -73,12 +66,10 @@ class _App:
         self._app_id = app_id
         self._app_page_url = app_page_url
         self._client = client
-        self._tag_to_object = tag_to_object or {}
         self._tag_to_object_id = tag_to_object_id or {}
         self._tag_to_handle_metadata = {}
         self._stub_name = stub_name
         self._environment_name = environment_name
-        self._output_mgr = output_mgr
         self._associated_stub = None
 
     @property
@@ -102,31 +93,30 @@ class _App:
             )
         self._associated_stub = stub
 
-        # Initialize objects on stub
-        stub_objects: dict[str, _Object] = {}
         if stub:
-            stub_objects = dict(stub.get_objects())
-        for tag, object_id in self._tag_to_object_id.items():
-            handle_metadata = self._tag_to_handle_metadata.get(tag)
-            if tag in stub_objects:
-                # This already exists on the stub (typically a function)
-                obj = stub_objects[tag]
-                obj._hydrate(object_id, self._client, handle_metadata)
-            else:
-                # Can't find the object, create a new one
-                obj = _Object._new_hydrated(object_id, self._client, handle_metadata)
-            self._tag_to_object[tag] = obj
+            # Initialize objects on stub
+            stub_objects: dict[str, _Object] = dict(stub.get_objects())
+            for tag, object_id in self._tag_to_object_id.items():
+                obj = stub_objects.get(tag)
+                if obj is not None:
+                    handle_metadata = self._tag_to_handle_metadata[tag]
+                    obj._hydrate(object_id, self._client, handle_metadata)
 
     def _associate_stub_local(self, stub):
         self._associated_stub = stub
 
     async def _create_all_objects(
-        self, blueprint: Dict[str, _Object], new_app_state: int, environment_name: str, shell: bool = False
+        self,
+        blueprint: Dict[str, _Object],
+        new_app_state: int,
+        environment_name: str,
+        shell: bool = False,
+        output_mgr: Optional[OutputManager] = None,
     ):  # api_pb2.AppState.V
         """Create objects that have been defined but not created on the server."""
         resolver = Resolver(
             self._client,
-            output_mgr=self._output_mgr,
+            output_mgr=output_mgr,
             environment_name=environment_name,
             app_id=self.app_id,
             shell=shell,
@@ -138,8 +128,6 @@ class _App:
 
             # Assign all objects
             for tag, obj in blueprint.items():
-                self._tag_to_object[tag] = obj
-
                 # Reset object_id in case the app runs twice
                 # TODO(erikbern): clean up the interface
                 obj._unhydrate()
@@ -170,9 +158,7 @@ class _App:
         assert indexed_object_ids == self._tag_to_object_id
         all_objects = resolver.objects()
 
-        unindexed_object_ids = list(
-            set(obj.object_id for obj in all_objects) - set(obj.object_id for obj in self._tag_to_object.values())
-        )
+        unindexed_object_ids = list(set(obj.object_id for obj in all_objects) - set(self._tag_to_object_id.values()))
         req_set = api_pb2.AppSetObjectsRequest(
             app_id=self._app_id,
             indexed_object_ids=indexed_object_ids,
@@ -180,12 +166,6 @@ class _App:
             new_app_state=new_app_state,  # type: ignore
         )
         await retry_transient_errors(self._client.stub.AppSetObjects, req_set)
-        return self._tag_to_object
-
-    def _uncreate_all_objects(self):
-        # TODO(erikbern): this doesn't unhydrate objects that aren't tagged
-        for obj in self._tag_to_object.values():
-            obj._unhydrate()
 
     async def disconnect(self):
         """Tell the server the client has disconnected for this app. Terminates all running tasks
@@ -218,9 +198,13 @@ class _App:
             raise AttributeError(f"No such attribute `{tag}`")  # Dumb workaround for doc thing
         deprecation_error(date(2023, 8, 10), "`app.obj` is no longer supported. Use the stub to get objects instead.")
 
-    def _get_object(self, tag: str) -> Optional[_Object]:
-        # TODO(erikbern): remove objects from apps soon
-        return self._tag_to_object.get(tag)
+    def _has_object(self, tag: str) -> bool:
+        return tag in self._tag_to_object_id
+
+    def _hydrate_object(self, obj, tag: str):
+        object_id: str = self._tag_to_object_id[tag]
+        metadata: Message = self._tag_to_handle_metadata[tag]
+        obj._hydrate(object_id, self._client, metadata)
 
     async def _init_container(self, client: _Client, app_id: str, stub_name: str):
         self._client = client
@@ -231,8 +215,7 @@ class _App:
         for item in resp.items:
             self._tag_to_object_id[item.tag] = item.object.object_id
             handle_metadata: Optional[Message] = get_proto_oneof(item.object, "handle_metadata_oneof")
-            if handle_metadata is not None:
-                self._tag_to_handle_metadata[item.tag] = handle_metadata
+            self._tag_to_handle_metadata[item.tag] = handle_metadata
 
     @staticmethod
     async def init_container(client: _Client, app_id: str, stub_name: str = "") -> "_App":
@@ -243,15 +226,13 @@ class _App:
         return _container_app
 
     @staticmethod
-    async def _init_existing(
-        client: _Client, existing_app_id: str, output_mgr: Optional[OutputManager] = None
-    ) -> "_App":
+    async def _init_existing(client: _Client, existing_app_id: str) -> "_App":
         # Get all the objects first
         obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
         obj_resp = await retry_transient_errors(client.stub.AppGetObjects, obj_req)
         app_page_url = f"https://modal.com/apps/{existing_app_id}"  # TODO (elias): this should come from the backend
         object_ids = {item.tag: item.object.object_id for item in obj_resp.items}
-        return _App(client, existing_app_id, app_page_url, output_mgr, tag_to_object_id=object_ids)
+        return _App(client, existing_app_id, app_page_url, tag_to_object_id=object_ids)
 
     @staticmethod
     async def _init_new(
@@ -260,7 +241,6 @@ class _App:
         detach: bool = False,
         deploying: bool = False,
         environment_name: str = "",
-        output_mgr: Optional[OutputManager] = None,
     ) -> "_App":
         # Start app
         # TODO(erikbern): maybe this should happen outside of this method?
@@ -273,7 +253,7 @@ class _App:
         app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
         app_page_url = app_resp.app_logs_url
         logger.debug(f"Created new app with id {app_resp.app_id}")
-        return _App(client, app_resp.app_id, app_page_url, output_mgr, environment_name=environment_name)
+        return _App(client, app_resp.app_id, app_page_url, environment_name=environment_name)
 
     @staticmethod
     async def _init_from_name(
@@ -281,7 +261,6 @@ class _App:
         name: str,
         namespace,
         environment_name: str = "",
-        output_mgr: Optional[OutputManager] = None,
     ):
         # Look up any existing deployment
         app_req = api_pb2.AppGetByDeploymentNameRequest(
@@ -292,26 +271,9 @@ class _App:
 
         # Grab the app
         if existing_app_id is not None:
-            return await _App._init_existing(client, existing_app_id, output_mgr=output_mgr)
+            return await _App._init_existing(client, existing_app_id)
         else:
-            return await _App._init_new(
-                client, name, detach=False, deploying=True, environment_name=environment_name, output_mgr=output_mgr
-            )
-
-    async def create_one_object(self, obj: _Object, environment_name: str) -> None:
-        """mdmd:hidden"""
-        existing_object_id: Optional[str] = self._tag_to_object_id.get("_object")
-        resolver = Resolver(self._client, environment_name=environment_name, app_id=self.app_id)
-        await resolver.load(obj, existing_object_id)
-        indexed_object_ids = {"_object": obj.object_id}
-        unindexed_object_ids = [obj.object_id for obj in resolver.objects() if obj.object_id is not obj.object_id]
-        req_set = api_pb2.AppSetObjectsRequest(
-            app_id=self.app_id,
-            indexed_object_ids=indexed_object_ids,
-            unindexed_object_ids=unindexed_object_ids,
-            new_app_state=api_pb2.APP_STATE_UNSPECIFIED,  # app is either already deployed or will be set to deployed after this call
-        )
-        await retry_transient_errors(self._client.stub.AppSetObjects, req_set)
+            return await _App._init_new(client, name, detach=False, deploying=True, environment_name=environment_name)
 
     async def deploy(self, name: str, namespace, object_entity: str) -> str:
         """`App.deploy` is deprecated in favor of `modal.runner.deploy_stub`."""
@@ -335,10 +297,29 @@ class _App:
         self,
         *args,
         **kwargs,
-    ) -> "modal.sandbox._Sandbox":
+    ):
         """Deprecated. Use `Stub.spawn_sandbox` instead."""
-        deprecation_warning(date(2023, 9, 11), _App.spawn_sandbox.__doc__)
-        return self._associated_stub.spawn_sandbox(*args, **kwargs)
+        deprecation_error(date(2023, 9, 11), _App.spawn_sandbox.__doc__)
+
+    @staticmethod
+    async def _deploy_single_object(
+        obj: _Object, type_prefix: str, client: _Client, label: str, namespace: int, environment_name: int
+    ):
+        """mdmd:hidden"""
+        app = await _App._init_from_name(client, label, namespace, environment_name=environment_name)
+        existing_object_id: Optional[str] = app._tag_to_object_id.get("_object")
+        resolver = Resolver(app._client, environment_name=environment_name, app_id=app.app_id)
+        await resolver.load(obj, existing_object_id)
+        indexed_object_ids = {"_object": obj.object_id}
+        unindexed_object_ids = [obj.object_id for obj in resolver.objects() if obj.object_id is not obj.object_id]
+        req_set = api_pb2.AppSetObjectsRequest(
+            app_id=app.app_id,
+            indexed_object_ids=indexed_object_ids,
+            unindexed_object_ids=unindexed_object_ids,
+            new_app_state=api_pb2.APP_STATE_UNSPECIFIED,  # app is either already deployed or will be set to deployed after this call
+        )
+        await retry_transient_errors(client.stub.AppSetObjects, req_set)
+        await app.deploy(label, namespace, type_prefix)  # TODO(erikbern): not needed if the app already existed
 
     @staticmethod
     def _reset_container():

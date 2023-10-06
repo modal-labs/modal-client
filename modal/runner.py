@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import contextlib
+import dataclasses
 from multiprocessing.synchronize import Event
 from typing import TYPE_CHECKING, AsyncGenerator, Optional, TypeVar
 
@@ -69,7 +70,6 @@ async def _run_stub(
         detach=detach,
         deploying=False,
         environment_name=environment_name,
-        output_mgr=output_mgr,
     )
     async with stub._set_local_app(app), TaskContext(grace=config["logs_timeout"]) as tc:
         # Start heartbeats loop to keep the client alive
@@ -85,7 +85,9 @@ async def _run_stub(
 
         try:
             # Create all members
-            await app._create_all_objects(stub._blueprint, post_init_state, environment_name, shell=shell)
+            await app._create_all_objects(
+                stub._blueprint, post_init_state, environment_name, shell=shell, output_mgr=output_mgr
+            )
 
             # Update all functions client-side to have the output mgr
             for obj in stub.registered_functions.values():
@@ -125,8 +127,8 @@ async def _run_stub(
                     "Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n"
                 )
         finally:
-            app._uncreate_all_objects()
             await app.disconnect()
+            stub._uncreate_all_objects()
 
     output_mgr.print_if_visible(step_completed("App completed."))
 
@@ -141,17 +143,24 @@ async def _serve_update(
     # Used by child process to reinitialize a served app
     client = await _Client.from_env()
     try:
-        output_mgr = OutputManager(None, True)
-        app = await _App._init_existing(client, existing_app_id, output_mgr=output_mgr)
+        app = await _App._init_existing(client, existing_app_id)
 
         # Create objects
-        await app._create_all_objects(stub._blueprint, api_pb2.APP_STATE_UNSPECIFIED, environment_name)
+        output_mgr = OutputManager(None, True)
+        await app._create_all_objects(
+            stub._blueprint, api_pb2.APP_STATE_UNSPECIFIED, environment_name, output_mgr=output_mgr
+        )
 
         # Communicate to the parent process
         is_ready.set()
     except asyncio.exceptions.CancelledError:
         # Stopped by parent process
         pass
+
+
+@dataclasses.dataclass
+class DeployResult:
+    app_id: str
 
 
 async def _deploy_stub(
@@ -163,7 +172,7 @@ async def _deploy_stub(
     show_progress=True,
     object_entity="ap",
     environment_name: Optional[str] = None,
-) -> _App:
+) -> DeployResult:
     """Deploy an app and export its objects persistently.
 
     Typically, using the command-line tool `modal deploy <module or script>`
@@ -212,7 +221,7 @@ async def _deploy_stub(
 
     output_mgr = OutputManager(stdout, show_progress)
 
-    app = await _App._init_from_name(client, name, namespace, environment_name=environment_name, output_mgr=output_mgr)
+    app = await _App._init_from_name(client, name, namespace, environment_name=environment_name)
 
     async with TaskContext(0) as tc:
         # Start heartbeats loop to keep the client alive
@@ -222,7 +231,9 @@ async def _deploy_stub(
         post_init_state = api_pb2.APP_STATE_UNSPECIFIED
 
         # Create all members
-        await app._create_all_objects(stub._blueprint, post_init_state, environment_name=environment_name)
+        await app._create_all_objects(
+            stub._blueprint, post_init_state, environment_name=environment_name, output_mgr=output_mgr
+        )
 
         # Deploy app
         # TODO(erikbern): not needed if the app already existed
@@ -230,7 +241,7 @@ async def _deploy_stub(
 
     output_mgr.print_if_visible(step_completed("App deployed! 🎉"))
     output_mgr.print_if_visible(f"\nView Deployment: [magenta]{url}[/magenta]")
-    return app
+    return DeployResult(app_id=app.app_id)
 
 
 async def _interactive_shell(_function: _Function, cmd: str, environment_name: str = ""):

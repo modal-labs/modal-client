@@ -19,7 +19,7 @@ from .app import _App, _container_app, is_local
 from .client import _Client
 from .cls import _Cls
 from .config import config, logger
-from .exception import ExecutionError, InvalidError, deprecation_error, deprecation_warning
+from .exception import InvalidError, deprecation_error
 from .functions import PartialFunction, _Function, _PartialFunction
 from .gpu import GPU_T
 from .image import _Image
@@ -178,17 +178,11 @@ class _Stub:
         return self._name
 
     @property
-    def app(self) -> Optional[_App]:
+    def app(self):
         """`stub.app` is deprecated: use e.g. `stub.obj` instead of `stub.app.obj`
         if you need to access objects on the running app.
         """
-        deprecation_warning(date(2023, 9, 11), _Stub.app.__doc__)
-        if self._container_app:
-            return self._container_app
-        elif self._local_app:
-            return self._local_app
-        else:
-            raise ExecutionError("No app available")
+        deprecation_error(date(2023, 9, 11), _Stub.app.__doc__)
 
     @property
     def app_id(self) -> Optional[str]:
@@ -214,12 +208,10 @@ class _Stub:
 
     def _add_object(self, tag, obj):
         if self._container_app:
-            # If this is inside a container, and some module is loaded lazily, then a function may be
-            # defined later than the container initialization. If this happens then lets hydrate the
-            # function at this point
-            other_obj = self._container_app._get_object(tag)
-            if other_obj is not None:
-                obj._hydrate_from_other(other_obj)
+            # If this is inside a container, then objects can be defined after app initialization.
+            # So we may have to initialize objects once they get bound to the stub.
+            if self._container_app._has_object(tag):
+                self._container_app._hydrate_object(obj, tag)
 
         self._blueprint[tag] = obj
 
@@ -252,6 +244,11 @@ class _Stub:
     def get_objects(self) -> List[Tuple[str, _Object]]:
         """Used by the container app to initialize objects."""
         return list(self._blueprint.items())
+
+    def _uncreate_all_objects(self):
+        # TODO(erikbern): this doesn't unhydrate objects that aren't tagged
+        for obj in self._blueprint.values():
+            obj._unhydrate()
 
     @typechecked
     def is_inside(self, image: Optional[_Image] = None) -> bool:

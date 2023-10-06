@@ -22,12 +22,23 @@ def asgi_app_wrapper(asgi_app):
             # prevent them from being uploaded to S3.
             if msg["type"] == "http.response.body":
                 body_chunk_size = MAX_OBJECT_SIZE_BYTES - 1024  # reserve 1 KiB for framing
+                body_chunk_limit = 100 * body_chunk_size
+                s3_chunk_size = 150 * body_chunk_size
+
                 size = len(msg.get("body", b""))
-                if body_chunk_size < size <= 100 * body_chunk_size:
-                    chunks = [msg["body"][i : i + body_chunk_size] for i in range(0, size, body_chunk_size)]
-                    for chunk in chunks[:-1]:
+                if size <= body_chunk_limit:
+                    chunk_size = body_chunk_size
+                else:
+                    # If the body is _very large_, we should still split it up to avoid sending all
+                    # of the data in a huge chunk in S3.
+                    chunk_size = s3_chunk_size
+
+                if size > chunk_size:
+                    indices = list(range(0, size, chunk_size))
+                    for i in indices[:-1]:
+                        chunk = msg["body"][i : i + chunk_size]
                         await messages_from_app.put({"type": "http.response.body", "body": chunk, "more_body": True})
-                    msg["body"] = chunks[-1]
+                    msg["body"] = msg["body"][indices[-1] :]
 
             await messages_from_app.put(msg)
 
