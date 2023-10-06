@@ -129,7 +129,7 @@ def _deserialize_asgi(asgi: api_pb2.Asgi) -> Any:
             "path": asgi.http.path,
             "query_string": asgi.http.query_string,
             "headers": unflatten_headers(asgi.http.headers),
-            "client": (asgi.http.client_host, asgi.http.client_port) if asgi.http.HasField("client_host") else None,
+            **({"client": (asgi.http.client_host, asgi.http.client_port)} if asgi.http.HasField("client_host") else {}),
             "extensions": {
                 "http.response.trailers": {},
             },
