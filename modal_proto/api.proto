@@ -412,7 +412,6 @@ message ContainerArguments {  // This is used to pass data from the worker to th
   map<string, string> tracing_context = 9;
   bytes serialized_params = 10;
   string runtime = 11;
-  bool checkpoint = 12;
 }
 
 message ContainerHeartbeatRequest {
@@ -620,6 +619,7 @@ message Function {
   // TODO: combine into enum?
   bool is_builder_function = 32;
   bool is_auto_snapshot = 38;
+  bool is_checkpointing_enabled = 39;
 }
 
 message FunctionHandleMetadata {
