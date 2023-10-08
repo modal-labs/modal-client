@@ -413,6 +413,7 @@ message ContainerArguments {  // This is used to pass data from the worker to th
   bytes serialized_params = 10;
   string runtime = 11;
   bool checkpoint = 12;
+  string environment_name = 13;
 }
 
 message ContainerHeartbeatRequest {
