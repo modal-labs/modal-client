@@ -5,7 +5,8 @@ import pytest
 from unittest import mock
 
 import modal.secret
-from modal import App, Dict, Image, Stub
+from modal import Dict, Image, Stub
+from modal.app import ContainerApp
 from modal.exception import InvalidError
 from modal_proto import api_pb2
 
@@ -25,7 +26,7 @@ async def test_container_function_lazily_imported(unix_servicer, container_clien
     }
     unix_servicer.app_functions["fu-123"] = api_pb2.Function()
 
-    await App.init_container.aio(container_client, "ap-123")
+    await ContainerApp.init_container.aio(container_client, "ap-123")
     stub = Stub()
 
     # Now, let's create my_f after the app started running and make sure it works
@@ -63,7 +64,7 @@ async def test_is_inside(servicer, unix_servicer, client, container_client):
         unix_servicer.app_objects[app_id] = servicer.app_objects[app_id]
 
         # Pretend that we're inside the container
-        await App.init_container.aio(container_client, app_id)
+        await ContainerApp.init_container.aio(container_client, app_id)
 
         # Create a new stub (TODO: tie it to the previous stub through name or similar)
         stub = get_stub()
@@ -103,7 +104,7 @@ async def test_is_inside_default_image(servicer, unix_servicer, client, containe
     unix_servicer.app_objects = servicer.app_objects
     unix_servicer.app_functions = servicer.app_functions
 
-    await App.init_container.aio(container_client, app_id)
+    await ContainerApp.init_container.aio(container_client, app_id)
 
     # Create a new stub (TODO: tie it to the previous stub through name or similar)
     stub = Stub()

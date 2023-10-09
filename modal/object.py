@@ -220,7 +220,7 @@ class _Object:
         Note 1: this uses the single-object app method, which we're planning to get rid of later
         Note 2: still considering this an "internal" method, but we'll make it "official" later
         """
-        from .app import _App
+        from .app import _LocalApp
 
         if environment_name is None:
             environment_name = config.get("environment")
@@ -228,7 +228,7 @@ class _Object:
         if client is None:
             client = await _Client.from_env()
 
-        await _App._deploy_single_object(self, self._type_prefix, client, label, namespace, environment_name)
+        await _LocalApp._deploy_single_object(self, self._type_prefix, client, label, namespace, environment_name)
 
     def persist(
         self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
