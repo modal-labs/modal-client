@@ -250,30 +250,31 @@ class _LocalApp:
 
 
 class _ContainerApp:
-    _tag_to_object_id: Dict[str, str]
-    _tag_to_handle_metadata: Dict[str, Optional[Message]]
-
-    _client: _Client
+    _client: Optional[_Client]
     _app_id: str
     _associated_stub: Optional[Any]  # TODO(erikbern): type
     _environment_name: Optional[str]
+    _tag_to_object_id: Dict[str, str]
+    _tag_to_handle_metadata: Dict[str, Optional[Message]]
 
     def __init__(
         self,
         client: _Client,
         app_id: str,
-        tag_to_object_id: Dict[str, str] = None,
-        stub_name: Optional[str] = None,
-        environment_name: Optional[str] = None,
+        stub_name: str,
+        environment_name: str,
+        tag_to_object_id: Dict[str, str],
+        tag_to_handle_metadata: Dict[str, Optional[Message]],
     ):
-        """mdmd:hidden This is the app constructor. Users should not call this directly."""
-        self._app_id = app_id
         self._client = client
-        self._tag_to_object_id = tag_to_object_id or {}
+        self._app_id = app_id
+        self._tag_to_object_id = {}
         self._tag_to_handle_metadata = {}
-        self._stub_name = stub_name
         self._associated_stub = None
+        self._stub_name = stub_name
         self._environment_name = environment_name
+        self._tag_to_object_id = tag_to_object_id
+        self._tag_to_handle_metadata = tag_to_handle_metadata
 
     @property
     def client(self) -> _Client:
@@ -326,18 +327,6 @@ class _ContainerApp:
         metadata: Message = self._tag_to_handle_metadata[tag]
         obj._hydrate(object_id, self._client, metadata)
 
-    async def _init_container(self, client: _Client, app_id: str, stub_name: str, environment_name: str):
-        self._client = client
-        self._app_id = app_id
-        self._stub_name = stub_name
-        self._environment_name = environment_name
-        req = api_pb2.AppGetObjectsRequest(app_id=self._app_id)
-        resp = await retry_transient_errors(self._client.stub.AppGetObjects, req)
-        for item in resp.items:
-            self._tag_to_object_id[item.tag] = item.object.object_id
-            handle_metadata: Optional[Message] = get_proto_oneof(item.object, "handle_metadata_oneof")
-            self._tag_to_handle_metadata[item.tag] = handle_metadata
-
     @staticmethod
     async def init_container(
         client: _Client, app_id: str, stub_name: str = "", environment_name: str = ""
@@ -345,7 +334,17 @@ class _ContainerApp:
         """Used by the container to bootstrap the app and all its objects. Not intended to be called by Modal users."""
         global _container_app, _is_container_app
         _is_container_app = True
-        await _container_app._init_container(client, app_id, stub_name, environment_name)
+
+        tag_to_object_id = {}
+        tag_to_handle_metadata = {}
+        req = api_pb2.AppGetObjectsRequest(app_id=app_id)
+        resp = await retry_transient_errors(client.stub.AppGetObjects, req)
+        for item in resp.items:
+            tag_to_object_id[item.tag] = item.object.object_id
+            handle_metadata: Optional[Message] = get_proto_oneof(item.object, "handle_metadata_oneof")
+            tag_to_handle_metadata[item.tag] = handle_metadata
+
+        _container_app.__init__(client, app_id, stub_name, environment_name, tag_to_object_id, tag_to_handle_metadata)
         return _container_app
 
     async def spawn_sandbox(
@@ -361,14 +360,14 @@ class _ContainerApp:
         # Just used for tests
         global _is_container_app, _container_app
         _is_container_app = False
-        _container_app.__init__(None, None, None, None)  # type: ignore
+        _container_app.__init__(None, "", "", "", {}, {})  # type: ignore
 
 
 LocalApp = synchronize_api(_LocalApp)
 ContainerApp = synchronize_api(_ContainerApp)
 
 _is_container_app = False
-_container_app = _ContainerApp(None, None, None, None, None)
+_container_app = _ContainerApp(None, "", "", "", {}, {})
 container_app = synchronize_api(_container_app)
 assert isinstance(container_app, ContainerApp)
 
