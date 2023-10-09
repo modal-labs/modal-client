@@ -327,6 +327,13 @@ class _ContainerApp:
         metadata: Message = self._tag_to_handle_metadata[tag]
         obj._hydrate(object_id, self._client, metadata)
 
+    def _get_pty(self) -> _Object:
+        # TOOD(erikbern): This method has zero tests. It's used in _container_entrypoint
+        # Let's try to clean this up ASAP
+        object_id = self._tag_to_object_id["_pty_input_stream"]
+        metadata = self._tag_to_handle_metadata["_pty_input_stream"]
+        return _Object._new_hydrated(object_id, self._client, metadata)
+
     @staticmethod
     async def init_container(
         client: _Client, app_id: str, stub_name: str = "", environment_name: str = ""
