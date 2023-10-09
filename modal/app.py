@@ -256,13 +256,15 @@ class _ContainerApp:
     _client: _Client
     _app_id: str
     _associated_stub: Optional[Any]  # TODO(erikbern): type
+    _environment_name: Optional[str]
 
     def __init__(
         self,
         client: _Client,
         app_id: str,
-        tag_to_object_id: Optional[Dict[str, str]] = None,
+        tag_to_object_id: Dict[str, str] = None,
         stub_name: Optional[str] = None,
+        environment_name: Optional[str] = None,
     ):
         """mdmd:hidden This is the app constructor. Users should not call this directly."""
         self._app_id = app_id
@@ -271,6 +273,7 @@ class _ContainerApp:
         self._tag_to_handle_metadata = {}
         self._stub_name = stub_name
         self._associated_stub = None
+        self._environment_name = environment_name
 
     @property
     def client(self) -> _Client:
@@ -323,10 +326,11 @@ class _ContainerApp:
         metadata: Message = self._tag_to_handle_metadata[tag]
         obj._hydrate(object_id, self._client, metadata)
 
-    async def _init_container(self, client: _Client, app_id: str, stub_name: str):
+    async def _init_container(self, client: _Client, app_id: str, stub_name: str, environment_name: str):
         self._client = client
         self._app_id = app_id
         self._stub_name = stub_name
+        self._environment_name = environment_name
         req = api_pb2.AppGetObjectsRequest(app_id=self._app_id)
         resp = await retry_transient_errors(self._client.stub.AppGetObjects, req)
         for item in resp.items:
@@ -335,11 +339,13 @@ class _ContainerApp:
             self._tag_to_handle_metadata[item.tag] = handle_metadata
 
     @staticmethod
-    async def init_container(client: _Client, app_id: str, stub_name: str = "") -> "_ContainerApp":
+    async def init_container(
+        client: _Client, app_id: str, stub_name: str = "", environment_name: str = ""
+    ) -> "_ContainerApp":
         """Used by the container to bootstrap the app and all its objects. Not intended to be called by Modal users."""
         global _container_app, _is_container_app
         _is_container_app = True
-        await _container_app._init_container(client, app_id, stub_name)
+        await _container_app._init_container(client, app_id, stub_name, environment_name)
         return _container_app
 
     async def spawn_sandbox(
@@ -362,7 +368,7 @@ LocalApp = synchronize_api(_LocalApp)
 ContainerApp = synchronize_api(_ContainerApp)
 
 _is_container_app = False
-_container_app = _ContainerApp(None, None, None, None)
+_container_app = _ContainerApp(None, None, None, None, None)
 container_app = synchronize_api(_container_app)
 assert isinstance(container_app, ContainerApp)
 

@@ -123,13 +123,16 @@ class _FunctionIOManager:
         self._semaphore: Optional[asyncio.Semaphore] = None
         self._output_queue: Optional[asyncio.Queue] = None
         self._container_app: Optional[_ContainerApp] = None
+        self._environment_name = container_args.environment_name
 
         self._client = synchronizer._translate_in(self.client)  # make it a _Client object
         assert isinstance(self._client, _Client)
 
     @wrap()
     async def initialize_app(self) -> _ContainerApp:
-        self._container_app = await _ContainerApp.init_container(self._client, self.app_id, self._stub_name)
+        self._container_app = await _ContainerApp.init_container(
+            self._client, self.app_id, self._stub_name, self._environment_name
+        )
         return self._container_app
 
     async def _heartbeat(self):
