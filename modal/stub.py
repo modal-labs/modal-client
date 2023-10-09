@@ -15,7 +15,7 @@ from ._function_utils import FunctionInfo
 from ._ipython import is_notebook
 from ._output import OutputManager
 from ._resolver import Resolver
-from .app import _App, _container_app, is_local
+from .app import _container_app, _ContainerApp, _LocalApp, is_local
 from .client import _Client
 from .cls import _Cls
 from .config import config, logger
@@ -113,8 +113,8 @@ class _Stub:
     _secrets: Sequence[_Secret]
     _web_endpoints: List[str]  # Used by the CLI
     _local_entrypoints: Dict[str, _LocalEntrypoint]
-    _container_app: Optional[_App]
-    _local_app: Optional[_App]
+    _container_app: Optional[_ContainerApp]
+    _local_app: Optional[_LocalApp]
     _all_stubs: ClassVar[Dict[str, List["_Stub"]]] = {}
 
     @typechecked
@@ -281,9 +281,8 @@ class _Stub:
         return image._is_inside()
 
     @asynccontextmanager
-    async def _set_local_app(self, app: _App) -> AsyncGenerator[None, None]:
+    async def _set_local_app(self, app: _LocalApp) -> AsyncGenerator[None, None]:
         self._local_app = app
-        app._associate_stub_local(self)
         try:
             yield
         finally:
@@ -676,14 +675,18 @@ class _Stub:
         from .stub import _default_image
 
         if self._local_app:
-            app = self._local_app
+            app_id = self._local_app.app_id
+            environment_name = self._local_app._environment_name
+            client = self._local_app.client
         elif self._container_app:
-            app = self._container_app
+            app_id = self._container_app.app_id
+            environment_name = self._container_app._environment_name
+            client = self._container_app.client
         else:
             raise InvalidError("`stub.spawn_sandbox` requires a running app.")
 
         # TODO(erikbern): pulling a lot of app internals here, let's clean up shortly
-        resolver = Resolver(app._client, environment_name=app._environment_name, app_id=self.app_id)
+        resolver = Resolver(client, environment_name=environment_name, app_id=app_id)
         obj = _Sandbox._new(
             entrypoint_args,
             image=image or _default_image,

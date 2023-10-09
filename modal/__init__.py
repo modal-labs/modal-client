@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 from modal_version import __version__
 
-from .app import App, container_app, is_local
+from .app import container_app, is_local
 from .client import Client
 from .cls import Cls
 from .dict import Dict
@@ -21,7 +21,6 @@ from .volume import Volume
 
 __all__ = [
     "__version__",
-    "App",
     "Client",
     "Cls",
     "Cron",
