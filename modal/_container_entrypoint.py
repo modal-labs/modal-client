@@ -17,7 +17,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, Optional, Type
 
 from grpclib import Status
-from synchronicity.interface import Interface
 
 from modal.stub import _Stub
 from modal_proto import api_pb2
@@ -703,9 +702,8 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         if pty_info.pty_type or pty_info.enabled:
             # TODO(erikbern): the second condition is for legacy compatibility, remove soon
             # TODO(erikbern): there is no client test for this branch
-            input_stream_unwrapped = synchronizer._translate_in(container_app._get_object("_pty_input_stream"))
-            input_stream_blocking = synchronizer._translate_out(input_stream_unwrapped, Interface.BLOCKING)
-            imp_fun.fun = run_in_pty(imp_fun.fun, input_stream_blocking, pty_info)
+            input_stream = container_app._get_pty()
+            imp_fun.fun = run_in_pty(imp_fun.fun, input_stream, pty_info)
 
         if not imp_fun.is_async:
             call_function_sync(function_io_manager, imp_fun)
